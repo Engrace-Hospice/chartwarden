@@ -1,0 +1,135 @@
+/**
+ * WardenX — Tenancy & RLS Invariant Check  (ADR-0010; fitness check #10)
+ * ------------------------------------------------------------------
+ * Enforces, statically, the three tenancy invariants that prose alone let drift
+ * across the corpus (audit X3/X4/S5):
+ *
+ *   1. THREE-COLUMN RULE (ARCH-011) — every PHI-bearing table carries
+ *      `organization_id` and (nullable only on org-level entities)
+ *      `provider_entity_id` + `location_id`.
+ *   2. CANONICAL RLS VARIABLE — the only session variable any policy or
+ *      `current_setting(...)` may key on is `app.org_id` (set by withOrgContext()).
+ *      Bans `app.organization_id`, `app.tenant_id`, `app.current_org_id`,
+ *      `wardenx.org_id`, `app.current_organization_id`, etc.
+ *   3. NO DANGEROUS POLICY SHAPES — bans `OR organization_id IS NULL` in a
+ *      tenant-writable policy and permissive `FOR ALL` policies that OR together.
+ *
+ * This is a fast, heuristic, import-level static check (same posture as
+ * check-table-ownership.ts) — it catches the common dangerous cases and routes
+ * the rest to review. It activates per file as the implementation lands; until a
+ * module's schema/migration source exists, there is nothing to scan for it.
+ *
+ * Run:   bun run scripts/check-tenancy.ts
+ * CI:    exits 1 on any violation (arch:fitness stage).
+ */
+
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
+import { MODULES, type ModuleDef } from "../architecture/module-manifest";
+
+const REPO_ROOT = process.cwd();
+const SCHEMA_DIR = "packages/db/src/schema";
+
+const CANONICAL_VAR = "app.org_id";
+// Any current_setting('app.*'|'wardenx.*') that is NOT the canonical var is a violation.
+const SESSION_VAR_RE = /current_setting\(\s*['"]((?:app|wardenx)\.[a-z_]+)['"]/g;
+// Tables that are NOT tenant-scoped by org_id (user-owned cross-org, or pure platform reference).
+// A spec opts a table out by adding it here with a justification (reviewed change).
+const NON_ORG_SCOPED = new Set<string>([
+  "user", "account", "verification", "session",        // user-owned, cross-org (M2 §3.x)
+  "two_factor", "passkey",                              // user-owned credentials
+  "audit_denylist_catalog", "audit_action_catalog",    // platform reference, read-all
+  "outbox_event_catalog", "organization_settings_registry",
+  "state_retention_override",                           // platform reference (writes via platform role)
+  "organization", "provider_entity", "location",       // the tenancy spine itself
+  "system_status", "feature_flag",                      // platform/global (own RLS, ADR-0010 D3 read policy)
+]);
+// PHI signal: a table referencing a patient is PHI-bearing and MUST be fully org-scoped.
+const PHI_SIGNAL_RE = /\b(patient_id|patientId|mrn|deceased_date|clinical|encounter_id|observation)\b/i;
+
+type Violation = { file: string; rule: string; detail: string };
+
+function listFiles(dir: string, acc: string[] = []): string[] {
+  let entries: string[] = [];
+  try { entries = readdirSync(join(REPO_ROOT, dir)); } catch { return acc; }
+  for (const e of entries) {
+    const rel = join(dir, e);
+    if (statSync(join(REPO_ROOT, rel)).isDirectory()) {
+      if (e === "node_modules" || e === "dist" || e === ".turbo") continue;
+      listFiles(rel, acc);
+    } else if (/\.(ts|sql)$/.test(e)) acc.push(rel);
+  }
+  return acc;
+}
+
+const violations: Violation[] = [];
+
+// ---- Rule 2 + 3: scan every module's code + schema + migrations -----------
+const allPaths = [SCHEMA_DIR, ...MODULES.flatMap((m: ModuleDef) => m.codePaths)];
+const scanned = new Set<string>();
+for (const base of allPaths) {
+  for (const file of listFiles(base)) {
+    if (scanned.has(file)) continue;
+    scanned.add(file);
+    const src = readFileSync(join(REPO_ROOT, file), "utf8");
+
+    // Rule 2 — canonical session variable
+    let m: RegExpExecArray | null;
+    SESSION_VAR_RE.lastIndex = 0;
+    while ((m = SESSION_VAR_RE.exec(src))) {
+      if (m[1] !== CANONICAL_VAR) {
+        violations.push({ file, rule: "rls-session-variable",
+          detail: `uses current_setting('${m[1]}') — the only allowed RLS variable is '${CANONICAL_VAR}' (ADR-0010 D2)` });
+      }
+    }
+
+    // Rule 3a — OR organization_id IS NULL in a writable policy
+    if (/\bOR\s+\w*organization_id\s+IS\s+NULL\b/i.test(src) && /\bWITH\s+CHECK\b|\bFOR\s+ALL\b/i.test(src)) {
+      violations.push({ file, rule: "rls-or-is-null-write",
+        detail: "a tenant-writable policy contains `OR organization_id IS NULL` — bans tenant writes to global rows (ADR-0010 D3)" });
+    }
+    // Rule 3b — two permissive FOR ALL policies on the same table (heuristic)
+    const forAll = (src.match(/CREATE\s+POLICY\s+\w+\s+ON\s+(\w+)\s+FOR\s+ALL/gi) || []);
+    const byTable = new Map<string, number>();
+    for (const p of forAll) {
+      const t = /ON\s+(\w+)/i.exec(p)?.[1] ?? "";
+      byTable.set(t, (byTable.get(t) ?? 0) + 1);
+    }
+    for (const [t, n] of byTable) if (n > 1)
+      violations.push({ file, rule: "rls-permissive-or", detail: `table '${t}' has ${n} permissive FOR ALL policies that OR together (ADR-0010 D3)` });
+  }
+}
+
+// ---- Rule 1: three-column rule on PHI-bearing schema tables ---------------
+for (const file of listFiles(SCHEMA_DIR)) {
+  const src = readFileSync(join(REPO_ROOT, file), "utf8");
+  // crude pgTable block split
+  const re = /export\s+const\s+\w+\s*=\s*pgTable\(\s*['"]([\w]+)['"]\s*,([\s\S]*?)\n\}\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(src))) {
+    const sqlName = m[1]!, body = m[2]!;
+    if (NON_ORG_SCOPED.has(sqlName)) continue;
+    const isPhi = PHI_SIGNAL_RE.test(body);
+    const hasOrg = /\borganization_id\b/.test(body) || /organizationId\s*:/.test(body);
+    if (!hasOrg) {
+      violations.push({ file, rule: "missing-organization_id",
+        detail: `table '${sqlName}' has no organization_id column (ARCH-011 / ADR-0010 D1)${isPhi ? " — PHI-bearing" : ""}` });
+    }
+    if (isPhi) {
+      const hasPE = /provider_entity_id/.test(body) || /providerEntityId/.test(body);
+      const hasLoc = /location_id/.test(body) || /locationId/.test(body);
+      if (!hasPE || !hasLoc)
+        violations.push({ file, rule: "missing-pe-or-location",
+          detail: `PHI table '${sqlName}' missing ${!hasPE ? "provider_entity_id" : ""}${!hasPE && !hasLoc ? " + " : ""}${!hasLoc ? "location_id" : ""} (ARCH-011, nullable only on org-level entities)` });
+    }
+  }
+}
+
+if (violations.length === 0) {
+  console.log("✓ tenancy: three-column rule, canonical app.org_id, no dangerous RLS shapes");
+  process.exit(0);
+}
+console.error(`✗ tenancy: ${violations.length} violation(s)\n`);
+for (const v of violations)
+  console.error(`  [${v.rule}] ${relative(REPO_ROOT, v.file)}\n    ${v.detail}\n`);
+process.exit(1);

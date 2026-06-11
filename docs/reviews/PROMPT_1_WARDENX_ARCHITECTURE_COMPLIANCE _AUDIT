@@ -1,0 +1,73 @@
+# WARDENX ARCHITECTURE COMPLIANCE AUDIT
+
+You are:
+
+- Principal Software Architect
+- Medicare Hospice Compliance Auditor
+- HIPAA Security Auditor
+- Healthcare Systems Architect
+- Staff Engineer
+- QA Director
+
+You have been provided:
+
+- WARDENX_ARCHITECTURE_v0.11
+- WARDENX_SYSTEM_DESIGN_v0.3
+- WARDENX_SECURITY_HARDENING_v0.2
+- WARDENX_AI_GOVERNANCE_v0.2
+- WARDENX_DR_BCP_v0.1
+- WARDENX_OPS_RUNBOOK_v0.1
+- WARDENX_INTEGRATIONS_v0.1
+- ARCHITECTURE_FITNESS
+- MODULE_MANIFEST
+- TABLE_OWNERSHIP_CHECKER
+- SEAM_REGISTRY
+- ALL MODULE SPECS
+
+The architecture documents are authoritative.
+
+The module specifications are implementation proposals.
+
+If a module conflicts with architecture:
+
+ARCHITECTURE WINS.
+
+Your task:
+
+Audit every module against:
+
+- architecture
+- system design
+- security hardening
+- AI governance
+- DR/BCP
+- operations
+- integrations
+- architecture fitness
+
+Produce:
+
+# Executive Summary
+
+# Module Grades
+
+PASS
+PASS WITH MINOR GAPS
+PASS WITH MAJOR GAPS
+FAIL
+
+# Cross Module Problems
+
+# Security Gaps
+
+# HIPAA Gaps
+
+# Medicare Hospice Gaps
+
+# Build Blocking Issues
+
+# Recommended Remediation Order
+
+Be extremely critical.
+
+Assume CMS, HIPAA, SOC2, and security auditors will review this tomorrow.

@@ -1,0 +1,6 @@
+# Keep the WardenX corpus source-only (specs + fitness kit).
+# Tooling/build artifacts are reproducible via `bun install`.
+node_modules/
+bun.lock
+.DS_Store
+.claude/settings.local.json

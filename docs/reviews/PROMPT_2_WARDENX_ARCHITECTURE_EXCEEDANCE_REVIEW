@@ -1,0 +1,43 @@
+# WARDENX ARCHITECTURE EXCEEDANCE REVIEW
+
+The goal is NOT merely compliance.
+
+The goal is to EXCEED the architecture safely.
+
+Review every module.
+
+For every module answer:
+
+1. What does the module do well?
+2. What architectural requirements are missing?
+3. What security controls should be added?
+4. What operational controls should be added?
+5. What audit controls should be added?
+6. What Medicare hospice controls should be added?
+7. What AI governance controls should be added?
+8. What disaster recovery controls should be added?
+
+Then create:
+
+## Exceedance Patch
+
+Only recommend improvements that:
+
+- preserve architecture
+- preserve module boundaries
+- preserve seams
+- preserve outbox contracts
+- preserve RLS
+- preserve RBAC
+- preserve ABAC
+- preserve HIPAA compliance
+
+Do NOT redesign.
+
+Upgrade.
+
+Do NOT simplify.
+
+Strengthen.
+
+Output exact patches.
