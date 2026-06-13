@@ -1,7 +1,7 @@
 # WardenX Module Audit — Module 34: SaaS Tenant Platform
 
 **Auditor:** WardenX Module Compliance Auditor (Principal Architect / Medicare Hospice / HIPAA Security / Staff Eng / QA Director hat)
-**Spec audited:** `WARDENX_MODULE_34_SAAS_TENANT_PLATFORM_SPEC_v0_2.md` (Locked v0.2)
+**Spec audited:** `WARDENX_MODULE_34_SAAS_TENANT_PLATFORM_SPEC_v0_3.md` (audited at Locked v0.2; renamed to v0.3 for the `m34.` event-naming migration)
 **Date:** 2026-06-11
 **Authoritative sources verified against:** `WARDENX_ARCHITECTURE_v0_11.md`, `ARCHITECTURE_25_15_FITNESS.md`, `module-manifest.ts`, `WARDENX_SECURITY_HARDENING_v0_2.md`, `WARDENX_SYSTEM_DESIGN_v0.3.md`, `WARDENX_MODULE_01_FOUNDATION_SPEC_v0_4.md`, `WARDENX_MODULE_02_IDENTITY_SPEC_v0_4.md`, `WARDENX_MODULE_04_AUDIT_SPEC_v0_4.md`, `WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_2.md`, `WARDENX_MODULE_36_MESSAGING_SPEC_v0_4.md`.
 
