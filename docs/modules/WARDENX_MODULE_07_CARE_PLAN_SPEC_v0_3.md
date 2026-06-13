@@ -2,8 +2,9 @@
 
 **Spec version:** v0.3 — the §2.4 outbox events migrated to the `m7.` namespace
 (`m7.care_plan.*`, `m7.problem.*`, `m7.goal.*`, `m7.intervention.*`) per the M01 D8
-`outbox_event_catalog` / M03 D9 convention. Permission keys (`care_plan.author`, …), schema
-field names (`goal.problem_id`, …), and the T+13 `care_plan.review_due` alert are unchanged.
+`outbox_event_catalog` / M03 D9 convention, plus the T+13 alert payload
+(`m7.care_plan.review_due`) per M36 D10. Permission keys (`care_plan.author`, …) and schema
+field names (`goal.problem_id`, …) are unchanged (separate, feature-prefixed namespaces).
 (Prior: v0.2.)
 
 **Module ID:** 7
@@ -1051,7 +1052,7 @@ ABAC predicates in this matrix (registered with Module 3):
 
 ### 7.2 15-day IDG review
 
-**Done means:** care plan v1 was signed at T. At T+13 days the system emits `care_plan.review_due` (alert to IDG coordinator; banner). At T+15 the system marks the plan `review_overdue` (banner red). At T+17 (grace 3 days, D3) the encounter-sign gate engages. The IDG meeting at any point in this window emits `idg.decision_recorded` events; M7's consumer creates a draft v2 with the decisions applied as add/update/discontinue mutations on problem/goal/intervention rows. The IDG coordinator finalizes v2 (transition to `in_review`) and routes for signing. Required signers (RN + MSW + Chaplain + Hospice Physician) sign in any order; on the last signature, v2 is `signed`, v1 is `superseded`, `next_review_due_at` is set to (v2 signed_at) + 15 days, gate lifts.
+**Done means:** care plan v1 was signed at T. At T+13 days the system emits `m7.care_plan.review_due` (alert to IDG coordinator; banner). At T+15 the system marks the plan `review_overdue` (banner red). At T+17 (grace 3 days, D3) the encounter-sign gate engages. The IDG meeting at any point in this window emits `idg.decision_recorded` events; M7's consumer creates a draft v2 with the decisions applied as add/update/discontinue mutations on problem/goal/intervention rows. The IDG coordinator finalizes v2 (transition to `in_review`) and routes for signing. Required signers (RN + MSW + Chaplain + Hospice Physician) sign in any order; on the last signature, v2 is `signed`, v1 is `superseded`, `next_review_due_at` is set to (v2 signed_at) + 15 days, gate lifts.
 
 ### 7.3 Patient-stated goal preservation
 

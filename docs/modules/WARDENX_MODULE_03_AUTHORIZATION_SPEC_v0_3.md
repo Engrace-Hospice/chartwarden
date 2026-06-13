@@ -1,10 +1,13 @@
 # Module 3 — Authorization Specification
 
-**Spec version:** v0.3 — the remaining bare-prefix outbox events migrated to the `m3.`
-namespace (`m3.role.assigned`, `m3.role.revoked`, `m3.role.updated`) per this module's own D9
-rule and M01 D8. The `m3.breakglass.*` / `m3.engagement.*` events already conformed; permission
-keys (`role.assign`, `role.read`, …) and the M03-F04 carve-out `permissions.changed` (the one
-permitted direct Socket.IO emit) are unchanged. (Prior: v0.2.)
+**Spec version:** v0.3 — the remaining bare-prefix outbox events (`m3.role.assigned/revoked/
+updated`) **and the §8.1 audit actions** (`m3.authz.denied`, `m3.authz.escalation_blocked`,
+`m3.breakglass.invoked/access/cosigned/revoked/expired`, `m3.engagement.created/closed/
+cancelled/auditor_enrolled`, `m3.role.created/deleted`) migrated to the `m3.` namespace per this
+module's own D9 rule / M01 D8 / M04 D9 — fulfilling M03-F10. Permission keys (`role.assign`,
+`breakglass.invoke`, `engagement.manage`, …), worker/span identifiers (`authz.rbac_check`, …),
+and the M03-F04 carve-out `permissions.changed` (the one permitted direct Socket.IO emit) are
+unchanged. (Prior: v0.2.)
 
 **Module ID:** 3
 **Phase:** 1 (foundation tier — lands immediately after Module 2)
@@ -34,7 +37,7 @@ permitted direct Socket.IO emit) are unchanged. (Prior: v0.2.)
 | M03-F10 | MINOR | Audit action names re-prefixed to `m3.*` per D9 (§4.5 note); stale refs (§4.4 "Open Question 2"→D2, "Module 2 §4.5"→§4.7) corrected. |
 | M03-F11 | MINOR | Three BullMQ queues declare retry/backoff/concurrency/DLQ + idempotency (§4.5); `security` retention class remapped to `compliance` (§24). |
 | M03-F12 | MINOR | D8 reworded: **M1 owns the `REQUIRED_SEAMS` registry + gate** (M1 §3.18); M3 owns the *schema* of a seam declaration and contributes entries at init (runtime registration), since M1 cannot import an M3-owned registry. |
-| M03-F13 | MINOR | `break_glass_event.consent_ref` typed against the M34/M39 tenant-consent record once specced; `authz.denied` sampling policy pinned (deterministic for forensics). |
+| M03-F13 | MINOR | `break_glass_event.consent_ref` typed against the M34/M39 tenant-consent record once specced; `m3.authz.denied` sampling policy pinned (deterministic for forensics). |
 
 -----
 
@@ -259,10 +262,10 @@ stateDiagram-v2
 | Invitation accepted (Module 2) | `proposedRoleKeys` → `membership_role` rows created; emit `m3.role.assigned` |
 | Role granted/revoked on a membership | recompute & cache effective permissions; emit `m3.role.assigned`/`m3.role.revoked` (severity warn) |
 | Role permission set edited | invalidate effective-permission cache for all affected memberships; emit `m3.role.updated` |
-| Break-glass invoked | grant temporary ABAC bypass for target; notify Compliance Officer immediately; emit `breakglass.invoked` (critical); start time-box |
+| Break-glass invoked | grant temporary ABAC bypass for target; notify Compliance Officer immediately; emit `m3.breakglass.invoked` (critical); start time-box |
 | Break-glass expires/revoked | bypass removed; emit `breakglass.ended` |
 | Engagement reaches `start_at` | engagement `active`; auditor magic-links become consumable (Module 2) |
-| Engagement reaches `end_at` | engagement `closed`; revoke all auditor sessions for it; emit `engagement.closed` |
+| Engagement reaches `end_at` | engagement `closed`; revoke all auditor sessions for it; emit `m3.engagement.closed` |
 | ABAC predicate denies repeatedly | optional anomaly signal to Module 4 / security monitoring |
 
 -----
@@ -770,7 +773,7 @@ Type.Object({
 // 201 -> { breakGlassId, status, expiresAt }
 // status='cosign_pending' if tenant policy requires non-emergency co-sign
 // Side effects: Compliance Officer notified (Module 36 alert, severity critical);
-//   audit breakglass.invoked; temporary ABAC bypass keyed to (actor, target, window)
+//   audit m3.breakglass.invoked; temporary ABAC bypass keyed to (actor, target, window)
 // Errors: 403 if lacks breakglass.invoke; 422 if reason too short
 ```
 
@@ -908,15 +911,15 @@ Retention class `security`/`compliance`. Authorization **denials** of PHI action
 
 | Event | Severity | Payload |
 |---|---|---|
-| `authz.denied` | info/warn | `{ actor, permission, predicate, targetType, reason }` |
+| `m3.authz.denied` | info/warn | `{ actor, permission, predicate, targetType, reason }` |
 | `m3.role.assigned` / `m3.role.revoked` | warn | `{ membershipId, roleKey, scope, byUser, expiresAt }` |
-| `role.created`/`m3.role.updated`/`role.deleted` | warn | `{ roleKey, changedFields }` |
-| `breakglass.invoked` | critical | `{ id, actor, targetPatientId, reason, expiresAt, cosignRequired }` |
-| `breakglass.access` | critical | `{ id, resourceType, resourceId }` (per resource viewed under glass) |
-| `breakglass.cosigned`/`breakglass.revoked`/`breakglass.expired` | warn | `{ id, by }` |
-| `engagement.created`/`closed`/`cancelled` | warn | `{ id, type, scope, window }` |
-| `engagement.auditor_enrolled` | warn | `{ id, auditor }` |
-| `authz.escalation_blocked` | warn | `{ actor, attemptedPermission }` |
+| `m3.role.created`/`m3.role.updated`/`m3.role.deleted` | warn | `{ roleKey, changedFields }` |
+| `m3.breakglass.invoked` | critical | `{ id, actor, targetPatientId, reason, expiresAt, cosignRequired }` |
+| `m3.breakglass.access` | critical | `{ id, resourceType, resourceId }` (per resource viewed under glass) |
+| `m3.breakglass.cosigned`/`m3.breakglass.revoked`/`m3.breakglass.expired` | warn | `{ id, by }` |
+| `m3.engagement.created`/`closed`/`cancelled` | warn | `{ id, type, scope, window }` |
+| `m3.engagement.auditor_enrolled` | warn | `{ id, auditor }` |
+| `m3.authz.escalation_blocked` | warn | `{ actor, attemptedPermission }` |
 
 ### 8.2 Metrics (Prometheus)
 
@@ -1010,7 +1013,7 @@ All open questions decided; the two seams now have built mechanisms (SEAMS.md).
 | D2 | **Auditor seam: M3 owns `auditor_engagement` + the `/auditors/invite` endpoint; M2 exposes a boot-validated `AuditorSessionMinter` that M3 calls.** M2's stubbed `/auditors/invite` is removed (now M3's). | Engagement scope/window is authorization (M3); session minting is identity (M2). Boot validation = an engagement that can't mint fails at startup. | **Decided** (seam built — SEAMS.md; M2 §4.5) |
 | D3 | **`org_admin` / `platform_ops` are roles in the catalog** (categories D / K), `system_locked`. Not flags. | One consistent authorization model; no special-case flags to drift. | **Decided** |
 | D4 | **Caseload via the `CaseloadProvider` seam** (built — SEAMS.md). M3's `caseload_membership` / `caseload_or_scope` predicates resolve it through the registry; ships with a deny-by-default stub for isolation tests; Module 5/17 register the real provider at boot (validateSeams enforces it). | Decouples M3 from M5/17 without weakening authorization — boot fails if no real provider in prod. | **Decided** (seam built) |
-| D5 | **Sample routine `authz.denied`; always audit break-glass and privileged-action denials individually.** | Forensic value where it matters without audit-volume blowup on routine 403s. | **Decided** |
+| D5 | **Sample routine `m3.authz.denied`; always audit break-glass and privileged-action denials individually.** | Forensic value where it matters without audit-volume blowup on routine 403s. | **Decided** |
 | D6 | **Effective-permission cache: event-driven invalidation primary, 60-second TTL safety net.** Invalidated on role grant/revoke and role-permission edits; `permissions.changed` pushed to affected users. | Correctness first (no stale elevated access), with a bounded backstop. | **Decided** |
 | D7 | **Platform role templates are cloned per org at onboarding** (tenant autonomy to rename/disable/extend); platform pushes template updates as opt-in, never silent overwrite. | Tenants own their catalog; CoP floor still protected by `system_locked`. | **Decided** |
 | D8 | **`REQUIRED_SEAMS` registry.** Each module declares the cross-module seams it consumes via a per-module contribution file (`required-by-mN.ts`); M3 owns the consolidated `REQUIRED_SEAMS` registry that the M1 boot-time `validateSeams()` gate checks — startup is refused if any declared seam resolves to a deny-stub at lock. Downstream modules (M28/M33/M34/etc.) boot-validate seam availability against this registry. | Centralizes the seam-binding contract so missing/unbound providers fail fast at boot rather than at first call; gives surveys-readiness a queryable map of who-consumes-whose-seam. | **Decided** |

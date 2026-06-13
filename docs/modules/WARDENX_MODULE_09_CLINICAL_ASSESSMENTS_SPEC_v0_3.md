@@ -1,10 +1,11 @@
 # Module 9 — Clinical Assessments Suite Specification
 
-**Spec version:** v0.3 — the §2.4 outbox events migrated to the `m9.` namespace
-(`m9.assessment.*`, `m9.scale.*`) per the M01 D8 `outbox_event_catalog` / M03 D9 convention.
-Permission keys (`assessment.author`, …), audit actions (`assessment.viewed`,
-`assessment.disclosed`, …), and code/field identifiers are unchanged — those are separate
-catalogs. (Prior: v0.2.)
+**Spec version:** v0.3 — the §2.4 outbox events **and** §8.1 audit actions migrated to the
+`m9.` namespace (`m9.assessment.*`, `m9.scale.*`; audit actions `m9.assessment.viewed`,
+`m9.assessment.disclosed`, `m9.assessment.correction`, `m9.assessment.erased_under_certificate`)
+per M01 D8 `outbox_event_catalog` / M04 D9 action-catalog / M03 D9. Permission keys
+(`assessment.author`, …) and code/field identifiers are unchanged (separate, feature-prefixed
+namespaces). (Prior: v0.2.)
 
 **Module ID:** 9
 **Phase:** 1 (clinical spine — required for Engrace go-live; routine charting depends on it)
@@ -60,7 +61,7 @@ Module 9 owns the **clinical-scale assessment library** that hospice clinicians 
 - **Trend computation (D4).** Each scale exposes `latest(patientId)`, `series(patientId, from, to)`, and `delta(patientId, window)` via the `ScaleSeriesProvider` seam. Phase 1 is read-time computation backed by a `(organization_id, patient_id, scale_type, captured_at DESC)` btree index — measured to meet p95 < 50 ms for `latest`, < 200 ms for 90-day series at expected volume (≤ 100 assessments per scale per episode). Materialization deferred to Phase 2 only if metrics show need.
 - **License tracking (D3).** PPS (Victoria Hospice), FAST and GDS (Reisberg), Braden (Braden/Bergstrom), and Morse (Morse) require licenses for institutional use. M9 owns `scale_license` (one row per (organization, scale)) with license holder, expiry, license number. The license registry is *form-gating*: a clinician cannot record a license-required scale unless the tenant has an active license recorded. Boot validation: if a scale is enabled-by-policy but no active license exists, the form is hidden from clinicians and a `scale.license_missing` warning surfaces in the tenant Compliance dashboard.
 - **Amendment workflow (D9).** A recorded scale is **immutable**. Errors are corrected by an append-only `corrects_assessment_id`-linked correction row, with a required `correction_reason` and the original row marked `superseded`. This matches the §164.526 right-to-amend pattern M5 already established for demographic amendments; surveyors get the full record of what was recorded, what was corrected, and why.
-- **Audit-grade everything.** Every write flows through Module 4's PHI write-audit trigger with column-level scrubbing (free-text fields inside the per-scale `data` jsonb are denylisted from value capture; only the `<changed>` marker is recorded). Every read of a scale row through the chart or trend surfaces emits a `<scale>.viewed` audit event (per-resource for chart opens, aggregate for list views per M4 D3). AIMS reads under SUD context emit `assessment.disclosed` with a recipient classification (per M4 D5).
+- **Audit-grade everything.** Every write flows through Module 4's PHI write-audit trigger with column-level scrubbing (free-text fields inside the per-scale `data` jsonb are denylisted from value capture; only the `<changed>` marker is recorded). Every read of a scale row through the chart or trend surfaces emits a `<scale>.viewed` audit event (per-resource for chart opens, aggregate for list views per M4 D3). AIMS reads under SUD context emit `m9.assessment.disclosed` with a recipient classification (per M4 D5).
 - **Outbox-driven downstream integration.** Every meaningful event — record, amendment, significant change, license lapse — flows through the outbox dispatcher (Module 1 §4.8). Downstream subscribers (M7 IDG trend builder, M8 encounter-signing gate's "required-scale" check, M14 IDG packet builder, M28 FHIR Observation projection, M32 AI scale-series consumer, M33 reporting materialized views) attach to the documented topics. Idempotent dispatch keyed on `assessment_id` + `event_kind`.
 
 ### 1.2 What This Module Does Not Do
@@ -759,7 +760,7 @@ Every M9 table is org-scoped per the M1 RLS generator pattern. M9 introduces no 
 | PATCH | `/admin/scales/policies/:scaleType` | org_admin | `assessment.policy_admin` | — | — | — |
 | GET | `/patients/:patientId/assessments/summary` | staff or collaborator or portal | `assessment.read_summary` | `caseload_or_scope` ∨ `collaborator_patient_match` ∨ `portal_patient_match` | — | — |
 
-All routes return the standard error envelope (Module 1 §4) and all PHI-reading routes carry the `requireReadAudit` declaration so the route handler triggers a `<scale>.viewed` (or `assessment.disclosed` for portal/collaborator/FHIR egress per M4 D5) audit event automatically.
+All routes return the standard error envelope (Module 1 §4) and all PHI-reading routes carry the `requireReadAudit` declaration so the route handler triggers a `<scale>.viewed` (or `m9.assessment.disclosed` for portal/collaborator/FHIR egress per M4 D5) audit event automatically.
 
 ### 4.2 Webhooks
 
@@ -1188,7 +1189,7 @@ ABAC predicates in this matrix (registered with Module 3 per §4.7).
 | Significant-change rule disabled by tenant policy | event not emitted; tenant policy cannot disable the platform-floor rule (only tighten it); a "loosening" PATCH returns 422 with the floor displayed |
 | Worker enqueues a duplicate change-escalation due to retry | idempotent on `(eventId)`; second enqueue no-ops |
 | M39 absent at boot | the `consent.evaluate` seam returns deny-by-default; any AIMS-in-SUD write returns 403; flagged in `/status` dashboard |
-| FHIR Gateway requests an AIMS row with no consent context | M28 filters out before egress; audit `assessment.disclosed` is NOT emitted (because nothing left the perimeter) |
+| FHIR Gateway requests an AIMS row with no consent context | M28 filters out before egress; audit `m9.assessment.disclosed` is NOT emitted (because nothing left the perimeter) |
 | Erasure under destruction certificate during a live trend query | erasure runs in a single transaction; the trend query either sees pre- or post-erasure state; never partial (RR isolation) |
 
 -----
@@ -1200,8 +1201,8 @@ ABAC predicates in this matrix (registered with Module 3 per §4.7).
 | Event | Severity | Payload | Source |
 |---|---|---|---|
 | `m9.assessment.recorded` | info | `{ assessmentId, patientId, admissionId, scaleType, scoreBucket, capturedByDiscipline, isCorrection }` | trigger (write) + application (narrative) |
-| `assessment.viewed` | info | `{ assessmentId, byUserId, viaContext: chart\|trend\|summary\|ctinarrative }` | application (`auditRead`) |
-| `assessment.disclosed` | warn | `{ assessmentId, byUserId, to: portal\|collaborator\|fhir\|external, purpose }` | application — M4 D5 inference |
+| `m9.assessment.viewed` | info | `{ assessmentId, byUserId, viaContext: chart\|trend\|summary\|ctinarrative }` | application (`auditRead`) |
+| `m9.assessment.disclosed` | warn | `{ assessmentId, byUserId, to: portal\|collaborator\|fhir\|external, purpose }` | application — M4 D5 inference |
 | `m9.assessment.amended` | info | `{ correctingId, supersededId, reasonHash }` | trigger (the correction-supersede trigger) + application |
 | `assessment.significant_change_detected` | warn | `{ eventId, assessmentId, ruleId, deltaValue, thresholdValue, severity }` | application (recording transaction) |
 | `m9.assessment.significant_change_acknowledged` | info | `{ eventId, ackBy, ackAt }` | application |
@@ -1233,7 +1234,7 @@ PHI mutation events flow through both the M4 trigger generator (the *binding* so
 
 ### 8.3 Spans & Logs
 
-- Spans: `assessment.record`, `assessment.score`, `assessment.detect_significant_change`, `assessment.correction`, `assessment.cosign`, `assessment.latest`, `assessment.series`, `assessment.eraser`.
+- Spans: `assessment.record`, `assessment.score`, `assessment.detect_significant_change`, `m9.assessment.correction`, `assessment.cosign`, `assessment.latest`, `assessment.series`, `assessment.eraser`.
 - Span attributes never carry PHI values. Scale type, score-bucket (binned), discipline, rule_id are allowed; patient names, free-text notes, the raw `data` payload are filtered.
 - All logs use Module 1's Pino redaction; patient identifiers in logs are `patient_id` (UUID) only.
 
@@ -1257,7 +1258,7 @@ The eraser implementation:
 1. Acquires per-patient row lock (advisory lock keyed on patient id) to avoid racing concurrent writes during destruction.
 2. Erases child rows first (`assessment_cosignature`, `significant_change_event`) referencing assessments-to-erase, then the assessments themselves (`status`-agnostic — both `active` and `superseded` rows are erased; the chain integrity is preserved by erasing both ends of every correction link).
 3. Does NOT erase `scale_license` or `scale_policy` (these are org-level, not patient-level).
-4. Emits `assessment.erased_under_certificate` audit event with the certificate id.
+4. Emits `m9.assessment.erased_under_certificate` audit event with the certificate id.
 5. Returns the count for the certificate's execution record.
 
 ### 8.5 STRIDE (M9-specific)

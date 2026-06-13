@@ -81,22 +81,30 @@ an event or seam adds **no** import edge.)
   the convention adoption was incomplete. It is *load-bearing*, not cosmetic (the conforming
   M23 consumed `cap.projection_updated` by its bare name), so each rename is a cross-module
   refactor touching consumers. Status:
-  - **✅ Migrated to `mN.` (bumped to v0.3):** M03 (`m3.role.*`), M07 (`m7.care_plan.*` /
-    `m7.problem.*` / `m7.goal.*` / `m7.intervention.*`), M09 (`m9.assessment.*` /
-    `m9.scale.*`), M26 (`m26.cap.*`). Consumer refs updated (M11/M14/M16/M23/M33).
+  - **✅ Migrated to `mN.` (bumped to v0.3) — events + their module's audit actions + alert
+    payloads:** M03 (`m3.role.*` events + `m3.authz.*`/`m3.breakglass.*`/`m3.engagement.*`/
+    `m3.role.*` §8.1 audit actions), M07 (`m7.care_plan.*`/`m7.problem.*`/`m7.goal.*`/
+    `m7.intervention.*` events + `m7.care_plan.review_due` alert), M09 (`m9.assessment.*`/
+    `m9.scale.*` events + `m9.assessment.viewed/disclosed/correction/erased_under_certificate`
+    §8.1 audit actions), M26 (`m26.cap.*` events + 11 `m26.cap.*` alert payloads). Consumer
+    refs updated (M11/M14/M16/M23/M33).
   - **⛔ Excluded — contractually fixed:** M32 (`ai.*`) — the AI-governance contract
     (ADR-0012 §16.1) mandates the *exact* names `ai.capability_invoked`, `ai.phi_disclosed`,
     `ai.output_accepted/edited/rejected/flagged` as the §164.528 disclosure feeder. Renaming
     would break the contract. `ai.*` is correct-by-its-own-rule.
-  - **◻ Remaining (v0.4 — deferred to their next version bump):** M02 (`auth.*` outbox
-    events) and M40 (`mdm.*` outbox events) carry the same drift but are recently-locked v0.4
-    foundation modules; `auth.*`/`mdm.*` may be intentional namespaces — flagged for a
-    deliberate decision, not auto-renamed.
-  - **Scope note:** only OUTBOX events were renamed. Permission keys (`care_plan.author`),
-    ABAC predicates, schema fields (`goal.problem_id`), audit actions
-    (`assessment.viewed`), and M36 alert payloads (`cap.patient_watch_90`) are separate
-    catalogs and were intentionally left untouched (audit actions / alert payloads also owe
-    `mN.` per M04 / M36 D10 — a separate follow-up).
+  - **⛔ Kept — DECIDED (intentional namespaces):** M02 (`auth.*` outbox/audit) and M40
+    (`mdm.*` outbox/audit) — recently-locked v0.4 foundation modules whose domain prefixes are
+    deliberate; left as-is by decision.
+  - **Always out of scope (separate, feature-prefixed namespaces):** permission keys
+    (`care_plan.author`), ABAC predicates, worker/span ids (`authz.rbac_check`), and schema
+    field names (`goal.problem_id`) — never `mN.`.
+  - **◻ Corpus-wide remainder (NOT yet reconciled).** Bare domain-prefix audit actions /
+    alert payloads also appear in many other modules (e.g. M16 `bereavement.*`, M19 `triage.*`,
+    M20 `field_safety.*`, M22 `extraction.*`/`document.*`, M30, M34 `tenant.*`, M35
+    `subscription.*`/`invoice.*`, M39 `consent.*`). Most are **v0.4**. These need per-module
+    authoritative-catalog (§8.1 audit / §4.9 alert) extraction — they are **not** safely
+    blanket-renamable (the token space is dense with fields/methods/files). Tracked for a
+    deliberate per-module pass.
 - **Enforcement:** the convention is **statically armed** — `scripts/check-fitness-gaps.ts`
   (event-catalog sub-check) enforces `mN.` ownership + valid consumers the moment the
   `events-by-mN.ts` / outbox registry lands, and M01's boot validation refuses violations at
