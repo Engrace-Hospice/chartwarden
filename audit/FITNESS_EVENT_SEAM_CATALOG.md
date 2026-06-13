@@ -77,20 +77,30 @@ an event or seam adds **no** import edge.)
   ("modules own their `mN.` namespace") and M04's action-catalog convention; M04 notes
   adoption "across M5/M6/M11/M29/M40 v0.3". This corrects the earlier MEDIUM-confidence "drift
   vs. ADR-0005" framing — the rule is real and lives in M01 D8.
-- **⚠ Finding — v0.2→v0.3 adoption gap (real).** Ground-truth grep of the specs confirms the
-  **v0.3/v0.4 modules conform** (`m6.*`, `m11.*`, `m29.*`, `m40.*` + the v0.4 set), while
-  several **v0.2 modules still use bare domain prefixes for events**: M07 (`care_plan.*`),
-  M09 (`assessment.*`), M26 (`cap.*`), M32 (`ai.*`); M02/M03 are mixed. It is *load-bearing*,
-  not cosmetic: the conforming M23 (v0.3) consumes `cap.projection_updated` **by its bare
-  name**, so renaming `cap.*`→`m26.*` is a cross-module refactor touching consumers too.
-  (Caveat: the per-module event lists in §A are LLM-extracted; some bare tokens there are
-  actually **permission keys / ABAC predicates**, which use feature prefixes by design —
-  `care_plan.author`, `messaging.send` — *not* the event convention.)
-- **Reconciliation stance.** Renaming is deferred to each v0.2 module's **next version bump**
-  (deliberate, with its consumers), not a blind global rename. The convention is now
-  **statically armed**: `scripts/check-fitness-gaps.ts` (event-catalog sub-check) enforces
-  `mN.` ownership + valid consumers the moment the `events-by-mN.ts` / outbox registry lands,
-  and M01's boot validation refuses violations at runtime.
+- **⚠ Finding — adoption gap (real) — REMEDIATION IN PROGRESS.** Ground-truth grep confirmed
+  the convention adoption was incomplete. It is *load-bearing*, not cosmetic (the conforming
+  M23 consumed `cap.projection_updated` by its bare name), so each rename is a cross-module
+  refactor touching consumers. Status:
+  - **✅ Migrated to `mN.` (bumped to v0.3):** M03 (`m3.role.*`), M07 (`m7.care_plan.*` /
+    `m7.problem.*` / `m7.goal.*` / `m7.intervention.*`), M09 (`m9.assessment.*` /
+    `m9.scale.*`), M26 (`m26.cap.*`). Consumer refs updated (M11/M14/M16/M23/M33).
+  - **⛔ Excluded — contractually fixed:** M32 (`ai.*`) — the AI-governance contract
+    (ADR-0012 §16.1) mandates the *exact* names `ai.capability_invoked`, `ai.phi_disclosed`,
+    `ai.output_accepted/edited/rejected/flagged` as the §164.528 disclosure feeder. Renaming
+    would break the contract. `ai.*` is correct-by-its-own-rule.
+  - **◻ Remaining (v0.4 — deferred to their next version bump):** M02 (`auth.*` outbox
+    events) and M40 (`mdm.*` outbox events) carry the same drift but are recently-locked v0.4
+    foundation modules; `auth.*`/`mdm.*` may be intentional namespaces — flagged for a
+    deliberate decision, not auto-renamed.
+  - **Scope note:** only OUTBOX events were renamed. Permission keys (`care_plan.author`),
+    ABAC predicates, schema fields (`goal.problem_id`), audit actions
+    (`assessment.viewed`), and M36 alert payloads (`cap.patient_watch_90`) are separate
+    catalogs and were intentionally left untouched (audit actions / alert payloads also owe
+    `mN.` per M04 / M36 D10 — a separate follow-up).
+- **Enforcement:** the convention is **statically armed** — `scripts/check-fitness-gaps.ts`
+  (event-catalog sub-check) enforces `mN.` ownership + valid consumers the moment the
+  `events-by-mN.ts` / outbox registry lands, and M01's boot validation refuses violations at
+  runtime.
 
 ---
 
@@ -132,11 +142,11 @@ remaining work is running them against the implementation repo in CI as code lan
    dependencies are possible by construction once depcruise runs (consumption via event/seam
    is intentional and edge-free per ADR-0005).
 3. **Event-name convention — authoritative rule confirmed** (§B): `mN.<resource>.<verb>`
-   (M01 D8). v0.3/v0.4 modules conform; v0.2 modules (M07/M09/M26/M32, M02/M03 mixed) carry
-   bare-prefix events. **DONE:** the convention is now statically armed (`arch:gaps`
-   event-catalog sub-check). **Remaining (deferred to each v0.2 module's version bump):**
-   rename bare-prefix events to `mN.` together with their consumers (e.g. `cap.*`→`m26.*`
-   plus M23's consumer ref).
+   (M01 D8). **DONE:** M03/M07/M09/M26 migrated to `mN.` and bumped to v0.3 (consumers
+   updated); the convention is statically armed (`arch:gaps`). M32 excluded (`ai.*`
+   contractually fixed by ADR-0012). **Remaining:** M02 (`auth.*`) and M40 (`mdm.*`), both
+   v0.4 — deferred to their next version bump pending a deliberate keep-or-rename decision;
+   plus audit-action / alert-payload `mN.` migration (separate catalogs, M04 / M36 D10).
 4. **Static checks for the formerly-unenforced targets — DONE.** `scripts/check-fitness-gaps.ts`
    adds: (a) seam-registry completeness, (b) audit-trigger presence on org-scoped tables,
    (c) RLS-policy presence on org-scoped tables, (d) event `mN.` ownership + valid consumers.
