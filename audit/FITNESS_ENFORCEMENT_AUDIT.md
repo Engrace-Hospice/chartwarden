@@ -486,17 +486,17 @@ Cycles: **none ✓** · Consistency issues: **none ✓**.
 | 427 | value_set_expansion | M38 Clinical Terminology Service | docs/modules/WARDENX_MODULE_38_TERMINOLOGY_SPEC_v0_2.md |
 | 428 | value_set_member | M38 Clinical Terminology Service | docs/modules/WARDENX_MODULE_38_TERMINOLOGY_SPEC_v0_2.md |
 | 429 | value_set_tenant_extension | M38 Clinical Terminology Service | docs/modules/WARDENX_MODULE_38_TERMINOLOGY_SPEC_v0_2.md |
-| 430 | consent_document_link | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_2.md |
-| 431 | consent_eval_audit | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_2.md |
-| 432 | consent_expiration_reminder | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_2.md |
-| 433 | consent_record | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_2.md |
-| 434 | consent_record_dpoa_agent | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_2.md |
-| 435 | consent_record_recipient | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_2.md |
-| 436 | consent_renewal_cycle | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_2.md |
-| 437 | consent_revocation | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_2.md |
-| 438 | consent_type_catalog | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_2.md |
-| 439 | delegated_access | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_2.md |
-| 440 | tenant_consent_type_overlay | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_2.md |
+| 430 | consent_document_link | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_3.md |
+| 431 | consent_eval_audit | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_3.md |
+| 432 | consent_expiration_reminder | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_3.md |
+| 433 | consent_record | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_3.md |
+| 434 | consent_record_dpoa_agent | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_3.md |
+| 435 | consent_record_recipient | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_3.md |
+| 436 | consent_renewal_cycle | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_3.md |
+| 437 | consent_revocation | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_3.md |
+| 438 | consent_type_catalog | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_3.md |
+| 439 | delegated_access | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_3.md |
+| 440 | tenant_consent_type_overlay | M39 Consent & Authorization Management | docs/modules/WARDENX_MODULE_39_CONSENT_SPEC_v0_3.md |
 | 441 | entity_relationship | M40 Master Data Management | docs/modules/WARDENX_MODULE_40_MDM_SPEC_v0_4.md |
 | 442 | external_physician | M40 Master Data Management | docs/modules/WARDENX_MODULE_40_MDM_SPEC_v0_4.md |
 | 443 | external_physician_tenant_overlay | M40 Master Data Management | docs/modules/WARDENX_MODULE_40_MDM_SPEC_v0_4.md |

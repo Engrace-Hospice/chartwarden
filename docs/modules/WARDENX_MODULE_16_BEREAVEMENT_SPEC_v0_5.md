@@ -268,7 +268,7 @@ stateDiagram-v2
 
 Every state transition above emits the indicated outbox event. The full outbox catalog is in §4.4. Per-event idempotency is the M1 outbox helper's; per-route idempotency is the `Idempotency-Key` header.
 
-**Consent revocation cascade (D6 + D9).** When M39 emits `consent.revoked` for a `bereavement_outreach_consent` record, M16's subscriber finds the matching `bereaved_contact.consent_record_id`, transitions the contact to `opted_out` (audit reason: `consent_revoked_via_m39`), and runs the opted-out side effects (cancel future outreach, evaluate plan-level close). The M39 revocation event is the source of truth — M16 does not gate-keep, it cascades.
+**Consent revocation cascade (D6 + D9).** When M39 emits `m39.consent.revoked` for a `bereavement_outreach_consent` record, M16's subscriber finds the matching `bereaved_contact.consent_record_id`, transitions the contact to `opted_out` (audit reason: `consent_revoked_via_m39`), and runs the opted-out side effects (cancel future outreach, evaluate plan-level close). The M39 revocation event is the source of truth — M16 does not gate-keep, it cascades.
 
 **Bereavement opt-out flag flip on M5 (D9).** If `patient.bereavement_opt_out` flips to `true` **before** `bereavement.eligible` fires, the plan is never created. If it flips after the plan is in `eligible` or `initiating`, the `skipPerPatientOptOut` transition fires. If it flips after the plan is in `active`, the transition `closeEarly(reason='patient_opt_out_post_creation')` fires automatically without cosign (D7's cosign rule does not apply to opt-out-driven closes).
 
@@ -304,7 +304,7 @@ apps/backend/src/modules/16-bereavement/
 │   ├── encounter-listener.ts          # m8.encounter.signed subscriber (filtered to bereavement_contact)
 │   ├── m6-eligibility-listener.ts     # m6.bereavement.eligible subscriber (branches on source — D16)
 │   ├── m6-cosign-listener.ts          # m6.discharge.cosigned subscriber (releases the gate — D18)
-│   ├── m39-revocation-listener.ts     # consent.revoked cascade
+│   ├── m39-revocation-listener.ts     # m39.consent.revoked cascade
 │   ├── close-worker.ts                # 13-month auto-close
 │   ├── anniversary-worker.ts          # daily lookahead → M36 alerts
 │   ├── miss-deadline-worker.ts        # mark missed outreach
@@ -2015,7 +2015,7 @@ Sequencing for the external-source track: T-M16-17 → T-M16-18 → T-M16-19.
 - [ ] **D3 hybrid risk model:** deterministic Layer 1 always produces tier; Layer 2 narrative behind tenant opt-in; counselor override creates a new row with `amendment_kind='counselor_override'` and reason ≥40 chars; AI Governance hard-block list integrated; prompt + model versions captured.
 - [ ] **D4 contact cadence:** death-date-anchored 13-month window; platform-floor per tier; tenant-tighten validator rejects floor-violations; tenant-extend allowed, tenant-shorten rejected.
 - [ ] **D5 discipline predicate:** `discipline_can_provide_bereavement` registered with M3; `bereavement_window` resolver registered (M3 reserved the slot at its lock); volunteer-gates composition with M2 verified.
-- [ ] **D6 consent + cascade:** primary caregiver implicit-enrolled; non-primary requires M39 `bereavement_outreach_consent`; M39 `consent.revoked` cascade transitions contact to `opted_out`.
+- [ ] **D6 consent + cascade:** primary caregiver implicit-enrolled; non-primary requires M39 `bereavement_outreach_consent`; M39 `m39.consent.revoked` cascade transitions contact to `opted_out`.
 - [ ] **D7 closure paths:** auto `closeAt13Months` cron fires at day 396; `closeEarly` requires cosign with reason ≥40 chars; all four closure reasons produce distinct closure rows.
 - [ ] **D8 scheduled + event-triggered reassessment:** initial / 1mo / 6mo / 12mo cron fires; complicated-grief screen positive synchronously promotes tier; M15 MSW update via outbox triggers recompute.
 - [ ] **D9 two-level opt-out:** M5 patient-level prevents plan creation; per-contact post-creation opt-out cancels future outreach; full opt-out closes plan; counselor-only un-opt-out path; 90-day portal-self rescind window.
@@ -2114,7 +2114,7 @@ The `phase: 2` classifier annotation aligns the manifest with architecture §20.
 **Owned tables:** `bereavement_plan`, `bereaved_contact`, `bereavement_risk_score`, `bereavement_outreach`, `bereavement_contact_log` (monthly-partitioned), `bereavement_anniversary_reminder`, `bereavement_plan_closure`, `bereavement_opt_out`, `tenant_bereavement_external_source_gate_override`
 **Schema footprint:** 9 owned tables; 12 enums (including `bereavement_data_completeness` and `bereavement_confidence_band`); migrations `0016_bereavement.sql` and `0036_m16_external_source.sql`
 **Outbox events published:** 22 (including `m16.bereavement.external_source_cosign_received`)
-**Outbox consumers:** M6 (`bereavement.eligible` with `source` branch, `discharge.cosigned`, `admission.discharged`), M8 (`encounter.signed`), M22 (`m22.document.rendered`), M39 (`consent.revoked`, `consent.created`), M4 (`legal_hold.applied`/`released`), M5 (`bereavement_opt_out_changed`), M17 (`shift_changed`)
+**Outbox consumers:** M6 (`bereavement.eligible` with `source` branch, `discharge.cosigned`, `admission.discharged`), M8 (`encounter.signed`), M22 (`m22.document.rendered`), M39 (`m39.consent.revoked`, `m39.consent.created`), M4 (`legal_hold.applied`/`released`), M5 (`bereavement_opt_out_changed`), M17 (`shift_changed`)
 **Published seams:** `BereavementPlanProvider`, `BereavementOutreachProvider`, `BereavementRiskFactorsProvider` (+ `BereavementAssignmentReader`, `BereavedPortalScopeProvider`, `BereavementComplianceProvider`, `BereavementRiskTierProvider`)
 **ABAC predicates registered:** `bereavement_window` (implements M3-declared slot), `discipline_can_provide_bereavement` (new)
 **Permission keys:** 28 registered into Module 3
