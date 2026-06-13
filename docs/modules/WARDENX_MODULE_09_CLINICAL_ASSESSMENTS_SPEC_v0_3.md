@@ -739,6 +739,14 @@ Every M9 table is org-scoped per the M1 RLS generator pattern. M9 introduces no 
 
 ### 4.1 Route Inventory
 
+> **M09-F06 (ARCH-263, SD-053):** Every mutating route (`POST`, `PATCH`) carries `Idempotency-Key`
+> processed by M1 middleware. Behaviour: 24-hour key window; replaying the same key with an
+> identical body returns 200 with the cached response; replaying with a mismatched body returns 409
+> `IDEMPOTENCY_BODY_MISMATCH`. Keys are client-generated UUIDs; the server never issues them.
+> The two PATCH routes below (license update, policy update) now declare this header explicitly —
+> they were previously listed as non-idempotent because they are partial updates, but org-admin
+> UI retries on network failure must be safe.
+
 | Method | Path | Auth | RBAC | ABAC | Idempotent | Pagination |
 |---|---|---|---|---|---|---|
 | POST | `/patients/:patientId/assessments` | staff | `assessment.author` | `caseload_or_scope` ∧ `discipline_can_record_scale[:type]` ∧ (`scale_type=aims` ∧ `sud_context=true` ⇒ `sud_disclosure_allowed`) ∧ (`acting_as='patient_representative'` ⇒ `dpoa_active`) | yes (Idempotency-Key) | — |
@@ -754,10 +762,10 @@ Every M9 table is org-scoped per the M1 RLS generator pattern. M9 introduces no 
 | GET | `/internal/assessments/latest-batch` | service (internal) | `assessment.read` (internal) | M7/M10 caller asserts scope | — | — |
 | GET | `/internal/assessments/series-batch` | service (internal) | `assessment.read` (internal) | M32 caller asserts scope | — | — |
 | GET | `/admin/scales/licenses` | org_admin | `assessment.license_read` | — | — | cursor |
-| POST | `/admin/scales/licenses` | org_admin | `assessment.license_admin` | — | yes | — |
-| PATCH | `/admin/scales/licenses/:id` | org_admin | `assessment.license_admin` | — | — | — |
+| POST | `/admin/scales/licenses` | org_admin | `assessment.license_admin` | — | yes (Idempotency-Key) | — |
+| PATCH | `/admin/scales/licenses/:id` | org_admin | `assessment.license_admin` | — | yes (Idempotency-Key, M09-F06) | — |
 | GET | `/admin/scales/policies` | org_admin | `assessment.policy_read` | — | — | — |
-| PATCH | `/admin/scales/policies/:scaleType` | org_admin | `assessment.policy_admin` | — | — | — |
+| PATCH | `/admin/scales/policies/:scaleType` | org_admin | `assessment.policy_admin` | — | yes (Idempotency-Key, M09-F06) | — |
 | GET | `/patients/:patientId/assessments/summary` | staff or collaborator or portal | `assessment.read_summary` | `caseload_or_scope` ∨ `collaborator_patient_match` ∨ `portal_patient_match` | — | — |
 
 All routes return the standard error envelope (Module 1 §4) and all PHI-reading routes carry the `requireReadAudit` declaration so the route handler triggers a `<scale>.viewed` (or `m9.assessment.disclosed` for portal/collaborator/FHIR egress per M4 D5) audit event automatically.
@@ -1012,20 +1020,47 @@ Per Module 3 D5 (typed predicates registered via the seam registry):
 
 ### 4.8 BullMQ Jobs
 
-| Queue | Job | Purpose | Trigger |
-|---|---|---|---|
-| `assessment.license` | `license-status-scan` | Daily scan: flip statuses across `scale_license`; emit `m9.scale.license_pending_renewal` (30d out) and `m9.scale.license_lapsed` (on expiry) | Daily cron 02:00 org-tz |
-| `assessment.changes` | `change-escalation` | Hourly scan: significant-change events `status='open'` whose `detected_at < now() - 24h` AND rule ∈ CRITICAL_RULES; flip to `escalated`, re-emit at `severity=high` | Hourly cron |
-| `assessment.cadence` | `reassessment-due-scan` | Daily scan: per (patient, scale_type), if `now() > latest.captured_at + cadence`, flag overdue and add to the chart-banner cache | Daily cron 06:00 org-tz |
-| `assessment.summary` | `build-summary-cache` | On `significant_change` or on chart-open, rebuild summary cache (Valkey, 1-hour TTL) for the patient/scale | Outbox subscriber + on-demand |
-| `assessment.eraser` | `erase-patient-assessments` | Module 4 destruction-certificate callback (`eraseFn`); erases all assessment rows for a patient under an approved certificate | M4 destruction workflow |
+> **M09-F12 (ARCH-262, SD-059):** All queues below declare full BullMQ parameters. Every job
+> consumer is idempotent — repeating a job with the same `jobId` produces no additional side-effect.
+> DLQ pattern: after `attempts` exhausted, BullMQ moves the job to the `*.dlq` queue (a named
+> queue monitored by the platform ops runbook §4.3). On-call alert fires when any DLQ depth > 0.
+
+| Queue | Job | Purpose | Trigger | Priority | Attempts | Backoff | Concurrency | DLQ |
+|---|---|---|---|---|---|---|---|---|
+| `assessment.license` | `license-status-scan` | Daily scan: flip statuses across `scale_license`; emit `m9.scale.license_pending_renewal` (30d out) and `m9.scale.license_lapsed` (on expiry) | Daily cron 02:00 org-tz | 5 (low) | 3 | exponential 60 s | 2 (one per DB connection slot) | `assessment.license.dlq` — alert if depth > 0 at next cron window |
+| `assessment.changes` | `change-escalation` | Hourly scan: significant-change events `status='open'` whose `detected_at < now() - 24h` AND rule ∈ CRITICAL_RULES; flip to `escalated`, re-emit at `severity=high` | Hourly cron | 1 (critical — escalation must not queue behind lower-priority work) | 5 | exponential 30 s, max 5 min | 4 | `assessment.changes.dlq` — PagerDuty P2 alert on any entry; clinical-urgent path |
+| `assessment.cadence` | `reassessment-due-scan` | Daily scan: per (patient, scale_type), if `now() > latest.captured_at + cadence`, flag overdue and add to the chart-banner cache | Daily cron 06:00 org-tz | 5 (low) | 3 | exponential 120 s | 2 | `assessment.cadence.dlq` — alert if depth > 0 at next cron window |
+| `assessment.summary` | `build-summary-cache` | On `significant_change` or on chart-open, rebuild summary cache (Valkey, 1-hour TTL) for the patient/scale | Outbox subscriber + on-demand | 3 (normal) | 3 | fixed 10 s | 8 (cache writes are fast; higher concurrency acceptable) | `assessment.summary.dlq` — warn-severity alert; stale cache is degraded, not unsafe |
+| `assessment.eraser` | `erase-patient-assessments` | Module 4 destruction-certificate callback (`eraseFn`); erases all assessment rows for a patient under an approved certificate | M4 destruction workflow | 2 (high — destruction SLAs are time-bound by the certificate) | 3 | exponential 30 s | 1 (serialized per patient; advisory lock prevents concurrent erasure of same patient) | `assessment.eraser.dlq` — PagerDuty P1 alert; unprocessed destruction certificate is a HIPAA violation |
 
 ### 4.9 M36 Typed Alert Payload
+
+> **M09-F12 (ARCH-184, SD-015):** Alert severity is assigned at first emission by the
+> significant-change detector — not deferred to the escalation worker. Rules `pps_drop_20_in_14d`,
+> `braden_le_12`, and `nyha_class_iv` are designated **CRITICAL** and route at
+> `severity='clinical_urgent'` on initial emission. All other rules start at `severity='medium'`
+> and may escalate to `severity='high'` after 24 h without acknowledgement (§2.2.2). The
+> `medicalDirectorInbox` is notified immediately for `clinical_urgent` rules, not only on
+> escalation. This aligns with the clinical rationale: a PPS drop of ≥ 20, a Braden score ≤ 12
+> (imminent pressure-injury risk), or a new NYHA Class IV are each prognosis-altering findings
+> that require clinical-supervisor visibility before the next scheduled check-in — not after a
+> 24-hour silence window.
 
 When `m9.assessment.significant_change` fires, M36 receives a typed alert per M36 §5.4:
 
 ```typescript
 // packages/domain/assessments/alerts.ts
+
+/** CRITICAL_RULES emit severity='clinical_urgent' at first emission.
+ *  All other rules emit severity='medium'; escalation cron upgrades to 'high' after 24h no-ack.
+ *  Authority: M09-F12 / ARCH-184 / SD-015.
+ */
+export const CRITICAL_RULES: SignificantChangeRuleId[] = [
+  'pps_drop_20_in_14d',   // prognosis-altering decline — clinical-urgent from first emission
+  'braden_le_12',          // imminent pressure-injury risk — clinical-urgent from first emission
+  'nyha_class_iv',         // end-stage cardiac — clinical-urgent from first emission
+]
+
 export type AssessmentSignificantChangeAlert = {
   kind: 'm9.assessment.significant_change'
   organizationId: string
@@ -1033,14 +1068,20 @@ export type AssessmentSignificantChangeAlert = {
   assessmentId: string
   ruleId: SignificantChangeRuleId
   scaleType: ScaleType
-  severity: 'medium' | 'high'
+  /**
+   * 'clinical_urgent' — CRITICAL_RULES only; set at first emission; medical director notified immediately.
+   * 'medium'          — all other rules at first emission.
+   * 'high'            — escalated after 24 h without acknowledgement (change-escalation cron).
+   */
+  severity: 'clinical_urgent' | 'medium' | 'high'
   deltaValue: number | null
   thresholdValue: number | null
   recipients: {
     careTeamChannel: true
     caseManagerInbox: true
     clinicalSupervisorInbox: true
-    medicalDirectorInbox: 'on_escalation'  // only on escalated state
+    /** clinical_urgent: immediate; high: on escalation; medium: never (supervisor already in careTeamChannel) */
+    medicalDirectorInbox: 'immediate' | 'on_escalation' | false
   }
   bodyTemplate: string  // M9 emits the deterministic message; M36 doesn't re-template
 }
@@ -1083,10 +1124,63 @@ export type AssessmentSignificantChangeAlert = {
 
 ### 5.3 Mobile (Capacitor)
 
-- **Record** on mobile: every scale form is mobile-optimized (touch-first numeric stepper for ESAS-r; full-screen PPS picker; large-target radios for PAINAD/FLACC). Offline draft persistence in IndexedDB; submits when connectivity returns (idempotency-key replays cleanly).
+- **Record** on mobile: every scale form is mobile-optimized (touch-first numeric stepper for ESAS-r; full-screen PPS picker; large-target radios for PAINAD/FLACC). Offline draft persistence in the platform **sqlcipher encrypted offline store** (see §5.3.1); submits when connectivity returns (idempotency-key replays cleanly).
 - **Trend** on mobile: 90-day default chart with the same item-stacked-area mode for ESAS-r.
 - **Significant change** on mobile: push notification via M36 when the user is on-shift; tap drills into the ack flow.
 - **Cosign** on mobile: supported via biometric step-up.
+
+#### 5.3.1 Encrypted Offline Draft Store (M09-F04 — SEC-075, ARCH-274)
+
+> **Finding M09-F04 (SEC-075, ARCH-274):** The prior spec described offline draft persistence in
+> browser IndexedDB. IndexedDB is **not encrypted at rest** and is accessible to any script with
+> access to the origin. Assessment drafts contain PHI (scale item values, patient identifiers).
+> ADR-0021 §7 mandates sqlcipher for all mobile PHI offline storage. This subsection replaces the
+> IndexedDB approach entirely.
+
+M9's mobile offline layer uses the **platform sqlcipher encrypted SQLite store** (the same shared
+store used by M5 / M6 / M8 mobile offline layers, keyed per-org per-session via the platform
+per-tenant DEK):
+
+- **Store location:** `@wardenx/mobile-offline` package, table `assessment_draft` in the
+  encrypted SQLite database opened with the session-derived key.
+- **Draft schema (sqlcipher table):**
+
+  ```sql
+  CREATE TABLE IF NOT EXISTS assessment_draft (
+    draft_id         TEXT PRIMARY KEY,          -- client UUID; becomes Idempotency-Key on submit
+    patient_id       TEXT NOT NULL,
+    admission_id     TEXT NOT NULL,
+    scale_type       TEXT NOT NULL,
+    data_json        TEXT NOT NULL,             -- JSON of the per-scale item values (PHI)
+    captured_at_iso  TEXT NOT NULL,             -- ISO-8601; clinician's recorded timestamp
+    source_encounter_id TEXT,
+    created_at_iso   TEXT NOT NULL,
+    synced           INTEGER NOT NULL DEFAULT 0 -- 0=pending, 1=submitted, 2=confirmed
+  );
+  ```
+
+- **Encryption:** AES-256-CBC via sqlcipher, key derived from the session token via
+  `packages/mobile-offline/src/key-derivation.ts` (PBKDF2-SHA256, 100k iterations, salt =
+  `org_id || device_id`). Key is held in the Capacitor Secure Storage plugin (iOS Keychain /
+  Android Keystore); never persisted to disk in plaintext.
+- **Evict-PHI-on-logout:** The `logout` event handler in `packages/mobile-offline/src/session.ts`
+  runs `DELETE FROM assessment_draft` within the encrypted DB before closing the sqlcipher
+  connection and then **drops the derived key from Secure Storage**. Without the key the DB is
+  opaque ciphertext. This satisfies SEC-075's "no residual PHI on device after session end"
+  requirement. The eviction is synchronous in the logout flow; the app does not reach the
+  logged-out state until the DELETE completes.
+- **Sync-on-reconnect:** When connectivity is restored the `@wardenx/mobile-offline` sync worker
+  reads `synced=0` draft rows in insertion order and submits each as a
+  `POST /patients/:patientId/assessments` with the draft's `draft_id` as the `Idempotency-Key`.
+  On HTTP 200 or 409 (already processed), the row is marked `synced=2`. On 4xx (validation
+  failure), the row is marked `synced=3` (failed) and a toast prompts the clinician to review.
+- **Screen-capture posture:** The Capacitor `@capacitor/screen-reader` plugin is not granted to
+  the app; the assessment form screens set `FLAG_SECURE` (Android) / `allowScreenRecording=false`
+  (iOS) while PHI is visible on screen (SEC-075).
+- **No IndexedDB fallback:** The web PWA variant of M9 (non-Capacitor) does not support offline
+  draft persistence — it requires connectivity to submit. The offline-draft UX is Capacitor-only.
+  Attempting to use IndexedDB for PHI drafts in any context is a lint violation
+  (`eslint-plugin-wardenx/no-phi-indexeddb`).
 
 ### 5.4 Portal (Module 31, future)
 
@@ -1100,6 +1194,87 @@ The Portal calls `/patients/:id/assessments/summary` with a `portal` session cla
 - Trend chart has a screen-reader-friendly table mode toggle.
 - Status badges use both color and icon.
 - Scale-license expiry banners use both red and a warning icon, not color alone.
+
+### 5.6 Disaster Recovery Tier & BCP Re-entry (M09-F10 — DR-010, DR-064–067)
+
+> **Finding M09-F10 (DR-010, DR-064–067):** ADR-0021 §4 requires every module to declare its DR
+> tier and its BCP re-entry path. M9 was previously undeclared.
+
+#### DR Tier
+
+**Module 9 is DR Tier 2.** Clinical scale assessments are patient-safety-critical data: a
+clinician without access to recent PPS, ESAS-r pain scores, or Braden values cannot safely plan
+care or honor the significant-change escalation path. Tier 2 means:
+
+- **RTO target:** ≤ 4 hours (data-plane restore + service availability).
+- **RPO target:** ≤ 15 minutes (last committed assessment must be recoverable; the outbox
+  `assessment.recorded` event at the subscriber side — M7 cache, M33 materialized view — may
+  lag up to the RPO window).
+- **Standby:** The `clinical_assessment` partitioned table is replicated synchronously to the
+  warm-standby replica per the architecture §DR standby topology. The `significant_change_event`,
+  `assessment_cosignature`, `scale_license`, and `scale_policy` tables follow the same
+  synchronous replication topology.
+- **Tier 2 constraint (DR-010):** No external dependency (M36 alert delivery, M7 seam consumer,
+  M28 FHIR projection) may block recording a clinical assessment. If M36 is unavailable, the
+  assessment inserts and the outbox event persists; M36 will drain when it recovers. The
+  `recordAssessment` service never awaits M36 inline.
+
+#### Degraded-Mode Behaviour
+
+| Dependency down | M9 behaviour |
+|---|---|
+| M36 (alert delivery) | Assessment records normally; `m9.assessment.significant_change` event lands in outbox; M36 drains on recovery. Chart shows the alert banner inline (pulled from `significant_change_event` directly) even without M36 push. |
+| M39 (consent seam) | `consent.evaluate` returns `deny` by default (§7.10 "M39 absent at boot"). AIMS writes in SUD context are blocked; all other scales unaffected. |
+| M7 seam consumer | `LatestAssessmentProvider` call fails; M7 shows a stale-cache warning. M9's recording path is not affected — M7 is a consumer, not a dependency. |
+| Valkey (summary cache) | `build-summary-cache` job retries up to 3 attempts; on exhaustion the summary is computed synchronously on next request (slower but correct). |
+| BullMQ (Redis) | Significant-change escalation and cron workers pause; the recording transaction itself does not use BullMQ. Clinical safety: the chart displays the raw `significant_change_event` rows directly, so the alert is visible even if the escalation cron is down. |
+
+#### BCP Re-entry Path (DR-066/067 — 72-Hour Window)
+
+When the platform recovers from a declared disaster event, clinical data captured on paper during
+the outage must be entered into WardenX within the **72-hour window mandated by DR-066/DR-067**.
+M9 supports this re-entry path as follows:
+
+1. **Back-dated capture:** `recordAssessment` accepts any `capturedAt` timestamp ≥
+   `admission.activated_at` and ≤ `now() + 5 min`. There is no "must be within X hours of now"
+   constraint on the recording path, so paper-origin assessments dated during the outage window
+   are accepted verbatim.
+
+2. **Paper-origin marking:** A re-entry recording carries `source='paper_origin'` in the
+   per-scale `data` payload (an optional common field declared in `CommonRecordFields`). This
+   field is free-form text capturing the paper form reference (e.g., "Paper ESAS-r from 2026-06-14
+   visit — transcribed by J. Smith RN per DR-066 BCP"). The field is indexed for the BCP
+   re-entry audit report (§8.1 adds `m9.assessment.paper_origin_transcribed` audit event at
+   `severity=warn` whenever `source='paper_origin'` is present on the submitted assessment).
+
+3. **Re-entry audit event:**
+
+   ```typescript
+   // Emitted in addition to m9.assessment.recorded when source='paper_origin' is present.
+   // Authority: M09-F10 / DR-066 / DR-067.
+   {
+     kind: 'm9.assessment.paper_origin_transcribed',
+     organizationId: string,
+     patientId: string,
+     assessmentId: string,
+     scaleType: ScaleType,
+     capturedAt: string,          // the original paper-form timestamp
+     transcribedAt: string,       // server now() — when the transcription was recorded
+     transcribedByMembershipId: string,
+     paperFormReference: string,  // the value of data.source (free-form)
+   }
+   ```
+
+4. **Compliance-dashboard BCP panel:** The org-admin Compliance dashboard surfaces a "BCP
+   re-entry" panel (visible when any `m9.assessment.paper_origin_transcribed` event exists in
+   the audit log within the past 30 days) showing the count of re-entered assessments, the
+   transcribers, and the date range — supporting the DR-067 post-incident documentation
+   requirement.
+
+5. **72-hour enforcement:** M9 does not enforce a hard stop at 72 hours — that enforcement is
+   organisational, not technical. The BCP panel shows an amber warning if any paper-origin
+   assessment has `capturedAt` more than 72 hours before `transcribedAt`, surfacing possible
+   DR-067 non-compliance for the compliance officer's review.
 
 -----
 

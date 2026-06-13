@@ -833,7 +833,7 @@ The migration file is `migrations/0014_idg.sql`. It applies in this order: creat
 |---|---|---|---|---|---|
 | GET | `/api/v1/idg/schedule` | required | `idg.read` | `idg_meeting_scope` | n/a (read) |
 | POST | `/api/v1/idg/recurring-policies` | required | `idg.schedule` | tenant-admin scope | `Idempotency-Key` |
-| PATCH | `/api/v1/idg/recurring-policies/:id` | required | `idg.schedule` | tenant-admin scope | `If-Match` |
+| PATCH | `/api/v1/idg/recurring-policies/:id` | required | `idg.schedule` | tenant-admin scope | `Idempotency-Key` + `If-Match` |
 | GET | `/api/v1/idg/meetings/:id` | required | `idg.read` | `idg_meeting_scope` | n/a |
 | POST | `/api/v1/idg/meetings/:id/cancel` | required | `idg.schedule` | `idg_meeting_scope` | `Idempotency-Key` |
 | POST | `/api/v1/idg/meetings/:id/reschedule` | required | `idg.schedule` | `idg_meeting_scope` | `Idempotency-Key` |
@@ -841,23 +841,27 @@ The migration file is `migrations/0014_idg.sql`. It applies in this order: creat
 | POST | `/api/v1/idg/meetings/:id/start` | required | `idg.coordinate` | `idg_meeting_scope` | `Idempotency-Key` |
 | POST | `/api/v1/idg/meetings/:id/adjourn` | required | `idg.coordinate` + **fresh step-up (≤5min, D13)** | `idg_meeting_scope` | `Idempotency-Key` |
 | POST | `/api/v1/idg/meetings/:id/attendance` | required | `idg.attend` | `idg_meeting_scope` | `Idempotency-Key` |
-| PATCH | `/api/v1/idg/attendance/:id` | required | `idg.coordinate` | `idg_meeting_scope` | `If-Match` |
+| PATCH | `/api/v1/idg/attendance/:id` | required | `idg.coordinate` | `idg_meeting_scope` | `Idempotency-Key` + `If-Match` |
+| DELETE | `/api/v1/idg/attendance/:id` | required | `idg.coordinate` | `idg_meeting_scope` | `Idempotency-Key` |
 | GET | `/api/v1/idg/meetings/:id/packets` | required | `idg.read` | `idg_meeting_scope` + per-patient `caseload_or_scope` | n/a |
 | GET | `/api/v1/idg/meetings/:meetingId/packets/:patientId` | required | `idg.read` | `idg_meeting_scope` + `caseload_or_scope` + `sud_disclosure_allowed` (filter applied) | n/a |
 | POST | `/api/v1/idg/meetings/:id/agenda` | required | `idg.coordinate` | `idg_meeting_scope` | `Idempotency-Key` |
-| PATCH | `/api/v1/idg/agenda/:id` | required | `idg.coordinate` | `idg_meeting_scope` | `If-Match` |
-| DELETE | `/api/v1/idg/agenda/:id` | required | `idg.coordinate` | `idg_meeting_scope` | n/a |
+| PATCH | `/api/v1/idg/agenda/:id` | required | `idg.coordinate` | `idg_meeting_scope` | `Idempotency-Key` + `If-Match` |
+| DELETE | `/api/v1/idg/agenda/:id` | required | `idg.coordinate` | `idg_meeting_scope` | `Idempotency-Key` |
 | POST | `/api/v1/idg/meetings/:id/decisions` | required | `idg.decide` | `idg_meeting_scope` + **`quorate_decision`** | `Idempotency-Key` |
-| PATCH | `/api/v1/idg/decisions/:id` | required | `idg.decide` | `idg_meeting_scope` (open status only) | `If-Match` |
+| PATCH | `/api/v1/idg/decisions/:id` | required | `idg.decide` | `idg_meeting_scope` (open status only) | `Idempotency-Key` + `If-Match` |
 | POST | `/api/v1/idg/decisions/:id/supersede` | required | `idg.decide` + `quorate_decision` | `idg_meeting_scope` | `Idempotency-Key` |
 | POST | `/api/v1/idg/meetings/:id/action-items` | required | `idg.coordinate` | `idg_meeting_scope` | `Idempotency-Key` |
-| PATCH | `/api/v1/idg/action-items/:id` | required | `idg.act` (assignee) OR `idg.coordinate` | `idg_meeting_scope` OR `is_assignee` | `If-Match` |
+| PATCH | `/api/v1/idg/action-items/:id` | required | `idg.act` (assignee) OR `idg.coordinate` | `idg_meeting_scope` OR `is_assignee` | `Idempotency-Key` + `If-Match` |
+| DELETE | `/api/v1/idg/action-items/:id` | required | `idg.coordinate` | `idg_meeting_scope` (pre-adjourn only) | `Idempotency-Key` |
 | GET | `/api/v1/idg/action-items?assignee=me&status=open` | required | `idg.read` | `is_assignee` | n/a |
 | GET | `/api/v1/idg/meetings/:id/minutes` | required | `idg.read` | `idg_meeting_scope` | n/a |
 | POST | `/api/v1/idg/minutes/:id/amendments` | required | `idg.amend_minutes` | tenant-admin or compliance scope | `Idempotency-Key` |
 | GET | `/api/v1/internal/idg/packets/:id` (system principal — M22 render) | internal-only | `system_only` | `withOrgContext` | n/a |
 | GET | `/api/v1/internal/idg/cadence-adherence/:admissionId` (system principal — M30) | internal-only | `system_only` | `withOrgContext` | n/a |
 | GET | `/api/v1/internal/idg/decisions/by-care-plan/:carePlanId` (system principal — M30) | internal-only | `system_only` | `withOrgContext` | n/a |
+
+> **M14-F13 (ARCH-263, SD-053).** All state-mutating PATCH and DELETE routes now require both `Idempotency-Key` (M1 idempotency middleware — prevents double-apply on network retry) and `If-Match` (optimistic-concurrency version sentinel — prevents lost-update race on concurrent edits). The two headers serve orthogonal purposes: `If-Match` detects stale-read conflicts; `Idempotency-Key` makes the client's intent replay-safe regardless of prior attempt outcome. Absence of either on a PATCH/DELETE returns `400 BAD_REQUEST`. The attendance DELETE row is new (pre-start only; coordinator may remove an erroneous check-in); action-items DELETE is pre-adjourn-only (coordinator may remove a mistaken item before the meeting adjourns; post-adjournment deletes are refused with `MINUTES_FINAL`).
 
 All PHI routes carry `requireReadAudit` per M4 lint rule; all writes go through the M1 idempotency middleware on `Idempotency-Key` header.
 
@@ -1144,6 +1148,25 @@ export function initM14(reg: SeamRegistry): void {
 | `idg.decision-emitter` | `emit-decisions-on-adjournment` | At `ADJOURN`, iterate `status='open'` decisions in the meeting and publish `idg.decision_recorded` events to outbox (one transaction) | `ADJOURN` route handler |
 | `idg.eraser` | `erase-idg-records` | Module 4 destruction-certificate callback (`eraseFn`); erases all M14 rows for a patient under an approved certificate | M4 destruction workflow |
 
+### 4.9.1 BullMQ Queue Parameters (M14-F06 — ARCH-262, SD-059, SD-060, OPS-035)
+
+> **M14-F06 (ARCH-262, SD-059, SD-060, OPS-035).** Every BullMQ queue declared in §4.9 must carry
+> explicit priority, attempts, backoff, concurrency, and DLQ configuration — the M1 BullMQ
+> defaults are insufficient for PHI-bearing clinical workloads. Parameters below are binding; they
+> are encoded in the queue factory options object in
+> `apps/backend/src/modules/14-idg/workers/queue-config.ts`.
+
+| Queue | Priority | Max Attempts | Backoff | Worker Concurrency | DLQ Topic | DLQ Triage Action |
+|---|---|---|---|---|---|---|
+| `idg.schedule` (`materialise-future-meetings`) | 5 (low — background, no patient impact) | 3 | exponential 30 s base | 1 per org shard (serial; prevents duplicate-meeting race) | `idg.schedule.dlq` | alert OPS-on-call; replay manually after gap analysis; missing-materialization window covered by the next daily cron run within 24 h |
+| `idg.packets` (`build-packet`) | 8 (high — clinicians blocked on packet review) | 5 | exponential 10 s base, jitter ±20 % | 10 per queue instance (per-patient jobs are independent; I/O-bound seam calls dominate) | `idg.packets.dlq` | emit `m14.packets.build_failed_for_patient` with `willRetry=false`; M36 warn to IDG Coordinator; coordinator may trigger on-demand rebuild via `POST /meetings/:id/packets/build` |
+| `idg.packets-cron` (`tminus-24h-build`) | 7 (high — gating the T-24h alert fanout) | 2 | fixed 60 s (single retry only; the cron fires again in 1 h if the sweep fails) | 1 (cron sweep is a single-threaded scan; per-patient enqueue is the fan-out) | `idg.packets-cron.dlq` | alert OPS-on-call immediately; missed T-24h sweep means patients may enter the meeting without a built packet; manual trigger via admin endpoint required |
+| `idg.carry-forward` (`compute-carry-forward`) | 6 (medium — runs alongside packets-cron sweep) | 3 | exponential 20 s base | 5 per queue instance (per-meeting carry-forward computations; read-heavy) | `idg.carry-forward.dlq` | emit `m14.carry_forward.compute_failed`; M36 warn to IDG Coordinator; overdue items remain open but carry-forward agenda items will be missing from the next meeting — coordinator must manually review |
+| `idg.decision-emitter` (`emit-decisions-on-adjournment`) | 10 (critical — adjournment is the commit point; clinicians waiting on resolution) | 5 | exponential 5 s base, max 120 s total wait | 1 per meeting (single-threaded per meeting to maintain transactional ordering; no cross-meeting concurrency limit) | `idg.decision-emitter.dlq` | BLOCKER: if the emit-decisions job lands in DLQ, the meeting is stuck in `live` state with `status='open'` decisions; alert OPS-on-call + Clinical Supervisor immediately; manual DLQ replay after investigation; do NOT silently discard — every item in this DLQ is an undelivered `idg.decision_recorded` envelope that M7/M11/M12 have not received |
+| `idg.eraser` (`erase-idg-records`) | 3 (lowest — destruction runs under a compliance-approved certificate; not time-critical at the second level) | 3 | fixed 60 s | 1 (erases are serialized per patient to avoid FK cascade races) | `idg.eraser.dlq` | alert M4 destruction-certificate workflow; flag certificate as `partially_applied`; destruction cannot be considered complete until DLQ is drained; do not close the certificate |
+
+**DLQ global policy (OPS-035):** All six DLQ topics are monitored by the M33 operational dashboard with a `queue_dlq_depth_gauge` metric; depth > 0 on `idg.decision-emitter.dlq` triggers a P1 PagerDuty alert; depth > 0 on `idg.packets.dlq` or `idg.packets-cron.dlq` triggers a P2 alert; all others trigger P3. DLQ items are retained for 14 days; at expiry an `idg.dlq.item_expired` audit event is emitted (severity `warn`) and the item is permanently dropped. DLQ message shape: `{ originalJobId, queueName, failedAt, attemptNumber, errorMessage, jobData }` — `jobData` carries the original BullMQ job payload verbatim (PHI-bearing; DLQ storage inherits the same Valkey encryption-at-rest and RLS-equivalent key-scoping as the live queue).
+
 ### 4.10 M36 Typed Alert Payloads
 
 ```typescript
@@ -1200,6 +1223,65 @@ export type IdgNonQuorateDecisionAlert = {
 > `notification_template` catalog they read are no longer part of M14. M14 retains only its own
 > IDG-meeting alerts (packet-ready, non-quorate, carry-forward-overdue), which dispatch through M36
 > via the typed alert payloads in §4.10.
+
+### 4.12 Security — STRIDE Threat Model and Per-Role Authorization Test Matrix (M14-F09 — SEC-007, SEC-013, SEC-014)
+
+> **M14-F09 (SEC-007, SEC-013, SEC-014).** IDG meeting artifacts are among the highest-sensitivity
+> clinical records in the platform: they carry multi-patient PHI in packet snapshots, legally
+> actionable decisions that drive care-plan and order changes, and a meeting attendance record that
+> establishes regulatory compliance. The threat model and authz test matrix below are binding; they
+> must be exercised in §9 test plan (negative cases are blockers).
+
+#### 4.12.1 STRIDE Threat Analysis
+
+| STRIDE Category | Threat | M14 Attack Surface | Mitigation |
+|---|---|---|---|
+| **Spoofing — Attendance/Quorum** | An attacker (or a legitimately-authenticated but under-scoped clinician) inserts fraudulent `idg_attendance` rows — checking in a physician who was never present — to satisfy `IDG_REQUIRED_QUORUM` and unlock decision recording. | `POST /meetings/:id/attendance` (self check-in) and `PATCH /attendance/:id` (coordinator override) | (a) Self check-in requires `idg.attend` + active session with `membership_id` matching the row being inserted — server derives `membership_id` from the session token, not from the request body, so callers cannot check in as another member. (b) Coordinator override (`PATCH`) requires `idg.coordinate` + `idg_meeting_scope`; the audit trigger captures the actor's `membership_id` and session class on every write. (c) Quorum is re-evaluated live at each `POST /decisions` call against the current attendance row set — a fraudulently inserted attendance row does produce `was_quorate=true` on affected decisions, but the `quorum_snapshot` jsonb freezes the exact `membership_ids + disciplines` at write time, making the fraud traceable in the M4 audit log. (d) RLS blocks cross-tenant attendance writes regardless of auth state. |
+| **Spoofing — Quorum Identity** | A clinician self-checks in under the wrong discipline (e.g., an aide checks in as `discipline='md_np'`) to manufacture quorum for the physician seat. | `discipline` field on `POST /meetings/:id/attendance` | The `discipline` field on the `idg_attendance` row must match the membership's canonical discipline from the M40 discipline catalog, enforced server-side at the route handler (`quorum-evaluator.ts` re-reads the canonical discipline from M40, not the caller-supplied value). Mismatch returns `422 DISCIPLINE_MISMATCH`. The `quorum_snapshot` also captures the M40-resolved discipline value. |
+| **Tampering — Decision Payload** | An authenticated but under-scoped user submits a mutated `IdgDecisionPayload` (e.g., changing a `care_plan_update` payload to alter an ICD-10 code or substitute a patient ID) between the time the coordinator reviewed it and the time it is emitted on adjournment. | `POST /decisions` body; `PATCH /decisions/:id` body | (a) TypeBox discriminated-union validation at route entry rejects malformed payloads with `422 DECISION_PAYLOAD_INVALID`. (b) `If-Match` + `Idempotency-Key` (§4.1, M14-F13) on `PATCH /decisions/:id` prevents concurrent over-write — stale `If-Match` version returns `412`. (c) The `idg_decision` row is written once in `status='open'`; the payload is immutable after insert (no UPDATE path except the narrow `PATCH /decisions/:id` for pre-adjourn corrections, which is also audit-triggered). (d) Adjournment-burst emitter reads the stored row — not the original request — to build the `idg.decision_recorded` envelope. Payload tampering between `PATCH` and `ADJOURN` is blocked by the optimistic-lock check. (e) M4 PHI write-audit trigger captures `before/after` on every decision mutation. |
+| **Tampering — Packet Snapshot** | An attacker replaces a frozen `built_snapshot` jsonb after adjournment to alter the survey-reconstruction record. | `idg_patient_packet.built_snapshot` column | (a) `frozen_at` is set at adjournment in the same transaction as the outbox burst; `packet-builder.ts` refuses to write to a frozen packet row (`PACKET_FROZEN`). (b) The route handler for `POST /meetings/:id/packets/build` checks `frozen_at IS NOT NULL` and returns `422 PACKET_FROZEN`. (c) Direct SQL writes are blocked by RLS (no direct table access outside the app) and the M4 audit trigger would capture any bypass. (d) The minutes row captures a `decision_list_snapshot` of decision IDs at adjournment; M4 audit of the decision rows provides independent verification. |
+| **Repudiation — Adjournment** | A coordinator adjourns a meeting and later claims they did not, or that the attendance/quorum snapshot is incorrect — either to evade regulatory accountability or to dispute a compliance finding. | `POST /meetings/:id/adjourn` response; `idg_minutes.finalized_by_membership_id`; `idg_meeting.adjourned` audit event | (a) Adjournment requires fresh step-up auth (D13) — the `step_up_fresh` predicate ties adjournment to an identity-proofed session event within the prior 5 minutes. The step-up credential (passkey signature or re-authn token) is stored in M2's session-event log with the adjournment `idg_meeting_id`. (b) The `idg_minutes` row captures `finalized_by_membership_id` and `finalized_at` at the moment of adjournment in an immutable `final` row. (c) The M4 `idg_meeting.adjourned` audit event captures `adjournedByMembershipId`, `adjournedAt`, `decisionsEmittedCount`, `actionItemsAssignedCount`, `quorumMet`, and the `attendanceSnapshot` jsonb — an immutable cross-reference chain: step-up log → audit event → minutes row → attendance rows. |
+| **Repudiation — Decision Attribution** | A clinician disputes that they recorded a specific decision (e.g., a `medication_recommendation` that was later found to be clinically inappropriate). | `idg_decision.recorded_by_membership_id`; `idg_decision.recorded_at` | (a) `recorded_by_membership_id` is derived server-side from the authenticated session; callers cannot supply it. (b) The M4 audit trigger captures a `idg_decision.recorded` event with the actor's session class and `membership_id`. (c) The `quorum_snapshot` jsonb additionally records the full set of members present at the moment of decision recording — establishing the team context. (d) M36 emits `m14.decision.recorded_open` (with `recordedByMembershipId`) when quorum is not met, preserving a low-severity notification trail. |
+| **Information Disclosure — Packet PHI Exfiltration** | A non-caseload clinician (or a caseload clinician without SUD disclosure rights) bulk-reads packet data for patients they are not assigned to — either by enumerating packet IDs or by accessing the meeting-level packet list. | `GET /meetings/:id/packets` (list); `GET /meetings/:meetingId/packets/:patientId` (per-patient) | (a) `idg_meeting_scope` ABAC predicate gates access to the meeting at the location level — a clinician not assigned to the meeting's location cannot read any packet. (b) `caseload_or_scope` predicate further gates per-patient access; a clinician not on the patient's caseload at the meeting's location-scope gets a `403`. (c) `sud_disclosure_allowed` predicate gates SUD-flagged packet content; blocks are redacted at SQL-filter level before data leaves the database (§2.7, W-SUD-01). (d) `requireReadAudit` emits a per-resource `idg_patient_packet.viewed` audit event on every read (or aggregate for meeting-surface batch loads per M4 D3) — bulk enumeration is visible in the audit log and anomaly-detected by M4's read-rate heuristics. (e) RLS enforces `organization_id` scoping as a layer-independent backstop (§9.3). (f) Internal seam endpoints (`/api/v1/internal/idg/*`) require a system principal with the correct `app.org_id` context; cross-org reads are denied by RLS even under the system actor. |
+| **Information Disclosure — Decision Payload Leakage** | An outbox consumer module (M7, M11, M12) reads `idg.decision_recorded` envelopes not addressed to its `decision_kind` slice — e.g., M11 reads a `care_plan_update` envelope and stores patient PHI from the care-plan mutation payload. | `idg.decision_recorded` outbox envelope; consumer modules' BullMQ subscribers | (a) The discriminated-union `decision_kind` field is the consumer's responsibility to filter — M11's `idg-decision-intake` consumer is documented to only process `kind='order_request'` envelopes; it must discard others without logging their PHI payloads. Consumer specs (M7 D4, M11 D6, M12 §1.1) enforce this in their own test plans. (b) The boot-time `validateSeams()` check verifies consumer registration matches the declared subscription filter. (c) Any consumer failing validation publishes to a quarantine queue and emits `m14.decision_payload_quarantined` for compliance review — this event is itself audited by M4. |
+| **Denial of Service — Packet Build Flood** | An authenticated coordinator triggers repeated on-demand `POST /meetings/:id/packets/build` requests during a live meeting, exhausting worker concurrency and starving other meetings' packet builds. | `POST /meetings/:id/packets/build` (on-demand rebuild) | (a) The route is guarded by `idg.coordinate` + `idg_meeting_scope` — the attacker surface is an authenticated coordinator, not an unauthenticated actor. (b) Rate limiting: max 2 on-demand rebuild requests per `(org_id, meeting_id)` per 10-minute window; excess returns `429 TOO_MANY_REQUESTS`. (c) The `idg.packets` BullMQ queue uses a priority system (priority 8) — an on-demand rebuild adds jobs at priority 8, but the queue manager caps per-meeting concurrent job count at 10 (see §4.9.1); flood attempts beyond this limit are enqueued but do not increase concurrency. (d) The T-24h cron remains at a separate `idg.packets-cron` queue (priority 7) — it is not affected by on-demand floods. |
+| **Elevation of Privilege — Cross-Location Scope** | A coordinator for Location A uses a valid `idg.coordinate` token to invoke lifecycle transitions (start, adjourn, cancel) against a meeting at Location B where they have no assignment. | `POST /meetings/:id/start`, `/adjourn`, `/cancel`, `/reschedule` | The `idg_meeting_scope` ABAC predicate (§4.7) resolves the meeting's `location_id` and checks `ctx.callerLocationMemberships()` — if the meeting's location is not in the caller's membership list, the predicate returns `{ allow: false, reason: 'location_scope_missing' }` and the route returns `403`. The auditor-engagement exception (`ctx.hasEngagementScope`) applies only to read routes, not lifecycle transitions. |
+
+#### 4.12.2 Per-Role Authorization Test Matrix
+
+The following matrix must be implemented as parameterized tests in the §9.1/§9.2 suites. Every **N** (deny) case is a blocker. Tests use the fixture principals defined in §9.8.
+
+| Route | IDG Coordinator (own location) | IDG Coordinator (other location) | RN Case Manager (caseload patient) | RN Case Manager (non-caseload patient) | MSW (caseload) | Chaplain (caseload) | Medical Director | Aide | Auditor (engagement) | Auditor (no engagement) | System Principal |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `GET /meetings/:id` | Y | N | Y | Y (location-scoped only) | Y | Y | Y | Y (limited) | Y | N | Y |
+| `POST /meetings/:id/start` | Y | N | N | N | N | N | N | N | N | N | N |
+| `POST /meetings/:id/adjourn` (fresh step-up) | Y | N | N | N | N | N | N | N | N | N | N |
+| `POST /meetings/:id/cancel` | Y | N | N | N | N | N | N | N | N | N | N |
+| `GET /meetings/:meetingId/packets/:patientId` (own caseload) | Y | N | Y | N | Y | Y | Y | N | Y (engagement) | N | Y |
+| `GET /meetings/:meetingId/packets/:patientId` (SUD-flagged, no Part 2 release) | Y (filtered) | N | Y (filtered) | N | Y (filtered) | Y (filtered) | Y (filtered) | N | Y (filtered) | N | N |
+| `POST /meetings/:id/decisions` (quorate meeting) | Y | N | Y | N | Y | Y | Y | N | N | N | N |
+| `POST /meetings/:id/decisions` (non-quorate meeting) | N (`QUORUM_NOT_MET`) | N | N | N | N | N | N | N | N | N | N |
+| `PATCH /decisions/:id` (status=open) | Y | N | Y (own decision) | N | Y (own decision) | Y (own decision) | Y | N | N | N | N |
+| `PATCH /decisions/:id` (status=emitted) | N (`DECISION_SUPERSEDED` path) | N | N | N | N | N | N | N | N | N | N |
+| `POST /meetings/:id/attendance` (self check-in) | Y | N | Y | N | Y | Y | Y | Y | N | N | N |
+| `PATCH /attendance/:id` (coordinator override) | Y | N | N | N | N | N | N | N | N | N | N |
+| `POST /meetings/:id/action-items` | Y | N | N | N | N | N | N | N | N | N | N |
+| `PATCH /action-items/:id` (own assignment) | Y (as assignee) | N | Y (own) | N | Y (own) | Y (own) | Y (own) | Y (own) | N | N | N |
+| `PATCH /action-items/:id` (reassign to other member) | Y | N | N | N | N | N | N | N | N | N | N |
+| `GET /meetings/:id/minutes` | Y | N | Y | Y (location-scoped) | Y | Y | Y | N | Y (engagement) | N | Y |
+| `POST /minutes/:id/amendments` | Y | N | N | N | N | N | N | N | N | N | N |
+| `GET /internal/idg/packets/:id` | N | N | N | N | N | N | N | N | N | N | Y |
+| `POST /recurring-policies` | Y (tenant-admin) | N | N | N | N | N | N | N | N | N | N |
+| `PATCH /recurring-policies/:id` (cadence=16, > 15-day floor) | N (`CADENCE_FLOOR_VIOLATION`) | N | N | N | N | N | N | N | N | N | N |
+
+**Negative-case notes (all are test blockers per SEC-013/014):**
+
+- `PATCH /decisions/:id` with an `If-Match` value that is stale must return `412 Precondition Failed` regardless of role.
+- `PATCH /decisions/:id` or `POST /decisions` without an `Idempotency-Key` header must return `400 BAD_REQUEST` per M14-F13.
+- Any route where the column `idg_meeting.organization_id` does not match `current_setting('app.org_id')::uuid` must return `404` (not `403`) per the IDOR-disambiguation rule (§4.3 `INCLUSION_CRITERIA_FAILED` pattern).
+- The Aide role must never receive `idg.decide` — attempts to record decisions return `403` regardless of quorum state.
+- An Auditor without an active engagement scope must receive `403` on all non-internal routes, not `404`.
+- A system principal without a valid `app.org_id` context must receive `401`; with a valid context but the wrong org, RLS returns an empty result set (no `403`/`404` — row invisibility).
 
 -----
 
@@ -1392,6 +1474,43 @@ export const idgRecordEraser: EraseFn = async (orgId, patientId, certificate) =>
 
 Boot validates this registration; absence fails startup per the M4 invariant.
 
+### 8.5 Disaster Recovery Tier and Degraded-Mode Posture (M14-F17 — DR-010, DR-064, ARCH-274)
+
+> **M14-F17 (DR-010, DR-064, ARCH-274).** M14 is **DR Tier 2** — "important but not immediately
+> life-critical in the first hours after a major failure." IDG meetings are scheduled in advance and
+> the immediate-hours window after a failure is unlikely to coincide with an active live meeting.
+> However, the packet read-availability and mobile offline posture must be declared explicitly so
+> DR exercises can validate them.
+
+**DR Tier 2 definition (per DR/BCP §3.2):**
+
+- **RTO:** 4 hours from declared disaster to M14 API serving read requests.
+- **RPO:** 1 hour — the most recently committed `idg_patient_packet` and `idg_decision` rows may be up to 1 hour behind the primary at the DR replica switchover point. Meeting-lifecycle write events from the past hour (scheduled, started, decisions recorded but not yet adjourned) may be lost and must be recovered by coordinator replay; the M4 audit log (replicated synchronously, Tier 1 dependency) provides the reconstruction source.
+- **Recovery priority relative to M14 dependencies:** M1 (Foundation, Tier 1) and M4 (Audit, Tier 1) must be available before M14 can recover. M14 shares the M1 Valkey cluster — BullMQ queue state (in-flight jobs) is not replicated; workers re-queue from the outbox table on startup. The seam registry (`validateSeams()`) requires M5–M12, M36, M38–M40 seams to be reachable before M14 accepts live traffic; in a partial DR scenario where only a subset of upstream modules is available, M14 starts in **degraded mode** (see below).
+
+**Packet read-availability in degraded mode:**
+
+M14's read paths (`GET /meetings/:id/packets`, `GET /meetings/:meetingId/packets/:patientId`, and the three published seams) are served directly from the `idg_patient_packet` table. In degraded mode — defined as one or more upstream seam modules (M5–M12, M36, M38–M40) being unavailable — the following policies apply:
+
+| Degraded scenario | Read availability | Write availability | Notes |
+|---|---|---|---|
+| Primary DB failover; DR replica available | Full read availability against DR replica (Tier-2 RTO 4 h) | Writes suspended until primary promoted | Already-built packet snapshots are available read-only; `frozen_at` packets are survey-reconstruction artifacts and their read path has no live dependency on upstream modules |
+| One upstream read seam unavailable (e.g., M9 down) | Existing `idg_patient_packet` rows are fully readable | Packet **rebuild** (`POST /meetings/:id/packets/build`) is refused with `503 SEAM_UNAVAILABLE`; meeting lifecycle transitions `BUILD_PACKETS` and `PACKETS_READY` are suspended | `boot.ts` marks the affected seam as degraded via the seam registry; any rebuild that would invoke the missing seam is blocked; already-built packets (including frozen ones) serve normally |
+| BullMQ / Valkey cluster unavailable | Packet reads from the `idg_patient_packet` table proceed normally (no queue dependency) | All BullMQ-backed operations (schedule materialisation, packet build, decision emit, carry-forward, eraser) suspend; meeting lifecycle is blocked past `packets_ready` | Adjournment requires the `idg.decision-emitter` queue; in Valkey-outage the adjournment route returns `503 QUEUE_UNAVAILABLE` and the coordinator must retry once Valkey recovers |
+| M36 (alerting) unavailable | Reads unaffected | Meeting lifecycle proceeds; M36-dispatch calls in `decision-emitter.ts` and `action-item-engine.ts` are wrapped in a non-throwing `fire-and-forget` — alert dispatch failure is logged and metricked but does not roll back the adjournment transaction | M36 unavailability must not block a clinician from adjourning a meeting; the `idg_meeting.adjourned` audit event and the outbox `idg.decision_recorded` emissions proceed as normal |
+
+**Mobile (Capacitor live-meeting) offline posture:**
+
+The Capacitor live-meeting surface (`/idg/meetings/:id/live` on mobile) operates in a read-mostly mode during the meeting. The offline posture is:
+
+- **Before the meeting (T-24h to meeting start):** The Capacitor app prefetches the complete `PacketSnapshot` and `DisciplineViewBlock` for all included patients to a device-local encrypted store (AES-256-GCM, key derived from the user's biometric-protected key material per M2's mobile key-management spec). The prefetch is triggered by the `m14.packets.ready` alert fanout (§4.4). If prefetch fails (device offline at T-24h), the app retries with exponential backoff until meeting start.
+- **During the meeting (network loss):** Packet reads (`GET /meetings/:meetingId/packets/:patientId`) are served from the device-local store. Decision recording, attendance check-in, and action-item creation are queued locally in the Capacitor app's offline write queue (SQLite-backed). These writes are not broadcast to other attendees in real time (the Socket.IO real-time channel is unavailable offline).
+- **On reconnect:** The offline write queue replays against the server in chronological order using the existing `Idempotency-Key` mechanism (M14-F13, ARCH-263) — each queued write carries the original `Idempotency-Key` the client generated at record time. If the server has a conflicting write (another coordinator recorded a decision for the same agenda item while the mobile client was offline), `If-Match` stale-version detection returns `412` and the client surfaces a conflict-resolution prompt.
+- **Adjournment offline:** Adjournment cannot be completed while offline — the step-up auth (D13) requires a live round-trip to M2's auth server (biometric assertion must be verified server-side). The Capacitor app disables the "Adjourn" button when network is unavailable and displays a warning banner: "Adjournment requires an active network connection."
+- **Frozen packet reads (survey reconstruction):** Frozen packets (post-adjournment) in the local store are retained for 72 hours after adjournment before eviction; the authoritative copy is the server-side `idg_patient_packet` row with `frozen_at` set. Survey inspectors use the web surface or the M22-rendered PDF, not the mobile local store.
+
+**DR recovery runbook reference (OPS-035):** The M14 DR recovery procedure is registered in the Ops Runbook under section `IDG-DR-01`. Steps: (1) confirm Tier-1 modules (M1, M4) are healthy; (2) restore M14 API with `validateSeams()` in degraded-mode; (3) replay BullMQ jobs from outbox table (the `m1.outbox` event table is the durable source); (4) verify `idg.schedule.dlq` and `idg.packets-cron.dlq` depth before restoring full write path; (5) notify IDG Coordinators of any meetings that were `live` at the time of failure — these meetings must be re-verified for decision completeness before re-adjournment.
+
 -----
 
 ## 9. Test Plan
@@ -1561,6 +1680,30 @@ All structural and policy decisions for Module 14 are resolved at lock time. The
 - [ ] **(forward seam)** M28 FHIR `CareTeam`/`Encounter` projection consumes seam at M28 lock.
 - [ ] **(forward seam)** M30 `getCadenceAdherence` and `getDecisionsForCarePlan` seam consumers attach at M30 lock; recorded-fixture envelopes today.
 
+### Queue parameters and DLQ (M14-F06)
+
+- [ ] **(blocker) M14-F06** `apps/backend/src/modules/14-idg/workers/queue-config.ts` exports the binding queue-options objects for all six BullMQ queues per §4.9.1 (priority, attempts, backoff, concurrency, DLQ topic name).
+- [ ] **(blocker) M14-F06** DLQ depth metric `queue_dlq_depth_gauge` emitted for all six DLQ topics; P1 PagerDuty alert wired for `idg.decision-emitter.dlq`; P2 for `idg.packets.dlq` and `idg.packets-cron.dlq`.
+- [ ] **(blocker) M14-F06** Integration test: induced worker failure on `idg.decision-emitter` after max attempts lands the job in `idg.decision-emitter.dlq`; meeting remains in `live` state; manual DLQ replay succeeds and emits the `idg.decision_recorded` envelopes.
+
+### Security — STRIDE and authz matrix (M14-F09)
+
+- [ ] **(blocker) M14-F09** Parameterized per-role authz test matrix from §4.12.2 green: all N (deny) cells confirmed to return the declared HTTP status code.
+- [ ] **(blocker) M14-F09** STRIDE mitigations verified: attendance-spoofing test (server derives `membership_id` from session, not body), decision-tampering test (stale `If-Match` → 412), packet-snapshot freeze test (rebuild post-adjournment → 422), adjournment step-up repudiation test (step-up event cross-referenced in M4 audit log), SUD-exfiltration test (SQL-filter confirmed at plan level), cross-location EoP test (403 from `idg_meeting_scope` predicate).
+- [ ] **(blocker) M14-F09** Negative-case blockers per §4.12.2 notes: missing `Idempotency-Key` on PATCH/DELETE → 400; stale `If-Match` → 412; cross-org IDOR → 404; Aide `idg.decide` attempt → 403; Auditor-without-engagement → 403.
+
+### Idempotency-Key on PATCH/DELETE (M14-F13)
+
+- [ ] **(blocker) M14-F13** All PATCH and DELETE routes in §4.1 require both `Idempotency-Key` and `If-Match`; missing header → 400 `BAD_REQUEST`; idempotent replay (same key, same version) returns the original response without re-applying side effects; stale version (correct key, stale `If-Match`) → 412.
+- [ ] **(blocker) M14-F13** The two new DELETE routes (`DELETE /attendance/:id` pre-start; `DELETE /action-items/:id` pre-adjourn) are covered by the authz test matrix; post-adjournment delete of action items returns `409 MINUTES_FINAL`.
+
+### DR tier and degraded mode (M14-F17)
+
+- [ ] **(blocker) M14-F17** M14 is documented as DR Tier 2 (RTO 4 h, RPO 1 h); DR recovery procedure registered in Ops Runbook as `IDG-DR-01`.
+- [ ] **(blocker) M14-F17** Integration test: with one upstream seam (e.g., M9) mocked as unavailable, `POST /meetings/:id/packets/build` returns `503 SEAM_UNAVAILABLE`; existing frozen packet reads (`GET /meetings/:meetingId/packets/:patientId`) proceed normally.
+- [ ] **(blocker) M14-F17** Integration test: with M36 mocked as unavailable, `POST /meetings/:id/adjourn` completes successfully (decisions emitted, minutes finalized, packets frozen); M36 dispatch failure is metricked but does not roll back the transaction.
+- [ ] **(blocker) M14-F17** Capacitor offline write queue: decision and action-item writes recorded offline replay successfully on reconnect using stored `Idempotency-Key` values; `If-Match` stale-version conflict surfaces a conflict-resolution prompt; adjournment button disabled when offline.
+
 ### Permissions & ABAC
 
 - [ ] **(blocker)** Permission keys (`idg.read`, `idg.attend`, `idg.coordinate`, `idg.decide`, `idg.act`, `idg.schedule`, `idg.amend_minutes`, `idg.system`) registered in Module 3's catalog; default role templates assigned; boot validation enforces presence.
@@ -1620,9 +1763,10 @@ All structural and policy decisions for Module 14 are resolved at lock time. The
 
 **End of Module 14 — Interdisciplinary Group Specification v0.4 (Consolidated)**
 
-**Spec version:** v0.4 (Consolidated; ADR-0024 applied 2026-06-13)
+**Spec version:** v0.4 (Consolidated; ADR-0021 §20.B template sections added 2026-06-13; ADR-0024 applied 2026-06-13)
 **Decisions:** D1–D13 resolved; D14–D16 superseded by ADR-0024 (notification composition moved to M36)
 **Schema:** 9 IDG tables; monthly partitioning on `idg_patient_packet` (notification-template tables moved to M36 per ADR-0024)
 **Published seams:** `IdgPacketProvider`, `IdgDecisionProvider`, `IdgScheduleProvider`
 **Workflows:** W-SCH-01, W-PKT-01/02, W-DEC-01/02, W-ADJ-01/02, W-ACT-01/02, W-MIN-01, W-SUD-01, W-CON-01 (W-M14-11 through W-M14-13 superseded by ADR-0024)
 **Implementation tasks:** 1–21 (T-M14-14 through T-M14-16 superseded by ADR-0024)
+**ADR-0021 §20.B additions (2026-06-13):** M14-F06 queue parameters (§4.9.1); M14-F09 STRIDE + authz matrix (§4.12); M14-F13 Idempotency-Key on PATCH/DELETE (§4.1 note); M14-F17 DR Tier 2 + degraded mode (§8.5)

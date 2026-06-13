@@ -1,6 +1,6 @@
 # Module 19 — On-Call Triage Specification
 
-**Spec version:** v0.3 — convention review: the authoritative §4.10 outbox events
+**Spec version:** v0.3.1 — ADR-0021 §20.B template additions (M19-F08 DR tier + degraded mode + boot-refusal removal; M19-F12 BullMQ queue parameters + cadence unification + duplicate outbox topic removal; M19-F15 STRIDE threat model + cursor pagination + audit-event catalog + platform-limiter rate limits). Prior v0.3: convention review: the authoritative §4.10 outbox events
 (`m19.triage_call.*`, `m19.oncall_shift.*`) and §4.9 M36 alert payloads (`m19.triage.*`,
 `m19.oncall.*`) already conform to the `mN.` convention; only a few stray prose references
 (`triage.case_opened`, `triage.protocol_red_flag_hit`, `triage.summary_requested`) were
@@ -26,6 +26,13 @@ aligned to their canonical `m19.` names. Permission keys (`triage.read`, `oncall
 > tracked for M19's reconciliation.)*
 
 ## Changelog
+
+- **v0.3.1 (ADR-0021 template sweep)** — Adds the three missing §20.B template sections per ADR-0021 findings:
+  - **M19-F08** (DR-010/013/064-067): Declares M19 as **DR Tier 1** (RTO 1 h / RPO 5 min). Adds §2.7 with DR tier declaration, five degraded-mode classes (D-A through D-E), and BCP paper-origin re-entry specification (paper_origin_flag column, 72 h worklist, `triage.paper_reentry` permission key, `triage_paper_reentry_worklist` table). **Removes the §2.4 boot-refusal language** and §1.3 CoP 418.100(a) reference to boot refusal — replaced with alert-only behavior (critical M36 coverage-gap alert) consistent with DR-010's prohibition on external dependencies blocking Tier-1 availability.
+  - **M19-F12** (ARCH-262, SD-059, SD-060): Expands §4.8 BullMQ queue catalog with `priority`, `attempts`, `backoff`, `concurrency`, and `DLQ` columns for all 14 queues. Unifies the coverage-gap watchdog cadence to **30 minutes** (prior versions stated "hourly" in §4.8 and "every 30 minutes" in task #38 — 30 minutes is authoritative). Removes the duplicate `m19.on_call_shift.opened` outbox topic from §4.10 — `m19.oncall_shift.activated` is the single canonical shift-open signal; its payload is extended to include `membershipId` and `openedAt` so M20's consumer needs no change.
+  - **M19-F15** (SEC-007, SD-052, ARCH-003, SD-055): Expands §8.3 from a STRIDE table stub to a full six-section STRIDE threat model (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege) with M19-specific threats, controls, and test references. Adds §4.1.1 declaring opaque cursor pagination (`next_cursor` + `has_more`) on all six PHI list routes (routes #2, #16, #19, #27, #36, and the portal route #36) with page sizes and HMAC-signed token policy. Adds §8.3.7 expressing module-local rate limits as M1 platform-limiter `definePlatformRateLimits` configurations. Adds §8.7 audit-event catalog covering all 18 business-event audit entries and the full PHI write-audit trigger inventory with per-event retention classes.
+
+- **v0.3 (Re-locked)** — Convention review and §4.10 outbox event naming alignment.
 
 - **v0.2 (Locked)** — Initial publication at lock-grade. Instantiates the architecture §20.B module spec template. Resolves all fourteen open questions into binding decisions (§11). Defines the **triage-call root entity separate from the M8 encounter** (D1), the **shift table that augments M17's roster for outsourced models** (D2), the **three-deployment-model schema with the Direct model shipping Phase-1-live and Hybrid/Centralized adapter seams shipping structurally** (D3), the **protocol catalog with platform-floor + tenant-extensible pattern matching M38 / M9** (D4), the **server-authoritative protocol-question gating mirroring M9 D6** (D5), the **disposition state machine with mandatory documentation gate** (D6), the **escalation tree with policy-driven mandatory triggers** (D7), the **encounter writeback via M8's `EncounterCreator` seam** (D8), the **verbal-order primitive consumption via M11's `OrderSignatureProvider`** (D9), the **inbound-trigger consumers for no-show and late-checkout** (D10), the **hospitalization-risk advisory display via M32** (D11), the **protocol-suggestion AI surface with mandatory clinician selection** (D12), the **PII minimization at the external-triage-vendor boundary mirroring M17 D9** (D13), the **call-audio non-capture posture (Phase 1)** (D14), and the **PRN refill inquiry surface via M12's `RefillInboxProvider`** (D15). Wires the permission keys this module registers into Module 3 (§4.6), the BullMQ queue catalog (§4.8), the M36 typed-alert payloads (§4.9), the outbox event contract (§4.10), and the destruction `eraseFn` registered with Module 4 (§3.7). Includes a **proposed manifest patch** (§13) expanding `M19.dependsOn` from `[5, 17, 36]` to `[1, 2, 3, 4, 5, 8, 11, 12, 17, 18, 32, 36, 38, 39, 40]` *(relationship inventory - not the `dependsOn` edge set; per ADR-0005 D1/D4 seam/outbox/foundation consumers are no-edge - see audit/MANIFEST_DEPENDSON_REVIEW.md; do not bulk-apply)* — the prior encoding listed only the architecture §20.B direct-arrow set; the spec realistically depends on the foundation tier (1/2/3/4), the encounter/order/refill writeback chain (8/11/12), the inbound-trigger source (18), the AI advisory seam (32), the terminology service (38), the consent gate (39), and the MDM/vendor canonical (40) — every one of which is a typed seam consumer, not a free-floating reach across the boundary.
 - **v0.1** — Drafted within the lock-grade pass; not separately published.
@@ -100,7 +107,7 @@ This list is binding. Every item here is owned by another module and reached via
 
 | Driver | Requirement | How Module 19 satisfies it |
 |---|---|---|
-| **CoP 418.100(a)** — Hospice must provide nursing, physician, and drugs/biologicals on a 24-hour basis | Continuous availability for symptom-management and family-support contacts | M19 ships the Direct-model 24/7 triage capability at Phase 1; `on_call_shift` table guarantees a clinician is always identified as on-call; the boot-time invariant check (per §2.4) refuses to start the server if no future-dated on-call shift exists for any active ProviderEntity (operationalizes "the hospice must have an answer"). |
+| **CoP 418.100(a)** — Hospice must provide nursing, physician, and drugs/biologicals on a 24-hour basis | Continuous availability for symptom-management and family-support contacts | M19 ships the Direct-model 24/7 triage capability at Phase 1; `on_call_shift` table guarantees a clinician is always identified as on-call; the coverage-gap watchdog (per §2.4, M19-F08) emits a `critical` M36 coverage-gap alert when no future-dated clinical_rn shift exists for any active ProviderEntity — boot startup is **never refused** for a coverage gap (M19 is DR Tier 1; blocking boot on a schedule gap would itself be an availability hazard). |
 | **CoP 418.64(c)(4)** — Nursing services on a 24-hour basis | RN coverage 24/7 | The on-call shift schema enforces that *at least one* shift in any 24-hour window has discipline = `clinical_rn` (Hybrid/Centralized models satisfy this via the external vendor's RN, validated at shift creation via `external_triage_vendor.rn_coverage_attested`). |
 | **CoP 418.104** — Clinical record requirement | After-hours contacts are part of the clinical record | Every closed `triage_call` produces an M8 `encounter_type='triage_telephonic_contact'` via the `EncounterCreator` seam (D8); the triage_call row carries the `compliance` retention class per M4 retention rules — 6 years from final lifecycle event. |
 | **CoP 418.106(b)** — Verbal orders must be authenticated by the ordering practitioner | After-hours verbal orders signed within reasonable timeframe | M19 consumes M11's `recordVerbalOrder` (D9); the 48-hour timer is M11's; the deadline-cycle alerts (12h-pre, 2h-pre, at-deadline) emit to the named ordering physician and the on-call channel per M11 §2.3. |
@@ -390,7 +397,7 @@ Mandatory-escalation rows (the four D7 protocols) cannot be auto-resolved by cal
 | `triage_call → closed` | M36 alert `triage.case_closed` to on-call channel + patient's care-team channel (lay-language preview); outbox `m19.triage_call.documented` |
 | `on_call_shift → active` | M36's `OnCallProvider` re-syncs `on_call` channel membership |
 | `on_call_shift → completed` | M36's `OnCallProvider` removes that membership; archive note on channel |
-| Boot-time check | If no future-dated `active` clinical_rn shift exists for any active ProviderEntity → `OncallCoverageGapError` raised in dev/test/preview (warning), critical M36 alert in prod (the system never silently allows uncovered) |
+| Boot-time check | M19 is **DR Tier 1** (RTO 1 h / RPO 5 min per §2.7); boot-refusal on a coverage-gap would itself be an availability hazard for a Tier-1 module (M19-F08, DR-010). Boot **always succeeds**. Instead, the `coverage-gap-watchdog` (§4.8) runs every 30 minutes and emits `m19.oncall_shift.coverage_gap` → M36 `critical`-severity alert to org-admin + clinical-supervisor channels whenever no `clinical_rn` shift covers the next 24 h window for any active ProviderEntity. In degraded mode (see §2.7) the watchdog continues on its own schedule independent of upstream seam availability. |
 
 ### 2.5 Concurrency
 
@@ -402,6 +409,37 @@ Optimistic concurrency via `version` on `triage_call`, `on_call_shift`, `tenant_
 - The `EncounterCreator` seam call is idempotent on `triage_call_id` — multiple calls return the same encounter row (M8 §4 contract).
 - Outbox events keyed on `(triage_call_id, outbox_topic, transitioned_at)` via M1 outbox helper.
 - The shift-open worker is idempotent on `(provider_entity_id, shift_starts_at, discipline)`.
+
+### 2.7 DR Tier, Degraded Mode, and BCP Re-entry (M19-F08 — DR-010/013/064-067)
+
+**DR Tier: 1 — RTO 1 hour / RPO 5 minutes.**
+
+M19 provides the legally-required 24/7 after-hours clinical-contact capability (CoP 418.100(a)). A hospice without after-hours triage has no lawful mechanism to respond to overnight patient crises; loss of M19 for more than one hour constitutes a CoP survey-reportable availability failure. M19 is therefore classified **Tier 1** in the platform DR taxonomy alongside M5 (Patient Demographics) and M36 (Secure Messaging). All Tier-1 obligations from the DR/BCP plan apply:
+
+- Synchronous replication of all nine owned tables to the standby region; WAL shipping at ≤ 5-minute lag.
+- Valkey on-call roster cache (`oncall:<orgId>:<asOfIso>`) is rebuilt from the primary DB read-replica within 5 minutes of a cache warm (the roster-rebuild job runs automatically on M19 module init).
+- BullMQ queues for shift-open/close crons and the coverage-gap-watchdog are backed by the same Valkey cluster as M36's delivery queues; Tier-1 queues are promoted to the dedicated high-priority Valkey logical DB per DR-064 queue-segregation rule.
+- **Boot never refuses to start because of a coverage gap** (DR-010 / M19-F08). Blocking boot on a missing shift would convert an administrative scheduling lapse into a complete Tier-1 service outage. The watchdog alerts; humans resolve.
+
+**Degraded-mode classes:**
+
+| Class | Condition | M19 behavior |
+|---|---|---|
+| **D-A: AI seam unavailable** | M32 deny-stub or provider timeout | Protocol suggestion and hospitalization-risk advisory are silently suppressed; UI renders "AI features unavailable"; triage call lifecycle continues normally without AI. Boot succeeds. |
+| **D-B: M8 EncounterCreator unreachable** | M8 seam fails or times out | Disposition may be selected and the outbox event emitted; the call advances to `documented_pending_encounter` and stays there; the `encounter-creator.consumer` worker retries per queue policy (§4.8) until M8 recovers. The on-call RN is not blocked from handling the next call. Boot succeeds (M8 is required-seam but failure is runtime, not boot). |
+| **D-C: M17 roster reader unavailable** | M17 seam timeout at shift-open | The shift-open worker falls back to the last committed `on_call_shift` row; roster-cache serves its TTL value. M36's channel membership is not re-synced until M17 recovers; coverage-gap-watchdog still runs from DB state. |
+| **D-D: M36 alert delivery failure** | M36 `AlertEmitter` circuit-breaker open | M19 logs alert payloads to the fallback `m19_degraded_alert_log` table (append-only, org-scoped) for reconciliation; the tenant's emergency phone number (from `tenant_oncall_policy.emergency_contact_e164`) is surfaced to any authenticated org-admin hitting M19's `/api/v1/oncall/status` endpoint. |
+| **D-E: Full read-replica failover (RTO < 1 h)** | Primary DB unavailable | Read traffic fails over to the replica; write traffic is queued in BullMQ with a 60-minute retention window; on primary recovery the queue drains in priority order (shift-open/close first, then triage-call state transitions). Call lifecycle is paused but no data is lost within RPO. |
+
+**Triage-call BCP re-entry (paper-origin calls — DR-013, DR-066):**
+
+When triage calls are taken on paper during a platform outage and re-entered after recovery:
+
+1. The re-entering clinician opens a new `triage_call` with **`source='paper_origin'`** and **`paper_origin_flag=true`** (boolean column added to `triage_call` in §3.3).
+2. The **`opened_at` timestamp must be set to the original call timestamp** (not the re-entry wall-clock time); the API accepts `opened_at` in the `POST /api/v1/triage-calls` body when `paper_origin_flag=true` and the actor has `triage.paper_reentry` permission (org-admin or DON; added to §4.6 as permission key #17).
+3. A **72-hour re-entry worklist** is created automatically: on the first re-entry after an outage window (detected by gap in `triage_call_state_history` where no transitions occurred during the known outage window), the system computes the set of on-call shifts that overlapped the outage and populates a `triage_paper_reentry_worklist` table (append-only; org-scoped) listing `(shift_id, shift_starts_at, shift_ends_at, assigned_to_membership_id)`. The DON receives a `critical` M36 alert with the worklist count and a link to `/app/admin/triage-audit?mode=paper_reentry`. The worklist expires 72 hours after the outage-end timestamp.
+4. M4 audit records every paper-origin re-entry with `audit_action='triage_paper_reentry'`, `source_outage_window_id`, and `re_entered_by_membership_id`. Paper-origin calls carry a survey-record annotation visible to the Comp Off / Surveyor read-path.
+5. The `m19.triage_call.opened` outbox event for paper-origin calls carries `{ paper_origin: true, original_opened_at }` so downstream consumers (M14 IDG, M30 HQRP) use the original timestamp for chronological ordering.
 
 -----
 
@@ -459,7 +497,7 @@ apps/backend/src/modules/19-oncall/
 │   ├── callback-sla.cron.ts                        # per-call callback-target SLA breach detector
 │   ├── awaiting-callback-timeout.cron.ts           # advances stuck awaiting_callback after grace window with documented reason or auto-escalate
 │   ├── close-documented.cron.ts                    # auto-close documented calls after 30-min amendment grace
-│   ├── coverage-gap-watchdog.cron.ts               # hourly; ensures clinical_rn shift covers next 24h per active PE
+│   ├── coverage-gap-watchdog.cron.ts               # every 30 min (M19-F12 canonical cadence); ensures clinical_rn shift covers next 24h per active PE
 │   ├── ai-protocol-suggestion.bullmq.ts            # consumer of "needs suggestion" job; calls M32 with PHI-min input
 │   └── ai-hospitalization-risk.bullmq.ts           # consumer of "needs risk" job; calls M32 read-only
 ├── consumers/
@@ -681,6 +719,10 @@ export const triageCall = pgTable('triage_call', {
   documentedAt: timestamp('documented_at', { withTimezone: true }),
   closedAt: timestamp('closed_at', { withTimezone: true }),
 
+  // BCP re-entry (M19-F08, DR-013/066): paper-origin calls taken during platform outage
+  paperOriginFlag: boolean('paper_origin_flag').notNull().default(false),
+  paperOriginalOpenedAt: timestamp('paper_original_opened_at', { withTimezone: true }), // original call time; null when not paper-origin
+
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -748,6 +790,24 @@ export const triageCallStateHistory = pgTable('triage_call_state_history', {
   commandPayloadDigest: text('command_payload_digest'),                // hash; cleartext not stored
 }, (t) => ({
   byCall: index('triage_call_state_history_call_idx').on(t.triageCallId, t.transitionedAt),
+}))
+
+// packages/db/src/schema/triage-paper-reentry-worklist.ts (append-only; BCP re-entry per M19-F08 / §2.7)
+export const triagePaperReentryWorklist = pgTable('triage_paper_reentry_worklist', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'restrict' }),
+  outageWindowId: uuid('outage_window_id').notNull(),                  // system-generated per detected outage gap
+  shiftId: uuid('shift_id').references(() => onCallShift.id, { onDelete: 'restrict' }),
+  shiftStartsAt: timestamp('shift_starts_at', { withTimezone: true }).notNull(),
+  shiftEndsAt: timestamp('shift_ends_at', { withTimezone: true }).notNull(),
+  assignedToMembershipId: uuid('assigned_to_membership_id').references(() => memberships.id, { onDelete: 'restrict' }),
+  reenteredAt: timestamp('reentered_at', { withTimezone: true }),      // null until a paper_origin call is linked
+  linkedTriageCallId: uuid('linked_triage_call_id'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(), // outage_end_at + 72 h
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  byOrg: index('triage_paper_reentry_worklist_org_idx').on(t.organizationId, t.expiresAt),
+  byOutage: index('triage_paper_reentry_worklist_outage_idx').on(t.outageWindowId),
 }))
 ```
 
@@ -869,6 +929,21 @@ Tenant-offboarding cryptographic shred (architecture §8) destroys the per-tenan
 | 36 | GET | `/api/v1/portal/triage/recent` | `portal.triage.read_recent` | `portal_session_consent_active` | M31-served; lay-language; redacts internal codes |
 
 All routes return the standard error envelope (M1 §4). All PHI-reading routes declare `requireReadAudit` so the M4 helper triggers `<resource>.viewed` automatically.
+
+#### 4.1.1 Cursor Pagination on PHI List Routes (M19-F15 — SD-052, ARCH-003)
+
+Per ADR-0021 §6, offset pagination is forbidden on PHI-bearing list routes. The following M19 routes use **opaque cursor pagination** (`next_cursor` + `has_more`; cursor encodes `(opened_at DESC, id)` for triage calls; `(escalated_at DESC, id)` for escalations; `(shift_starts_at DESC, id)` for shifts; `(effective_from DESC, id)` for protocols):
+
+| Route # | Route | Cursor field | Default page size | Max page size |
+|---|---|---|---|---|
+| 2 | `GET /api/v1/triage-calls` | `(opened_at DESC, id)` | 25 | 100 |
+| 3 | `GET /api/v1/triage-calls/:id` | N/A (single resource) | — | — |
+| 16 | `GET /api/v1/escalations` | `(escalated_at DESC, id)` | 25 | 100 |
+| 19 | `GET /api/v1/oncall/shifts` | `(shift_starts_at DESC, id)` | 50 | 200 |
+| 27 | `GET /api/v1/triage-protocols` | `(effective_from DESC, id)` | 50 | 200 |
+| 36 | `GET /api/v1/portal/triage/recent` | `(opened_at DESC, id)` | 10 | 30 |
+
+Cursor tokens are HMAC-signed with the org-scoped signing key (M1 pattern); an invalid or tampered cursor returns `422 INVALID_CURSOR`. Clients must not attempt to parse or construct cursor tokens — they are opaque strings. The `has_more: boolean` field signals whether additional pages exist. Responses include a `total_count` field only for non-PHI aggregate metrics routes; PHI list routes do NOT expose `total_count` (prevents enumeration of record count).
 
 ### 4.2 Representative TypeBox Schemas
 
@@ -1150,6 +1225,8 @@ export const M19_PERMISSION_KEYS = [
   { key: 'oncall.read_policy', category: 'oncall', description: 'Read tenant on-call policy' },
   { key: 'oncall.admin_policy', category: 'oncall', description: 'Edit tenant on-call policy (org-admin; step-up)' },
   { key: 'portal.triage.read_recent', category: 'oncall', description: 'Portal lay-language view of recent triage activity' },
+  // M19-F08: BCP paper-origin re-entry permission (DR-013/066)
+  { key: 'triage.paper_reentry', category: 'triage', description: 'Re-enter a paper-origin triage call with a back-dated opened_at (org-admin / DON only; step-up required)' },
 ] as const
 ```
 
@@ -1248,24 +1325,30 @@ export const portalSessionConsentActive: AbacPredicate = {
 }
 ```
 
-### 4.8 BullMQ Queue Catalog
+### 4.8 BullMQ Queue Catalog (M19-F12 — ARCH-262, SD-059, SD-060)
 
-| Queue | Worker concurrency | Schedule / trigger | Purpose |
-|---|---|---|---|
-| `m19.shift-open.cron` | 1 per org | every 5 min | Open shifts whose starts_at ≤ now() |
-| `m19.shift-close.cron` | 1 per org | every 5 min | Close shifts whose ends_at ≤ now() |
-| `m19.shift-sync.debounced` | 2 per org | debounced 30s on `m17.visit.assigned` (M17's canonical assignment/roster-change signal per M17 §4.11 — M17 emits no separate `m17.roster.changed`) | Reconcile Direct shifts against M17 roster |
-| `m19.callback-sla.cron` | 1 per org | every minute | Detect `awaiting_callback` whose callback target lapsed; emit alert / auto-escalate |
-| `m19.awaiting-callback-timeout.cron` | 1 per org | every 10 min | After tenant-configured grace (default 60 min in awaiting_callback) flip to disposition_pending with `auto_timeout=true` |
-| `m19.close-documented.cron` | 1 per org | every 15 min | Close `documented` calls past 30-min amendment grace |
-| `m19.coverage-gap-watchdog.cron` | 1 per org | hourly | Walk next 24h; alert if any active PE has no `clinical_rn` shift coverage |
-| `m19.ai-protocol-suggestion` | 4 per org | on `triage_call.opened` + chief_complaint set | Call M32; populate `suggested_protocol_id` if tenant opted in |
-| `m19.ai-hospitalization-risk` | 4 per org | on `triage_call.identify_patient_completed` | Call M32; populate `hospitalization_risk_band` if tenant opted in |
-| `m19.escalation-sla` | 2 per org | every 5 min | Alert on escalations open > tier-specific SLA |
-| `m19.encounter-creator.consumer` | 4 per org | on disposition with no `linked_encounter_id` | Invoke M8 `EncounterCreator`; persist back-ref |
-| `m19.no-show-trigger.consumer` | 4 per org | on `m17.visit.no_show_detected` | Open proactive triage call |
-| `m19.late-checkout-trigger.consumer` | 4 per org | on `m18.evv.late_check_out_detected` | Open proactive triage call |
-| `m19.m36-delivery-failed.consumer` | 4 per org | on `m36.delivery_failed` with on-call recipient | Surface as triage trigger |
+All queues use BullMQ on Valkey. Every consumer is idempotent: jobs keyed on a stable deduplication token (`jobId`) so re-delivery produces no side effects. Tier-1 queues (`m19.shift-open.cron`, `m19.shift-close.cron`, `m19.coverage-gap-watchdog.cron`) are routed to the dedicated high-priority Valkey logical DB per DR-064.
+
+**Canonical coverage-gap watchdog cadence: every 30 minutes.** (Prior versions stated "hourly" in the queue table and "every 30 minutes" in task #38; the 30-minute cadence is authoritative — it provides two check opportunities per hour, ensuring the gap is detected and alerted well within the 1-hour CoP response expectation. The per-call `callback-sla.cron` already runs every minute for active-call SLA; 30 min for the coverage gap is operationally correct without being wasteful.)
+
+| Queue | Priority | Concurrency | Attempts | Backoff | DLQ | Schedule / trigger | Purpose |
+|---|---|---|---|---|---|---|---|
+| `m19.shift-open.cron` | 1 (highest; Tier-1) | 1 per org | 3 | exponential 30 s, 60 s, 120 s | `m19.shift-open.dlq` | every 5 min | Open shifts whose `shift_starts_at ≤ now()`; idempotent on `(provider_entity_id, shift_starts_at, discipline)` |
+| `m19.shift-close.cron` | 1 (Tier-1) | 1 per org | 3 | exponential 30 s, 60 s, 120 s | `m19.shift-close.dlq` | every 5 min | Close shifts whose `shift_ends_at ≤ now()` |
+| `m19.shift-sync.debounced` | 2 | 2 per org | 3 | exponential 15 s, 30 s, 60 s | `m19.shift-sync.dlq` | debounced 30 s on `m17.visit.assigned` (M17's canonical assignment/roster-change signal per M17 §4.11 — M17 emits no separate `m17.roster.changed`) | Reconcile Direct shifts against M17 roster; re-warm Valkey cache |
+| `m19.callback-sla.cron` | 2 | 1 per org | 2 | fixed 15 s | `m19.callback-sla.dlq` | every minute | Detect `awaiting_callback` calls whose callback-target SLA lapsed; emit `m19.triage.callback_sla_breached` alert / auto-escalate |
+| `m19.awaiting-callback-timeout.cron` | 3 | 1 per org | 2 | fixed 30 s | `m19.callback-timeout.dlq` | every 10 min | After tenant-configured grace (default 60 min in `awaiting_callback`) advance to `disposition_pending` with `auto_timeout=true`; record in state history |
+| `m19.close-documented.cron` | 3 | 1 per org | 2 | fixed 30 s | `m19.close-documented.dlq` | every 15 min | Close `documented` calls past 30-min amendment grace; emit `m19.triage_call.closed` |
+| `m19.coverage-gap-watchdog.cron` | 1 (Tier-1) | 1 per org | 3 | exponential 60 s, 120 s, 300 s | `m19.coverage-gap.dlq` | **every 30 min** | Walk next 24 h window; for any active ProviderEntity with no `clinical_rn` shift, emit `m19.oncall_shift.coverage_gap` outbox + M36 `critical` alert |
+| `m19.ai-protocol-suggestion` | 4 (lowest) | 4 per org | 2 | exponential 5 s, 15 s | `m19.ai-suggestion.dlq` | on `triage_call.opened` + chief_complaint set | Call M32 `ProtocolSuggestionProvider`; populate `suggested_protocol_id` if tenant opted in; no-op if deny-stub |
+| `m19.ai-hospitalization-risk` | 4 (lowest) | 4 per org | 2 | exponential 5 s, 15 s | `m19.ai-risk.dlq` | on `triage_call.identify_patient_completed` | Call M32 `HospitalizationRiskProvider`; populate `hospitalization_risk_band` if tenant opted in; no-op if deny-stub |
+| `m19.escalation-sla` | 2 | 2 per org | 2 | fixed 30 s | `m19.escalation-sla.dlq` | every 5 min | Alert on escalation rows open > tier-specific SLA from `tenant_oncall_policy.escalation_tiers` |
+| `m19.encounter-creator.consumer` | 2 | 4 per org | 5 | exponential 15 s, 30 s, 60 s, 120 s, 300 s | `m19.encounter-creator.dlq` | on disposition with no `linked_encounter_id` | Invoke M8 `EncounterCreator`; idempotent on `triage_call_id`; persist back-ref; D-B degraded mode (§2.7) retries from DLQ |
+| `m19.no-show-trigger.consumer` | 2 | 4 per org | 3 | exponential 10 s, 30 s, 60 s | `m19.no-show-trigger.dlq` | on `m17.visit.no_show_detected` | Open proactive triage call; idempotent on `source_outbox_event_id` |
+| `m19.late-checkout-trigger.consumer` | 2 | 4 per org | 3 | exponential 10 s, 30 s, 60 s | `m19.late-checkout-trigger.dlq` | on `m18.evv.late_check_out_detected` | Open welfare-check triage call; idempotent on `source_outbox_event_id` |
+| `m19.m36-delivery-failed.consumer` | 3 | 4 per org | 2 | fixed 30 s | `m19.m36-delivery-failed.dlq` | on `m36.delivery_failed` with on-call recipient | Surface M36 delivery failure as a triage trigger |
+
+**DLQ handling:** Jobs that exhaust all attempts are moved to their named DLQ with the full error context and job payload. A BullMQ Board dashboard (ops-facing) surfaces DLQ depth per queue. DLQ jobs older than 7 days are archived to the cold audit log (M4) and purged from Valkey. Any DLQ depth > 0 on Tier-1 queues (`shift-open`, `shift-close`, `coverage-gap-watchdog`) triggers a `warn`-severity OpsAlert to the on-call platform-engineer channel.
 
 ### 4.9 M36 Typed Alert Payloads
 
@@ -1327,8 +1410,7 @@ export const M19_ALERT_RULES = [
 | `m19.triage_call.gip_admission_proposed` | warn | disposition is `gip_admission_proposed` | `{ triageCallId, patientId, gipCriteriaSummary, preferredFacility? }` |
 | `m19.triage_call.care_plan_change_indicated` | info | disposition payload indicates clinical-relevant change | `{ triageCallId, patientId, changeKind }` |
 | `m19.triage_call.closed` | info | → closed | `{ triageCallId, finalDisposition }` |
-| `m19.oncall_shift.activated` | info | scheduled → active | `{ shiftId, providerEntityId, primaryOnCallMembershipId?, externalActorId? }` |
-| `m19.on_call_shift.opened` | info | scheduled → active | `{ shiftId, membershipId, organizationId, openedAt }` (M20 consumer — the canonical-named shift-open signal M20's `m19-on-call-shift-changed.consumer` subscribes to; emitted alongside `m19.oncall_shift.activated` on the same transition) |
+| `m19.oncall_shift.activated` | info | scheduled → active | `{ shiftId, providerEntityId, membershipId?, externalActorId?, openedAt }` — **single canonical shift-open topic** (M19-F12: the prior duplicate `m19.on_call_shift.opened` topic is retired; M20's `m19-on-call-shift-changed.consumer` and M36's channel-rotation synchronizer both subscribe to this single topic; the payload is a superset of the old duplicate's fields) |
 | `m19.oncall_shift.completed` | info | active → completed | `{ shiftId, providerEntityId }` |
 | `m19.oncall_shift.coverage_gap` | warn | watchdog detects gap | `{ providerEntityId, gapStartsAt, gapEndsAt, discipline }` |
 | `m19.triage.summary_requested` | info | tenant policy / disposition trigger | `{ triageCallId, recipientKind: 'caregiver' \| 'attending' }` (M22 consumer) |
@@ -1445,7 +1527,7 @@ Notes:
 
 ### 7.4 Coverage gap detection and proactive alerting
 
-**Done means:** The Sched fails to create an `on_call_shift` row for tomorrow night. At 06:00 today, the `coverage-gap-watchdog` cron (`§4.8`) runs `OnCallProvider.tonightsOnCallRoster(orgId, asOfIso = tomorrow 18:00)`. The query returns zero active or scheduled shifts in the window 18:00 tomorrow → 07:00 next morning. The watchdog emits `m19.oncall_shift.coverage_gap` outbox event with `(providerEntityId, gapStartsAt, gapEndsAt, discipline='rn')`. M36 dispatches a `critical`-severity alert via Sched's primary channel (SMS) + DON's primary channel (SMS + email), severity-elevated per `tenant_oncall_policy.coverage_gap_severity`. The DON's inbox surfaces a red banner on `/app/triage/shifts`. CoP 418.100(a) survey-record evidence is the watchdog's own outbox event + the M4 audit trail of the gap and its resolution (a shift created within X hours per tenant policy; default 6 hours; configurable).
+**Done means:** The Sched fails to create an `on_call_shift` row for tomorrow night. At the next 30-minute tick, the `coverage-gap-watchdog` cron (§4.8; canonical cadence: every 30 min per M19-F12) runs `OnCallProvider.tonightsOnCallRoster(orgId, asOfIso = tomorrow 18:00)`. The query returns zero active or scheduled shifts in the window 18:00 tomorrow → 07:00 next morning. The watchdog emits `m19.oncall_shift.coverage_gap` outbox event with `(providerEntityId, gapStartsAt, gapEndsAt, discipline='rn')`. M36 dispatches a `critical`-severity alert via Sched's primary channel (SMS) + DON's primary channel (SMS + email), severity-elevated per `tenant_oncall_policy.coverage_gap_severity`. The DON's inbox surfaces a red banner on `/app/triage/shifts`. CoP 418.100(a) survey-record evidence is the watchdog's own outbox event + the M4 audit trail of the gap and its resolution (a shift created within X hours per tenant policy; default 6 hours; configurable).
 
 ### 7.5 Hybrid model: external vendor handles initial call, escalates to agency with PHI minimization
 
@@ -1492,22 +1574,125 @@ The six predicates registered with M3's named-predicate registry (per §4.7):
 
 All predicates are typed (`(ctx: AbacContext) => Promise<boolean>`), registered at boot via the M3 catalog, and exercised in independent unit tests separate from route handlers. Missing binding for any predicate = boot refusal.
 
-### 8.3 STRIDE Map
+### 8.3 STRIDE Threat Model (M19-F15 — SEC-007)
 
-| Threat | Mitigation |
-|---|---|
-| **Spoofing** the Triage Nurse role to take calls outside scope | `triage_role_active` ABAC predicate reads M5's `MembershipReader.hasTriageRole`; falsified session claims fail because the predicate re-resolves from the M5 reader at request time, not from session cache |
-| **Tampering** with answers to bypass mandatory escalation | Answers are append-only writes — `UPDATE` on `triage_call_answer` is denied by the M4 audit trigger; the only way to "correct" is a new `triage_call_answer_history` event (entered with reason); the original `is_red_flag` / `mandatory_escalation` evaluation is recorded at insert time and re-evaluation only adds rows, never overwrites |
-| **Repudiation** of who took the call, who answered which question, who selected the disposition | `triage_call_state_history` is append-only (the M4 audit trigger denies UPDATE/DELETE on the state-history table per §3.6); M4 PHI write-audit trigger on `triage_call` captures actor + IP + reason marker; the `triage_call.assigned_membership_id` change events are recorded in state history |
-| **Information disclosure** via the external vendor adapter — sending PHI to a third party | D13 PHI minimization: only the projection profile fields cross the network; adapter unit tests prove the request builder cannot include denylisted fields (compile-time + property-based fuzz); the type-system rejects any attempt; vendor BAA verified in M4 BAA registry at vendor-binding-creation time |
-| **Information disclosure** via the portal triage-log view | M31 calls `PortalTriageReader.entriesForPatient(patientId, withinDays)` which projects only lay-language fields; `triage_internal_notes` not in projection; raw `triage_call_answer` not exposed; vendor handoff details not exposed per D13; ABAC scope from M39 `family_caregiver_access` consent binds the session |
-| **Information disclosure** via AI suggestion telemetry | The AI suggestion request and response are logged to the M4 AI-governance audit channel (NOT the operational audit channel — separation per architecture §17). The chief-complaint free-text sent to the M32 protocol-suggester is the *minimum* required for the suggestion; the M32 boundary owns its own PHI-permission profile. M32 deny-stub today; when M32 locks, the bidirectional PHI contract is the M32 spec's responsibility |
-| **Denial of service** by spamming triage call creates | Per-actor rate limit on `POST /triage/calls` (30/hour for TN; 60/hour for Clin Supv + DON); `triage.call.open` permission required; vendor-session rate-limited separately at 120/hour per vendor; outbox-emit failures retry without amplification |
-| **Elevation of privilege** via Ext Triage Op accessing in-agency-only dispositions | `disposition_within_scope_of_practice` denies vendor-session disposition selections beyond the vendor PHI-min set; the disposition selector in the UI is constructed server-side per session role; client-only filtering is never the gate (cf. architecture §17 universal principle) |
-| **Mandatory-escalation suppression by tenant policy edit** | Platform-floor mandatory-escalation triggers (suicidal ideation, code-blue, suspected abuse, emergency drug request) are protected at the schema level: `triage_protocol_question.mandatory_escalation_protected_at_platform_floor=true` rows have UPDATE/DELETE denied by RLS (`USING (false)` for non-platform-admin roles); tenants can ADD mandatory-escalation triggers above the floor but cannot remove platform-floor ones (D7) |
-| **Time-of-check / time-of-use on disposition gate** | The disposition-doc-gate (D6) is enforced at encounter sign by M8's M19-consumer-side check; the lag between disposition-selected and encounter-signed is bounded by the tenant policy `disposition_doc_gate_minutes`; cron `disposition-doc-gate-watchdog` (§4.8) fires alerts when the window elapses without an encounter, then escalates to Clin Supv per M36 typed alert payload |
-| **Replay of triage-call outbox events** | Every M19 outbox emit is keyed on `(triageCallId, outboxTopic, transitionedAt)` via the M1 outbox helper; M17 consumer of `m19.triage_call.visit_needed` is idempotent on the same key; M8 consumer of `m19.triage_call.disposition_selected` is similarly idempotent |
-| **Cache poisoning of the on-call roster** | The on-call roster cache (per §4.5; `oncall:<orgId>:<asOfIso>` Valkey hash) is computed at shift activation / deactivation and on `m17.visit.assigned` events (M17's canonical assignment/roster-change signal per M17 §4.11; M17 emits no separate `m17.shift.changed`); cache writes are computed-only, never accept external input; cache TTL bounded at 2 hours with explicit invalidation on policy change |
+M19 is a **DR Tier-1, CoP-mandated clinical module** with a large external-actor surface (on-call RNs on mobile, external triage vendors, portal caregivers, M36 alert delivery) and time-critical operations where delays themselves constitute patient safety failures. The STRIDE analysis below covers M19's top threats with specific controls and test evidence.
+
+#### 8.3.1 Spoofing
+
+| Threat | Actor | Control | Test |
+|---|---|---|---|
+| Impersonate the on-call Triage Nurse to open/answer calls outside shift | Malicious internal user with stolen session | `triage_role_active` ABAC predicate re-resolves `MembershipReader.hasTriageRole` at request time (not from session cache); `oncall_shift_active` predicate requires an active `on_call_shift` row matching the org+actor for `now()` | §9.1 `oncall-shift-machine.ts` guard test; §9.4 IDOR token-swap test |
+| Impersonate a caregiver to open a portal triage view for another patient | Malicious caregiver with valid portal session | `portalSessionConsentActive` ABAC predicate validates M39 `family_caregiver_access` consent scoped to the specific `patientId`; patient-ID mismatch returns 403 | §9.4 IDOR test (c) |
+| Impersonate an external vendor operator to access full PHI | Hostile third-party session with guessed vendor token | Vendor SSO token carries `vendor_binding_claim` tied to a specific `external_triage_vendor_id`; the `vendor_session_pii_scope` middleware validates and applies PHI-min projection before the route handler runs; the projection layer is not bypassable by route-level code | §9.5 vendor-session forged-token test |
+| Session fixation / token replay by vendor operator | Compromised vendor token | Vendor SSO tokens are short-lived (1-hour TTL), org-scoped, and single-use-per-session (M2 session-policy enforced); invalidated on shift close via the `m19.oncall_shift.completed` event cascade | Vendor adapter unit test (§9.1) |
+
+#### 8.3.2 Tampering
+
+| Threat | Actor | Control | Test |
+|---|---|---|---|
+| Modify triage call answers to bypass mandatory escalation | Malicious RN; compromised session | `triage_call_answer` is append-only; M4 audit trigger denies UPDATE/DELETE; red-flag and mandatory-escalation evaluation is server-computed at INSERT time in the same transaction; correction requires a new row with `correction_of_answer_id`; original evaluation is permanently recorded | §9.2 mandatory escalation integration; §9.5 suppression attempt |
+| Alter the tenant on-call policy to lower mandatory-escalation tiers | Malicious org-admin | `triage_protocol_question.mandatory_escalation_protected_at_platform_floor=true` rows have `USING(false)` RLS denial for non-platform-admin UPDATE/DELETE; tenants can RAISE but not LOWER the floor per D7; `tenant_oncall_policy.version` optimistic-concurrency prevents concurrent edits from silently overwriting | §9.3 RLS; §9.5 mandatory-escalation suppression test |
+| Forge a `paper_origin_flag=true` call with an arbitrary backdated `opened_at` | Malicious actor seeking to hide a coverage gap | `triage.paper_reentry` permission required (org-admin/DON only; step-up re-auth); `paper_original_opened_at` range-checked against the declared outage window in `triage_paper_reentry_worklist`; M4 audit captures actor + original timestamp + `re_entered_by` | BCP re-entry security test (§9.5) |
+| Inject a crafted `disposition_data` payload to link arbitrary M11/M17 IDs | Malicious actor via forged POST | TypeBox discriminated-union validation at route layer; per-disposition payload handler cross-validates the linked IDs via the owning module's reader seam before committing | §9.1 `disposition-selector.ts` forged-POST test |
+
+#### 8.3.3 Repudiation
+
+| Threat | Actor | Control | Test |
+|---|---|---|---|
+| Deny having opened or abandoned a triage call | Any clinical actor | `triage_call_state_history` is append-only (M4 trigger denies UPDATE/DELETE); M4 PHI write-audit trigger on `triage_call` captures actor membership ID, IP, and command payload digest; every transition writes a `commandPayloadDigest` | §9.1 state-machine append-only assertion |
+| Deny having selected a particular disposition | On-call RN | `disposition_selected_at`, `disposed_by_membership_id` immutable after write; `triage_call_state_history` records the `disposition` transition with actor + digest | §9.2 end-to-end open→document |
+| Deny having triggered a mandatory escalation suppression attempt | Malicious org-admin | Every PATCH on `triage_protocol_question` triggers M4 audit with old/new values; RLS denial itself is logged at the Postgres audit level (pg_log) captured by M4's PG-audit extension | §9.5 suppression attempt (verify RLS denial log) |
+| AI model claims it did not suggest a protocol | M32 provider | `triage_call.ai_suggested_protocol_id`, `ai_confidence`, `ai_model_version_tag` recorded at suggestion time; AI-governance audit channel captures suggestion + clinician selection delta per D12; model version tag is immutable once recorded | §9.1 `ai-suggestion-handler.ts` |
+
+#### 8.3.4 Information Disclosure
+
+| Threat | Actor | Control | Test |
+|---|---|---|---|
+| External vendor receives full PHI via adapter | Misconfigured adapter | `VendorOutboundPayload` discriminated union is type-system-enforced (compile-time); property-based fuzz test confirms no input combination produces a denylisted-field body; vendor BAA gate enforced at vendor-binding-creation time per M4 BAA registry | §7.10 packet capture; §9.5 PHI-min test |
+| Portal caregiver reads internal triage notes or raw protocol answers | Portal session abuse | `PortalTriageReader` projects lay-language fields only; `triage_internal_notes` and raw `triage_call_answer` are excluded by design (not filtered at runtime — they are not in the DTO type); vendor handoff details excluded per D13 | §9.1 `portal-triage-projection.ts`; §9.6 portal E2E |
+| AI suggestion request leaks PHI to M32 beyond minimum necessary | M32 telemetry exfiltration | Chief-complaint free-text (SNOMED-coded preferred; free-text only if code unavailable) + condition code list + risk factor flags sent — no full chart dump per AI Governance §2.1.4; M32 boundary owns its own PHI-permission contract; logged to AI-governance audit channel | §9.1 `ai-suggestion-handler.ts` PHI-min assertion |
+| PHI lists returned via cursor-less offset pagination enabling enumeration | API consumer | Offset pagination forbidden on PHI lists (§4.1.1); opaque HMAC-signed cursors prevent enumeration; `total_count` suppressed on PHI lists | §9.4 cursor-pagination test |
+| `caller_phone_e164` or `caller_quote_cipher` exposed in audit log | M4 audit access | Column denylist per §3.6 emits `<changed>` marker not cleartext; `caller_quote_cipher` and `transcript_cipher` are additionally envelope-encrypted with per-tenant DEK; surveyor-mode projection strips free-text per §5.1 | §9.3 RLS + denylist assertion |
+
+#### 8.3.5 Denial of Service
+
+| Threat | Actor | Control | Test |
+|---|---|---|---|
+| Spam `POST /triage-calls` to flood the queue | Malicious internal actor | Platform-limiter rate limits per §8.3.6; `triage.call.open` permission required; BullMQ consumer concurrency capped; outbox-emit failures retry without amplification | §9.5 rate-limit test |
+| Trigger mandatory escalations en masse to overwhelm M36 alert delivery | Malicious RN answering every question as a red flag | Mandatory-escalation triggers are deduplicated per `(triageCallId, triggerKind)` — the same trigger cannot fire twice for the same call; the M36 `AlertEmitter` has per-recipient burst limits; escalation row INSERT is idempotent on `(triageCallId, triggerKind, escalatedAt::date)` | §9.1 `escalation-resolver.ts` idempotency test |
+| Exhaust Valkey by flooding the on-call roster cache | Any authenticated actor reading the `GET /oncall/current` route rapidly | Cache key is per-org + per-iso-hour (not per-request); `GET /oncall/current` hits the cache; a Valkey key-size limit per org is enforced by the M1 cache-policy middleware; `GET /oncall/current` is rate-limited at 60 req/min per actor | §9.7 performance test |
+| Crash the coverage-gap watchdog to silently allow uncovered periods | Bug or deliberate exception injection | Watchdog DLQ (`m19.coverage-gap.dlq`) captures failures; DLQ depth > 0 triggers a `warn` OpsAlert per §4.8; the watchdog is Tier-1 priority so Valkey restart restores it first; boot never depends on watchdog state | §9.2 coverage-gap watchdog integration |
+
+#### 8.3.6 Elevation of Privilege
+
+| Threat | Actor | Control | Test |
+|---|---|---|---|
+| External vendor operator selects `gip_admission_proposed` or `visit_dispatched_now` | Ext Triage Op session | `disposition_within_scope_of_practice` ABAC predicate denies vendor-session selections beyond the vendor PHI-min set; disposition selector constructed server-side per session role; client-only filtering never the gate | §7.5; §9.5 vendor-session disposition test |
+| LPN selects clinician-judgment disposition by forging POST | LPN session with `triage.disposition` permission | Server-side `disposition_within_scope_of_practice` predicate evaluates role × disposition matrix at every `POST /disposition` request; 403 `DISPOSITION_OUT_OF_SCOPE` on any unauthorized selection; tested per D6 | §7.3; §9.5 forged-POST test |
+| Unpermissioned actor reads another org's triage calls via direct ID manipulation | Cross-org IDOR | RLS `organization_id` filter on every table query; `triage_call.id` is UUIDv7 (non-guessable); 404 (not 403) returned on org-mismatch to prevent org existence oracle | §9.4 IDOR test (a) |
+| Break-glass access to another org's data without M3 workflow | Platform-ops actor | Cross-tenant read by `platform_ops` requires M3 break-glass workflow + per-access M4 audit per §3.5; the break-glass approval event is emitted to the M4 `compliance` audit channel | M3 break-glass integration (M3 §4.5) |
+
+#### 8.3.7 Platform-Limiter Rate-Limit Configurations (M19-F15 — SEC-007, SD-055)
+
+Rate limits are expressed as M1 platform-limiter `RateLimitPolicy` declarations (not ad-hoc middleware). The platform limiter enforces per-actor limits via the Valkey sliding-window counter with a 60-second window unless noted.
+
+```typescript
+// apps/backend/src/modules/19-oncall/rate-limits.ts
+import { definePlatformRateLimits } from '@wardenx/platform/rate-limiter'
+
+export const M19_RATE_LIMITS = definePlatformRateLimits([
+  {
+    // Triage call open — most sensitive; TN-flagged RNs have lower limit to prevent queue flooding
+    route: 'POST /api/v1/triage-calls',
+    limits: [
+      { role: 'triage_nurse',          window: '1h', max: 30,  burst: 5,  onExceed: 'reject_429' },
+      { role: 'clinical_supervisor',   window: '1h', max: 60,  burst: 10, onExceed: 'reject_429' },
+      { role: 'don',                   window: '1h', max: 60,  burst: 10, onExceed: 'reject_429' },
+      { role: 'vendor_session',        window: '1h', max: 120, burst: 20, onExceed: 'reject_429' },
+      { role: '*',                     window: '1h', max: 20,  burst: 5,  onExceed: 'reject_429' },
+    ],
+  },
+  {
+    // Protocol answer submission — rate-limited to prevent red-flag spam
+    route: 'POST /api/v1/triage-calls/:id/answers',
+    limits: [
+      { role: '*', window: '1m', max: 60, burst: 10, onExceed: 'reject_429' },
+    ],
+  },
+  {
+    // Disposition selection — one per call; enforce via idempotency key; DoS protection
+    route: 'POST /api/v1/triage-calls/:id/disposition',
+    limits: [
+      { role: '*', window: '1m', max: 10, burst: 3, onExceed: 'reject_429' },
+    ],
+  },
+  {
+    // On-call current — roster cache; high read volume expected during shift transitions
+    route: 'GET /api/v1/oncall/current',
+    limits: [
+      { role: '*', window: '1m', max: 60, burst: 15, onExceed: 'reject_429' },
+    ],
+  },
+  {
+    // Transcript decrypt — step-up route; strictly limited
+    route: 'GET /api/v1/triage-calls/:id/transcript-decrypt',
+    limits: [
+      { role: '*', window: '1h', max: 10, burst: 2, onExceed: 'reject_429' },
+    ],
+  },
+  {
+    // Tenant policy admin — destructive; strict limit
+    route: 'PATCH /api/v1/oncall/policy',
+    limits: [
+      { role: 'org_admin', window: '1h', max: 20, burst: 5, onExceed: 'reject_429' },
+      { role: '*',         window: '1h', max: 5,  burst: 2, onExceed: 'reject_429' },
+    ],
+  },
+])
+```
+
+Rate-limit violations return `429 Too Many Requests` with `Retry-After` header (seconds until next window). All 429 events are logged to M4's operational audit channel with actor identity and route for DoS pattern detection.
 
 ### 8.4 Eraser + Retention
 
@@ -1527,6 +1712,62 @@ Two AI surfaces touch M19, both via the M32 forward seam (deny-stub today):
 Both surfaces follow the architecture §17 AI-as-decision-support principle: the AI never gates and never automates; the clinician selects. The M4 AI-governance audit channel records every suggestion-vs-selection delta for compliance review.
 
 Per AI Governance §5: when M32 is deny-stubbed (pre-lock), the boot validator `validateAiBlockForTriage` (§4.4) enforces that the triage panel renders with the AI block visibly disabled — no silent fallback or guess — and metrics record `m19_ai_block_disabled_total` for visibility. When M32 locks and the seam is wired, the same panel re-enables; tenants may opt out of the AI block per `tenant_oncall_policy.ai_protocol_suggestion_enabled` and `ai_hospitalization_risk_enabled` flags.
+
+### 8.7 Audit-Event Catalog (M19-F15 — ARCH-003, SD-055)
+
+M19 emits two classes of audit events: **PHI write-audit** events (generated automatically by the M4 trigger generator on each owned table) and **business-event audit** entries (emitted explicitly via `m4.recordBusinessEvent` at application layer). Retention classes follow the M4 taxonomy.
+
+#### 8.7.1 PHI Write-Audit Events (M4 Trigger-Generated)
+
+Automatically generated on every INSERT/UPDATE/DELETE on PHI-bearing tables. Actor, IP, column-level diff (with denylist columns replaced by `<changed>`), and timestamp are captured. All carry retention class `compliance` unless noted.
+
+| Table | Trigger actions | Retention class | Notes |
+|---|---|---|---|
+| `triage_call` | INSERT, UPDATE, DELETE | `compliance` (6 yr from call close per CoP 418.104) | Free-text columns (`chief_complaint_text`, `caller_quote_cipher`, `transcript_cipher`) emit `<changed>` per §3.6 denylist |
+| `triage_call_answer` | INSERT only (append-only) | `compliance` | `answer_value_text` on free-text questions emits `<changed>` |
+| `triage_call_state_history` | INSERT only | `compliance` | `commandPayloadDigest` is a hash; no cleartext stored |
+| `triage_escalation` | INSERT, UPDATE | `compliance` | `trigger_detail` and `resolution` emit `<changed>` |
+| `on_call_shift` | INSERT, UPDATE | `operational` (2 yr) | `cancellation_reason` and `compensation_metadata` emit `<changed>` |
+| `tenant_oncall_policy` | INSERT, UPDATE | `configuration` (5 yr) | Full diff captured (no PHI fields) |
+| `triage_protocol` | INSERT, UPDATE | `operational` (5 yr) | Platform-floor rows: UPDATE/DELETE denied by RLS for non-platform-admin — denials logged at pg-audit level |
+| `triage_protocol_question` | INSERT, UPDATE | `operational` (5 yr) | `mandatory_escalation_protected_at_platform_floor=true` rows: UPDATE/DELETE denied and pg-audit-logged |
+| `external_triage_vendor` | INSERT, UPDATE | `configuration` (5 yr) | BAA dates and `baa_in_effect` flag especially sensitive — full diff captured |
+| `triage_paper_reentry_worklist` | INSERT, UPDATE | `compliance` | Tied to BCP outage-window audit trail |
+
+#### 8.7.2 Business-Event Audit Entries (Application-Emitted)
+
+Emitted via `m4.recordBusinessEvent(orgId, event)`. All carry `retention_class='compliance'` unless noted.
+
+| Event action | Trigger | Key fields | Retention | Notes |
+|---|---|---|---|---|
+| `triage.call.opened` | `POST /triage-calls` succeeds | `triageCallId`, `source`, `inboundChannel`, `callerKind`, `actorMembershipId` | compliance | Includes `paper_origin_flag`; paper-origin entries tagged for BCP review |
+| `triage.call.protocol_applied` | `POST /triage-calls/:id/apply-protocol` | `triageCallId`, `triageProtocolId`, `protocolVersion`, `ai_suggested`, `ai_accepted` | compliance | D12: AI acceptance recorded here |
+| `triage.call.answer_recorded` | `POST /triage-calls/:id/answers` | `triageCallId`, `questionId`, `redFlagHit`, `mandatoryEscalation` | compliance | Free-text answer value NOT in business event (in table diff with denylist); `red_flag_hit` is non-PHI |
+| `triage.call.disposition_selected` | `POST /triage-calls/:id/disposition` | `triageCallId`, `disposition`, `actorMembershipId`, `scopeOfPracticeRole` | compliance | Disposition enum value (not free-text `disposition_data`) captured |
+| `triage.call.documented` | `triage_call → documented` transition | `triageCallId`, `linkedEncounterId`, `documentedAt` | compliance | Confirms encounter link |
+| `triage.call.closed` | `triage_call → closed` transition | `triageCallId`, `finalDisposition`, `closedAt` | compliance | Survey record terminus |
+| `triage.call.abandoned` | `POST /triage-calls/:id/abandon` | `triageCallId`, `reason` (non-PHI length marker), `actorMembershipId` | compliance | Reason length logged, not content |
+| `triage.escalation.created` | Escalation row inserted (any trigger) | `triageCallId`, `escalationId`, `tier`, `triggerKind`, `recipientMembershipId?` | compliance | Platform-floor mandatory triggers: `systemLocked=true` flag in event |
+| `triage.escalation.acknowledged` | `POST /escalations/:id/acknowledge` | `escalationId`, `acknowledgedByMembershipId`, `acknowledgedAt`, `slaBreached` | compliance | `slaBreached: boolean` for HQRP reporting |
+| `triage.escalation.resolved` | `POST /escalations/:id/resolve` | `escalationId`, `resolvedByMembershipId`, `resolvedAt` | compliance | Resolution text not in event (in table diff with denylist) |
+| `triage.ai.suggestion_recorded` | M32 suggestion received | `triageCallId`, `suggestedProtocolId`, `confidence`, `modelVersionTag` | `ai_governance` (dedicated channel, 6 yr) | Separate AI-governance audit channel per D12 / architecture §17 |
+| `triage.ai.override` | Clinician selects different protocol | `triageCallId`, `suggestedProtocolId`, `selectedProtocolId`, `overrideReason?`, `confidenceAtSuggestion` | `ai_governance` | Override reason required ≥ 10 chars when confidence ≥ 0.75 per D12 |
+| `triage.shift.activated` | `on_call_shift → active` | `shiftId`, `providerEntityId`, `primaryMembershipId?`, `externalActorId?`, `model` | `operational` (2 yr) | M36 channel rotation triggered |
+| `triage.shift.completed` | `on_call_shift → completed` | `shiftId`, `callsHandled`, `escalationsCreated` | `operational` (2 yr) | Summary metrics captured at close |
+| `triage.coverage_gap.detected` | Coverage-gap watchdog fires | `providerEntityId`, `gapStartsAt`, `gapEndsAt`, `detectedAt` | `compliance` (survey evidence) | Tied to CoP 418.100(a) coverage obligation |
+| `triage.coverage_gap.resolved` | Shift created covering previously detected gap | `providerEntityId`, `gapWindowId`, `resolvedAt`, `resolvedByMembershipId` | `compliance` | Resolution timeline evidence for surveyor |
+| `triage.paper_reentry` | `paper_origin_flag=true` call created | `triageCallId`, `originalOpenedAt`, `reEnteredByMembershipId`, `outageWindowId` | `compliance` | BCP evidence chain per §2.7 |
+| `triage.vendor_access` | Any Ext Triage Op route access | `vendorId`, `actorLabel`, `route`, `patientFirstNameHash` (HMAC of first name — not cleartext) | `compliance` | PHI-boundary access log; vendor BAA reference |
+| `triage.transcript_decrypted` | `GET /triage-calls/:id/transcript-decrypt` | `triageCallId`, `actorMembershipId`, `decryptedAt` | `compliance` | Step-up auth captured by M2; M4 records the decrypt event |
+
+**Retention summary by class:**
+
+| Class | Retention period | Governed by |
+|---|---|---|
+| `compliance` | 6 years from final lifecycle event on the parent `triage_call` | CoP 418.104; M4 §6 |
+| `ai_governance` | 6 years | AI Governance §5; architecture §17 |
+| `operational` | 2 years | M4 operational class default |
+| `configuration` | 5 years | M4 configuration class default |
 
 -----
 
@@ -1654,7 +1895,7 @@ Sized **S** (≤1 day), **M** (1–3 days), **L** (3–7 days). PR boundaries la
 | 35 | Tenant protocol catalog CRUD routes — read all (platform + tenant); author / edit / publish workflow on tenant protocols; draft isolation from in-flight calls (versioning frozen at call open per §9.6 fixture) | L | 10 | H |
 | 36 | External-triage-vendor CRUD + BAA-on-file gate (read M4 BAA registry; vendor binding rejected at runtime if BAA not present) + vendor SSO endpoint scaffolding | M | 11 | H |
 | 37 | On-call shift CRUD + assignment validation (TN flag + credential active + not on PTO via M17 reader) + Valkey roster cache writer per §4.5 | M | 10, 19 | H |
-| 38 | `coverage-gap-watchdog` BullMQ worker (D3 alert path) — runs every 30 minutes per org for next-shift window; emits `m19.oncall_shift.coverage_gap` outbox event | M | 12, 37 | H |
+| 38 | `coverage-gap-watchdog` BullMQ worker (§2.7/M19-F08 alert path) — runs **every 30 min** (canonical cadence per §4.8/M19-F12) per org for next-24 h window; emits `m19.oncall_shift.coverage_gap` outbox event; DLQ: `m19.coverage-gap.dlq`; Tier-1 priority | M | 12, 37 | H |
 | 39 | AI suggestion service (`ProtocolSuggestionProvider` seam consumer — D12) + deny-stub today + `validateAiBlockForTriage` boot validator (§4.4) | M | 22 | **I** |
 | 40 | AI hospitalization-risk service (`HospitalizationRiskProvider` seam consumer — D11) + deny-stub today + intake-screen advisory loader | S | 39 | I |
 | 41 | AI-governance audit emit on every suggestion + override (separate channel from operational audit per architecture §17) | S | 39 | I |
@@ -1767,4 +2008,4 @@ The dependsOn list reflects every module M19 imports types from or registers han
 
 -----
 
-**End of Module 19 — On-Call Triage Specification v0.2 (Locked)**
+**End of Module 19 — On-Call Triage Specification v0.3.1 (ADR-0021 §20.B template additions)**

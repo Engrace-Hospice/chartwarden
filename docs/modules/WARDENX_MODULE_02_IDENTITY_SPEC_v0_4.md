@@ -48,17 +48,17 @@
 | M02-F06 | MAJOR | Account-takeover set completed: invisible-Turnstile captcha after 3 failures, cross-account velocity → defensive mode, suspicious-activity (geo/device/off-hours) re-auth, two-IP forced re-auth, 15-min lockout duration (SEC-033). |
 | M02-F07 | MAJOR | **Organization status machine contracted now** (active/suspended/closed); session issuance + `select-organization` gated on org status; `m2.organization.activated/suspended/closed` events contracted (forward note → §8.1.1). |
 | M02-F08 | MAJOR | Mobile **offline ticket** specified: short-lived signed ticket cryptographically bound to the session, revocation behavior, sync-requires-online (SD-047). |
-| M02-F09 | MAJOR | STRIDE threat model (account takeover, session theft, invitation-token abuse, org-binding spoofing) to be added (SEC-007). |
+| M02-F09 | MAJOR | STRIDE threat model (account takeover, session theft, invitation-token abuse, org-binding spoofing) added (SEC-007) — see §14. |
 | M02-F10 | MAJOR | HIBP added to the INT inventory (INT-002); wrapped in an adapter with circuit-breaker + `DegradedError`; degraded behavior defined (accept + async re-check). |
 | M02-F11 | MINOR | RLS variable normalized to **`app.org_id`**; `withTenantContext` → `withOrgContext` (global rename). |
 | M02-F12 | MINOR | Invented `security` retention class remapped to `compliance` (§24). |
-| M02-F13 | MINOR | Five BullMQ queues declare priority/retry/backoff/concurrency/DLQ + idempotent consumers; `Idempotency-Key` semantics stated; error envelope conformed; `select-organization` route path reconciled with SD §1.3.1. |
+| M02-F13 | MINOR | Five BullMQ queues declare priority/retry/backoff/concurrency/DLQ + idempotent consumers (§15.1); `Idempotency-Key` semantics stated (§15.2); error envelope conformed (§15.3); `select-organization` route path reconciled with SD §1.3.1 — see §15. |
 | M02-F14 | MINOR | Sample-code defects (non-existent columns, unreachable SMS branch, audit-outside-transaction, hashed-vs-encrypted backup codes) fixed at implementation; audit emission moved inside the mutation transaction. |
 | M02-F15 | MINOR | MFA matrix restated as "all roles except read-only" (ARCH-050). |
 | M02-F16 | MINOR | Residual auditor surfaces re-homed to M3's engagement console; issuing role aligned to Compliance Officer (§7.5). |
 | M02-F17 | MINOR | `listMembershipsForUser` cross-org read captured as an ADR with an allowlisted query shape. |
 | M02-F18 | MINOR | Password recovery: 15-min reset-link TTL, TOTP gate at click, out-of-band verification for `platform_ops`/`org_admin` (SEC-031). |
-| M02-F19 | MINOR | DR tier declaration (Tier 1) + degraded-mode (Valkey loss → forced re-login); all-locations membership flag (ARCH-013). |
+| M02-F19 | MINOR | DR tier declaration (Tier 1, RTO 1h / RPO 5min) + degraded-mode behavior (§16.2); all-locations membership flag modeled (§16.3 / ARCH-013) — see §16. |
 
 -----
 
@@ -1641,17 +1641,236 @@ Five spec refinements worth recording for future tracking:
 
 -----
 
+## 14. STRIDE Threat Model (M02-F09 / SEC-007)
+
+> **Finding:** M02-F09 (MAJOR) — STRIDE threat model (account takeover, session theft, invitation-token
+> abuse, org-binding spoofing) to be added (SEC-007). This section satisfies that requirement and
+> the ADR-0021 CI-gated template mandate.
+
+M2 owns the authentication surface — the highest-value attack target in the platform. The table below maps each STRIDE category to M2's specific threats, the controls already in the spec, and the test assertions that prove the control holds.
+
+### 14.1 STRIDE Table
+
+| STRIDE | Threat | M2 controls | Test assertions |
+|---|---|---|---|
+| **Spoofing** | **Account takeover** — attacker authenticates as a legitimate user by password brute-force, credential stuffing (leaked-credential replay), or phishing a password-reset link | Argon2id hash (Security Hardening §4); HIBP k-anonymity breach check at set/change (§2.3); invisible Turnstile CAPTCHA after 3 failures; account lockout after 5 failures / 10 min (§2.4); 15-min reset-link TTL + TOTP gate at click + out-of-band verification for `platform_ops`/`org_admin` (M02-F06 / M02-F18 / SEC-031 / SEC-033) | §9.1: lockout counter resets on success; §9.2: 5 failed logins → locked; HIBP adapter unit tests (circuit-breaker + `DegradedError`); reset-link TTL and TOTP-gate tests |
+| **Spoofing** | **Org-binding spoofing** — a client-supplied `active_organization_id` overrides the server-side binding to jump tenants within a session | `active_organization_id` is set **server-side only** (`POST /api/v1/auth/select-organization`); subsequent calls are **read-only** from the session row; a second bind attempt returns `409 ORG_ALREADY_BOUND` (§4.2); org-binding is scoped by RLS on every query via `withOrgContext()` (M02-F03 / ARCH-013 `all_locations` is a membership flag, not a client-settable claim) | §9.3: forged client-side `organizationId` in headers cannot override server session binding; §9.2: second `select-organization` call → 409 |
+| **Spoofing** | **MFA bypass** — attacker skips the 2FA challenge by replaying a post-MFA session cookie or forging `lastStepUpAt` | `lastStepUpAt`/`lastStepUpFactor` are server-side-only session fields (never client-writable); the paired-write CHECK constraint prevents an inconsistent state (D8); SMS is refused as a step-up factor at schema validation + route logic + Valkey challenge gate (§4.4 / D9 / W-M2-11); login MFA is enforced by Better Auth before session issuance | §9.1: paired-write CHECK unit test; W-M2-11 SMS-refused at all layers; §9.2: passkey + TOTP full-ceremony integration tests |
+| **Tampering** | **Session token tampering** — attacker modifies a session cookie to escalate `session_class` or forge `active_organization_id` | Session tokens are Better Auth-signed opaque references; session row fields are DB-authoritative and never derived from the token payload; `session_class` is set at issuance and immutable; `scope` CHECK constraint validates correct `patientId` presence per class (§3.9) | §9.3: session bound to Org A cannot read Org B rows; `session_scope_chk` DB constraint enforced at INSERT |
+| **Tampering** | **Invitation token replay / modification** — attacker re-uses an accepted/expired token or modifies it to invite themselves to an org | `token_hash` stored (never the token); atomic consumption with a status transition from `pending` → `accepted`/`expired`/`revoked`; `org_invitation_pending_unique` partial index prevents duplicate pending invites per `(org, email)` (§3.5); token TTL 7 days | §7.12 race condition test — two concurrent accepts → exactly one membership; §9.2: expired-token and already-used-token rejection integration tests |
+| **Tampering** | **Tenant step-up tightening subverted** — a tenant admin loosens the step-up floor (adds SMS, extends `max_age_sec` beyond 300) | `trg_tenant_step_up_tighten_only` DB trigger rejects SMS in `qualifying_factors`, `max_age_sec > 300`, and empty `qualifying_factors` (§3.9, D9); `resolveStepUpPolicy` takes `intersect` on factors and `min` on `maxAgeSec` (§4.3.2) | §9.1: trigger unit tests for all three rejection conditions; W-M2-10 end-to-end override enforcement |
+| **Repudiation** | **Auth-event repudiation** — user denies a login, step-up, or membership action | All auth events emitted to M4's immutable audit log via M1's audit helper (§8.1); step-up events at `compliance` retention; payloads include `ipAddress`, `userAgent`, `factor`, `sessionId`, `membershipId` (D11); tokens and secrets never serialized | §8.1 event catalog: every action in the table has a matching integration test asserting the audit row |
+| **Information Disclosure** | **Cross-tenant data read** — a session in Org A reads Org B rows via a crafted query or missing RLS | RLS enforced on all M2-owned tables; `organization_invitation` and `tenant_step_up_policy_override` are org-scoped via `withOrgContext()` / `wardenx_enable_rls()`; `two_factor` and `passkey` are user-scoped (cross-org by design but user-isolated); the `listMembershipsForUser` path returns only `(orgId, name, status)` — no PHI (§3.8) | §9.3: full RLS isolation suite — Org A invitation invisible under Org B context; `listMembershipsForUser` returns no PHI columns |
+| **Information Disclosure** | **Account enumeration** — attacker probes whether an email is registered via login/forgot-password response timing or body differences | `POST /api/auth/forgot-password` always returns 200 regardless of whether the email exists (§4.1 note); login failure returns a generic message; lockout message is identical for locked vs. non-existent accounts | §9.2: forgot-password always 200 regardless of email existence; login failure messages are identical |
+| **Denial of Service** | **Brute-force / credential stuffing** — volumetric attack against `/sign-in/email` or `/forgot-password` exhausting Valkey counters or DB connections | Per-account + per-IP counters in Valkey with TTL; invisible Turnstile CAPTCHA after 3 failures; 15-min account lockout; rate-limiting via M1 middleware (SEC-033 / M02-F06); breached-password async check uses circuit-breaker + `DegradedError` (HIBP adapter) so HIBP unavailability does not block login | §9.2: lockout counter atomicity; §9.6: 1,000 concurrent session lookup within latency targets; HIBP circuit-breaker unit test |
+| **Denial of Service** | **Magic-link / invitation token flooding** — attacker floods invitation-create endpoint to exhaust the `org_invitation_pending_unique` index | `member.invite` permission required (org_admin only, §6); `org_invitation_pending_unique` index limits one pending invite per `(org, email)`; M1 idempotency middleware deduplicates retries (`Idempotency-Key`) | §9.2: second invite to same email returns `409 PENDING_INVITE_EXISTS`; idempotency key deduplication integration test |
+| **Elevation of Privilege** | **Step-up freshness bypass** — attacker reuses a stale `lastStepUpAt` to pass `step_up_recent` without re-challenging | `step_up_recent` predicate is evaluated by Module 3 at the time of the privileged request using the live session row value; freshness window is `min(platformDefault, tenantOverride)` (§4.3.2); a session that has not stepped up within the window is denied regardless of `lastStepUpAt` | W-M2-09: stale session → 403 → step-up → retry succeeds; W-M2-10: tenant-tightened window honored |
+| **Elevation of Privilege** | **Auditor session privilege expansion** — auditor attempts writes or cross-patient reads beyond read-only scope | Auditor `session_class='auditor'` carries no `scope.patientId`; Module 3's write-permission predicates refuse the `auditor` class; `no concurrent sessions` constraint enforced at issuance; engagement window bounds checked (§2.2.4) | §9.5: auditor Playwright suite — read-only enforced, concurrent session blocked, post-window session rejected |
+| **Elevation of Privilege** | **Last-admin lockout guard bypass** — an org_admin attempts to suspend/revoke/deactivate themselves or the only remaining admin, leaving the org without admin access | Last-admin guard checked in `PATCH /api/v1/orgs/:id/members/:mId` and `DELETE` before committing; platform_ops override requires an audited `reason` (§6 / §7.12) | §9.1: last-admin guard unit test; §9.2: suspend-own-last-admin returns 409 |
+
+### 14.2 Residual Risks
+
+| Risk | Residual posture |
+|---|---|
+| SIM-swap against SMS fallback | SMS is accessibility-only (D2), never a step-up qualifying factor; SMS does not appear in `STEP_UP_POLICY.qualifyingFactors`; Twilio BAA covers the conduit |
+| WebAuthn RP-ID mismatch (phishing relay) | `rpId` is pinned in `WEBAUTHN_RP_ID` environment variable; credential bound to origin at registration; Better Auth WebAuthn plugin enforces origin check at assertion |
+| Offline ticket forgery (mobile) | Short-lived, cryptographically signed, session-bound, revocation checked on sync; modeled per M02-F08 / SD-047 |
+| HIPAA §164.312(e) — transmission security | Enforced at infrastructure layer (TLS 1.3 everywhere); not an M2 application control |
+
+-----
+
+## 15. Queue Parameters, Idempotency, and Error Envelope (M02-F13 / ARCH-262/263, SD-053/059, SD-051)
+
+> **Finding:** M02-F13 (MINOR) — Five BullMQ queues declare priority/retry/backoff/concurrency/DLQ +
+> idempotent consumers; `Idempotency-Key` semantics stated; error envelope conformed. This section
+> satisfies that requirement and the ADR-0021 CI-gated template mandate.
+
+### 15.1 BullMQ Queue Parameters
+
+All five M2 queues inherit the at-least-once / idempotent-consumer contract from the M1 outbox dispatcher (ARCH-263 / DR-022). The `attempts` column below counts total delivery tries (initial + retries). Every queue routes exhausted jobs to a dedicated DLQ rather than silently dropping them (SD-059 / OPS-035); **an operator must document findings before clearing any DLQ entry** (OPS-035 document-before-clear policy).
+
+| Queue | Priority | attempts | backoff | concurrency | DLQ / on-exhaustion | Idempotent consumer key |
+|---|---|---|---|---|---|---|
+| `auth.send_invitation` | normal (5) | 5 | exponential, base 10s, cap 5 min | 4 | → `auth.send_invitation.dlq`; emit `m2.invitation.delivery_failed` outbox event; alert ops | `(organizationInvitationId)` — skip if `status ≠ 'pending'` |
+| `auth.send_magic_link` | high (8) | 5 | exponential, base 10s, cap 5 min | 4 | → `auth.send_magic_link.dlq`; emit `m2.magic_link.delivery_failed` outbox event; alert ops | `(sessionToken hash)` — skip if token already consumed or expired |
+| `auth.breach_check` | low (2) | 3 | fixed 30s | 8 | → `auth.breach_check.dlq`; mark password for async re-check flag; circuit-breaker trip if HIBP unavailable (M02-F10 / INT-002 `DegradedError`) | `(accountId, passwordHash prefix)` — deduplicated; safe to re-run |
+| `session.reap_expired` | low (2) | 3 | fixed 60s | 1 | → `session.reap_expired.dlq`; next cron run covers missed windows (reentrant, no data loss) | no natural key needed — DELETE WHERE expires_at < now() is idempotent |
+| `auth.offboard_user` | high (8) | 5 | exponential, base 5s, cap 2 min | 2 | → `auth.offboard_user.dlq`; alert ops immediately — a stuck offboard is a security event; page on-call | `(userId, offboardEventId)` — skip if `user.status = 'deactivated'` already |
+
+**Notes:**
+- Priority scale: BullMQ 1 (highest) – 10 (lowest). `auth.send_magic_link` and `auth.offboard_user` are high-priority because delivery latency is user-facing or security-critical.
+- `session.reap_expired` runs on a scheduled cron trigger; manual re-queue is harmless (idempotent DELETE).
+- All DLQ entries surface on the M1 ops triage route; ops **must investigate and document** before marking a DLQ entry resolved (OPS-035). DLQ entries for `auth.offboard_user` trigger an immediate security-oncall page.
+
+### 15.2 Idempotency-Key Semantics
+
+Every mutating route (`POST`, `PUT`, `PATCH`, `DELETE`) that is not inherently idempotent-by-nature (i.e., token consumption routes that are single-use by design) accepts an `Idempotency-Key` header processed by the M1 idempotency middleware (ARCH-262 / ARCH-263):
+
+- **Storage:** `(org_id, idempotency_key, request_hash, response_body)` stored in Valkey with a 24-hour TTL; Postgres mirror for crash safety.
+- **Same key + same body:** returns the cached response (200/201/204 as originally issued).
+- **Same key + different body:** returns `409 IDEMPOTENCY_KEY_BODY_MISMATCH` immediately.
+- **Pre-auth routes** (`/sign-in`, `/forgot-password`, `/reset-password`) are outside the org-scoped idempotency store; they are stateless or carry their own single-use tokens.
+
+| Route | Idempotency scope | Notes |
+|---|---|---|
+| `POST /api/v1/orgs/:id/invitations` | `(orgId, Idempotency-Key)` | Prevents duplicate invite on double-submit; returns `409 PENDING_INVITE_EXISTS` if a pending invite already exists for the email (independent of idempotency key) |
+| `POST /api/v1/invitations/accept` | `(orgId, Idempotency-Key)` | Token consumption is itself single-use; idempotency key adds a second safety net on double-click |
+| `PATCH /api/v1/orgs/:id/members/:mId` | `(orgId, Idempotency-Key)` | Membership status transitions |
+| `DELETE /api/v1/orgs/:id/members/:mId` | `(orgId, Idempotency-Key)` | Revoke membership |
+| `POST /api/v1/users/:id/deactivate` | `(orgId, Idempotency-Key)` | Full offboard; idempotent on `user.status = 'deactivated'` check |
+| `POST /api/v1/collaborators/invite` | `(orgId, Idempotency-Key)` | Mint collaborator link |
+| `POST /api/v1/funeral/invite` | `(orgId, Idempotency-Key)` | Mint funeral-home link |
+| `POST/PATCH/DELETE /api/v1/orgs[...]` | `(orgId, Idempotency-Key)` | Org/PE/Location mutations |
+| `POST/PATCH /api/v1/orgs/:id/step-up-overrides[...]` | `(orgId, Idempotency-Key)` | Step-up policy override mutations |
+
+Routes that are intentionally **non-idempotent by design** (session step-up `POST /api/v1/sessions/step-up`, screen-unlock `POST /api/v1/auth/screen-unlock`) do not carry an `Idempotency-Key` because each call is a fresh MFA challenge with a one-time Valkey-backed challenge ID; the challenge ID itself is the replay-protection mechanism.
+
+### 15.3 Error Envelope Conformance
+
+All M2 error responses conform to the M1 standard error envelope (SD-051). Every error body returned by M2 routes has the shape:
+
+```json
+{
+  "error": {
+    "code": "MACHINE_READABLE_SCREAMING_SNAKE",
+    "message": "Human-readable description",
+    "details": { ... },
+    "correlationId": "<uuid>",
+    "documentationUrl": "https://docs.wardenx.app/errors/<CODE>"
+  }
+}
+```
+
+M2-specific error codes registered in `packages/types/src/error-codes.ts`:
+
+| HTTP | Code | Meaning |
+|---|---|---|
+| 400 | `SMS_NOT_STEP_UP_QUALIFYING` | Step-up attempted with SMS factor |
+| 400 | `CHALLENGE_EXPIRED_OR_INVALID` | Step-up challenge not found or expired |
+| 400 | `CHALLENGE_SESSION_MISMATCH` | Challenge belongs to a different session |
+| 400 | `WEBAUTHN_VERIFICATION_FAILED` | Assertion did not verify |
+| 400 | `TOTP_VERIFICATION_FAILED` | TOTP code incorrect |
+| 400 | `MALFORMED_VERIFY_PAYLOAD` | Missing assertion or totpCode in request body |
+| 400 | `WEBAUTHN_NOT_ENROLLED` | No active passkey registered for this user |
+| 400 | `TOTP_NOT_ENROLLED` | No verified TOTP record for this user |
+| 401 | `STEP_UP_FAILED` | Step-up challenge failed (non-lockout) |
+| 403 | `NO_ACTIVE_MEMBERSHIP` | Chosen org is not an active membership for the user |
+| 409 | `ORG_ALREADY_BOUND` | Session already has `active_organization_id`; re-login to switch |
+| 409 | `PENDING_INVITE_EXISTS` | A pending invitation already exists for this email in this org |
+| 409 | `LINK_ALREADY_USED` | Magic-link token already consumed |
+| 409 | `IDEMPOTENCY_KEY_BODY_MISMATCH` | Same key submitted with different request body |
+| 410 | `LINK_EXPIRED` | Magic-link token past its TTL |
+| 422 | `INVALID_LOCATION_SCOPE` | Proposed location IDs do not belong to this org |
+| 423 | `SESSION_LOCKED` | Session forcibly terminated after step-up lockout threshold |
+
+-----
+
+## 16. Disaster Recovery — Tier Declaration and Degraded Mode (M02-F19 / DR-010/064, ARCH-013)
+
+> **Finding:** M02-F19 (MINOR) — DR tier declaration (Tier 1) + degraded-mode (Valkey loss →
+> forced re-login); all-locations membership flag (ARCH-013). This section satisfies that
+> requirement and the ADR-0021 CI-gated template mandate.
+
+### 16.1 DR Tier Declaration
+
+**Module 2 is DR Tier 1 — Critical patient care.**
+
+| Attribute | Value |
+|---|---|
+| **DR Tier** | Tier 1 |
+| **RTO target** | **1 hour** (internal; SLA commitment 2 hr — `WARDENX_DR_BCP` §3.2 Tier 1 table) |
+| **RPO target** | **5 minutes** (internal; SLA commitment 15 min — WAL streaming + `archive_timeout = 60s`) |
+| **Authority** | `WARDENX_DR_BCP_v0.1` §3.2 Tier-1 definition: "Loss directly affects active patient care, medication administration, or imminent safety"; DR-010 (Tier-1/2 services may not let any external dependency block documentation or medication administration) |
+| **Rationale** | Authentication is the gateway to all clinical operations. A Tier-1 module that cannot authenticate a clinician blocks every other Tier-1 clinical module (eMAR, orders, EVV, on-call). Login downtime = clinical documentation downtime. |
+
+### 16.2 Degraded-Mode Behavior
+
+M2 has two external runtime dependencies that can degrade independently: **Valkey** (session store + idempotency keys + step-up challenge state + lockout counters) and the **PostgreSQL read replica** (fallback for read-heavy paths). In each degraded mode, M2 must not silently drop safety controls.
+
+#### 16.2.1 Valkey loss or unavailability
+
+| Subsystem | Normal behavior | Valkey-loss behavior |
+|---|---|---|
+| Session validation (hot path) | Session token resolved via Valkey cache; DB fallback on miss | **Valkey miss → always fall back to DB read** (slower but correct); session validation continues; no forced re-login for already-validated sessions that hit DB |
+| New session issuance (login) | Session written to DB + cached in Valkey | Session written to DB; Valkey write failure is logged + alerted but **does not abort session issuance** — DB is authoritative |
+| **Lockout counters** | Per-account + per-IP failure counters in Valkey with TTL | **Counter loss → lockout state cleared.** Mitigation: account-lockout events are also audited (M4); ops can detect a counter-cleared lockout via the audit log. Accept this residual risk per Tier-1 availability priority (DR-064: a Tier-1 module must not become fully unavailable due to Valkey loss) |
+| **Step-up challenge state** | Challenge stored in Valkey with 60s TTL | **Challenge loss → step-up challenge expires immediately.** The user receives `challenge_expired_or_invalid` (400) and must re-initiate. No session termination; the user retries the step-up flow. |
+| **Idempotency keys** | 24-hour Valkey store + Postgres mirror | On Valkey loss, idempotency falls back to **Postgres mirror only**; duplicate detection continues at slightly higher DB read cost |
+| **Screen-lock re-auth** | `screenLockedAt` cleared in session row (DB); Valkey cache updated | Valkey update failure is non-blocking; DB session row is authoritative |
+| BullMQ queue visibility | Jobs enqueued to Valkey-backed BullMQ | On Valkey loss, **new jobs cannot be enqueued**; in-flight jobs may be lost. DLQ backfill on recovery. M2 does not drop failed auth emails silently — recovery playbook is to re-trigger affected invitation/magic-link jobs from the `organization_invitation` table state |
+| **Forced re-login net effect** | — | Valkey loss does **not** force a mass re-login for all active sessions. Active sessions backed by valid DB rows continue to be valid. Valkey-cached session expiry does not fire; expiry is authoritative in the DB `expires_at` column. |
+
+> **Key distinction from M02-F19 finding:** the finding stated "Valkey loss → forced re-login."
+> The precise behavior is: **new login cannot enqueue BullMQ jobs** (outbox delivery degraded), and
+> **step-up challenges expire immediately**. Sessions already issued continue to be valid via the DB
+> fallback. A complete Valkey + DB replica failure would force re-login, but that scenario is a
+> full DB failure (Tier-1 DR recovery procedure, not a Valkey-only scenario).
+
+#### 16.2.2 PostgreSQL read replica failover
+
+M2's hot path (session validation) reads from the DB. During a replica failover or replica lag beyond the threshold:
+
+| Phase | Behavior |
+|---|---|
+| Replica lag detected (M1 `read_replica_session` helper, lag monitor) | `auth_login_duration_seconds` histogram will widen; ops alerted via the M1 replica-lag alert |
+| Replica promotion in progress | M1's `read_replica_session` helper switches to the primary for reads automatically (failover transparent to M2) |
+| Primary-only mode | Auth reads hit primary; higher load on primary; no data loss; session validation continues |
+| Re-login required if | The old primary is demoted and the session cache (Valkey) has also been lost simultaneously — a compound failure. This is the scenario where a forced re-login occurs. Mitigation: WAL streaming at 60s archive timeout keeps RPO ≤ 5 min. |
+
+#### 16.2.3 HIBP integration degraded (DR-010 / INT-002)
+
+Per M02-F10 and the Integration Catalog (INT-002), the HIBP adapter has a circuit breaker. When HIBP is unavailable:
+- The `auth.breach_check` BullMQ job catches the `DegradedError`, **accepts the password**, and flags the account for async re-check when HIBP recovers.
+- This is the explicit DR-010 application: HIBP unavailability must never block documentation (i.e., a clinician setting a new password must not be blocked).
+
+### 16.3 All-Locations Membership Flag (ARCH-013)
+
+Architecture §Cross-cutting rules (ARCH-013) states: **"All-locations access is a flag on the membership, not a separate role."** M2 owns the membership entity and must model this flag.
+
+The `membership` table (M1-owned, M2-managed via `MembershipRepository`) carries an `all_locations` boolean flag:
+
+```sql
+-- Carried in the M1-owned `membership` table; M2 manages via MembershipRepository
+-- Column added via M1 migration on M2's CMSR (same mechanism as step-up columns)
+ALTER TABLE membership ADD COLUMN all_locations boolean NOT NULL DEFAULT false;
+```
+
+Behavior:
+- When `all_locations = true`, Module 3's ABAC location predicate grants the membership access to all locations under the membership's `organization_id`, regardless of `default_location_ids`.
+- When `all_locations = false` (default), access is restricted to the `default_location_ids` array on the membership row.
+- `all_locations` is set by `org_admin` or `platform_ops` via `PATCH /api/v1/orgs/:id/members/:mId` (the same endpoint that manages `default_location_ids`).
+- Setting `all_locations = true` is audited as `membership.updated` with `changedFields: ['all_locations']` and emits the `m2.membership.updated` outbox event (consumed by M33 predicate-cache invalidation).
+- **`all_locations` does not bypass RLS.** The organization-level `app.org_id` RLS predicate still applies; `all_locations` only affects Module 3's location-scope ABAC predicate resolution within the already-scoped org.
+
+The `PATCH /api/v1/orgs/:id/members/:mId` request body schema is extended to include:
+
+```typescript
+// Existing schema extended — not a new route
+Type.Object({
+  status: Type.Optional(Type.Union([
+    Type.Literal('active'), Type.Literal('suspended')
+  ])),
+  defaultLocationIds: Type.Optional(Type.Array(Type.String({ format: 'uuid' }))),
+  allLocations: Type.Optional(Type.Boolean()),
+  // NOTE: allLocations=true and defaultLocationIds non-empty are mutually exclusive;
+  // server returns 422 INVALID_LOCATION_SCOPE if both are set simultaneously
+  defaultProviderEntityId: Type.Optional(Type.String({ format: 'uuid' })),
+})
+```
+
+-----
+
 ## Document Footer
 
-**Spec version:** v0.4 (Consolidated — Locked)
+**Spec version:** v0.5 (Re-locked — ADR-0021 template-sweep additions)
 **Spec author:** Architecture (Fabrice V. Adjam, FabWebDev)
-**Date:** 2026-06-10
-**Format:** Self-contained consolidated specification (rolls v0.2 base + v0.3 delta)
-**Scope:** Owns identity, the four session classes, MFA primitives, and step-up authentication state. Closes the `session.lastStepUpAt` field contract for Module 3's `step_up_recent` predicate; ships the step-up route and tenant tightening mechanism for T-29.10 / T-29.11 / Module 4 privileged paths.
+**Date:** 2026-06-13
+**Format:** Self-contained consolidated specification (rolls v0.2 base + v0.3 delta + v0.5 ADR-0021 sweep)
+**Scope:** Owns identity, the four session classes, MFA primitives, and step-up authentication state. Closes the `session.lastStepUpAt` field contract for Module 3's `step_up_recent` predicate; ships the step-up route and tenant tightening mechanism for T-29.10 / T-29.11 / Module 4 privileged paths. Adds §14 STRIDE threat model, §15 queue parameters + idempotency + error envelope, §16 DR Tier 1 + degraded-mode + `all_locations` flag.
 **Decisions in force:** D1 through D11 (11 total)
-**Schema:** session additionalFields (class/scope/engagement/screen-lock) + `two_factor`, `passkey`, `organization_invitation` tables; plus 1 enum (`step_up_factor`), 2 step-up columns on `session` (with paired-write CHECK), and 1 table (`tenant_step_up_policy_override` with RLS + tighten-only trigger). Migrations `0002` and `0036`.
+**Schema:** session additionalFields (class/scope/engagement/screen-lock) + `two_factor`, `passkey`, `organization_invitation` tables; plus 1 enum (`step_up_factor`), 2 step-up columns on `session` (with paired-write CHECK), and 1 table (`tenant_step_up_policy_override` with RLS + tighten-only trigger). Migrations `0002` and `0036`. `membership.all_locations` boolean added via M1 migration on M2's CMSR (ARCH-013 / §16.3).
 **Constants:** `SESSION_POLICY`, `STEP_UP_POLICY` (both in `packages/foundation/src/policy`)
-**Routes:** the Better Auth `/api/auth/*` contract plus the WardenX `/api/v1/*` surface, including `POST /api/v1/sessions/step-up/initiate`, `POST /api/v1/sessions/step-up`, and `GET /api/v1/me/session` (step-up-extended)
+**Routes:** the Better Auth `/api/auth/*` contract plus the WardenX `/api/v1/*` surface, including `POST /api/v1/sessions/step-up/initiate`, `POST /api/v1/sessions/step-up`, and `GET /api/v1/me/session` (step-up-extended); `PATCH /api/v1/orgs/:id/members/:mId` extended with `allLocations` field (§16.3)
 **Workflows:** §7.1–§7.7 plus W-M2-08 through W-M2-11
 **Implementation tasks:** 15 base tasks plus T-M2-12 through T-M2-15
 **Sign-offs required:** M3 owner, Compliance officer, Privacy engineer, Security engineer
@@ -1664,7 +1883,7 @@ Five spec refinements worth recording for future tracking:
 
 **Phase milestone:** With this consolidation, the platform-side authorization + identity track is complete and self-contained in a single version.
 
-**End of Module 2 — Identity & Organization Specification v0.4 (Consolidated, Locked)**
+**End of Module 2 — Identity & Organization Specification v0.5 (Re-locked — ADR-0021 template sweep: §14 STRIDE, §15 queue/idempotency/error-envelope, §16 DR Tier 1 + degraded-mode + all_locations)**
 
 
 

@@ -16,6 +16,7 @@
 
 ## Changelog
 
+- **v0.2 + ADR-0021 remediation (2026-06-13)** — Added four missing §20.B template sections per ADR-0021: **M18-F10** (§8.8 DR Tier 1 declaration, RTO 1h / RPO 5min, degraded-mode offline-continue posture, aggregator queue-during-outage behavior, banner behavior via M36, post-recovery reconciliation steps; DR-010, DR-064). **M18-F11** (`Idempotency-Key` column added to §4.1 route inventory table with per-route required/— declaration and platform-idempotency-middleware header semantics note; SD-053, ARCH-263). **M18-F14** (§4.8 BullMQ queue catalog augmented with `attempts` / `backoff` / `DLQ` columns for all ten queues; per-state aggregator override documented as the explicit exception; §8.9 Audit & Observability section added with structured-logging, M4 PHI write-audit, read-tracking, Prometheus metrics catalog, alerting thresholds, distributed-tracing, and health-probe specifications; ARCH-003, ARCH-262, SD-059, OPS-035). **M18-F16** (§4.9 alert payload OOB restriction note added: push/SMS out-of-band channels carry no PHI payload; in-app rendering only; ARCH-185, SEC-048). No existing decisions, routes, schema, or workflows were altered.
 - **v0.2 (Locked)** — Initial publication at lock-grade. Instantiates the architecture §20.B module spec template. Resolves all sixteen open questions into binding decisions (§11). Defines the **pluggable per-state aggregator adapter package `packages/evv-aggregators`** mirroring the `packages/medicaid-adapters` pattern — one adapter per state-aggregator vendor implementing the common `EvvAggregatorAdapter` interface, with the launch-state vendor adapter shipping in Phase 1 and additional states added via new adapter packages without touching M18 core (D1). Defines the **single-row-per-discrete-event model**: `evv_event` carries one row per check-in or check-out with GPS coordinate, device id, accuracy meters, captured-at (device clock), recorded-at (server clock); the *visit's* EVV bracket state lives on M17's `visit` row populated from these events via the cross-module event consumer (D2 — keeps M18's schema narrow and avoids dual-write inconsistency with M17). Defines the **geofence policy in three layers**: platform floor (200m radius, 50m max accuracy), tenant tighten-only (may narrow radius and tighten accuracy threshold, may not loosen), per-patient-address override (apartment buildings, gated communities, rural geocoder imprecision — explicit override row with documented reason, never narrower than tenant policy without break-glass) (D3). Defines the **GPS accuracy gate at the device** — the Capacitor app refuses to submit a check-in until the device-reported accuracy is at or under the tenant threshold or three retake attempts have elapsed; on the third attempt with degraded accuracy the app surfaces a "documented GPS imprecise" attestation that becomes an `evv_event.gps_quality='degraded_attested'` flag (D4). Defines the **offline-capture queue identical in shape to M13's offline eMAR pattern**: SQLCipher-encrypted on-device queue with `device_id` + `local_id` idempotency keys; on reconnect, the sync worker posts each row through the standard `POST /evv/check-in` route with `offline_capture=true` and the device-clock `captured_at`; the route is idempotency-keyed on `(orgId, deviceId, localId)` so retries are no-ops; the *late-entry tier* is computed against `(recordedAt - capturedAt)` mirroring M13 D8 (D5). Defines the **late-checkout detection and resolution workflow**: if no checkout event arrives within (visit's `scheduled_ended_at` + tenant grace window, default 4 hours), the `late-check-sweep` cron creates an `evv_missing_resolution` row in `open` state; the assigned clinician self-attests with reason ≥40 chars (per M17 D3 EVV self-attest reason floor) or a supervisor overrides with reason ≥60 chars; on resolve, the row's status moves to `closed_clinician_attested` or `closed_supervisor_override` and `m18.evv.late_check_resolved` fires for M17 / M8 / M23 consumption (D6). Defines the **per-state aggregator submission state machine**: `pending → queued → submitted → accepted | rejected | timeout`; submission is asynchronous via BullMQ worker per state; idempotent on `(state_code, visit_id, event_pair_hash)` so retries do not double-submit; the per-state retry policy is owned by the state adapter (states have heterogeneous SLAs and acceptable retry windows) (D7). Defines the **device integrity gate**: the Capacitor app's device-attestation result (jailbroken/rooted detected per Security Hardening §12.4) is mandatory at every EVV submission; a device that fails attestation cannot post EVV events — the route returns `DEVICE_INTEGRITY_FAILED` and the client is logged out; the gate consults M2's `device_attestation` row populated by the mobile app at sign-in and refreshed every 60 minutes (D8). Defines the **GPS-spoofing heuristic** as an *advisory-flag-not-block* signal: the `gps-spoof-detector` worker examines (a) sequential position deltas vs reported speed, (b) accuracy-vs-time-of-day patterns, (c) device-attested mock-location-API enablement; on a match the event is flagged `gps_quality='suspected_spoof'` and an M36 warn alert routes to the Clinical Supervisor; the event is *not* refused because a false positive would block a real visit (D9). Defines the **GPS-coordinate PHI-minimization posture**: the lat/lng pair on `evv_event` is encrypted at rest via per-tenant DEK envelope encryption (`coords_cipher`); the audit trigger captures the `<changed>` marker only, never the plaintext coords (D10); the M18 reader seams return coordinates only to routes whose ABAC explicitly carries `evv.read_coords` (a separate permission from `evv.read`); portal projections never include coordinates; the FHIR `Observation` projection includes coordinates only when the consuming endpoint asserts a `consent.evaluate('share_coords')` pass; this is stricter than HIPAA §164.502(b) minimum-necessary because a longitudinal coordinate stream over time reveals patient mobility patterns far beyond the visit-verification need. Defines the **aggregator-submission outbox-only handoff** with M22's PDF render seam for any state that requires a paper-trail confirmation artifact; M18 emits `m18.evv.verification_pdf_requested` and M22 renders from the typed payload — M18 has no PDF code (D11). Defines the **`evv_event` partitioned by month on `event_at`** matching M4 PHI-table conventions with **`compliance` retention class** (not `operational`); `evv_missing_resolution`, `evv_geofence_policy`, `evv_device`, `evv_aggregator_submission` non-partitioned per their lower row volumes (D12). Defines the **AI-block posture identical to M13 D15**: Module 32 (AI Platform) cannot create, modify, witness, or resolve any M18 row; boot-time validation iterates M32's registered prompt templates and any whose `outputType` matches `evv_*` fails boot; dependency-cruiser blocks `packages/ai-platform/*` imports from `apps/backend/src/modules/18-evv/*` and from `packages/evv-aggregators/*`; the per-route guard rejects requests carrying an `actor_kind='ai_*'` header (D13). Defines the **explicit M17/M18 boundary**: M18 owns `evv_event` and never writes to M17's `visit` schema; M17 owns visit lifecycle and reads M18 events via the typed outbox subscription; M17's `visit.evv_check_in_event_id` and `visit.evv_check_out_event_id` columns are logical FKs to M18 — populated by M17's `evv-event.consumer` worker, never enforced cross-module by Postgres; dependency-cruiser asserts M18 does not import `apps/backend/src/modules/17-scheduling` schema and vice versa (D14). Defines the **`EvvBracketResolver` / `EvvComplianceReader` / `EvvAggregatorReferenceReader` / `EvvLocationProvider` / `EvvMetricsProvider` / `EvvVerificationProvider` seams published for M8 / M17 / M19 / M20 / M22 / M23 / M24 / M28 / M30 / M31 / M33 / M37 consumption**, registered at boot via M1's seam registry; missing required upstream seams refuse to start (D15). Defines the **proposed manifest patch** correcting `M18.dependsOn` from `[17]` to `[1, 2, 3, 4, 5, 17, 36, 38, 40]` *(relationship inventory - not the `dependsOn` edge set; per ADR-0005 D1/D4 seam/outbox/foundation consumers are no-edge - see audit/MANIFEST_DEPENDSON_REVIEW.md; do not bulk-apply)* and adding `packages/evv-aggregators` and `packages/evv` (shared types) to `M18.codePaths`; populating `M18.ownedTables` with the seven owned tables (D16). Wires the permission keys this module registers into Module 3 (§4.6), the two ABAC predicates this module registers into Module 3's named-predicate registry (§4.7), the BullMQ queue catalog (§4.8), the M36 typed-alert payloads (§4.9), the `EvvAggregatorAdapter` seam (§4.10), and the destruction `eraseFn` registered with Module 4 (§8.4 — `compliance` retention class because the EVV record is the electronic billing-substantiation artifact).
 - **v0.1** — Drafted within the lock-grade pass; not separately published.
 
@@ -755,33 +756,35 @@ The DEK envelope-encryption helper provides the cryptographic-shred path: at des
 
 ### 4.1 Route Inventory
 
-| Method | Path | Auth | Permission key | Purpose |
-|---|---|---|---|---|
-| POST | `/api/v1/evv/check-in` | mobile session | `evv.check_in` | record check-in; runs all guards (visit lookup, geofence, accuracy, device integrity, ABAC) |
-| POST | `/api/v1/evv/check-out` | mobile session | `evv.check_out` | record check-out; same guards; triggers aggregator-prep |
-| POST | `/api/v1/evv/offline-sync` | mobile session | `evv.check_in` OR `evv.check_out` | batch sync of offline-captured events; idempotent on (deviceId, localId) |
-| GET | `/api/v1/evv/events/:eventId` | session | `evv.read` | fetch one (without coords); add `?include=coords` for `evv.read_coords` |
-| GET | `/api/v1/evv/events` | session | `evv.read` | list by filters (visit, clinician, patient, date range, gps_quality, kind) |
-| POST | `/api/v1/evv/events/:eventId/correct` | session + step-up | `evv.correct_record` | correction-of-record (Clinical Supervisor+); inserts new event with `replaces_event_id` |
-| GET | `/api/v1/evv/visits/:visitId/bracket` | session | `evv.read` | M8's `EvvBracketResolver.bracketForEncounter` reads this; returns check-in/check-out pair or missing-resolution context |
-| GET | `/api/v1/evv/devices` | session | `evv.device.read` | list registered devices (self or supervisor) |
-| POST | `/api/v1/evv/devices/self-register` | mobile session | `evv.device.register_self` | clinician self-registers a new device; creates `evv_device` in `pending_approval` |
-| POST | `/api/v1/evv/devices/:id/approve` | session | `evv.device.approve` | Clinical Supervisor approves |
-| POST | `/api/v1/evv/devices/:id/reject` | session | `evv.device.approve` | Clinical Supervisor rejects with reason |
-| POST | `/api/v1/evv/devices/:id/suspend` | session | `evv.device.suspend` | suspend (clinician-initiated lost-device flow or supervisor-initiated integrity flow) |
-| POST | `/api/v1/evv/devices/:id/retire` | session | `evv.device.retire` | terminal retirement (lost, replaced, role-change) |
-| GET | `/api/v1/evv/geofence-policy` | session | `evv.policy.read` | tenant policy + per-address overrides for review |
-| PATCH | `/api/v1/evv/geofence-policy/tenant` | session + If-Match | `evv.policy.edit` | edit tenant tighten-only policy (within platform-floor bounds) |
-| POST | `/api/v1/evv/geofence-policy/per-address` | session | `evv.policy.edit` | create or replace per-address override (reason ≥30 chars) |
-| GET | `/api/v1/evv/missing-resolutions` | session | `evv.missing_resolution.read` | open + recently-closed resolution queue |
-| POST | `/api/v1/evv/missing-resolutions/:id/clinician-attest` | session | `evv.missing_resolution.attest_self` | assigned clinician resolves (reason ≥40 chars) |
-| POST | `/api/v1/evv/missing-resolutions/:id/supervisor-override` | session + step-up | `evv.missing_resolution.supervisor_override` | Clinical Supervisor resolves after 24h window (reason ≥60 chars) |
-| GET | `/api/v1/evv/aggregator-submissions` | session | `evv.aggregator.read` | per-state submission queue + status; filterable |
-| POST | `/api/v1/evv/aggregator-submissions/:id/resubmit` | session | `evv.aggregator.resubmit` | operator-initiated resubmit (after rejection / timeout) |
-| POST | `/api/v1/evv/aggregator-submissions/:id/cancel` | session | `evv.aggregator.cancel` | operator-initiated cancel (visit cancelled in error after submission, etc.) |
-| GET | `/api/v1/evv/metrics` | session | `evv.read_metrics` | the M30/M33 dashboard source |
-| GET | `/api/v1/evv/clinician-current-location` | session | `evv.location.read_team` | M20 supervisor live-awareness; returns last_known_location per assigned clinician within the last 12h |
-| GET | `/api/v1/portal/visits/:visitId/arrival` | portal session | `portal.evv.read_arrival` | M31 portal "Nurse arrived at 10:14 AM" — timestamp only, no coordinates |
+> **M18-F11 (SD-053, ARCH-263):** Every mutating route below carries an `Idempotency-Key` request header enforced by M1's idempotency middleware. Keys are scoped to `(orgId, route, Idempotency-Key value)`, honored for 24 hours, and return `409 Conflict` with the original response body on a body-content mismatch within the same key. Read-only (GET) routes are excluded. The `POST /api/v1/evv/offline-sync` and `POST /api/v1/evv/check-in` / `POST /api/v1/evv/check-out` routes additionally carry the device-level `(deviceId, localId)` idempotency described in D5; both layers stack — the M1 header-level gate fires first.
+
+| Method | Path | Auth | Permission key | Idempotency-Key | Purpose |
+|---|---|---|---|---|---|
+| POST | `/api/v1/evv/check-in` | mobile session | `evv.check_in` | required | record check-in; runs all guards (visit lookup, geofence, accuracy, device integrity, ABAC) |
+| POST | `/api/v1/evv/check-out` | mobile session | `evv.check_out` | required | record check-out; same guards; triggers aggregator-prep |
+| POST | `/api/v1/evv/offline-sync` | mobile session | `evv.check_in` OR `evv.check_out` | required | batch sync of offline-captured events; idempotent on (deviceId, localId) |
+| GET | `/api/v1/evv/events/:eventId` | session | `evv.read` | — | fetch one (without coords); add `?include=coords` for `evv.read_coords` |
+| GET | `/api/v1/evv/events` | session | `evv.read` | — | list by filters (visit, clinician, patient, date range, gps_quality, kind) |
+| POST | `/api/v1/evv/events/:eventId/correct` | session + step-up | `evv.correct_record` | required | correction-of-record (Clinical Supervisor+); inserts new event with `replaces_event_id` |
+| GET | `/api/v1/evv/visits/:visitId/bracket` | session | `evv.read` | — | M8's `EvvBracketResolver.bracketForEncounter` reads this; returns check-in/check-out pair or missing-resolution context |
+| GET | `/api/v1/evv/devices` | session | `evv.device.read` | — | list registered devices (self or supervisor) |
+| POST | `/api/v1/evv/devices/self-register` | mobile session | `evv.device.register_self` | required | clinician self-registers a new device; creates `evv_device` in `pending_approval` |
+| POST | `/api/v1/evv/devices/:id/approve` | session | `evv.device.approve` | required | Clinical Supervisor approves |
+| POST | `/api/v1/evv/devices/:id/reject` | session | `evv.device.approve` | required | Clinical Supervisor rejects with reason |
+| POST | `/api/v1/evv/devices/:id/suspend` | session | `evv.device.suspend` | required | suspend (clinician-initiated lost-device flow or supervisor-initiated integrity flow) |
+| POST | `/api/v1/evv/devices/:id/retire` | session | `evv.device.retire` | required | terminal retirement (lost, replaced, role-change) |
+| GET | `/api/v1/evv/geofence-policy` | session | `evv.policy.read` | — | tenant policy + per-address overrides for review |
+| PATCH | `/api/v1/evv/geofence-policy/tenant` | session + If-Match | `evv.policy.edit` | required | edit tenant tighten-only policy (within platform-floor bounds) |
+| POST | `/api/v1/evv/geofence-policy/per-address` | session | `evv.policy.edit` | required | create or replace per-address override (reason ≥30 chars) |
+| GET | `/api/v1/evv/missing-resolutions` | session | `evv.missing_resolution.read` | — | open + recently-closed resolution queue |
+| POST | `/api/v1/evv/missing-resolutions/:id/clinician-attest` | session | `evv.missing_resolution.attest_self` | required | assigned clinician resolves (reason ≥40 chars) |
+| POST | `/api/v1/evv/missing-resolutions/:id/supervisor-override` | session + step-up | `evv.missing_resolution.supervisor_override` | required | Clinical Supervisor resolves after 24h window (reason ≥60 chars) |
+| GET | `/api/v1/evv/aggregator-submissions` | session | `evv.aggregator.read` | — | per-state submission queue + status; filterable |
+| POST | `/api/v1/evv/aggregator-submissions/:id/resubmit` | session | `evv.aggregator.resubmit` | required | operator-initiated resubmit (after rejection / timeout) |
+| POST | `/api/v1/evv/aggregator-submissions/:id/cancel` | session | `evv.aggregator.cancel` | required | operator-initiated cancel (visit cancelled in error after submission, etc.) |
+| GET | `/api/v1/evv/metrics` | session | `evv.read_metrics` | — | the M30/M33 dashboard source |
+| GET | `/api/v1/evv/clinician-current-location` | session | `evv.location.read_team` | — | M20 supervisor live-awareness; returns last_known_location per assigned clinician within the last 12h |
+| GET | `/api/v1/portal/visits/:visitId/arrival` | portal session | `portal.evv.read_arrival` | — | M31 portal "Nurse arrived at 10:14 AM" — timestamp only, no coordinates |
 
 > All PHI-reading routes declare `requireReadAudit` so the M4 helper triggers `evv_event.viewed` / `evv_missing_resolution.viewed` automatically. The `/api/v1/portal/...` route declares the portal session class (M2 SESSION_POLICY); the `caseload_or_scope` ABAC does not apply for portal — scope is per-patient via M39 `family_caregiver_access` consent context.
 
@@ -1177,20 +1180,26 @@ export const evvWithinVisitWindow: AbacPredicate = {
 
 ### 4.8 BullMQ Queue Catalog
 
-| Queue | Worker concurrency | Schedule / trigger | Purpose |
-|---|---|---|---|
-| `m18.late-check-sweep` | 1 per org | every 15 min | Find published visits with check-in but no check-out past grace; create `evv_missing_resolution` rows |
-| `m18.aggregator-submission-prep` | 4 per org | on `m18.evv.check_out_recorded` | Assemble payload via per-state adapter; persist `evv_aggregator_submission` in `queued` |
-| `m18.aggregator-submitter` | 8 per org | per-state queue | Call adapter `submit()`; transition state machine; honor per-state retry policy |
-| `m18.aggregator-response-poller` | 2 per org | every 5 min | For adapters whose vendor responds asynchronously, poll for status |
-| `m18.gps-spoof-detector` | 4 per org | on every `evv_event` insert (background) | Run heuristic; flag `gps_quality='suspected_spoof'` and emit alert |
-| `m18.visit-published.consumer` | 4 per org | on `m17.visit.published` outbox | Seed Valkey geofence subscription marker for fast check-in route |
-| `m18.visit-cancelled.consumer` | 4 per org | on `m17.visit.cancelled` outbox | Remove subscription marker; cancel aggregator submission if past check-out |
-| `m18.encounter-signed.consumer` | 4 per org | on `m8.encounter.signed` outbox | Close `evv_missing_resolution` in `closed_documented_at_encounter` state when applicable |
-| `m18.patient-deceased.consumer` | 1 per org | on `m5.patient.deceased` outbox | Tear down geofence subscriptions for that patient |
-| `m18.dek-rotation` | 1 per org | quarterly + on-demand | Rotate per-tenant DEK; re-encrypt active `evv_event.coords_cipher` and `evv_aggregator_submission.payload_cipher` in batches; the old DEK version remains decryptable for ≤7d for in-flight queries |
+> **M18-F14 (ARCH-003, ARCH-262, SD-059, OPS-035):** Every queue below declares full BullMQ job parameters: `attempts`, `backoff`, `removeOnComplete` / `removeOnFail`, and a DLQ (dead-letter queue) destination. Consumers are idempotent by construction — a job replayed after a transient failure produces the same database result as the first execution (enforced by partial-unique-index constraints on the owned tables). Per-state aggregator queues (`m18.aggregator-submitter`) override the platform default backoff with the state adapter's declared retry policy; this per-state override is the documented exception to the platform default.
+
+| Queue | Concurrency | Schedule / trigger | Attempts | Backoff | DLQ | Purpose |
+|---|---|---|---|---|---|---|
+| `m18.late-check-sweep` | 1 per org | every 15 min (cron) | 3 | exponential, base 30 s | `m18.late-check-sweep.dlq` | Find published visits with check-in but no check-out past grace; create `evv_missing_resolution` rows. Idempotent via partial-unique-index on `(visit_id, kind) WHERE status='open'`. |
+| `m18.aggregator-submission-prep` | 4 per org | on `m18.evv.check_out_recorded` outbox | 5 | exponential, base 10 s | `m18.aggregator-submission-prep.dlq` | Assemble payload via per-state adapter; persist `evv_aggregator_submission` in `queued`. Idempotent via partial-unique-index on `(state_code, visit_id) WHERE status != 'cancelled'`. |
+| `m18.aggregator-submitter` | 8 per org | on `evv_aggregator_submission` transition to `queued` | Per-state adapter policy (default 5; Sandata: 7, HHAeXchange: 4) | Per-state adapter policy (default exponential base 60 s; Sandata: linear 120 s). **Documented exception:** retry semantics are delegated to the per-state `EvvAggregatorAdapter.retryPolicy` rather than the platform default to match each vendor's idempotency guarantees and SLA windows. | `m18.aggregator-submitter.dlq` | Call adapter `submit()`; transition aggregator submission state machine. DLQ jobs surface in the ops-aggregator-submissions dashboard as `status='dlq'` requiring operator triage. |
+| `m18.aggregator-response-poller` | 2 per org | every 5 min (cron) | 3 | fixed 60 s | `m18.aggregator-response-poller.dlq` | For adapters whose vendor responds asynchronously (e.g., polling-mode Sandata), poll for status and transition `submitted → accepted \| rejected \| timeout`. |
+| `m18.gps-spoof-detector` | 4 per org | on every `evv_event` insert (background) | 3 | exponential, base 5 s | `m18.gps-spoof-detector.dlq` | Run heuristic (D9); flag `gps_quality='suspected_spoof'` and emit `m18.evv.gps_spoof_suspected` alert. DLQ failure leaves event unflagged; a subsequent audit sweep can re-run the heuristic (separate recovery job). |
+| `m18.visit-published.consumer` | 4 per org | on `m17.visit.published` outbox | 5 | exponential, base 5 s | `m18.visit-published.consumer.dlq` | Seed Valkey geofence subscription marker for fast check-in route. Idempotent: SET with NX on `(orgId, visitId)` key. |
+| `m18.visit-cancelled.consumer` | 4 per org | on `m17.visit.cancelled` outbox | 5 | exponential, base 5 s | `m18.visit-cancelled.consumer.dlq` | Remove geofence subscription marker; cancel any `evv_aggregator_submission` in non-terminal state for the visit. Idempotent: DEL on missing key is a no-op; cancel on already-cancelled row is a no-op. |
+| `m18.encounter-signed.consumer` | 4 per org | on `m8.encounter.signed` outbox | 5 | exponential, base 5 s | `m18.encounter-signed.consumer.dlq` | Close `evv_missing_resolution` in `closed_documented_at_encounter` state when applicable. Idempotent: close on already-closed row is a no-op. |
+| `m18.patient-deceased.consumer` | 1 per org | on `m5.patient.deceased` outbox | 3 | exponential, base 10 s | `m18.patient-deceased.consumer.dlq` | Tear down geofence subscriptions for that patient. Idempotent: DEL on missing key is a no-op. |
+| `m18.dek-rotation` | 1 per org | quarterly + on-demand | 3 | fixed 300 s | `m18.dek-rotation.dlq` | Rotate per-tenant DEK; re-encrypt active `evv_event.coords_cipher` and `evv_aggregator_submission.payload_cipher` in batches; the old DEK version remains decryptable for ≤7 d for in-flight queries. DLQ failure alerts platform_ops. |
+
+**DLQ policy (platform standard, OPS-035):** Failed jobs reaching their DLQ emit `m18.queue.dlq_entry` at `critical` severity to the OPS alerting channel, surface in the Grafana `m18-workers` dashboard under the "Dead Letters" row, and are retained for 14 days before automatic expiry. Operator triage options per job: retry (re-enqueue with same payload), skip (mark resolved without re-processing), or investigate (view full payload + error stack in the ops console). DLQs are per-queue (not a shared cross-module DLQ) so failures in one queue cannot starve another.
 
 ### 4.9 M36 Typed Alert Payloads
+
+> **M18-F16 (ARCH-185, SEC-048):** The payload fields declared below are for **in-app rendering only** (the M36 in-app notification surface and the supervisor alert panel). Out-of-band delivery channels — push notifications and SMS — carry **no PHI payload content**; those channels receive only a generic prompt ("A WardenX alert requires your attention") and a deep-link URL that resolves only within an authenticated session. This restriction applies to all M18 alert types regardless of severity.
 
 ```typescript
 // packages/messaging/src/alerts/evv.ts (M36 catalog extension, registered by M18 at boot)
@@ -1496,6 +1505,68 @@ M18 is an `aiBlocked` module. Per M13 D15's precedent and the architecture §25.
 ### 8.7 Address Geocoding Boundary (Cross-Reference)
 
 M18 reads patient coordinates only via M5's `PatientAddressReader.coordsForAddress(addressId)`. M18 NEVER geocodes; M18 NEVER reverse-geocodes (translating an EVV coordinate back to an address is forbidden by §1.2 and would re-create the M5 surface). If `coordsForAddress` returns `null` (rare; geocode failure), the geofence-decider degrades to `unknown_no_coords` and the event is recorded without a geofence decision — the visit proceeds but the supervisor sees the gap in `/app/evv/dashboard`. M5's geocode worker retries via M5's own queue.
+
+### 8.8 Disaster Recovery Tier & Degraded Mode (M18-F10, DR-010, DR-064)
+
+**DR Tier: 1 (EVV check-in / check-out is a named Tier-1 service).**
+
+EVV check-in and check-out are Tier-1 services because they are the electronic mechanism by which a Cures Act §12006 service-delivery record is created. Denial of EVV capture during a clinical visit does not stop care delivery, but it does create a Medicaid survey-record gap that is not self-healing — a missed check-in must be resolved through the M18 late-resolution workflow (D6) and may delay billing. Under the DR/BCP framework (WARDENX_DR_BCP_v0.1.md), Tier-1 services must:
+
+| Attribute | M18 Target |
+|---|---|
+| **RTO (Recovery Time Objective)** | 1 hour — the EVV capture path must be restored within 1 hour of a qualifying outage. Clinicians in the field continue capturing offline (see below); the 1-hour target governs the server-side restore, not the clinician's capture. |
+| **RPO (Recovery Point Objective)** | 5 minutes — in-flight captured events must not be lost beyond the last 5 minutes of committed writes. WAL-based streaming replication to the hot standby enforces this; the Valkey geofence-subscription keyspace (non-persistent) is acceptable to lose and is re-seeded from the `m17.visit.published` outbox replay on recovery. |
+| **Hot standby** | One hot-standby PostgreSQL replica in the secondary AZ; automatic failover via the platform's PgBouncer + Patroni tier. Valkey for the geofence-subscription keyspace is configured with a replica; loss of the replica during failover is survivable (see degraded mode below). |
+
+**Degraded-mode behavior during an M18 outage (server-side unavailable):**
+
+1. **Offline check-in / check-out continues** — the mobile Capacitor app's SQLCipher offline queue (D5) functions identically during a server outage. Clinicians see the standard "Saved offline; will sync when online" confirmation. No workflow change is required of the clinician. The offline queue's 48-hour TTL (default) is well above the 1-hour RTO, so no events are lost during a compliant outage window.
+
+2. **Aggregator submissions queue during outage** — the `m18.aggregator-submitter` BullMQ queue is backed by Valkey. During a server outage, jobs already in the queue remain durably stored in Valkey (AOF persistence enabled on the EVV queues). The per-state adapters will not be called until workers come back online; this does not constitute a lost submission. On recovery, the queue drains normally. State aggregator SLA windows (typically 24–72 hours for Sandata-class vendors) are not violated by a 1-hour outage.
+
+3. **Banner behavior** — M36 emits an `m18.evv.service_degraded` alert (critical severity) to `platform_ops` and `billing_operations` when the M18 health probe fails three consecutive checks (15 s interval). The web UI displays a yellow banner: "EVV submission service is temporarily unavailable. Mobile check-in/out continues to work offline and will sync automatically." The banner is cleared by M36 when the health probe recovers. The mobile app's offline-queue UI is unaffected by the banner.
+
+4. **Valkey geofence-subscription keyspace loss** — if the Valkey replica is unavailable or the keyspace is lost during failover, the check-in route falls back to a synchronous M17 `VisitReader.visitForEncounter` DB call to resolve the visit context (the Valkey marker is a performance optimization, not a correctness gate). This fallback path is exercised in §9.2 integration tests (`mockValkeyloss` fixture).
+
+**Post-recovery reconciliation:**
+
+On server recovery:
+
+1. The offline-queue drain begins automatically on each mobile client's next app-foreground or connectivity-restored event. No operator action is required.
+2. The `m18.aggregator-submitter` worker drains the BullMQ queue in priority order (oldest jobs first within each state's queue). Any jobs that exceeded the per-state retry window during the outage surface in the DLQ (§4.8) for operator triage.
+3. The Valkey geofence-subscription keyspace is re-seeded by replaying the `m17.visit.published` outbox events for visits whose `scheduled_ended_at` is in the future. The M17 outbox replay is orchestrated by M18's `m18.visit-published.consumer` worker at startup — no manual re-seed required.
+4. If any `evv_missing_resolution` rows were auto-opened during the outage (late-check-sweep cron ran with server up, or the cron caught up on recovery), operators see them in the standard resolution queue at `/app/evv/missing-resolutions`. The normal D6 workflow applies.
+
+The M18 DR posture is audited annually under the WARDENX_DR_BCP_v0.1 §6 BCP test calendar entry for Tier-1 services.
+
+### 8.9 Audit & Observability (M18-F14, ARCH-003, ARCH-262, SD-059, OPS-035)
+
+**Structured logging (ARCH-003):** Every M18 route handler and worker emits structured JSON log lines via the M1 platform logger. Mandatory fields on every log entry: `{ module: 18, traceId, spanId, orgId, actorMembershipId, route | queueName, durationMs, outcome: 'success' | 'error', errorCode? }`. PHI fields (`visitId`, `patientId`, `postingMembershipId`) are included at `info` severity and above; `coords_cipher` is **never** logged.
+
+**M4 PHI write-audit (ARCH-262):** The M4 `wardenx_generate_audit_trigger` is installed on all six owned tables (§3.2 Migration Phase B). Every INSERT / UPDATE / DELETE on any PHI row emits an immutable audit row to the `audit_log` table scoped to `(orgId, table, rowId, actorMembershipId, changedAt, changeType)`. The denylist (§3.6) prevents coordinate ciphertext and free-text reason fields from being re-emitted in the audit payload; they are recorded as `<changed>` markers only.
+
+**Audit read-tracking:** Every PHI-reading route declares `requireReadAudit` (M1 helper). M4 records `evv_event.viewed` / `evv_missing_resolution.viewed` events with actor, timestamp, and scope. `evv.read_coords` grants automatically emit `audit.warn` severity on every exercise (D10). Portal arrival reads emit `audit.info`.
+
+**Metrics (OPS-035):** The following Prometheus metrics are scraped from M18 processes and visible in the `m18-workers` Grafana dashboard:
+
+| Metric | Type | Labels | Purpose |
+|---|---|---|---|
+| `m18_check_in_duration_ms` | histogram | `orgId`, `gpsQuality`, `geofenceDecision` | Check-in route latency (§9.7 p95 target: 200 ms) |
+| `m18_check_out_duration_ms` | histogram | `orgId`, `gpsQuality` | Check-out route latency (p95 target: 250 ms) |
+| `m18_geofence_evaluations_total` | counter | `orgId`, `decision` | Geofence pass/fail rate |
+| `m18_gps_spoof_detected_total` | counter | `orgId` | Spoofing heuristic trigger rate |
+| `m18_offline_events_synced_total` | counter | `orgId`, `kind` | Offline-queue drain volume |
+| `m18_missing_resolutions_open` | gauge | `orgId`, `kind` | Current open resolution backlog |
+| `m18_aggregator_submission_duration_ms` | histogram | `orgId`, `vendor`, `stateCode`, `outcome` | Aggregator round-trip latency and acceptance/rejection rate |
+| `m18_aggregator_queue_depth` | gauge | `orgId`, `stateCode` | BullMQ queue depth per state (alerts if > 500 for > 10 min) |
+| `m18_dlq_depth` | gauge | `queueName` | Dead-letter queue depth (alerts at > 0) |
+| `m18_dek_rotation_last_completed_at` | gauge | `orgId` | Staleness of last successful DEK rotation (alerts if > 95 days) |
+
+**Alerting thresholds (OPS-035):** `m18_dlq_depth > 0` → critical alert to `platform_ops`; `m18_aggregator_queue_depth > 500` for 10 min → warn alert to `billing_operations`; `m18_check_in_duration_ms p99 > 400 ms` for 5 min → warn alert to `platform_ops`; `m18_missing_resolutions_open > 50` for a single org for > 60 min → warn alert to the org's Clinical Supervisor role.
+
+**Distributed tracing (ARCH-262):** M18 propagates the M1 trace context (`traceparent` / W3C format) through every route handler, BullMQ job, and outbox dispatch. The aggregator adapter calls include the trace context in an `X-Request-ID` header (where the vendor accepts it). Spans are exported to the platform's OpenTelemetry collector; all EVV spans are tagged `module=18` for cross-module latency analysis.
+
+**Health probes:** `GET /health/m18` (internal) returns `{ status: 'healthy' | 'degraded' | 'unavailable', checks: { db, valkey, aggregatorRegistry, seamRegistry } }`. Used by M36's health monitor for the DR banner behavior (§8.8). The probe does not surface PHI.
 
 -----
 

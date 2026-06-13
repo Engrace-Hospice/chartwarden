@@ -779,18 +779,52 @@ SELECT audit_install_trigger(...);
 | POST | `/care-plans/:planId/versions/:versionId/signatures` | staff | `care_plan.sign` | `caseload_or_scope` ∧ `signer_role_match` | yes | — |
 | POST | `/care-plans/:planId/versions/:versionId/return-to-draft` | staff | `care_plan.author` | `caseload_or_scope` | yes | — |
 | POST | `/care-plans/:planId/problems` | staff | `care_plan.author` | `caseload_or_scope` | yes | — |
-| PATCH | `/care-plans/:planId/problems/:problemId` | staff | `care_plan.author` | `caseload_or_scope`; If-Match required | — | — |
+| PATCH | `/care-plans/:planId/problems/:problemId` | staff | `care_plan.author` | `caseload_or_scope`; If-Match required | Idempotency-Key (24 h) | — |
 | POST | `/care-plans/:planId/problems/:problemId/resolve` | staff | `care_plan.author` | `caseload_or_scope` | yes | — |
 | POST | `/care-plans/:planId/goals` | staff | `care_plan.author` | `caseload_or_scope` ∧ (`source=agent_stated` ⇒ `dpoa_active`) | yes | — |
-| PATCH | `/care-plans/:planId/goals/:goalId` | staff | `care_plan.author` | `caseload_or_scope`; If-Match | — | — |
+| PATCH | `/care-plans/:planId/goals/:goalId` | staff | `care_plan.author` | `caseload_or_scope`; If-Match | Idempotency-Key (24 h) | — |
 | POST | `/care-plans/:planId/interventions` | staff | `care_plan.author` | `caseload_or_scope` ∧ `discipline_scope` | yes | — |
-| PATCH | `/care-plans/:planId/interventions/:interventionId` | staff | `care_plan.author` | `caseload_or_scope`; If-Match | — | — |
+| PATCH | `/care-plans/:planId/interventions/:interventionId` | staff | `care_plan.author` | `caseload_or_scope`; If-Match | Idempotency-Key (24 h) | — |
 | POST | `/care-plans/:planId/interventions/:interventionId/discontinue` | staff | `care_plan.author` | `caseload_or_scope` | yes | — |
 | GET | `/care-plans/:planId/summary` | staff or collaborator | `care_plan.read_summary` | `caseload_or_scope` ∨ `collaborator_patient_match` | — | n/a |
 | GET | `/care-plans/:planId/overdue-status` | staff (incl. M8) | `care_plan.read` | `caseload_or_scope` | — | n/a |
 | GET | `/internal/care-plan/relevant-elements` | service (internal) | `care_plan.read` (internal) | M8 caller asserts scope | — | n/a |
 
 All routes return the standard error envelope (Module 1 §4) and all PHI-reading routes carry the `requireReadAudit` declaration so the route handler triggers a `<resource>.viewed` audit event automatically (Module 4 §3.4).
+
+### 4.1.1 Idempotency-Key on PATCH Routes (M07-F09 — ARCH-263, SD-053)
+
+> **M07-F09 (ADR-0021 §20.B requirement).** Authority: ARCH-263 (idempotency as a platform invariant), SD-053 (M1 idempotency middleware). Every PATCH route in M7 (`/problems/:problemId`, `/goals/:goalId`, `/interventions/:interventionId`) **must** carry an `Idempotency-Key` request header in addition to the existing `If-Match` / ETag optimistic-concurrency mechanism. The two headers are complementary: `If-Match` prevents silent overwrites by detecting version skew; `Idempotency-Key` prevents duplicate mutations caused by client retries (mobile reconnects, field-tablet intermittent connectivity).
+
+**Semantics (enforced by M1 idempotency middleware):**
+
+- Header name: `Idempotency-Key` (string, required on all three M7 PATCH routes; 400 if absent).
+- Storage: a `{key → {status, responseBody, expiresAt}}` record is written to **Valkey** with a **24-hour TTL** by the M1 `idempotencyMiddleware` before the handler runs.
+- On first receipt: the handler executes; the response (status + body) is cached under the key.
+- On retry with the **same key and same request body**: the cached response is returned immediately (no DB write); response includes `Idempotency-Replay: true` header.
+- On retry with the **same key but different request body**: the middleware returns **409 Conflict** with `{ error: 'idempotency_key_body_mismatch' }` — the body changed between retries, indicating a client bug.
+- Key scope: per `(organization_id, membershipId, Idempotency-Key value)` — cross-tenant key collisions are structurally impossible.
+- Key format: caller-generated; recommended UUID v4 or nanoid-21. No server-side format enforcement beyond 1–128 chars printable ASCII.
+
+**Interaction with `If-Match`:**
+
+Both headers are required on PATCH. The middleware processes `Idempotency-Key` first (cache hit → short-circuit). On a cache miss the handler runs; the handler applies `If-Match` / ETag version check (→ 412 on stale) before writing. A 412 response is **also cached** under the idempotency key — a retry of a stale-version request returns 412 from cache without re-running the version check.
+
+**Route-level enforcement:**
+
+```typescript
+// apps/backend/src/modules/07-care-plan/routes/problems.ts (representative)
+fastify.patch(
+  '/care-plans/:planId/problems/:problemId',
+  {
+    preHandler: [requireAuth, requireIdempotencyKey, requireIfMatch],
+    schema: { body: PatchProblemRequest, headers: IdempotencyKeyHeader },
+  },
+  patchProblemHandler,
+)
+```
+
+`requireIdempotencyKey` is the M1 shared middleware. `requireIfMatch` enforces the `If-Match` header. Both are pre-handlers so neither handler body nor DB write executes on a cache hit.
 
 ### 4.2 Webhooks
 
@@ -955,12 +989,121 @@ Per Module 3 §3.3, each module contributes its own permission keys to the centr
 
 ### 4.6 BullMQ Jobs
 
+> **M07-F10 (ADR-0021 §20.B requirement).** Authority: ARCH-262 (queue semantics as a platform invariant), SD-059 (BullMQ standard parameter set), OPS-035 (DLQ document-before-clear policy). Full queue parameters are declared for every M7 queue below.
+
 | Queue | Job | Purpose | Trigger |
 |---|---|---|---|
 | `care-plan.gates` | `5day-warning` | Daily scan: plans where `initial_due_at` falls within 2 days; emit `m7.care_plan.initial_overdue` warnings | Daily cron 06:00 org-tz |
 | `care-plan.gates` | `15day-overdue` | Daily scan: plans where `next_review_due_at < now()`; mark overdue, emit event, engage encounter-sign gate | Daily cron 06:00 org-tz + on-demand after each signed version |
 | `care-plan.idg` | `apply-idg-decision` | Consume `idg.decision_recorded` outbox events from M14; create draft version with decisions applied | Outbox subscriber |
 | `care-plan.snapshot` | `build-summary` | On `version_signed` and on portal request, rebuild summary cache (Valkey, 1-hour TTL) | Outbox subscriber + on-demand |
+
+**Full queue parameters (M07-F10):**
+
+#### Queue: `care-plan.gates`
+
+Jobs: `5day-warning`, `15day-overdue` (both scheduled as repeatable cron jobs).
+
+| Parameter | Value | Rationale |
+|---|---|---|
+| `priority` | 5 (normal) | Gate computation is latency-tolerant within a daily window; lower than sign-path and IDG workers |
+| `attempts` | 3 | Transient DB / Valkey failures are self-healing within the cron window; three attempts cover a short Postgres restart |
+| `backoff` | `{ type: 'exponential', delay: 60_000 }` (1 min base) | 1 m → 2 m → 4 m; the daily cron has hours of slack before the next window |
+| `concurrency` | 2 workers | The gate scan is a read-heavy sequential scan; two workers allow org-partitioned parallel runs without thrashing the index |
+| `removeOnComplete` | `{ count: 100 }` | Keep last 100 completed for Grafana BullMQ dashboard |
+| `removeOnFail` | false | Failed runs stay in queue for DLQ promotion |
+| `DLQ` | `care-plan.gates.dlq` | Jobs that exhaust all attempts are moved here automatically via BullMQ `failedJobsHistoryCount` + a dedicated DLQ processor |
+| **DLQ document-before-clear** | On-call engineer must open a DLQ ops ticket (link to OPS Runbook §11.3) and capture `{ jobId, data, failedReason, stacktrace }` to the runbook before calling `queue.drain()` or `obliterate()` | OPS-035 — a DLQ entry represents a gate scan failure that may leave plans unscanned; the audit trail must record the missed window |
+| Idempotency | The cron job carries a `date` payload (`YYYY-MM-DD org-tz`); the worker skips plans already scanned for that date (Valkey `SETNX care-plan.gates.scanned:<date>:<planId> 1 EX 86400`) | Protects against duplicate cron fires (e.g. time correction) without a full DB scan |
+
+#### Queue: `care-plan.idg`
+
+Job: `apply-idg-decision` (event-driven, one job per `idg.decision_recorded` outbox event).
+
+| Parameter | Value | Rationale |
+|---|---|---|
+| `priority` | 3 (elevated) | IDG decisions directly block the sign-off workflow; they must be applied quickly after the meeting |
+| `attempts` | 5 | The outbox publisher retries on its own, but the consumer may hit a transient DB write contention (draft version open); five attempts cover up to ~4 minutes at exponential backoff |
+| `backoff` | `{ type: 'exponential', delay: 5_000 }` (5 s base) | 5 s → 10 s → 20 s → 40 s → 80 s; total ~2.5 min maximum delay before DLQ |
+| `concurrency` | 5 workers | IDG decisions are per-patient and per-plan; five parallel workers allow concurrent processing across multiple active IDG meetings without intra-patient conflicts (the worker acquires a Valkey advisory lock `idg:apply:<planId>` before writing) |
+| `removeOnComplete` | `{ count: 500 }` | IDG volumes can spike on meeting days; keep 500 for audit |
+| `removeOnFail` | false | DLQ promotion required |
+| `DLQ` | `care-plan.idg.dlq` | A DLQ entry here means an IDG decision was not applied to the care plan; the IDG coordinator must be notified immediately (the DLQ processor emits `m7.care_plan.idg_apply_failed` which triggers a M36 alert to the IDG Coordinator and Clinical Supervisor) |
+| **DLQ document-before-clear** | Capture `{ idgDecisionId, planId, decisionKind, failedReason }` to the ops ticket; M14 can re-emit the outbox event after root cause is resolved; the care plan coordinator verifies the draft reflects the decision before clearing | OPS-035 |
+| Idempotency | The `idg_decision_id` is stored in `care_plan_version` as the applied-decision marker; worker checks for existence before applying (no-op if already present) | D4 — covers duplicate outbox delivery |
+
+#### Queue: `care-plan.snapshot`
+
+Job: `build-summary` (event-driven on `m7.care_plan.version_signed`; also on-demand on portal request cache miss).
+
+| Parameter | Value | Rationale |
+|---|---|---|
+| `priority` | 6 (low-normal) | Summary build is a read path; not blocking for the signing workflow; portal latency is tolerated up to ~2 s |
+| `attempts` | 3 | Summary build failures are recoverable at request time (on-demand rebuild on cache miss); three attempts are sufficient |
+| `backoff` | `{ type: 'fixed', delay: 10_000 }` (10 s) | Fixed: HearthNote Layer-2 (optional tenant opt-in) may be temporarily rate-limited; a fixed 10 s gap avoids thundering-herd retries against the LLM endpoint |
+| `concurrency` | 3 workers | Summary builds are CPU-light DB reads + templating; three workers cover burst after a batch of IDG signing events |
+| `removeOnComplete` | `{ count: 200 }` | |
+| `removeOnFail` | false | DLQ promotion required |
+| `DLQ` | `care-plan.snapshot.dlq` | A stale or absent summary cache is surfaced as a cache miss on portal/summary GET — the on-demand path rebuilds synchronously. DLQ entries here are low-urgency; they must still be documented per OPS-035 and cleared within the standard 7-day DLQ review window |
+| **DLQ document-before-clear** | Record `{ planId, versionId, failedReason }` to ops ticket; verify on-demand rebuild path is operational before clearing | OPS-035 |
+| Idempotency | BullMQ `jobId` set to `summary:<planId>:<versionId>` — deduplication prevents redundant rebuilds for the same signed version (e.g., multiple portal users hitting a cache miss simultaneously enqueue only one job) | |
+
+### 4.7 STRIDE Threat Model (M07-F11 — SEC-007)
+
+> **M07-F11 (ADR-0021 §20.B requirement).** Authority: SEC-007 (STRIDE mandate per module). The table below covers M7's five primary threat surfaces: signature repudiation on care-plan versions, gate-override abuse, SUD-redaction bypass via the summary/snapshot paths, IDG-payload tampering, and cross-tenant care-plan access.
+
+| # | Threat (STRIDE category) | Threat description | M7 control | Test / verification |
+|---|---|---|---|---|
+| T1 | **Repudiation** — signature repudiation on care-plan version | A clinician claims they did not sign a version, or their account was used without consent | `care_plan_signature` row captures `membership_id`, `signer_role`, `signature_method` (`passkey\|password_step_up`), `signed_at`, and `attestation_text` (the attested boilerplate including version sequence). Module 4 PHI write-audit trigger creates an immutable `audit_event` row on INSERT. Signing requires step-up auth (M2 session class ≥ `step_up`). Passkey biometric binding ties the assertion to a physical credential. | Integration test: sign a version, inspect `audit_event` for signer membership, role, and method. Simulate a dispute by querying the `care_plan_signature` row and the audit log — both must agree. Step-up auth test: attempt sign without step-up session → 403. |
+| T2 | **Elevation of Privilege / Tampering** — gate-override abuse | A clinician invokes the encounter-sign gate override without Clinical Supervisor or Medical Director role, or fabricates a `reason` to unlock the gate for a commercially motivated encounter | Gate override path gated by RBAC (`care_plan.sign` with `role∈{clinical_supervisor, medical_director}`) + ABAC (`caseload_or_scope`). Override emits `care_plan.gate_overridden` audit at severity `critical` (immutable, goes to SIEM). Override `reason` is required (`minLength: 10`); empty or boilerplate reasons trigger an ML-heuristic warning (architecture AI Governance §6). `care_plan_gate_overrides_total` Prometheus counter alerts on rate anomaly (>3/day/org). | Unit: override without qualifying role → 403. Integration: override with reason → `critical` audit event present. E2E + monitor: Prometheus alert fires on synthetic rate spike. Manual: Compliance Officer review of override reason text in weekly report. |
+| T3 | **Information Disclosure** — SUD-redaction bypass via summary/snapshot paths | A caller without a `42_cfr_part_2_release` consent context obtains SUD problem content via the `/summary` route or by requesting a `state_snapshot` from a `care_plan_version` that includes SUD-flagged problems | `/summary` route: `summary-builder.ts` re-applies the `sud_disclosure_allowed` ABAC predicate on the problem list used to build summary output; SUD-flagged problems and their child goals/interventions are excluded regardless of snapshot content. `state_snapshot` read on version routes: the version GET handler post-filters `stateSnapshot.problems` array against the same predicate. `/internal/care-plan/relevant-elements` (M8 seam): predicate applied on the service layer, not trusting the caller's scope assertion alone. Response carries `redacted: true` when any content was filtered. | Integration: request `/summary` as a caller whose Module 39 test-double has no `42_cfr_part_2_release` → SUD problem absent, `redacted: true`. Same caller requests the version detail → SUD problem absent from `stateSnapshot.problems`. Confirm with query-plan inspection that the filter is SQL-level (WHERE clause) for the primary read, not post-fetch. |
+| T4 | **Tampering** — IDG-payload tampering | An attacker or misconfigured M14 emits a malformed or malicious `idg.decision_recorded` outbox event (e.g., fabricated `idg_decision_id`, injecting a `discontinue` payload for a terminal problem, or forging a `hopice_physician` role bypass) | `apply-idg-decision.worker` validates the incoming payload against the `IdgDecisionPayload` TypeBox schema (compile-time type + runtime fastify/typebox parse). Worker runs with the `system` actor under a restricted RBAC profile that holds only `care_plan.idg_revise` — it cannot sign, finalize, or override gates. A `discontinue` payload for a `terminal`-kind problem is **rejected** (service-level guard: terminal problem discontinuation requires explicit RN + physician co-sign path, not an IDG automation). Each applied decision is recorded in `care_plan.idg_decision_applied` audit event with `{ idgDecisionId, versionId, changes }` for forensic comparison to the M14 source event. Idempotency on `idg_decision_id` prevents replay. | Unit: payload with invalid shape → TypeBox parse error → job fails (no DB write). Integration: terminal-problem discontinue payload → worker rejects with typed error, no DB write, DLQ entry. Replay test: same `idg_decision_id` twice → second is a no-op; audit shows single applied event. |
+| T5 | **Information Disclosure / Elevation of Privilege** — cross-tenant care-plan access | A request under Org B's session context reads or writes care-plan rows belonging to Org A patients | RLS policy on all 6 owned tables enforces `organization_id = current_setting('app.org_id', true)::uuid` with `WITH CHECK` clause (M07-F08 / SD-029). The `withOrgContext` wrapper (M1) sets `app.org_id` from the authenticated JWT claim before any query runs. Internal routes (e.g., `/internal/care-plan/relevant-elements`) set `withOrgContext` from the caller's organization, not from a query parameter. Even with RBAC/ABAC fully stubbed open, RLS alone prevents the cross-tenant read (defense-in-depth, Security Hardening §6.1). | RLS isolation tests (§9.3): six tables × three operations × two org contexts — Org B context returns empty / constraint violation for Org A rows. Layer-independence test: RBAC/ABAC bypassed; RLS must still block. E2E: forge a cross-tenant `planId` in the URL → 404 (RLS suppresses the row; route returns 404 not 403 to avoid information disclosure about existence). |
+
+### 4.8 DR Tier + Degraded Mode (M07-F12 — DR-010/064)
+
+> **M07-F12 (ADR-0021 §20.B requirement).** Authority: DR-010 (Tier-1/2 services may not let any dependency block documentation), DR-064 (gate-clock pause during declared outages). M7 owns the IPOC — the primary compliance artifact for CoP 418.56. It is classified **DR Tier 2**.
+
+#### DR Tier Declaration
+
+| Attribute | Value |
+|---|---|
+| **DR Tier** | **2** (critical clinical data; documentation-path module) |
+| **RTO** | **4 hours** — M7 API must be restored to full write capability within 4 hours of declared outage |
+| **RPO** | **15 minutes** — at most 15 minutes of committed care-plan mutations may be lost in a failover; satisfied by the architecture's synchronous Postgres streaming replica (WAL-based, RPO ≤ 60 s in practice) and the M1 outbox table (durable to commit) |
+| **Backup cadence** | Continuous WAL streaming to the DR replica; daily logical snapshot to cold object storage (7-year retention, `compliance` class per Module 4 §3.4) |
+| **Warm-standby replica** | Required; M7 reads may be served from the replica during primary recovery; writes are gated until primary (or promoted replica) is confirmed writable |
+
+#### Encounter-Sign Gate Fail-Posture During M07 Unavailability
+
+The encounter-sign gate (`careplan.isReviewOverdue`) is called by Module 8 during encounter signing. If M7 is unavailable, Module 8 must decide whether to block or allow signing.
+
+**Decision: fail-open with `degraded` audit marker + retroactive sweep (recommended posture).**
+
+Rationale: encounter signing is patient-care documentation that cannot be withheld indefinitely during a system outage without violating CoP 418.56 (clinical record requirements). Blocking signing for more than a few minutes during an outage would cause cascading compliance risk — held encounters, late visit notes, payer rejections. The encounter-sign gate is a compliance-enforcement tool, not a safety gate; missing it for a short window is auditable and correctable.
+
+| Scenario | Behavior |
+|---|---|
+| M7 API unreachable (timeout < 2 s) | M8 **allows** encounter sign; stamps `gate_check: { status: 'degraded', reason: 'M7_UNREACHABLE', checkedAt }` on the encounter record |
+| M7 returns 5xx | Same: fail-open with `degraded` marker |
+| M7 returns 200 with `encounterSignBlocked: true` | Gate enforced normally (M7 is up; block is deliberate) |
+| M7 returns 200 with `encounterSignBlocked: false` | Gate clear; sign proceeds normally |
+| M7 unavailability duration > **30 minutes** | M36 (Secure Messaging) sends an escalation alert to the Clinical Supervisor and DON: "Care Plan gate service unavailable; encounter sign gate is in degraded mode. Review retroactively after restoration." |
+
+**Retroactive sweep:** After M7 is restored, the `care-plan.gates` queue runs an on-demand `retroactive-gate-audit` job (triggered by the `m7.service.restored` health event) that:
+
+1. Queries all encounters signed during the M7 outage window with `gate_check.status = 'degraded'`.
+2. For each encounter, re-evaluates `careplan.isReviewOverdue` against the current care-plan state.
+3. If the care-plan was overdue during the signing window, emits `care_plan.retroactive_gate_violation` (severity `critical`) and notifies the Clinical Supervisor.
+4. The Compliance Officer reviews these events in the weekly compliance dashboard (Module 33).
+
+#### Gate-Clock Pause / Override Rule for Declared Outages
+
+The 5-day initial gate clock and 15-day review gate clock continue advancing during an outage — they are `timestamptz` fields on `care_plan` rows in Postgres, not computed from a running service. However:
+
+- **Gate-clock pause rule:** When the system administrator declares a formal outage in the M1 ops console (creating an `outage_window` record with `{ startAt, endAt, affectedModules: ['M7'] }`), the `care-plan.gates` cron worker **excludes the outage duration from the day-count** when evaluating whether a plan is overdue. The effective gate date is shifted forward by `ceil(outage_hours / 24)` calendar days, capped at 2 days maximum (beyond 2 days the outage must be escalated to a tenancy-level compliance review).
+- **Override rule for declared outages:** During a declared outage window, Clinical Supervisors may invoke the gate override without an explicit reason string (the outage reference is auto-populated from the `outage_window.id`). Post-outage, these overrides are tagged `reason_source: outage_window` in the audit log and are excluded from the anomaly-rate alert threshold.
+- **Non-declared outages** (ad-hoc connectivity loss, client-side failures): no clock adjustment. Encounter-sign gate fail-open markers are the only accommodation; the sweep corrects the record.
 
 -----
 

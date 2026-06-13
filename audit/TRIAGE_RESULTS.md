@@ -184,6 +184,19 @@ spec: (a) ensure the §13 block carries the relationship-inventory clarifier inl
 invented `ModuleDef` fields, (c) flag any genuine direction-reversal as DISPUTED. Best done as a
 per-module pass, not a corpus find/replace.
 
+### Batch 2 — §20.B template sections (ADR-0021), wave 1 (2026-06-13) ✅ applied, `arch:fitness` green
+
+Added the missing template sections (STRIDE, DR-tier+degraded-mode, BullMQ queue params/DLQ,
+per-route Idempotency-Key, cursor pagination, sqlcipher offline, audit-event catalog) — tailored to
+each module's real routes/queues/threats — to **6 modules**:
+- **M02** (F09 STRIDE, F13 queue/idempotency/error-envelope, F19 DR Tier 1)
+- **M07** (F09 idempotency, F10 queue, F11 STRIDE, F12 DR Tier 2 + gate fail-posture)
+- **M09** (F04 sqlcipher, F06 idempotency, F10 DR Tier 2 + BCP, F12 queue + clinical-urgent alerts)
+- **M14** (F06 queue, F09 STRIDE + authz matrix, F13 idempotency, F17 DR Tier 2)
+- **M18** (F10 DR Tier 1, F11 idempotency, F14 §8 audit + queue DLQ, F16 OOB-payload)
+- **M19** (F08 DR Tier 1 + BCP re-entry + boot-refusal removal, F12 queue + single cadence, F15 STRIDE + cursor + audit catalog)
+Remaining Batch-2 modules (wave 2+): M03, M10, M15, M16, M20, M22, M26, M30, M34, M35, M36, M39.
+
 ### Batch 3b — strip invented ModuleDef fields (2026-06-13) ✅ applied, `arch:fitness` green
 
 `ModuleDef` carries EXACTLY `{id, name, codePaths, dependsOn, ownedTables}` (ARCH-146/ADR-0005).
