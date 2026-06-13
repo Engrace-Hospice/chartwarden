@@ -171,9 +171,9 @@ Grounding: `architecture/module-manifest.ts` is the single source of truth (alre
 - **M39 — full §13.1 trim** (closes/advances F01, F02, F07): `dependsOn → [1,2,3,4,5]` (ADR-0006: 22 dropped, breaks 22↔39 cycle); codePaths → `[packages/consent, apps/backend/...]` (drops `packages/domain/consent`, F01); removed all invented `ModuleDef` fields (publishedSeams/consumedSeams/registers*/aiProhibitedSurface — F07). D22 row also corrected.
 - **M22 — §13.1 binding diff trim** (closes F01 manifest part): `dependsOn → [1,5]` (ADR-0005/0006); removed invented `publishedSeams`/`forwardSeamsConsumed` fields; §13.2 rationale table reframed as relationship inventory.
 
-**Escalated as DISPUTED (need architecture-owner ruling, do NOT edit):**
-- **M35-F02** — spec D23/D24 argue the manifest's `[34]` is an inverted edge (claim M34→M35); no ADR ratifies the reversal (unlike the M22↔M39 case which ADR-0006 settled). Manifest `[34]` is authoritative until ruled.
-- **M14-F04** — SD-017 (M36 owns notification composition) vs locked decision D15 (M14 owns it).
+**Escalated as DISPUTED (need architecture-owner ruling) — DRAFT ADRs written 2026-06-13, status Proposed:**
+- **M35-F02** → **[ADR-0025](../docs/adr/ADR-0025-m34-m35-dependency-direction.md)** (Proposed). Recommends: M34↔M35 is a bidirectional seam relationship → remove `34` from `M35.dependsOn`, no edge either way (ADR-0005 D1; precedent ADR-0006/0007). Awaiting ratification; until then manifest `[34]` governs and M35-F02 stays OPEN.
+- **M14-F04** → **[ADR-0024](../docs/adr/ADR-0024-m14-notification-composition-ownership.md)** (Proposed). Recommends: notification composition + recipient resolution for cross-module events → M36 per SD-017; M14 keeps IDG-meeting notifications only (Option C surgical fallback documented). Awaiting ratification; until then SD-017 governs and M14-F04 stays OPEN.
 
 **Remaining (~21 specs) — NOT a blind sweep.** Every other spec's §13 carries the over-claimed
 "relationship inventory" list. Per the prior `MANIFEST_DEPENDSON_REVIEW` the accepted resolution is
