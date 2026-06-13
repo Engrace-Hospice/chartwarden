@@ -2620,14 +2620,7 @@ Before promoting M35 from "spec locked" to "implementation in progress" → "in 
 +      "promo_code_application",
 +      "refund"
 +    ],
-+    publishedSeams: [
-+      "SubscriptionStateProvider",
-+      "BillingStatusProvider",
-+      "UsageMeteringIngest",
-+      "PatientCounterProvider",
-+      "RevenueMetricsProvider",
-+      "PlanCatalogReader"
-+    ]
++    // Non-ModuleDef fields (seams/registrations/phase/tier/status/metadata) removed per ARCH-146/ADR-0005 — wired at boot, not in the manifest.
 +  },
 ```
 

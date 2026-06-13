@@ -3353,9 +3353,6 @@ The module is **LOCKED** when every box below is checked. Each box is binary; "p
 ```diff
  {
    id: 29,
-   key: 'external-interfaces',
-   tier: 'integration',
-   displayName: 'External Interfaces',
 -  dependsOn: [5, 11, 40],
 -  codePaths: ['apps/backend/src/modules/29-external-interfaces'],
 -  ownedTables: [],
@@ -3381,76 +3378,7 @@ The module is **LOCKED** when every box below is checked. Each box is binary; "p
 +    'external_interfaces.nppes_provider',
 +    'external_interfaces.nppes_sync_run',
 +  ],
-+  publishedSeams: [
-+    'LabObservationReader',
-+    'Hl7InboundProposalReader',
-+    'ExternalFeedReader',
-+    'NppesProviderReader',
-+    'ExternalInterfaceMetricsProvider',
-+  ],
-+  consumedSeams: [
-+    'PatientReader',                      // from M5
-+    'MedicationOrderProvider',            // from M11 (lab orders)
-+    'ConsentEvaluator',                   // from M39 (SUD redaction)
-+    'DocumentBlobWriter',                 // from M22 (attaching inbound HL7 source-of-truth payloads)
-+    'XeroClientFactory',                  // from M27 (Phase 2)
-+    'GustoClientFactory',                 // from M27 (Phase 2)
-+    'TerminologyProvider',                  // from M38 (LOINC, ICD-10 resolution)
-+    'NotificationDispatcher',             // from M36
-+    'OutboxPublisher',                    // from M4
-+    'AuditEmitter',                       // from M4
-+    'PredicateRegistry',                  // from M3
-+    'SessionAndStepUpInspector',          // from M2
-+    'MdmBaaStatusProvider',               // from M40
-+    'KmsEnvelopeEncryptor',               // from M1/M2 platform
-+    'PartitionMaintainer',                // from M1 (partition rolling)
-+  ],
-+  ownsOutboxEvents: [
-+    'm29.external_feed.created',
-+    'm29.external_feed.activated',
-+    'm29.external_feed.suspended',
-+    'm29.external_feed.revoked',
-+    'm29.external_feed.emergency_suspended',
-+    'm29.external_feed.allowlist_updated',
-+    'm29.external_feed.listener_down',
-+    'm29.external_feed.listener_recovered',
-+    'm29.external_feed.handshake_failed',
-+    'm29.external_feed.ingest_rate_alert',
-+    'm29.external_feed_credential.minted',
-+    'm29.external_feed_credential.rotated',
-+    'm29.external_feed_credential.revoked',
-+    'm29.hl7_message.inbound_received',
-+    'm29.hl7_message.outbound_dispatched',
-+    'm29.hl7_message.outbound_acked',
-+    'm29.hl7_message.outbound_failed',
-+    'm29.hl7_inbound_proposal.created',
-+    'm29.hl7_inbound_proposal.accepted',
-+    'm29.hl7_inbound_proposal.rejected',
-+    'm29.lab_observation.attached',
-+    'm29.lab_observation.manually_matched',
-+    'm29.lab_observation.discarded',
-+    'm29.nppes_sync_run.started',
-+    'm29.nppes_sync_run.completed',
-+    'm29.nppes_sync_run.failed',
-+    // cascade + proposal lifecycle events
-+    'm29.hl7_message.cascade_resolved_confident',
-+    'm29.hl7_message.cascade_resolved_candidate',
-+    'm29.hl7_message.cascade_resolved_no_match',
-+    'm29.hl7_message.routing_dropped',
-+    'm29.hl7_inbound_proposal.created',
-+    'm29.hl7_inbound_proposal.accepted',
-+    'm29.hl7_inbound_proposal.rejected',
-+    'm29.hl7_inbound_proposal.discarded',
-+    'm29.hl7_inbound_proposal.expired',
-+  ],
-+  consumesOutboxEvents: [
-+    'm11.order.hl7_orm_requested',         // outbound ORM dispatcher
-+    'mdm.baa_status_changed',              // re-evaluate gate + requeue DLQ
-+    'm5.patient.merged',                   // re-link lab observations to surviving MRN
-+    'm5.patient.archived',                 // mark related proposals as expired
-+    'm6.discharge.created',                // close stale per-encounter proposals
-+    'm39.consent.revoked',                 // future-state ingress consent change (re-evaluate SUD redaction gate)
-+  ],
++  // Non-ModuleDef fields (seams/registrations/outbox-event lists/phase/tier/metadata) removed per ARCH-146/ADR-0005 — wired at boot, not in the manifest.
  },
 ```
 

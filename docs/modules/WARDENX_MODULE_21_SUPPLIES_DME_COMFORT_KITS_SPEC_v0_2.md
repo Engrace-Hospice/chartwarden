@@ -3441,7 +3441,6 @@ This checklist gates M21 from `v0.2 Locked (spec)` to `v1.0 Shipped (code)`.
 {
   id: 21,
   name: 'Supplies, DME & Comfort Kits',
-  tier: 'clinical',
   dependsOn: [
     1,   // M1 Foundation (boot, config, logger)
     2,   // M2 Identity & Org (sessions, roles, locations)
@@ -3474,50 +3473,7 @@ This checklist gates M21 from `v0.2 Locked (spec)` to `v1.0 Shipped (code)`.
     'comfort_kit_return',
     'comfort_kit_returned_content',
   ],
-  publishedSeams: [
-    'SupplyFulfillmentProvider',
-    'ComfortKitDispatchProvider',
-    'SupplyCostProvider',
-  ],
-  consumedSeams: [
-    'PatientReader',          // from M5
-    'AdmissionStatusReader',  // from M6 (read-only status check)
-    'OrderProvider',            // from M11 (terminal-status query)
-    'MedicationOrderProvider',  // from M11 / M13 boundary for comfort-kit replenishment context
-    'TerminologyProvider',      // from M38
-    'CanonicalSkuProvider',     // from M40
-    'AlertEmitter',            // from M36
-    'SignatureProvider',        // from M22
-    'AIPromptRegistry',         // from M32 (validator-only; M32 unlocked, deny-stub holds)
-  ],
-  forwardSeamDenyStubs: [
-    'InvoiceLedgerProvider',    // forward to M27 (unlocked)
-    'SurveyInvestigationProvider', // forward to M30 (unlocked) — D8 discrepancy cascade
-  ],
-  consumedOutboxEvents: [
-    'm11.order.supply_fulfillment_requested',
-    'm11.order.supply_cancellation_requested',
-    'm13.comfort_kit.replenishment_needed',
-    'm13.comfort_kit.return_required',
-    'm13.comfort_kit.controlled_substance_discrepancy',
-    'm13.comfort_kit.deployed',  // pending M13 spec patch — see §12.3
-  ],
-  emittedOutboxEvents: [
-    'm21.supply_request.status_changed',
-    'm21.supply_request.created_from_external',
-    'm21.supply_request.delivered',
-    'm21.supply_request.cancelled',
-    'm21.supply_request.cancel_no_op',
-    'm21.comfort_kit.dispatched',
-    'm21.comfort_kit.deployed_at_patient',
-    'm21.comfort_kit.returned',
-    'm21.comfort_kit.return_reconciliation',
-    'm21.controlled_substance_discrepancy',
-    'm21.par.below_threshold',
-    'm21.supply_request.invoice_accrued',     // forward to M27 (deny-stub)
-    'm21.supply_request.invoice_reconciled',  // forward to M27 (deny-stub)
-    'm21.comfort_kit.unreturned',
-  ],
+  // Non-ModuleDef fields (seams/registrations/outbox-event lists/phase/metadata) removed per ARCH-146/ADR-0005 — wired at boot, not in the manifest.
 }
 ```
 

@@ -2566,10 +2566,8 @@ The following must each be observable before M32 v0.2 is considered locked-and-s
 ```diff
    {
      id: 32,
-     key: 'ai-platform',
      name: 'AI Platform',
-     tier: 'foundation',
-     phase: 1,
+     // Non-ModuleDef fields (seams/registrations/phase/key/riskProfile/metadata) removed per ARCH-146/ADR-0005 — wired at boot, not in the manifest.
 -    dependsOn: [1, 2, 3, 4],
 +    dependsOn: [1, 2, 3, 4, 36, 38],
      codePaths: [
@@ -2601,43 +2599,7 @@ The following must each be observable before M32 v0.2 is considered locked-and-s
 +      'ai_kill_switch_state',
 +      'ai_routing_override',
 +    ],
-+    publishedSeams: [
-+      'ai.narrative_enhancement.provider',
-+      'ai.doclens.classifier',
-+      'ai.doclens.extractor',
-+      'ai.doclens.vision_verifier',
-+      'ai.doclens.sud_detector',
-+      'ai.triage.protocol_suggestion',
-+      'ai.triage.hospitalization_risk',
-+      'ai.bereavement.risk_narrative',
-+      'ai.billing.denial_prediction',
-+      'ai.embeddings.provider',
-+      'ai.semantic_search.provider',
-+      'ai.copilot.provider',
-+      'ai.prompt_registry',
-+    ],
-+    consumedSeams: [
-+      'identity.resolver',           // M2
-+      'org_context.resolver',        // M2
-+      'permission.evaluator',        // M3
-+      'audit.emitter',               // M4
-+      'destruction_cert.callback_registry',  // M4
-+      'messaging.alert_bus',         // M36
-+      'terminology.resolver',        // M38
-+      'outbox.publisher',            // M1
-+      // Optional upstream feeds (resolved via reg.optional):
-+      'm9.scale_series.provider',
-+      'm10.hope_j2051.provider',
-+      'm16.bereavement_risk_factors.provider',
-+      'm20.safety_incident.reader',
-+    ],
-+    prohibitedAiPromptTargets: [], // M32 itself has no prohibited zones; consumer modules declare theirs
-+    riskProfile: {
-+      cbrnRisk: 'low',
-+      clinicalSafetyRisk: 'high',   // hot-path narrative enhancement directly affects clinical documentation
-+      financialRisk: 'medium',      // token spend governance
-+      complianceRisk: 'high',       // HIPAA + §164.528 disclosure accounting
-+    },
++    // Non-ModuleDef fields (seams/registrations/phase/key/riskProfile/metadata) removed per ARCH-146/ADR-0005 — wired at boot, not in the manifest.
    },
 ```
 

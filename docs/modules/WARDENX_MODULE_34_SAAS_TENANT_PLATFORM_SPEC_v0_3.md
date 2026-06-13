@@ -2274,14 +2274,8 @@ export const MODULES: ModuleManifest[] = [
   {
     id: 34,
     name: 'SaaS Tenant Platform',
-    tier: 'foundation',
-    phase: 1,
-    status: 'locked',
-    specVersion: 'v0.2',
-    specPath: 'specs/locked/WARDENX_MODULE_34_SAAS_TENANT_PLATFORM_SPEC_v0_3.md',
     // EXPANDED from [2, 3, 4, 36] per D23:
     dependsOn: [1, 2, 3, 4, 22, 36],
-    forwardSeamConsumers: [35], // TenantSubscriptionEntitlementReader deny-stub today
     codePaths: [
       'packages/saas-tenant-platform',
       'packages/admin-ui-shell',
@@ -2307,63 +2301,7 @@ export const MODULES: ModuleManifest[] = [
       'tenant_signup_intent',
       'tenant_signup_token',
     ],
-    publishedSeams: [
-      'TenantLifecycleProvider',
-      'TenantKeyProvider',
-      'TenantOnboardingProvider',
-      'TenantSupportSessionProvider',
-      'TenantExportShard', // interface every PHI module implements; M34 owns the registry
-    ],
-    consumedSeams: [
-      'M1.EnvelopeEncryption',
-      'M1.MinioTenantPrefix',
-      'M1.FeatureFlagAdmin',
-      'M2.OrganizationReader',
-      'M2.SessionRevoker',
-      'M3.PermissionRegistry',
-      'M3.AbacPredicateRegistry',
-      'M4.AuditWriter',
-      'M4.AuditReadRecorder',
-      'M4.DestructionCallbackRegistry',
-      'M22.DocumentUploadRequester',
-      'M36.AlertRuleRegistry',
-      'M36.AlertResolverRegistry',
-      'M35.TenantSubscriptionEntitlementReader', // deny-stub
-    ],
-    cronJobs: [
-      'tenant.bundle_expiry_sweep',          // nightly
-      'tenant.baa_expiry_sweep',             // daily
-      'tenant.support_session_close_sweep',  // every 5min
-      'tenant.shred_eligibility_check',      // daily
-    ],
-    outboxEventKinds: [
-      'm34.tenant.provision_started',
-      'm34.tenant.provisioned',
-      'm34.tenant.activated',
-      'm34.tenant.suspended',
-      'm34.tenant.offboarding_initiated',
-      'm34.tenant.destroyed',
-      'm34.onboarding.step_advanced',
-      'm34.onboarding.task_completed',
-      'm34.onboarding.task_blocked',
-      'm34.support_consent_grant.issued',
-      'm34.support_consent_grant.revoked',
-      'm34.support_session.started',
-      'm34.support_session.closed',
-      'm34.dsar_export.requested',
-      'm34.dsar_export.fulfilled',
-      'm34.tenant_export.requested',
-      'm34.tenant_export.fulfilled',
-      'm34.tenant.dek_rotation_completed',
-      'm34.baa.executed',
-    ],
-    dataClassesOwned: ['saas_tenant_platform_class'],
-    securityDefinerFunctions: [
-      'm34_provision_tenant_key_ring',
-      'm34_destroy_tenant_key_ring',
-      'm34_unwrap_dek',
-    ],
-    rolesOwned: ['tenant_platform_writer'],
+    // Non-ModuleDef fields (seams/registrations/phase/tier/status/metadata) removed per ARCH-146/ADR-0005 — wired at boot, not in the manifest.
   },
 
   // ... M35 onwards remain forward-stub ...

@@ -183,3 +183,18 @@ M22 omits 2/3/4, etc., reflecting actual-import calls the module owner must conf
 spec: (a) ensure the §13 block carries the relationship-inventory clarifier inline, (b) strip any
 invented `ModuleDef` fields, (c) flag any genuine direction-reversal as DISPUTED. Best done as a
 per-module pass, not a corpus find/replace.
+
+### Batch 3b — strip invented ModuleDef fields (2026-06-13) ✅ applied, `arch:fitness` green
+
+`ModuleDef` carries EXACTLY `{id, name, codePaths, dependsOn, ownedTables}` (ARCH-146/ADR-0005).
+Stripped every non-canonical field from the §13 manifest-entry literals of **M16, M21, M25, M26,
+M29, M32, M34, M35** (in addition to M22/M39 done in Batch 3). Removed fields included:
+`publishedSeams`, `consumedSeams`, `forwardSeamDenyStubs`/`forwardSeamConsumers`,
+`consumedOutboxEvents`/`emittedOutboxEvents`/`ownsOutboxEvents`/`outboxEventKinds`,
+`prohibitedAiPromptTargets`, `riskProfile` (nested), `dataClassesOwned`,
+`securityDefinerFunctions`, `rolesOwned`, `cronJobs`, plus the non-canonical metadata
+`phase`, `tier`, `key`, `status`, `specVersion`, `specPath`, `displayName`. Each replaced with a
+comment noting these are wired at boot, not in the manifest. This closes the **F07-class** invented-
+field findings (M39-F07 etc.) and the **M16-F02 illegal `phase` field**. `dependsOn` values were left
+unchanged (the edge-set trims are the separate, judgment-laden Batch-3 remainder; M35's dependsOn is
+the disputed item).

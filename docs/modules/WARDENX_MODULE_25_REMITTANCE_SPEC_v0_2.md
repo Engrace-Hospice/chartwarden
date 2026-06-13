@@ -2057,20 +2057,17 @@ Patch against `module-manifest.ts`:
 {
   id: 25,
   name: 'Remittance & Denials',
-  tier: 'billing',
-  phase: 1,
+  // Non-ModuleDef fields (seams/registrations/outbox-event lists/phase/tier/metadata) removed per ARCH-146/ADR-0005 — wired at boot, not in the manifest.
   dependsOn: [23, 36],
   ownedTables: [],
   codePaths: ['packages/m25'],
-  status: 'planned',
 }
 
 // AFTER (lock-grade v0.2):
 {
   id: 25,
   name: 'Remittance & Denials',
-  tier: 'billing',
-  phase: 1,
+  // Non-ModuleDef fields (seams/registrations/outbox-event lists/phase/tier/metadata) removed per ARCH-146/ADR-0005 — wired at boot, not in the manifest.
   dependsOn: [1, 2, 3, 4, 18, 22, 23, 24, 36, 38, 40],
   ownedTables: [
     'remittance_advice',
@@ -2089,7 +2086,6 @@ Patch against `module-manifest.ts`:
     'packages/m25',
     'packages/x12-worker-client',
   ],
-  status: 'locked-v0.2',
 }
 ```
 

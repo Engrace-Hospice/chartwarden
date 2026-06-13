@@ -2334,9 +2334,8 @@ The following diff applies to `tooling/manifest/module-manifest.ts`. The patch u
 ```diff
    {
      id: 26,
-     key: 'cap-management',
      name: 'Cap Management',
-     phase: 'foundation',
+     // Non-ModuleDef fields (seams/registrations/phase/key/riskProfile/metadata) removed per ARCH-146/ADR-0005 — wired at boot, not in the manifest.
 -    dependsOn: [23, 36],
 -    ownedTables: [],
 +    dependsOn: [1, 2, 3, 4, 5, 6, 23, 25, 36, 38, 40],

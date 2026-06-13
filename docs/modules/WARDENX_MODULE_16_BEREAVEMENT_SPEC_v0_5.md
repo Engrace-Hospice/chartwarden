@@ -2072,7 +2072,7 @@ Sequencing for the external-source track: T-M16-17 → T-M16-18 → T-M16-19.
 +   "bereavement_contact_log",
 +   "tenant_bereavement_external_source_gate_override",
 + ],
-+ phase: 2,
++ // Non-ModuleDef fields (seams/registrations/outbox-event lists/phase/metadata) removed per ARCH-146/ADR-0005 — wired at boot, not in the manifest.
 },
 ```
 
