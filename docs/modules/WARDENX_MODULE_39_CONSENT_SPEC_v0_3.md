@@ -2198,7 +2198,7 @@ Decisions are wired to single constants / interfaces, not scattered.
 | **D19** | **No M27 cost-report-specific consent path.** M27 reads consent state via the standard `evaluateBulk` + `evaluateForDisclosure` methods; no dedicated seam method needed. | M27's PHI-bearing surface is bounded; the existing seam shape is sufficient; avoid a one-off seam method that exists for a single consumer. | **Decided** |
 | **D20** | **`compliance` retention class with 7-year HIPAA §164.530(j)(2) floor and state-overridable.** Eraser registered with M4 destruction-cert workflow; deletes consent-record subtree atomically with the M5-triggered patient eraser; legal holds supersede. | The §164.508 6-year floor is widened to 7 years by the hospice CoP 418.104(a) operational retention — taking the longer of the two as the platform-floor; state overrides via M4's existing hook. | **Decided** |
 | **D21** | **Fourteen outbox event types** covering the full state lifecycle (created, signed, supersedes, revoked, expired, expiring_soon, renewal_cycle_opened, renewed, recipient_added, recipient_removed, dpoa.agent_appointed, dpoa.agent_removed, delegated_access.granted, delegated_access.revoked); per-consumer dedup keyed on `(eventId, consumerName)`. | Each downstream module needs a different subset of events; the typed catalog lets each module declare what it subscribes to without M39 over-broadcasting; idempotency is the resilience floor. | **Decided** |
-| **D22** | **Manifest patch: `M39.dependsOn = [1, 2, 3, 4, 5, 22, 36, 38, 40]`; `M39.ownedTables` = 11 tables; forward-seam consumers M27, M28, M29, M31, M33.** Removes the prior placeholder `dependsOn`. The M22 circular dep that M22's spec D18 documented (M22→M39 was wrong; M39→M22 is correct) is now resolved with M39 as the consumer of `DocumentRenderer`. | Manifest must reflect actual import direction; M39 consumes M22's renderer (M39 → M22 edge); the M22 D18 patch removed the wrong M22 → M39 edge. | **Decided** |
+| **D22** | **Manifest patch: `M39.dependsOn = [1, 2, 3, 4, 5]` (M39-F02/ADR-0006: 22 dropped to break the 22↔39 cycle — M39 is consumed *by* M22 via forward seam; 36/38/40 are outbox/seam/terminology consumers, no edge per ADR-0005 D1); `M39.ownedTables` = 11 tables; forward-seam consumers M27, M28, M29, M31, M33.** Removes the prior placeholder `dependsOn`. The M22 circular dep that M22's spec D18 documented (M22→M39 was wrong; M39→M22 is correct) is now resolved with M39 as the consumer of `DocumentRenderer`. | Manifest must reflect actual import direction; M39 consumes M22's renderer (M39 → M22 edge); the M22 D18 patch removed the wrong M22 → M39 edge. | **Decided** |
 
 -----
 
@@ -2341,26 +2341,10 @@ This section is the **binding deliverable** for integrating M39 into the platfor
   id: 39,
   name: "Consent & Authorization Management",
   codePaths: [
+    "packages/consent",                        // M39-F01: Drizzle schema lives here, NOT packages/domain (leaf = pure types only)
     "apps/backend/src/modules/39-consent",
-    "packages/consent",
-    "packages/domain/consent",
-    "apps/frontend/src/modules/39-consent",
-    "apps/mobile/src/modules/39-consent",
   ],
-  dependsOn: [
-    // Foundation tier
-    1,  // Foundation (withOrgContext, audit(), outbox + idempotency, RLS generator, DEK envelope, SeamRegistry)
-    2,  // Identity & Org (MembershipReader, CredentialReader, SESSION_POLICY incl. consent_management profile)
-    3,  // Authorization (RBAC catalog + named-predicate registry; M39 contributes 11 predicate resolvers + 15 permission keys)
-    4,  // Audit & Compliance Log (write-audit trigger, auditRead, retention classes, eraser registry, legal-hold)
-
-    // Clinical spine + cross-cutting consumers
-    5,  // Patient & Demographics (PatientReader, CaseloadProvider, patient.deceased event source)
-    22, // Documents (DocumentRenderer for consent_record template; m22.document.rendered backref)
-    36, // Secure Messaging & Alerts (typed alerts + recipient resolver)
-    38, // Clinical Terminology (recipient-class value set, jurisdiction codes, purpose-of-disclosure codes)
-    40, // MDM (ExternalPhysicianReader, FacilityReader, PharmacyReader for recipient identity)
-  ],
+  dependsOn: [1, 2, 3, 4, 5], // M39-F02 / ADR-0006: 22 dropped (M39 is consumed BY M22 via forward seam — no edge, breaks the 22↔39 cycle); 36/38/40 are outbox/seam/terminology consumers (ADR-0005 D1 — no edge); 1–4 are foundation helpers (ADR-0005 D4). The broader relationship inventory is in the §13.1 prose / "Depends on" header, not the edge set.
   ownedTables: [
     "consent_type_catalog",                  // platform-shared dual-grant pattern
     "tenant_consent_type_overlay",
@@ -2374,71 +2358,13 @@ This section is the **binding deliverable** for integrating M39 into the platfor
     "consent_eval_audit",                    // partitioned monthly
     "consent_renewal_cycle",
   ],
-  publishedSeams: [
-    "m39.consent-evaluator",
-    "m39.consent-state-advisory-provider",
-    "m39.delegated-access-reader",
-    "m39.bereavement-outreach-consent-provider",
-    "m39.recipient-directory-reader",
-  ],
-  consumedSeams: [
-    "m2.membership-reader",
-    "m2.credential-reader",
-    "m5.patient-reader",
-    "m5.caseload-provider",
-    "m22.document-renderer",
-    "m36.messaging-provider",
-    "m36.alert-emitter",
-    "m38.terminology",
-    "m40.external-physician-reader",
-    "m40.facility-reader",
-    "m40.pharmacy-reader",
-  ],
-  forwardSeamConsumerStubs: [
-    "m31.portal-session-terminator",         // logged-deferral until M31 lands
-    "m28.fhir-client-cache-invalidator",     // logged-deferral until M28 cache wiring lands (M28 itself is locked)
-  ],
-  registersAbacPredicates: [
-    "sud_consent_present",
-    "sud_disclosure_allowed",
-    "dpoa_active",
-    "family_caregiver_access_active",
-    "portal_access_active",
-    "telehealth_consent_active",
-    "media_release_active",
-    "research_participation_active",
-    "advance_directive_acknowledged",
-    "hipaa_release_active",
-    "family_violence_disclosure_allowed",
-  ],
-  registersPermissionKeys: [
-    "consent.read_catalog",
-    "consent.read",
-    "consent.read_history",
-    "consent.read_phi_content",
-    "consent.read_eval_audit",
-    "consent.author",
-    "consent.sign",
-    "consent.revoke",
-    "consent.manage_overlay",
-    "consent.admin_re_render",
-    "consent.delegate_assignment",
-    "consent.portal_self_service",
-    "consent.read_bereavement_outreach",
-    "consent.bereavement_outreach_author",
-    "consent.cascade_admin",
-  ],
-  registersRetentionClasses: ["consent"],
-  registersErasers: ["consent_record_subtree"],
-  registersSessionPolicyProfiles: ["consent_management"],
-  registersAlertRules: [
-    "m39.consent.expiration_imminent",
-    "m39.consent.revoked_cascade_failed",
-    "consent.dpoa.agent_appointed",
-    "m39.consent.recipient_disclosure_attempted_without_consent",
-    "m39.consent.renewal_overdue",
-  ],
-  aiProhibitedSurface: true,
+  // M39-F07 / ARCH-146 / ADR-0005: ModuleDef carries ONLY {id, name, codePaths, dependsOn,
+  // ownedTables}. The previously-listed publishedSeams / consumedSeams / forwardSeamConsumerStubs /
+  // registersAbacPredicates / registersPermissionKeys / registersRetentionClasses / registersErasers /
+  // registersSessionPolicyProfiles / registersAlertRules / aiProhibitedSurface are NOT manifest fields —
+  // they are registered at boot against the M1 SeamRegistry and the M3 predicate/permission registries.
+  // See §4.3 (seams), §4.6 (permission keys), §4.7 (ABAC predicates), §3.8 (eraser), §1619 (alert rules),
+  // and D17 (AI-prohibited boundary, boot-validated).
 },
 ```
 

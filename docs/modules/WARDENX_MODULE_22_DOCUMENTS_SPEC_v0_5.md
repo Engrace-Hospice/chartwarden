@@ -3402,7 +3402,7 @@ diff --git a/module-manifest.ts b/module-manifest.ts
      name: "Document Management",
 -    dependsOn: [1, 5, 39],
 -    ownedTables: [],
-+    dependsOn: [1, 2, 3, 4, 5, 6, 11, 29, 32, 36, 38, 40],
++    dependsOn: [1, 5], // M22-F01/ADR-0005/ADR-0006: genuine compile-time import edges ONLY. 2/3/4 are foundation helpers (D4 — no edge); 6/11/29/32/36/38/40 are seam/outbox/terminology consumers (D1 — no edge); 39 removed (real direction is M39→M22). The §13.2 table below is the relationship inventory, NOT the edge set — do not bulk-apply it.
 +    ownedTables: [
 +      "document",
 +      "document_version",
@@ -3427,17 +3427,10 @@ diff --git a/module-manifest.ts b/module-manifest.ts
        "packages/intake-extraction",
        "apps/backend/src/modules/22-documents",
      ],
-+    publishedSeams: [
-+      "RenderedDocumentProvider",
-+      "DocumentReader",
-+      "PortalDocumentReader",
-+      "IntakeMetricsProvider",
-+      "ExtractionProvenanceReader",
-+    ],
-+    forwardSeamsConsumed: [
-+      // M22 ships deny-stubs for these until target modules land:
-+      // M23.ABNRenderRequester, M39.ConsentRenderRequester
-+    ],
++    // M22-F01/ARCH-146/ADR-0005: ModuleDef carries ONLY {id,name,codePaths,dependsOn,ownedTables}.
++    // Published seams (RenderedDocumentProvider, DocumentReader, PortalDocumentReader,
++    // IntakeMetricsProvider, ExtractionProvenanceReader) and the M23/M39 forward-seam deny-stubs
++    // are registered at boot against the M1 SeamRegistry (see §4.3 / §13.3), NOT in the manifest.
    },
 ```
 

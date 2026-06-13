@@ -162,3 +162,24 @@ to apply the audit "Fix" column.
 - **Batch 3 — manifest/`dependsOn` trims** (ADR-0005/0006): trim each spec's §13 patch to the minimal edge set + cite ADR; includes the STALE-FIX corrections (M22-F01, M35-F02, M39-F02/F07).
 - **Batch 4 — cross-module seam/ownership + §164.528 + Part 2** (ADR-0011/0013/0014).
 - **Batch 5 — internal-coherence reconciliation passes** (ADR-0022): M18/M19/M22/M26/M30.
+
+### Batch 3 — manifest/`dependsOn` trims (2026-06-13) — partial; `arch:fitness` green
+
+Grounding: `architecture/module-manifest.ts` is the single source of truth (already minimal,
+0 cycles). Each spec's §13 "proposed patch" over-claims. Done so far:
+
+- **M39 — full §13.1 trim** (closes/advances F01, F02, F07): `dependsOn → [1,2,3,4,5]` (ADR-0006: 22 dropped, breaks 22↔39 cycle); codePaths → `[packages/consent, apps/backend/...]` (drops `packages/domain/consent`, F01); removed all invented `ModuleDef` fields (publishedSeams/consumedSeams/registers*/aiProhibitedSurface — F07). D22 row also corrected.
+- **M22 — §13.1 binding diff trim** (closes F01 manifest part): `dependsOn → [1,5]` (ADR-0005/0006); removed invented `publishedSeams`/`forwardSeamsConsumed` fields; §13.2 rationale table reframed as relationship inventory.
+
+**Escalated as DISPUTED (need architecture-owner ruling, do NOT edit):**
+- **M35-F02** — spec D23/D24 argue the manifest's `[34]` is an inverted edge (claim M34→M35); no ADR ratifies the reversal (unlike the M22↔M39 case which ADR-0006 settled). Manifest `[34]` is authoritative until ruled.
+- **M14-F04** — SD-017 (M36 owns notification composition) vs locked decision D15 (M14 owns it).
+
+**Remaining (~21 specs) — NOT a blind sweep.** Every other spec's §13 carries the over-claimed
+"relationship inventory" list. Per the prior `MANIFEST_DEPENDSON_REVIEW` the accepted resolution is
+**keep the manifest minimal + annotate the spec list "do not bulk-apply" + strip invented ModuleDef
+fields** — not force each spec to the manifest verbatim (the manifest has its own quirks: M34 omits 1,
+M22 omits 2/3/4, etc., reflecting actual-import calls the module owner must confirm). Residual work per
+spec: (a) ensure the §13 block carries the relationship-inventory clarifier inline, (b) strip any
+invented `ModuleDef` fields, (c) flag any genuine direction-reversal as DISPUTED. Best done as a
+per-module pass, not a corpus find/replace.
