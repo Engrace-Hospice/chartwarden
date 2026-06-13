@@ -98,13 +98,14 @@ an event or seam adds **no** import edge.)
   - **Always out of scope (separate, feature-prefixed namespaces):** permission keys
     (`care_plan.author`), ABAC predicates, worker/span ids (`authz.rbac_check`), and schema
     field names (`goal.problem_id`) — never `mN.`.
-  - **◻ Corpus-wide remainder (NOT yet reconciled).** Bare domain-prefix audit actions /
-    alert payloads also appear in many other modules (e.g. M16 `bereavement.*`, M19 `triage.*`,
-    M20 `field_safety.*`, M22 `extraction.*`/`document.*`, M30, M34 `tenant.*`, M35
-    `subscription.*`/`invoice.*`, M39 `consent.*`). Most are **v0.4**. These need per-module
-    authoritative-catalog (§8.1 audit / §4.9 alert) extraction — they are **not** safely
-    blanket-renamable (the token space is dense with fields/methods/files). Tracked for a
-    deliberate per-module pass.
+  - **✅ Corpus-wide remainder — DONE (per-module pass complete).** The remaining modules were
+    each reconciled via their authoritative catalogs (events §4.x / alerts §4.9 / audit §8.1),
+    exact-string renames only, permissions/predicates/fields/files/seam-methods left bare:
+    M16 (`m16.bereavement.*`, v0.5), M20 (`m20.safety.*`, v0.3), M22 (`m22.*`, v0.5), M34
+    (`m34.*`, v0.3), M35 (`m35.*`, v0.3), M39 (`m39.consent.*`, v0.3). M19 (`m19.*`, v0.3) and
+    M30 (`m30.*`, v0.5) were found **already conformant** at the contract level (authoritative
+    catalogs already `mN.`); only stray prose refs were aligned. M02/M40 remain intentionally
+    kept (above).
 - **Enforcement:** the convention is **statically armed** — `scripts/check-fitness-gaps.ts`
   (event-catalog sub-check) enforces `mN.` ownership + valid consumers the moment the
   `events-by-mN.ts` / outbox registry lands, and M01's boot validation refuses violations at
