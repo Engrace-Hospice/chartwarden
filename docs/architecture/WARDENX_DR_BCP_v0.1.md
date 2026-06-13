@@ -977,7 +977,7 @@ HIPAA Privacy Rule §164.404 requires notification when there is "unauthorized a
 
 ### 9.4 Vendor Escalation Contacts
 
-Maintained as a separate doc (`docs/dr/vendor-escalation.md`) updated quarterly:
+Maintained as a separate doc (`docs/architecture/vendor-escalation.md`) updated quarterly:
 
 | Vendor | Service | Standard support | Escalation contact | BAA status |
 |---|---|---|---|---|
@@ -1293,7 +1293,7 @@ Specific events that trigger immediate document updates:
 
 ### 14.3 Version Control
 
-- Document held in `docs/dr/WARDENX_DR_BCP.md` in Git
+- Document held in `docs/architecture/WARDENX_DR_BCP_v0.1.md` in Git
 - Material changes get version bumps (v0.1 → v0.2)
 - Editorial changes do not bump version but are logged in Git history
 - Each version has a sign-off date and reviewer
