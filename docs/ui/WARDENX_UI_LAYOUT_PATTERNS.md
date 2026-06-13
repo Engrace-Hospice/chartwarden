@@ -117,6 +117,27 @@ step-up — anything outside the App Shell. Accessibility is first-class.
 
 **Used by.** Authentication & Session.
 
+### Assistant **[proposed]**
+
+**Intent.** A conversational AI surface that returns **grounded, cited** answers over a
+scoped record, with suggested follow-ups/actions — not a person-to-person chat (that's
+Conversation View).
+
+**Structure**
+
+```text
+Scope Bar
+Conversation Thread (prompt → grounded answer + citations)
+Suggested Follow-ups / Actions
+Composer (mode: Ask · Summarize · Find)
+```
+
+**When to use.** AI copilot / semantic search over a chart or dataset. Every answer cites
+sources; the assistant suggests, the human acts; governance (opt-out, kill-switch, hard-block
+categories, HITL feedback) applies.
+
+**Used by.** Clinical Copilot & Semantic Chart Search.
+
 ### Work Queue **[named in specs]**
 
 **Intent.** Triage and act on a list of work items, viewing detail without leaving the list.
@@ -424,6 +445,7 @@ Modifiers attach to a base pattern with `+`. They contribute regions, not whole 
 | **Documentation Workspace** | Center clinical-form/results surface + Right "Trends / Risk / AI Suggestions". | `Patient Workspace + Documentation Workspace` (Assessments), `Work Queue + Documentation Workspace` (On-Call) |
 | **Patient Detail** / **Patient/Family Detail** | Specializes the Right Detail Panel to patient (or bereaved-family) context. | `Work Queue + Patient Detail` (Eligibility), `Work Queue + Patient/Family Detail` (Bereavement) |
 | **Mobile Task Flow** | A parallel single-task mobile layout (one action per screen: check-in, escalate, document-and-close). | `Dashboard + Mobile Task Flow` (Field Safety) |
+| **Timeline** | A chronological event stream with lane filters + date presets + as-of view, replacing the table/center surface. | `Patient Workspace + Timeline` (Patient Clinical Timeline) |
 
 ---
 
@@ -452,12 +474,13 @@ Modifiers attach to a base pattern with `+`. They contribute regions, not whole 
 | App Shell *(proposed)* | App Shell & Role Home |
 | Auth Flow *(proposed)* | Authentication & Session |
 | System Page *(proposed)* | System / Utility Pages |
-| Work Queue | Audit Log, Feature Flags, Staff Mgmt, Document Mgmt, On-Call Triage, Denials, Eligibility, ERA Posting, Bereavement, Patient List/Census, EVV, Claims/Billing, Notifications & Tasks, AI Governance Console, Master Data (MDM), Terminology, Integration Monitoring, FHIR/API, Volunteer Management, Clinical Content Admin |
-| Dashboard | Cap Management, Field Safety, HQRP Quality, Reporting & Analytics |
+| Work Queue | Audit Log, Feature Flags, Staff Mgmt, Document Mgmt, On-Call Triage, Denials, Eligibility, ERA Posting, Bereavement, Patient List/Census, EVV, Claims/Billing, Notifications & Tasks, AI Governance Console, Master Data (MDM), Terminology, Integration Monitoring, FHIR/API, Volunteer Management, Clinical Content Admin, Prior Authorization, Help & Training, Global Search Results, DocLens Extraction Review, Referral Source CRM |
+| Dashboard | Cap Management, Field Safety, HQRP Quality, Reporting & Analytics, Agency Command Center |
+| Stepper Workflow | Admissions Intake, Cost Report, Election & Certification, Onboarding Wizard, Death/Pronouncement, Discharge/Revocation/Transfer |
+| Patient Workspace | (+ modifier) Assessments, Election & Certification, Supplies/DME, Patient Chart, Encounter Documentation, Care Plan, Orders, Medications/eMAR, HOPE Assessment, Wound Care, Allergy Management, CTI/Eligibility Worksheet, Patient Clinical Timeline |
+| Assistant *(proposed)* | Clinical Copilot & Semantic Chart Search |
 | Admin Settings | Tenant Settings, User Profile & Preferences |
 | Conversation View *(proposed)* | Portal Care Team Messages, Staff Messaging |
-| Stepper Workflow | Admissions Intake, Cost Report, Election & Certification |
-| Patient Workspace | Assessments, Election & Certification, Supplies/DME, Patient Chart, Encounter Documentation, Care Plan, Orders, Medications/eMAR, HOPE Assessment |
 | Work Queue + Documentation Workspace | On-Call Triage, IDG Meeting |
 | MAR Grid *(proposed)* | Medications — Prescribing & eMAR |
 | Scheduling Calendar *(proposed)* | Scheduling / Visit Calendar |

@@ -7,7 +7,7 @@ bun.lock
 
 # Generated build artifact — the implementation-repo starter, regenerable from the
 # manifest/docs via the scaffold step (not corpus content). Specific name, not *.zip,
-# so the authored WARDENX_UI_SCREEN_SPECS_v4.zip spec artifact stays tracked.
+# so the authored WARDENX_UI_SCREEN_SPECS_v5.zip spec artifact stays tracked.
 wardenx-impl-starter.zip
 
 # Generated bundles — regenerable from the spec sources in docs/modules/ (module specs +

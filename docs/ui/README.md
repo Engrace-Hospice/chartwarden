@@ -1,4 +1,4 @@
-# WardenX UI Documentation Complete Package v4
+# WardenX UI Documentation Complete Package v5
 
 The WardenX UI screen-specification corpus: every screen across clinical, revenue, admin,
 core/app-shell, portal, and platform/ops, plus the shared layout-pattern glossary.
@@ -31,5 +31,10 @@ core/app-shell, portal, and platform/ops, plus the shared layout-pattern glossar
 - **v4** — added the P3 completeness set: integration/interface monitoring, FHIR/API access,
   volunteer management, clinical content administration, user profile & preferences, and
   system/utility pages.
+- **v5** — added the P4 depth set (wound care, allergy management, prior authorization, tenant
+  onboarding wizard, help & training, global search) and the P5 product-feature set (DocLens
+  extraction review, clinical copilot & chart search, CTI/eligibility worksheet,
+  death/pronouncement, discharge/revocation/transfer, agency command center, patient clinical
+  timeline, referral source CRM). 69 screen specs total.
 
 These documents are written for Pencil wireframing and later frontend implementation.
