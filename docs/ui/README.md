@@ -12,8 +12,9 @@ core/app-shell, portal, and platform/ops, plus the shared layout-pattern glossar
 
 ## Structure
 
-- `/screens/core` — authentication, app shell + role home, notifications & tasks, staff
-  messaging, reporting & analytics
+- `/screens/core` — cross-cutting app foundation: auth, app shell + role home, notifications
+  & tasks, staff messaging, reporting, agency command center, global search, help & training,
+  user profile, system/utility pages
 - `/screens/clinical`
 - `/screens/revenue`
 - `/screens/admin`

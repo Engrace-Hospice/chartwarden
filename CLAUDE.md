@@ -14,7 +14,7 @@ The Module 29 forward-engineering sub-tasks (T-29.01–T-29.13) are in
 > When you need a module spec, **resolve it under `docs/modules/`**, not the repo root.
 
 ### UI screen specifications → `docs/ui/`
-The 30 UI screen specs (clinical, revenue, admin, portal, platform/ops) live under
+The UI screen specs (core/app-shell, clinical, revenue, admin, portal, platform/ops) live under
 [`docs/ui/screens/`](./docs/ui/screens/), indexed by
 [`docs/ui/WARDENX_UI_COMPLETE_SCREEN_INDEX.md`](./docs/ui/WARDENX_UI_COMPLETE_SCREEN_INDEX.md).
 Every spec declares a named layout pattern (`Use <name>.`) defined in
