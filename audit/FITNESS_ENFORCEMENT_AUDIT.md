@@ -351,25 +351,25 @@ Cycles: **none ✓** · Consistency issues: **none ✓**.
 | 292 | lab_observation_value | M29 External Interfaces | docs/modules/WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md |
 | 293 | nppes_provider | M29 External Interfaces | docs/modules/WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md |
 | 294 | nppes_sync_run | M29 External Interfaces | docs/modules/WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md |
-| 295 | cahps_decedent_sample | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_4.md |
-| 296 | cahps_result_summary | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_4.md |
-| 297 | cahps_sample | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_4.md |
-| 298 | cahps_vendor_binding | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_4.md |
-| 299 | cop_compliance_status | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_4.md |
-| 300 | incident_report | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_4.md |
-| 301 | infection_outbreak_case | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_4.md |
-| 302 | infection_surveillance_event | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_4.md |
-| 303 | measure_recompute_queue | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_4.md |
-| 304 | mortality_review | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_4.md |
-| 305 | qapi_governance_minutes | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_4.md |
-| 306 | qapi_indicator | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_4.md |
-| 307 | qapi_pip | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_4.md |
-| 308 | qapi_program | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_4.md |
-| 309 | qapi_project | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_4.md |
-| 310 | quality_measure_value | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_4.md |
-| 311 | sra_cycle | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_4.md |
-| 312 | sra_finding | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_4.md |
-| 313 | sra_remediation | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_4.md |
+| 295 | cahps_decedent_sample | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md |
+| 296 | cahps_result_summary | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md |
+| 297 | cahps_sample | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md |
+| 298 | cahps_vendor_binding | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md |
+| 299 | cop_compliance_status | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md |
+| 300 | incident_report | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md |
+| 301 | infection_outbreak_case | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md |
+| 302 | infection_surveillance_event | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md |
+| 303 | measure_recompute_queue | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md |
+| 304 | mortality_review | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md |
+| 305 | qapi_governance_minutes | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md |
+| 306 | qapi_indicator | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md |
+| 307 | qapi_pip | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md |
+| 308 | qapi_program | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md |
+| 309 | qapi_project | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md |
+| 310 | quality_measure_value | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md |
+| 311 | sra_cycle | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md |
+| 312 | sra_finding | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md |
+| 313 | sra_remediation | M30 HQRP & Quality | docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md |
 | 314 | portal_access_grant | M31 Patient/Family Portal & Telehealth | docs/modules/WARDENX_MODULE_31_PORTAL_TELEHEALTH_SPEC_v0_2.md |
 | 315 | portal_account | M31 Patient/Family Portal & Telehealth | docs/modules/WARDENX_MODULE_31_PORTAL_TELEHEALTH_SPEC_v0_2.md |
 | 316 | telehealth_visit | M31 Patient/Family Portal & Telehealth | docs/modules/WARDENX_MODULE_31_PORTAL_TELEHEALTH_SPEC_v0_2.md |

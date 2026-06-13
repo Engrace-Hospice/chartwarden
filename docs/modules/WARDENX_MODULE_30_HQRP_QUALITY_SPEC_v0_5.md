@@ -1,5 +1,13 @@
 # WardenX Module 30 — HQRP & Quality
 
+**Spec version:** v0.5 — convention review: M30's outbox events, M36 alert payloads, and audit
+actions already conform to the `m30.` namespace (`m30.measure.*`, `m30.cahps.*`, `m30.qapi.*`,
+`m30.cop.*`, `m30.sra.*`, `m30.incident.*`, `m30.mortality_review.*`, `m30.infection.*`,
+`m30.alerts.*`). A few stray bare event references (`incident.submitted`, `incident.assigned`,
+`sra.cycle_closed`, `sra.cycle_opened`) were aligned to their `m30.` canonicals. Permission keys
+(`qapi.admin`, `sra.write`, `incident.read`, …) and code/field identifiers are unchanged
+(separate, feature-prefixed namespaces). (Prior: v0.4.)
+
 **Module ID:** 30
 **Module Name:** HQRP & Quality
 **Spec status:** Re-locked v0.5 (Phase-2 remediation; supersedes Locked v0.4)
