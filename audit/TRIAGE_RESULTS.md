@@ -203,7 +203,8 @@ foundation-edge convention consistent across the manifest.
   `death_source`; `org_id`/`kind_data`); kept the D23 `retention_class` trigger (not a stray
   column). (c) **Validators** — §2.3 made canonical; fixed WF-08/WF-10 (V-11 PIP-close /
   V-12 SRA-close were swapped) and the STRIDE V-1/V-13 mis-citations. `arch:fitness` green.
-- Remaining Batch-5: M18-F09, M19-F06, M22-F16/F19, M26-F06.
+- **M26-F06 (BLOCKER) — DONE.** Cap-period/settlement state vocab + `cap_year` type were contradictory across schema/TypeBox/routes/ABAC/narrative. Schema made canonical: `cap_period.status` = open/active/in_settlement/settled/reopened; `cap_settlement.status` = proposed/reviewed/final; `cap_year` = CHAR(7) 'FY2026' string (was `Type.Integer` in the DTO). Aligned the TypeBox unions, ABAC predicate bodies, route table, and all workflow narrative; reworked the "voided-on-reopen" path to "final→proposed rollback" (no `voided` state in canon); added a §9 drift-guard test (migration enum ≡ TypeBox union). `arch:fitness` green.
+- Remaining Batch-5: M18-F09, M19-F06, M22-F16/F19.
 
 ### Batch 2 — §20.B template sections (ADR-0021), wave 1 (2026-06-13) ✅ applied, `arch:fitness` green
 

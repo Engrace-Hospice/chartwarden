@@ -1108,7 +1108,7 @@ All tenant routes mount under `/v1/cap`; platform routes mount under `/v1/platfo
 | GET | `/v1/cap/periods` | `cap.period.read` | — | List cap periods for the calling tenant, with status and methodology |
 | POST | `/v1/cap/periods` | `cap.period.manage` | — | Open a new cap period; requires step-up if reopening a prior year |
 | GET | `/v1/cap/periods/:periodId` | `cap.period.read` | — | Fetch a single period including methodology lock and current projection |
-| PATCH | `/v1/cap/periods/:periodId/close` | `cap.period.manage` | `cap_period_open` | Close a cap period; transitions to `closed` if no settlement, `pending_settlement` otherwise |
+| PATCH | `/v1/cap/periods/:periodId/close` | `cap.period.manage` | `cap_period_open` | Close a cap period; transitions `active → in_settlement` (M26-F06 / ADR-0022) |
 | PATCH | `/v1/cap/periods/:periodId/reopen` | `cap.period.manage` | `cap_period_settled` | Reopen a closed/settled period (step-up biometric required, audit-heavy) |
 | POST | `/v1/cap/periods/:periodId/methodology` | `cap.period.manage` | `cap_period_methodology_unlocked` | Lock methodology (`streamlined` or `proportional`) for the period; one-time, step-up required |
 | GET | `/v1/cap/projections` | `cap.projection.read` | — | List latest projection snapshots (agency, patient_aggregate, inpatient) for a period |
@@ -1126,8 +1126,8 @@ All tenant routes mount under `/v1/cap`; platform routes mount under `/v1/platfo
 | GET | `/v1/cap/psr-imports/:importId/reconciliation` | `cap.psr.read` | — | Per-patient variance lines (CMS PS&R figure vs WardenX accrual figure) |
 | PATCH | `/v1/cap/psr-imports/:importId/reconciliation/:lineId/resolve` | `cap.psr.reconcile` | — | Mark a variance line resolved with a categorical reason + free-text note |
 | GET | `/v1/cap/settlements/:periodId` | `cap.settlement.read` | — | Settlement worksheet (final paid, final cap, overage/underage, owed direction) |
-| POST | `/v1/cap/settlements/:periodId/propose` | `cap.settlement.manage` | `cap_period_open` | Generate a settlement proposal from current accruals; transitions to `pending_settlement` |
-| PATCH | `/v1/cap/settlements/:periodId/finalize` | `cap.settlement.manage` | `cap_period_in_settlement` | Finalize settlement (step-up required); transitions period to `closed` |
+| POST | `/v1/cap/settlements/:periodId/propose` | `cap.settlement.manage` | `cap_period_in_settlement` | Generate the settlement worksheet from current accruals while the period is `in_settlement` (M26-F06 / ADR-0022) |
+| PATCH | `/v1/cap/settlements/:periodId/finalize` | `cap.settlement.manage` | `cap_period_in_settlement` | Finalize settlement (step-up required); transitions period `in_settlement → settled` (M26-F06 / ADR-0022) |
 | GET | `/v1/cap/dashboard` | `cap.projection.read` | — | Cap watch dashboard composite (current period, agency band, top-5 patient breaches, inpatient band) |
 | GET | `/v1/platform/cap/constants` | `cap.platform_constant.read` | `cap_platform_admin` | List platform-published cap amounts by cap year |
 | POST | `/v1/platform/cap/constants` | `cap.platform_constant.manage` | `cap_platform_admin` | Publish a new annual cap amount (CMS announcement transcription; locked from tenant edit) |
@@ -1147,16 +1147,20 @@ export const CapPeriodMethodology = Type.Union([
 ]);
 export type CapPeriodMethodology = Static<typeof CapPeriodMethodology>;
 
+// M26-F06 / ADR-0022 — single-truth alignment to the canonical cap_period_status
+// enum (migration §3.2 / Drizzle pgEnum §3.3): open → active → in_settlement →
+// settled, plus reopened. Must equal cap_period_status members exactly (see §9.7).
 export const CapPeriodStatus = Type.Union([
   Type.Literal('open'),
-  Type.Literal('pending_settlement'),
-  Type.Literal('closed'),
+  Type.Literal('active'),
+  Type.Literal('in_settlement'),
+  Type.Literal('settled'),
   Type.Literal('reopened'),
 ]);
 
 export const CapPeriodDto = Type.Object({
   id: Type.String({ format: 'uuid' }),
-  capYear: Type.Integer({ minimum: 2024, maximum: 2099 }),
+  capYear: Type.String({ pattern: '^FY\\d{4}$' }),   // CHAR(7) 'FY2026' (M26-F06 / ADR-0022)
   startDate: Type.String({ format: 'date' }),    // Oct 1
   endDate: Type.String({ format: 'date' }),      // Sep 30
   status: CapPeriodStatus,
@@ -1169,7 +1173,7 @@ export const CapPeriodDto = Type.Object({
 });
 
 export const OpenCapPeriodRequest = Type.Object({
-  capYear: Type.Integer({ minimum: 2024, maximum: 2099 }),
+  capYear: Type.String({ pattern: '^FY\\d{4}$' }),   // CHAR(7) 'FY2026' (M26-F06 / ADR-0022)
   methodology: Type.Optional(CapPeriodMethodology), // optional at open; must be set before any settlement
   graceWindowDays: Type.Integer({ minimum: 0, maximum: 90, default: 30 }),
 });
@@ -1234,10 +1238,10 @@ export const SettlementDirection = Type.Union([
 export const SettlementDto = Type.Object({
   id: Type.String({ format: 'uuid' }),
   capPeriodId: Type.String({ format: 'uuid' }),
-  status: Type.Union([
+  status: Type.Union([                         // M26-F06 / ADR-0022 — canonical cap_settlement_status
     Type.Literal('proposed'),
-    Type.Literal('finalized'),
-    Type.Literal('voided'),
+    Type.Literal('reviewed'),
+    Type.Literal('final'),
   ]),
   totalPaidFinal: Type.String(),
   totalCapFinal: Type.String(),
@@ -1285,7 +1289,7 @@ export interface CapProjectionProvider {
   /**
    * Returns the projection for the active cap period at a given date.
    * Convenience for M23 pre-submission; date typically = claim service-thru date.
-   * If the service date falls in a period whose status is 'closed', returns the
+   * If the service date falls in a period whose status is 'settled', returns the
    * historical snapshot at close (frozen). If the period was reopened, returns
    * the live snapshot (the reopen audit trail surfaces this transition).
    */
@@ -1299,7 +1303,7 @@ export interface CapProjectionProvider {
 
 export interface AgencyProjectionView {
   capPeriodId: string;
-  capYear: number;
+  capYear: string;          // CHAR(7) 'FY2026' (M26-F06 / ADR-0022)
   paidToDate: string;       // numeric strings — never parse to JS number
   outstandingBilled: string;
   totalAllocatedCap: string;
@@ -1415,7 +1419,7 @@ export interface CapSettlementProvider {
 export interface CapSettlementView {
   id: string;
   capPeriodId: string;
-  status: 'proposed' | 'finalized' | 'voided';
+  status: 'proposed' | 'reviewed' | 'final';   // M26-F06 / ADR-0022 — canonical cap_settlement_status
   totalPaidFinal: string;
   totalCapFinal: string;
   varianceAmount: string;
@@ -1484,11 +1488,11 @@ The cap period has a deterministic lifecycle owned entirely by M26; downstream c
 
 2. **Methodology Lock** — At any point during `open`, the billing manager calls `POST /v1/cap/periods/:id/methodology` with a step-up assertion. The choice (`streamlined` or `proportional`) is permanent for that period. Subsequent accrual recomputes use the locked methodology. Pre-lock, the system runs in a "methodology-unknown" mode where it surfaces *both* projections side-by-side in the dashboard but neither is canonical.
 
-3. **Closing** — At `cap_year_end + graceWindowDays` (default 30), the `cap-year-close` job runs. If accruals are settled and no PS&R reconciliation is pending, the period transitions directly to `closed`. Otherwise it transitions to `pending_settlement` and emits `m26.cap.year_closing`. A manager-initiated `PATCH /v1/cap/periods/:id/close` accelerates the transition.
+3. **Closing** — At `cap_year_end + graceWindowDays` (default 30), the `cap-year-close` job runs and transitions the `active` period to `in_settlement`, emitting `m26.cap.year_closing` (M26-F06 / ADR-0022). A manager-initiated `PATCH /v1/cap/periods/:id/close` accelerates the transition. The period stays `in_settlement` through settlement finalization (it never closes directly to `settled`; that transition is owned by settlement-finalize per step 4).
 
-4. **Settlement** — In `pending_settlement`, the manager calls `POST /v1/cap/settlements/:periodId/propose` to generate a settlement worksheet. The worksheet is mutable until finalized. `PATCH /v1/cap/settlements/:periodId/finalize` (step-up required) marks the settlement final, transitions the period to `closed`, and emits `m26.cap.settlement_finalized`.
+4. **Settlement** — In `in_settlement`, the manager calls `POST /v1/cap/settlements/:periodId/propose` to generate a settlement worksheet. The worksheet is mutable until finalized. `PATCH /v1/cap/settlements/:periodId/finalize` (step-up required) marks the settlement `final`, transitions the period `in_settlement → settled` (M26-F06 / ADR-0022), and emits `m26.cap.settlement_finalized`.
 
-5. **Reopen** — From `closed`, a step-up-authenticated manager call to `PATCH /v1/cap/periods/:id/reopen` transitions to `reopened`. Reopen is heavy: it un-freezes projection snapshots, allows new remittance to flow into accruals, and the prior settlement (if any) is marked `voided`. Reopen events are flagged `severity=high` in the M4 audit log. Tenants are advised that reopen is appropriate only for material PS&R variance corrections or true-up; routine recomputes do not require reopen.
+5. **Reopen** — From `settled`, a step-up-authenticated manager call to `PATCH /v1/cap/periods/:id/reopen` transitions to `reopened`. Reopen is heavy: it un-freezes projection snapshots, allows new remittance to flow into accruals, and the prior settlement (if any) is rolled back to a non-`final` state for re-proposal. Reopen events are flagged `severity=high` in the M4 audit log. Tenants are advised that reopen is appropriate only for material PS&R variance corrections or true-up; routine recomputes do not require reopen.
 
 The state machine transitions defined in §2.2 are the canonical specification; this section narrates the business meaning. Any transition rejected by the state machine MUST surface as a 409 Conflict with a structured `transition_rejected` error containing the current and attempted states.
 
@@ -1519,9 +1523,9 @@ M26 contributes five named predicates to M3's predicate registry. Each predicate
 
 | Predicate Name | Inputs | Logic | Used By |
 |---|---|---|---|
-| `cap_period_open` | `{ orgId, capPeriodId }` | Returns true if `cap_period.status = 'open'` OR `status = 'reopened'` | `POST /v1/cap/projections/:periodId/recompute`, `POST /v1/cap/settlements/:periodId/propose` |
-| `cap_period_in_settlement` | `{ orgId, capPeriodId }` | Returns true if `cap_period.status = 'pending_settlement'` AND a `cap_settlement` row exists with status='proposed' | `PATCH /v1/cap/settlements/:periodId/finalize` |
-| `cap_period_settled` | `{ orgId, capPeriodId }` | Returns true if `cap_period.status = 'closed'` AND `cap_settlement.status = 'finalized'` | `PATCH /v1/cap/periods/:id/reopen` |
+| `cap_period_open` | `{ orgId, capPeriodId }` | Returns true if `cap_period.status IN ('open','active','reopened')` (the accrual-eligible states) (M26-F06 / ADR-0022) | `POST /v1/cap/projections/:periodId/recompute` |
+| `cap_period_in_settlement` | `{ orgId, capPeriodId }` | Returns true if `cap_period.status = 'in_settlement'` AND a `cap_settlement` row exists with `status='proposed'` (M26-F06 / ADR-0022) | `POST /v1/cap/settlements/:periodId/propose`, `PATCH /v1/cap/settlements/:periodId/finalize` |
+| `cap_period_settled` | `{ orgId, capPeriodId }` | Returns true if `cap_period.status = 'settled'` AND `cap_settlement.status = 'final'` (M26-F06 / ADR-0022) | `PATCH /v1/cap/periods/:id/reopen` |
 | `cap_period_methodology_unlocked` | `{ orgId, capPeriodId }` | Returns true if `cap_period.methodology IS NULL` AND `status = 'open'` | `POST /v1/cap/periods/:id/methodology` |
 | `cap_platform_admin` | `{ userId }` | Returns true if user holds the `platform_admin` role from M2 (delegates to M2's role lookup; no tenant context) | All `/v1/platform/cap/*` routes |
 
@@ -1574,7 +1578,7 @@ import { Type } from '@sinclair/typebox';
 
 const BaseCapAlert = {
   capPeriodId: Type.String({ format: 'uuid' }),
-  capYear: Type.Integer(),
+  capYear: Type.String({ pattern: '^FY\\d{4}$' }),   // CHAR(7) 'FY2026' (M26-F06 / ADR-0022)
   computedAt: Type.String({ format: 'date-time' }),
   dashboardUrl: Type.String({ format: 'uri' }),
 };
@@ -1638,7 +1642,7 @@ M26 publishes nine outbox event types. Each is versioned (`v1` suffix) and consu
 | `m26.cap.projection_updated.v1` | `{ orgId, capPeriodId, scope, snapshotId, band, computedAt }` | M30, M33 | Emitted after each projection snapshot persistence (nightly batch or remittance recompute) |
 | `m26.cap.threshold_crossed.v1` | `{ orgId, capPeriodId, scope, patientId?, bandFrom, bandTo, eventId }` | M36 (alert dispatch), M33 | Emitted only on transitions to a higher band (no spam on persistent breach) |
 | `m26.cap.year_opened.v1` | `{ orgId, capPeriodId, capYear, methodologyHint }` | M27, M33 | Emitted on cap period creation |
-| `m26.cap.year_closing.v1` | `{ orgId, capPeriodId, capYear, transitionsToSettlement }` | M27, M33 | Emitted when period transitions to `pending_settlement` or directly to `closed` |
+| `m26.cap.year_closing.v1` | `{ orgId, capPeriodId, capYear, transitionsToSettlement }` | M27, M33 | Emitted when period transitions `active → in_settlement` (M26-F06 / ADR-0022) |
 | `m26.cap.year_closed.v1` | `{ orgId, capPeriodId, capYear, finalSettlementId? }` | M27, M30, M33 | Emitted on final close |
 | `m26.cap.settlement_proposed.v1` | `{ orgId, capPeriodId, settlementId, direction, varianceAmount }` | M27 | Emitted on settlement proposal |
 | `m26.cap.settlement_finalized.v1` | `{ orgId, capPeriodId, settlementId, finalizedAt, finalizedBy }` | M27, M33 | Emitted on settlement finalization (also closes the period) |
@@ -1715,7 +1719,7 @@ Single-page worksheet showing the final cap calculation per the locked methodolo
 - Direction (overpayment owed to CMS / underpayment owed to provider / balanced)
 - Footnotes: any unresolved PS&R variance lines surface as warnings; the finalize action is blocked until either resolved or explicitly waived (with reason)
 
-Finalize triggers a step-up biometric prompt and an attestation text field; on success, the period transitions to `closed`, the settlement is marked `finalized`, and the outbox event fires for M27 consumption.
+Finalize triggers a step-up biometric prompt and an attestation text field; on success, the period transitions to `settled`, the settlement is marked `final`, and the outbox event fires for M27 consumption (M26-F06 / ADR-0022).
 
 #### 5.1.7 Platform Constants Admin (`/platform/cap/constants`)
 
@@ -1864,7 +1868,7 @@ Each scenario below is expressed as a Given/When/Then specification. All scenari
 **When** the clock crosses to Oct 1 00:00 UTC and the `cap:cap-year-open` cron job fires at 03:00 UTC,
 **Then**:
 1. For each tenant, the job checks for an existing CY2027 (Oct 1, 2026 – Sep 30, 2027) period
-2. If none exists, a new `cap_period` row is created with `capYear=2027`, `status='open'`, `methodology=null`, `aggregateCapPerBeneficiary` snapshotted from `cap_period_platform_constant` for CY2027
+2. If none exists, a new `cap_period` row is created with `capYear='FY2027'` (CHAR(7); M26-F06 / ADR-0022), `status='open'`, `methodology=null`, `aggregateCapPerBeneficiary` snapshotted from `cap_period_platform_constant` for CY2027
 3. `m26.cap.year_opened.v1` is emitted
 4. The dashboard now shows the new period as "current"; the prior period (CY2026) remains `open` until its grace window expires (default Oct 31)
 
@@ -1886,18 +1890,18 @@ Each scenario below is expressed as a Given/When/Then specification. All scenari
 **When** the daily `cap:cap-year-close` job runs at 03:00 UTC,
 **Then**:
 1. For each tenant with CY2025 still `open`, the job evaluates: does a final settlement worksheet need to be proposed?
-2. If `paidToDate ≥ totalAllocatedCap × 0.95` OR the tenant has explicitly flagged the period as "requires settlement", the period transitions to `pending_settlement` and a `cap_settlement` row is auto-proposed with `status='proposed'` and the worksheet computed from current accruals.
-3. Otherwise, the period transitions directly to `closed` (no settlement needed; underutilized — no overpayment to refund).
-4. `m26.cap.year_closing.v1` is emitted; if direct close, `m26.cap.year_closed.v1` follows.
+2. The period transitions `active → in_settlement` (M26-F06 / ADR-0022). If `paidToDate ≥ totalAllocatedCap × 0.95` OR the tenant has explicitly flagged the period as "requires settlement", a `cap_settlement` row is auto-proposed with `status='proposed'` and the worksheet computed from current accruals.
+3. Otherwise (underutilized — no overpayment to refund), the period still enters `in_settlement`; settlement finalize records a balanced/underutilized worksheet and transitions it to `settled`.
+4. `m26.cap.year_closing.v1` is emitted; `m26.cap.year_closed.v1` follows once the period reaches `settled`.
 5. The billing manager receives a `m26.cap.year_close_reminder` alert.
 
 ### 7.10 Scenario: Settlement Finalization
 
-**Given** CY2025 is `pending_settlement` with a proposed settlement worksheet showing `totalPaidFinal=$1,710,000`, `totalCapFinal=$1,650,000`, `variance=$60,000` (overpayment direction), and no unresolved PS&R variance lines,
+**Given** CY2025 is `in_settlement` with a proposed settlement worksheet showing `totalPaidFinal=$1,710,000`, `totalCapFinal=$1,650,000`, `variance=$60,000` (overpayment direction), and no unresolved PS&R variance lines,
 **When** the billing manager clicks "Finalize settlement" and presents a valid step-up biometric assertion + attestation text,
 **Then**:
-1. The settlement row transitions to `status='finalized'`, `finalizedAt=now()`, `finalizedBy=<user>`, `finalizationStepUpAssertionId=<assertion>`
-2. The cap period transitions to `status='closed'`
+1. The settlement row transitions to `status='final'`, `finalizedAt=now()`, `finalizedBy=<user>`, `finalizationStepUpAssertionId=<assertion>` (M26-F06 / ADR-0022)
+2. The cap period transitions to `status='settled'` (M26-F06 / ADR-0022)
 3. `m26.cap.settlement_finalized.v1` is emitted
 4. `m26.cap.year_closed.v1` is emitted
 5. M27 consumes both events to populate the cost-report cap section
@@ -1907,7 +1911,7 @@ Each scenario below is expressed as a Given/When/Then specification. All scenari
 
 ### 7.11 Scenario: PS&R Variance Detection
 
-**Given** CY2025 is `closed`, settlement finalized, and the reimbursement specialist uploads a CMS PS&R CSV containing 47 patient lines with total paid amount $1,718,400 (vs WardenX accrual total $1,710,000 — $8,400 variance),
+**Given** CY2025 is `settled`, settlement finalized, and the reimbursement specialist uploads a CMS PS&R CSV containing 47 patient lines with total paid amount $1,718,400 (vs WardenX accrual total $1,710,000 — $8,400 variance),
 **When** the upload is processed by `cap:psr-reconcile`,
 **Then**:
 1. The CSV is parsed; the file's CCN header field is validated against M40's `canonicalCcnForOrg` for the tenant (rejects upload if mismatch)
@@ -1947,12 +1951,12 @@ Each scenario below is expressed as a Given/When/Then specification. All scenari
 
 ### 7.14 Scenario: Period Reopen with Step-Up
 
-**Given** CY2024 is `closed` with a finalized settlement showing $42,000 overpayment owed to CMS, and the reimbursement specialist discovers a $15,000 claim that was paid in Aug 2024 but never accrued (M25 ingestion gap),
+**Given** CY2024 is `settled` with a finalized settlement showing $42,000 overpayment owed to CMS, and the reimbursement specialist discovers a $15,000 claim that was paid in Aug 2024 but never accrued (M25 ingestion gap),
 **When** the billing manager initiates `PATCH /v1/cap/periods/<CY2024>/reopen` with a step-up assertion and a reason text,
 **Then**:
 1. The step-up assertion is verified against M2 (must be ≤ 5 minutes old, biometric class)
-2. The period transitions from `closed` to `reopened`
-3. The prior settlement row is updated to `status='voided'` (the row is retained for audit; not deleted)
+2. The period transitions from `settled` to `reopened` (M26-F06 / ADR-0022)
+3. The prior settlement row is rolled back from `status='final'` to `status='proposed'` for re-proposal (the row is retained and updated in place per §3.3; M4 captures the prior `final` state on the UPDATE)
 4. The frozen projection snapshots from close are marked `superseded` (retained, but new live snapshots take precedence in seam reads)
 5. The missed $15,000 accrual is now eligible to be recorded (typically via re-ingestion of the M25 remittance once corrected)
 6. `m26.cap.year_opened.v1` is NOT re-emitted (this is a reopen, not a new open); instead, a `cap.year_reopened.v1` event is emitted (added to the outbox event catalog in §4.10 — for clarity, listed there as a sub-variant of `m26.cap.year_opened` with a `reopen=true` flag in the payload)
@@ -2183,8 +2187,8 @@ Five Playwright flows under `tests/e2e/cap/`:
 1. **Cap Dashboard happy path**: load dashboard, observe agency band, drill into patient detail, view accrual lines
 2. **Threshold event acknowledgement**: receive an alert (synthetic dispatch), navigate to event queue, acknowledge
 3. **PS&R import and reconciliation**: upload CSV fixture, observe reconciliation results, resolve a variance line
-4. **Settlement workflow**: from `pending_settlement`, propose worksheet, finalize with step-up, observe period transition
-5. **Period reopen**: from `closed`, initiate reopen with step-up, observe state and audit trail
+4. **Settlement workflow**: from `in_settlement`, propose worksheet, finalize with step-up, observe period transition to `settled`
+5. **Period reopen**: from `settled`, initiate reopen with step-up, observe state and audit trail
 
 E2E tests run against a deployed staging environment; the synthetic tenant is reset to a known fixture state before each test run via the platform's `tenant-reset` admin API.
 
@@ -2224,6 +2228,41 @@ Synthetic fixtures live under `packages/cap-management/tests/fixtures/`:
 - **Inpatient day fixtures**: 18% safe, 19.5% watch, 20.2% breach
 
 Fixtures are versioned alongside the spec; breaking-change fixture updates require a spec changelog entry.
+
+### 9.9 Schema/Contract Enum Drift Snapshot (M26-F06 / ADR-0022)
+
+A drift-guard suite in `packages/cap-management/tests/contract/enum-parity.test.ts` enforces
+single-truth (ADR-0022) between the migration enums (the canonical source) and the TypeBox
+contract unions, so the M26-F06 vocabulary drift cannot recur. The migration enum is the snapshot
+oracle; any divergence fails the build.
+
+```ts
+import { describe, it, expect } from 'vitest';
+import { CapPeriodStatus } from '@/contracts/cap-period';
+import { SettlementDto } from '@/contracts/cap-settlement';
+import { capPeriodStatus, capSettlementStatus } from '@/modules/26-cap/schema';
+
+// Helper: extract literal members from a TypeBox Union of Type.Literal(...)
+const unionMembers = (u: any): string[] =>
+  u.anyOf.map((s: any) => s.const).sort();
+
+describe('M26-F06 / ADR-0022 — enum/contract single-truth', () => {
+  it('cap_period_status migration enum === CapPeriodStatus TypeBox union', () => {
+    // canonical: open, active, in_settlement, settled, reopened
+    expect(unionMembers(CapPeriodStatus)).toEqual([...capPeriodStatus.enumValues].sort());
+  });
+
+  it('cap_settlement_status migration enum === SettlementDto.status TypeBox union', () => {
+    // canonical: proposed, reviewed, final
+    const statusUnion = SettlementDto.properties.status;
+    expect(unionMembers(statusUnion)).toEqual([...capSettlementStatus.enumValues].sort());
+  });
+});
+```
+
+The same assertion is mirrored at migration-review time: a CI step diffs the `CREATE TYPE
+cap_period_status` / `cap_settlement_status` members in `0026_cap_management.sql` against the
+Drizzle `pgEnum` definitions and the TypeBox unions; a three-way mismatch blocks the merge.
 
 -----
 
