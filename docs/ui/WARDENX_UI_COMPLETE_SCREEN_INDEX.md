@@ -4,7 +4,10 @@
 - `WARDENX_UI_LAYOUT_PATTERNS.md`
 - `screens/admin/WARDENX_UI_AI_GOVERNANCE_CONSOLE.md`
 - `screens/admin/WARDENX_UI_AUDIT_LOG_VIEWER.md`
+- `screens/admin/WARDENX_UI_CLINICAL_CONTENT_ADMIN.md`
 - `screens/admin/WARDENX_UI_FEATURE_FLAGS.md`
+- `screens/admin/WARDENX_UI_FHIR_INTEROP_API.md`
+- `screens/admin/WARDENX_UI_INTEGRATION_MONITORING.md`
 - `screens/admin/WARDENX_UI_MASTER_DATA_MDM.md`
 - `screens/admin/WARDENX_UI_ORG_PROVIDER_LOCATION_SETUP.md`
 - `screens/admin/WARDENX_UI_ROLES_PERMISSIONS.md`
@@ -16,6 +19,8 @@
 - `screens/core/WARDENX_UI_NOTIFICATIONS_TASKS.md`
 - `screens/core/WARDENX_UI_REPORTING_ANALYTICS.md`
 - `screens/core/WARDENX_UI_STAFF_MESSAGING.md`
+- `screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md`
+- `screens/core/WARDENX_UI_USER_PROFILE_PREFERENCES.md`
 - `screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md`
 - `screens/clinical/WARDENX_UI_BEREAVEMENT.md`
 - `screens/clinical/WARDENX_UI_CARE_PLAN.md`
@@ -36,6 +41,7 @@
 - `screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md`
 - `screens/clinical/WARDENX_UI_SCHEDULING_VISIT_CALENDAR.md`
 - `screens/clinical/WARDENX_UI_SUPPLIES_DME_COMFORT_KIT.md`
+- `screens/clinical/WARDENX_UI_VOLUNTEER_MANAGEMENT.md`
 - `screens/platform/WARDENX_UI_OPS_CONSOLE.md`
 - `screens/platform/WARDENX_UI_SUBSCRIPTION_BILLING.md`
 - `screens/platform/WARDENX_UI_SUPPORT_IMPERSONATION_AUDIT.md`

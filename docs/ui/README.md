@@ -1,4 +1,4 @@
-# WardenX UI Documentation Complete Package v3
+# WardenX UI Documentation Complete Package v4
 
 The WardenX UI screen-specification corpus: every screen across clinical, revenue, admin,
 core/app-shell, portal, and platform/ops, plus the shared layout-pattern glossary.
@@ -28,5 +28,8 @@ core/app-shell, portal, and platform/ops, plus the shared layout-pattern glossar
   medications/eMAR, IDG), the P1 operational/regulatory set (scheduling, EVV, claims/billing,
   HOPE, HQRP, IPU), and the P2 app-shell/core set (auth, shell+home, notifications/tasks,
   staff messaging, reporting, AI governance, MDM, terminology).
+- **v4** — added the P3 completeness set: integration/interface monitoring, FHIR/API access,
+  volunteer management, clinical content administration, user profile & preferences, and
+  system/utility pages.
 
 These documents are written for Pencil wireframing and later frontend implementation.

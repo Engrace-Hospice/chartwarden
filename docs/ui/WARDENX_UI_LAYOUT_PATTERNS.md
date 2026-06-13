@@ -79,6 +79,25 @@ Shell only when it *is* the shell (and its role-based home, which uses Dashboard
 
 **Used by.** App Shell & Role Home.
 
+### System Page **[proposed]**
+
+**Intent.** A centered status page (error, offline, maintenance, no-access). Icon + plain
+message + a forward action; no PHI, no stack traces.
+
+**Structure**
+
+```text
+Centered Status
+  Icon · Headline · Explanation
+  Primary Action [ · Secondary ]
+  [ correlation id ]
+```
+
+**When to use.** Any 4xx/5xx/offline/maintenance/expired/suspended state. Distinct from Auth
+Flow — no form fields or identity flow, just a status message and a way out.
+
+**Used by.** System / Utility Pages.
+
 ### Auth Flow **[proposed]**
 
 **Intent.** Pre-application identity steps — a single focused action on a centered card.
@@ -432,8 +451,10 @@ Modifiers attach to a base pattern with `+`. They contribute regions, not whole 
 |---|---|
 | App Shell *(proposed)* | App Shell & Role Home |
 | Auth Flow *(proposed)* | Authentication & Session |
-| Work Queue | Audit Log, Feature Flags, Staff Mgmt, Document Mgmt, On-Call Triage, Denials, Eligibility, ERA Posting, Bereavement, Patient List/Census, EVV, Claims/Billing, Notifications & Tasks, AI Governance Console, Master Data (MDM), Terminology |
+| System Page *(proposed)* | System / Utility Pages |
+| Work Queue | Audit Log, Feature Flags, Staff Mgmt, Document Mgmt, On-Call Triage, Denials, Eligibility, ERA Posting, Bereavement, Patient List/Census, EVV, Claims/Billing, Notifications & Tasks, AI Governance Console, Master Data (MDM), Terminology, Integration Monitoring, FHIR/API, Volunteer Management, Clinical Content Admin |
 | Dashboard | Cap Management, Field Safety, HQRP Quality, Reporting & Analytics |
+| Admin Settings | Tenant Settings, User Profile & Preferences |
 | Conversation View *(proposed)* | Portal Care Team Messages, Staff Messaging |
 | Stepper Workflow | Admissions Intake, Cost Report, Election & Certification |
 | Patient Workspace | Assessments, Election & Certification, Supplies/DME, Patient Chart, Encounter Documentation, Care Plan, Orders, Medications/eMAR, HOPE Assessment |
@@ -443,7 +464,6 @@ Modifiers attach to a base pattern with `+`. They contribute regions, not whole 
 | Bed Board *(proposed)* | IPU / GIP Bed Board |
 | Admin Hierarchy | Org/Provider/Location Setup |
 | Admin Split | Roles & Permissions |
-| Admin Settings | Tenant Settings |
 | Admin Console | Ops Console |
 | Portal Dashboard | Patient/Family Portal Dashboard |
 | Detail Page *(proposed)* | Subscription Billing |
