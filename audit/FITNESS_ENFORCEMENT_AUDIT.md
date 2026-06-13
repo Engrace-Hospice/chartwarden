@@ -415,25 +415,25 @@ Cycles: **none ✓** · Consistency issues: **none ✓**.
 | 356 | tenant_key_ring | M34 SaaS Tenant Platform | docs/modules/WARDENX_MODULE_34_SAAS_TENANT_PLATFORM_SPEC_v0_3.md |
 | 357 | tenant_signup_intent | M34 SaaS Tenant Platform | docs/modules/WARDENX_MODULE_34_SAAS_TENANT_PLATFORM_SPEC_v0_3.md |
 | 358 | tenant_signup_token | M34 SaaS Tenant Platform | docs/modules/WARDENX_MODULE_34_SAAS_TENANT_PLATFORM_SPEC_v0_3.md |
-| 359 | dunning_state | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_2.md |
-| 360 | invoice | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_2.md |
-| 361 | invoice_line | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_2.md |
-| 362 | patient_active_period | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_2.md |
-| 363 | patient_pseudonym_key | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_2.md |
-| 364 | payment_method | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_2.md |
-| 365 | plan | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_2.md |
-| 366 | plan_meter | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_2.md |
-| 367 | promo_code | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_2.md |
-| 368 | promo_code_application | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_2.md |
-| 369 | refund | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_2.md |
-| 370 | revenue_recognition_snapshot | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_2.md |
-| 371 | stripe_api_call_audit | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_2.md |
-| 372 | stripe_webhook_event | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_2.md |
-| 373 | subscription | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_2.md |
-| 374 | subscription_state_history | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_2.md |
-| 375 | usage_event | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_2.md |
-| 376 | usage_period_aggregate | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_2.md |
-| 377 | user_active_period | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_2.md |
+| 359 | dunning_state | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md |
+| 360 | invoice | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md |
+| 361 | invoice_line | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md |
+| 362 | patient_active_period | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md |
+| 363 | patient_pseudonym_key | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md |
+| 364 | payment_method | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md |
+| 365 | plan | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md |
+| 366 | plan_meter | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md |
+| 367 | promo_code | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md |
+| 368 | promo_code_application | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md |
+| 369 | refund | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md |
+| 370 | revenue_recognition_snapshot | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md |
+| 371 | stripe_api_call_audit | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md |
+| 372 | stripe_webhook_event | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md |
+| 373 | subscription | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md |
+| 374 | subscription_state_history | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md |
+| 375 | usage_event | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md |
+| 376 | usage_period_aggregate | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md |
+| 377 | user_active_period | M35 Subscription Billing | docs/modules/WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md |
 | 378 | alert | M36 Secure Messaging & Alerts | docs/modules/WARDENX_MODULE_36_MESSAGING_SPEC_v0_4.md |
 | 379 | alert_payload_catalog | M36 Secure Messaging & Alerts | docs/modules/WARDENX_MODULE_36_MESSAGING_SPEC_v0_4.md |
 | 380 | alert_rule | M36 Secure Messaging & Alerts | docs/modules/WARDENX_MODULE_36_MESSAGING_SPEC_v0_4.md |

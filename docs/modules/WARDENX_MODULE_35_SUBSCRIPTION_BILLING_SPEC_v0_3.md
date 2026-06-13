@@ -1,6 +1,12 @@
-# WardenX — Module 35 — Subscription Billing — Lock-Grade Spec v0.2
+# WardenX — Module 35 — Subscription Billing — Lock-Grade Spec v0.3
 
-> **Status:** Locked v0.2 — buildable
+> **Status:** Locked v0.3 — buildable
+> **v0.3 change:** outbox events / alert payloads migrated to the `m35.` namespace
+> (`m35.subscription.*`, `m35.invoice.*`, `m35.payment_method.*`, `m35.dunning.*`,
+> `m35.refund.*`, `m35.promo.*`, `m35.usage.*`, `m35.revenue.*`, `m35.stripe.*`,
+> `m35.tenant.billing_blocked`) per M01 D8 / M36 D10 / M03 D9; stray bare event refs aligned.
+> Permission keys (`subscription.admin`, `promo.admin`, `refund.approve`, …), schema fields
+> (`subscription.status`, `subscription.id`), and Stripe SDK object refs are unchanged. (Prior: v0.2.)
 > **Phase boundary (binding):** **Phase 2** (architecture §20.A). Phase 1 ships nothing visible for M35 — Engrace go-live runs unbilled. The lock-grade spec lands in v0.2 so implementation is unblocked the moment the architecture green-lights Phase 2 build, with the proximate trigger being "first paying tenant joins beyond Engrace" (architecture §20.A Phase 2 module list). Forward-seam deny-stubs (§4.5) and the AI-boundary boot gate (§8.8) ship at M35 lock; the rest activates at Phase 2 implementation.
 >
 > **PHI posture (binding):** **NONE.** M35 never reads, writes, stores, transmits, or transits Protected Health Information. Every metering signal that quantifies patients or users uses an HMAC pseudonym computed inside an M35-private boundary (D6). Stripe sees pseudonyms and aggregate counts; M35's database sees pseudonyms and aggregate counts; M35's audit trail sees pseudonyms and aggregate counts. The patient-identity → pseudonym map exists only in M35's `patient_pseudonym_key` (envelope-encrypted; rotated). The Stripe vendor surface is therefore *not* a BAA-bearing surface (Integrations §6.11), and the STRIDE worst case for an M35 breach is the disclosure of commercial billing counts, never patient identity.
@@ -169,7 +175,7 @@ The strategic value of M35 landing in Phase 2 (rather than Phase 1) is that Engr
 
 **Subscription.** A subscription is created when an Organization first acquires a paid plan, via the `/v1/subscription` POST route. Initial state is `trialing` if the plan has a `trial_period_days` configured (D12), otherwise `active`. The state machine (per D7) advances through `trialing → active → past_due → at_risk → suspended → canceled` with the optional `paused` lateral state. Every state transition is written to `subscription_state_history`. The Stripe-side subscription is created in the same outbox-driven flow; if Stripe creation fails, the WardenX subscription remains in `pending` (a transient sub-state not in `status` — recorded in a temp pre-row that is converted to a real `subscription` only upon successful Stripe creation).
 
-**Invoice.** Invoices are created *by Stripe* at the end of each billing period (or upon plan change for proration, or upon a one-time charge). The Stripe `invoice.created` webhook triggers M35 to write a mirror row in `invoice` with `status='draft'` until Stripe transitions it to `open`. Subsequent webhooks (`invoice.finalized`, `invoice.paid`, `invoice.payment_failed`, `invoice.voided`, `invoice.marked_uncollectible`) update the mirror. Invoices are never created directly by M35; the `/v1/invoices` POST route does not exist for tenants. Internal one-time charges (refund offsets, manual line items) go through `/v1/admin/invoices/charge` which calls Stripe's invoice items API.
+**Invoice.** Invoices are created *by Stripe* at the end of each billing period (or upon plan change for proration, or upon a one-time charge). The Stripe `m35.invoice.created` webhook triggers M35 to write a mirror row in `invoice` with `status='draft'` until Stripe transitions it to `open`. Subsequent webhooks (`invoice.finalized`, `m35.invoice.paid`, `m35.invoice.payment_failed`, `m35.invoice.voided`, `invoice.marked_uncollectible`) update the mirror. Invoices are never created directly by M35; the `/v1/invoices` POST route does not exist for tenants. Internal one-time charges (refund offsets, manual line items) go through `/v1/admin/invoices/charge` which calls Stripe's invoice items API.
 
 **Invoice line.** Created in the same webhook flow as `invoice`. One `invoice_line` row per Stripe invoice line item, keyed on `stripe_line_id`. Line kinds: `subscription` (the base plan price), `metered` (usage-based overages, linked to a `plan_meter`), `one_time` (manual line items), `tax` (Stripe Tax computed), `discount` (promo or credit), `credit` (account credit application).
 
@@ -2008,7 +2014,7 @@ Each workflow is the definitive contract for "what working looks like" on a code
 4. `subscription_state_history` records the transition with `stripe_event_id` populated
 5. `m35.subscription.activated` outbox event emits
 6. An info-level alert to `org_admin` + `billing_admin` lands ("Your trial converted to a paid subscription")
-7. The first paid `invoice` is created via webhook `invoice.created` (separate webhook; correlated via `subscription_id`)
+7. The first paid `invoice` is created via webhook `m35.invoice.created` (separate webhook; correlated via `subscription_id`)
 
 ### W-SB-03 — Plan Change with Proration
 
@@ -2051,7 +2057,7 @@ Each workflow is the definitive contract for "what working looks like" on a code
 
 ### W-SB-06 — Dunning Day-1 Through Day-28-Suspend
 
-**Given** a subscription in `active` whose invoice payment failed today (`invoice.payment_failed` webhook just arrived)
+**Given** a subscription in `active` whose invoice payment failed today (`m35.invoice.payment_failed` webhook just arrived)
 **When** the `dunning-engine` cron runs daily at 09:00 tenant-tz
 **Then over 28 days**:
 - Day 1 → `dunning_state` row enters stage `day_1`; subscription status transitions `active → past_due`; silent in-app notice queued; first Stripe retry attempted +24h
