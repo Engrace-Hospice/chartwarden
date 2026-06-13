@@ -134,11 +134,11 @@ Cycles: **none ✓** · Consistency issues: **none ✓**.
 | 75 | hearthnote_selection | M08 Encounters & Visit Notes | docs/modules/WARDENX_MODULE_08_ENCOUNTERS_SPEC_v0_2.md |
 | 76 | mileage | M08 Encounters & Visit Notes | docs/modules/WARDENX_MODULE_08_ENCOUNTERS_SPEC_v0_2.md |
 | 77 | vitals | M08 Encounters & Visit Notes | docs/modules/WARDENX_MODULE_08_ENCOUNTERS_SPEC_v0_2.md |
-| 78 | assessment_cosignature | M09 Clinical Assessments Suite | docs/modules/WARDENX_MODULE_09_CLINICAL_ASSESSMENTS_SPEC_v0_2.md |
-| 79 | clinical_assessment | M09 Clinical Assessments Suite | docs/modules/WARDENX_MODULE_09_CLINICAL_ASSESSMENTS_SPEC_v0_2.md |
-| 80 | scale_license | M09 Clinical Assessments Suite | docs/modules/WARDENX_MODULE_09_CLINICAL_ASSESSMENTS_SPEC_v0_2.md |
-| 81 | scale_policy | M09 Clinical Assessments Suite | docs/modules/WARDENX_MODULE_09_CLINICAL_ASSESSMENTS_SPEC_v0_2.md |
-| 82 | significant_change_event | M09 Clinical Assessments Suite | docs/modules/WARDENX_MODULE_09_CLINICAL_ASSESSMENTS_SPEC_v0_2.md |
+| 78 | assessment_cosignature | M09 Clinical Assessments Suite | docs/modules/WARDENX_MODULE_09_CLINICAL_ASSESSMENTS_SPEC_v0_3.md |
+| 79 | clinical_assessment | M09 Clinical Assessments Suite | docs/modules/WARDENX_MODULE_09_CLINICAL_ASSESSMENTS_SPEC_v0_3.md |
+| 80 | scale_license | M09 Clinical Assessments Suite | docs/modules/WARDENX_MODULE_09_CLINICAL_ASSESSMENTS_SPEC_v0_3.md |
+| 81 | scale_policy | M09 Clinical Assessments Suite | docs/modules/WARDENX_MODULE_09_CLINICAL_ASSESSMENTS_SPEC_v0_3.md |
+| 82 | significant_change_event | M09 Clinical Assessments Suite | docs/modules/WARDENX_MODULE_09_CLINICAL_ASSESSMENTS_SPEC_v0_3.md |
 | 83 | hope_assessment | M10 HOPE Engine | docs/modules/WARDENX_MODULE_10_HOPE_ENGINE_SPEC_v0_2.md |
 | 84 | hope_submission | M10 HOPE Engine | docs/modules/WARDENX_MODULE_10_HOPE_ENGINE_SPEC_v0_2.md |
 | 85 | hope_submission_item | M10 HOPE Engine | docs/modules/WARDENX_MODULE_10_HOPE_ENGINE_SPEC_v0_2.md |

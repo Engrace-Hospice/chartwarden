@@ -1,7 +1,7 @@
 # WardenX Module Audit — Module 09 (Clinical Assessments Suite) & Module 10 (HOPE Engine)
 
 **Auditor protocol:** AUDITOR_INSTRUCTIONS.md v1.0 — criteria packs CRITERIA_ARCHITECTURE, CRITERIA_SECURITY_AI, CRITERIA_OPS_DR_INTEGRATIONS, plus module-manifest.ts read in full before the specs.
-**Specs audited (in full):** `WARDENX_MODULE_09_CLINICAL_ASSESSMENTS_SPEC_v0_2.md` (1,431 lines, "Locked v0.2"); `WARDENX_MODULE_10_HOPE_ENGINE_SPEC_v0_2.md` (1,829 lines, "Locked v0.2").
+**Specs audited (in full):** `WARDENX_MODULE_09_CLINICAL_ASSESSMENTS_SPEC_v0_3.md` (audited at Locked v0.2; renamed to v0.3 for the `m9.` event-naming migration); `WARDENX_MODULE_10_HOPE_ENGINE_SPEC_v0_2.md` (1,829 lines, "Locked v0.2").
 **Blocker verifications performed against authoritative sources:** `ARCHITECTURE_25_15_FITNESS.md` (checks #1, #3, #4, #6), `WARDENX_ARCHITECTURE_v0_11.md` lines 224 (PHI tenancy columns), 1667–1669 (M10 entities + J2051/SFV rule), 2845 (HOPE retention), `WARDENX_SYSTEM_DESIGN_v0.3.md` lines 305–310 (SFV flow), 599 (hope_assessment partitioning).
 **Audit date:** 2026-06-10
 

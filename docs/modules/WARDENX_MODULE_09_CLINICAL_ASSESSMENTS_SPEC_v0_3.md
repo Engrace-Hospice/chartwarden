@@ -1,5 +1,11 @@
 # Module 9 — Clinical Assessments Suite Specification
 
+**Spec version:** v0.3 — the §2.4 outbox events migrated to the `m9.` namespace
+(`m9.assessment.*`, `m9.scale.*`) per the M01 D8 `outbox_event_catalog` / M03 D9 convention.
+Permission keys (`assessment.author`, …), audit actions (`assessment.viewed`,
+`assessment.disclosed`, …), and code/field identifiers are unchanged — those are separate
+catalogs. (Prior: v0.2.)
+
 **Module ID:** 9
 **Phase:** 1 (clinical spine — required for Engrace go-live; routine charting depends on it)
 **Depends on:** 6 (Admission, Election & Certification — provides `admission` + activation timestamp that anchors longitudinal trending; `level_of_care_period` for stratifying scale series by GIP/IRC/CHC/RHC; admission state machine drives the `active_admission` invariant on every scale row), 36 (Secure Messaging & Alerts — significant-change alert delivery via the typed alert surface; care-team channel broadcast on threshold-crossing scales), 38 (Clinical Terminology — LOINC codes for every scale item; SNOMED concepts for finding bindings; value-set validation for scale-applicability rules; `asOfDate` lookups for survey-grade historical reconstruction), 39 (Consent & Authorization — 42 CFR Part 2 release for AIMS in SUD-treatment context; DPOA agent attribution when proxy reports patient symptoms; the `consent.evaluate` seam M9 uses for SUD-flagged scale data). Transitively via M6: 1 (Foundation — `withOrgContext`, `audit()` helper, outbox, idempotency, RLS generator, partitioned-table conventions, per-tenant DEK), 2 (Identity — actor resolution; discipline resolution from membership), 3 (Authorization — RBAC + ABAC; the `assessment.*` permission keys this module contributes), 4 (Audit — PHI write-audit trigger generator, audit-read helper, destruction-cert workflow + `eraseFn` registration, `compliance` retention class), 5 (Patient & Demographics — `patient` row, deceased status, privacy-flag snapshot for SUD gating), 40 (MDM — discipline/role taxonomy referenced by the scale-discipline matrix), 22 (Documents — assessment-summary PDF rendering via outbox).
@@ -50,7 +56,7 @@ Module 9 owns the **clinical-scale assessment library** that hospice clinicians 
 - **Standalone or encounter-linked.** A scale can be recorded during an encounter (M8 calls `recordAssessment` with `source_encounter_id`) or standalone (bereavement counselor records PHQ-9 outside an encounter; intake nurse records an admission PPS before any encounter row exists). Encounter linkage is optional; the patient + admission anchor is required.
 - **Server-authoritative scoring (D6).** Composite scores — ESAS-r total, PAINAD sum, MELD/MELD-Na formula, BODE point total, Braden total, Morse total — are computed server-side from the item values. The client's `score` payload (if any) is ignored; the server emits the canonical score back. Single source of truth: `packages/assessments/src/scales/<scale>/score.ts`. Prevents the calculator-drift class of bug where the chart shows one number and the trend shows another.
 - **Discipline matrix (D8).** Which discipline may record which scale is a clinical-practice rule, not a configuration knob. Encoded as a typed constant (`packages/assessments/src/scales/<scale>/eligibility.ts`) and enforced at API boundary via the `discipline_can_record_scale` ABAC predicate (Module 3 D5 — typed predicates registered via the seam registry). Examples: NYHA / MELD / BODE / Flacker are MD/NP-only (the prognostic instruments require physician expertise); PPS / KPS / FAST are RN + MD/NP (LPN allowed under supervisor cosign); Braden + Morse are any clinical role (the pressure-ulcer and fall-risk instruments are deliberately broad-discipline so the field tablet captures them); AIMS is RN + MD/NP only (psych-trained roles).
-- **Significant-change detection (D2).** Each scale carries a per-tenant-configurable significant-change rule with a platform floor that cannot be loosened. Examples of platform floors: PPS drop of ≥20 within 14 days; ESAS-r total burden increase of ≥20 within 7 days OR any single symptom ≥7; PAINAD ≥4; NYHA transition to Class IV; Braden ≤12; Morse ≥51; MELD ≥30. Detection runs on every `recordAssessment` write within the same transaction. On detection, M9 emits a typed `assessment.significant_change` outbox event; Module 36 delivers the alert to the care-team channel and the typed-alert surface for the patient's case manager and clinical supervisor.
+- **Significant-change detection (D2).** Each scale carries a per-tenant-configurable significant-change rule with a platform floor that cannot be loosened. Examples of platform floors: PPS drop of ≥20 within 14 days; ESAS-r total burden increase of ≥20 within 7 days OR any single symptom ≥7; PAINAD ≥4; NYHA transition to Class IV; Braden ≤12; Morse ≥51; MELD ≥30. Detection runs on every `recordAssessment` write within the same transaction. On detection, M9 emits a typed `m9.assessment.significant_change` outbox event; Module 36 delivers the alert to the care-team channel and the typed-alert surface for the patient's case manager and clinical supervisor.
 - **Trend computation (D4).** Each scale exposes `latest(patientId)`, `series(patientId, from, to)`, and `delta(patientId, window)` via the `ScaleSeriesProvider` seam. Phase 1 is read-time computation backed by a `(organization_id, patient_id, scale_type, captured_at DESC)` btree index — measured to meet p95 < 50 ms for `latest`, < 200 ms for 90-day series at expected volume (≤ 100 assessments per scale per episode). Materialization deferred to Phase 2 only if metrics show need.
 - **License tracking (D3).** PPS (Victoria Hospice), FAST and GDS (Reisberg), Braden (Braden/Bergstrom), and Morse (Morse) require licenses for institutional use. M9 owns `scale_license` (one row per (organization, scale)) with license holder, expiry, license number. The license registry is *form-gating*: a clinician cannot record a license-required scale unless the tenant has an active license recorded. Boot validation: if a scale is enabled-by-policy but no active license exists, the form is hidden from clinicians and a `scale.license_missing` warning surfaces in the tenant Compliance dashboard.
 - **Amendment workflow (D9).** A recorded scale is **immutable**. Errors are corrected by an append-only `corrects_assessment_id`-linked correction row, with a required `correction_reason` and the original row marked `superseded`. This matches the §164.526 right-to-amend pattern M5 already established for demographic amendments; surveyors get the full record of what was recorded, what was corrected, and why.
@@ -64,7 +70,7 @@ Module 9 owns the **clinical-scale assessment library** that hospice clinicians 
 - **Vital signs.** Blood pressure, heart rate, respiratory rate, temperature, oxygen saturation, pain score (the single 0–10 number distinct from ESAS-r's pain item) are *encounter vitals* — Module 8 stores these inline on the encounter. M9 trending may *read* the encounter vital series via M8's seam (in particular ESAS-r's pain item is correlated with the encounter pain score) but M9 does not own vital signs.
 - **HOPE-specific symptom-impact assessment.** Module 10's J2051 (Symptom Impact at HOPE timepoints) overlaps thematically with ESAS-r but is a distinct regulatory artifact. M9 does not double-source J2051.
 - **AI prediction model itself.** Module 32 (AI Platform) owns the symptom-trajectory model and the decline-prediction model. M9 publishes the `ScaleSeriesProvider` seam; M32 consumes. M9 has no model code.
-- **Scale-summary PDF rendering.** Module 22 owns the PDF generator; M9 emits a typed `assessment.summary_requested` outbox event with the domain payload (current scales, 30-day trend, significant-change markers). M22 renders. M9 has no PDF code.
+- **Scale-summary PDF rendering.** Module 22 owns the PDF generator; M9 emits a typed `m9.assessment.summary_requested` outbox event with the domain payload (current scales, 30-day trend, significant-change markers). M22 renders. M9 has no PDF code.
 - **FHIR `Observation` HTTP surface.** Module 28 owns FHIR R4 endpoints; M9 publishes the typed mapping (assessment row → FHIR Observation with the scale's LOINC code on the value and per-item LOINC codes on the components) consumed by M28. M9 has no FHIR HTTP surface.
 - **Care plan goals or interventions.** Module 7 owns goals and interventions. A goal may *reference* an assessment scale ("PPS will be ≥ 50 at 30-day review" is a measurable goal) but M7 owns the goal row; M9 just provides the score that evaluates whether the goal is met.
 - **Symptom-management orders.** Module 11 owns orders. M9 may *surface* an order-suggestion banner when ESAS-r pain ≥ 7 fires, but M9 doesn't create the order; the RN clicks through to M11. The order, if created, references `triggering_assessment_id` so the order trail back to the surfacing scale is preserved.
@@ -225,7 +231,7 @@ stateDiagram-v2
     expired --> [*]
 ```
 
-- The license-status worker runs daily, recomputes statuses, and emits `scale.license_pending_renewal` (30 days out) and `scale.license_lapsed` (on expiry) events to M36 for the tenant Compliance dashboard.
+- The license-status worker runs daily, recomputes statuses, and emits `m9.scale.license_pending_renewal` (30 days out) and `m9.scale.license_lapsed` (on expiry) events to M36 for the tenant Compliance dashboard.
 
 ### 2.3 Validation Rules
 
@@ -260,15 +266,15 @@ All emitted through Module 1's outbox helper. Idempotent dispatch keyed on `(ass
 
 | Event type | Trigger | Subscribers | Payload (summary) |
 |---|---|---|---|
-| `assessment.recorded` | every successful insert (incl. corrections) | M7 (latest-cache invalidate), M14 (IDG packet aggregator), M28 (FHIR Observation projection — when M28 ships), M30 (HQRP measure inputs — when M30 ships), M33 (reporting) | `{ assessmentId, patientId, admissionId, scaleType, score, capturedAt, sourceEncounterId, isCorrection }` |
-| `assessment.amended` | row's `status` flips from `active → superseded` because a correction was created (companion event to `assessment.recorded` on the new row) | M14, M28, M33 | `{ supersededId, correctingId, scaleType, reason }` |
-| `assessment.significant_change` | threshold-crossing rule fires within the recording transaction | M36 (typed alert: care-team channel + clinical-supervisor inbox), M7 (latest-cache + IDG packet "since last IDG" line), M11 (order-suggestion banner: pain ≥ 7 → comfort-order suggestion), M14 | `{ eventId, assessmentId, priorAssessmentId, ruleId, deltaValue, thresholdValue, severity }` |
-| `assessment.significant_change_acknowledged` | clinician acks | M36 (close alert), M33 | `{ eventId, ackBy, ackAt, note }` |
-| `assessment.significant_change_escalated` | 24h-without-ack timer on CRITICAL rules | M36 (re-deliver at `severity=high`) | `{ eventId, originalDetectedAt, escalatedAt }` |
-| `assessment.summary_requested` | M22 / portal asks for the printable summary | M22 (render PDF — when M22 ships) | `{ patientId, asOfDate, scales:[…], lang }` |
-| `scale.license_pending_renewal` | daily worker, 30 days out | M36 (Compliance-dashboard alert), M33 | `{ scaleType, expiresAt }` |
-| `scale.license_lapsed` | daily worker, on expiry | M36 (Compliance dashboard + org-admin), M33 | `{ scaleType, expiredAt }` |
-| `scale.policy_changed` | tenant updates `scale_policy` | M33 | `{ scaleType, changedFields }` |
+| `m9.assessment.recorded` | every successful insert (incl. corrections) | M7 (latest-cache invalidate), M14 (IDG packet aggregator), M28 (FHIR Observation projection — when M28 ships), M30 (HQRP measure inputs — when M30 ships), M33 (reporting) | `{ assessmentId, patientId, admissionId, scaleType, score, capturedAt, sourceEncounterId, isCorrection }` |
+| `m9.assessment.amended` | row's `status` flips from `active → superseded` because a correction was created (companion event to `m9.assessment.recorded` on the new row) | M14, M28, M33 | `{ supersededId, correctingId, scaleType, reason }` |
+| `m9.assessment.significant_change` | threshold-crossing rule fires within the recording transaction | M36 (typed alert: care-team channel + clinical-supervisor inbox), M7 (latest-cache + IDG packet "since last IDG" line), M11 (order-suggestion banner: pain ≥ 7 → comfort-order suggestion), M14 | `{ eventId, assessmentId, priorAssessmentId, ruleId, deltaValue, thresholdValue, severity }` |
+| `m9.assessment.significant_change_acknowledged` | clinician acks | M36 (close alert), M33 | `{ eventId, ackBy, ackAt, note }` |
+| `m9.assessment.significant_change_escalated` | 24h-without-ack timer on CRITICAL rules | M36 (re-deliver at `severity=high`) | `{ eventId, originalDetectedAt, escalatedAt }` |
+| `m9.assessment.summary_requested` | M22 / portal asks for the printable summary | M22 (render PDF — when M22 ships) | `{ patientId, asOfDate, scales:[…], lang }` |
+| `m9.scale.license_pending_renewal` | daily worker, 30 days out | M36 (Compliance-dashboard alert), M33 | `{ scaleType, expiresAt }` |
+| `m9.scale.license_lapsed` | daily worker, on expiry | M36 (Compliance dashboard + org-admin), M33 | `{ scaleType, expiredAt }` |
+| `m9.scale.policy_changed` | tenant updates `scale_policy` | M33 | `{ scaleType, changedFields }` |
 
 The seam direction for the M7 / M10 / M32 forward consumers is **published interface + outbox**: M9 publishes the typed `LatestAssessmentProvider` and `ScaleSeriesProvider` interfaces in `packages/domain/assessments/seams.ts`; M9 emits the events; consumers attach via the outbox dispatcher *and* the synchronous provider call (for the hot "give me the latest PPS right now" path that powers the CTI narrative draft).
 
@@ -965,9 +971,9 @@ export const SignificantChangeDto = Type.Object({
 
 | Event | Direction | Payload | Purpose |
 |---|---|---|---|
-| `assessment.recorded` | server → patient room | `{ assessmentId, scaleType, score, capturedAt }` | Live chart refresh |
-| `assessment.significant_change` | server → patient room + care-team channel | `{ eventId, ruleId, scaleType, severity }` | Live alert banner |
-| `scale.license_lapsed` | server → org-admin room | `{ scaleType, expiredAt }` | Compliance dashboard |
+| `m9.assessment.recorded` | server → patient room | `{ assessmentId, scaleType, score, capturedAt }` | Live chart refresh |
+| `m9.assessment.significant_change` | server → patient room + care-team channel | `{ eventId, ruleId, scaleType, severity }` | Live alert banner |
+| `m9.scale.license_lapsed` | server → org-admin room | `{ scaleType, expiredAt }` | Compliance dashboard |
 
 ### 4.6 Permission Keys this Module Registers into Module 3
 
@@ -1007,7 +1013,7 @@ Per Module 3 D5 (typed predicates registered via the seam registry):
 
 | Queue | Job | Purpose | Trigger |
 |---|---|---|---|
-| `assessment.license` | `license-status-scan` | Daily scan: flip statuses across `scale_license`; emit `scale.license_pending_renewal` (30d out) and `scale.license_lapsed` (on expiry) | Daily cron 02:00 org-tz |
+| `assessment.license` | `license-status-scan` | Daily scan: flip statuses across `scale_license`; emit `m9.scale.license_pending_renewal` (30d out) and `m9.scale.license_lapsed` (on expiry) | Daily cron 02:00 org-tz |
 | `assessment.changes` | `change-escalation` | Hourly scan: significant-change events `status='open'` whose `detected_at < now() - 24h` AND rule ∈ CRITICAL_RULES; flip to `escalated`, re-emit at `severity=high` | Hourly cron |
 | `assessment.cadence` | `reassessment-due-scan` | Daily scan: per (patient, scale_type), if `now() > latest.captured_at + cadence`, flag overdue and add to the chart-banner cache | Daily cron 06:00 org-tz |
 | `assessment.summary` | `build-summary-cache` | On `significant_change` or on chart-open, rebuild summary cache (Valkey, 1-hour TTL) for the patient/scale | Outbox subscriber + on-demand |
@@ -1015,12 +1021,12 @@ Per Module 3 D5 (typed predicates registered via the seam registry):
 
 ### 4.9 M36 Typed Alert Payload
 
-When `assessment.significant_change` fires, M36 receives a typed alert per M36 §5.4:
+When `m9.assessment.significant_change` fires, M36 receives a typed alert per M36 §5.4:
 
 ```typescript
 // packages/domain/assessments/alerts.ts
 export type AssessmentSignificantChangeAlert = {
-  kind: 'assessment.significant_change'
+  kind: 'm9.assessment.significant_change'
   organizationId: string
   patientId: string
   assessmentId: string
@@ -1136,15 +1142,15 @@ ABAC predicates in this matrix (registered with Module 3 per §4.7).
 
 ### 7.1 Record PPS during the admission encounter
 
-**Done means:** RN documents the admission visit (Module 8, future). Inside the encounter form, the RN clicks "Record PPS" — the M9 modal opens with `sourceEncounterId` pre-bound. RN selects ambulation / activity / self-care / intake / consciousness. Submit: M9 validates the discriminated union, computes the PPS score server-side (50% in this scenario), inserts the row with `cosign_required=false` (RN role), emits `assessment.recorded`. M8's encounter form refreshes to show the PPS captured. The CTI authoring screen (M6) now shows "Latest PPS: 50" via the `LatestAssessmentProvider` seam. The IDG packet aggregator (M14, future) attaches the PPS to the next packet automatically.
+**Done means:** RN documents the admission visit (Module 8, future). Inside the encounter form, the RN clicks "Record PPS" — the M9 modal opens with `sourceEncounterId` pre-bound. RN selects ambulation / activity / self-care / intake / consciousness. Submit: M9 validates the discriminated union, computes the PPS score server-side (50% in this scenario), inserts the row with `cosign_required=false` (RN role), emits `m9.assessment.recorded`. M8's encounter form refreshes to show the PPS captured. The CTI authoring screen (M6) now shows "Latest PPS: 50" via the `LatestAssessmentProvider` seam. The IDG packet aggregator (M14, future) attaches the PPS to the next packet automatically.
 
 ### 7.2 Significant-change detection on ESAS-r pain
 
-**Done means:** RN records ESAS-r 9 days into the admission. Pain score is 8. Server computes the total (35), inserts the row, *and within the same transaction* runs the significant-change rule engine: rule `esas_symptom_ge_7` fires (pain ≥ 7). A `significant_change_event` row is inserted; an `assessment.significant_change` outbox event is published; M36 delivers a typed alert to the care-team channel and the case manager's typed-alert inbox; M11 (Orders, future) surfaces an order-suggestion banner on the patient's chart ("Comfort-order suggestion: ESAS-r pain at 8 — consider PRN morphine"). Status of the event is `open`. The RN can acknowledge it inline; ack moves it to `acknowledged` and clears the chart banner.
+**Done means:** RN records ESAS-r 9 days into the admission. Pain score is 8. Server computes the total (35), inserts the row, *and within the same transaction* runs the significant-change rule engine: rule `esas_symptom_ge_7` fires (pain ≥ 7). A `significant_change_event` row is inserted; an `m9.assessment.significant_change` outbox event is published; M36 delivers a typed alert to the care-team channel and the case manager's typed-alert inbox; M11 (Orders, future) surfaces an order-suggestion banner on the patient's chart ("Comfort-order suggestion: ESAS-r pain at 8 — consider PRN morphine"). Status of the event is `open`. The RN can acknowledge it inline; ack moves it to `acknowledged` and clears the chart banner.
 
 ### 7.3 24h-no-ack CRITICAL escalation
 
-**Done means:** PPS captured 24+ hours ago dropped from 60 to 40 (rule `pps_drop_20_in_14d`). No clinician has acknowledged. The `change-escalation` hourly cron flips the event to `escalated`, re-emits `assessment.significant_change_escalated`. M36 re-delivers the alert at `severity=high` to the medical director's typed-alert inbox in addition to the prior recipients. The chart banner now renders red.
+**Done means:** PPS captured 24+ hours ago dropped from 60 to 40 (rule `pps_drop_20_in_14d`). No clinician has acknowledged. The `change-escalation` hourly cron flips the event to `escalated`, re-emits `m9.assessment.significant_change_escalated`. M36 re-delivers the alert at `severity=high` to the medical director's typed-alert inbox in addition to the prior recipients. The chart banner now renders red.
 
 ### 7.4 LPN cosignature workflow
 
@@ -1160,7 +1166,7 @@ ABAC predicates in this matrix (registered with Module 3 per §4.7).
 
 ### 7.7 License lapse + auto-disable
 
-**Done means:** The tenant's Victoria-Hospice PPS license expires today. The daily `license-status-scan` flips the row to `expired`, emits `scale.license_lapsed`. The org-admin's Compliance dashboard shows a red banner with the lapsed license. The next clinician who tries to record a PPS gets `SCALE_LICENSE_MISSING` (403). The PPS form is hidden in the modal. Existing PPS data is unaffected (reads continue). When the renewal is recorded, status flips back to `active`, the form re-appears.
+**Done means:** The tenant's Victoria-Hospice PPS license expires today. The daily `license-status-scan` flips the row to `expired`, emits `m9.scale.license_lapsed`. The org-admin's Compliance dashboard shows a red banner with the lapsed license. The next clinician who tries to record a PPS gets `SCALE_LICENSE_MISSING` (403). The PPS form is hidden in the modal. Existing PPS data is unaffected (reads continue). When the renewal is recorded, status flips back to `active`, the form re-appears.
 
 ### 7.8 Reassessment-overdue banner
 
@@ -1193,17 +1199,17 @@ ABAC predicates in this matrix (registered with Module 3 per §4.7).
 
 | Event | Severity | Payload | Source |
 |---|---|---|---|
-| `assessment.recorded` | info | `{ assessmentId, patientId, admissionId, scaleType, scoreBucket, capturedByDiscipline, isCorrection }` | trigger (write) + application (narrative) |
+| `m9.assessment.recorded` | info | `{ assessmentId, patientId, admissionId, scaleType, scoreBucket, capturedByDiscipline, isCorrection }` | trigger (write) + application (narrative) |
 | `assessment.viewed` | info | `{ assessmentId, byUserId, viaContext: chart\|trend\|summary\|ctinarrative }` | application (`auditRead`) |
 | `assessment.disclosed` | warn | `{ assessmentId, byUserId, to: portal\|collaborator\|fhir\|external, purpose }` | application — M4 D5 inference |
-| `assessment.amended` | info | `{ correctingId, supersededId, reasonHash }` | trigger (the correction-supersede trigger) + application |
+| `m9.assessment.amended` | info | `{ correctingId, supersededId, reasonHash }` | trigger (the correction-supersede trigger) + application |
 | `assessment.significant_change_detected` | warn | `{ eventId, assessmentId, ruleId, deltaValue, thresholdValue, severity }` | application (recording transaction) |
-| `assessment.significant_change_acknowledged` | info | `{ eventId, ackBy, ackAt }` | application |
-| `assessment.significant_change_escalated` | warn | `{ eventId, escalatedAt, originalDetectedAt }` | application (cron) |
+| `m9.assessment.significant_change_acknowledged` | info | `{ eventId, ackBy, ackAt }` | application |
+| `m9.assessment.significant_change_escalated` | warn | `{ eventId, escalatedAt, originalDetectedAt }` | application (cron) |
 | `assessment.cosigned` | info | `{ assessmentId, cosignerId, cosignerRole }` | trigger + application |
 | `scale.license_recorded` | info | `{ scaleType, licenseHolder, expiresAt }` | trigger |
-| `scale.license_pending_renewal` | warn | `{ scaleType, expiresAt }` | application (cron) |
-| `scale.license_lapsed` | warn | `{ scaleType, expiredAt }` | application (cron) |
+| `m9.scale.license_pending_renewal` | warn | `{ scaleType, expiresAt }` | application (cron) |
+| `m9.scale.license_lapsed` | warn | `{ scaleType, expiredAt }` | application (cron) |
 | `scale.policy_updated` | info | `{ scaleType, changedFields }` | trigger + application |
 
 PHI mutation events flow through both the M4 trigger generator (the *binding* source of truth from the table write) and the application narrative event (the *human-readable* what-happened). Free-text fields (`data.notes`, `data.otherSymptomText`, `correction_reason`, `acknowledgment_note`) are denylisted on the trigger — the audit_event row contains `<changed>` rather than the text.
