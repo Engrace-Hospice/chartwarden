@@ -77,12 +77,12 @@ Cycles: **none ✓** · Consistency issues: **none ✓**.
 | 18 | passkey | M02 Identity & Org | docs/modules/WARDENX_MODULE_02_IDENTITY_SPEC_v0_4.md |
 | 19 | tenant_step_up_policy_override | M02 Identity & Org | docs/modules/WARDENX_MODULE_02_IDENTITY_SPEC_v0_4.md |
 | 20 | two_factor | M02 Identity & Org | docs/modules/WARDENX_MODULE_02_IDENTITY_SPEC_v0_4.md |
-| 21 | auditor_engagement | M03 Authorization | docs/modules/WARDENX_MODULE_03_AUTHORIZATION_SPEC_v0_2.md |
-| 22 | break_glass_event | M03 Authorization | docs/modules/WARDENX_MODULE_03_AUTHORIZATION_SPEC_v0_2.md |
-| 23 | membership_role | M03 Authorization | docs/modules/WARDENX_MODULE_03_AUTHORIZATION_SPEC_v0_2.md |
-| 24 | permission | M03 Authorization | docs/modules/WARDENX_MODULE_03_AUTHORIZATION_SPEC_v0_2.md |
-| 25 | role | M03 Authorization | docs/modules/WARDENX_MODULE_03_AUTHORIZATION_SPEC_v0_2.md |
-| 26 | role_permission | M03 Authorization | docs/modules/WARDENX_MODULE_03_AUTHORIZATION_SPEC_v0_2.md |
+| 21 | auditor_engagement | M03 Authorization | docs/modules/WARDENX_MODULE_03_AUTHORIZATION_SPEC_v0_3.md |
+| 22 | break_glass_event | M03 Authorization | docs/modules/WARDENX_MODULE_03_AUTHORIZATION_SPEC_v0_3.md |
+| 23 | membership_role | M03 Authorization | docs/modules/WARDENX_MODULE_03_AUTHORIZATION_SPEC_v0_3.md |
+| 24 | permission | M03 Authorization | docs/modules/WARDENX_MODULE_03_AUTHORIZATION_SPEC_v0_3.md |
+| 25 | role | M03 Authorization | docs/modules/WARDENX_MODULE_03_AUTHORIZATION_SPEC_v0_3.md |
+| 26 | role_permission | M03 Authorization | docs/modules/WARDENX_MODULE_03_AUTHORIZATION_SPEC_v0_3.md |
 | 27 | audit_action_catalog | M04 Audit & Compliance Log | docs/modules/WARDENX_MODULE_04_AUDIT_SPEC_v0_4.md |
 | 28 | audit_denylist_catalog | M04 Audit & Compliance Log | docs/modules/WARDENX_MODULE_04_AUDIT_SPEC_v0_4.md |
 | 29 | audit_export | M04 Audit & Compliance Log | docs/modules/WARDENX_MODULE_04_AUDIT_SPEC_v0_4.md |

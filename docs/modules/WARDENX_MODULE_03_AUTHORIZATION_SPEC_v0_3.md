@@ -1,5 +1,11 @@
 # Module 3 — Authorization Specification
 
+**Spec version:** v0.3 — the remaining bare-prefix outbox events migrated to the `m3.`
+namespace (`m3.role.assigned`, `m3.role.revoked`, `m3.role.updated`) per this module's own D9
+rule and M01 D8. The `m3.breakglass.*` / `m3.engagement.*` events already conformed; permission
+keys (`role.assign`, `role.read`, …) and the M03-F04 carve-out `permissions.changed` (the one
+permitted direct Socket.IO emit) are unchanged. (Prior: v0.2.)
+
 **Module ID:** 3
 **Phase:** 1 (foundation tier — lands immediately after Module 2)
 **Depends on:** **2** (Identity & Organization — `user`, `membership`, sessions and the four session classes, `proposedRoleKeys` handshake). Module 1 helper surfaces (`packages/tenancy` `withOrgContext` + RLS generator, `packages/audit` helper, `packages/db/src/schema` types) are reached via the **`FOUNDATION_HELPER_PACKAGES`** implicit-import set (ADR-0005 D4), **not** a `dependsOn` edge — so the manifest `dependsOn: [2]` is correct and unchanged (resolves M03-F02; the prior header's "Depends on: 1, 2" contradicted the manifest).
@@ -250,9 +256,9 @@ stateDiagram-v2
 | Trigger | Side effect |
 |---|---|
 | Tenant onboarded (Module 34) | Platform role templates cloned into org as `role` rows (defaults enabled) |
-| Invitation accepted (Module 2) | `proposedRoleKeys` → `membership_role` rows created; emit `role.assigned` |
-| Role granted/revoked on a membership | recompute & cache effective permissions; emit `role.assigned`/`role.revoked` (severity warn) |
-| Role permission set edited | invalidate effective-permission cache for all affected memberships; emit `role.updated` |
+| Invitation accepted (Module 2) | `proposedRoleKeys` → `membership_role` rows created; emit `m3.role.assigned` |
+| Role granted/revoked on a membership | recompute & cache effective permissions; emit `m3.role.assigned`/`m3.role.revoked` (severity warn) |
+| Role permission set edited | invalidate effective-permission cache for all affected memberships; emit `m3.role.updated` |
 | Break-glass invoked | grant temporary ABAC bypass for target; notify Compliance Officer immediately; emit `breakglass.invoked` (critical); start time-box |
 | Break-glass expires/revoked | bypass removed; emit `breakglass.ended` |
 | Engagement reaches `start_at` | engagement `active`; auditor magic-links become consumable (Module 2) |
@@ -903,8 +909,8 @@ Retention class `security`/`compliance`. Authorization **denials** of PHI action
 | Event | Severity | Payload |
 |---|---|---|
 | `authz.denied` | info/warn | `{ actor, permission, predicate, targetType, reason }` |
-| `role.assigned` / `role.revoked` | warn | `{ membershipId, roleKey, scope, byUser, expiresAt }` |
-| `role.created`/`role.updated`/`role.deleted` | warn | `{ roleKey, changedFields }` |
+| `m3.role.assigned` / `m3.role.revoked` | warn | `{ membershipId, roleKey, scope, byUser, expiresAt }` |
+| `role.created`/`m3.role.updated`/`role.deleted` | warn | `{ roleKey, changedFields }` |
 | `breakglass.invoked` | critical | `{ id, actor, targetPatientId, reason, expiresAt, cosignRequired }` |
 | `breakglass.access` | critical | `{ id, resourceType, resourceId }` (per resource viewed under glass) |
 | `breakglass.cosigned`/`breakglass.revoked`/`breakglass.expired` | warn | `{ id, by }` |
