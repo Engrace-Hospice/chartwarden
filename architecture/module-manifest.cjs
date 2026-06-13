@@ -6,7 +6,7 @@
  *   - codePaths:   the package(s) and backend route dir(s) that BELONG to the module
  *   - dependsOn:   the modules it MAY import from (verbatim from ARCHITECTURE §20 dep table)
  *   - ownedTables: the DB tables it owns. As of the M07-F02 manifest pass, ALL 40
- *                  modules are populated (447 tables) from their specs, so the ownership
+ *                  modules are populated (451 tables) from their specs, so the ownership
  *                  check enforces the full corpus — no longer "enforces only what is
  *                  declared." A new module's tables are added here when its spec lands.
  *
@@ -129,7 +129,7 @@ exports.MODULES = [
         id: 38, name: "Clinical Terminology Service",
         codePaths: ["packages/terminology", "apps/backend/src/modules/38-terminology"],
         dependsOn: [1, 2, 3, 4],
-        ownedTables: ["code_system", "code_system_version", "concept_embedding", "concept_loinc", "concept_rxnorm", "concept_snomed", "deprecation_mapping", "terminology_update_log", "value_set", "value_set_expansion", "value_set_member", "value_set_tenant_extension"],
+        ownedTables: ["code_system", "code_system_version", "concept_embedding", "concept_icd10cm", "concept_loinc", "concept_rxnorm", "concept_snomed", "deprecation_mapping", "terminology_update_log", "value_set", "value_set_expansion", "value_set_member", "value_set_tenant_extension"],
     },
     {
         id: 40, name: "Master Data Management",
@@ -209,7 +209,7 @@ exports.MODULES = [
     { id: 28, name: "FHIR Gateway",
         codePaths: ["packages/fhir", "apps/backend/src/modules/28-fhir"], dependsOn: [5, 6, 7, 8, 11, 12, 13, 38, 40], ownedTables: ["fhir_bulk_export_artifact", "fhir_bulk_export_job", "fhir_capability_snapshot", "fhir_client", "fhir_client_credential", "fhir_client_session", "fhir_inbound_resource", "tenant_fhir_config"] },
     { id: 29, name: "External Interfaces",
-        codePaths: ["apps/backend/src/modules/29-external-interfaces"], dependsOn: [5, 11, 40], ownedTables: ["external_feed", "external_feed_credential", "external_feed_health", "lab_observation", "lab_observation_inbound_link", "lab_observation_value", "nppes_provider", "nppes_sync_run"] },
+        codePaths: ["apps/backend/src/modules/29-external-interfaces"], dependsOn: [5, 11, 40], ownedTables: ["external_feed", "external_feed_credential", "external_feed_health", "hl7_inbound_proposal", "hl7_message_inbound", "hl7_message_outbound", "lab_observation", "lab_observation_inbound_link", "lab_observation_value", "nppes_provider", "nppes_sync_run"] },
     { id: 30, name: "HQRP & Quality",
         codePaths: ["apps/backend/src/modules/30-quality"], dependsOn: [10, 23, 27, 36, 38], ownedTables: ["cahps_decedent_sample", "cahps_result_summary", "cahps_sample", "cahps_vendor_binding", "cop_compliance_status", "incident_report", "infection_outbreak_case", "infection_surveillance_event", "measure_recompute_queue", "mortality_review", "qapi_governance_minutes", "qapi_indicator", "qapi_pip", "qapi_program", "qapi_project", "quality_measure_value", "sra_cycle", "sra_finding", "sra_remediation"] },
     { id: 31, name: "Patient/Family Portal & Telehealth",
