@@ -1,7 +1,7 @@
 # WardenX — T-29.07 Addendum: Lab Observation Attachment
 
 **Document status:** lock-grade
-**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_3.md` §4.6 (lab routing column), §11 D7 (auto-attach), D8 (OBR-2 placer resolution), §10 (T-29.07)
+**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` §4.6 (lab routing column), §11 D7 (auto-attach), D8 (OBR-2 placer resolution), §10 (T-29.07)
 **Date:** 2026-06-10
 **Prerequisites:** T-29.01 → T-29.06 merged. M29 spec is at v0.3 (consolidated).
 
@@ -1400,7 +1400,7 @@ This addendum surfaces three small refinements past M29 spec v0.3 — none are s
 ## Document Footer
 
 **Addendum version:** v1.0 (T-29.07 PR-ready)
-**Bound to:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_3.md` §4.6 (lab routing), §11 D7 (auto-attach), D8 (OBR-2), D15 (SUD redaction)
+**Bound to:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` §4.6 (lab routing), §11 D7 (auto-attach), D8 (OBR-2), D15 (SUD redaction)
 **Files delivered:** 8 source files + 2 forward-stub consumers + 1 M22 back-ref consumer + parse-worker ORU branch addition
 **Workflows closed:** W-XI-05, W-XI-06, W-XI-07, W-XI-08, W-XI-09 (M29 side full closure; M11 side at M11 v0.3)
 **Schema changes:** **None** — v0.3 schema is sufficient

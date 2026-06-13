@@ -1,7 +1,7 @@
 # WardenX — T-29.10 Addendum: Credential Rotation
 
 **Document status:** lock-grade
-**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_3.md` §4.x (credential lifecycle), §11 D18 (step-up), D23 (mTLS + per-feed pinning), §10 (T-29.10)
+**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` §4.x (credential lifecycle), §11 D18 (step-up), D23 (mTLS + per-feed pinning), §10 (T-29.10)
 **Date:** 2026-06-10
 **Prerequisites:** T-29.01 → T-29.08 merged. M29 spec at v0.3. T-29.04 (inbound listener with CRL) and T-29.08 (outbound MLLP client with CRL) are both consuming the revocation list this PR mutates.
 

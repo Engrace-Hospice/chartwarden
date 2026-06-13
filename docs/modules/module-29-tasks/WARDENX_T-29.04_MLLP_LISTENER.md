@@ -1,7 +1,7 @@
 # WardenX — T-29.04 Addendum: MLLP Listener Supervisor
 
 **Document status:** lock-grade
-**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_2.md` §4.11 (MLLP Listener Lifecycle), §4.9 (BullMQ Queue Catalog), §10 (T-29.04)
+**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` §4.11 (MLLP Listener Lifecycle), §4.9 (BullMQ Queue Catalog), §10 (T-29.04)
 **Date:** 2026-06-10
 **Prerequisites:** T-29.01 (manifest patch + forward-stubs), T-29.02 (schema), T-29.03 (HAPI sidecar) all merged.
 
@@ -1623,7 +1623,7 @@ A fifth small refinement: **the segment-summary pre-parse in `frame-handler.ts` 
 ## Document Footer
 
 **Addendum version:** v1.0 (T-29.04 PR-ready)
-**Bound to:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_2.md` §4.11, §4.9, §10
+**Bound to:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` §4.11, §4.9, §10
 **Files delivered:** 9 listener-directory files + 1 parse worker + 1 allowlist helper = 11 TypeScript files
 **Tests:** 6 test files covering ~18 scenarios (DoS, idempotency × 3, mTLS × 5, listener-down × 2, boot validator × 1, BAA gate × 2, limited W-XI-01 × 2, miscellaneous × 3)
 **Spec refinements:** 5 recorded for the next M29 spec revision

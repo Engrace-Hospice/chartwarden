@@ -1,7 +1,7 @@
 # WardenX — Fitness Enforcement Audit (manifest-derived)
 
 Source of truth: `architecture/module-manifest.ts` (read by `.dependency-cruiser.cjs` + `check-table-ownership.ts`).
-Modules: **40** · Owned tables: **451** (unique: **451**) · Import edges: **157**.
+Modules: **40** · Owned tables: **451** (unique: **451**) · Import edges: **153**.
 Cycles: **none ✓** · Consistency issues: **none ✓**.
 
 ## 1. Module Ownership Matrix
@@ -17,10 +17,10 @@ Cycles: **none ✓** · Consistency issues: **none ✓**.
 | M05 | Patient & Demographics | 16 | M06, M12, M16, M17, M19, M22, M28, M29, M31, M33, M39 | M02, M03, M04, M36, M38, M40 |
 | M06 | Admission, Election & Certification | 12 | M07, M08, M11, M16, M23, M28, M33, M37 | M05, M38, M39, M40 |
 | M07 | Care Plan (IPOC) | 6 | M08, M14, M15, M28, M31, M33 | M06, M38, M39 |
-| M08 | Encounters & Visit Notes | 10 | M09, M10, M11, M14, M15, M17, M23, M28, M31, M33, M37 | M06, M07, M36, M38 |
-| M09 | Clinical Assessments Suite | 5 | M10, M33 | M08, M38 |
-| M10 | HOPE Engine | 6 | M30, M33 | M08, M09, M36, M38 |
-| M11 | Orders | 7 | M12, M21, M28, M29, M33, M37 | M06, M08, M36, M38, M40 |
+| M08 | Encounters & Visit Notes | 10 | M14, M15, M17, M23, M28, M31, M33, M37 | M06, M07, M36, M38 |
+| M09 | Clinical Assessments Suite | 5 | M10, M33 | M38 |
+| M10 | HOPE Engine | 6 | M30, M33 | M09, M36, M38 |
+| M11 | Orders | 7 | M12, M21, M28, M29, M33, M37 | M06, M36, M38, M40 |
 | M12 | DoseSpot Integration | 6 | M13, M28, M33 | M05, M11, M38, M40 |
 | M13 | eMAR & Med Administration | 12 | M28, M33, M37 | M12, M36, M38 |
 | M14 | IDG | 11 | M33 | M07, M08, M36 |
@@ -31,7 +31,7 @@ Cycles: **none ✓** · Consistency issues: **none ✓**.
 | M19 | On-Call Triage | 9 | M33 | M05, M17, M36 |
 | M20 | Field Safety | 13 | M33 | M17, M36 |
 | M21 | Supplies, DME & Comfort Kits | 11 | M33 | M11, M40 |
-| M22 | Document Management | 17 | M23, M31, M33 | M01, M05, M39 |
+| M22 | Document Management | 17 | M23, M31, M33 | M01, M05 |
 | M23 | Billing — Medicare | 17 | M24, M25, M26, M27, M30, M33, M37 | M06, M08, M22, M38, M40 |
 | M24 | Billing — Medicaid | 14 | M33 | M23, M40 |
 | M25 | Remittance & Denials | 11 | M33 | M23, M36 |
@@ -48,7 +48,7 @@ Cycles: **none ✓** · Consistency issues: **none ✓**.
 | M36 | Secure Messaging & Alerts | 13 | M05, M08, M10, M11, M13, M14, M16, M19, M20, M25, M26, M30, M31, M34 | M01, M02, M03, M04 |
 | M37 | Inpatient Unit (IPU) Management | 26 | — | M06, M08, M11, M13, M17, M23 |
 | M38 | Clinical Terminology Service | 13 | M05, M06, M07, M08, M09, M10, M11, M12, M13, M23, M27, M28, M30, M33 | M01, M02, M03, M04 |
-| M39 | Consent & Authorization Management | 11 | M06, M07, M22, M31 | M01, M02, M03, M04, M05 |
+| M39 | Consent & Authorization Management | 11 | M06, M07, M31 | M01, M02, M03, M04, M05 |
 | M40 | Master Data Management | 11 | M05, M06, M11, M12, M17, M21, M23, M24, M28, M29, M33 | M01, M02, M03, M04 |
 
 ## 2. Table Ownership Audit
@@ -536,14 +536,11 @@ M08 -> M06
 M08 -> M07
 M08 -> M36
 M08 -> M38
-M09 -> M08
 M09 -> M38
-M10 -> M08
 M10 -> M09
 M10 -> M36
 M10 -> M38
 M11 -> M06
-M11 -> M08
 M11 -> M36
 M11 -> M38
 M11 -> M40
@@ -575,7 +572,6 @@ M21 -> M11
 M21 -> M40
 M22 -> M01
 M22 -> M05
-M22 -> M39
 M23 -> M06
 M23 -> M08
 M23 -> M22

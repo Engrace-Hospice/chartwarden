@@ -1,7 +1,7 @@
 # WardenX — T-29.02 Addendum: M29 Schema PR Package
 
 **Document status:** lock-grade
-**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_2.md` §3 (Drizzle Schema) and §10 (T-29.02 Drizzle Schema + Migrations)
+**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` §3 (Drizzle Schema) and §10 (T-29.02 Drizzle Schema + Migrations)
 **Date:** 2026-06-10
 **Prerequisites:** T-29.01 (manifest patch + forward-stub addendum) merged.
 
@@ -747,7 +747,7 @@ Hand-rolled SQL because Drizzle's migration generator does not emit `PARTITION B
 -- =====================================================================
 -- WardenX Module 29 — External Interfaces — Schema Migration 0029
 -- Author: T-29.02
--- Tracks: WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_2.md §3
+-- Tracks: WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md §3
 -- =====================================================================
 
 BEGIN;
@@ -1871,7 +1871,7 @@ The chosen approach has one subtle property: a row's partition is fixed at INSER
 ## Document Footer
 
 **Addendum version:** v1.0 (T-29.02 PR-ready)
-**Bound to:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_2.md` §3
+**Bound to:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` §3
 **Schema files delivered:** 8 (enums, feed, hl7-messages, inbound-proposal, lab-observation, nppes, feed-health, index)
 **Tables delivered:** 11 (9 tenant-owned + 2 platform-shared)
 **Partitions seeded:** 35 (7 months × 5 partitioned parents)

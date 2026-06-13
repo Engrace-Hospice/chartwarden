@@ -1,7 +1,7 @@
 # WardenX — T-29.12 / T-29.13 Combined Addendum: M29 Frontend
 
 **Document status:** lock-grade
-**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_3.md` §5 (UI Surfaces), §10 (T-29.12, T-29.13)
+**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` §5 (UI Surfaces), §10 (T-29.12, T-29.13)
 **Date:** 2026-06-10
 **Prerequisites:** T-29.01 → T-29.11 merged. The backend APIs T-29.12/13 consume are stable at v0.3 + the small additions from T-29.08/10/11.
 

@@ -1,7 +1,7 @@
 # WardenX — T-29.01 Addendum: Forward-Seam Deny-Stubs for M29 Consumers
 
 **Document status:** lock-grade
-**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_2.md` §13.7
+**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` §13.7
 **Date:** 2026-06-10
 
 This addendum delivers the pre-merge work the M29 spec flags as a prerequisite for the manifest patch: forward-seam deny-stubs in every module that will eventually consume M29-published seams but is not yet lock-grade. Without these stubs, the boot validator (§W-XI-15) would fail closed at startup because consuming modules reference seams whose names are published in `M29.publishedSeams` but whose consumer slots are empty.
@@ -751,7 +751,7 @@ This discipline is the inverse of the stub-creation discipline above. Without it
 ## Document Footer
 
 **Addendum version:** v1.0 (T-29.01 PR-ready)
-**Bound to:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_2.md` §13.7
+**Bound to:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` §13.7
 **Stub files delivered:** 10
 **Modules touched:** M30, M33, M34, M35, M37 (+ manifest + boot.ts + core/seams.ts)
 **Tests delivered:** 10 per-stub + 4 boot-validator integration scenarios

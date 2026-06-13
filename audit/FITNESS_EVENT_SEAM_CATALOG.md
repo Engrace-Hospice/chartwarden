@@ -10,6 +10,25 @@ is actually enforced** vs. documented.
 > event names show cross-spec convention drift (see §B) and should be reconciled against the
 > authoritative runtime catalog (`outbox_event_catalog`, owned by M01) once code lands.
 
+## E. Dependency-manifest conformance (pre-coding sweep)
+
+The manifest `dependsOn` encodes **compile-time import edges only** (ADR-0005 D1/D4: foundation
+helpers M1–M4 and seam/outbox consumption need *no* edge), so a spec's "Depends on:" prose is a
+legitimate superset. A pre-coding sweep against the specs' own ratified "proposed manifest
+patches" found and corrected genuine wrong edges:
+
+- **✅ Applied (safe edge-removals, `.ts` + `.cjs`):** removed the inverted **M9→M8**,
+  **M10→M8**, **M11→M8** import edges (specs: "consumers carry the dep, not the data-owner";
+  flow is M8→M9/M10/M11) and the **M22→M39** edge (specs: incorrect; M22↔M39 cycle broken via
+  forward seam, ADR-0006). Edge count 157→153; **0 cycles** retained (removals only tighten).
+- **◻ Pending architecture adjudication (add-edge halves of the patches — NOT applied):** the
+  same patches also propose *adding* edges (e.g. M9→6/36/39, M10→6, M11→5/9/10/29,
+  M22→2/3/4/32/36/38/40). Several conflate seam/outbox consumption (no-edge, D1) or foundation
+  helpers (no-edge, D4) with real compile imports, so each needs per-edge review + a transitive
+  cycle analysis (ADR-0005 D5) before applying. Tracked for the architecture owner.
+- M02 (`auth.*`) / M40 (`mdm.*`) namespaces kept by decision (see §B); M29 task-file spec
+  references repointed to `v0_4`.
+
 ---
 
 ## A. Module Event & Seam Catalog (spec-derived)

@@ -1,7 +1,7 @@
 # WardenX — T-29.06 Addendum: HL7 Inbound Proposal Lifecycle
 
 **Document status:** lock-grade
-**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_2.md` §4.6 (routing table), §11 D5 (propose-then-review), §10 (T-29.06)
+**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` §4.6 (routing table), §11 D5 (propose-then-review), §10 (T-29.06)
 **Date:** 2026-06-10
 **Prerequisites:** T-29.01 → T-29.05 merged.
 
@@ -1414,7 +1414,7 @@ That's ~20 small spec changes across 5 PRs. None individually problematic; colle
 ## Document Footer
 
 **Addendum version:** v1.0 (T-29.06 PR-ready)
-**Bound to:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_2.md` §4.6, §11 D5, §7 (workflows), §10
+**Bound to:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` §4.6, §11 D5, §7 (workflows), §10
 **Files delivered:** 7 source (`cascade-consumer.ts`, `decision-engine.ts`, `lifecycle.ts` integration, `routes/proposals.ts`, `message-type-routing.ts`, expire-sweep worker, owner-module-match predicate) + 2 forward-stub consumers + 1 migration
 **Workflows closed on M29 side:** W-XI-01, W-XI-02, W-XI-03, W-XI-04 (full closure on M5 side awaits M5 v0.3)
 **Retroactive corrections:** 3 schema/enum changes + 1 spec routing-table rewrite + 1 parse-worker code addition

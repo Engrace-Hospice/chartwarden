@@ -1,7 +1,7 @@
 # WardenX — T-29.11 Addendum: SUD Redaction Hardening
 
 **Document status:** lock-grade
-**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_3.md` §11 D15 (SUD ingress redaction), §8.2 (privacy controls), §10 (T-29.11)
+**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` §11 D15 (SUD ingress redaction), §8.2 (privacy controls), §10 (T-29.11)
 **Date:** 2026-06-10
 **Prerequisites:** T-29.07 (which shipped v1 of the SUD redaction).
 

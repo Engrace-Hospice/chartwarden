@@ -1,7 +1,7 @@
 # WardenX — T-29.08 Addendum: Outbound ORM Dispatcher
 
 **Document status:** lock-grade
-**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_3.md` §4.4 (outbound dispatch), §11 D9 (outbound ORM), D16 (BAA gate at dispatch), D14 (per-feed idempotency), §10 (T-29.08)
+**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` §4.4 (outbound dispatch), §11 D9 (outbound ORM), D16 (BAA gate at dispatch), D14 (per-feed idempotency), §10 (T-29.08)
 **Date:** 2026-06-10
 **Prerequisites:** T-29.01 → T-29.07 merged. M29 spec at v0.3.
 

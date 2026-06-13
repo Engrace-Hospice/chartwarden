@@ -1,7 +1,7 @@
 # WardenX — T-29.05 Addendum: Patient Match Cascade
 
 **Document status:** lock-grade
-**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_2.md` §4.6 (cascade algorithm), §4.5 (consumed seams), §10 (T-29.05)
+**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` §4.6 (cascade algorithm), §4.5 (consumed seams), §10 (T-29.05)
 **Date:** 2026-06-10
 **Prerequisites:** T-29.01 (manifest), T-29.02 (schema — with retroactive corrections from §2 below), T-29.03 (HAPI sidecar), T-29.04 (MLLP listener) all merged.
 
@@ -1390,7 +1390,7 @@ This addendum surfaces seven refinements past M29 spec v0.2:
 ## Document Footer
 
 **Addendum version:** v1.0 (T-29.05 PR-ready)
-**Bound to:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_2.md` §4.6, §4.5, §10
+**Bound to:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` §4.6, §4.5, §10
 **Files delivered:** 3 source (`match-cascade.ts`, `outcome-router.ts`, `cascade-persistence.ts`) + 1 seam interface (`patient-reader.ts`) + 1 migration (`0030`)
 **T-29.02 retroactive corrections:** 5 (1 enum, 5 schema columns, 2 events to outbox catalog, 1 config convention)
 **Tests:** ~35 unit scenarios at ≥95% branch coverage + 4 integration scenarios across W-XI-01/02 + no-match path

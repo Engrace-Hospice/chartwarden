@@ -1,7 +1,7 @@
 # WardenX — T-29.03 Addendum: HAPI HL7v2 Sidecar Bring-Up
 
 **Document status:** lock-grade
-**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_2.md` §3.1, §4.11.3, §13.2
+**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` §3.1, §4.11.3, §13.2
 **Date:** 2026-06-10
 **Prerequisites:** T-29.01 (manifest patch + forward-stub addendum) and T-29.02 (schema PR) merged.
 
@@ -1941,7 +1941,7 @@ A future refinement may add a 4th regex for SSN-shape `\d{3}-\d{2}-\d{4}` if any
 ## Document Footer
 
 **Addendum version:** v1.0 (T-29.03 PR-ready)
-**Bound to:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_2.md` §3.1, §4.11.3, §13.2
+**Bound to:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` §3.1, §4.11.3, §13.2
 **Java files delivered (canonical):** 6 (App, UdsServerBootstrap, ParserServiceImpl, SegmentMapper, BuilderService, logback.xml)
 **Proto file:** 1 (`parser.proto`)
 **TS files delivered (canonical):** 8 (sidecar client + 2 segments + 2 messages + 4 interfaces)

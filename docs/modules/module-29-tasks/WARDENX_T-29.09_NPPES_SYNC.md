@@ -1,7 +1,7 @@
 # WardenX — T-29.09 Addendum: NPPES Sync
 
 **Document status:** lock-grade
-**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_3.md` §3.1 (`packages/nppes-client`), §4.4 (NPPES platform job), §11 D10 (NPPES public API), D11 (platform-role sync), D18 (step-up on manual trigger), §10 (T-29.09)
+**Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` §3.1 (`packages/nppes-client`), §4.4 (NPPES platform job), §11 D10 (NPPES public API), D11 (platform-role sync), D18 (step-up on manual trigger), §10 (T-29.09)
 **Date:** 2026-06-10
 **Prerequisites:** T-29.01 → T-29.08, T-29.10 merged. M29 spec at v0.3.
 
