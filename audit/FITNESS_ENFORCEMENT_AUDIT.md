@@ -247,23 +247,23 @@ Cycles: **none ✓** · Consistency issues: **none ✓**.
 | 188 | supply_request | M21 Supplies, DME & Comfort Kits | docs/modules/WARDENX_MODULE_21_SUPPLIES_DME_COMFORT_KITS_SPEC_v0_2.md |
 | 189 | tenant_supply_item_extension | M21 Supplies, DME & Comfort Kits | docs/modules/WARDENX_MODULE_21_SUPPLIES_DME_COMFORT_KITS_SPEC_v0_2.md |
 | 190 | vendor_routing_rule | M21 Supplies, DME & Comfort Kits | docs/modules/WARDENX_MODULE_21_SUPPLIES_DME_COMFORT_KITS_SPEC_v0_2.md |
-| 191 | classified_page | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_4.md |
-| 192 | document | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_4.md |
-| 193 | document_access_log | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_4.md |
-| 194 | document_legal_hold | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_4.md |
-| 195 | document_tag | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_4.md |
-| 196 | document_version | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_4.md |
-| 197 | extraction_candidate | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_4.md |
-| 198 | extraction_decision | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_4.md |
-| 199 | extraction_discrepancy | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_4.md |
-| 200 | extraction_job | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_4.md |
-| 201 | extraction_provenance | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_4.md |
-| 202 | extraction_review | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_4.md |
-| 203 | form_fill | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_4.md |
-| 204 | form_template | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_4.md |
-| 205 | form_template_version | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_4.md |
-| 206 | intake_upload_batch | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_4.md |
-| 207 | tenant_template_overlay | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_4.md |
+| 191 | classified_page | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md |
+| 192 | document | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md |
+| 193 | document_access_log | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md |
+| 194 | document_legal_hold | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md |
+| 195 | document_tag | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md |
+| 196 | document_version | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md |
+| 197 | extraction_candidate | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md |
+| 198 | extraction_decision | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md |
+| 199 | extraction_discrepancy | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md |
+| 200 | extraction_job | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md |
+| 201 | extraction_provenance | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md |
+| 202 | extraction_review | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md |
+| 203 | form_fill | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md |
+| 204 | form_template | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md |
+| 205 | form_template_version | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md |
+| 206 | intake_upload_batch | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md |
+| 207 | tenant_template_overlay | M22 Document Management | docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md |
 | 208 | claim | M23 Billing — Medicare | docs/modules/WARDENX_MODULE_23_BILLING_MEDICARE_SPEC_v0_2.md |
 | 209 | claim_acknowledgment | M23 Billing — Medicare | docs/modules/WARDENX_MODULE_23_BILLING_MEDICARE_SPEC_v0_2.md |
 | 210 | claim_line | M23 Billing — Medicare | docs/modules/WARDENX_MODULE_23_BILLING_MEDICARE_SPEC_v0_2.md |

@@ -135,7 +135,7 @@ The `report_mv` schema MVs are **not in this list** — they are physical Postgr
 | `report_view` | `private → shared_role → shared_org → archived` (where `archived` is the only sink state; the share transitions are bidirectional within the non-archived states) | Owner membership toggles share; Org Admin may toggle `is_org_default` |
 | `report_share` | `active → revoked` | Share-target removal or membership revocation cascade |
 | `report_schedule` | `active → paused → cancelled` | Owner pauses; Org Admin cancels; cancellation cascades any pending `report_schedule_run` |
-| `report_schedule_run` | `queued → running → rendered_pending → rendered_complete → delivered → failed` | The runner emits `render_requested` to M22 from `running`; M22's `document.created` flips `rendered_pending → rendered_complete`; the M36 delivery emission flips `→ delivered`; any error sinks to `failed` with a typed reason |
+| `report_schedule_run` | `queued → running → rendered_pending → rendered_complete → delivered → failed` | The runner emits `render_requested` to M22 from `running`; M22's `m22.document.created` flips `rendered_pending → rendered_complete`; the M36 delivery emission flips `→ delivered`; any error sinks to `failed` with a typed reason |
 | `report_run` (MV refresh) | `queued → running → succeeded → failed` | The MV refresh worker manages; retries on `failed` per the queue's backoff |
 | `dashboard_tile_cache` | `populated → expired` | TTL-based expiration; the populate happens at tile read time for `on_demand` strategy MVs |
 | `report_drilldown_audit` | `recorded` (immutable, no transitions) | Insert-only at drilldown emit time |
