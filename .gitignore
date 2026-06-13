@@ -4,3 +4,16 @@ node_modules/
 bun.lock
 .DS_Store
 .claude/settings.local.json
+
+# Generated build artifact — the implementation-repo starter, regenerable from the
+# manifest/docs via the scaffold step (not corpus content). Specific name, not *.zip,
+# so the authored WARDENX_UI_SCREEN_SPECS_v2.zip spec artifact stays tracked.
+wardenx-impl-starter.zip
+
+# Module spec bundles — regenerable by re-zipping the WARDENX_MODULE_*.md / T-29.*.md
+# sources. Specific names, not *.zip, to keep the authored spec zip tracked.
+WARDENX_MODULES_01-10.zip
+WARDENX_MODULES_11-20.zip
+WARDENX_MODULES_21-30.zip
+WARDENX_MODULES_31-40.zip
+WARDENX_MODULE_29_TASKS_T29.zip
