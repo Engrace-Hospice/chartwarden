@@ -1,6 +1,6 @@
 # ADR-0025 — M34 ↔ M35 dependency direction: bidirectional seam relationship, no `dependsOn` edge either way
 
-- **Status:** Proposed (recommendation — requires architecture-owner ratification)
+- **Status:** Accepted (2026-06-13 — architecture-owner ratified: remove the M35→M34 edge; seam both ways)
 - **Date:** 2026-06-13
 - **Phase:** dispute resolution (post June-13 re-audit)
 - **Resolves:** M35-F02 (DISPUTED); `audit/TRIAGE_RESULTS.md` §Batch-3

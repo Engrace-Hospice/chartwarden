@@ -2,8 +2,8 @@
 
 **Module ID:** 14
 **Phase:** 1 (v1 — required for Engrace go-live; CoP 418.56(d) 15-day IDG review)
-**Owns:** `apps/backend/src/modules/14-idg`, the IDG meeting lifecycle, the decision model, the packet builder, the schedule worker, the notification-composition layer for cross-module events with M14 as the declared consumer, and the three published seams (`IdgPacketProvider`, `IdgDecisionProvider`, `IdgScheduleProvider`).
-**Depends on:** 1 (Foundation — `organization`, `withOrgContext`, `audit()` helper, outbox dispatcher, idempotency middleware, RLS generator, partitioned-table conventions, BullMQ on Valkey, `validateSeams` boot gate), 2 (Identity — actor & membership resolution; step-up session class for adjournment per M2 §SESSION_POLICY), 3 (Authorization — RBAC + ABAC; the `idg.*` permission keys this module contributes; the `quorate_decision` and `idg_meeting_scope` predicates this module registers), 4 (Audit — PHI write-audit trigger generator, audit-read helper, destruction-cert workflow + `eraseFn` registration, `compliance` retention class), 5 (Patient & Demographics — `patient` row + `privacy_flag` snapshot for SUD packet redaction; caseload membership; `PatientReader` for notification-template patient-name resolution), 6 (Admission, Election & Certification — active caseload selection; recert/F2F windows shown on the packet cover; `admission.discharged` subscription for the 7-day inclusion grace; `m6.referral.received` / `m6.referral.accepted` / `m6.referral.declined` / `m6.referral.withdrawn` outbox events consumed for notification routing to the admissions / intake-supervisor audiences), 7 (Care Plan — `idg.decision_recorded` is the **canonical seam M7 D4** depends on; M14 produces, M7 consumes; M14 also reads `CarePlanReader` for packet's active problem/goal/intervention summary), 8 (Encounters & Visit Notes — `SignedEncountersReader.signedEncountersForPatientSince` is the canonical "since last IDG" source per M8 §4.7), 9 (Clinical Assessments — `LatestAssessmentProvider` + `ScaleSeriesProvider` for per-discipline trend deltas; subscribes to `m9.assessment.significant_change` for the "flagged events" packet block), 10 (HOPE Engine — `HopeTimepointProvider` for upcoming RFAs/SFV chain; subscribes to `hope.j2051_trigger_fired` for the symptom-impact block), 11 (Orders — `OrderProvider.getOrdersSince` for the orders-changed block; M14's `idg.decision_recorded` is consumed by M11 per M11 D6; `m11.order.transmission_terminal_failed` outbox event consumed for notification routing to the ordering provider), 12 (DoseSpot Integration — `MedicationOrderProvider.getMedicationsSince` for the medication-changes block per M12 §1.1; M12 consumes M14's `idg.decision_recorded` for medication-recommendation kinds), 22 (Document Management — `m22.document.rendered_critical_results` outbox event consumed for high-priority notification routing to the ordering provider), 36 (Secure Messaging & Alerts — typed-alert envelope for "packet ready 24h before meeting", "non-quorate meeting", "carry-forward action item overdue"; the dispatch layer for M14's notification-composition surface; the `alert_payload_catalog` against which every M14 dispatch validates), 38 (Clinical Terminology — ICD-10-CM and SNOMED labels rendered in packet summaries; value-set validation on decision payloads referencing problems), 39 (Consent & Authorization — SUD redaction on packet content via `consent.evaluate` per M7 D7 pattern), 40 (Master Data Management — discipline / role taxonomy referenced by the quorum constant; `ExternalPhysician` referenced when the attending physician participates by phone; `MdmEntityProvider.resolveFacility` for partner-lab name resolution in transmission-failure notifications)
+**Owns:** `apps/backend/src/modules/14-idg`, the IDG meeting lifecycle, the decision model, the packet builder, the schedule worker, and the three published seams (`IdgPacketProvider`, `IdgDecisionProvider`, `IdgScheduleProvider`).
+**Depends on:** 1 (Foundation — `organization`, `withOrgContext`, `audit()` helper, outbox dispatcher, idempotency middleware, RLS generator, partitioned-table conventions, BullMQ on Valkey, `validateSeams` boot gate), 2 (Identity — actor & membership resolution; step-up session class for adjournment per M2 §SESSION_POLICY), 3 (Authorization — RBAC + ABAC; the `idg.*` permission keys this module contributes; the `quorate_decision` and `idg_meeting_scope` predicates this module registers), 4 (Audit — PHI write-audit trigger generator, audit-read helper, destruction-cert workflow + `eraseFn` registration, `compliance` retention class), 5 (Patient & Demographics — `patient` row + `privacy_flag` snapshot for SUD packet redaction; caseload membership; `PatientReader` for packet patient-name resolution), 6 (Admission, Election & Certification — active caseload selection; recert/F2F windows shown on the packet cover; `admission.discharged` subscription for the 7-day inclusion grace), 7 (Care Plan — `idg.decision_recorded` is the **canonical seam M7 D4** depends on; M14 produces, M7 consumes; M14 also reads `CarePlanReader` for packet's active problem/goal/intervention summary), 8 (Encounters & Visit Notes — `SignedEncountersReader.signedEncountersForPatientSince` is the canonical "since last IDG" source per M8 §4.7), 9 (Clinical Assessments — `LatestAssessmentProvider` + `ScaleSeriesProvider` for per-discipline trend deltas; subscribes to `m9.assessment.significant_change` for the "flagged events" packet block), 10 (HOPE Engine — `HopeTimepointProvider` for upcoming RFAs/SFV chain; subscribes to `hope.j2051_trigger_fired` for the symptom-impact block), 11 (Orders — `OrderProvider.getOrdersSince` for the orders-changed block; M14's `idg.decision_recorded` is consumed by M11 per M11 D6), 12 (DoseSpot Integration — `MedicationOrderProvider.getMedicationsSince` for the medication-changes block per M12 §1.1; M12 consumes M14's `idg.decision_recorded` for medication-recommendation kinds), 22 (Document Management — IDG packet PDF rendering via `m14.packet.render_requested`; minutes PDF via `m14.minutes.signed`; `m22.document.rendered` consumed for the packet/minutes document back-ref), 36 (Secure Messaging & Alerts — typed-alert envelope for "packet ready 24h before meeting", "non-quorate meeting", "carry-forward action item overdue"; the dispatch layer for M14's IDG-meeting alerts; the `alert_payload_catalog` against which every M14 dispatch validates), 38 (Clinical Terminology — ICD-10-CM and SNOMED labels rendered in packet summaries; value-set validation on decision payloads referencing problems), 39 (Consent & Authorization — SUD redaction on packet content via `consent.evaluate` per M7 D7 pattern), 40 (Master Data Management — discipline / role taxonomy referenced by the quorum constant; `ExternalPhysician` referenced when the attending physician participates by phone)
 **Consumed by:** 22 (Document Management — IDG packet PDF rendering via `m14.packet.render_requested` outbox; minutes PDF via `m14.minutes.signed`), 28 (FHIR Gateway — maps `idg_meeting` → R4 `CareTeam` + `Encounter` per IDG-event idiom; decisions → `CarePlan.activity` linkages owned by M7/M28), 30 (HQRP & Quality — IDG-cadence compliance counter (15-day adherence) and IDG-decision-to-careplan-update latency are quality measures M30 computes against M14's `IdgScheduleProvider` and `IdgDecisionProvider` seams), 31 (Patient/Family Portal & Telehealth — no patient-facing surface in Phase 1; the family-meeting-needed flag from a decision *may* fan out to portal in Phase 2 per ADR-pending), 33 (Reporting & Dashboards — IDG attendance, cadence adherence, decision-throughput, packet-build latency, carry-forward action-item aging)
 **Spec status:** Re-locked v0.5 (Phase-4 remediation; supersedes Locked v0.4)
 
@@ -17,11 +17,11 @@
 ## Changelog
 
 - **v0.4 (Consolidated)** — Rolls the v0.2 base and v0.3 delta into a single self-contained specification. No scope change; no decision reversals.
-- **v0.3 (Locked)** — Closes the cross-cutting notification consumers M14 inherited as the admissions/clinical-supervisor routing layer. v0.2 established the IDG meeting + decision spine; v0.3 ratified M14's secondary role as the **notification-composition layer** for selected non-IDG events (per M6 v0.2 §4.4 which already declared M14 as the consumer for several `m6.referral.*` events): the new consumer for `m6.referral.withdrawn` with a notification template distinct from the `m6.referral.declined` template; the new consumer for `m22.document.rendered_critical_results` composing a high-priority notification to the ordering provider; the new consumer for `m11.order.transmission_terminal_failed` composing the manual-reorder notification to the ordering provider; the `notification_template` catalog formalizing the set of notification templates M14 owns; three new decisions (D14, D15, D16); three new workflow acceptance criteria (W-M14-11 through W-M14-13); and three new implementation tasks (T-M14-14 through T-M14-16). The IDG meeting lifecycle, decision model, and packet builder are unchanged; M14's existing role as IDG-meeting owner remains primary; the notification-composition role is the secondary surface.
+- **v0.3 (Locked)** — Closes the cross-cutting notification consumers M14 inherited as the admissions/clinical-supervisor routing layer. v0.2 established the IDG meeting + decision spine; v0.3 ratified M14's secondary role as the **notification-composition layer** for selected non-IDG events (per M6 v0.2 §4.4 which already declared M14 as the consumer for several `m6.referral.*` events): the new consumer for `m6.referral.withdrawn` with a notification template distinct from the `m6.referral.declined` template; the new consumer for `m22.document.rendered_critical_results` composing a high-priority notification to the ordering provider; the new consumer for `m11.order.transmission_terminal_failed` composing the manual-reorder notification to the ordering provider; the `notification_template` catalog formalizing the set of notification templates M14 owns; three new decisions (D14, D15, D16); three new workflow acceptance criteria (W-M14-11 through W-M14-13); and three new implementation tasks (T-M14-14 through T-M14-16). The IDG meeting lifecycle, decision model, and packet builder are unchanged; M14's existing role as IDG-meeting owner remains primary; the notification-composition role is the secondary surface. **ADR-0024 (2026-06-13) supersedes the v0.3 notification-composition role — moved to M36.**
 - **v0.2 (Locked)** — Initial publication at lock-grade. Instantiates the architecture §20.B module spec template. Resolves all thirteen open questions into binding decisions (§11). Defines the **mutable meeting/agenda/attendance/decision/action-item rows + immutable per-packet `built_snapshot` jsonb** packet model (D1, mirroring M7 D1 hybrid versioning), the **biweekly-default per-location schedule with platform-floor of 15 days and tenant-tighten-only** (D2, mirroring M9 D2 / M11 D3), the **typed `IDG_REQUIRED_QUORUM` constant + per-decision quorate check at write time** (D3), the **outbox-only canonical `idg.decision_recorded` payload with discriminated-union sub-types for care-plan / order / medication-recommendation** (D4, the producer-side counterpart to M7 D4 / M11 D6 / M12), the **two-trigger packet build (T-24h cron + on-demand) with idempotency on `(meeting_id, patient_id)` and freeze-on-adjourn** (D5), the **Layer 2 narrative polish gated by tenant flag AND per-meeting opt-out, sharing M8's hard-block category list** (D6), the **per-discipline view derivation from seam reads + "since last IDG" filter, stored on the packet row as typed `discipline_views jsonb`** (D7), the **action item carry-forward with auto-close on downstream artifact reaching absorbing state** (D8), the **patient-inclusion criteria = active caseload at scheduled date + 7-day post-discharge wrap-up** (D9), the **`idg_minutes` immutability with append-only annotations and an M5 §164.526-pattern amendment workflow** (D10), the **`IdgPacketProvider` / `IdgDecisionProvider` / `IdgScheduleProvider` seams** published for M22/M28/M30/M33 consumption (D11), the **`idg_patient_packet` monthly-partitioned by `built_at` per M4 PHI-table conventions** (D12), and the **5-minute step-up auth gate on adjournment** mirroring M8 D13 (D13). Wires the permission keys this module registers into Module 3 (§4.6), the two ABAC predicates (`quorate_decision`, `idg_meeting_scope`) registered with Module 3's named-predicate registry (§4.7), the BullMQ queue catalog (§4.8), the M36 typed-alert payloads (§4.9), and the destruction `eraseFn` registered with Module 4 (§8.4). Includes a **proposed manifest patch** (§12, last item) updating `M14.dependsOn` from `[7, 8, 36]` to `[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 36, 38, 39, 40]` *(relationship inventory - not the `dependsOn` edge set; per ADR-0005 D1/D4 seam/outbox/foundation consumers are no-edge - see audit/MANIFEST_DEPENDSON_REVIEW.md; do not bulk-apply)* and populating `M14.ownedTables` per §3, following the M9 / M10 / M12 precedent that every module surfaces *all* its declared imports in `dependsOn` and that the manifest is patched as part of the lock.
 - **v0.1** — Drafted within the lock-grade pass; not separately published.
 
-> **Phase boundary (binding):** Phase 1 delivers everything in this spec **except** the M22 IDG packet PDF rendering and minutes PDF rendering (Module 22 owns the renderer; M14 emits the typed `m14.packet.render_requested` and `m14.minutes.signed` payloads today), the M28 FHIR `CareTeam` / `Encounter`-for-IDG projection (Module 28 owns; M14 publishes the typed mapping), the M30 IDG-cadence-compliance and decision-latency HQRP measure computation (Module 30 owns; M14 publishes the `IdgScheduleProvider` and `IdgDecisionProvider` seams today), the M31 family-meeting-needed portal fan-out (Phase 2 per ADR-pending), and the AI agenda-prioritization (Phase 2; the Layer 2 narrative polish in D6 ships Phase 1, but the heuristic agenda re-ordering by acuity / recert-window / Section-Q-risk does not). The "done" gate for M14 is: the nine owned tables with TypeBox-validated jsonb payloads and server-side validation; the meeting lifecycle state machine; the per-decision quorate enforcement; the canonical `idg.decision_recorded` outbox payload with M7/M11/M12 consumers green against the real producer; the packet builder consuming all upstream seams (M5/M6/M7/M8/M9/M10/M11/M12 + M39 SUD redaction + M38 terminology labeling); the schedule worker materialising future meetings 90 days out per location; the carry-forward action-item engine; the step-up-on-adjourn enforcement; the three published seams (`IdgPacketProvider`, `IdgDecisionProvider`, `IdgScheduleProvider`) registered at boot; the notification-composition consumers (`m6.referral.withdrawn`, `m22.document.rendered_critical_results`, `m11.order.transmission_terminal_failed`) registered with their templates seeded; and the test plan green — not gated on Modules 22, 28, 30, 31 existing or on Layer 2 narrative polish being tenant-active.
+> **Phase boundary (binding):** Phase 1 delivers everything in this spec **except** the M22 IDG packet PDF rendering and minutes PDF rendering (Module 22 owns the renderer; M14 emits the typed `m14.packet.render_requested` and `m14.minutes.signed` payloads today), the M28 FHIR `CareTeam` / `Encounter`-for-IDG projection (Module 28 owns; M14 publishes the typed mapping), the M30 IDG-cadence-compliance and decision-latency HQRP measure computation (Module 30 owns; M14 publishes the `IdgScheduleProvider` and `IdgDecisionProvider` seams today), the M31 family-meeting-needed portal fan-out (Phase 2 per ADR-pending), and the AI agenda-prioritization (Phase 2; the Layer 2 narrative polish in D6 ships Phase 1, but the heuristic agenda re-ordering by acuity / recert-window / Section-Q-risk does not). The "done" gate for M14 is: the nine owned tables with TypeBox-validated jsonb payloads and server-side validation; the meeting lifecycle state machine; the per-decision quorate enforcement; the canonical `idg.decision_recorded` outbox payload with M7/M11/M12 consumers green against the real producer; the packet builder consuming all upstream seams (M5/M6/M7/M8/M9/M10/M11/M12 + M39 SUD redaction + M38 terminology labeling); the schedule worker materialising future meetings 90 days out per location; the carry-forward action-item engine; the step-up-on-adjourn enforcement; the three published seams (`IdgPacketProvider`, `IdgDecisionProvider`, `IdgScheduleProvider`) registered at boot; and the test plan green — not gated on Modules 22, 28, 30, 31 existing or on Layer 2 narrative polish being tenant-active.
 
 -----
 
@@ -29,7 +29,7 @@
 
 ### 1.1 What This Module Does
 
-Module 14 owns the **Interdisciplinary Group meeting** — the recurring deliberation event CMS regulation calls "the interdisciplinary group's review of the plan of care" at 42 CFR §418.56(d) and that is the operational heart of hospice clinical governance. It is the artifact that says: *for this caseload, on this date, with this quorum present, here is what the team decided about each patient and here is who owns what follow-up by when.* In addition, Module 14 is the platform's **notification-composition layer** for cross-module events where M14 is the declared consumer in the originating module's outbox catalog — it composes the typed alert payloads and resolves recipients, while Module 36 performs the dispatch.
+Module 14 owns the **Interdisciplinary Group meeting** — the recurring deliberation event CMS regulation calls "the interdisciplinary group's review of the plan of care" at 42 CFR §418.56(d) and that is the operational heart of hospice clinical governance. It is the artifact that says: *for this caseload, on this date, with this quorum present, here is what the team decided about each patient and here is who owns what follow-up by when.*
 
 - **The meeting root.** One `idg_meeting` per location per scheduled occurrence. Scheduled by the M14 cron 90 days out on the tenant-configured cadence (biweekly default, weekly permitted, > 15-day gap between reviews refused as the platform floor per D2). The meeting carries scheduled start/end, the IDG coordinator, the location scope, and the recurring-policy reference it was spawned from.
 
@@ -48,8 +48,6 @@ Module 14 owns the **Interdisciplinary Group meeting** — the recurring deliber
 - **Action items.** `idg_action_item` rows capture follow-up commitments: assignee membership, discipline, due date, the patient (nullable for caseload-wide items), the decision that spawned it (nullable for items recorded without a formal decision), and an optional linked-artifact reference (`care_plan_version_id`, `order_id`, `encounter_id`). Action items have their own lifecycle: `open → in_progress → completed | cancelled`. **Auto-close** triggers (D8): a `care_plan_version_id`-linked item auto-closes when M7 emits `m7.care_plan.version_signed` for that version; an `order_id`-linked item auto-closes when M11 emits `m11.order.signed` or `m11.order.completed`; an `encounter_id`-linked item auto-closes when M8 emits `m8.encounter.signed` matching the assignee. Overdue items surface in the next meeting's packet as carry-forward entries (top-level block on the cover), with cumulative aging counted across meetings (a 3-meeting carry-forward escalates to a Compliance flag via M36 critical-severity).
 
 - **Minutes.** `idg_minutes` is the single per-meeting summary record: attendance list (post-adjournment snapshot), per-patient decision list (link-only into `idg_decision`), action-item list (link-only into `idg_action_item`), and the IDG coordinator's free-text closing note. The minutes are **append-only annotation-only while `in_progress`**; on `adjourned`, status flips to `final` and the row is immutable (DB CHECK + audit trigger refuses UPDATE of `final` rows — mirrors M7 D6 patient-stated-goal pattern). Corrections after `final` require an `idg_minutes_amendment` row with reason (D10, M5 §164.526 amendment pattern).
-
-- **Notification composition for cross-module events with M14 as the declared consumer.** M14 composes referral notifications (M6 declared M14 as the consumer for `referral.received`, `referral.accepted`, `referral.declined`, and `referral.withdrawn`), critical-results notifications (M22 `m22.document.rendered_critical_results`), and lab-transmission-failure notifications (M11 `order.transmission_terminal_failed`). The `notification_template` catalog (D16) is the queryable surface of every template M14 owns; M14 is the composition layer (template, recipient resolution, M36 payload-type selection) and M36 is the dispatch layer (channel fan-out, retry, audit). Each template produces a typed M36 alert payload registered in M36's catalog. M14 does NOT bypass M36 to write directly to channels, and does NOT compose payloads outside the M36 catalog (per M36 D10, every dispatch validates against the catalog). See §4.11 for the consumers and §11 D14–D16 for the decisions.
 
 - **Outbox-driven downstream integration.** Every meaningful event — meeting scheduled, packet built, packet ready, meeting started, decision recorded, action item assigned/completed, meeting adjourned, minutes finalized, minutes amended, packet render requested — flows through the outbox dispatcher (Module 1 §4.8). Downstream subscribers (M7 `apply-idg-decision.worker`, M11 `idg-decision-intake`, M12 medication-recommendation consumer, M16 bereavement-risk-flag consumer when M16 locks, M22 packet PDF render, M28 FHIR projection, M30 HQRP measures, M33 reporting) attach to the documented topics. Idempotent dispatch keyed on `(idg_decision_id, event_kind)` for decisions and `(idg_meeting_id, event_kind)` for meeting-level events.
 
@@ -79,7 +77,7 @@ This list is binding. Every item below is owned by another module and reached vi
 
 - **Discipline / role taxonomy, external attending physician identity, facility/referral data.** Module 40 owns these. M14 references `ExternalPhysician` for the attending-physician-attends-by-phone case and uses the M40 discipline catalog for the quorum constant and the per-discipline view mapping.
 
-- **Notification dispatch (channel fan-out, retry, delivery audit).** Module 36 owns the dispatch. M14 composes the typed payload from a `notification_template` and resolves recipients, then invokes `M36.dispatch(payloadType, payload, organizationId)`. M14 does not write directly to channels and does not compose payloads outside M36's `alert_payload_catalog`.
+- **Notification composition, recipient resolution, and dispatch (channel fan-out, retry, delivery audit).** Module 36 owns notification composition and recipient resolution for cross-module events (per ADR-0024) as well as dispatch. For M14's own IDG-meeting alerts (packet-ready, non-quorate, carry-forward-overdue) M14 emits the typed alert payload (§4.10) and invokes `M36.dispatch(payloadType, payload, organizationId)`; M14 does not write directly to channels and does not compose payloads outside M36's `alert_payload_catalog`.
 
 - **PDF rendering (IDG packet, minutes, critical-results document).** Module 22 owns the renderer. M14 emits `m14.packet.render_requested` and `m14.minutes.signed` with the typed payload (mirroring the M11/M12 form-rendering handshake); M22 renders, persists, and emits `m22.document.rendered` with a back-ref `{aggregateType: 'idg_patient_packet' | 'idg_minutes', aggregateId}`. M14's `consumers/m22-document-backref.ts` updates the back-ref column. M14 does not import M22 schemas. (M14 *consumes* M22's `m22.document.rendered_critical_results` event to compose the ordering-provider notification, but does not render the document itself.)
 
@@ -473,14 +471,12 @@ The discriminated union is **exhaustive** — adding a new decision kind is a co
 | Auto-close on downstream artifact | M7 `m7.care_plan.version_signed`, M11 `m11.order.signed`/`m11.order.completed`, M8 `m8.encounter.signed` matching assignee, M12 `m12.medication_order.signed`/`m12.medication_order.active` | action item flips to `auto_closed`; `linked_artifact_id` confirmed; `closed_at = now()`; M36 informational confirmation to assignee |
 | Step-up gate on adjournment | `ADJOURN` attempted without fresh step-up | 412 `STEP_UP_REQUIRED`; M2 step-up flow redirects; on success, retry adjournment |
 | SUD redaction at packet read | caller session lacks active 42 CFR Part 2 release | SQL filter elides SUD-flagged blocks from `built_snapshot.discipline_views` and `since_last_idg`; `appliedSudRedaction=true` set on the read response; M4 sampled audit per Module 3 D5 |
-| Notification composition on consumed cross-module event | `m6.referral.withdrawn`, `m22.document.rendered_critical_results`, or `m11.order.transmission_terminal_failed` delivered to M14 | load the matching `notification_template`, render placeholders from the source payload, resolve recipients, and dispatch via M36 with the registered payload type; audit `m14.notification.composed` |
 
 ### 2.8 Cross-Module Invariants
 
 - **No M14 row mutation crosses the meeting-adjournment boundary** (except `idg_action_item` lifecycle transitions and `idg_minutes_amendment` rows). Once a decision is `emitted`, it cannot be edited; supersession requires a new `idg_decision` row in a subsequent meeting with `superseded_by_decision_id` pointing back.
 - **Decision payloads are TypeBox-validated at the route handler** before insert; downstream consumer modules re-validate against the same schema at consumption time (the discriminated union is shared via `packages/domain/idg/decision-payload.ts`). A consumer that fails validation publishes to a quarantine queue and emits `m14.decision_payload_quarantined` for compliance review.
 - **Outbox publication is the only cross-module communication M14 performs at the boundary.** M14 *calls* M5/M6/M7/M8/M9/M10/M11/M12 reader seams as in-process function calls (registered via seam registry). None of these are HTTP calls. The downstream modules (M22, M28, M30, M33) read M14's outbox events from their own subscribers (BullMQ + M1 outbox dispatcher).
-- **Notification composition dispatches only through M36.** M14's notification composers invoke `M36.dispatch(payloadType, payload, organizationId)` with a payload type registered in M36's `alert_payload_catalog`; M14 never writes directly to channels and never bypasses the catalog validation (per M36 D10).
 
 The full outbox catalog is locked in §4.4.
 
@@ -509,12 +505,10 @@ apps/backend/src/modules/14-idg/
 │   ├── decision-emitter.ts          # adjournment-time outbox burst
 │   ├── action-item-engine.ts        # carry-forward + auto-close consumers
 │   ├── sud-redactor.ts              # SQL-level filter applied at packet read
-│   ├── notification-template.ts     # template loader + Handlebars-style renderer
 │   └── schedule-worker.ts           # 90-day rolling materialisation
 ├── consumers/
 │   ├── m6-admission-discharged.ts
 │   ├── m6-admission-activated.ts
-│   ├── m6-referral-withdrawn-composer.ts      # notification composition
 │   ├── m7-version-signed.ts         # auto-close care-plan-linked action items
 │   ├── m8-encounter-signed.ts       # auto-close encounter-linked action items
 │   ├── m9-significant-change.ts     # "since last IDG" projection
@@ -523,10 +517,8 @@ apps/backend/src/modules/14-idg/
 │   ├── m10-sfv-created.ts
 │   ├── m11-order-signed.ts          # auto-close order-linked action items
 │   ├── m11-order-discontinued.ts
-│   ├── m11-transmission-terminal-failed-composer.ts  # notification composition
 │   ├── m12-medication-order-signed.ts
 │   ├── m12-medication-order-discontinued.ts
-│   ├── m22-critical-results-composer.ts       # notification composition
 │   └── m22-document-backref.ts      # packet_document_id + minutes_document_id back-ref
 ├── workers/
 │   ├── packets-build.worker.ts
@@ -548,8 +540,7 @@ packages/db/src/schema/
 ├── idg-decisions.ts
 ├── idg-action-items.ts
 ├── idg-minutes.ts
-├── idg-minutes-amendments.ts
-└── idg/notification-template.ts     # notification_template + tenant overlay
+└── idg-minutes-amendments.ts
 packages/domain/idg/
 ├── packet.ts                        # PacketSnapshot, DisciplineViewBlock, helpers
 ├── decision-payload.ts              # IdgDecisionPayload — canonical discriminated union
@@ -598,15 +589,15 @@ export const idgMinutesStatus = pgEnum('idg_minutes_status', ['in_progress', 'fi
 
 ### 3.3 Tables
 
-All M14 tables follow the M11 / M12 conventions verbatim: every table carries `organization_id` (RLS pivot), `created_at`, `updated_at`, `version` (optimistic concurrency for mutable rows), and a `BEFORE INSERT/UPDATE/DELETE` audit trigger generated by M4's `phi_audit_trigger.sql.tmpl`. Foreign keys are `ON DELETE RESTRICT` against business-key targets (`patient`, `admission`, `membership`) and `ON DELETE CASCADE` for parent-child within M14 (meeting → attendance/packets/agenda/decisions/action_items/minutes). The nine IDG core tables are defined as Drizzle `pgTable(...)` below (§3.3.1); the two notification-template tables are defined in §3.5.2.
+All M14 tables follow the M11 / M12 conventions verbatim: every table carries `organization_id` (RLS pivot), `created_at`, `updated_at`, `version` (optimistic concurrency for mutable rows), and a `BEFORE INSERT/UPDATE/DELETE` audit trigger generated by M4's `phi_audit_trigger.sql.tmpl`. Foreign keys are `ON DELETE RESTRICT` against business-key targets (`patient`, `admission`, `membership`) and `ON DELETE CASCADE` for parent-child within M14 (meeting → attendance/packets/agenda/decisions/action_items/minutes). The nine IDG core tables are defined as Drizzle `pgTable(...)` below (§3.3.1).
 
-**Owned tables (11):** `idg_meeting`, `idg_recurring_policy`, `idg_attendance`, `idg_patient_packet`, `idg_agenda_item`, `idg_decision`, `idg_action_item`, `idg_minutes`, `idg_minutes_amendment`, `notification_template`, `tenant_notification_template_overlay`.
+**Owned tables (9):** `idg_meeting`, `idg_recurring_policy`, `idg_attendance`, `idg_patient_packet`, `idg_agenda_item`, `idg_decision`, `idg_action_item`, `idg_minutes`, `idg_minutes_amendment`.
 
 **Partitioning (D12):** `idg_patient_packet` is monthly-partitioned on `built_at` (matches M4 PHI-table conventions and M9/M10/M11 precedent). Other tables non-partitioned given the lower volume (one `idg_meeting` per location per 7–15 days; one `idg_minutes` per meeting; attendance/decisions/action-items proportional to patients on caseload).
 
 #### 3.3.1 Drizzle table definitions (IDG core)
 
-The nine IDG-core owned tables in scanner-friendly `export const … = pgTable('…')` form (the `check-table-ownership.ts` regex at `scripts/check-table-ownership.ts` only recognizes this shape). Enums are defined in §3.2; the two notification-template tables in §3.5.2.
+The nine IDG-core owned tables in scanner-friendly `export const … = pgTable('…')` form (the `check-table-ownership.ts` regex at `scripts/check-table-ownership.ts` only recognizes this shape). Enums are defined in §3.2.
 
 ```ts
 // packages/db/src/schema/idg/core.ts (new)
@@ -823,108 +814,14 @@ CREATE INDEX idg_attendance_meeting_discipline_idx
 
 The migration file is `migrations/0014_idg.sql`. It applies in this order: create enums; create the nine tables with FKs; enable RLS and apply policies via the M1 generator; install audit triggers via M4's generator; create indexes; create the monthly partition initialization for `idg_patient_packet` (next 6 months created at migration time + a daily worker creates `+1 month ahead` per M4's partition rotation pattern).
 
-### 3.5 Notification Template Tables (D16)
+### 3.5 Notification Template Tables — Superseded by ADR-0024
 
-The notification-composition layer adds a `notification_template` catalog and a per-tenant overlay table, mirroring M22's `form_template` pattern: versioned, per-tenant-overlay-tightenable, per-template-key payload schema.
-
-#### 3.5.1 Migration `0036_m14_v03_notification_templates.sql`
-
-```sql
--- Migration 0036_m14_v03_notification_templates.sql
-
--- Phase A: notification_template table
-CREATE TABLE notification_template (
-  template_key TEXT PRIMARY KEY,
-  title_template TEXT NOT NULL,
-  body_template TEXT NOT NULL,
-  default_payload_type TEXT NOT NULL REFERENCES alert_payload_catalog(payload_type),
-  default_recipient_resolver TEXT NOT NULL,
-  supported_locales TEXT[] NOT NULL DEFAULT ARRAY['en-US'],
-  status TEXT NOT NULL DEFAULT 'published',                           -- 'draft' | 'published' | 'deprecated'
-  owned_by_module TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- Phase B: tenant overlay
-CREATE TABLE tenant_notification_template_overlay (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  organization_id UUID NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
-  template_key TEXT NOT NULL REFERENCES notification_template(template_key),
-  title_template TEXT,                                                -- nullable; null means use platform default
-  body_template TEXT,
-  configured_by_membership_id UUID NOT NULL REFERENCES membership(id),
-  configured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (organization_id, template_key)
-);
-
-ALTER TABLE tenant_notification_template_overlay ENABLE ROW LEVEL SECURITY;
-CREATE POLICY tenant_template_overlay_org_isolated ON tenant_notification_template_overlay
-  USING      (organization_id = current_setting('app.org_id', true)::uuid)   -- ADR-0010 D2: canonical app.org_id (app.organization_id is never set → fail-closed)
-  WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);
-
--- Phase C: seed (notification templates)
-INSERT INTO notification_template (template_key, title_template, body_template, default_payload_type, default_recipient_resolver, owned_by_module) VALUES
-  -- referral templates
-  ('m6.referral.received',
-    'New referral from {{sendingFacility}}',
-    'A new patient referral was received from {{sendingFacility}} on {{receivedAt}}. Please review and triage.',
-    'm6.referral.received', 'role:intake_supervisor', 'm6'),
-  ('m6.referral.accepted',
-    'Referral accepted',
-    'Referral for {{patientName}} was accepted by {{actorName}} on {{acceptedAt}}.',
-    'm6.referral.accepted', 'role:admissions_team', 'm6'),
-  ('m6.referral.declined',
-    'Referral was not accepted',
-    'Referral for {{patientName}} was declined by {{actorName}} on {{declinedAt}}. Reason: {{declineReason}}. Review and document if follow-up is needed.',
-    'm6.referral.declined', 'role:intake_supervisor', 'm6'),
-
-  ('m6.referral.withdrawn',
-    'Referral canceled by referring party',
-    'The referral from {{sendingFacility}} (received {{originalReceivedAt}}) was canceled by the referring party on {{withdrawnAt}}. No further action required; archived for record.',
-    'm6.referral.withdrawn', 'role:admissions_team', 'm6'),
-
-  ('m11.order.transmission_terminal_failed',
-    'Lab order transmission failed',
-    'Lab order {{orderShortId}} for {{patientName}} could not be transmitted to {{partnerLabName}} after {{transmittedAttempts}} attempts. Reason: {{failureReason}}. Click here to manually reorder or contact the partner.',
-    'm11.lab_transmission.terminal_failed', 'ordering_provider', 'm11'),
-
-  ('m22.document.rendered_critical_results',
-    'CRITICAL lab results ready',
-    'Critical lab results for {{patientName}} have been rendered and require immediate review. Order: {{orderShortId}}. Open the patient chart to view.',
-    'm22.document.rendered_critical_results', 'ordering_provider', 'm22');
-
--- Phase D: Add new payload type to alert catalog if not yet there (defensive)
--- (Done in M36 migration; this is a no-op cross-reference)
-```
-
-#### 3.5.2 Drizzle additions
-
-```ts
-// packages/db/src/schema/idg/notification-template.ts (new)
-export const notificationTemplate = pgTable('notification_template', {
-  templateKey: text('template_key').primaryKey(),
-  titleTemplate: text('title_template').notNull(),
-  bodyTemplate: text('body_template').notNull(),
-  defaultPayloadType: text('default_payload_type').notNull(),
-  defaultRecipientResolver: text('default_recipient_resolver').notNull(),
-  supportedLocales: text('supported_locales').array().notNull().default(['en-US']),
-  status: text('status').notNull().default('published'),
-  ownedByModule: text('owned_by_module').notNull(),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-})
-
-export const tenantNotificationTemplateOverlay = pgTable('tenant_notification_template_overlay', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
-  templateKey: text('template_key').notNull().references(() => notificationTemplate.templateKey),
-  titleTemplate: text('title_template'),
-  bodyTemplate: text('body_template'),
-  configuredByMembershipId: uuid('configured_by_membership_id').notNull().references(() => membership.id),
-  configuredAt: timestamp('configured_at').notNull().defaultNow(),
-})
-```
+> **Superseded by ADR-0024 (2026-06-13).** The `notification_template` and
+> `tenant_notification_template_overlay` tables — and the `0036_m14_v03_notification_templates.sql`
+> migration that created and seeded them — have moved to **M36**. Notification composition and
+> recipient resolution for cross-module events is M36's responsibility (SD-017); M14 no longer owns
+> any notification-template schema. M14's own IDG-meeting alerts (packet-ready, non-quorate,
+> carry-forward-overdue) continue to dispatch through M36 via the typed alert payloads in §4.10.
 
 -----
 
@@ -1078,7 +975,6 @@ M14's outbox consumers — events from other modules that drive M14 state — ar
 |---|---|---|---|
 | `m6.admission.discharged` | M6 | `m6-admission-discharged.ts` | Mark patient with `discharge_grace_until = discharge_date + 7d` in the inclusion cache; remove from packet build for any meeting scheduled beyond that window |
 | `m6.admission.activated` | M6 | `m6-admission-activated.ts` | Add patient to inclusion cache for the location's next scheduled meeting |
-| `m6.referral.withdrawn` | M6 | `m6-referral-withdrawn-composer.ts` | Compose the "Referral canceled by referring party" notification and dispatch via M36 (see §4.11.1) |
 | `m7.care_plan.version_signed` | M7 | `m7-version-signed.ts` | Auto-close every open `idg_action_item` where `linked_artifact_kind='care_plan_version'` AND `linked_artifact_id = signedVersionId`; emit `m14.action_item.auto_closed` |
 | `m8.encounter.signed` | M8 | `m8-encounter-signed.ts` | Auto-close every open `idg_action_item` where `linked_artifact_kind='encounter'` AND `assigned_to_membership_id = signedByMembershipId` |
 | `m9.assessment.recorded` | M9 | `m9-assessment-recorded.ts` | Update per-patient "since last IDG" projection cache (Valkey, 30-day TTL) |
@@ -1087,11 +983,9 @@ M14's outbox consumers — events from other modules that drive M14 state — ar
 | `hope.sfv_created` | M10 | `m10-sfv-created.ts` | Same projection cache |
 | `m11.order.signed` / `m11.order.completed` | M11 | `m11-order-signed.ts` | Action-item auto-close (linked_artifact_kind='order'); update projection cache |
 | `m11.order.discontinued` | M11 | `m11-order-discontinued.ts` | Update projection cache |
-| `m11.order.transmission_terminal_failed` | M11 | `m11-transmission-terminal-failed-composer.ts` | Compose the lab-transmission-failure notification and dispatch via M36 (see §4.11.3) |
 | `m12.medication_order.signed` / `m12.medication_order.active` | M12 | `m12-medication-order-signed.ts` | Action-item auto-close (linked_artifact_kind='medication_order'); update projection cache |
 | `m12.medication_order.discontinued` | M12 | `m12-medication-order-discontinued.ts` | Update projection cache |
 | `m22.document.rendered` | M22 | `m22-document-backref.ts` | If `aggregateType='idg_patient_packet'`, update `idg_patient_packet.packet_document_id`; if `aggregateType='idg_minutes'`, update `idg_minutes.minutes_document_id` |
-| `m22.document.rendered_critical_results` | M22 | `m22-critical-results-composer.ts` | Compose the critical-results notification and dispatch via M36 (see §4.11.2) |
 
 **Consumer idempotency:** keyed off `(eventId, m14ConsumerName)` in M1's outbox-dedup registry. Re-delivery is safe.
 
@@ -1296,136 +1190,16 @@ export type IdgNonQuorateDecisionAlert = {
 }
 ```
 
-### 4.11 Notification-Composition Consumers
+### 4.11 Notification-Composition Consumers — Superseded by ADR-0024
 
-M14 is the notification-composition layer for cross-module events where M14 is the declared consumer in the originating module's outbox catalog. Each consumer loads the matching `notification_template`, fills placeholders from the source event payload, resolves recipients, and dispatches via M36 — M14 owns the composition, M36 owns the dispatch. Every dispatch validates against M36's `alert_payload_catalog` (per M36 D10).
-
-#### 4.11.1 `m6.referral.withdrawn` consumer
-
-```ts
-// apps/backend/src/modules/14-idg/consumers/m6-referral-withdrawn-composer.ts
-
-export function registerReferralWithdrawnComposer(outbox: Outbox, logger: Logger): void {
-  outbox.registerConsumer({
-    eventName: 'm6.referral.withdrawn',
-    consumerName: 'm14.referral-withdrawn-notification-composer',
-    handler: async ({ payload }) => {
-      const template = await loadNotificationTemplate('m6.referral.withdrawn', payload.organizationId)
-      const composed = renderTemplate(template, {
-        sendingFacility: payload.sendingFacility ?? 'Unknown facility',
-        originalReceivedAt: payload.originalReferralReceivedAt,
-        withdrawnAt: payload.withdrawnAt,
-      })
-
-      await SeamRegistry.get('AlertEmitter').dispatch({
-        payloadType: 'm6.referral.withdrawn',
-        payload: {
-          referralId: payload.referralId,
-          organizationId: payload.organizationId,
-          title: composed.title,
-          body: composed.body,
-        },
-        organizationId: payload.organizationId,
-        callerModule: 'm14',
-      })
-
-      logger.info({ referralId: payload.referralId }, 'm14.referral_withdrawn.notification_dispatched')
-    },
-  })
-}
-```
-
-#### 4.11.2 `m22.document.rendered_critical_results` consumer
-
-```ts
-// apps/backend/src/modules/14-idg/consumers/m22-critical-results-composer.ts
-
-export function registerCriticalResultsComposer(outbox: Outbox, logger: Logger): void {
-  outbox.registerConsumer({
-    eventName: 'm22.document.rendered_critical_results',
-    consumerName: 'm14.critical-results-notification-composer',
-    handler: async ({ payload }) => {
-      // Load patient name via M5 PatientReader for the template
-      const order = await SeamRegistry.get('OrderProvider').findOrder(payload.organizationId, payload.orderId)
-      const patient = order ? await SeamRegistry.get('PatientReader').findById({
-        organizationId: payload.organizationId, patientId: order.patientId,
-      }) : null
-
-      const template = await loadNotificationTemplate('m22.document.rendered_critical_results', payload.organizationId)
-      const composed = renderTemplate(template, {
-        patientName: patient ? `${patient.familyName}, ${patient.givenName}` : 'Unknown patient',
-        orderShortId: payload.orderId.substring(0, 8),
-      })
-
-      // Dispatch via M36 with the payload type that drives the CRITICAL four-channel fan-out
-      await SeamRegistry.get('AlertEmitter').dispatch({
-        payloadType: 'm22.document.rendered_critical_results',
-        payload: {
-          documentId: payload.documentId,
-          versionId: payload.versionId,
-          orderId: payload.orderId,
-          observationId: payload.observationId,
-          orderingPhysicianMdmId: payload.orderingPhysicianMdmId,
-          title: composed.title,
-          body: composed.body,
-        },
-        organizationId: payload.organizationId,
-        callerModule: 'm14',
-      })
-
-      logger.info({ orderId: payload.orderId }, 'm14.critical_results.notification_dispatched')
-    },
-  })
-}
-```
-
-#### 4.11.3 `m11.order.transmission_terminal_failed` consumer
-
-```ts
-// apps/backend/src/modules/14-idg/consumers/m11-transmission-terminal-failed-composer.ts
-
-export function registerTransmissionTerminalFailedComposer(outbox: Outbox, logger: Logger): void {
-  outbox.registerConsumer({
-    eventName: 'm11.order.transmission_terminal_failed',
-    consumerName: 'm14.transmission-terminal-failed-notification-composer',
-    handler: async ({ payload }) => {
-      const order = await SeamRegistry.get('OrderProvider').findOrder(payload.organizationId, payload.orderId)
-      const patient = order ? await SeamRegistry.get('PatientReader').findById({
-        organizationId: payload.organizationId, patientId: order.patientId,
-      }) : null
-      const partnerLab = order?.labDestinationFacilityId
-        ? await SeamRegistry.get('MdmEntityProvider').resolveFacility(payload.organizationId, order.labDestinationFacilityId)
-        : null
-
-      const template = await loadNotificationTemplate('m11.order.transmission_terminal_failed', payload.organizationId)
-      const composed = renderTemplate(template, {
-        orderShortId: payload.orderId.substring(0, 8),
-        patientName: patient ? `${patient.familyName}, ${patient.givenName}` : 'Unknown patient',
-        partnerLabName: partnerLab?.canonical?.name ?? 'partner lab',
-        transmittedAttempts: payload.transmittedAttempts,
-        failureReason: payload.failureReason,
-      })
-
-      await SeamRegistry.get('AlertEmitter').dispatch({
-        payloadType: 'm11.lab_transmission.terminal_failed',
-        payload: {
-          orderId: payload.orderId,
-          organizationId: payload.organizationId,
-          failureReason: payload.failureReason,
-          transmittedAttempts: payload.transmittedAttempts,
-          callToAction: 'manual_reorder',
-          title: composed.title,
-          body: composed.body,
-        },
-        organizationId: payload.organizationId,
-        callerModule: 'm14',
-      })
-
-      logger.info({ orderId: payload.orderId }, 'm14.transmission_terminal_failed.notification_dispatched')
-    },
-  })
-}
-```
+> **Superseded by ADR-0024 (2026-06-13).** Notification composition + recipient resolution for
+> cross-module events (`m6.referral.withdrawn`, `m22.document.rendered_critical_results`,
+> `m11.order.transmission_terminal_failed`) moved to **M36** (SD-017). The three composer consumers
+> that previously lived here (`m6-referral-withdrawn-composer.ts`,
+> `m22-critical-results-composer.ts`, `m11-transmission-terminal-failed-composer.ts`) and the
+> `notification_template` catalog they read are no longer part of M14. M14 retains only its own
+> IDG-meeting alerts (packet-ready, non-quorate, carry-forward-overdue), which dispatch through M36
+> via the typed alert payloads in §4.10.
 
 -----
 
@@ -1530,42 +1304,12 @@ Layout notes:
 
 **Done means:** Meeting M is adjourned; all packets are frozen (`frozen_at` set). A coordinator attempts `POST /meetings/M/packets/build` (perhaps after noticing a packet had stale data). Route returns `422 PACKET_FROZEN`. The remedy is to record any corrections as decisions in the *next* meeting (the carry-forward agenda surface) — the adjourned meeting's packets are survey-reconstruction artifacts and immutable.
 
-### 7.13 `referral.withdrawn` reaches admissions team with distinct template (W-M14-11)
+### 7.13–7.15 Notification-composition workflows (W-M14-11 through W-M14-13) — Superseded by ADR-0024
 
-**Setup:** Per M6 W-M6-33, a cancel-admit ADT arrives matching a pending referral; M6 emits `m6.referral.withdrawn` with `referralId, organizationId, withdrawnVia='hl7_cancel_admit', originalReferralReceivedAt, withdrawnAt, sendingFacility='Memorial Hospital'`.
-
-**Expected:**
-- M14's `referral-withdrawn-notification-composer` fires.
-- Loads `m6.referral.withdrawn` template (platform default; no tenant override).
-- Renders: title="Referral canceled by referring party", body="The referral from Memorial Hospital (received {date}) was canceled by the referring party on {date}. No further action required; archived for record."
-- Dispatches via M36 with `payloadType='m6.referral.withdrawn'`, recipient resolver `role:admissions_team`.
-- INFO severity per M36 catalog; default channels = inbox only.
-- Admissions team members receive the inbox notification with the distinct title.
-- The `declined` template is NOT triggered (different event, different template).
-
-### 7.14 Critical results notification routes to ordering provider (W-M14-12)
-
-**Setup:** Per M22 W-M22-25, a critical potassium result triggers `m22.document.rendered_critical_results`.
-
-**Expected:**
-- M14's `critical-results-notification-composer` fires.
-- Resolves the patient name via M5 `PatientReader`.
-- Loads the `m22.document.rendered_critical_results` template.
-- Renders: title="CRITICAL lab results ready", body="Critical lab results for {patient name} have been rendered and require immediate review. Order: {short id}. Open the patient chart to view."
-- Dispatches via M36 with `payloadType='m22.document.rendered_critical_results'` (CRITICAL severity per M36 catalog).
-- M36 D12 four-channel fan-out fires: socket_push + inbox + sms + email reach the ordering provider in parallel.
-
-### 7.15 Transmission terminal failure carries M11 source-event-id (W-M14-13)
-
-**Setup:** Per M11 W-M11-15, a transmission AR (non-retryable) triggers `m11.order.transmission_terminal_failed`.
-
-**Expected:**
-- M14's `transmission-terminal-failed-notification-composer` fires.
-- Resolves the patient name + partner lab name.
-- Loads template; renders with the failure reason inline.
-- Dispatches via M36 with `payloadType='m11.lab_transmission.terminal_failed'`.
-- The M36 audit row carries the cross-references: M11 source event ID, M14 composer name, M36 dispatch ID.
-- Ordering provider sees a HIGH-severity inbox notification with a "Reorder" call-to-action linking to M11's order-creation route.
+> **Superseded by ADR-0024 (2026-06-13).** The three cross-module notification-composition
+> acceptance criteria (W-M14-11 `referral.withdrawn`, W-M14-12 critical-results, W-M14-13
+> transmission-terminal-failed) moved to **M36** along with the composition role (SD-017). They are
+> no longer M14 workflows.
 
 -----
 
@@ -1599,8 +1343,6 @@ All events route through `packages/audit` (`audit()` helper for system/app event
 | `idg_minutes.amended` | warn | user | idg_minutes_amendment | `{ amendmentId, approvedByMembershipId, reasonHash }`; `amendment_reason` denylisted |
 | `idg.sud_redaction_applied` | info | system | idg_patient_packet | `{ packetId, callerSessionId, redactedBlockCount }` (sampled per M3 D5) |
 | `idg.non_quorate_attempt` | warn | user | idg_meeting | `{ meetingId, missingDisciplines, agendaItemId? }` |
-| `m14.notification.composed` | info | system | notification dispatch | `operational` retention class; `{ sourceEventName, templateKey, organizationId, payloadType }` |
-| `m14.notification.template_overlay_applied` | info | system | notification_template overlay | `operational` retention class; `{ organizationId, templateKey, override_fields }` |
 
 PHI mutation events flow through both the M4 trigger generator (binding source-of-truth from the table write) and the application narrative event (the human-readable what-happened). Free-text fields in `built_snapshot.discipline_views`, decision payloads' narrative/rationale/note fields, action-item body text, minutes closing notes, and amendment reasons are denylisted on the trigger — the `audit_event` row contains `<changed>` rather than the text.
 
@@ -1622,9 +1364,6 @@ PHI mutation events flow through both the M4 trigger generator (binding source-o
 | `idg_cadence_adherence_gauge` | gauge | `org_id, admission_id` | Per-admission 15-day adherence (M30 dual-read source) |
 | `idg_layer2_polish_invocations_total` | counter | `org_id, hard_block_count` | Layer 2 invocation rate + hard-block hits (parallels M8) |
 | `idg_quorum_met_ratio` | gauge | `org_id` | Rolling 30-day quorate-meeting rate |
-| `idg_notification_composed_total` | counter | `template_key, source_module` | Notification-composition throughput |
-| `idg_template_overlay_applied_total` | counter | `organization_id, template_key` | Tenant overlay usage |
-| `idg_template_render_failed_total` | counter | `template_key, error_class` | Template render failure rate |
 
 ### 8.3 OpenTelemetry Spans
 
@@ -1635,7 +1374,6 @@ PHI mutation events flow through both the M4 trigger generator (binding source-o
 | `idg.meeting.adjourn` | `meetingId, decisionEmitCount, actionItemAssignCount` | route handler (long span; includes the per-decision outbox burst) |
 | `idg.consumer.apply` | `eventId, consumerName, sourceTopic, applyResult` | every consumer worker |
 | `idg.layer2.polish` | `meetingId, patientId, modelId, promptTemplateVersion, tokensInput, tokensOutput, hardBlockedCount` | M32 narrative-enhancement call |
-| `idg.notification.compose` | `sourceEventName, templateKey, payloadType, organizationId` | notification composer |
 
 ### 8.4 Destruction Eraser Registration
 
@@ -1667,7 +1405,6 @@ Target coverage: ≥ 90% statements; ≥ 95% on the named services below.
 - `services/decision-emitter.ts` — adjournment-burst transactionality: induced failure on the N-th outbox insert rolls back the whole transaction; idempotency on `idg_decision_id` (re-emit is a no-op via M1 outbox dedup).
 - `services/action-item-engine.ts` — carry-forward computation against fixture meetings; auto-close from each downstream event source (M7/M8/M11/M12); compliance-alert firing at `count >= 3`.
 - `services/since-cursor.ts` — cursor resolution: prior IDG present → `adjourned_at`; no prior IDG → admission `activated_at`; multiple prior IDGs → latest `adjourned_at`.
-- `services/notification-template.ts` — template loading with tenant overlay precedence (overlay title/body override platform default; null overlay fields fall back); Handlebars-style `{{placeholder}}` substitution; HTML-escaping by default (XSS-safe); missing-placeholder handling; render-failure emits `idg_template_render_failed_total`.
 - TypeBox validation of every `IdgDecisionPayload` discriminator including malformed inputs (returns 422 with `DECISION_PAYLOAD_INVALID`).
 - `state/meeting-lifecycle.ts` — every transition + every refused transition (no `START` from `scheduled`, no `ADJOURN` from `packets_ready`, no `BUILD_PACKETS` from `adjourned`).
 
@@ -1681,7 +1418,6 @@ Target coverage: ≥ 90% statements; ≥ 95% on the named services below.
 - Outbox transactionality: induced commit failure on the second `idg.decision_recorded` insert during adjournment → entire adjournment transaction rolls back; meeting status reverts to `live`; no decisions emitted; audit row not present.
 - Layer 2 hard-block: synthetic Layer 2 response contains a hard-block category match (the M8 D7 list) → builder refuses to write `cover_summary_layer2`, falls back to Layer 1 only; emit `idg.layer2.hard_block_fired` per M8 audit pattern.
 - Schema-version mismatch: emit a synthetic `idg.decision_recorded` with `payloadSchemaVersion='2027-01-v2'` → M7/M11/M12 consumers publish to DLQ; M14 emits `m14.decision_payload_quarantined`.
-- Notification composition: deliver `m6.referral.withdrawn`, `m22.document.rendered_critical_results`, and `m11.order.transmission_terminal_failed` events → verify each composer loads the correct template, renders placeholders, and dispatches via M36 with the registered payload type; verify M36 dispatch is refused for an unregistered payload type; verify tenant-overlay title/body override the platform default.
 
 ### 9.3 RLS Isolation Tests (Cross-Tenant Denial)
 
@@ -1690,7 +1426,6 @@ For every owned table (9) × at least three operations each (SELECT, UPDATE atte
 - Org A's `idg_meeting` invisible under Org B's context.
 - Cross-tenant FK leak attempt: writing an `idg_decision` with `patient_id` from another org → constraint or RLS violation; never silent partial write.
 - Internal seam endpoints (`/api/v1/internal/idg/*`) enforce caller's `app.org_id` via `withOrgContext`; system principal must carry an org id; cross-org reads denied at RLS.
-- `tenant_notification_template_overlay` RLS: Org A's overlay rows invisible under Org B's context; the platform `notification_template` catalog is org-agnostic (no RLS) but overlays are org-isolated.
 
 ### 9.4 Layer-Independence (Defense-In-Depth)
 
@@ -1700,7 +1435,7 @@ Per Security Hardening §6.1: with RBAC/ABAC deliberately stubbed to allow, RLS 
 
 - **Dependency-cruiser:** a fixture consumer module that imports `apps/backend/src/modules/14-idg/...` from a non-dependent module fails CI; a fixture that imports `packages/db/src/schema/idg-*` from outside M14 fails CI (table-ownership check).
 - **Vendor adapter mandate:** direct `import '@anthropic-ai/sdk'` from M14 outside the `packages/ai-platform` adapter fails CI (Layer 2 polish goes through the registered seam).
-- **Manifest patch:** the `M14.ownedTables` list (11 names) is asserted in `check-table-ownership.ts`; the new `M14.dependsOn` is asserted.
+- **Manifest patch:** the `M14.ownedTables` list (9 names) is asserted in `check-table-ownership.ts`; the new `M14.dependsOn` is asserted.
 
 ### 9.6 E2E (Playwright)
 
@@ -1728,7 +1463,6 @@ Per Security Hardening §6.1: with RBAC/ABAC deliberately stubbed to allow, RLS 
 - `withSudConsent(patient, session)` and `withoutSudConsent(patient, session)` — toggle M39 consent state.
 - `recordFixtureConsumerForOutboxTopic(topic)` — captures outbox emissions for assertion.
 - Five-discipline caseload fixture: RN + MSW + Chaplain + MD + Aide for permissions/discipline-view tests.
-- `seedNotificationTemplate(key, overrides?)` and `seedTenantTemplateOverlay(orgId, key, { titleTemplate?, bodyTemplate? })` — seed catalog rows and tenant overlays for notification-composition tests.
 
 -----
 
@@ -1758,12 +1492,12 @@ Ordered by dependency. **PR boundaries** marked.
 | 18 | Metrics + OpenTelemetry spans + Pino redaction extensions for free-text fields in payloads | S | all | H |
 | 19 | Eraser registered with M4 (`packages/audit` registry); destruction integration test | S | 1, M4 destruction workflow | H |
 | 20 | Full test suite per §9 (unit ≥ 90% / ≥ 95% on named services; integration via Testcontainers; RLS isolation; layer-independence; E2E Playwright + axe-core; perf budgets) | L | all prior | I |
-| 21 | Manifest patch: `M14.dependsOn = [1,2,3,4,5,6,7,8,9,10,11,12,22,36,38,39,40]`; `M14.ownedTables = ['idg_meeting','idg_recurring_policy','idg_attendance','idg_patient_packet','idg_agenda_item','idg_decision','idg_action_item','idg_minutes','idg_minutes_amendment','notification_template','tenant_notification_template_overlay']`; dependency-cruiser boundary check green | S | — | J |
-| **T-M14-14** | Migration `0036_m14_v03_notification_templates.sql` — `notification_template` + overlay tables with RLS; seed referral + new notification templates | M | None | K |
-| **T-M14-15** | Three notification-composition consumers (`m6.referral.withdrawn`, `m22.document.rendered_critical_results`, `m11.order.transmission_terminal_failed`) + template loader/renderer service | M | T-M14-14 | K |
-| **T-M14-16** | Tests at lock-grade per §7.13–7.15 / §9.2 — unit, integration, M36 dispatch assertions, tenant overlay tests | M | T-M14-15 | K |
+| 21 | Manifest patch: `M14.dependsOn = [1,2,3,4,5,6,7,8,9,10,11,12,22,36,38,39,40]`; `M14.ownedTables = ['idg_meeting','idg_recurring_policy','idg_attendance','idg_patient_packet','idg_agenda_item','idg_decision','idg_action_item','idg_minutes','idg_minutes_amendment']`; dependency-cruiser boundary check green | S | — | J |
+| ~~T-M14-14~~ | **Superseded by ADR-0024** — `notification_template` + overlay tables and their `0036` migration moved to M36. | — | — | — |
+| ~~T-M14-15~~ | **Superseded by ADR-0024** — the three notification-composition consumers + template loader/renderer moved to M36. | — | — | — |
+| ~~T-M14-16~~ | **Superseded by ADR-0024** — notification-composition tests moved to M36. | — | — | — |
 
-**PR boundaries:** (A) 1–3 schema + domain + repos; (B) 4–5 lifecycle + scheduler; (C) 6–7 packet builder + T-24h cron; (D) 8–9 decision routes + action items + consumers; (E) 10–12 adjournment + minutes + SUD redactor; (F) 13–15 seams + permissions + M22 handshake; (G) 16–17 frontend; (H) 18–19 observability + eraser; (I) 20 tests; (J) 21 manifest patch; (K) T-M14-14–16 notification-composition layer (template catalog + consumers + tests). Sequencing within (K): T-M14-14 → T-M14-15 → T-M14-16.
+**PR boundaries:** (A) 1–3 schema + domain + repos; (B) 4–5 lifecycle + scheduler; (C) 6–7 packet builder + T-24h cron; (D) 8–9 decision routes + action items + consumers; (E) 10–12 adjournment + minutes + SUD redactor; (F) 13–15 seams + permissions + M22 handshake; (G) 16–17 frontend; (H) 18–19 observability + eraser; (I) 20 tests; (J) 21 manifest patch. (PR boundary K — the notification-composition layer — is superseded by ADR-0024; T-M14-14–16 moved to M36.)
 
 -----
 
@@ -1786,9 +1520,9 @@ All structural and policy decisions for Module 14 are resolved at lock time. The
 | D11 | **Three published seams: `IdgPacketProvider`, `IdgDecisionProvider`, `IdgScheduleProvider`. Published in `packages/domain/idg/seams.ts`. M22 / M28 / M30 / M33 consume; no consumer touches an M14 table directly.** Seam pattern matches M9 D7 / M10 D10 / M11 D14 / M12 §2.10. | The seam pattern decouples the data-owner from data-consumers, allows forward-looking publication (M14 ships, consumers attach at their lock), and gives a typed surface the consumer cannot accidentally bypass via direct schema import. The dependency-cruiser boundary check enforces consumers may not import `packages/db/src/schema/idg-*` directly. | (a) Each consumer imports M14's schema directly — schema-import violation; consumer fragile to M14 internal refactors. (b) Each consumer calls M14's HTTP routes — partial-failure problem + serialization overhead. (c) Shared abstract Idg type in `packages/types` — wrong layer; consumers need M14's typed payloads, not opaque shapes. | §1.1, §4.8, §10 task 13 |
 | D12 | **`idg_patient_packet` monthly-partitioned by `built_at`** matching M4 PHI-table conventions and the M9 / M10 / M11 precedent. Other tables non-partitioned (one meeting per location per 7–15 days; volumes proportional to caseload size). | Per-patient packet rows accumulate at every meeting cadence; 50 patients × 26 meetings/year × N years × multiple cluster locations adds up. Monthly partitioning gives the retention archive (per M4 destruction workflow) a clean rotation surface and keeps the hot-path indexes small. Non-partitioning the lower-volume tables matches the M11/M12 selective-partition pattern. | (a) Partition every M14 table — over-engineers low-volume tables. (b) Partition `idg_meeting` instead — wrong cardinality; meetings are 1 per location per cadence, not the volume-driver. (c) No partitioning anywhere — bites at the 7-year-retention cliff. | §3.3, migration `0014_idg.sql` |
 | D13 | **5-minute step-up auth on `ADJOURN`** (`step_up_fresh` predicate; M2 session class). Mirrors M8 D13 (5-min step-up on encounter sign). Adjournment is the commit point for the entire meeting's decisions and minutes; the step-up is the explicit identity-proofing for that commit. | Adjournment is a multi-row mutating event (decisions emit, minutes finalize, packets freeze) — the step-up makes the actor's identity fresh-verified at that moment. The 5-minute window matches M8's encounter-signing window, keeping clinician muscle memory consistent across the surfaces. | (a) No step-up — survey-citation risk on the "who adjourned this meeting" question; ergonomics gain doesn't outweigh the compliance gap. (b) 24-hour step-up — too loose; an unattended session at meeting end is the realistic threat. (c) Step-up on every decision recording — over-burdens the meeting flow; quorum + permission is sufficient at decision-write time. | §4.1 (`POST /meetings/:id/adjourn`), §7.5/7.11 |
-| D14 | **`m6.referral.withdrawn` gets a notification template distinct from `m6.referral.declined`. The two templates differ in: (a) title — "Referral canceled by referring party" vs "Referral was not accepted"; (b) body — withdrawn explains the upstream system canceled and the hospice didn't make a decision; declined explains the hospice operationally chose not to accept; (c) call-to-action — withdrawn says "No further action required; archived for record"; declined says "Review and document the decline rationale if needed"; (d) recipient audience — withdrawn goes to the admissions team channel only; declined ALSO goes to the intake supervisor's personal inbox (a clinical decision was made and is logged to them personally). Both templates produce M36 alerts at INFO severity; tenants may TIGHTEN per M36 D11.** | The two events have different operational meanings and downstream behaviors; collapsing them as `declined` with a sub-reason would lose audit clarity. M6 D16 established the distinct event; M14 D14 establishes the distinct notification. | (a) Collapse withdrawn into declined with a sub-reason — loses audit clarity and routes to the wrong audience. (b) Suppress the withdrawn notification entirely — admissions team loses visibility into upstream cancellations. | §3.5, §4.11.1, §7.13 |
-| D15 | **M14 is the platform's notification-composition layer for cross-module events where M14 was the declared consumer in the originating module's outbox catalog. M14 owns the composition (template, recipient resolution, M36 payload-type selection); M36 owns the dispatch (channel fan-out, retry, audit). The handshake is: source-module's outbox event → M14's `<source>-notification-composer.ts` consumer → M14 invokes `M36.dispatch(payloadType, payload, organizationId)`. M14 does NOT bypass M36 to write directly to channels; M14 does NOT compose payloads outside the M36 catalog (per M36 D10, every dispatch validates against the catalog). The composition layer keeps the source modules ignorant of channel-routing concerns — M11 doesn't know that critical results need SMS, just emits the typed event; M14 knows the routing policy.** | The clean separation of concerns is the v0.2 architectural principle: domain modules emit typed events; cross-cutting modules consume and route. M14 has done this for referrals since v0.2; the role is made explicit and extended to the M11 + M22 events. The alternative — every source module routing its own notifications — would force each module to know M36's catalog + tenant overrides + recipient resolvers; centralization on M14 keeps that knowledge in one place. | (a) Each source module routes its own notifications — every module must know M36's catalog + tenant overrides + recipient resolvers. (b) A standalone notification module — duplicates the recipient-resolution and template machinery M14 already owns for referrals. | §1.1, §4.11, §7.13/7.14/7.15 |
-| D16 | **New `notification_template` table mirrors M22's `form_template` pattern. Schema: `template_key TEXT PRIMARY KEY, title_template TEXT, body_template TEXT, default_payload_type TEXT REFERENCES alert_payload_catalog(payload_type), default_recipient_resolver TEXT, supported_locales TEXT[] NOT NULL DEFAULT ['en-US'], status TEXT, owned_by_module TEXT NOT NULL`. Per-tenant overlay table `tenant_notification_template_overlay` lets tenants override title/body (subject to the M22 D14 tighten-only branding pattern). The catalog seeds the new templates plus the referral templates so the catalog is complete. M14's composer reads the template at dispatch time, fills placeholders from the source event payload, and emits the M36 alert.** | The template catalog gives surveys-readiness a queryable surface — which notifications does the platform send, to whom, with what wording. Registering the referral templates is the discipline-debt fix. Per-tenant overlay lets tenants customize wording (e.g., add the hospice's brand voice) without code change. | (a) Hard-code template strings in the composer — no queryable surface, no tenant override. (b) Reuse M22's `form_template` table directly — conflates document forms with notification copy; different lifecycle and owner. | §3.5, §4.11, §7.13/7.14/7.15 |
+| D14 | **Superseded by ADR-0024** — notification composition + recipient resolution for cross-module events moved to M36 (SD-017). *(Originally: `m6.referral.withdrawn` gets a notification template distinct from `m6.referral.declined`.)* | — | — | — (tombstone) |
+| D15 | **Superseded by ADR-0024** — notification composition + recipient resolution for cross-module events moved to M36 (SD-017). *(Originally: M14 is the platform's notification-composition layer for cross-module events where M14 was the declared consumer.)* | — | — | — (tombstone) |
+| D16 | **Superseded by ADR-0024** — notification composition + recipient resolution for cross-module events moved to M36 (SD-017). *(Originally: new `notification_template` + `tenant_notification_template_overlay` tables owned by M14.)* | — | — | — (tombstone) |
 
 -----
 
@@ -1797,9 +1531,8 @@ All structural and policy decisions for Module 14 are resolved at lock time. The
 ### Schema & data
 
 - [ ] **(blocker)** Migration `0014` applied; nine tables (`idg_meeting`, `idg_recurring_policy`, `idg_attendance`, `idg_patient_packet`, `idg_agenda_item`, `idg_decision`, `idg_action_item`, `idg_minutes`, `idg_minutes_amendment`) live with enums, indexes, RLS enabled, and monthly partitioning on `idg_patient_packet`.
-- [ ] **(blocker)** Migration `0036` applied; `notification_template` + `tenant_notification_template_overlay` tables live with RLS on the overlay; referral + notification-composition templates seeded.
 - [ ] **(blocker)** Audit triggers installed via Module 4's `audit_install_trigger` on all nine tables with the §3.3 denylists; free-text PHI in packet `discipline_views`, decision narratives, action-item bodies, minutes notes, and amendment reasons never reaches `audit_event.before/after` values.
-- [ ] **(blocker)** RLS verified: cross-tenant read/write/delete on every table denied even with RBAC/ABAC stubbed open (layer-independence per Security Hardening §6.1); `tenant_notification_template_overlay` org-isolated.
+- [ ] **(blocker)** RLS verified: cross-tenant read/write/delete on every table denied even with RBAC/ABAC stubbed open (layer-independence per Security Hardening §6.1).
 
 ### Lifecycle & decisions
 
@@ -1816,9 +1549,7 @@ All structural and policy decisions for Module 14 are resolved at lock time. The
 - [ ] **(blocker) D11** Three seams (`IdgPacketProvider`, `IdgDecisionProvider`, `IdgScheduleProvider`) published; boot `validateSeams()` enforces; dependency-cruiser blocks consumer schema imports.
 - [ ] **(blocker) D12** `idg_patient_packet` monthly partitioning live; next 6 months created at migration time; daily rotation worker adds `+1 month ahead`.
 - [ ] **(blocker) D13** Adjournment requires fresh ≤5-min step-up; `STEP_UP_REQUIRED` returned otherwise; biometric step-up on mobile path.
-- [ ] **(blocker) D14** `m6.referral.withdrawn` template distinct from `m6.referral.declined` (title, body, CTA, recipient audience); both INFO severity; tenant tighten-only.
-- [ ] **(blocker) D15** Notification composition routes source events → M14 composer → `M36.dispatch`; M14 never writes channels directly; every dispatch validates against M36's `alert_payload_catalog`.
-- [ ] **(blocker) D16** `notification_template` catalog + tenant overlay live; composer reads template, fills placeholders, emits M36 alert; per-tenant overlay overrides title/body.
+- [ ] ~~**D14 / D15 / D16**~~ **Superseded by ADR-0024** — notification composition + recipient resolution for cross-module events moved to M36 (SD-017); no M14 sign-off item.
 
 ### Cross-module handshakes
 
@@ -1827,7 +1558,6 @@ All structural and policy decisions for Module 14 are resolved at lock time. The
 - [ ] **(blocker)** M12 medication-recommendation consumer consumes `kind='medication_recommendation'` envelopes; draft medication order created with the recommendation context; integration test green.
 - [ ] **(forward seam)** M16 bereavement-risk-flag consumer attaches at M16 lock; M14 ships the recorded-fixture envelope today.
 - [ ] **(blocker)** M22 packet PDF render via `m14.packet.render_requested`; minutes PDF via `m14.minutes.signed`; back-ref consumer updates `packet_document_id` and `minutes_document_id`.
-- [ ] **(blocker)** M14 notification composers consume `m6.referral.withdrawn`, `m22.document.rendered_critical_results`, `m11.order.transmission_terminal_failed`; dispatch via M36 with the registered payload types; integration tests green per §7.13–7.15.
 - [ ] **(forward seam)** M28 FHIR `CareTeam`/`Encounter` projection consumes seam at M28 lock.
 - [ ] **(forward seam)** M30 `getCadenceAdherence` and `getDecisionsForCarePlan` seam consumers attach at M30 lock; recorded-fixture envelopes today.
 
@@ -1844,9 +1574,9 @@ All structural and policy decisions for Module 14 are resolved at lock time. The
 
 ### Observability
 
-- [ ] **(blocker)** All §8.2 Prometheus metrics emit (including `idg_notification_composed_total`, `idg_template_overlay_applied_total`, `idg_template_render_failed_total`); Grafana dashboards reference them per Ops Runbook §9.
+- [ ] **(blocker)** All §8.2 Prometheus metrics emit; Grafana dashboards reference them per Ops Runbook §9.
 - [ ] **(blocker)** All §8.3 OpenTelemetry spans emit with documented attributes.
-- [ ] **(blocker)** All §8.1 audit events land via M4's outbox helper (including `m14.notification.composed`, `m14.notification.template_overlay_applied`); PHI denylists enforced.
+- [ ] **(blocker)** All §8.1 audit events land via M4's outbox helper; PHI denylists enforced.
 
 ### Frontend
 
@@ -1856,51 +1586,43 @@ All structural and policy decisions for Module 14 are resolved at lock time. The
 ### Test plan
 
 - [ ] **(blocker)** Unit ≥ 90% statements / ≥ 95% on the §9.1 named services.
-- [ ] **(blocker)** Integration suite per §9.2 green (Testcontainers), including notification-composition dispatch + tenant-overlay tests.
-- [ ] **(blocker)** RLS isolation tests for all nine tables + the overlay table green.
+- [ ] **(blocker)** Integration suite per §9.2 green (Testcontainers).
+- [ ] **(blocker)** RLS isolation tests for all nine tables green.
 - [ ] **(blocker)** Layer-independence test green.
 - [ ] **(blocker)** Boundary/fitness check per §9.5 green; dependency-cruiser fails CI on synthetic violator.
 - [ ] **(blocker)** E2E Playwright suite per §9.6 green.
 - [ ] **(blocker)** Performance budgets per §9.7 met on the reference dataset (50-patient meeting Layer-1 ≤ 30s, Layer-2 ≤ 90s; adjournment burst ≤ 5s; consumer apply ≤ 30s).
-- [ ] Template render uses Handlebars-style `{{placeholder}}` substitution; XSS-safe (HTML-escaping by default); unregistered M36 payload types refused.
 
 ### Destruction integration
 
 - [ ] **(blocker)** M4 `eraserRegistry` registration verified at boot; integration test exercises destruction-certificate workflow against an `idg_record` class and confirms patient-scoped erasure (decisions, action items, packets carrying `patient_id`) while preserving caseload-level minutes rows.
 
-### Cross-module owner sign-offs (notification-composition layer)
-
-- [ ] **M6 owner** sign-off on the `referral.withdrawn` template wording.
-- [ ] **M11 owner** sign-off on the `transmission_terminal_failed` template + call-to-action linking back to M11 reorder route.
-- [ ] **M22 owner** sign-off on the critical results template.
-- [ ] **M36 owner** sign-off on the M14 → M36 dispatch handshake.
-
 ### Manifest patch (proposed; lands with this PR)
 
 - [ ] **(blocker)** `architecture/module-manifest.ts` updated:
-  - `M14.dependsOn` from `[7, 8, 36]` → `[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 22, 36, 38, 39, 40]`. Rationale: aligns the manifest with the eleven upstream seam reads M14 performs (M5 caseload + PatientReader, M6 admission/discharge + referral events, M7 care-plan reader, M8 signed-encounters reader, M9 latest-assessment + scale-series, M10 HOPE timepoint + J2051, M11 OrderProvider + transmission-failure events, M12 MedicationOrderProvider) plus the four foundation/cross-cutting deps the M11 / M12 lock established as required surface (M1–M4), the M22 critical-results event consumed for notification composition, and the M36 dispatch / M38 terminology / M39 consent / M40 MDM seams. Mirrors the M9 / M10 / M12 manifest-patch precedent of surfacing *all* declared imports.
-  - `M14.ownedTables` populated with `['idg_meeting','idg_recurring_policy','idg_attendance','idg_patient_packet','idg_agenda_item','idg_decision','idg_action_item','idg_minutes','idg_minutes_amendment','notification_template','tenant_notification_template_overlay']`.
+  - `M14.dependsOn` from `[7, 8, 36]` → `[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 22, 36, 38, 39, 40]`. Rationale: aligns the manifest with the upstream seam reads M14 performs (M5 caseload + PatientReader, M6 admission/discharge, M7 care-plan reader, M8 signed-encounters reader, M9 latest-assessment + scale-series, M10 HOPE timepoint + J2051, M11 OrderProvider, M12 MedicationOrderProvider) plus the four foundation/cross-cutting deps the M11 / M12 lock established as required surface (M1–M4), the M22 packet/minutes render handshake + `m22.document.rendered` back-ref, and the M36 dispatch / M38 terminology / M39 consent / M40 MDM seams. Mirrors the M9 / M10 / M12 manifest-patch precedent of surfacing *all* declared imports. *(Per ADR-0024, the notification-composition rationale for these edges is dropped; M6/M11/M22 remain consumed for packet-building / render handshakes.)*
+  - `M14.ownedTables` populated with `['idg_meeting','idg_recurring_policy','idg_attendance','idg_patient_packet','idg_agenda_item','idg_decision','idg_action_item','idg_minutes','idg_minutes_amendment']` (the `notification_template` + `tenant_notification_template_overlay` tables moved to M36 per ADR-0024).
   - `M14.codePaths` confirmed as `['apps/backend/src/modules/14-idg']`; no new `packages/idg-*` workspace needed (the domain types live in `packages/domain/idg/` which is part of the `packages/domain` leaf per the manifest's `LEAF_PACKAGES`).
 - [ ] **(blocker)** `bun run arch:fitness` green: dependency-cruiser boundary check passes with the new deps; `scripts/check-table-ownership.ts` passes with the new ownedTables; the visual graph (`arch:graph`) regenerated and committed under `docs/architecture-graph.svg`.
 
-**Lock status:** All sixteen decisions resolved (§11); the three published seams (`IdgPacketProvider`, `IdgDecisionProvider`, `IdgScheduleProvider`) built and boot-validated; the canonical `idg.decision_recorded` outbox payload contract is now the live producer for M7's `apply-idg-decision.worker`, M11's `idg-decision-intake`, and M12's medication-recommendation consumer (the three downstream modules that have already locked their recorded-fixture consumers per their respective Forward-seam acceptance lines); the notification-composition layer (`notification_template` catalog + the three composers for `m6.referral.withdrawn`, `m22.document.rendered_critical_results`, `m11.order.transmission_terminal_failed`) seeded and dispatching through M36. Buildable now. Items completing after downstream modules exist: M16 attaches the bereavement-risk-flag consumer at M16 lock; M22 renders packets + minutes PDFs (M14 publishes the typed payload today); M28 projects FHIR `CareTeam`/`Encounter` (M14 publishes the typed mapping); M30 consumes the `IdgScheduleProvider.getCadenceAdherence` and `IdgDecisionProvider.getDecisionsForCarePlan` seams; M33 reads all three seams + the outbox surface. Nothing in M14 is gated on Modules 16, 22, 28, 30, 31, 33 existing for its Phase 1 "done" definition. Phase 2 items explicitly deferred: AI-driven agenda prioritisation, AI-suggested decision drafts, and the M31 family-meeting-needed portal fan-out — none of which block Engrace go-live.
+**Lock status:** Decisions D1–D13 resolved (§11); D14–D16 superseded by ADR-0024 (notification composition moved to M36); the three published seams (`IdgPacketProvider`, `IdgDecisionProvider`, `IdgScheduleProvider`) built and boot-validated; the canonical `idg.decision_recorded` outbox payload contract is now the live producer for M7's `apply-idg-decision.worker`, M11's `idg-decision-intake`, and M12's medication-recommendation consumer (the three downstream modules that have already locked their recorded-fixture consumers per their respective Forward-seam acceptance lines). Per ADR-0024, the notification-composition layer (`notification_template` catalog + the three cross-module composers) has moved to M36 and is no longer part of M14. Buildable now. Items completing after downstream modules exist: M16 attaches the bereavement-risk-flag consumer at M16 lock; M22 renders packets + minutes PDFs (M14 publishes the typed payload today); M28 projects FHIR `CareTeam`/`Encounter` (M14 publishes the typed mapping); M30 consumes the `IdgScheduleProvider.getCadenceAdherence` and `IdgDecisionProvider.getDecisionsForCarePlan` seams; M33 reads all three seams + the outbox surface. Nothing in M14 is gated on Modules 16, 22, 28, 30, 31, 33 existing for its Phase 1 "done" definition. Phase 2 items explicitly deferred: AI-driven agenda prioritisation, AI-suggested decision drafts, and the M31 family-meeting-needed portal fan-out — none of which block Engrace go-live.
 
 -----
 
 ## 13. Notes on Refinements
 
-1. **Locale support.** The catalog seeds `en-US` only. A future release should add Spanish + other tenant-requested locales with a per-locale row in `notification_template_localized`.
-2. **Template versioning.** `notification_template` is single-row-per-key. A future release should consider M22-style versioned templates for audit replay.
-3. **Composer-as-internal-service vs published-seam.** The composer is internal to M14; a future release might publish a `NotificationComposer` seam if other modules need to render M14 templates programmatically.
+1. **Notification composition moved to M36 (ADR-0024).** The `notification_template` catalog, the
+   per-tenant overlay, and the cross-module composers that previously lived here are now owned by
+   M36 (SD-017). Refinements on locale support, template versioning, and composer surfaces are
+   tracked in M36's spec, not M14's.
 
 -----
 
 **End of Module 14 — Interdisciplinary Group Specification v0.4 (Consolidated)**
 
-**Spec version:** v0.4 (Consolidated)
-**Decisions:** D1–D16 (all resolved)
-**Schema:** 9 IDG tables + `notification_template` + `tenant_notification_template_overlay`; monthly partitioning on `idg_patient_packet`
-**Notification-composition consumers:** 3 (`m6.referral.withdrawn`, `m22.document.rendered_critical_results`, `m11.order.transmission_terminal_failed`)
+**Spec version:** v0.4 (Consolidated; ADR-0024 applied 2026-06-13)
+**Decisions:** D1–D13 resolved; D14–D16 superseded by ADR-0024 (notification composition moved to M36)
+**Schema:** 9 IDG tables; monthly partitioning on `idg_patient_packet` (notification-template tables moved to M36 per ADR-0024)
 **Published seams:** `IdgPacketProvider`, `IdgDecisionProvider`, `IdgScheduleProvider`
-**Workflows:** W-SCH-01, W-PKT-01/02, W-DEC-01/02, W-ADJ-01/02, W-ACT-01/02, W-MIN-01, W-SUD-01, W-CON-01, W-M14-11 through W-M14-13
-**Implementation tasks:** 1–21 + T-M14-14 through T-M14-16
+**Workflows:** W-SCH-01, W-PKT-01/02, W-DEC-01/02, W-ADJ-01/02, W-ACT-01/02, W-MIN-01, W-SUD-01, W-CON-01 (W-M14-11 through W-M14-13 superseded by ADR-0024)
+**Implementation tasks:** 1–21 (T-M14-14 through T-M14-16 superseded by ADR-0024)

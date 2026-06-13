@@ -169,7 +169,7 @@ export const MODULES: ModuleDef[] = [
     id: 36, name: "Secure Messaging & Alerts",
     codePaths: ["packages/messaging", "apps/backend/src/modules/36-messaging"],
     dependsOn: [1, 2, 3, 4],
-    ownedTables: ["alert", "alert_payload_catalog", "alert_rule", "channel", "channel_member", "delivery_endpoint", "message", "message_attachment", "message_receipt", "notification_delivery", "presence", "tenant_alert_routing_override", "user_notification_preferences"], // filled from M36 spec
+    ownedTables: ["alert", "alert_payload_catalog", "alert_rule", "channel", "channel_member", "delivery_endpoint", "message", "message_attachment", "message_receipt", "notification_delivery", "presence", "tenant_alert_routing_override", "user_notification_preferences", "notification_template", "tenant_notification_template_overlay"], // filled from M36 spec; +notification_template +overlay per ADR-0024 (moved from M14)
   },
   {
     id: 38, name: "Clinical Terminology Service",
@@ -223,7 +223,7 @@ export const MODULES: ModuleDef[] = [
     codePaths: ["apps/backend/src/modules/13-emar"], dependsOn: [12, 36, 38], ownedTables: ["administration_offline_queue", "administration_policy", "administration_record", "administration_witness", "barcode_scan_event", "comfort_kit_deployment", "comfort_kit_drawdown", "medication_reconciliation_decision", "medication_reconciliation_worksheet", "missed_dose", "prn_administration", "scheduled_dose"] },
   { id: 14, name: "IDG",
     codePaths: ["apps/backend/src/modules/14-idg"], dependsOn: [7, 8, 36],
-    ownedTables: ["idg_meeting", "idg_recurring_policy", "idg_attendance", "idg_agenda_item", "idg_decision", "idg_action_item", "idg_minutes", "idg_minutes_amendment", "idg_patient_packet", "notification_template", "tenant_notification_template_overlay"] },
+    ownedTables: ["idg_meeting", "idg_recurring_policy", "idg_attendance", "idg_agenda_item", "idg_decision", "idg_action_item", "idg_minutes", "idg_minutes_amendment", "idg_patient_packet"] }, // ADR-0024: notification_template + tenant_notification_template_overlay moved to M36 (notification composition is M36-owned per SD-017)
   { id: 15, name: "Discipline Care Plans",
     codePaths: ["apps/backend/src/modules/15-discipline-care-plans"], dependsOn: [7, 8], ownedTables: ["aide_supervisory_visit", "discipline_assessment", "discipline_care_plan", "discipline_care_plan_signature", "discipline_care_plan_version", "discipline_goal", "discipline_intervention", "volunteer_assignment", "volunteer_compliance_gate", "volunteer_hour_entry", "volunteer_hour_ledger"] },
   { id: 16, name: "Bereavement",
@@ -274,7 +274,7 @@ export const MODULES: ModuleDef[] = [
   { id: 34, name: "SaaS Tenant Platform",
     codePaths: ["packages/saas", "apps/admin", "apps/backend/src/modules/34-saas"], dependsOn: [2, 3, 4, 36], ownedTables: ["dsar_export_job", "dsar_export_job_event", "onboarding_task", "onboarding_task_template", "platform_tenant_baa_record", "support_consent_grant", "support_session", "support_session_event", "tenant_account", "tenant_account_status_event", "tenant_export_job", "tenant_export_job_event", "tenant_invitation", "tenant_key_destruction_log", "tenant_key_ring", "tenant_signup_intent", "tenant_signup_token"] },
   { id: 35, name: "Subscription Billing",
-    codePaths: ["apps/backend/src/modules/35-subscription"], dependsOn: [34], ownedTables: ["dunning_state", "invoice", "invoice_line", "patient_active_period", "patient_pseudonym_key", "payment_method", "plan", "plan_meter", "promo_code", "promo_code_application", "refund", "revenue_recognition_snapshot", "stripe_api_call_audit", "stripe_webhook_event", "subscription", "subscription_state_history", "usage_event", "usage_period_aggregate", "user_active_period"] },
+    codePaths: ["apps/backend/src/modules/35-subscription"], dependsOn: [], /* ADR-0025: M34<->M35 seam-based both ways (no edge); minimal edge set finalized in M35's ADR-0005 D5 pass */ ownedTables: ["dunning_state", "invoice", "invoice_line", "patient_active_period", "patient_pseudonym_key", "payment_method", "plan", "plan_meter", "promo_code", "promo_code_application", "refund", "revenue_recognition_snapshot", "stripe_api_call_audit", "stripe_webhook_event", "subscription", "subscription_state_history", "usage_event", "usage_period_aggregate", "user_active_period"] },
   { id: 37, name: "Inpatient Unit (IPU) Management",
     codePaths: ["apps/backend/src/modules/37-ipu"], dependsOn: [6, 8, 11, 13, 17, 23], ownedTables: ["gip_admission_criteria", "gip_criteria_reassessment", "inpatient_unit", "ipu_admission", "ipu_admission_state_history", "ipu_admission_transition", "ipu_bed", "ipu_bed_assignment", "ipu_bed_cleaning_event", "ipu_body_release", "ipu_census_snapshot", "ipu_equipment", "ipu_equipment_inspection", "ipu_equipment_maintenance", "ipu_iv_safety_overlay", "ipu_meal_service", "ipu_remote_inpatient_episode", "ipu_restraint_event", "ipu_restraint_reassessment", "ipu_rn_coverage_window", "ipu_room", "ipu_shift", "ipu_staff_assignment", "ipu_visitor", "ipu_visitor_restriction", "irc_episode"] },
 ];

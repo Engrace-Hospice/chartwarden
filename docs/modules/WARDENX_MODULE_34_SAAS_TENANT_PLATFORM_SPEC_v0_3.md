@@ -2240,7 +2240,7 @@ The DEK ciphertext is part of the tier-1 backup. A backup restore restores the c
 
 **D22 — `tenant_platform_writer` SECURITY DEFINER role matching M4's `wardenx_audit_writer` and M40's `mdm_canonical_writer` pattern.** One new role; not many. Owns the SECURITY DEFINER functions for DEK lifecycle.
 
-**D23 — Manifest patch.** `M34.dependsOn` expanded from `[2, 3, 4, 36]` to `[1, 2, 3, 4, 22, 36]` *(relationship inventory - not the `dependsOn` edge set; per ADR-0005 D1/D4 seam/outbox/foundation consumers are no-edge - see audit/MANIFEST_DEPENDSON_REVIEW.md; do not bulk-apply)* — M1 added because the envelope helper + MinIO helper + idempotency middleware are direct consumptions; M22 added because DSAR + tenant-export PDFs go through M22. `M34.ownedTables` populated with the seventeen tables (counting partitioned event tables as parents). `M34.codePaths` adds `packages/saas-tenant-platform` and `packages/admin-ui-shell`.
+**D23 — Manifest patch.** `M34.dependsOn` expanded from `[2, 3, 4, 36]` to `[1, 2, 3, 4, 22, 36]` *(relationship inventory - not the `dependsOn` edge set; per ADR-0005 D1/D4 seam/outbox/foundation consumers are no-edge - see audit/MANIFEST_DEPENDSON_REVIEW.md; do not bulk-apply)* — M1 added because the envelope helper + MinIO helper + idempotency middleware are direct consumptions; M22 added because DSAR + tenant-export PDFs go through M22. `M34.ownedTables` populated with the seventeen tables (counting partitioned event tables as parents). `M34.codePaths` adds `packages/saas-tenant-platform` and `packages/admin-ui-shell`. (ratified by ADR-0025 — bidirectional seam; no dependsOn edge either way.)
 
 -----
 

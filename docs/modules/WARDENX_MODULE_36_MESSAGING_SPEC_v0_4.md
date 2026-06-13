@@ -4,7 +4,7 @@
 **Phase:** 1 (foundation tier — lands immediately after Module 4, alongside Modules 38 and 40, before Module 5 and every clinical/operational consumer)
 **Depends on:** 1 (Foundation — Socket.IO+Valkey adapter wired in `apps/backend/src/bootstrap`, `withOrgContext`/`withPlatformContext`, outbox dispatcher, idempotency middleware, RLS generator, `audit()` helper, per-tenant DEK envelope-encryption helper, BullMQ on Valkey, system status event; outbox events newly consumed), 2 (Identity — user/membership/session for actor + recipient resolution; per-user notification preferences attach to the M2 user; `m2.session.step_up_lockout` alert payload), 3 (Authorization — `messaging.*` and `alert.*` permission keys; channel visibility joins ABAC predicates like `caseload_membership` for per-patient care-team channels), 4 (Audit — every message-read, every alert-delivered, every channel-membership change is audited via M4 triggers; cross-tenant operational support requires break-glass). **M36-F01 (BLOCKER) — `dependsOn` stays `[1,2,3,4]`.** M36 is a foundation-tier module that lands **before** every clinical module (ARCH-230); adding 5/6/11/22/40 would create cycles (M5/M11 each depend on 36 → `36→5→36`, `36→11→36`) and invert the build order. The typed alert payloads from those modules are **contributed**, not consumed via an import edge: each source module (which already depends on 36) registers its `alerts-by-mN.ts` entries at its own boot, with payload **types in the leaf `packages/types`** — M36 validates the catalog at boot without importing any later module (ADR-0005 D1; `packages/foundation` is banned, ADR-0005 D3). Outbox-event consumption likewise needs no edge.
 **Consumed by:** every clinical and operational module that needs realtime delivery or alerting. Direct Phase-1+2 consumers: 5 (patient creation auto-creates the per-patient care-team channel; demographics changes broadcast), 6 (admission/election alerts, F2F-due alerts), 7 (care plan updates broadcast to care team), 8 (encounter signed event; HearthNote thread notes), 9 (assessment significant-change alerts), 10 (HOPE SFV trigger — the canonical `clinical_urgent` example), 11 (order placed/signed events), 12 (DoseSpot refill-request inbox), 13 (eMAR — missed-dose escalation), 14 (IDG packet-ready notifications), 16 (bereavement counselor↔family channel — 13-month TTL), 17 (schedule-conflict, late-visit alerts), 18 (EVV geofence violation), 19 (on-call active channel — membership rotates with shift; triage call broadcast), 20 (field-safety SOS — voice escalation), 22 (document share notifications), 23 (claim ack/denial alerts), 25 (denial worklist), 26 (cap projection alerts), 30 (incident-report routing), 31 (caregiver↔clinical-team messaging via portal; consent gating), 34 (tenant admin announcements; SaaS notifications), 37 (IPU census/transition alerts), and any module needing the typed alert surface in future
-**Owns:** `apps/backend/src/modules/36-messaging`, the realtime + notification backbone, the in-app inbox + push/SMS/email fan-out, the typed-alert-rule registry, the typed alert payload catalog, the 13-month bereavement channel.
+**Owns:** `apps/backend/src/modules/36-messaging`, the realtime + notification backbone, the in-app inbox + push/SMS/email fan-out, the typed-alert-rule registry, the typed alert payload catalog, the **notification-template catalog + per-tenant overlay** (`notification_template`, `tenant_notification_template_overlay` — moved here from M14 per **ADR-0024**: notification composition + recipient resolution for cross-module events is M36's per SD-017), and the cross-module **notification-composition + recipient-resolution** role for the referral / critical-results / transmission-failure events, the 13-month bereavement channel. **Owned tables: 15** (13 messaging/alert tables + the 2 ADR-0024 notification-template tables).
 **Spec status:** Re-locked v0.5 (Phase-6 per-spec reconciliation — the cross-cutting alert bus; supersedes Locked v0.4)
 
 ## Remediation Changelog — Phase 6 reconciliation (v0.5, 2026-06-11)
@@ -21,7 +21,7 @@ the illegal DDL is removed. The spec now passes `arch:fitness` (checks 10/12).
 | **M36-F06a** | MAJOR (X9) | **The two alert subsystems are unified:** `alerts.dispatch(payloadType)` is the **single catalog-validated entry point**; `alert_rule` is the per-tenant **routing layer** beneath it (it does not define a parallel dispatch path). One path, one severity ladder per layer. |
 | **M36-F06c** | MAJOR | The tighten-only trigger compares the **enums directly** (Postgres orders by definition order INFO<…<CRITICAL) — the `::text` casts that forced lexicographic collation (wrongly rejecting WARN→CRITICAL) are removed. |
 | **M36-F06d** | MAJOR | The `notification_delivery` voice-SOS CHECK no longer uses an `EXISTS (SELECT … FROM alert)` **subquery** (illegal in PostgreSQL): `alert_category`/`alert_severity` are denormalized onto the row and the CHECK is a local-column comparison — **caught by `check-ddl-legality`**. |
-| M36-F06e/f/g | MINOR | Table count reconciled to 13 (11 core + 2 catalog); the promised `Conversation` entity is dropped (Channel/Message is the model); `m36.notification.delivery_failed` payload field corrected to `recipientUserId` (matches the table). |
+| M36-F06e/f/g | MINOR | Table count reconciled to 13 (11 core + 2 catalog); the promised `Conversation` entity is dropped (Channel/Message is the model); `m36.notification.delivery_failed` payload field corrected to `recipientUserId` (matches the table). *(ADR-0024 (2026-06-13) subsequently moved `notification_template` + `tenant_notification_template_overlay` from M14 to M36 — owned-table count is now **15** = 13 + 2; see §3.13 / §4.11.)* |
 | **M36-F02** | MAJOR | Retention corrected to the §24.1 matrix: clinical-coordination channels (`care_team`/`discipline`/`location`/`on_call`/`dm`/`bereavement`) are **`care_related` (6+ yr)**; only the non-clinical `announcement` channel stays `operational`. Author "delete" is a **visibility tombstone** — `body_cipher` is retained until retention expiry, not zeroed (record integrity, §164.530(j)). Bereavement's 13-month window is the channel display/program window (M16-F01), not a destruction clock. |
 | **M36-F03** | MAJOR | **Message-body integrity** added (HIPAA §164.312(c)/ARCH-206): a `body_sha256` over plaintext (pre-encryption) on `message` + a scheduled **hash-verification job** with audit output. |
 | **M36-F04** | MAJOR | `message` partitioned **LIST `organization_id` → RANGE `created_at`** (SD-027) and registered in `partition.rotate`; **`organization_id` added to `channel_member` and `message_receipt`** with the canonical RLS template + SD-028 composite index; PE/location columns added/deviation documented (ARCH-011). |
@@ -37,6 +37,7 @@ corrected — M36 is re-lockable.
 
 ## Changelog
 
+- **ADR-0024 applied (2026-06-13)** — Notification **composition + recipient resolution** for cross-module events moved from M14 to M36 (SD-017). Added the two notification-template tables `notification_template` + `tenant_notification_template_overlay` (§3.13 — versioned `(organization_id, template_key, version)`, per-tenant tighten-only overlay, mirroring M22's `form_template` pattern), bringing M36's owned-table count to **15** (manifest already reflects this). Added the cross-module composition + recipient-resolution role (§4.11) for `m6.referral.{received,accepted,declined,withdrawn}`, `m22.document.rendered_critical_results`, and `m11.order.transmission_terminal_failed`; registered the corresponding payload types in `alert_payload_catalog` (§3.12.5) and the `ordering_provider` / `intake_supervisor` / `admissions_team` `RecipientResolver` entries (§4.6). New task T-M36-13.
 - **v0.4 (Consolidated)** — Rolls the v0.2 base and v0.3 delta into a single self-contained specification. No scope change; no decision reversals.
 - **v0.3 (Locked)** — Consolidated the typed alert payloads contributed across the v0.3 spec track:
   - **Typed alert payload catalog** mirroring M4 v0.3's `audit_action_catalog` and M1 v0.3's `outbox_event_catalog` patterns. New platform-shared table `alert_payload_catalog` plus per-module contribution files in `packages/foundation/src/alert-payloads/`. Module owners contribute their typed payloads via `alerts-by-mN.ts` files; M36 boot UPSERTs into the catalog and refuses startup on namespace violations or unregistered payload usage at runtime.
@@ -48,7 +49,7 @@ corrected — M36 is re-lockable.
 - **v0.2 (Locked)** — Resolved all nine open questions into binding decisions (§11). Wrote full Drizzle for the 12 owned tables. Expanded §3 to complete migration DDL (`0036_messaging`: role split, per-tenant DEK envelope-encryption for `message.body_cipher`, all tables, RLS for per-channel ABAC plus tenant-scoping, audit triggers via M4 generator, alert-rule catalog seed, notification-preference defaults). Added complete per-route TypeBox schemas (§4.2), the full Socket.IO event + room contract (§4.3), the exact permission-key set this module registers into Module 3 (§4.5), the `MessagingProvider` + `AlertEmitter` + `RecipientResolver` seam contracts (§4.6), and the PHI-sanitization wrapper that is the only path to out-of-band notification payloads (§4.7). Destruction `eraseFn` (D9) defined — message bodies cryptographically erased via DEK destruction; structural rows redacted-then-deleted per retention class. Phase boundary fixed: AI features (D8) ship behind flags default-off; voice escalation (Tier-1 SOS) ships Phase 1 and is the single Tier-1 dependency in the platform.
 - **v0.1** — Initial draft. Defines the realtime backbone (Socket.IO 4.x + Valkey adapter for multi-instance pub/sub), the unified Channel/Conversation/Message model (single discriminated `channel_kind` rather than a table per kind), the typed AlertEngine with data-driven rules per tenant, the per-user notification preferences (routing map × category × severity, quiet hours, vacation forwarding), and the no-PHI-in-out-of-band-payloads HIPAA constraint enforced as code via the sanitization wrapper (D9). Channel membership for per-patient care-team is auto-managed against M5/M17 caseload (D5). Encryption-at-rest for message bodies via per-tenant DEK envelope (D2).
 
-> **Phase boundary (binding):** Phase 1 delivers everything in this spec **including** Tier-1 Voice escalation for SOS field-safety (architecture/integrations §6.13), because Module 20 ships Phase 1 and depends on it. AI features (response drafts, urgency triage, thread summarization, auto-categorization — D8) ship Phase 1 with `messaging_ai_*` feature flags default-off; per-tenant opt-in unlocks each independently. The `MessagingProvider` + `AlertEmitter` seams, channel kinds (care-team / discipline / location / on-call / dm / announcement / bereavement), all 12 tables, fan-out across in-app/push/SMS/email/voice, alert-rule catalog with `system_locked` safety set, and per-user preferences all ship Phase 1.
+> **Phase boundary (binding):** Phase 1 delivers everything in this spec **including** Tier-1 Voice escalation for SOS field-safety (architecture/integrations §6.13), because Module 20 ships Phase 1 and depends on it. AI features (response drafts, urgency triage, thread summarization, auto-categorization — D8) ship Phase 1 with `messaging_ai_*` feature flags default-off; per-tenant opt-in unlocks each independently. The `MessagingProvider` + `AlertEmitter` seams, channel kinds (care-team / discipline / location / on-call / dm / announcement / bereavement), all 12 tables (now **15** with the alert-payload catalog + tenant routing override + the two ADR-0024 notification-template tables), fan-out across in-app/push/SMS/email/voice, alert-rule catalog with `system_locked` safety set, and per-user preferences all ship Phase 1.
 
 -----
 
@@ -419,6 +420,7 @@ stateDiagram-v2
 | Voice dispatcher fails on SOS | `alert.outcome = 'partial'` (other channels may have succeeded); WardenX ops paged via system status event; supervisor SMS+push escalated explicitly (Tier-1 redundancy) |
 | `alerts.dispatch()` called with a CRITICAL payload | Socket.IO push + in-app inbox + SMS to primary mobile + email to primary email fan out in parallel via `Promise.allSettled`; per-channel failures recorded but the call succeeds if at least one channel acknowledged (D12) |
 | Tenant routing override present for the dispatched payload | effective channels = default ∪ added; effective recipients = default ∪ added; severity = escalated (if set, ≥ default); audit row records the override applied |
+| Cross-module event consumed for composition (ADR-0024): `m6.referral.{received,accepted,declined,withdrawn}`, `m22.document.rendered_critical_results`, `m11.order.transmission_terminal_failed` | matching `notification_template` loaded (tenant overlay applied if present); title/body placeholders rendered from the source event payload; recipients resolved via the `RecipientResolver` registry (ordering-provider / intake-supervisor / admissions-team); `alerts.dispatch()` validates against `alert_payload_catalog` and fans out (§3.13/§4.11) |
 | Tenant offboarding (D9) | M36 `eraseFn` triggers tenant DEK destruction (cryptographic erasure of all message bodies); structural rows redacted then deleted; destruction certificate filed by M4 |
 
 -----
@@ -483,7 +485,9 @@ packages/db/src/schema/messaging/
 ├── user-notification-preferences.ts
 ├── delivery-endpoints.ts
 ├── alert-payload-catalog.ts
-└── tenant-alert-routing-override.ts
+├── tenant-alert-routing-override.ts
+├── notification-template.ts                 # ADR-0024: moved from M14 — versioned notification-copy catalog
+└── tenant-notification-template-overlay.ts  # ADR-0024: per-tenant tighten-only overlay
 packages/foundation/src/alert-payloads/  # per-module alert-payload contribution registry (D10)
 packages/twilio-client/                  # adapter packages (M1 §6.12/§6.13)
 packages/postmark-client/                # M1 §6.14
@@ -1205,6 +1209,277 @@ export const M40_ALERT_PAYLOADS: ModuleAlertContribution = [
 
 > Beyond M11/M22/M40, the v0.4 catalog also carries M6's `m6.referral.withdrawn` INFO (distinct template from `referral.declined`) and `m6.compliance.window.opened` INFO (variant for the 3 new external-signal window types), M2's `m2.session.step_up_lockout` HIGH (security-significant session termination), and M5's `m5.patient.mutator_applied` INFO (emitted only when material fields changed; suppressed for routine address-version inserts). Each lands in its own `alerts-by-mN.ts` contribution file under the same shape.
 
+#### 3.12.5 Cross-module composition payloads moved from M14 (ADR-0024)
+
+> **ADR-0024 (Accepted 2026-06-13)** moves notification **composition + recipient resolution** for
+> cross-module events from M14 to M36 (SD-017: recipient resolution + preference-aware routing is the
+> M36 Alert Engine's job; M14 keeps only its own IDG-meeting notifications). The three affected event
+> families — referral, critical-results, transmission-failure — therefore register their payload types
+> here in M36's `alert_payload_catalog`, and M36 composes them from `notification_template` (§3.13) and
+> resolves recipients via its own `RecipientResolver` registry (§4.6 / §4.11). M22's
+> `m22.document.rendered_critical_results` is already in the catalog (§3.12.3); the referral and the
+> order-transmission-failure payloads are added below. (The transmission-failure payload is the
+> order-event spelling `m11.order.transmission_terminal_failed` used by M11's outbox and by ADR-0024;
+> it is the alert-side companion of the lab-side `m11.lab_transmission.terminal_failed` already
+> registered in §3.12.2.)
+
+```ts
+// packages/foundation/src/alert-payloads/alerts-by-m6.ts (referral family — composed + resolved by M36 per ADR-0024)
+
+export const M6_REFERRAL_ALERT_PAYLOADS: ModuleAlertContribution = [
+  {
+    payloadType: 'm6.referral.received',
+    moduleOwner: 'm6',
+    severity: 'INFO',
+    defaultChannels: ['socket_push', 'inbox'],
+    defaultRecipientResolver: 'intake_supervisor',         // §4.6 role-set resolver (ADR-0024)
+    payloadSchema: Type.Object({
+      referralId: Type.String(),
+      organizationId: Type.String(),
+      sendingFacility: Type.String(),
+      receivedAt: Type.String(),
+    }),
+    requiresResponseTracking: false,
+    description: 'New patient referral received; admissions/intake supervisor should triage (ADR-0024: M36 composes + resolves)',
+  },
+  {
+    payloadType: 'm6.referral.accepted',
+    moduleOwner: 'm6',
+    severity: 'INFO',
+    defaultChannels: ['inbox'],
+    defaultRecipientResolver: 'admissions_team',            // §4.6 role-set resolver (ADR-0024)
+    payloadSchema: Type.Object({
+      referralId: Type.String(),
+      organizationId: Type.String(),
+      patientId: Type.String(),
+      acceptedAt: Type.String(),
+      actorUserId: Type.String(),
+    }),
+    requiresResponseTracking: false,
+    description: 'Referral accepted; admissions team notified (ADR-0024: M36 composes + resolves)',
+  },
+  {
+    payloadType: 'm6.referral.declined',
+    moduleOwner: 'm6',
+    severity: 'INFO',
+    defaultChannels: ['inbox'],
+    defaultRecipientResolver: 'intake_supervisor',          // §4.6 role-set resolver (ADR-0024)
+    payloadSchema: Type.Object({
+      referralId: Type.String(),
+      organizationId: Type.String(),
+      declinedAt: Type.String(),
+      declineReason: Type.String(),
+      actorUserId: Type.String(),
+    }),
+    requiresResponseTracking: false,
+    description: 'Referral declined; intake supervisor reviews follow-up (ADR-0024: M36 composes + resolves)',
+  },
+  {
+    payloadType: 'm6.referral.withdrawn',
+    moduleOwner: 'm6',
+    severity: 'INFO',
+    defaultChannels: ['inbox'],
+    defaultRecipientResolver: 'admissions_team',            // §4.6 role-set resolver (ADR-0024)
+    payloadSchema: Type.Object({
+      referralId: Type.String(),
+      organizationId: Type.String(),
+      sendingFacility: Type.String(),
+      originalReceivedAt: Type.String(),
+      withdrawnAt: Type.String(),
+    }),
+    requiresResponseTracking: false,
+    description: 'Referral canceled by referring party; distinct template from declined (ADR-0024: M36 composes + resolves)',
+  },
+]
+
+// packages/foundation/src/alert-payloads/alerts-by-m11.ts (order-transmission-failure — alert-side companion, ADR-0024)
+
+export const M11_ORDER_TRANSMISSION_ALERT_PAYLOADS: ModuleAlertContribution = [
+  {
+    payloadType: 'm11.order.transmission_terminal_failed',
+    moduleOwner: 'm11',
+    severity: 'HIGH',
+    defaultChannels: ['socket_push', 'inbox'],
+    defaultRecipientResolver: 'ordering_provider',          // §4.6 / §4.11 ordering-provider resolver (ADR-0024)
+    payloadSchema: Type.Object({
+      orderId: Type.String(),
+      organizationId: Type.String(),
+      partnerLabName: Type.String(),
+      failureReason: Type.String(),
+      transmittedAttempts: Type.Integer(),
+    }),
+    requiresResponseTracking: true,                          // M30 tracks how fast the ordering provider re-orders
+    description: 'Lab order transmission failed permanently; ordering provider must manually reorder (ADR-0024: M36 composes + resolves)',
+  },
+]
+```
+
+> Recipient-resolution coupling note (ADR-0024): two of these paths — `m22.document.rendered_critical_results`
+> (CRITICAL) and `m11.order.transmission_terminal_failed` (HIGH) — are clinical-urgent alerts. Routing
+> their recipient resolution/composition through M36 (rather than the IDG module) removes the prior
+> Tier-2-alert-on-IDG-availability coupling that ADR-0024 identifies as the concrete harm.
+
+### 3.13 Notification Templates (per ADR-0024, moved from M14)
+
+> **ADR-0024 (Accepted 2026-06-13).** The two notification-template tables — `notification_template`
+> and `tenant_notification_template_overlay` — move from M14 to **M36**, because notification
+> **composition** (loading a template, rendering placeholders) and **recipient resolution** for
+> cross-module events is M36's per **SD-017**. The authoritative manifest already reflects this
+> (`module-manifest.ts` M36 `ownedTables` now lists both tables; M36 owned-table count **15**, up from
+> 13). M14 retains only its own IDG-meeting notifications and no longer owns these tables. This brings
+> M36's notification-copy catalog inline with M22's `form_template` pattern: a **versioned**,
+> **per-tenant-overlay-tightenable** template with a **per-template-key payload schema**, keyed by
+> `(organization_id, template_key, version)`.
+
+M36 is the notification-composition layer for cross-module events whose declared consumer is the
+alert engine (the referral / critical-results / transmission-failure families of §3.12.5). Each
+composer loads the matching `notification_template` (resolving the tenant overlay if present),
+renders the title/body placeholders from the **source event payload**, resolves recipients via the
+§4.6 `RecipientResolver` registry, and dispatches via `alerts.dispatch(payloadType, …)` — so every
+composed notification still validates against the `alert_payload_catalog` (§3.11) it carries a
+`default_payload_type` for.
+
+#### 3.13.1 Migration `0036_m36_notification_templates.sql`
+
+```sql
+-- Migration 0036_m36_notification_templates.sql
+-- ADR-0024: notification-template catalog + per-tenant overlay, moved from M14 to M36.
+-- Mirrors M22's form_template pattern: versioned, per-tenant-overlay-tightenable, per-key payload schema.
+
+-- Phase A: versioned notification_template (platform-published copy + per-key payload schema)
+CREATE TABLE notification_template (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID REFERENCES organization(id) ON DELETE CASCADE,   -- NULL = platform-published floor row
+  template_key TEXT NOT NULL,                                           -- 'm6.referral.received', etc.
+  version INTEGER NOT NULL DEFAULT 1,                                   -- immutable history; published rows are never edited in place
+  title_template TEXT NOT NULL,
+  body_template TEXT NOT NULL,
+  payload_schema JSONB NOT NULL,                                        -- TypeBox: the placeholder variables this template renders from the source event payload
+  default_payload_type TEXT NOT NULL REFERENCES alert_payload_catalog(payload_type),
+  default_recipient_resolver TEXT NOT NULL,                            -- name of a resolver registered with M36 (§4.6)
+  supported_locales TEXT[] NOT NULL DEFAULT ARRAY['en-US'],
+  status TEXT NOT NULL DEFAULT 'published',                            -- 'draft' | 'published' | 'deprecated'
+  owned_by_module TEXT NOT NULL,                                       -- originating module ('m6','m11','m22') — provenance, not ownership
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- ADR-0024: keyed by (organization_id, template_key, version); NULL org_id = the platform floor row.
+  UNIQUE (organization_id, template_key, version)
+);
+
+CREATE INDEX idx_notification_template_key ON notification_template (template_key, version);
+
+-- Platform-floor rows (organization_id IS NULL) are readable by all tenants; tenant-scoped rows are org-isolated.
+ALTER TABLE notification_template ENABLE ROW LEVEL SECURITY;
+CREATE POLICY notification_template_read ON notification_template
+  FOR SELECT TO wardenx_app
+  USING (organization_id IS NULL OR organization_id = current_setting('app.org_id', true)::uuid);  -- ADR-0010 D2: canonical app.org_id
+CREATE POLICY notification_template_write ON notification_template
+  FOR INSERT TO wardenx_app
+  WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);
+
+-- Phase B: per-tenant overlay (tighten-only; title/body wording override, never schema/resolver change)
+CREATE TABLE tenant_notification_template_overlay (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
+  template_key TEXT NOT NULL,
+  title_template TEXT,                                                  -- nullable; null means use platform default
+  body_template TEXT,
+  configured_by_membership_id UUID NOT NULL REFERENCES membership(id),
+  configured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (organization_id, template_key)
+);
+
+ALTER TABLE tenant_notification_template_overlay ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_notification_template_overlay_org_isolated ON tenant_notification_template_overlay
+  FOR ALL TO wardenx_app
+  USING      (organization_id = current_setting('app.org_id', true)::uuid)   -- ADR-0010 D2: canonical app.org_id (app.organization_id never set → fail-closed)
+  WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON notification_template TO wardenx_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON tenant_notification_template_overlay TO wardenx_app;
+
+-- Phase C: seed the platform-floor templates (organization_id NULL, version 1) for the moved cross-module events.
+INSERT INTO notification_template
+  (organization_id, template_key, version, title_template, body_template, payload_schema, default_payload_type, default_recipient_resolver, owned_by_module) VALUES
+  (NULL, 'm6.referral.received', 1,
+    'New referral from {{sendingFacility}}',
+    'A new patient referral was received from {{sendingFacility}} on {{receivedAt}}. Please review and triage.',
+    '{"type":"object","required":["sendingFacility","receivedAt"]}'::jsonb,
+    'm6.referral.received', 'intake_supervisor', 'm6'),
+  (NULL, 'm6.referral.accepted', 1,
+    'Referral accepted',
+    'Referral for {{patientName}} was accepted by {{actorName}} on {{acceptedAt}}.',
+    '{"type":"object","required":["patientName","actorName","acceptedAt"]}'::jsonb,
+    'm6.referral.accepted', 'admissions_team', 'm6'),
+  (NULL, 'm6.referral.declined', 1,
+    'Referral was not accepted',
+    'Referral for {{patientName}} was declined by {{actorName}} on {{declinedAt}}. Reason: {{declineReason}}. Review and document if follow-up is needed.',
+    '{"type":"object","required":["patientName","actorName","declinedAt","declineReason"]}'::jsonb,
+    'm6.referral.declined', 'intake_supervisor', 'm6'),
+  (NULL, 'm6.referral.withdrawn', 1,
+    'Referral canceled by referring party',
+    'The referral from {{sendingFacility}} (received {{originalReceivedAt}}) was canceled by the referring party on {{withdrawnAt}}. No further action required; archived for record.',
+    '{"type":"object","required":["sendingFacility","originalReceivedAt","withdrawnAt"]}'::jsonb,
+    'm6.referral.withdrawn', 'admissions_team', 'm6'),
+  (NULL, 'm11.order.transmission_terminal_failed', 1,
+    'Lab order transmission failed',
+    'Lab order {{orderShortId}} for {{patientName}} could not be transmitted to {{partnerLabName}} after {{transmittedAttempts}} attempts. Reason: {{failureReason}}. Click here to manually reorder or contact the partner.',
+    '{"type":"object","required":["orderShortId","patientName","partnerLabName","transmittedAttempts","failureReason"]}'::jsonb,
+    'm11.order.transmission_terminal_failed', 'ordering_provider', 'm11'),
+  (NULL, 'm22.document.rendered_critical_results', 1,
+    'CRITICAL lab results ready',
+    'Critical lab results for {{patientName}} have been rendered and require immediate review. Order: {{orderShortId}}. Open the patient chart to view.',
+    '{"type":"object","required":["patientName","orderShortId"]}'::jsonb,
+    'm22.document.rendered_critical_results', 'ordering_provider', 'm22');
+```
+
+#### 3.13.2 Drizzle definitions
+
+```ts
+// packages/db/src/schema/messaging/notification-template.ts (new — ADR-0024, moved from M14)
+export const notificationTemplate = pgTable('notification_template', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').references(() => organization.id, { onDelete: 'cascade' }),  // null = platform floor
+  templateKey: text('template_key').notNull(),
+  version: integer('version').notNull().default(1),
+  titleTemplate: text('title_template').notNull(),
+  bodyTemplate: text('body_template').notNull(),
+  payloadSchema: jsonb('payload_schema').notNull(),
+  defaultPayloadType: text('default_payload_type').notNull().references(() => alertPayloadCatalog.payloadType),
+  defaultRecipientResolver: text('default_recipient_resolver').notNull(),
+  supportedLocales: text('supported_locales').array().notNull().default(['en-US']),
+  status: text('status').notNull().default('published'),
+  ownedByModule: text('owned_by_module').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => ({
+  // ADR-0024: keyed by (organization_id, template_key, version)
+  uniqueKeyVersion: uniqueIndex('notification_template_org_key_version_uk')
+    .on(t.organizationId, t.templateKey, t.version),
+  byKey: index('notification_template_key_idx').on(t.templateKey, t.version),
+}))
+
+// packages/db/src/schema/messaging/tenant-notification-template-overlay.ts (new — ADR-0024, moved from M14)
+export const tenantNotificationTemplateOverlay = pgTable('tenant_notification_template_overlay', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull().references(() => organization.id, { onDelete: 'cascade' }),
+  templateKey: text('template_key').notNull(),
+  titleTemplate: text('title_template'),                 // null = use platform default
+  bodyTemplate: text('body_template'),
+  configuredByMembershipId: uuid('configured_by_membership_id').notNull().references(() => membership.id),
+  configuredAt: timestamp('configured_at').notNull().defaultNow(),
+}, (t) => ({
+  uniquePerOrgKey: uniqueIndex('tenant_notification_template_overlay_uk')
+    .on(t.organizationId, t.templateKey),
+}))
+```
+
+> Audit triggers: both tables install the M4 `generateAuditTrigger` (§3.9) as `operational` (the
+> overlay carries tenant-authored copy; the platform-floor catalog is provenance). The overlay is
+> **tighten-only** in the M22 sense — a tenant may reword title/body for brand voice but the overlay
+> cannot remove mandatory wording, change `default_payload_type`, or change
+> `default_recipient_resolver` (those are platform-floor; enforced at the overlay apply-and-render step).
+
 -----
 
 ## 4. API Routes, Realtime Events & Seam
@@ -1447,7 +1722,12 @@ export interface AlertEmitter {
 // packages/messaging/src/interfaces/recipient-resolver.ts
 
 export interface RecipientResolver {
-  name: 'care_team' | 'on_call' | 'discipline' | 'role_set' | 'tenant_admins' | 'user_list' | 'broadcast'
+  name:
+    | 'care_team' | 'on_call' | 'discipline' | 'role_set' | 'tenant_admins' | 'user_list' | 'broadcast'
+    // ADR-0024 cross-module composition resolvers (the recipient-resolution role moved from M14):
+    | 'ordering_provider'                                   // keyed off the order in the source payload
+    | 'ordering_provider_with_active_orders_for_physician' // §3.12.4 (mdm.physician_deactivated)
+    | 'intake_supervisor' | 'admissions_team'              // referral-family role-sets
   resolve(orgId: string, args: Record<string, unknown>, payload: Record<string, unknown>): Promise<string[]>
   // returns user_ids
 }
@@ -1612,6 +1892,73 @@ The lint rule (added to architecture §25.15 manifest):
 - **Room membership** per user cached in Valkey on Socket.IO connect (`rooms:user:<id>` set; TTL = session length). Invalidated on `permissions.changed`, channel member add/remove, on-call rotation.
 - **Recipient resolver results** cached briefly (60 s) keyed by `(resolverName, orgId, hash(args))` — covers bursts of similar alerts (e.g. multiple `visit.late` for the same scheduler). Quiet-hours and vacation evaluation NOT cached (must always be fresh).
 - **Channel unread counts** in Valkey hash `unread:user:<id>` per channelId; incremented on `message.new` for non-author recipients; decremented on `message.read`. PG fallback via `message_receipt` count when missing.
+
+### 4.11 Cross-Module Notification Composition + Recipient Resolution (ADR-0024)
+
+> **ADR-0024 (Accepted 2026-06-13).** Notification **composition** and **recipient resolution** for
+> cross-module events move from M14's secondary "notification-composition layer" to M36, because
+> SD-017 assigns rule lookup, recipient resolution, and preference-aware routing to the M36 Alert
+> Engine. M14 keeps composing only its own IDG-meeting notifications. The producing modules (M6, M11,
+> M22) emit their typed outbox events; **M36** loads the matching `notification_template` (§3.13),
+> renders placeholders from the source event payload, resolves recipients via the §4.6
+> `RecipientResolver` registry, and dispatches via `alerts.dispatch()` (§4.6.1) — every dispatch
+> validating against the `alert_payload_catalog` (§3.11 / §3.12.5). This removes the prior
+> Tier-2-alert-on-IDG-availability coupling for the two clinical-urgent paths.
+
+**Events M36 composes + resolves (moved from M14):**
+
+| Event type | Source | Severity | Default resolver | Template key | Notes |
+|---|---|---|---|---|---|
+| `m6.referral.received` | M6 | INFO | `intake_supervisor` | `m6.referral.received` | admissions/intake triage |
+| `m6.referral.accepted` | M6 | INFO | `admissions_team` | `m6.referral.accepted` | |
+| `m6.referral.declined` | M6 | INFO | `intake_supervisor` | `m6.referral.declined` | follow-up review |
+| `m6.referral.withdrawn` | M6 | INFO | `admissions_team` | `m6.referral.withdrawn` | distinct template from declined |
+| `m22.document.rendered_critical_results` | M22 | CRITICAL | `ordering_provider` | `m22.document.rendered_critical_results` | clinical-urgent; resolver keyed off the order |
+| `m11.order.transmission_terminal_failed` | M11 | HIGH | `ordering_provider` | `m11.order.transmission_terminal_failed` | manual-reorder; resolver keyed off the order |
+
+**Composer flow (one path for all six):**
+
+```ts
+// packages/messaging/src/alerts/compose-cross-module.ts (ADR-0024)
+// Consumes the producing module's typed outbox event; composes via notification_template; dispatches.
+
+async function composeAndDispatch(input: {
+  eventType: string                 // 'm6.referral.received' | 'm22.document.rendered_critical_results' | ...
+  sourcePayload: Record<string, unknown>
+  organizationId: string
+}) {
+  // 1. Load the template (tenant overlay tightens title/body; floor row otherwise) at the active version.
+  const tpl = await loadNotificationTemplate(input.organizationId, input.eventType)   // §3.13
+  // 2. Render title/body placeholders from the SOURCE event payload (validated against tpl.payloadSchema).
+  const { title, body } = renderTemplate(tpl, input.sourcePayload)
+  // 3. Resolve recipients via the registered resolver (ordering_provider / intake_supervisor / admissions_team).
+  //    M36 owns recipient resolution per SD-017; the resolver consults the source-of-truth seam at emit time.
+  // 4. Dispatch via the catalog-validated entry point (§4.6.1) — validates against alert_payload_catalog.
+  return dispatch({
+    payloadType: tpl.defaultPayloadType,                  // == eventType for these rows
+    payload: { ...input.sourcePayload, composedTitle: title, composedBody: body },
+    organizationId: input.organizationId,
+    callerModule: 'm36',
+  })
+}
+```
+
+**RecipientResolver entries added for ADR-0024.** The §4.6 registry gains (registered at M36 boot via
+`registerRecipientResolver`):
+
+- **`ordering_provider`** — resolves the ordering provider from the order referenced in the source
+  payload (`orderId`), via the order/MDM source-of-truth seam. Used by the critical-results and
+  transmission-failure paths (and already named as `defaultRecipientResolver` in §3.12.2/§3.12.3).
+- **`ordering_provider_with_active_orders_for_physician`** — the §3.12.4 variant (fans out to ordering
+  providers with active orders for a deactivated physician).
+- **`intake_supervisor`** — role-set resolver returning the admissions/intake-supervisor role members
+  for the org. Used by `m6.referral.received` / `m6.referral.declined`.
+- **`admissions_team`** — role-set resolver returning the admissions-team role members. Used by
+  `m6.referral.accepted` / `m6.referral.withdrawn`.
+
+> The referral audiences (admissions / intake-supervisor) are IDG-adjacent, but the *mechanism*
+> (recipient resolution + template render) is generic alert-engine work M36 already owns — so the
+> resolvers live in M36's registry, not M14 (ADR-0024 Decision).
 
 -----
 
@@ -1932,6 +2279,7 @@ m36_alert_dispatch_latency_seconds                 histogram, labels: severity
 | T-M36-10 | Migration `0036_m36_alert_catalog` — `alert_payload_severity` enum (distinct from the legacy `alert_severity`, M36-F06b), `alert_payload_catalog` table, `tenant_alert_routing_override` table + RLS + enum-ordinal tighten-only trigger; drizzle additions | M | 1 |
 | T-M36-11 | Alert payload catalog foundation — per-module contribution files (alerts-by-m11, m22, m40, m6, m2, m5) + aggregator + boot UPSERT; runtime `alerts.dispatch` validation extension | M | T-M36-10 |
 | T-M36-12 | Tests at lock-grade per §7/§9 — unit (~95% on dispatch validation + override resolution), integration (W-M36-08/09/10), trigger tests for tighten-only | M | T-M36-11 |
+| T-M36-13 | **ADR-0024:** Migration `0036_m36_notification_templates` — `notification_template` (versioned, `(organization_id, template_key, version)`) + `tenant_notification_template_overlay` + RLS + audit triggers + platform-floor seed (§3.13); drizzle additions; register the `ordering_provider` / `intake_supervisor` / `admissions_team` resolvers; cross-module composer (`composeAndDispatch`, §4.11) for `m6.referral.{received,accepted,declined,withdrawn}`, `m22.document.rendered_critical_results`, `m11.order.transmission_terminal_failed`; register the referral + `m11.order.transmission_terminal_failed` payload types in `alert_payload_catalog` (§3.12.5) | M | T-M36-11 |
 
 **PR boundaries:** (A) 1 schema+RLS+audit; (B) 2 interfaces; (C) 3–4 send/read + encryption; (D) 5 auto-sync; (E) 6–7 visibility+presence; (F) 8 alert engine; (G) 9–10 dispatchers + sanitizer; (H) 11–12 preferences+endpoints; (I) 13–14 webhooks+rules; (J) 15–16 API + M3; (K) 17 boot+eraseFn; (L) 18–19 frontend; (M) 21 jobs; (N) 22 tests; (O) T-M36-10 catalog migration; (P) T-M36-11 catalog foundation + dispatch validation; (Q) T-M36-12 catalog tests; (Phase 1 follow-on) 20 AI features.
 
@@ -1988,7 +2336,7 @@ The catalog track sequences T-M36-10 → T-M36-11 → T-M36-12.
 - [ ] Frontend: inbox / channel / DM / preferences / endpoints / alert inbox / rules / announcements + admin delivery health screens shipped; WCAG 2.1 AA pass
 - [ ] Multi-tenant RLS isolation test passes (3-org overlapping-user fixture)
 - [ ] Metrics scraped; `messaging_message_send_duration_seconds` p95 < 200 ms; `alert_delivery_duration_seconds` p95 < 500 ms first in-app; realtime emit p95 < 100 ms within-region
-- [ ] Module manifest entry filled: `ownedTables` lists all 12 messaging tables plus `alert_payload_catalog` and `tenant_alert_routing_override`; `dependsOn` confirms [1, 2, 3, 4] plus the v0.3-consumed sources [5, 6, 11, 22, 40]; new `VENDOR_ADAPTERS` entries for twilio/postmark/web-push tied to the dispatcher paths
+- [ ] Module manifest entry filled: `ownedTables` lists all 12 messaging tables plus `alert_payload_catalog`, `tenant_alert_routing_override`, and (ADR-0024) `notification_template` + `tenant_notification_template_overlay` — **15 owned tables total**; `dependsOn` confirms [1, 2, 3, 4] plus the v0.3-consumed sources [5, 6, 11, 22, 40]; new `VENDOR_ADAPTERS` entries for twilio/postmark/web-push tied to the dispatcher paths *(manifest already reflects this; ADR-0024 requires no further manifest change for M36 beyond the two tables already moved)*
 - [ ] **M11 owner** sign-off on the 3 M11 alert payload entries
 - [ ] **M22 owner** sign-off on `m22.document.rendered_critical_results` entry
 - [ ] **M40 owner** sign-off on `mdm.physician_deactivated` entry and the cross-tenant routing resolver
@@ -2016,8 +2364,8 @@ Three refinements anticipated for a later revision:
 
 **Spec version:** v0.4 (Consolidated)
 **Decisions in force:** D1 through D12
-**Owned tables:** 12 core messaging tables + `alert_payload_catalog` + `tenant_alert_routing_override`
-**Schema:** `0036_messaging` (enums, 12 tables, RLS, audit triggers, alert-rule seed) + `0036_m36_alert_catalog` (`alert_payload_severity` enum — distinct from the legacy `alert_severity`, M36-F06b; `alert_payload_catalog`, `tenant_alert_routing_override` + RLS + enum-ordinal tighten-only trigger)
+**Owned tables:** 11 core messaging tables + `alert_payload_catalog` + `tenant_alert_routing_override` + (ADR-0024) `notification_template` + `tenant_notification_template_overlay` = **15**
+**Schema:** `0036_messaging` (enums, 12 tables, RLS, audit triggers, alert-rule seed) + `0036_m36_alert_catalog` (`alert_payload_severity` enum — distinct from the legacy `alert_severity`, M36-F06b; `alert_payload_catalog`, `tenant_alert_routing_override` + RLS + enum-ordinal tighten-only trigger) + `0036_m36_notification_templates` (ADR-0024 — `notification_template` versioned `(organization_id, template_key, version)` + `tenant_notification_template_overlay` + RLS + audit triggers + platform-floor seed). **Owned-table count: 15.**
 **Workflow acceptance criteria:** §7.1–§7.9 plus W-M36-08 (§7.10), W-M36-09 (§7.11), W-M36-10 (§7.12)
 **Implementation tasks:** 1–22 plus T-M36-10 through T-M36-12
 

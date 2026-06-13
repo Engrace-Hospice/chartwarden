@@ -1,6 +1,6 @@
 # ADR-0024 — Notification composition & recipient resolution for cross-module events belongs to M36, not M14
 
-- **Status:** Proposed (recommendation — requires architecture-owner ratification)
+- **Status:** Accepted (2026-06-13 — architecture-owner ratified Option A: composition + recipient resolution move to M36)
 - **Date:** 2026-06-13
 - **Phase:** dispute resolution (post June-13 re-audit)
 - **Resolves:** M14-F04 (DISPUTED); `audit/TRIAGE_RESULTS.md` §Batch-3

@@ -2167,10 +2167,10 @@ Every state change in M6 emits exactly one event row into the M1 outbox table in
 
 | Event | Emitted by | Payload (top-level keys) | Consumers |
 |---|---|---|---|
-| `m6.referral.received` | route 1 | `referralId, source, receivedAt` | M14 (notify intake supervisor) |
-| `m6.referral.accepted` | route 6 | `referralId, patientId, admissionId` | M14, M22 |
-| `m6.referral.declined` | route 7 | `referralId, reason` | M14 |
-| `m6.referral.withdrawn` | `AdmissionEventApplier.applyCancelAdmission` | `referralId, organizationId, withdrawnVia, originalReferralReceivedAt, withdrawnAt` | M14 (cancellation notification template) |
+| `m6.referral.received` | route 1 | `referralId, source, receivedAt` | M36 (per ADR-0024 — M36 resolves recipients + dispatches) |
+| `m6.referral.accepted` | route 6 | `referralId, patientId, admissionId` | M36 (per ADR-0024 — M36 resolves recipients + dispatches), M22 |
+| `m6.referral.declined` | route 7 | `referralId, reason` | M36 (per ADR-0024 — M36 resolves recipients + dispatches) |
+| `m6.referral.withdrawn` | `AdmissionEventApplier.applyCancelAdmission` | `referralId, organizationId, withdrawnVia, originalReferralReceivedAt, withdrawnAt` | M36 (per ADR-0024 — M36 resolves recipients + dispatches) |
 | `m6.admission.draft_created` | job `admission.draft_from_referral` | `admissionId, patientId, referralId` | M22 (election form prep) |
 | `m6.admission.activated` | route 14 | `admissionId, patientId, activatedAt, currentElectionPeriodId` | M5, M7, M8, M11, M14, M16, M22, M23, M26, M27, M28, M30, M33, M36, M37 |
 | `m6.admission.on_hold` | route 12 | `admissionId, reason, heldAt` | M14, M30 |
@@ -2210,7 +2210,7 @@ Every state change in M6 emits exactly one event row into the M1 outbox table in
 
 > **`severity='info'` for `m6.compliance.window.opened`.** The event already includes `severity` in the payload; the `info` value is the third level alongside `warning` and `alert`. Existing consumers must be checked for switch-statement exhaustiveness; M30's dashboard adds an "External signals" lane that filters by `severity='info' AND type IN ('concurrent_hospital_admission', 'external_discharge_notice', 'hl7_admission_cancellation')`.
 
-> **`m6.referral.withdrawn` vs `m6.referral.declined`.** `declined` = the hospice operationally chose not to accept the referral (clinical, geographic, capacity reasons; payload carries `declineReason`). `withdrawn` = an upstream system or the referring party canceled the referral before the hospice made a decision (payload carries `withdrawnVia`). M14 routes withdrawn referrals to a different notification template ("Referral was canceled by referring party") than declined ("Referral was not accepted by intake supervisor"). See D16.
+> **`m6.referral.withdrawn` vs `m6.referral.declined`.** `declined` = the hospice operationally chose not to accept the referral (clinical, geographic, capacity reasons; payload carries `declineReason`). `withdrawn` = an upstream system or the referring party canceled the referral before the hospice made a decision (payload carries `withdrawnVia`). M36 (per ADR-0024) routes withdrawn referrals to a different notification template ("Referral was canceled by referring party") than declined ("Referral was not accepted by intake supervisor"). See D16.
 
 -----
 ### 4.5 Permission Keys Registered into Module 3
@@ -3855,11 +3855,11 @@ Sixteen decisions are in force. Each lists the question, the chosen answer, the 
 
 **Question.** Should a cancel-admit be modeled as a new `withdrawn` referral status/event, or collapsed into `declined`?
 
-**Decision.** **New outbox event `m6.referral.withdrawn`, distinct from `m6.referral.declined`. Semantics: `declined` = the hospice operationally chose not to accept the referral (clinical, geographic, capacity reasons; payload carries `declineReason`). `withdrawn` = an upstream system or the referring party canceled the referral before the hospice made a decision. Payload includes `withdrawnVia: 'hl7_cancel_admit' | 'external_party_phone_call' | ...`. M14 consumer routes withdrawn referrals to a different notification template ("Referral was canceled by referring party") than declined ("Referral was not accepted by intake supervisor"). Schema-wise the `referral.status` enum gains a `withdrawn` value alongside existing `accepted` / `declined` / `pending`.**
+**Decision.** **New outbox event `m6.referral.withdrawn`, distinct from `m6.referral.declined`. Semantics: `declined` = the hospice operationally chose not to accept the referral (clinical, geographic, capacity reasons; payload carries `declineReason`). `withdrawn` = an upstream system or the referring party canceled the referral before the hospice made a decision. Payload includes `withdrawnVia: 'hl7_cancel_admit' | 'external_party_phone_call' | ...`. M36 (per ADR-0024 — M36 resolves recipients + dispatches) routes withdrawn referrals to a different notification template ("Referral was canceled by referring party") than declined ("Referral was not accepted by intake supervisor"). Schema-wise the `referral.status` enum gains a `withdrawn` value alongside existing `accepted` / `declined` / `pending`.**
 
-**Why.** The two events have different operational meanings and downstream behaviors; collapsing them as `declined` with a sub-reason would lose audit clarity and force M14 to know about cancellation-specific notification templates via subreason-string matching. Distinct event + distinct enum value gives clean modeling.
+**Why.** The two events have different operational meanings and downstream behaviors; collapsing them as `declined` with a sub-reason would lose audit clarity and force M36 to know about cancellation-specific notification templates via subreason-string matching. Distinct event + distinct enum value gives clean modeling.
 
-**Rejected.** Collapsing the cancel into `declined` with a sub-reason — loses audit clarity; forces M14 to subreason-string-match.
+**Rejected.** Collapsing the cancel into `declined` with a sub-reason — loses audit clarity; forces M36 to subreason-string-match.
 
 **Surface.** §3.2 `referralStatus` `withdrawn`; §4.4 `m6.referral.withdrawn`; §4.8.4 `markWithdrawnFromHl7`; §7.7 W-M6-33.
 

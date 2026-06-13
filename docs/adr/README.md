@@ -42,8 +42,8 @@ ADRs below are the normative rationale those changelogs point to.
 | [0021](ADR-0021-template-sweep.md) | §20.B template requirements CI-gated: per-route Idempotency-Key, queue DLQ/retry, STRIDE, DR tier+degraded-mode, SEC-052, cursor pagination, sqlcipher offline | X11 | Accepted |
 | [0022](ADR-0022-postgresql-ddl-legality.md) | PostgreSQL DDL legality (partition-key in unique index; no CHECK subqueries; no duplicate enums) + one reconciliation pass per X9 incoherent spec | X9, BB#5, M14/M15/M16/M20/M22/M24, M21/M17/M36… | Accepted |
 | [0023](ADR-0023-seam-pair-reconciliation.md) | Every consumer↔producer seam pair reconciled before "Locked"; M2 surface inflation adjudicated | X10, X12, M13/M14/M15/M19/M25 | Accepted |
-| [0024](ADR-0024-m14-notification-composition-ownership.md) | Notification composition & recipient resolution for cross-module events → M36, not M14 (SD-017) | M14-F04 | **Proposed** |
-| [0025](ADR-0025-m34-m35-dependency-direction.md) | M34↔M35 is a bidirectional seam relationship — no `dependsOn` edge either way | M35-F02 | **Proposed** |
+| [0024](ADR-0024-m14-notification-composition-ownership.md) | Notification composition & recipient resolution for cross-module events → M36, not M14 (SD-017) | M14-F04 | Accepted |
+| [0025](ADR-0025-m34-m35-dependency-direction.md) | M34↔M35 is a bidirectional seam relationship — no `dependsOn` edge either way | M35-F02 | Accepted |
 
 *BB# = "Build Blocking Issues" item number in `audit/AUDIT_CONSOLIDATED_FINAL.md`.*
 
