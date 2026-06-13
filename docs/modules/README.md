@@ -4,11 +4,11 @@
 > module specification lives in this directory (`docs/modules/`). The Module 29
 > forward-engineering sub-tasks live in [`module-29-tasks/`](./module-29-tasks/).
 >
-> **Authority:** Per the audit charter, the architecture documents at the repo root
-> (`WARDENX_ARCHITECTURE_v0_11.md`, `WARDENX_SYSTEM_DESIGN_v0.3.md`, and the security /
-> AI-governance / DR-BCP / ops / integrations docs) are **authoritative**; these module
-> specs are **implementation proposals**. If a module conflicts with architecture,
-> **architecture wins**.
+> **Authority:** Per the audit charter, the architecture documents in
+> [`docs/architecture/`](../architecture/) (`WARDENX_ARCHITECTURE_v0_11.md`,
+> `WARDENX_SYSTEM_DESIGN_v0.3.md`, and the security / AI-governance / DR-BCP / ops /
+> integrations docs) are **authoritative**; these module specs are **implementation
+> proposals**. If a module conflicts with architecture, **architecture wins**.
 >
 > Module ownership (codePaths, ownedTables, dependsOn) is enforced by
 > `architecture/module-manifest.ts` and `scripts/check-table-ownership.ts`.

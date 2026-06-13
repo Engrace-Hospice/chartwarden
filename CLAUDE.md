@@ -13,8 +13,9 @@ The Module 29 forward-engineering sub-tasks (T-29.01–T-29.13) are in
 
 > When you need a module spec, **resolve it under `docs/modules/`**, not the repo root.
 
-### Authoritative architecture documents (repo root)
-These **win over module specs** in any conflict (module specs are implementation proposals):
+### Authoritative architecture documents → `docs/architecture/`
+These **win over module specs** in any conflict (module specs are implementation proposals).
+All live in [`docs/architecture/`](./docs/architecture/):
 - `WARDENX_ARCHITECTURE_v0_11.md` — system architecture (authoritative)
 - `WARDENX_SYSTEM_DESIGN_v0.3.md`
 - `WARDENX_SECURITY_HARDENING_v0_2.md`
@@ -22,7 +23,12 @@ These **win over module specs** in any conflict (module specs are implementation
 - `WARDENX_DR_BCP_v0.1.md`, `WARDENX_OPS_RUNBOOK_v0.1.md`, `WARDENX_INTEGRATIONS_v0_1.md`
 - `ARCHITECTURE_25_15_FITNESS.md` — architecture-fitness rules
 
-### Architecture-fitness kit
+> When you need an architecture document, **resolve it under `docs/architecture/`**, not the repo
+> root. (Older docs reference these by bare filename or version — same files, new location.)
+
+### Architecture-fitness kit (code — `architecture/`, not `docs/architecture/`)
+Note: the `architecture/` directory at the repo root holds the *enforcement code*, distinct from
+the prose docs in `docs/architecture/`.
 - `architecture/module-manifest.ts` (+ `.cjs`) — single source of truth for each module's
   `codePaths`, `dependsOn`, and `ownedTables` (451 tables across 40 modules).
 - `architecture/.dependency-cruiser.cjs` — import-boundary rules.
