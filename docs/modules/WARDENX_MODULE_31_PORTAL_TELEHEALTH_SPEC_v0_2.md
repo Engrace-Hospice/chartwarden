@@ -405,7 +405,7 @@ States: `granted → revoked` (one-way; no un-revoke; re-grant = new row).
 Granted at:
 - Magic-link acceptance — the invitation carried the proposed scope_set; resolution applies platform-floor + tenant-tighten.
 - M39 consent created — `m39.consent.created` outbox event with `consent_type IN ('portal_access','family_caregiver_access','dpoa_healthcare','personal_representative_authority_post_death','bereavement_outreach_consent')` triggers M31's consent-driven grant creation (after the invitation acceptance and 2FA enrollment complete).
-- Post-death bereavement transition — M16's `bereavement.plan_opened` event consumed; if the bereaved contact has an existing M5 caregiver linked to a portal_account, the existing care-time grant is revoked with `revoke_cascade_source='patient_deceased'` and a new bereaved grant is inserted with `grant_kind='bereaved_family'`.
+- Post-death bereavement transition — M16's `m16.bereavement.plan_opened` event consumed; if the bereaved contact has an existing M5 caregiver linked to a portal_account, the existing care-time grant is revoked with `revoke_cascade_source='patient_deceased'` and a new bereaved grant is inserted with `grant_kind='bereaved_family'`.
 
 Revoked at:
 - User-side action (the portal_account holder opts out themselves).

@@ -192,15 +192,15 @@ Cycles: **none ✓** · Consistency issues: **none ✓**.
 | 133 | volunteer_compliance_gate | M15 Discipline Care Plans | docs/modules/WARDENX_MODULE_15_DISCIPLINE_CARE_PLANS_SPEC_v0_2.md |
 | 134 | volunteer_hour_entry | M15 Discipline Care Plans | docs/modules/WARDENX_MODULE_15_DISCIPLINE_CARE_PLANS_SPEC_v0_2.md |
 | 135 | volunteer_hour_ledger | M15 Discipline Care Plans | docs/modules/WARDENX_MODULE_15_DISCIPLINE_CARE_PLANS_SPEC_v0_2.md |
-| 136 | bereaved_contact | M16 Bereavement | docs/modules/WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_4.md |
-| 137 | bereavement_anniversary_reminder | M16 Bereavement | docs/modules/WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_4.md |
-| 138 | bereavement_contact_log | M16 Bereavement | docs/modules/WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_4.md |
-| 139 | bereavement_opt_out | M16 Bereavement | docs/modules/WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_4.md |
-| 140 | bereavement_outreach | M16 Bereavement | docs/modules/WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_4.md |
-| 141 | bereavement_plan | M16 Bereavement | docs/modules/WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_4.md |
-| 142 | bereavement_plan_closure | M16 Bereavement | docs/modules/WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_4.md |
-| 143 | bereavement_risk_score | M16 Bereavement | docs/modules/WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_4.md |
-| 144 | tenant_bereavement_external_source_gate_override | M16 Bereavement | docs/modules/WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_4.md |
+| 136 | bereaved_contact | M16 Bereavement | docs/modules/WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_5.md |
+| 137 | bereavement_anniversary_reminder | M16 Bereavement | docs/modules/WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_5.md |
+| 138 | bereavement_contact_log | M16 Bereavement | docs/modules/WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_5.md |
+| 139 | bereavement_opt_out | M16 Bereavement | docs/modules/WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_5.md |
+| 140 | bereavement_outreach | M16 Bereavement | docs/modules/WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_5.md |
+| 141 | bereavement_plan | M16 Bereavement | docs/modules/WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_5.md |
+| 142 | bereavement_plan_closure | M16 Bereavement | docs/modules/WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_5.md |
+| 143 | bereavement_risk_score | M16 Bereavement | docs/modules/WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_5.md |
+| 144 | tenant_bereavement_external_source_gate_override | M16 Bereavement | docs/modules/WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_5.md |
 | 145 | clinician_availability | M17 Scheduling & Route Optimization | docs/modules/WARDENX_MODULE_17_SCHEDULING_SPEC_v0_2.md |
 | 146 | recurring_visit | M17 Scheduling & Route Optimization | docs/modules/WARDENX_MODULE_17_SCHEDULING_SPEC_v0_2.md |
 | 147 | route_segment | M17 Scheduling & Route Optimization | docs/modules/WARDENX_MODULE_17_SCHEDULING_SPEC_v0_2.md |

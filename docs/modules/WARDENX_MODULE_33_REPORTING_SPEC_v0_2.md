@@ -920,9 +920,9 @@ export const OUTBOX_SUBSCRIPTION_MAP: Record<string, string[]> = {
   'm15.volunteer.ratio_recomputed': ['mv_volunteer_ratio_org_fy'],
 
   // M16 bereavement
-  'bereavement.outreach_completed': ['mv_bereavement_compliance_org_month'],
-  'bereavement.outreach_missed': ['mv_bereavement_compliance_org_month'],
-  'bereavement.risk_score_computed': ['mv_bereavement_risk_distribution_org'],
+  'm16.bereavement.outreach_completed': ['mv_bereavement_compliance_org_month'],
+  'm16.bereavement.outreach_missed': ['mv_bereavement_compliance_org_month'],
+  'm16.bereavement.risk_score_computed': ['mv_bereavement_risk_distribution_org'],
 
   // M17 scheduling
   'm17.visit.completed': ['mv_visit_completion_org_day'],

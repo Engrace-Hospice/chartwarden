@@ -1776,7 +1776,7 @@ M22 ships with 31 v1 templates. Each lives at `packages/forms/src/templates/<key
 | `patient_amendment_statement_of_disagreement` | M5 | `patient_amendment_statement_of_disagreement` | react_pdf | compliance | yes |
 | `consent_record` | M39 | `consent_record` | react_pdf | compliance | yes |
 
-The `bereavement_letter` template is a single template_key with a `letterKind` discriminator in the payload selecting one of seven sub-layouts; this matches the M16 D14 outbox event design (M16 emits `bereavement.outreach_artifact_requested` with `letterKind` in the payload).
+The `bereavement_letter` template is a single template_key with a `letterKind` discriminator in the payload selecting one of seven sub-layouts; this matches the M16 D14 outbox event design (M16 emits `m16.bereavement.outreach_artifact_requested` with `letterKind` in the payload).
 
 The `lab_results_pdf` template renders observation values with abnormal-flag highlighting except for SUD-class values, which render as a redacted placeholder per D20; the critical variant carries a "CRITICAL RESULT" watermark per D22. The `discharge_summary_v2_external_source` and `_cosigned` variants render the external-source death-discharge per D21.
 
@@ -1927,7 +1927,7 @@ M22's outbox consumers — events from other modules that drive M22 state — ar
 | `m14.packet.render_requested` | M14 | `m14-idg-document-requested.ts` | Render `idg_patient_packet` template |
 | `m14.minutes.signed` | M14 | `m14-idg-document-requested.ts` | Render `idg_minutes` template |
 | `m15.plan.version_signed` (one event; `kind ∈ {aide_poc, msw_plan, spiritual_plan, volunteer_plan}` discriminates) | M15 | `m15-discipline-plan-document-requested.ts` | Render the template corresponding to `payload.kind` |
-| `bereavement.outreach_artifact_requested` | M16 | `m16-bereavement-letter-render-requested.ts` | Render `bereavement_letter` with `letterKind` discriminator |
+| `m16.bereavement.outreach_artifact_requested` | M16 | `m16-bereavement-letter-render-requested.ts` | Render `bereavement_letter` with `letterKind` discriminator |
 | `bereavement.anniversary_due` | M16 | `m16-bereavement-letter-render-requested.ts` | Render anniversary letter |
 | `m17.visit.scheduled` (when patient/caregiver requested reminder) | M17 | `m17-visit-confirmation-render-requested.ts` | Render `visit_confirmation_letter` |
 | `m18.evv.aggregator_accepted` | M18 | `m18-evv-verification-render-requested.ts` | Render `evv_verification` template |
@@ -2550,7 +2550,7 @@ Each workflow lists actors, preconditions, the sequence of events, postcondition
 
 **Sequence:**
 
-1. M16 emits `bereavement.outreach_artifact_requested` with `{ patientId, deceasedDate, recipientName, recipientRelationship, letterKind, scheduledFor }`.
+1. M16 emits `m16.bereavement.outreach_artifact_requested` with `{ patientId, deceasedDate, recipientName, recipientRelationship, letterKind, scheduledFor }`.
 2. M22 renders the `bereavement_letter` template with letterKind discriminator (acknowledgment, 30-day, 90-day, 6-month, anniversary, holiday, final-resource).
 3. Template inserts the tenant's hospice letterhead, the deceased's name, the recipient's salutation, the letterKind-specific body text (which is loaded from the M22 template — M16 does not author the prose).
 4. M22 emits `m22.document.rendered` → M16 backref consumer associates the document with the bereavement outreach record.

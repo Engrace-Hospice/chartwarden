@@ -1,7 +1,7 @@
 # WardenX Module Audit — Module 14 (IDG) & Module 16 (Bereavement)
 
 **Auditor protocol:** AUDITOR_INSTRUCTIONS.md v1.0 — criteria packs CRITERIA_ARCHITECTURE.md, CRITERIA_SECURITY_AI.md, CRITERIA_OPS_DR_INTEGRATIONS.md; manifest `module-manifest.ts`.
-**Specs audited (read in full):** `WARDENX_MODULE_14_IDG_SPEC_v0_4.md` (1,717 lines), `WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_4.md` (2,082 lines).
+**Specs audited (read in full):** `WARDENX_MODULE_14_IDG_SPEC_v0_4.md` (1,717 lines), `WARDENX_MODULE_16_BEREAVEMENT_SPEC_v0_5.md` (audited at v0.4; renamed to v0.5 for the `m16.` event-naming migration).
 **BLOCKER verification:** every BLOCKER below was verified against `WARDENX_ARCHITECTURE_v0_11.md` (§11 M14/M16, §24.1 retention matrix, the "No PHI in push/SMS/email" invariant at lines 2013/2237, §23 traceability row 418.56), `module-manifest.ts`, and where relevant `WARDENX_AI_GOVERNANCE_v0.2.md` §4.1 and sibling locked specs (M5, M6, M17, M36).
 **Date:** 2026-06-10
 
