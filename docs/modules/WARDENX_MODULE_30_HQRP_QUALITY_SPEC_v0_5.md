@@ -1451,6 +1451,90 @@ All routes mount under `apps/backend/src/modules/30-quality/routes/`. Permission
 - The "two-person co-sign" routes (R-31, R-47) are split-actor invariants enforced both at the application layer (validators V-11, V-12) and at the database layer (check constraints from §3).
 - Recompute routes (R-04, R-05) return job IDs from the BullMQ `m30.measure_recompute` queue (§4.8); job results are visible at R-02/R-03 once the worker completes.
 
+### 4.1.1 M30-F05 — Idempotency-Key on mutating routes (ARCH-263, SD-053)
+
+**Finding:** M30-F05 (ADR-0021 §20.B requirement). Every non-idempotent mutating route must declare the `Idempotency-Key` header per the M1 middleware contract: 24-hour deduplication window, `409 Conflict` on body-mismatch replay.
+
+**Applies to all POST/PUT/PATCH routes that produce side effects.** Read routes (GET) and the `risk_register_view` refresh (R-96, idempotent by materialized-view semantics) are exempt. The following mutating routes carry `Idempotency-Key`:
+
+| Route | Idempotency key scope | 409 body-mismatch condition |
+|-------|-----------------------|------------------------------|
+| R-04 POST `/v1/quality/measures/recompute` | `(orgId, scope.measureId \| scope.domain \| 'all', priority)` | Different `scope` or `priority` in replay |
+| R-11 POST `/v1/quality/cahps/vendor` | `(orgId, vendorAdapterId, effectiveFrom)` | Different `vendorAdapterId` in replay |
+| R-13 POST `/v1/quality/cahps/decedents/:sample_id/exclude` | `(orgId, sampleId, exclusionReason)` | Different `exclusionReason` in replay |
+| R-14 POST `/v1/quality/cahps/export` | `(orgId, samplePeriod.start, samplePeriod.end)` | Different `samplePeriod` in replay |
+| R-16 POST `/v1/quality/cahps/results/ingest` | `(orgId, vendorAdapterId, reportingPeriodStart, reportingPeriodEnd, payloadHash)` | Different payload hash — same period, different data |
+| R-21 POST `/v1/quality/qapi/programs` | `(orgId, planYear)` | Different `planYear` in replay |
+| R-24 POST `/v1/quality/qapi/indicators` | `(orgId, qapiProgramId, dataPath)` | Different `dataPath` in replay |
+| R-27 POST `/v1/quality/qapi/projects` | `(orgId, qapiProgramId, title)` | Different `title` in replay |
+| R-30 POST `/v1/quality/qapi/projects/:project_id/pips` | `(orgId, projectId, charterText[:64])` | Different charter text in replay |
+| R-31 POST `/v1/quality/qapi/pips/:pip_id/close` | `(orgId, pipId, cosignerMembershipId)` | Different cosigner in replay |
+| R-32 POST `/v1/quality/qapi/governance` | `(orgId, qapiProgramId, meetingAt)` | Different `meetingAt` in replay |
+| R-41 POST `/v1/quality/sra/cycles` | `(orgId, cycleYear)` | Different `cycleYear` in replay |
+| R-43 POST `/v1/quality/sra/cycles/:cycle_id/findings` | `(orgId, cycleId, findingNumber)` | Different `findingNumber` in replay |
+| R-45 POST `/v1/quality/sra/findings/:finding_id/remediation` | `(orgId, findingId, remediationNumber)` | Different `remediationNumber` in replay |
+| R-47 POST `/v1/quality/sra/cycles/:cycle_id/close` | `(orgId, cycleId, cosignerMembershipId)` | Different cosigner in replay |
+| R-51 POST `/v1/quality/incidents` | `(orgId, reportedByMembershipId, occurredAt, kind)` | Different `kind` or `occurredAt` in replay |
+| R-54 POST `/v1/quality/incidents/:incident_id/submit` | `(orgId, incidentId)` | Always idempotent on same `incidentId` |
+| R-55 POST `/v1/quality/incidents/:incident_id/triage` | `(orgId, incidentId, triagedByMembershipId)` | Different triager in replay |
+| R-57 POST `/v1/quality/incidents/:incident_id/cap` | `(orgId, incidentId, rootCauseSummary[:64])` | Different root cause summary in replay |
+| R-58 POST `/v1/quality/incidents/:incident_id/verify` | `(orgId, incidentId, verifiedByMembershipId)` | Different verifier in replay |
+| R-59 POST `/v1/quality/incidents/:incident_id/close` | `(orgId, incidentId)` | Always idempotent on same `incidentId` |
+| R-60 POST `/v1/quality/incidents/:incident_id/reopen` | `(orgId, incidentId, reopenReason[:64])` | Different reopen reason in replay |
+| R-73 POST `/v1/quality/mortality/:review_id/complete` | `(orgId, reviewId, reviewerMembershipId)` | Different reviewer in replay |
+| R-82 POST `/v1/quality/cop/citations/:citation_id/review` | `(orgId, citationId, reviewedByMembershipId)` | Different reviewer in replay |
+| R-91 POST `/v1/quality/infection/events` | `(orgId, filedByMembershipId, observedAt, pathogen, bodySite)` | Different pathogen/body-site in replay |
+
+**Implementation:** the M1 `IdempotencyKeyMiddleware` is registered on all routes in the above table. The middleware:
+1. Reads the `Idempotency-Key` header (UUID v4 required; missing header → `400 Bad Request`).
+2. Hashes `(orgId, Idempotency-Key)` → looks up in Valkey with TTL 86 400s (24 h).
+3. On cache miss: executes the handler, stores the response status + body hash.
+4. On cache hit (same body hash): returns the stored response with `200`/`201`/`202` as originally returned.
+5. On cache hit (different body hash): returns `409 Conflict` with `{ code: 'idempotency_key_body_mismatch' }`.
+
+PATCH routes (R-22, R-25, R-28, R-44, R-46, R-53, R-72, R-81, R-93) are not required to carry `Idempotency-Key` because they are conditional-update operations protected by the `version` optimistic-concurrency column; however, callers MAY supply an `Idempotency-Key` and the middleware will honour it.
+
+### 4.1.2 M30-F06 — Cursor pagination on PHI lists (SD-052)
+
+**Finding:** M30-F06 (ADR-0021 §20.B requirement). All PHI-bearing list routes must use opaque cursor pagination (`next_cursor` + `has_more`); offset pagination is forbidden on PHI lists per SD-052.
+
+**Affected routes:** R-50 (incident list), R-70 (mortality review list), R-90 (infection surveillance event list). These are the three list routes over patient-linked partitioned tables. Non-PHI list routes (R-01, R-20, R-23, R-26, etc.) may use either cursor or offset pagination.
+
+**Cursor contract (R-50, R-70, R-90):**
+
+```ts
+// packages/quality/src/contracts/pagination.ts
+export const PhiListQueryT = Type.Object({
+  cursor: Type.Optional(Type.String()),   // opaque; absent on first page
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, default: 50 })),
+  // plus route-specific filter params
+});
+
+export const PhiListResponseT = <T extends TSchema>(itemSchema: T) => Type.Object({
+  items: Type.Array(itemSchema),
+  next_cursor: Type.Union([Type.String(), Type.Null()]),  // null = last page
+  has_more: Type.Boolean(),
+  // limit_applied is echoed back for client convenience
+  limit_applied: Type.Integer(),
+});
+```
+
+**Cursor construction (server-side):** the cursor is a base64url-encoded JSON object `{ id: uuid, ts: iso8601 }` where `id` is the last item's primary key and `ts` is its `created_at` (or `occurred_at` for partitioned tables). The cursor is HMAC-signed with the org's per-session key to prevent tampering. Decoding a tampered or expired cursor returns `400 Bad Request: invalid_cursor`.
+
+**Route-specific cursor anchor columns:**
+
+| Route | Table | Cursor anchor | Default sort |
+|-------|-------|---------------|--------------|
+| R-50 GET `/v1/quality/incidents` | `incident_report` | `(occurred_at DESC, id)` | occurred_at DESC |
+| R-70 GET `/v1/quality/mortality` | `mortality_review` | `(death_at DESC, id)` | death_at DESC |
+| R-90 GET `/v1/quality/infection/events` | `infection_surveillance_event` | `(observed_at DESC, id)` | observed_at DESC |
+
+**Pagination invariants:**
+- Cursor-based queries on partitioned tables always include the partition key (`occurred_at`, `death_at`, `observed_at`) in the WHERE clause alongside `id` to use the partition pruning index efficiently.
+- The cursor is stable across the request: results for page N+1 do not include rows that were inserted or deleted between page N and page N+1 (the cursor pins to the anchor row's `(ts, id)` position, and all queries use `WHERE (ts, id) < (cursor.ts, cursor.id)` semantics — keyset pagination).
+- Maximum page size is 100 rows. Requests exceeding 100 are clamped (not rejected) and the `limit_applied` field reflects the clamped value.
+- The `risk_register_view` (R-95) is aggregate-only and may use offset pagination since it contains no direct PHI; the current spec uses cursor pagination by preference for consistency.
+
 ### 4.2 TypeBox schemas
 
 All request and response bodies are TypeBox schemas exported from `packages/quality/src/contracts/`. The contract package is publishable to M28 (FHIR mapping) and M22 (PDF rendering) consumers. Schemas use the `MeasureValueT`, `IncidentT`, etc. naming convention; arrays use `…ListT` suffix; recompute jobs use `…JobT`.
@@ -1989,14 +2073,27 @@ The predicate registry validates these at boot: any predicate name referenced by
 
 ### 4.8 BullMQ queues
 
-M30 owns four BullMQ queues under the `m30.*` namespace, plus three scheduled (cron) jobs. All workers are idempotent on `(orgId, scope, computeVersion, contentHash)` per V-8.
+M30 owns four BullMQ queues under the `m30.*` namespace, plus three scheduled (cron) jobs. All workers are idempotent on `(orgId, scope, computeVersion, contentHash)` per §2.6 job-idempotency rules (see especially the measure-recompute and auto-incident-creation idempotency keys defined there).
 
-| Queue | Producer | Worker concurrency | Job payload | Idempotency key | Backoff |
-|-------|----------|--------------------|--------------------|------------------|---------|
-| `m30.measure_recompute` | R-04 + cron + outbox subscribers | 4 per node, max 12 cluster-wide | `{ orgId, scope, reason, priority, enqueuedBy }` | `(orgId, scope.measureId, period.end, computeVersion)` | exponential 30s–10min, max 6 attempts |
-| `m30.cahps_export` | R-14 | 2 per node | `{ orgId, samplePeriod, vendorBindingId }` | `(orgId, samplePeriod.start, samplePeriod.end, vendorBindingId)` | exponential 1min–30min, max 4 attempts |
-| `m30.outbreak_detection` | infection surveillance INSERT trigger | 1 per node (serialized per org) | `{ orgId, surveillanceEventId }` | `(orgId, surveillanceEventId)` | exponential 10s–5min, max 5 attempts |
-| `m30.risk_register_refresh` | R-96 + cron | 1 per node (serialized per org) | `{ orgId, force: boolean }` | `(orgId, dateBucket)` | exponential 30s–10min, max 3 attempts |
+> **M30-F17 (DR-022, OPS-035):** Every queue below explicitly declares its DLQ destination, retry semantics, and consumer idempotency assertion. Workers are not permitted to ship with undeclared queue semantics.
+
+| Queue | Producer | Worker concurrency | Job payload | Idempotency key | Backoff / attempts | DLQ |
+|-------|----------|--------------------|-------------|------------------|--------------------|-----|
+| `m30.measure_recompute` | R-04 + cron + outbox subscribers | 4 per node, max 12 cluster-wide | `{ orgId, scope, reason, priority, enqueuedBy }` | `(orgId, scope.measureId, period.end, computeVersion)` | exponential 30s–10min, max 6 attempts | `m30.measure_recompute.dlq` — on 6th failure, Ops alert `m30.alerts.measure_recompute_failed` fires (severity=critical); manual re-enqueue via R-04 |
+| `m30.cahps_export` | R-14 | 2 per node | `{ orgId, samplePeriod, vendorBindingId }` | `(orgId, samplePeriod.start, samplePeriod.end, vendorBindingId)` | exponential 1min–30min, max 4 attempts | `m30.cahps_export.dlq` — on 4th failure, `cahps_decedent_sample.status` set to `export_failed`; M36 alert `m30.cahps_export_failed` fires; QAPI Coordinator manually retriggers via R-14 |
+| `m30.outbreak_detection` | infection surveillance INSERT trigger | 1 per node (serialized per org) | `{ orgId, surveillanceEventId }` | `(orgId, surveillanceEventId)` | exponential 10s–5min, max 5 attempts | `m30.outbreak_detection.dlq` — on 5th failure, compensating `m30.infection.event_recorded` outbox event is re-emitted with `detection_deferred=true` tag; detection reprocessed on next cron cycle |
+| `m30.risk_register_refresh` | R-96 + cron | 1 per node (serialized per org) | `{ orgId, force: boolean }` | `(orgId, dateBucket)` | exponential 30s–10min, max 3 attempts | `m30.risk_register_refresh.dlq` — on 3rd failure, the view is served stale; the R-95 response carries `{ data_as_of: <last_successful_refresh_at>, stale: true }` header; M36 Ops alert fires |
+
+**DLQ consumer pattern.** Each DLQ is a separate BullMQ queue named `<source_queue>.dlq`. The Ops team drains DLQ entries via the platform's `m1.queue.dlq_drain` admin route (M1-owned). DLQ entries retain the original job payload and the failure reason chain for post-mortem; they are not automatically retried. DLQ TTL is 7 days; after that the entry is discarded and an audit row of `severity=warn` is emitted under `m30.queue.dlq_entry_expired`.
+
+**Consumer idempotency assertion.** Every M30 worker begins its `process()` function with:
+```ts
+const alreadyProcessed = await db.query.processingLog.findFirst({
+  where: eq(processingLog.jobId, job.id),
+});
+if (alreadyProcessed) { return { skipped: true, reason: 'already_processed' }; }
+```
+This guard is the application-layer complement to BullMQ's `removeOnComplete` and ensures workers are safe to replay from the DLQ without double-effects.
 
 **Cron schedules** (registered in `apps/backend/src/scheduler/m30-crons.ts`):
 
@@ -2969,9 +3066,52 @@ A small set of invariants must hold across every M30 deployment; the integration
 - **I-4.** The outbox events emitted by M30 carry `orgId` in the envelope; the relay worker delivers each subscriber's view scoped to subscriber-permitted orgs.
 - **I-5.** BullMQ jobs in `m30.*` queues carry `orgId` in payload AND the worker rebinds `current_org_id()` to the job's org before any DB call.
 
-### 8.10 Audit & Observability Additions
+### 8.10 M30-F07 — DR Tier Declaration (DR-010, DR-013)
 
-#### 8.10.1 New audit actions
+**Finding:** M30-F07 (ADR-0021 §20.B requirement). M30 was implicitly mis-declared as Tier 2 (the §12.8 "RTO: 4 hours" language matched Tier 2 semantics). The correct tier per the platform DR/BCP taxonomy (`WARDENX_DR_BCP_v0.1.md` §3.2 table) is:
+
+| Classification | Tier | RTO | RPO | Rationale |
+|----------------|------|-----|-----|-----------|
+| **M30 — HQRP & Quality (core surfaces)** | **Tier 3 — Revenue & Reporting** | **24 hours** | **1 hour** | Quality measures, QAPI, SRA, CoP, incidents, mortality reviews, and the risk register impede compliance operations but do not immediately threaten patient safety. Module 30 is listed alongside M23 (Billing) and M33 (Reporting) in the DR tier table. |
+| CAHPS ingest path (R-16, `m30.cahps_export` queue, `cahps_decedent_sample` rows) | **Tier 4 — Augmenting & Optional** | 72 hours | 24 hours | CAHPS survey coordination is external-vendor-driven on a monthly cycle; a 24–72 h ingest outage does not produce a missed CMS submission (monthly samples export on day-2 of the month; a 72-h window comfortably recovers). Cited as INT-026 in the integrations registry. |
+
+**Prior Tier 2 language superseded.** The §12.8 sign-off checklist entry previously read "RTO: 4 hours" — that was a Tier 2 value and is incorrect. The corrected entry references Tier 3 / 24h RTO.
+
+**Impact on recovery sequencing.** In a multi-tier recovery scenario, M30 starts only after Tier 1 (patient care: eMAR, orders, EVV) and Tier 2 (clinical operations: HOPE, care plans, IDG) are restored. Quality dashboards, QAPI indicators, and SRA workflows resuming 24 h after a platform disaster is acceptable; measures will recompute from the nightly worker once the database replica is promoted.
+
+### 8.11 M30-F18 — Degraded-Mode Behavior (DR-064, DR-070)
+
+**Finding:** M30-F18 (ADR-0021 §20.B requirement). M30 must declare its degraded-mode behavior per DR-064 (degraded-mode documentation requirement) and DR-070 (compliance surfaces must specify stale-OK behavior).
+
+#### 8.11.1 Degraded-mode taxonomy for M30
+
+| Surface / function | Degraded-mode behavior | Stale tolerance | Recovery action |
+|--------------------|------------------------|-----------------|-----------------|
+| **Quality measure dashboard (S-01, R-01/R-02)** | Served from the last successful nightly recompute snapshot (`quality_measure_value` rows with `superseded_at IS NULL`). The UI shows a `data_as_of` banner indicating the last compute timestamp. No real-time recompute during degradation. | **Stale-OK for 24 h.** Measure values are computed nightly; a 24 h outage produces at most one missed nightly cycle. CMS reporting deadlines are quarterly. | Nightly cron re-runs on recovery; measures backfill automatically; no manual action required. |
+| **Risk register (S-17, R-95)** | Served stale from the last `REFRESH MATERIALIZED VIEW` snapshot. The R-95 response includes `{ stale: true, data_as_of: <last_refresh_at> }` when the view age exceeds 5 minutes. The underlying base tables (sra_finding, incident_report, qapi_project, cop_compliance_status) continue to be writable. | **Stale-OK for 24 h.** The register is a derived view; the underlying truth in the base tables remains consistent. | `m30.risk_register_refresh` worker drains on recovery; R-96 admin route available for manual force-refresh. |
+| **Incident reports — draft capture (R-51, S-11)** | Draft incident creation is **preserved** during database write degradation via the mobile-offline pattern (S-M01): the draft is written to the device's local encrypted SQLite store and queued for sync. On the web app, drafts are auto-saved to IndexedDB and POSTed on connectivity restoration. The `triggeringEventOutboxId` idempotency key ensures no duplicate incidents on replay. | **Zero tolerance for data loss.** A draft incident that cannot be persisted must be retainable locally until connectivity restores. | Auto-sync on connectivity restoration; idempotency key prevents duplicates. |
+| **Incident lifecycle transitions (R-54..R-60)** | Lifecycle transitions require write access to the primary database. If the primary is unavailable (read-replica-only mode), lifecycle transitions are **queued** in the M30 outbox relay under `m30.incident.transition_queued` and applied on primary recovery. The UI surfaces a "Transition queued — will apply when service restores" banner. | **Queued — not lost.** Transitions are durably queued; the incident state does not advance until the transition is committed to the primary. | Outbox relay drains on primary restoration; queued transitions apply in order. |
+| **SRA / QAPI / CoP / mortality-review writes** | Same as incident lifecycle: write-through to the primary. Read replica can serve historical data but mutations queue. These surfaces do not have the "draft capture" mobile offline path — they are admin/leadership surfaces used from the web app. | **Queued — not lost.** | Outbox relay drains on primary restoration. |
+| **CAHPS ingest (R-16, `m30.cahps_export` queue)** | **Tier 4 surface.** CAHPS result ingestion from the vendor is best-effort on a monthly cadence. During degradation, the CAHPS dashboard (S-04) shows the last ingested result summary with a stale banner. The monthly sample export (`m30.cahps_monthly_sample` cron) retries on the next available execution; missed exports within a calendar month do not trigger CMS penalization (the submission deadline is the end of the following quarter). | **Stale-OK for 72 h** (INT-026). | CAHPS cron retries automatically; if the day-2 export missed, manual trigger via R-14. |
+| **BullMQ queue processing** | Workers stop processing when the database write path is unavailable. Jobs accumulate in the queue. DLQs (§4.8 M30-F17) capture jobs that exhaust retries before the primary recovers. On primary restoration, the worker drains the queue in priority order (high → normal). | Queue depth is observable via the BullMQ dashboard; no job is lost. | Workers auto-resume; DLQ entries require manual drain if they accumulated during the outage. |
+| **Nightly recompute (cron `m30.nightly_recompute`)** | If the nightly cron fires during database unavailability, the enqueued jobs accumulate. The worker processes them on recovery; the next morning's hub shows up-to-date values with a 1–2 h delay. | Missing one nightly recompute cycle does not produce incorrect data — it produces stale data, which is stale-OK per the Tier 3 / 24 h RPO. | Auto-recovery; no manual intervention required unless the primary is down for >24 h (at which point the DR playbook escalates to a datacenter failover, not a M30-specific action). |
+
+#### 8.11.2 Degraded-mode surface signals
+
+During degraded mode, M30 surfaces the following signals to users:
+
+- **Quality hub (S-01):** a yellow banner: "Quality data as of `<last_compute_at>`. Live recompute is paused. Incident draft capture is active." The banner links to the platform status page.
+- **Risk register (S-17):** a yellow banner: "Risk register as of `<last_refresh_at>`. Refresh will resume automatically." The underlying base-table records are authoritative.
+- **Incident editor (S-11, S-M01):** if the user is on mobile, the draft-save indicator switches from "Saved" to "Draft saved locally — will sync when online." On web, a toast: "Draft auto-saved. Submission will be retried automatically."
+- **SRA / QAPI lifecycle transitions:** an inline alert: "Action queued. It will be applied when the service is fully restored. Do not navigate away."
+
+#### 8.11.3 Weekly BCP Print pack
+
+M30 does not own patient/clinical data that feeds the **Weekly BCP Print** pack (that is M5/M6/M11/M12/M13 per ADR-0021). M30's quality and compliance surfaces are not required in a paper-backup scenario during a full platform outage — the clinical care continues via the BCP Print pack; M30's QAPI/SRA/incident surfaces are administratively deferrable to 24 h recovery (Tier 3).
+
+### 8.12 Audit & Observability Additions
+
+#### 8.12.1 New audit actions
 
 | Action | Retention class | Payload (keys) |
 |---|---|---|
@@ -2983,7 +3123,7 @@ A small set of invariants must hold across every M30 deployment; the integration
 | `m30.risk_register.cms_attribution_flag_raised` | `compliance` | `measureCode, periodEnd, externalPercentage, score` |
 | `m30.retention_class.auto_promoted_to_part_two` | `compliance_42cfr_part2` | `tableName, rowId, triggerReason` |
 
-#### 8.10.2 New metrics
+#### 8.12.2 New metrics
 
 ```
 m30_mortality_review_external_source_total                     labels: cosign_status
@@ -3046,7 +3186,83 @@ A dedicated `__tests__/security/idor.spec.ts` enumerates every M30 GET/PATCH/POS
 - SRA finding ID from another org.
 - CAHPS sample ID from another org.
 
-### 9.5 E2E tests (Playwright)
+### 9.5 M30-F20 — RLS Isolation Tests Enumerated (ARCH-211, SEC-009)
+
+**Finding:** M30-F20 (ADR-0021 §20.B requirement). The §20.B template requires that RLS isolation tests be **enumerated per PHI table**, not merely referenced as "a suite exists." This section fulfills ARCH-211 (per-table RLS isolation test enumeration) and SEC-009 (cross-tenant access control test coverage).
+
+**Located at:** `apps/backend/src/modules/30-quality/__tests__/security/rls-isolation.spec.ts`
+
+#### 9.5.1 PHI table isolation tests
+
+The four PHI-bearing tables require explicit per-table RLS isolation tests. Each table is tested with two tenant orgs (`orgA`, `orgB`) and two patient scopes (`patientA1` scoped to `orgA`, `patientB1` scoped to `orgB`).
+
+**`incident_report` (partitioned by `occurred_at`, RLS: `org_id = current_org_id() AND (patient_id IS NULL OR can_access_patient(patient_id)) AND can_see_incident_kind(kind, ...)`)**
+
+| Test ID | Scenario | Expected |
+|---------|----------|----------|
+| RLS-IR-01 | `orgB` principal queries `incident_report` with no filter | 0 rows from `orgA` |
+| RLS-IR-02 | `orgB` principal queries with explicit `orgId=orgA` URL param | 0 rows (org_id predicate wins over param) |
+| RLS-IR-03 | `orgA` clinician without `incident.abuse_review` queries the incident list | 0 abuse-allegation rows returned (kind filter at RLS level) |
+| RLS-IR-04 | `orgA` clinician with `incident.read` but not in `patientA1`'s caseload calls R-52 for `patientA1`'s incident | 404 (IDOR-defense; not 403) |
+| RLS-IR-05 | Direct SQL probe from `app_user` role bound to `orgB` — `SELECT * FROM incident_report` | 0 rows from `orgA` (RLS with FORCE applied) |
+| RLS-IR-06 | `orgA` principal calls R-50 with explicit `patient_id=patientB1` | 0 rows (patient_id not in current_org scope) |
+
+**`mortality_review` (partitioned by `death_at`, RLS: `org_id = current_org_id() AND can_access_patient(deceased_patient_id)`)**
+
+| Test ID | Scenario | Expected |
+|---------|----------|----------|
+| RLS-MR-01 | `orgB` principal queries `mortality_review` | 0 rows from `orgA` |
+| RLS-MR-02 | `orgA` clinician (not assigned) calls R-71 with `reviewId` belonging to `orgB` | 404 |
+| RLS-MR-03 | `orgA` clinician with `mortality.read` but `patientA1` removed from caseload calls R-71 for `patientA1`'s review | 404 |
+| RLS-MR-04 | Direct SQL probe from `app_user` role bound to `orgB` — `SELECT * FROM mortality_review` | 0 rows from `orgA` |
+| RLS-MR-05 | `orgA` principal attempts PATCH R-72 on a `mortality_review` row from `orgB` | 404 (row invisible to RLS; no 403 leak) |
+
+**`infection_surveillance_event` (partitioned by `observed_at`, RLS: `org_id = current_org_id() AND (patient_id IS NULL OR can_access_patient(patient_id))`)**
+
+| Test ID | Scenario | Expected |
+|---------|----------|----------|
+| RLS-ISE-01 | `orgB` principal queries `infection_surveillance_event` | 0 rows from `orgA` |
+| RLS-ISE-02 | `orgA` clinician with `infection.read` and `patientA1` in caseload: R-90 returns `patientA1`'s event | 1 row (patient-linked, in scope) |
+| RLS-ISE-03 | `orgA` clinician with `infection.read` but `patientA1` NOT in caseload: R-90 | 0 patient-linked rows for `patientA1`; staff-only events (patient_id IS NULL) still visible |
+| RLS-ISE-04 | Direct SQL probe from `app_user` role bound to `orgB` — `SELECT * FROM infection_surveillance_event` | 0 rows from `orgA` |
+
+**`cahps_decedent_sample` (partitioned by `sampling_cycle_month`, RLS: `org_id = current_org_id() AND can_access_patient(deceased_patient_id)`)**
+
+| Test ID | Scenario | Expected |
+|---------|----------|----------|
+| RLS-CDS-01 | `orgB` principal queries `cahps_decedent_sample` via R-12 | 0 rows from `orgA` |
+| RLS-CDS-02 | `orgA` QAPI Coordinator with `quality.cahps.read` but `deceasedPatientId` not in caseload | 0 PHI rows; only count visible to QAPI Coordinator role with explicit `quality.cahps.admin` |
+| RLS-CDS-03 | CAHPS vendor service account (mTLS, `quality.cahps.system`) calls R-12 directly | 403 (system key never grants direct list access; ingest-only) |
+| RLS-CDS-04 | Direct SQL probe from `app_user` role bound to `orgB` — `SELECT * FROM cahps_decedent_sample` | 0 rows from `orgA` |
+
+#### 9.5.2 `risk_register_view` cross-tenant isolation
+
+The materialized view has `CREATE UNIQUE INDEX uq_risk_register_view ON risk_register_view (source_kind, source_id)` and its RLS policy is `current_org_id() = risk_register_view.org_id`.
+
+| Test ID | Scenario | Expected |
+|---------|----------|----------|
+| RLS-RRV-01 | `orgB` principal calls R-95 | 0 rows from `orgA` (view is RLS-protected) |
+| RLS-RRV-02 | Direct SQL probe from `app_user` role bound to `orgB` — `SELECT * FROM risk_register_view` | 0 rows from `orgA` |
+| RLS-RRV-03 | `orgA` row transitions to `corrective_action`; view refreshed; `orgB` principal calls R-95 | 0 rows from `orgA` in `orgB`'s view |
+
+#### 9.5.3 Admin-refresh path cross-tenant test
+
+The `REFRESH MATERIALIZED VIEW CONCURRENTLY risk_register_view` runs under the `wardenx_admin` role (elevated for the DDL operation). This test verifies that the elevation does not inadvertently expose cross-tenant data to subsequent reads.
+
+| Test ID | Scenario | Expected |
+|---------|----------|----------|
+| RLS-RRV-04 | Seed 2 orgs with overlapping risk entries. Trigger R-96 (`risk.admin` permission) as `orgA` admin. Then immediately query R-95 as `orgB` principal. | `orgB` sees only its own rows; `orgA`'s rows not leaked despite the admin-role refresh. |
+| RLS-RRV-05 | Simulate concurrent refresh (R-96) + concurrent R-95 read from `orgB` | `orgB`'s read returns its own rows only; no partial cross-tenant leak during `REFRESH MATERIALIZED VIEW CONCURRENTLY`. |
+| RLS-RRV-06 | Seed `orgA` with 5 risk entries and `orgB` with 3. Drop all `orgA` entries (via erasure workflow). Trigger refresh. Query as `orgB`. | `orgB` sees its 3 rows; the `UNION ALL` query in the view does not expose deleted `orgA` rows. |
+
+#### 9.5.4 Integration with §9.3 and §9.4
+
+The per-table tests (§9.5.1–9.5.3) are separate from the broader RLS isolation suite (§9.3) which seeds two orgs and runs every route. The §9.5 tests here drill specifically into:
+- **Per-table SQL probes** (using `app_user` role directly, not via the API), which catch RLS misconfiguration that the API layer might accidentally compensate for.
+- **The materialized view admin-refresh cross-tenant vector** (RLS-RRV-04 through RLS-RRV-06), which is a uniquely M30 risk because the admin-role elevation required for `CONCURRENTLY` refresh could, if misconfigured, briefly expose all-org data.
+- **PHI patient-scope sub-predicates** (`can_access_patient`) within the org-scope predicate, which is the M30-specific layering (most modules have only org-scope; M30 additionally gates on patient caseload for the four partitioned tables).
+
+### 9.6 E2E tests (Playwright)
 
 Located at `apps/e2e/tests/m30/`. Each WF-NN from §7 has a corresponding spec:
 
@@ -3056,7 +3272,7 @@ Located at `apps/e2e/tests/m30/`. Each WF-NN from §7 has a corresponding spec:
 - `wf-18-outbreak-detection.spec.ts` — submits 3 matching events, asserts the outbreak case appears on S-16.
 - `wf-22-ai-block.spec.ts` — attempts to wire a M32 AI sink to a M30 route via a test-harness route; asserts boot would fail (test runs the boot validator standalone).
 
-### 9.6 Performance tests (k6)
+### 9.7 Performance tests (k6)
 
 Scenarios in `apps/perf/m30/`:
 
@@ -3067,7 +3283,7 @@ Scenarios in `apps/perf/m30/`:
 - **Outbreak detection trigger.** Burst of 1000 surveillance event inserts: trigger evaluations do not cause more than 2x baseline INSERT latency.
 - **Materialized view refresh under load.** Concurrent reads (R-95) during refresh: asserts no read query exceeds p95 baseline + 50%.
 
-### 9.7 Fixtures and seed data
+### 9.8 Fixtures and seed data
 
 Fixtures live in `packages/quality/test-fixtures/`:
 
@@ -3077,7 +3293,7 @@ Fixtures live in `packages/quality/test-fixtures/`:
 - `fixtures/incident-discriminators/` — One file per incident kind with valid + invalid `data` payloads.
 - `fixtures/sra-nist-controls/` — NIST 800-66r2 control reference list with category groupings, used by SRA cycle scope-template tests.
 
-### 9.8 Accessibility tests
+### 9.9 Accessibility tests
 
 axe-core integration on all surfaces in §5. Specific tests assert:
 
@@ -3085,7 +3301,7 @@ axe-core integration on all surfaces in §5. Specific tests assert:
 - Co-sign drawers in S-06, S-08, S-13 manage focus correctly across the step-up auth modal.
 - `aria-live` regions announce state transitions in S-12.
 
-### 9.9 Mutation testing (optional, advisory)
+### 9.10 Mutation testing (optional, advisory)
 
 Stryker.js mutation tests run weekly on the validator and compute packages (`packages/quality/src/validators/`, `packages/quality/src/compute/`). Target mutation score ≥ 75%. Score is advisory in v0.2; promotion to gate condition is deferred to v0.3.
 
@@ -3509,11 +3725,22 @@ Each item is a precondition for promoting M30 from spec-locked to implementation
 
 - [ ] `packages/cahps-vendors/SECURITY_MANDATE.md` written and accepted by Security Officer.
 - [ ] Operations runbook updated with: nightly recompute cadence, CAHPS monthly sample timing, SRA reminder triage workflow, outbreak detection follow-up workflow.
-- [ ] DR/BCP runbook updated with M30 RPO/RTO targets (RPO: 1 hour, RTO: 4 hours per platform baseline).
+- [ ] DR/BCP runbook updated with M30 RPO/RTO targets: **DR Tier 3 — RTO 24 hours / RPO 1 hour** (M30-F07, DR-010/013). Note: CAHPS ingest (R-16, `m30.cahps_export` queue) is Tier 4 (INT-026) — CAHPS ingest degradation is tolerated for up to 72 h without patient-safety consequence; the Tier 3 declaration covers the clinical quality and compliance surfaces (measures, incidents, SRA, QAPI, CoP, mortality review). The prior inline reference to "RTO: 4 hours" was a mis-declaration of Tier 2 and is superseded by this entry; see §8.10 (DR tier declaration) and §8.11 (degraded-mode behavior) for the full specification.
 - [ ] AI Governance doc updated to list M30 in the AI-prohibited surface registry.
 - [ ] Architecture doc v0.12 (next minor) updated to reflect the manifest patch.
 
-### 12.9 External-source, Part 2 & registry sign-off
+### 12.9 ADR-0021 §20.B template sign-off
+
+The following items satisfy the CI-gated §20.B template requirements per ADR-0021:
+
+- [ ] **M30-F05 (ARCH-263, SD-053):** `Idempotency-Key` header declared on every mutating route per §4.1.1; 24h dedup window + 409-on-body-mismatch semantics implemented via M1 `IdempotencyKeyMiddleware`; PATCH routes exempted with rationale documented.
+- [ ] **M30-F06 (SD-052):** Opaque cursor pagination (`next_cursor` + `has_more`) implemented on all three PHI list routes (R-50, R-70, R-90) per §4.1.2; offset pagination absent from all PHI routes; cursor HMAC-signed to prevent tampering.
+- [ ] **M30-F07 (DR-010, DR-013):** DR tier correctly declared as **Tier 3** (RTO 24h / RPO 1h) in §8.10; CAHPS ingest correctly declared Tier 4 (INT-026); prior Tier 2 "RTO: 4 hours" wording superseded in §12.8.
+- [ ] **M30-F17 (DR-022, OPS-035):** DLQ declared per queue in §4.8; every queue carries `attempts` / backoff / concurrency / DLQ destination / consumer idempotency assertion; no queue ships with undeclared semantics; cross-reference to §2.6 job-idempotency rules (not V-8) confirmed correct.
+- [ ] **M30-F18 (DR-064, DR-070):** Degraded-mode section (§8.11) declares per-surface stale-OK tolerance, incident-draft capture preservation, CAHPS ingest Tier 4 stale dashboard, queued transition semantics, and BCP Print pack exclusion.
+- [ ] **M30-F20 (ARCH-211, SEC-009):** RLS isolation tests enumerated in §9.5 per PHI table (`incident_report`, `mortality_review`, `infection_surveillance_event`, `cahps_decedent_sample`) + `risk_register_view`; explicit cross-tenant tests RLS-RRV-04 through RLS-RRV-06 covering the admin-refresh path on the materialized view; all tests located at `apps/backend/src/modules/30-quality/__tests__/security/rls-isolation.spec.ts`.
+
+### 12.10 External-source, Part 2 & registry sign-off
 
 - [ ] Migration `0030_m30_v03_*` lands; new columns; Part 2 auto-promotion trigger; indexes.
 - [ ] HVLDL snapshot includes `external_source_breakdown` block; Risk Register flag raised when ≥10% external AND below CMS national average.

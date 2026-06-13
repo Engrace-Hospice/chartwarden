@@ -1,6 +1,6 @@
 # Module 20 — Field Safety Specification
 
-**Spec version:** v0.3 — the §4.10 outbox events and §4.9 M36 alert payloads migrated to the
+**Spec version:** v0.3.1 — ADR-0021 §20.B template additions: M20-F09 (§2.7 DR Tier 1 declaration for the SOS path, DR-013 customer-SLA caveat, degraded-mode availability table, BCP re-entry; DR-010/013, INT-031) and M20-F15 (§8.8 Audit & Observability section: PHI write-audit event catalog, business-event audit entries, Prometheus metrics catalog, retention class summary; ARCH-003). No existing decisions, routes, schema, or the SOS/life-safety state machine were altered. Prior v0.3 — the §4.10 outbox events and §4.9 M36 alert payloads migrated to the
 `m20.safety.*` namespace per M01 D8 / M36 D10 / M03 D9 (22 names: sos_alert_raised/acknowledged/
 escalated/resolved/cancel_attempted_rejected, sos_terminus_reached, sos_anomaly_volume,
 check_in_recorded/overdue/escalated, coverage_gap_detected, high_risk_area_entered,
@@ -34,13 +34,13 @@ majors — most importantly the **life-safety SOS terminus + non-suppressible de
 | M20-F06 | MAJOR | The per-membership **emergency-contact row is owned by M20** (M2 has no such table); the `membership.device_attestation` surface is the corpus-wide M2-surface-inflation item (ADR-0023 D2 — added to M2 by reviewed edit or owner-declared); the SOS gate treats attestation as advisory (fans out regardless). |
 | M20-F07 | MAJOR | **PostGIS is not a Phase-1 dependency** (M1 is frozen, ARCH-027 stack is pgvector+pgcrypto): the false "in the M1 migration" claim is struck; high-risk-area polygons are stored as **jsonb** with **app-code point-in-polygon** at field-safety scale; a PostGIS path for Phase-2 scale requires its **own ADR** (§3.2 Phase F). |
 | M20-F08 | MINOR | Supervisor dashboard subscribes to `safety:<orgId>` (urgent) and `supervisor:<locationId>` — not the announcements-only `org:<orgId>` room (SD-057/058). |
-| M20-F09 | MINOR | DR **Tier 1** declared for the SOS path (matching INT-031) with the DR-013 customer-SLA caveat + a degraded-mode availability table (offline SQLCipher SOS queue + `tel:` voice fallback retained). |
+| M20-F09 | MINOR | DR **Tier 1** declared for the SOS path (matching INT-031) with the DR-013 customer-SLA caveat + a degraded-mode availability table (offline SQLCipher SOS queue + `tel:` voice fallback retained). Implemented in **§2.7** (added v0.3.1). |
 | M20-F10 | MINOR | `POST /safety/sos` `Idempotent: no` documented as a deliberate SD-053 exception (every live press records); accepts `Idempotency-Key` only for network-retry dedup of the *same* press (offline dedup via `localIdempotencyKey`). |
 | M20-F11 | MINOR | The GPS-spoof badge cache is **Valkey** (`safety_clinician_signal:<membershipId>` TTL 12 h), not instance-local memory (SD-062 statelessness). |
 | M20-F12 | MINOR | `safety_sos_location_stream` partition claim either implemented (`LIST organization_id → RANGE`) + registered in `partition.rotate`, or dropped; new retention classes mapped into the §24 matrix as an M4-D1 extension. |
 | M20-F13 | MINOR | Consumed package names aligned to the owning modules' actual codePaths (`evv-client → evv`, `scheduling-client → routing-client`, etc.). |
 | M20-F14 | MINOR | Hot-path PHI indexes prefixed with the leading `(organization_id, …)` composite (SD-028). |
-| M20-F15 | MINOR | §8 restructured/cross-referenced to the §20.B "Audit & Observability" template section. |
+| M20-F15 | MINOR | §8 restructured/cross-referenced to the §20.B "Audit & Observability" template section. Implemented as **§8.8** (added v0.3.1): PHI write-audit event catalog for all 13 owned tables, 20 business-event audit entries, Prometheus metrics catalog with alerting thresholds, and retention class summary. |
 | **M20-F16** | MINOR | **Consent-coercion posture:** declining `sos_coordinates` consent no longer disables SOS entirely — the declined-consent fallback fans out the SOS **without coordinates** ("no location available — call immediately"); the condition-of-safety disclosure language is added for HR/legal review (SEC-001 privacy-by-design). |
 | M20-F17 | MINOR | M20's retarget of the M36-`system_locked` `field_safety.sos` rule resolver verified against M36's contract; if locked-means-locked, the composed resolver is the M36-side seed. |
 
@@ -411,6 +411,39 @@ Side-effect ordering is the transactional-outbox pattern (architecture §25.5): 
 - All write endpoints accept the M1 standard `Idempotency-Key` header per architecture §25.5; the M1 idempotency middleware stores the key for 24 hours and replays the original response on duplicate submission. SOS is *not* idempotent on the press itself — every press generates a row — but the *fan-out* is idempotent on the outbox `event_id` (M36 dedups via the message-bus delivery idempotency).
 - The per-visit cadence-schedule materializer is idempotent on `(visit_id, kind, expected_at)` — re-running the materializer for a visit that already has its schedule is a no-op.
 - The outbox-consumer for `m18.evv.check_in_recorded` and `m18.evv.check_out_recorded` is idempotent on the outbox `event_id` — re-delivery of the same event does not create duplicate pre-/post-visit check-in obligations.
+
+### 2.7 DR Tier, Degraded Mode, and BCP Re-entry (M20-F09 — DR-010/013, INT-031)
+
+**DR Tier: 1 (SOS path) / Tier 3 (non-SOS administrative surfaces) — RTO 1 hour / RPO 5 minutes for the SOS path.**
+
+M20's SOS escalation chain is a life-safety mechanism: a clinician in danger in the field cannot wait for a scheduled recovery window. The WARDENX_DR_BCP_v0.1 Tier-1 definition — "Loss directly affects … imminent safety" — applies literally to the SOS path. **The SOS path is therefore DR Tier 1**, co-tiered with M19 (On-Call Triage) and M36 (Secure Messaging & Alerts). Non-SOS administrative surfaces (incident ledger, policy editor, supervisor-subscription matrix, high-risk-area polygon registry) are **DR Tier 3** and need not recover within the Tier-1 window.
+
+> **DR-013 customer-SLA caveat.** The Tier-1 classification is the *platform* posture; customer-facing SLA language in tenant agreements is governed by DR-013 and may express the RTO/RPO in softer terms ("commercially reasonable efforts," "best-effort 1-hour recovery"). This spec declares the internal platform obligation; the customer SLA is a contractual layer and does not relax the engineering target.
+
+**Tier-1 attributes for the SOS path:**
+
+| Attribute | M20 Target |
+|---|---|
+| **RTO** | 1 hour — the `POST /api/v1/safety/sos` write path, the M36 fan-out, and the Tier-1 voice escalation via Twilio must be restored within 1 hour of a qualifying outage. Mobile offline SOS (D15) functions independently of server availability during the outage window — see degraded mode below. |
+| **RPO** | 5 minutes — SOS alert rows and `safety_sos_location_stream` rows must not be lost beyond the last 5 minutes of committed writes. WAL-based streaming replication to the hot standby enforces this; the `safety_clinician_signal:*` Valkey cache (12 h TTL) is acceptable to lose and is rebuilt on next dashboard load or check-in event. |
+| **Hot standby** | One hot-standby PostgreSQL replica in the secondary AZ; automatic failover via the platform's PgBouncer + Patroni tier. The `m20.sos-sla-watchdog.cron` and `m20.overdue-detector.cron` BullMQ queues are promoted to the dedicated high-priority Valkey logical DB per DR-064 queue-segregation rule. |
+| **INT-031 — WardenX ops paging** | The `emergency_terminus` state (§2.2.2) pages WardenX ops via `m20.safety.sos_terminus_reached` at `critical` severity through every available channel. If M36 delivery is also degraded, M20 writes the terminus event to a local fallback table `m20_terminus_fallback_log` (append-only, org-scoped) and the platform ops health probe surfaces it on every `GET /health/m20` poll; WardenX ops monitors the health endpoint in DR scenarios. |
+
+**Degraded-mode availability table:**
+
+M20's SOS delivery **must never be suppressed** regardless of which dependency is down (M20-F05/S13). The table below specifies what each subsystem does when a dependency is unavailable; the SOS column is always "fans out."
+
+| Dependency down | SOS delivery | Check-in cadence | Supervisor dashboard | Incident ledger | Policy editor |
+|---|---|---|---|---|---|
+| **M36 alert delivery (circuit open)** | SOS raised row written; outbox event emitted and queued; M36 delivery retried per BullMQ backoff (§4.8); `tel:` URI direct-dial surfaced to clinician mobile (D15); M20 logs payload to `m20_degraded_alert_log` table; org-admin sees tenant emergency number at `GET /api/v1/safety/status`. Fan-out continues on M36 recovery. | Overdue events queue in BullMQ; no supervisor push notifications until M36 recovers; cron state-machine continues. | Realtime Socket.IO updates paused; REST polling fallback every 60 s remains available. | Read/write unaffected. | Unaffected. |
+| **M19 on-call seam unavailable** | SOS raised normally; `field_safety_composed` resolver omits the M19 on-call parallel recipients; M20 supervisor subscriptions alone form the recipient set; degraded-mode SOS note appended to the alert payload ("on-call resolution unavailable — paging subscribed supervisors only"). | Unaffected. | After-hours indicator may not update for on-call supervisor name; static cached value (TTL 5 min) served. | Unaffected. | Unaffected. |
+| **M18 EVV seam unavailable** | Unaffected — SOS does not depend on M18. | Pre-/post-visit window open/close events dependent on M18 outbox stop arriving; existing scheduled check-in windows remain open until connectivity restores; overdue-detector continues on existing schedule. | Last-known-location column shows "EVV location unavailable" badge; last cached location (TTL 30 min) served or "unknown." | Unaffected. | Unaffected. |
+| **M17 scheduling seam unavailable** | SOS records with `last_known_visit_id=null` if no cached visit; alert proceeds normally with "visit context unavailable" annotation. | Cadence-schedule materializer pauses on new `m17.visit.published` events; queues jobs in BullMQ for replay on reconnect (idempotent on `(visit_id, kind, expected_at)`). | Current-visit column shows "scheduling unavailable." | Unaffected. | Unaffected. |
+| **Valkey unavailable** | SOS route bypasses BullMQ; writes SOS row directly and emits outbox event synchronously in-process (fallback per M1 `DegradedError` envelope); Twilio voice escalation is invoked directly from `sos-escalator.ts` without the BullMQ intermediary when the `emergency_terminus` state is active — the life-safety path survives queue outage. | Cron workers cannot enqueue; overdue-detector falls back to direct DB polling at 60-second interval. | `safety_clinician_signal` cache empty; dashboard renders from DB on each poll. | Unaffected (DB-primary path). | Unaffected. |
+| **M5 patient seam unavailable** | Unaffected — SOS does not require patient context. | Unaffected. | Patient first-name column shows "—" (minimum-necessary data missing); supervisor can still see clinician status and SOS state. | Patient-ID field on incident may not pre-populate from seam; clinician enters manually. | Unaffected. |
+| **Mobile offline (clinician device has no network)** | SQLCipher `m20_outbox` captures SOS row locally (D15); `tel:` URI direct-dial to cached on-duty supervisor number is surfaced immediately; SOS syncs to server on reconnect via `localIdempotencyKey` dedup. | Ad-hoc check-ins queue locally; sync on reconnect. | N/A (supervisor web, not mobile). | N/A (supervisor web). | N/A. |
+
+**BCP paper re-entry:** M20 has no paper-primary equivalent — a SOS cannot be retrospectively raised on paper. Incidents that occurred during a platform outage are entered post-hoc via the `safety_incident` draft workflow with `occurred_at` set to the original incident time; the supervisor must supply a `narrative` that references the outage context; M4 audit records `incident.paper_reentry_flag=true` when `reported_at > occurred_at + 24 hr` and the edit reason references the outage window. Policy edits and subscription changes made on paper during an outage are re-entered by the DON after recovery; M4 audit captures the `edit_reason` referencing the outage event ID.
 
 -----
 
@@ -1782,6 +1815,88 @@ The privacy/safety trade-off is explicit:
 - **Cryptographic erasure at resolve + 90 days:** stream rows are physically deleted via DEK destruction; the structural marker remains for audit.
 
 No "training data" exception. No "research" exception. No "operational analytics" exception. Coordinates are written for one purpose (responding to an active SOS) and erased after that purpose ends.
+
+### 8.8 Audit & Observability (M20-F15 — ARCH-003)
+
+M20 emits two classes of audit events: **PHI write-audit** events (generated automatically by the M4 trigger generator on each owned table) and **business-event audit** entries (emitted explicitly via `m4.recordBusinessEvent` at application layer). Retention classes follow the M4 taxonomy established in §3.7 and the module `Depends on: 4` declaration.
+
+#### 8.8.1 PHI Write-Audit Events (M4 Trigger-Generated)
+
+Automatically generated on every INSERT / UPDATE / DELETE on PHI-bearing tables. Actor, IP, column-level diff (with denylist columns from §3.6 replaced by `<changed>`), and timestamp are captured.
+
+| Table | Trigger actions | Retention class | Notes |
+|---|---|---|---|
+| `safety_sos_alert` | INSERT, UPDATE | `compliance` (6 yr from final lifecycle event) | `posted_coordinates_cipher`, `resolution_narrative_cipher`, `acknowledger_dispatch_payload_cipher` emit `<changed>` per §3.6 denylist; every state transition recorded in `safety_sos_alert_state_history` — the trigger on the parent table records the `lifecycle_state` column diff; the state-history table has its own INSERT trigger |
+| `safety_sos_alert_state_history` | INSERT only (append-only) | `compliance` | `reason` emits `<changed>`; `from_state` / `to_state` are non-PHI enum values and are captured verbatim for lifecycle replay |
+| `safety_sos_location_stream` | INSERT only (append-only during active SOS) | `compliance` for SOS-bracketed rows; physically deleted at resolve + 90 days via DEK destruction | `coordinates_cipher` and `device_telemetry` emit `<changed>`; the trigger records `sampled_at` and `sos_alert_id` for the stream-access audit path |
+| `safety_incident` | INSERT, UPDATE | `compliance` (6 yr; OSHA-reportable rows: indefinite until destruction-cert) | `narrative_cipher`, `witnesses_cipher`, `action_plan_cipher`, `location_description`, `reopen_reason`, `workers_comp_claim_reference` emit `<changed>`; `category`, `severity`, `osha_reportable`, `lifecycle_state` are captured verbatim — these are the fields a surveyor or insurer examines |
+| `safety_incident_state_history` | INSERT only | `compliance` | `reason` emits `<changed>` |
+| `safety_check_in` | INSERT, UPDATE (supersede only) | `compliance` for SOS-bracketed rows; `operational` for non-SOS `ok`-status rows (7d hot, 90d warm, purged) | `concern_note` and `posted_coordinates_cipher` emit `<changed>`; `kind`, `status`, `is_part_of_sos_bracket` captured verbatim |
+| `safety_check_in_schedule` | INSERT, UPDATE | `compliance` (tied to parent visit/SOS bracket) | `state` transitions captured verbatim; no PHI columns; `expected_at` captured for overdue-replay |
+| `safety_acknowledgment` | INSERT, UPDATE | matches parent target's retention class | `action_taken` emits `<changed>`; `target_kind`, `outcome`, `acknowledged_at` captured verbatim |
+| `safety_supervisor_subscription` | INSERT, UPDATE | `operational` (3 yr from deactivation) | Full diff captured (no PHI fields); `scope_kind`, `alert_kinds` especially relevant for coverage-gap audit |
+| `safety_policy_version` | INSERT only (append-only) | `compliance` (indefinite — needed for incident replay) | `edit_reason` emits `<changed>`; policy threshold fields (`mid_visit_cadence_minutes`, `supervisor_alert_minutes`, etc.) captured verbatim for the policy-at-incident-time replay path |
+| `safety_high_risk_area` | INSERT, UPDATE | `operational` (5 yr from retirement) | `advisory_message` emits `<changed>` (may contain location-sensitive text per §3.5); `risk_category`, `policy_for_visits_to_area`, `effective_from` / `effective_to` captured verbatim |
+| `safety_emergency_contact_consent` | INSERT, UPDATE | `compliance` (6 yr from revocation) | `consent_scope_detail` emits `<changed>` (PII of emergency contact per §3.5); `consent_purpose`, `status`, `granted_at`, `revoked_at` captured verbatim |
+
+#### 8.8.2 Business-Event Audit Entries (Application-Emitted)
+
+Emitted via `m4.recordBusinessEvent(orgId, event)`. All carry `retention_class='compliance'` unless noted. Events mirror the outbox catalog (§4.10) but are written to the M4 audit channel separately from the outbox — the outbox is for cross-module fan-out; the audit entry is for the immutable safety record.
+
+| Event action | Trigger | Key fields | Retention | Notes |
+|---|---|---|---|---|
+| `safety.sos.raised` | `POST /api/v1/safety/sos` succeeds | `sosAlertId`, `postedByMembershipId`, `postedViaDeviceId`, `deviceAttestationResult`, `lastKnownVisitId?`, `coordinatesConsentAt`, `cancelWindowExpiresAt` | compliance | `deviceAttestationResult` is the advisory attestation check outcome (§2.2.2); coordinates never in the audit payload — only the consent timestamp |
+| `safety.sos.cancel_attempted_rejected` | Cancel without biometric when required | `sosAlertId`, `attemptedAt`, `biometricResult` | compliance | Life-safety forensics: a failed cancel attempt is evidence for a hostile-actor scenario |
+| `safety.sos.cancelled_in_window` | Cancel biometric passes within window | `sosAlertId`, `cancelledAt`, `biometricResult` | compliance | Pattern-detection: repeated in-window cancels surface to Compliance Officer |
+| `safety.sos.acknowledged` | `POST /api/v1/safety/sos/:id/acknowledge` | `sosAlertId`, `acknowledgedByMembershipId`, `acknowledgedAt`, `slaBreached: boolean`, `tierAtAcknowledgment` | compliance | `slaBreached` for M30 response-time metric; `tierAtAcknowledgment` for escalation-effectiveness review |
+| `safety.sos.resolved` | `POST /api/v1/safety/sos/:id/resolve` | `sosAlertId`, `resolvedByMembershipId`, `outcome`, `resolvedAt` | compliance | Resolution text not in event (in table diff with denylist); `outcome` enum captured verbatim |
+| `safety.sos.terminus_reached` | `emergency_terminus` state entered (§2.2.2) | `sosAlertId`, `terminusReachedAt`, `tierAtTerminus`, `emergencyContactCallInitiated: boolean`, `psapJurisdictionId?`, `wardenxOpsPaged: boolean` | compliance | **Critical severity** audit entry; separately surfaced to WardenX ops per INT-031; the PSAP number lookup from M40 is referenced by jurisdiction ID, never embedded in the audit payload |
+| `safety.sos.location_stream_read` | `GET /api/v1/safety/sos/:id/location-stream` | `sosAlertId`, `readByMembershipId`, `readAt`, `streamWindowStartIso`, `streamWindowEndIso`, `recordCount` | compliance | **`audit.warn` severity** per D6; original poster sees this read on her self-service surface; `recordCount` tells the reviewer how many coordinate samples were accessed |
+| `safety.check_in.recorded` | `POST /api/v1/safety/check-ins` | `checkInId`, `scheduleId?`, `visitId?`, `postedByMembershipId`, `kind`, `status`, `isPartOfSosBracket`, `coordinatesIncluded: boolean` | `compliance` if SOS-bracketed or `concerned_*` status; `operational` if non-SOS `ok` | `coordinatesIncluded` boolean (never coordinates themselves); coordinate reads separately audited via `safety.sos.location_stream_read` |
+| `safety.check_in.suppressed` | Mid-visit suppression (D13) | `scheduleId`, `visitId?`, `postedByMembershipId`, `suppressedAt`, `reasonLengthChars` (not the reason text) | compliance | `reasonLengthChars` confirms the ≥30-char attestation requirement without capturing PHI |
+| `safety.check_in.overdue` | `safety_check_in_schedule` → `overdue` | `scheduleId`, `clinicianMembershipId`, `visitId?`, `kind`, `expectedAt`, `minutesOverdue` | compliance | Overdue timeline evidence for workers-comp / insurer review |
+| `safety.incident.submitted` | `POST /api/v1/safety/incidents/:id/submit` | `incidentId`, `affectedClinicianMembershipId`, `category`, `severity`, `occurredAt`, `oshaReportable`, `linkedSosAlertId?` | compliance | Incident-report immutability entry point |
+| `safety.incident.osha_signoff` | `POST /api/v1/safety/incidents/:id/osha-signoff` | `incidentId`, `signedOffByMembershipId`, `signedOffAt`, `oshaReportable`, `stateCode`, `reportingWindowHours` | compliance | **`audit.warn` severity**; step-up auth captured by M2 and referenced here; the external-filing action is downstream but this entry is the authoritative M20 record |
+| `safety.incident.transition` | Supervisor state-machine transition | `incidentId`, `fromState`, `toState`, `transitionedByMembershipId`, `transitionedAt`, `actionPlanPresent: boolean` | compliance | `actionPlanPresent` boolean; action plan text in table diff with denylist |
+| `safety.policy.edited` | `PATCH /api/v1/safety/policy` | `newVersionId`, `changedByMembershipId`, `changedAt`, `thresholdDiffs: { field, old, new }[]` | compliance | `thresholdDiffs` is a structured list of which policy knobs changed and in which direction (tighten or loosen); the floor-bound enforcement means "loosen" should never appear — if it does, the audit entry is itself the compliance flag |
+| `safety.coverage_gap.detected` | Coverage-gap watchdog fires | `clinicianMembershipId`, `reason`, `detectedAt`, `watchdogRunAt` | compliance | Survey evidence that the gap was detected promptly |
+| `safety.coverage_gap.resolved` | Active subscription created for previously-gapped clinician | `clinicianMembershipId`, `resolvedAt`, `resolvedByMembershipId`, `gapDurationMinutes` | compliance | Resolution timeline evidence |
+| `safety.consent.granted` | `POST /api/v1/safety/consent/grant` | `clinicianMembershipId`, `consentPurpose`, `grantedAt`, `acknowledgmentTextHash` (SHA-256, not cleartext) | compliance | `acknowledgmentTextHash` confirms which policy text was presented |
+| `safety.consent.revoked` | `POST /api/v1/safety/consent/revoke` | `clinicianMembershipId`, `consentPurpose`, `revokedAt`, `effectImmediate: boolean` | compliance | `effectImmediate` reflects whether any in-flight SOS location stream was halted |
+
+#### 8.8.3 Prometheus Metrics Catalog (M20 — OPS-035)
+
+The following Prometheus metrics are scraped from M20 processes and visible in the `m20-field-safety` Grafana dashboard. Metrics listed in §10.J task 49 are enumerated here in full.
+
+| Metric | Type | Labels | Purpose | Alerting threshold |
+|---|---|---|---|---|
+| `m20_sos_raised_total` | counter | `orgId`, `deviceAttested` | Total SOS presses; `deviceAttested=false` rows flag advisory anomaly | No suppression alarm (per S13 / M20-F05) |
+| `m20_sos_acknowledged_seconds` | histogram | `orgId`, `tier` | Time from SOS raise to first acknowledgment; `tier` = tier at acknowledgment | p95 > tenant `sosTier1SlaSeconds` → warn to `platform_ops` |
+| `m20_sos_terminus_reached_total` | counter | `orgId` | Count of `emergency_terminus` entries | Any increment → **critical** alert to `wardenx_ops` + `platform_ops` (INT-031) |
+| `m20_sos_voice_escalation_failed_total` | counter | `orgId`, `tier` | Twilio Voice delivery failures for SOS recipients (consumed from `m36.delivery_failed`) | > 0 in 5 min → critical to `platform_ops` |
+| `m20_overdue_total` | counter | `orgId`, `kind`, `tier` | Check-in schedules that flipped to overdue/escalated, by kind and escalation tier | Sudden spike (> 10 × rolling avg in 10 min) → warn; possible mass-overdue scenario |
+| `m20_location_stream_active_gauge` | gauge | `orgId` | Current count of active continuous-location streams (D6 opt-in) | > 0 for > 4 h on a single SOS → warn (stream cap enforcement; should auto-stop) |
+| `m20_coverage_gap_count` | gauge | `orgId` | Current clinicians with no active supervisor subscription | > 0 → warn to `don` + `org_admin`; > 3 → critical |
+| `m20_sos_cancel_attempted_rejected_total` | counter | `orgId` | Cancel-without-biometric attempts (adversarial-cancel signal per §2.2.2) | > 2 in 1 h for single clinician → warn to `compliance_officer` |
+| `m20_sos_anomaly_volume_total` | counter | `orgId`, `membershipId` | SOS presses flagged as anomaly-volume (> 10/hr/membership per §8.3) | Any increment → warn to `compliance_officer` + `don` (flag only; SOS still fans out per S13) |
+| `m20_check_in_compliance_rate` | gauge | `orgId`, `kind` | Rolling 7-day check-in compliance rate by kind (fulfilled / expected schedules) | < 0.80 for `mid_visit` over 24 h → warn to `don` |
+| `m20_high_risk_area_entries_total` | counter | `orgId`, `riskCategory` | Visit addresses matched to high-risk polygons | Informational; surfaced on M30 safety dashboard |
+| `m20_dek_rotation_last_completed_at` | gauge | `orgId` | Epoch of last successful DEK rotation | > 95 days → warn to `platform_ops` |
+| `m20_sos_raise_duration_ms` | histogram | `orgId` | End-to-end latency of `POST /api/v1/safety/sos` (client tap → server-confirmed insert → M36 publish) | p95 > 300 ms → warn (§9.7 SLO) |
+
+**Alerting summary:** `m20_sos_terminus_reached_total > 0` and `m20_sos_voice_escalation_failed_total > 0` are critical alerts routed to `wardenx_ops` + `platform_ops`. All other thresholds are warn-severity routed to `platform_ops` or the org's clinical leadership as noted. No M20 metric suppresses or rate-limits SOS delivery; the `m20_sos_anomaly_volume_total` counter is a flag, not a gate.
+
+**Health probe:** `GET /health/m20` (internal) returns `{ status: 'healthy' | 'degraded' | 'unavailable', checks: { db, valkey, sosWatchdogLastRun, overdueDetectorLastRun, m36Reachable, seamRegistry } }`. The `sosWatchdogLastRun` check alerts if the SLA watchdog has not completed a run in > 60 seconds (the cron fires every 15 seconds; a 60-second gap indicates a stuck worker). This probe is consumed by M36's DR banner behavior per §2.7 and the WARDENX_OPS_RUNBOOK M20 section (§10.J task 51).
+
+#### 8.8.4 Retention Class Summary
+
+| Class | Retention period | Tables / events governed |
+|---|---|---|
+| `compliance` | 6 years from final lifecycle event on the parent SOS / incident | `safety_sos_alert`, `safety_incident`, `safety_acknowledgment`, SOS-bracketed `safety_check_in` and `safety_check_in_schedule`, `concerned_*`-status check-ins, `safety_policy_version`, `safety_emergency_contact_consent`, all business-event audit entries above |
+| `compliance` (extended) | Indefinite until destruction-cert | OSHA-reportable `safety_incident` rows; `safety_policy_version` rows referenced by any open incident |
+| `operational` | 7 days hot, 90 days warm, then purged (physical deletion) | Non-SOS `ok`-status `safety_check_in` rows |
+| `operational` | 3 years from deactivation | `safety_supervisor_subscription` |
+| `operational` | 5 years from retirement | `safety_high_risk_area` |
 
 -----
 

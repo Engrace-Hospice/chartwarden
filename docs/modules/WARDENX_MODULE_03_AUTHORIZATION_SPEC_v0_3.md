@@ -32,10 +32,10 @@ unchanged. (Prior: v0.2.)
 | M03-F05 | MAJOR | `organization_id` added to `role_permission` (nullable; template rows NULL) and `membership_role` (NOT NULL); bespoke RLS specified for `role_permission` (read own+template, write own only), generic policy for `membership_role`; both exempted from `wardenx_enable_rls()`. |
 | M03-F06 | MAJOR | `system_locked` roles + their CoP-required **permission floor** enumerated (§3.4.1); role editor rejects edits below the floor; ≈60 templates normatively referenced (Appendix A, CI-checked). |
 | M03-F07 | MAJOR | **Permission-key compile-time contract mechanism specified** (§3.3): per-module `permissions.ts` fragments, M3-owned aggregation emitting the union `PermissionKey` type, `arch:permissions` CI check (namespacing, collisions, predicate existence, route-key existence). |
-| M03-F08 | MAJOR | STRIDE threat model (privilege escalation, IDOR, predicate bypass, cache-staleness elevation, break-glass abuse) to be added mapping each threat to existing controls/tests. |
+| M03-F08 | MAJOR | **STRIDE threat model added (§8.4):** six threats fully specified — privilege escalation (anti-escalation check + `m3.authz.escalation_blocked`), IDOR (RLS + existence non-leak), ABAC-predicate bypass (server-assembled context only), cache-staleness elevation (event-driven invalidation + 60s TTL), break-glass abuse (scope check + critical per-access audit + Prometheus counter), auditor-scope expansion (`engagement_scope` predicate + window-revoke). Each row cites control + verifying test. Cross-referenced to SEC Hardening v0.2 §3.2 platform threats. |
 | M03-F09 | MINOR | First-chart-access Compliance notification via the `m3.*` outbox path; auditor roles are `system_locked` read-only per engagement type; Financial-Audit no-PHI scope shape in `scope` jsonb (§3.4.1). |
 | M03-F10 | MINOR | Audit action names re-prefixed to `m3.*` per D9 (§4.5 note); stale refs (§4.4 "Open Question 2"→D2, "Module 2 §4.5"→§4.7) corrected. |
-| M03-F11 | MINOR | Three BullMQ queues declare retry/backoff/concurrency/DLQ + idempotency (§4.5); `security` retention class remapped to `compliance` (§24). |
+| M03-F11 | MINOR | **BullMQ queue parameters fully declared (§4.5.1):** all three queues (`authz.reap_breakglass`, `authz.close_engagements`, `authz.cache_invalidate`) enumerate priority / attempts / exponential-backoff / concurrency / DLQ name + alert / idempotency guard per SD-059 / ARCH-262 / ADR-0021 §20.B. Scheduling cadence and DLQ-handling procedure specified. **Retention classes mapped to §24.1 matrix (§8.1):** invented `security` class replaced with `compliance` (7 years for role/engagement events; 6 years for break-glass events per the §24.1 "Security event logs" row) and `operational` (1 year for sampled denials) per ADR-0004 OPEN-022. |
 | M03-F12 | MINOR | D8 reworded: **M1 owns the `REQUIRED_SEAMS` registry + gate** (M1 §3.18); M3 owns the *schema* of a seam declaration and contributes entries at init (runtime registration), since M1 cannot import an M3-owned registry. |
 | M03-F13 | MINOR | `break_glass_event.consent_ref` typed against the M34/M39 tenant-consent record once specced; `m3.authz.denied` sampling policy pinned (deterministic for forensics). |
 
@@ -792,6 +792,8 @@ Type.Object({ name: Type.String(), email: Type.String({format:'email'}),
 
 ### 4.5 Socket.IO / BullMQ
 
+<!-- M03-F11 (ARCH-262, SD-059, ADR-0004) — full queue parameters declared below -->
+
 | Channel | Event/Queue | Purpose |
 |---|---|---|
 | Socket.IO `user:<id>` | `permissions.changed` | force UI re-gate when roles change (the one permitted direct real-time emit, ARCH-272) |
@@ -800,11 +802,32 @@ Type.Object({ name: Type.String(), email: Type.String({format:'email'}),
 | BullMQ `authz.close_engagements` | scheduled | close engagements at `end_at`, revoke sessions (idempotent) |
 | BullMQ `authz.cache_invalidate` | on role/permission change | clear effective-permission cache entries (idempotent) |
 
-> All five BullMQ queues declare `attempts`/backoff/concurrency/DLQ per SD-059 (M03-F11); the reap/close
-> jobs are idempotent (re-execution tolerant). Audit action names are re-prefixed to the `m3.*`
-> namespace per D9 (M03-F10): `m3.authz.denied`, `m3.role.assigned`, `m3.breakglass.invoked`,
-> `m3.engagement.created`. First-chart-access Compliance notification for auditor sessions (§7.5) is
-> emitted via the `m3.*` outbox path above (M03-F09).
+> Audit action names are re-prefixed to the `m3.*` namespace per D9 (M03-F10): `m3.authz.denied`,
+> `m3.role.assigned`, `m3.breakglass.invoked`, `m3.engagement.created`. First-chart-access
+> Compliance notification for auditor sessions (§7.5) is emitted via the `m3.*` outbox path above
+> (M03-F09).
+
+#### 4.5.1 BullMQ Queue Parameters (M03-F11 — ARCH-262 / SD-059 / ADR-0004)
+
+Every BullMQ queue declares its full operational parameters per the SD-059 / ADR-0021 §20.B
+template requirement. All three M3 queues share the Valkey db-1 instance (BullMQ broker, separate
+from the cache+session db-0). Each consumer is idempotent: re-execution of a job that already
+completed produces no duplicate state changes (break-glass expiry and engagement-close are guarded
+by `status` checks; cache-invalidation is a set-delete, inherently idempotent).
+
+| Queue | Priority | Attempts | Backoff | Concurrency | DLQ | Idempotency guard |
+|---|---|---|---|---|---|---|
+| `authz.reap_breakglass` | low | 5 | exponential, base 5 s, max 5 min | 2 | `authz.reap_breakglass:dlq` — admin console surfaced; alert on first DLQ entry | `WHERE status IN ('active','cosign_pending') AND expires_at <= now()` check inside job; re-runs skip already-expired rows |
+| `authz.close_engagements` | low | 5 | exponential, base 5 s, max 5 min | 2 | `authz.close_engagements:dlq` — admin console surfaced; alert on first DLQ entry | `WHERE status = 'active' AND end_at <= now()` guard; session-revoke calls `revokeIfActive` which is a no-op for already-revoked sessions |
+| `authz.cache_invalidate` | high | 3 | exponential, base 1 s, max 30 s | 8 | `authz.cache_invalidate:dlq` — paged alert; stale-cache safety net (D6 60s TTL) bounds blast radius if DLQ grows | Valkey `DEL` is idempotent; duplicate invalidations are harmless; job payload carries `membershipIds[]` + `roleId` to scope the delete set |
+
+**Scheduling cadence:**
+
+- `authz.reap_breakglass` — cron `*/5 * * * *` (every 5 minutes); scheduled by the M3 boot worker. Break-glass events with `expires_at ≤ now()` and `status ∈ {active, cosign_pending}` are transitioned to `expired` in a single UPDATE with a row-level lock; `m3.breakglass.expired` outbox event emitted per row.
+- `authz.close_engagements` — cron `*/5 * * * *`; engagement rows with `end_at ≤ now()` and `status = 'active'` are closed; M2's `AuditorSessionMinter.revokeForEngagement(engagementId)` seam called per engagement; `m3.engagement.closed` outbox event emitted.
+- `authz.cache_invalidate` — event-driven (enqueued in the same DB transaction as a `membership_role` grant/revoke or `role_permission` edit); no cron cadence.
+
+**DLQ handling:** DLQ entries surface in the admin console under `/platform/queues`. A DLQ entry for `reap_breakglass` or `close_engagements` is a **P2 alert** (the D6 60-second TTL safety net on the effective-permission cache bounds the stale-window for `cache_invalidate`; reap/close failures are higher-impact as they leave break-glass events open past their time-box). Manual triage triggers a replay from the DLQ or a forced-transition via the admin API (`PATCH /platform/breakglass/:id/force-expire`), both audited at `warn`.
 
 -----
 
@@ -907,7 +930,22 @@ Delivered in `apps/frontend` / `apps/admin`. Authorization is mostly *invisible 
 
 ### 8.1 Audit Events
 
-Retention class `security`/`compliance`. Authorization **denials** of PHI actions and **all** break-glass/role changes are audited; routine *allows* are sampled (not every read — that's Module 4's PHI-read auditing) but break-glass allows are audited individually.
+<!-- M03-F11 (ADR-0004 OPEN-022): the earlier draft used an invented `security` retention class.
+     ADR-0004 remaps it to `compliance` (7-year HIPAA floor per §24.1 of architecture v0.11).
+     The §24.1 matrix entry "Security event logs" already uses `compliance class` at 6 years;
+     M3 authorization events (break-glass, privilege changes) are compliance artifacts, not
+     transient operational logs, so `compliance` is the correct class throughout. -->
+
+**Retention mapping to §24.1 matrix (M03-F11 — ADR-0004 / ARCH-262):**
+
+| M3 event category | §24.1 data class | Retention class | Default retention |
+|---|---|---|---|
+| Break-glass events (`m3.breakglass.*`) | Security event logs (auth failures, RLS denials, suspicious activity) | `compliance` | 6 years (§24.1 row; satisfies HIPAA §164.312(b)) |
+| Role assignment/change events (`m3.role.*`) | Audit log — `audit_event` retention_class=compliance | `compliance` | 7 years (§24.1 row; HIPAA floor 6 per §164.316(b)(2); standardized to 7 per ADR-0004) |
+| Auditor engagement events (`m3.engagement.*`) | Audit log — `audit_event` retention_class=compliance | `compliance` | 7 years |
+| Authorization denials (`m3.authz.denied`, `m3.authz.escalation_blocked`) — **sampled** (D5) | Audit log — `audit_event` retention_class=operational | `operational` | 1 year (sampled denials; full forensic value lives in break-glass + role rows) |
+
+> **No `security` retention class exists in §24.1.** The prior header "Retention class `security`/`compliance`" was an invented label (M03-F11). The canonical classes in the §24.1 matrix are `operational` (1 year), `compliance` (7 years default), and `legal_hold` (indefinite). Authorization **denials** of PHI actions and **all** break-glass/role changes are audited; routine *allows* are sampled (not every read — that's Module 4's PHI-read auditing) but break-glass allows are audited individually at `critical`.
 
 | Event | Severity | Payload |
 |---|---|---|
@@ -936,6 +974,32 @@ Retention class `security`/`compliance`. Authorization **denials** of PHI action
 
 - Spans: `authz.rbac_check`, `authz.abac_eval` (tagged predicate name), `authz.resolve_permissions`, `breakglass.invoke`, tagged `user_id`, `org_id`, `permission`, `result`.
 - Logs never include the *contents* of PHI in denial logs — only resource type + id + the predicate that fired. Pino redaction inherited from Module 1.
+
+### 8.4 STRIDE Threat Model (M03-F08 — SEC-007)
+
+<!-- M03-F08 (SEC-007): Module 3 is the authorization layer — the highest-risk module for
+     privilege abuse. This section fulfills the §20.B template STRIDE requirement per ADR-0021.
+     Six threat classes are modeled against M3's specific attack surface: privilege escalation,
+     IDOR, ABAC-predicate bypass, cache-staleness elevation, break-glass abuse, and auditor-scope
+     expansion. Each row maps the threat to an existing control and a verifying test. -->
+
+**STRIDE framework reference:** Security Hardening v0.2 §3.1 — Spoofing / Tampering /
+Repudiation / Information disclosure / Denial of service / Elevation of privilege.
+
+| STRIDE | Threat | Vector | Control | Test |
+|---|---|---|---|---|
+| **E — Elevation of privilege** | **Privilege escalation via role self-grant** | An `org_admin` assigns themselves a permission they do not hold (bootstrap escalation); or a user with `role.assign` grants a role that contains a permission above their own ceiling | Anti-escalation check in `POST /memberships/:id/roles` handler: `actor.effectivePermissions.hasAll(role.permissions)` evaluated server-side before the grant is written; HTTP 403 on violation; `m3.authz.escalation_blocked` audited at `warn` | `tests/security/escalation.test.ts` — self-grant `org_admin`, grant-above-ceiling, second-admin-already-holds edge case; all must yield 403 |
+| **I — Information disclosure** | **IDOR on role/break-glass/engagement objects** | An authenticated user guesses or enumerates a `break_glass_event.id`, `auditor_engagement.id`, or `membership_role.id` belonging to a different tenant; cross-tenant read succeeds because only `organization_id` RLS is checked | RLS enforces `organization_id = app.org_id` on all M3 tables (§3.6); `requireAbac` at the route layer additionally checks resource ownership; existence non-leak rule returns 404 (not 403) when the resource type is unknown to the actor | `tests/security/idor.test.ts` — every object-level GET/PATCH/DELETE across `break_glass_event`, `auditor_engagement`, `membership_role`; Tenant B actor uses Tenant A resource IDs; must yield 404 |
+| **E — Elevation of privilege** | **ABAC-predicate bypass via client-supplied context** | A malicious client sends a crafted request body or header asserting `caseload_member=true`, `oncall=true`, or `engagement_scope=*` to short-circuit ABAC evaluation | `AbacContext` is **server-assembled** from DB + session only (§4.2); no client field flows into predicate evaluation without going through a DB lookup; seam providers (§4.2.1) are typed server functions with deny-stub defaults | `tests/unit/abac/context-assembly.test.ts` — assert that client-supplied context fields are stripped before predicate evaluation; each predicate tested with adversarial context fixture |
+| **E — Elevation of privilege** | **Cache-staleness elevation** — stale effective-permission cache serves an elevated permission set after a role revocation | A user's high-privilege role is revoked but the Valkey cache still carries the old effective-permission set for up to the TTL window; the user continues to pass `requirePermission` checks | Event-driven invalidation (D6) removes the cache key in the same DB transaction as the revoke; `permissions.changed` Socket.IO push prompts the UI to re-fetch; 60-second TTL safety net bounds the maximum stale window | `tests/integration/cache/invalidation.test.ts` — revoke role → assert cache key deleted (Valkey `EXISTS` returns 0) within the same transaction; parallel request during the in-flight transaction must miss cache and resolve from DB; 60s TTL boundary test (synthetic TTL set to 2s in test mode) |
+| **E — Elevation of privilege** | **Break-glass abuse** — an actor invokes break-glass on a patient for whom they have a standing caseload relationship (non-emergency) to avoid audit scrutiny, or repeatedly invokes glass to harvest data | Break-glass is designed for emergency access outside the actor's normal ABAC scope; an actor on the patient's caseload does not need glass and invoking it is an audit anomaly; unlimited re-invocation enables systematic PHI harvest | (a) **Scope check:** `POST /breakglass` requires that the normal ABAC pipeline (`caseload_membership`) **denied** the request first — glass is only openable on access that would otherwise be forbidden; (b) **Per-access critical audit** (§8.1, D1, D5): every resource view under glass is logged at `critical` with `break_glass_event.id`; (c) Compliance-Officer notification within seconds via `m3.breakglass.invoked` outbox → M36 alert; (d) 4-hour time-box (D1); (e) `breakglass_invocations_total` Prometheus counter per `org`; (f) Non-emergency co-sign required when tenant policy is set (D1) | `tests/integration/breakglass/scope-check.test.ts` — assert `POST /breakglass` 409 when ABAC would allow without glass; `tests/security/breakglass-harvest.test.ts` — assert that repeated invocation on distinct patients by the same actor within 1 hour triggers the anomaly signal (M4 / security monitoring seam) |
+| **I — Information disclosure** | **Auditor-scope expansion** — an auditor session reads PHI outside the engagement scope, or outside the engagement window, to gain access to patients or records not intended for the survey | Auditor engagements carry a typed `scope` jsonb (`tenantWide`, `providerEntityIds`, `patientIds`, `claimIds`, `fiscalYears`) and a `[start_at, end_at]` window; an auditor must not be able to query outside those bounds | `engagement_scope` ABAC predicate (§4.2) evaluates `target ∈ engagement.scope AND now ∈ [start_at, end_at]` server-side on every request bearing a `session_class='auditor'` session; write attempts return 403 regardless of scope; `session.engagement_*` fields are M2-minted and tamper-resistant (HMAC-signed session token); window expiry causes session revocation (§4.5 `authz.close_engagements` queue) | `tests/security/auditor-scope.test.ts` — patient outside `patientIds` → 404; claim outside `claimIds` → 404; time-travel past `end_at` (system clock mock) → 403; write attempt on in-scope resource → 403; `tests/integration/engagements/window-expiry.test.ts` — session revoked within 10 s of `end_at` boundary |
+
+**Cross-reference to platform-level STRIDE (Security Hardening v0.2 §3.2):**
+
+- The cross-tenant data access threat (I+E, §3.2.1) is covered by the IDOR row above plus M3's RLS policy (§3.6); M3 is the application-layer defense, Module 1 is the database-layer backstop.
+- The privilege escalation threat (E, §3.2.4) at the platform level is instantiated in M3 as the anti-escalation check above; the platform-level control "cannot grant what you don't hold" is enforced here.
+- The audit log tampering threat (T+R, §3.2.2) is a Module 4 concern; M3 contributes by emitting all break-glass and role-change events into M4's append-only `audit_event` table (M3 cannot UPDATE/DELETE `audit_event`).
 
 -----
 
@@ -1038,9 +1102,12 @@ All open questions decided; the two seams now have built mechanisms (SEAMS.md).
 - [ ] **Cross-module handshake:** Module 2 (§4.5) and Module 4 (§4.5) permission keys present in catalog + assigned to default templates; `proposedRoleKeys` typed against `RoleKey`
 - [ ] Metrics scraped; authz check latency within targets (p95 < 3ms)
 - [ ] WCAG 2.1 AA on admin/compliance screens
+- [ ] **STRIDE suite (§8.4):** all six threat rows have a corresponding negative test; escalation, IDOR, ABAC-bypass, cache-staleness, break-glass-abuse, and auditor-scope tests all green
+- [ ] **BullMQ queue parameters (§4.5.1):** all three queues deploy with declared attempts / backoff / concurrency / DLQ; DLQ monitoring alert wired; reap and close jobs verified idempotent under re-execution
+- [ ] **Retention classes (§8.1):** `audit_event` rows emitted by M3 carry `compliance` or `operational` retention class (no `security` class); verified via M4 audit-row schema validation
 
-**Lock status:** All decisions resolved (§11); both seams (caseload, auditor minter) built and boot-validated. Buildable now. Items completing after downstream modules exist: feature modules contribute their own permission keys (§3.3 model) and Module 5/17 register the real `CaseloadProvider` — both are typed interfaces, not open design.
+**Lock status:** All decisions resolved (§11); both seams (caseload, auditor minter) built and boot-validated. §20.B template sections M03-F08 (STRIDE) and M03-F11 (queue params + retention classes) fulfilled per ADR-0021. Buildable now. Items completing after downstream modules exist: feature modules contribute their own permission keys (§3.3 model) and Module 5/17 register the real `CaseloadProvider` — both are typed interfaces, not open design.
 
 -----
 
-**End of Module 3 — Authorization Specification v0.2 (Locked)**
+**End of Module 3 — Authorization Specification v0.3 (Locked)**

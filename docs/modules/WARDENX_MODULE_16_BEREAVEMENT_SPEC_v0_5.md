@@ -36,7 +36,7 @@ passes `arch:fitness` (checks 10/12) and is genuinely re-lockable.
 | M16-F12 | MINOR | Channel `archives_at` standardized on **`death_date + 13 months`** (not `opened_at`) everywhere. |
 | M16-F13 | MINOR | Migration no longer directly INSERTs M1/M4 tables — `retention_assignment`/`outbox_topic` rows are contributed via the owners' registration APIs (ADR-0011); RLS variable `app.organization_id → app.org_id` (ADR-0010); eraser path corrected to the §3.1 codePath. |
 | M16-F14 | MINOR | A single **normative touchpoint-floor table per tier** is published and referenced everywhere (resolving the three incompatible statements). |
-| M16-F15 | MINOR | Unit coverage target raised to **≥90%** (ARCH-211); **DR Tier 4** declared with cron catch-up semantics after downtime for `m16-close-13mo` / `m16-miss-deadline` (ADR-0021). |
+| M16-F15 | MINOR | Unit coverage target raised to **≥90%** (ARCH-211); **DR Tier 3** declared (WARDENX_DR_BCP §3.1 — bereavement is regulatory/revenue, not patient-safety-acute; Tier 4 would be incorrect) with degraded-mode table and cron catch-up semantics after downtime for `m16-close-13mo`, `m16-miss-deadline`, and `m16-anniversary-lookahead` (§9.7 — ADR-0021 / DR-010 / DR-064). |
 | M16-F16 | MINOR | The four citations corrected: IPOC bereavement → 418.56(c); coordination → 418.56(e); decedent 50-yr PHI → §164.502(f); bereavement personnel → 418.64 / 418.114. |
 
 **Net:** M16's BLOCKER is cleared, the illegal DDL is fixed (CI-verifiable), the seam pair is
@@ -1542,20 +1542,30 @@ Boot-time M3 catalog handshake (architecture §25.15 — `require-explicit-authz
 
 ### 4.9 BullMQ Queue Catalog
 
-| Queue | Schedule | Worker | Purpose |
-|---|---|---|---|
-| `m16-close-13mo` | cron `0 2 * * *` (nightly 2 AM tenant TZ) | `close-worker.ts` | Find plans where `now() >= death_date + interval '13 months'` AND `status IN ('active','paused')`; fire `closeAt13Months` |
-| `m16-anniversary-lookahead` | cron `0 6 * * *` (daily 6 AM) | `anniversary-worker.ts` | Find `bereavement_anniversary_reminder` rows with `target_date BETWEEN now() AND now() + interval '14 days'` AND `alert_fired_at IS NULL`; emit `m16.bereavement.anniversary_due_in_14_days` |
-| `m16-miss-deadline` | cron `0 * * * *` (hourly) | `miss-deadline-worker.ts` | Find outreach where `status = 'scheduled'` AND `late_grace_until < now()`; transition to `missed`; emit `m16.bereavement.outreach_missed` |
-| `m16-unreachable-detector` | cron `0 3 * * *` (nightly) | `unreachable-detector.ts` | For contacts with 3+ consecutive `no_response` log entries, propose `markUnreachable`; emit M36 counselor alert |
-| `m16-encounter-signed` | event (outbox dispatcher) | `m8-encounter-signed.worker.ts` | M8 `encounter.signed` filtered subscriber |
-| `m16-m6-eligibility` | event | `m6-eligibility.worker.ts` | M6 `bereavement.eligible` subscriber (branches on `source` — D16) |
-| `m16-m6-cosign-receipt` | event | `m6-cosign-receipt.worker.ts` | M6 `discharge.cosigned` subscriber (releases the external-source gate — D18) |
-| `m16-m39-consent-revoked` | event | `m39-consent-revoked.worker.ts` | M39 cascade |
-| `m16-m22-document-rendered` | event | `m22-document-rendered.worker.ts` | M22 callback |
-| `m16-augmentation-request` | on-demand (when M32 bound) | `augmentation-request.worker.ts` | dispatch `BereavementRiskFactorsProvider.registerAugmentation` via M32 adapter |
+<!-- M16-F07 / ARCH-262 / SD-059 / SD-060 / OPS-035 — every queue must declare the full SD-059
+     parameter tuple: priority · attempts · backoff · concurrency · DLQ. Job idempotency is
+     worker-side state-check (SD-060), NOT the HTTP Idempotency-Key middleware (ADR-0021): the
+     HTTP middleware guards mutating API routes against duplicate client submissions; BullMQ workers
+     guard against BullMQ's at-least-once retry by checking the DB row's current state before
+     executing (e.g., the close-13mo worker skips a plan already in `closed_*`; the miss-deadline
+     worker skips outreach already in `missed` or `completed`). The two mechanisms are orthogonal. -->
 
-All queue jobs are idempotent on a deterministic job ID; the M1 idempotency middleware enforces.
+| Queue | Schedule | Worker | Priority | Attempts | Backoff | Concurrency | DLQ name | Purpose |
+|---|---|---|---|---|---|---|---|---|
+| `m16-close-13mo` | cron `0 2 * * *` (nightly 2 AM tenant TZ) | `close-worker.ts` | low | 3 | exponential 30 s | 2 | `m16-close-13mo-dlq` | Find plans where `now() >= death_date + interval '13 months'` AND `status IN ('active','paused')` AND no active legal hold; fire `closeAt13Months`. Idempotency: worker reads current `status` before transition — skips plans already in any `closed_*` state. |
+| `m16-anniversary-lookahead` | cron `0 6 * * *` (daily 6 AM UTC) | `anniversary-worker.ts` | low | 3 | exponential 60 s | 2 | `m16-anniversary-dlq` | Find `bereavement_anniversary_reminder` rows with `target_date BETWEEN now() AND now() + interval '14 days'` AND `alert_fired_at IS NULL`; emit `m16.bereavement.anniversary_due_in_14_days`. Idempotency: partial-unique filter on `alert_fired_at IS NULL` prevents double-fire; worker sets `alert_fired_at` in the same DB transaction as the outbox write. |
+| `m16-miss-deadline` | cron `0 * * * *` (hourly) | `miss-deadline-worker.ts` | normal | 3 | exponential 15 s | 4 | `m16-miss-deadline-dlq` | Find outreach where `status = 'scheduled'` AND `late_grace_until < now()`; transition to `missed`; emit `m16.bereavement.outreach_missed`. Idempotency: worker checks `status = 'scheduled'` before writing — skips rows already in `missed`, `completed`, `cancelled`. |
+| `m16-unreachable-detector` | cron `0 3 * * *` (nightly) | `unreachable-detector.ts` | low | 3 | exponential 60 s | 2 | `m16-unreachable-dlq` | For contacts with 3+ consecutive `no_response` log entries, propose `markUnreachable`; emit M36 counselor alert. Idempotency: only proposes when contact `status = 'active'` — silently skips contacts already in `unreachable`. |
+| `m16-encounter-signed` | event (outbox dispatcher) | `m8-encounter-signed.worker.ts` | normal | 5 | exponential 30 s | 4 | `m16-encounter-signed-dlq` | M8 `encounter.signed` filtered subscriber (encounter_type = `bereavement_contact`). Idempotency: key on `source_encounter_id`; worker skips if a `bereavement_contact_log` row with that `source_encounter_id` already exists. |
+| `m16-m6-eligibility` | event | `m6-eligibility.worker.ts` | high | 5 | exponential 30 s | 4 | `m16-m6-eligibility-dlq` | M6 `bereavement.eligible` subscriber; branches on `source` (D16). Idempotency: key on `(organizationId, admissionId)`; worker skips if a `bereavement_plan` row for that admission already exists (the unique index `berv_plan_unique_admission` enforces this at DB level too). |
+| `m16-m6-cosign-receipt` | event | `m6-cosign-receipt.worker.ts` | high | 5 | exponential 30 s | 4 | `m16-m6-cosign-dlq` | M6 `discharge.cosigned` subscriber; releases the external-source gate (D18). Idempotency: worker checks `external_source_metadata->>'cosignStatus' = 'pending'` before updating — skips plans already `cosigned`. |
+| `m16-m39-consent-revoked` | event | `m39-consent-revoked.worker.ts` | high | 5 | exponential 30 s | 4 | `m16-m39-consent-dlq` | M39 `consent.revoked` cascade (filtered to `bereavement_outreach_consent` and `family_caregiver_access`). Idempotency: key on `(consentRecordId, eventId)`; worker skips if `bereaved_contact` is already in `opted_out`. |
+| `m16-m22-document-rendered` | event | `m22-document-rendered.worker.ts` | normal | 5 | exponential 30 s | 4 | `m16-m22-document-dlq` | M22 `document.rendered` callback (filtered to bereavement template keys). Idempotency: key on `(outreachId, documentId)`; worker skips if `outreach.rendered_document_id` already set. |
+| `m16-augmentation-request` | on-demand (when M32 bound) | `augmentation-request.worker.ts` | low | 3 | exponential 60 s | 2 | `m16-augmentation-dlq` | Dispatch `BereavementRiskFactorsProvider.registerAugmentation` via M32 adapter. Idempotency: key on `(planId, contactId, scoringRoundId)`; worker skips if an `llm_augmented` row already exists for that round. |
+
+**DLQ policy (OPS-035):** all ten DLQ queues are monitored by Prometheus metric `m16_bullmq_dlq_depth{queue}`. Any DLQ entry at depth > 0 for > 15 minutes fires a `warn` alert to the on-call channel. Clinical queues (`m16-m6-eligibility`, `m16-m6-cosign-receipt`, `m16-m39-consent-revoked`) fire `critical` at depth > 0 for > 5 minutes. DLQ entries are triaged in the admin console (M1 §3.12 BullMQ dashboard); resolution paths are: retry-all (after root-cause fix), discard with audit record, or escalate to Engineering.
+
+**Job idempotency (SD-060) — clarification (ADR-0021 M16-F07):** Worker-side idempotency is implemented as a DB-state pre-check inside the handler before any mutation. This is distinct from the HTTP `Idempotency-Key` middleware (M1 §3.9 / ARCH-263), which guards API routes against duplicate client submissions and operates on a 24-hour key cache. BullMQ workers are never called by the HTTP layer; they consume from Valkey queues. Conflating the two would leave retry-loop correctness to the HTTP middleware, which has no knowledge of the DB row's current state.
 
 ### 4.10 M36 Typed Alert Payloads
 
@@ -1667,9 +1677,53 @@ Authoritative matrix; entries marked **(✓ ABAC)** require an attribute predica
 - **Clinical Supervisor override.** May invoke `closeEarly` on behalf of a counselor (e.g., counselor on leave) with documented reason ≥40 chars; audit-flagged at `warn`.
 - **External-source cosign gate.** For an external-source plan in `cosignStatus='pending'`, counselor first-contact is refused at the service layer regardless of role/ABAC grant (D18); the medical-director cosign is platform-mandated and tenants may only tighten.
 
------
+### 6.1 STRIDE Threat Model — M16-F08 (SEC-007, SEC-013, SEC-014)
 
-## 7. Workflow Acceptance Criteria
+<!-- M16-F08 / SEC-007 (module-level STRIDE required in every module spec per ADR-0021) /
+     SEC-013 (portal self-service by non-patient family member) /
+     SEC-014 (post-death decedent PHI exposure). STRIDE template per WARDENX_SECURITY_HARDENING
+     §3.1 / §3.4. The four M16-specific threat surfaces are: (a) portal self-service opt-out by a
+     non-patient grieving family member who is not the contact on record; (b) volunteer with
+     reduced PHI scope accessing decedent clinical history; (c) post-death decedent PHI exposure
+     through the bereavement risk-factors surface; (d) survivor contact-data exposure across
+     tenant boundaries. -->
+
+#### 6.1.1 STRIDE Matrix
+
+| # | Threat | Category | Surface | Likelihood | Impact | Controls | Test |
+|---|---|---|---|---|---|---|---|
+| T-01 | A grieving family member who is **not** the named bereaved contact on a plan authenticates via M31 and calls `POST /contacts/:contactId/opt-out` for another family member's contact record | **E**levation of privilege / **S**poofing | Portal self-service opt-out route (route 14) | Medium — family members share devices and logins | High — silently opts out a contact who did not consent to opt-out | `portal_self_service` ABAC predicate binds the actor's M31 session `bereaved_contact_id` to the request parameter; any mismatch returns 403 without leaking the contact's existence. The M39 `bereavement_outreach_consent` check fires again at opt-out time, not just at confirmation. | RLS isolation test: portal session for contact-A is refused on contact-B's opt-out route even within the same plan. |
+| T-02 | A portal session for a bereaved family member is hijacked or replayed (stolen cookie / session-fixation) and used to opt out a high-risk contact, effectively removing the hospice's obligation to that person | **S**poofing / **E**levation of privilege | M31 session + M16 opt-out route | Low (Better Auth HttpOnly cookies; 15-min idle; biometric re-auth on mobile) | High — regulatory CoP 418.64(d) obligation may be silently voided for a high-risk contact | Step-up auth on the portal opt-out path: `portal_self_service` opt-out requires re-authentication (M2 SESSION_POLICY `step_up_fresh`) within 10 minutes. Opt-out confirmation email sent to the contact's cipher-decrypted email within 5 minutes; email contains a rescind link valid 90 days. Audit event `m16.bereavement.contact.opted_out` with `sourceKind='portal_self_service'` is a monitored alert (Prometheus `m16_opt_out_total{sourceKind="portal_self_service"}` > 3/hour/org triggers SEV-3 review). | E2E test: stolen-cookie replay attempt after session idle expiry returns 401. Unit test: missing step-up `fresh` claim on opt-out returns 403. |
+| T-03 | A bereavement volunteer, whose role allows reading the plan and the bereaved-contact roster, accesses the decedent's **pre-death clinical record** (M8 encounter narratives, M9 assessments, M7 care plan) through the M16 risk-factors surface | **I**nformation disclosure | `BereavementRiskFactorsProvider` seam + `extract-risk-inputs.ts` | Medium — volunteers interact with M16 UI and may probe API routes | High — pre-death clinical narrative is SUD-aware and 42 CFR Part 2 restricted | `discipline_can_provide_bereavement(actor)` with `discipline = 'bereavement_volunteer'` is a necessary but not sufficient grant for risk-factors access; a second ABAC check `bereavement_window AND NOT volunteer_read_scope_limited` gates the risk-score read route. The seam's `getFactorsForContact` is never called on behalf of a volunteer session — the route handler returns a filtered view (tier only, no underlying factor details). The `extract-risk-inputs.ts` never runs for a volunteer actor context. SUD filter from M15 `MswRiskFactorReader` applies regardless of who triggered the read. | Unit test: volunteer actor context on `GET /plans/:planId/risk-scores` returns tier badge only, not `risk_factors_jsonb`. Integration test: `getFactorsForContact` called with a volunteer actor stub returns `{ allowed: false }` from the seam guard. |
+| T-04 | After the bereaved contact's record is created (containing name, email-cipher, phone-cipher, mailing-address-cipher), the RLS misconfiguration or a missing `organization_id` filter in an aggregate query leaks contact-data across tenant boundaries | **I**nformation disclosure | `bereaved_contact` table + all aggregate routes | Low (M1 RLS generator's standard policy; three-column tenancy) | Critical — contact PII of grieving family members is extremely sensitive; a data breach here is both HIPAA and CAN-SPAM impactful | Three-layer defense: (1) `organization_id = current_setting('app.org_id')::uuid` RLS policy on every M16 table including `bereaved_contact` (generated by M1, CI-verified); (2) service-layer `withOrgContext` wrapper on every DB query; (3) the `bereaved_contact` email/phone/mailing fields are DEK envelope-encrypted — raw ciphertext in a cross-tenant leak is useless without the per-tenant DEK. Prometheus `rls_denials_total{table="bereaved_contact"}` alerts at any non-zero rate. | RLS isolation test: direct DB connection for org-B with `SET app.org_id = orgB_uuid` cannot read org-A `bereaved_contact` rows (assertion: zero rows returned). Load-test: 10 concurrent requests for org-A and org-B contacts; verify no cross-contamination in response bodies. |
+| T-05 | Post-death decedent PHI (pre-death clinical content) is surfaced to a bereaved family portal user via the bereavement plan detail screen (e.g., the risk-score `risk_narrative` or the `augmented_narrative_redacted` LLM output references clinical findings from M8/M9) | **I**nformation disclosure | Portal plan-detail route (M31 session) + `BereavementPlanProvider.getById` | Medium — LLM narrative generation may include clinical language from the M32 prompt context | High — bereaved family member sees the deceased patient's clinical prognosis/SUD details; violates HIPAA minimum-necessary and §164.502(f) (50-year PHI obligation) | `BereavementPlanProvider.getById` filters the portal-session response through a `PortalProjection` that strips `risk_factors_jsonb`, `augmented_narrative_redacted`, and all M8 encounter content. The M32 prompt minimization (AI-044/045, M16-F06) ensures LLM context does not include patient clinical-record content that would leak into the narrative stored in `augmented_narrative_redacted`. Portal API routes for plan-detail and risk-scores are gated with `portal_self_service` + an explicit `NOT clinical_phi_scope` guard. | Unit test: `PortalProjection` applied to a full plan response strips all prohibited fields. Integration test: bereaved-family-member portal session calling `GET /plans/:planId` does not receive `risk_factors_jsonb` or `augmented_narrative_redacted`. |
+| T-06 | A malformed or replayed `m6.bereavement.eligible` event (e.g., from a test harness or a compromised M6 outbox) creates a duplicate bereavement plan for a patient who already has one, or creates a plan for a patient whose opt-out flag is `true` | **T**ampering / **R**epudiation | M6 outbox → M16 `m6-eligibility.worker` | Low (outbox topic ownership enforced by M1; M6 owns the topic) | Medium — duplicate plan or plan-for-opted-out-patient creates regulatory audit inconsistency | Worker-side idempotency: unique index `berv_plan_unique_admission` on `(organization_id, admission_id)` causes a duplicate insert to fail at the DB level (no data hazard). The TOCTOU re-read of `patient.bereavement_opt_out` after plan-row insert catches late opt-outs. M1 outbox topic-ownership: only `wardenx_app` with `organization_id` in scope can publish to `m6.bereavement.eligible`; the topic's `owner_module=6` constraint is enforced at publish time. | Integration test: replaying the same `m6.bereavement.eligible` event twice produces exactly one `bereavement_plan` row (idempotency). Integration test: event with `organization_id` for org-B published to org-A's outbox subscriber is rejected by the RLS-set context. |
+| T-07 | A bereavement counselor or supervisor fabricates or backdates a `bereavement_contact_log` entry to cover a missed touchpoint (CoP 418.64(d) compliance fraud) | **T**ampering / **R**epudiation | `POST /contacts/:contactId/log-direct` (route 26) + `bereavement_contact_log` | Low (role-gated) | Critical — regulatory fraud; potential false attestation to CMS surveyor | The `contact_at` timestamp on `bereavement_contact_log` defaults to `now()` and cannot be set more than 72 hours in the past without a `late_entry_justification` field ≥40 chars (service validation). Late entries are audit-flagged at `warn`. The write-audit trigger on `bereavement_contact_log` captures `contact_at` in the audit row along with `logged_by_user_id` and `created_at` (the wall clock), making backdating detectable. Supervisor-only `bereavement.contact_log.backdate` permission is not defined — no role has the right to backdate without justification. | Unit test: `contact_at` more than 72 hours in the past without `late_entry_justification` returns 422. Integration test: late entry with valid justification inserts and produces a `warn`-level audit event. |
+
+#### 6.1.2 Per-Role Authorization Enumeration — Positive and Negative/Edge Cases
+
+This table supplements the §6 matrix with explicit negative and edge-case rows that the matrix's checkmarks do not fully capture (SEC-013 / SEC-014).
+
+| Actor | Action | Expected result | Finding authority |
+|---|---|---|---|
+| **Bereavement Counselor (own caseload)** | `GET /plans/:planId` (plan they are assigned to) | 200 — full detail | positive baseline |
+| **Bereavement Counselor (own caseload)** | `GET /plans/:planId` (plan assigned to a different counselor) | 403 — `bereavement_window` predicate false (not assigned to this plan) | SEC-013 negative |
+| **Bereavement Counselor** | `POST /plans/:planId/close-early` without a step-up token | 403 — `step_up_fresh` predicate false | SEC-014 negative |
+| **Bereavement Volunteer** | `GET /plans/:planId/risk-scores` | 403 — volunteer is excluded from the `bereavement.risk.read` permission default template; read is limited to tier badge via the plan-detail projection | D10 / SEC-014 negative |
+| **Bereavement Volunteer** | `POST /outreach/:outreachId/complete` (for an outreach they are NOT the assignee of) | 403 — `bereavement_window` true but volunteer-scope ABAC restricts to assignee-or-own outreach | D10 negative |
+| **Bereavement Volunteer (volunteer gates expired)** | `POST /outreach/:outreachId/start` | 403 — `volunteer_gates_satisfied` predicate re-evaluated at request time; false if TB test or training expired | D10 / SEC-013 negative |
+| **Portal-Self (bereaved family member, contact-A)** | `POST /contacts/contact-B-id/opt-out` (opt out a different family member) | 403 — `portal_self_service` predicate binds session `bereaved_contact_id` to the URI parameter; mismatch = deny (T-01 above) | SEC-013 negative |
+| **Portal-Self (bereaved family member)** | `GET /plans/:planId/risk-scores` | 403 — portal session does not hold `bereavement.risk.read` and the `portal_self_service` ABAC path does not cover risk-scores | SEC-014 negative |
+| **Portal-Self (bereaved family member)** | `GET /contacts/:contactId` | 200 — filtered; `family_visible_note` present, `contact_notes_cipher` absent, pre-death clinical data absent (PortalProjection) | SEC-014 positive + projection |
+| **Portal-Self (bereaved family member)** | `POST /contacts/:contactId/rescind-opt-out` more than 90 days after opt-out | 409 — `rescind_opt_out_window_expired`; 90-day window enforced at service layer | D9 edge case |
+| **Clinical Supervisor** | `POST /plans/:planId/close-early` (supervisor bypassing cosign flow) | Service initiates the close-early record but plan stays `active` pending `POST /plans/:planId/cosign-close` from the same supervisor; the two-step flow cannot be collapsed even for the supervisor | D7 edge case |
+| **Decedent's pre-death attending clinician (M8 RN/MD — no bereavement role)** | `GET /plans/:planId` | 403 — clinician holds no bereavement-specific role; the `bereavement_window` predicate returns false; break-glass prompts for justification and logs at `warn`; read-only if granted; author routes remain blocked | SEC-014 negative / break-glass |
+| **Compliance Officer** | `GET /plans/:planId/risk-scores` | 200 — full read (Compliance Officer is in the `bereavement.risk.read` default template per §4.7); does NOT hold author permissions | positive read / negative write |
+| **External Auditor (engagement-scoped)** | `GET /plans/:planId` across all org plans | 200 for plans within the engagement scope only; the `auditor_engagement` ABAC path (M3 D2) scopes to the engagement's declared `org_id` and `planId` set | SEC-013 / auditor scope positive |
+| **Any actor** | `POST /plans/:planId/cosign-close` without `bereavement.plan.close_cosign` | 403 — permission key absent from actor's compiled role token | negative baseline |
+| **Medical Director (holds `m6.discharge.cosign` permission but not any M16 bereavement key)** | `GET /plans/:planId` | 403 — Medical Director role is not in the `bereavement.plan.read` default template; they interact with M16 only via the M6 cosign event, not via M16 API routes | SEC-013 cross-module negative |
+| **Any actor with a valid `bereavement.plan.read` grant but whose plan is `closed_completed`** | `GET /plans/:planId` | 200 — closed plans remain readable for survey reconstruction; the `bereavement_window` predicate allows `oversight` actors to read any plan regardless of status; for counselors, the predicate's `status IN (active, paused)` check returns false but the route falls back to `org_scope_bereavement_oversight` secondary predicate for historical read | D2 / closed-plan edge case |
+| **Any actor** | Any mutating route after `bereavement_plan.status` = any `closed_*` | 409 — `plan_is_closed`; the XState machine refuses transitions from terminal states (except `legalHoldApplied` which is M4-originated) | D2 terminal-state guard |
 
 ### 7.1 Plan creation on death-discharge
 
@@ -1874,7 +1928,7 @@ registerDataEraser({
 
 ## 9. Test Plan
 
-### 9.1 Unit Tests (target coverage ≥85%)
+### 9.1 Unit Tests (target coverage ≥90% — M16-F15 / ARCH-211)
 
 - Plan-machine XState v5: every transition guard, every side-effect callback, dead-state-detection (impossible-state transitions throw).
 - `BereavementRiskRubric` deterministic scoring: per-factor weight contribution; tier-threshold boundaries (score-23 → moderate, score-24 → high, score with complicated-grief flag override → complicated); feature-vector ordering stability.
@@ -1940,6 +1994,56 @@ registerDataEraser({
 - 1 family with 6 contacts of varying relationship codes.
 - 1 tenant-tightened cadence configuration; 1 default (platform-floor) configuration.
 - 1 external-source (HL7 ADT) death with partial clinical data and a pending medical-director cosign; 1 tenant with the external-source gate tightened to require a death certificate.
+
+### 9.7 Disaster Recovery Tier, Degraded-Mode Behavior, and Cron Catch-Up Semantics — M16-F15 (DR-010, DR-064, ARCH-211, ADR-0021)
+
+<!-- M16-F15 / DR-010 / DR-064 / ARCH-211 / ADR-0021 — every module must declare its DR tier and
+     degraded-mode behavior. Module 16 is a Phase 2 bereavement-program module; it has no active
+     patient-safety function (the decedent has already died; the bereavement program is a regulatory
+     and compassionate-care obligation, not an immediate clinical intervention). The tier assignment
+     follows WARDENX_DR_BCP v0.1 §3.1 tier definitions. -->
+
+#### 9.7.1 DR Tier Declaration
+
+**Module 16 is DR Tier 3 — Revenue & Reporting** (WARDENX_DR_BCP §3.1; DR-010).
+
+Rationale: bereavement services are a CoP 418.64(d) regulatory obligation and generate revenue code 0942, but a delay of up to 24 hours in processing bereavement events during a system outage does not constitute a patient-safety event. The decedent is not at risk; the bereaved family contacts are in distress but a 24-hour gap in an outreach schedule that spans 13 months does not worsen clinical outcomes. This matches the DR-BCP rationale for Tier 3: "Loss impedes billing/reporting but not clinical care" — bereavement program continuity is regulatory/operational, not clinically acute.
+
+**Consequence of Tier 3:** M16 workers may be deprioritized during recovery sequencing behind Tier 1 (eMAR, encounters, orders) and Tier 2 (HearthNote, IDG, care plan). The 24-hour RTO and 1-hour RPO targets (internal) for Tier 3 apply to M16's queue processing and DB writes.
+
+| Tier | RTO (internal) | RPO (internal) | Customer SLA |
+|---|---|---|---|
+| **3 (M16)** | 24 hours | 1 hour | 48 hours RTO / 4 hours RPO |
+
+#### 9.7.2 Degraded-Mode Behavior
+
+During a WardenX platform outage, M16 degrades as follows:
+
+| Capability | Degraded behavior |
+|---|---|
+| **Plan creation from M6 eligibility event** | M6 outbox events queue in Valkey/BullMQ. When the platform recovers, `m16-m6-eligibility` workers drain the queue. Plans are not created during downtime but are created in catch-up order after recovery. No 13-month clock starts without plan creation; the schedule anchors on `death_date` (not the recovery timestamp), so the clock is accurate once the plan is created. |
+| **Outreach scheduling and completion** | Counselors cannot record outreach completions. On recovery, counselors use the late-entry path (route 26 `log-direct` with `contact_at` in the past and `late_entry_justification` ≥40 chars, audit-flagged at `warn`). The miss-deadline worker catch-up (§9.7.3) identifies outreach that became `missed` during downtime. |
+| **Anniversary and close-13mo cron** | Cron jobs do not fire during downtime. See §9.7.3 for catch-up semantics. |
+| **M36 alerts** | Alert delivery is deferred; counselors do not receive anniversary or missed-outreach alerts during outtime. On recovery, M36 drains its alert queue; alerts older than 48 hours are suppressed at `warn` to avoid alert fatigue but are still logged. |
+| **Risk scoring and LLM augmentation** | Deterministic risk scoring deferred to recovery. M32 LLM augmentation deferred; fail-open to deterministic-only. No patient-safety impact. |
+| **Portal (M31) bereaved family access** | Portal unavailable during full platform outage. No paper fallback for portal (bereaved family can call the hospice's main number per agency BCP). |
+| **FHIR Gateway (M28) CarePlan projection** | Deferred; M28 is Tier 2/3 and recovers before M16 is needed by external FHIR consumers. |
+
+#### 9.7.3 Cron Catch-Up Semantics After Downtime
+
+**`m16-close-13mo` (nightly cron) — catch-up:**
+
+The close-13mo worker queries `now() >= death_date + interval '13 months'` on every execution. If the worker did not fire for N days during an outage, the next execution after recovery will find all plans that crossed the 13-month boundary during the downtime window and close them in the same run. The worker is idempotent (skips plans already in a `closed_*` state); batch-size is capped at 500 plans per run to avoid DB lock contention; subsequent runs drain any remaining backlog. There is no data loss — plans in `active` during the outage that crossed 13 months are closed at recovery+next-cron, not silently left `active`. The closure record's `closedAt` is set to `now()` (recovery time), not backdated; the plan's `death_date + 13 months` is the authoritative compliance window boundary for survey purposes, not `closed_at`.
+
+**`m16-miss-deadline` (hourly cron) — catch-up:**
+
+The miss-deadline worker queries `status = 'scheduled' AND late_grace_until < now()`. On recovery after multi-hour or multi-day downtime, the worker will find all outreach rows whose `late_grace_until` passed during the outage and mark them `missed` in batch. Batch-size cap: 1,000 rows per run. Counselors see a spike in `missed` outreach on the dashboard immediately after recovery; the supervisor dashboard will surface the spike via `m16_outreach_overdue_total`. Counselors may use the late-attempt path (route 25) within the `late_grace` window computed from `late_grace_until`; for rows already past `late_grace_until`, the `lateAttempt` transition is blocked (the XState machine enforces the grace window). For compliance purposes, outreach rows marked `missed` during a documented platform outage can be annotated with an `outage_incident_id` on the closure record — the M30 HQRP CoP compliance rate denominator excludes `missed` rows that carry an `outage_incident_id` from a declared SEV-1 or SEV-2 incident (M30 implementation detail; M16 emits the incident-id on the `m16.bereavement.outreach_missed` outbox event payload when the run is a catch-up run identified by the `isCatchUpRun: true` flag set by the cron context).
+
+**`m16-anniversary-lookahead` (daily cron) — catch-up:**
+
+The anniversary lookahead queries `target_date BETWEEN now() AND now() + interval '14 days'` AND `alert_fired_at IS NULL`. If the cron missed N days, the window naturally slides forward on recovery; anniversaries whose `target_date` fell within the downtime window will have `target_date < now()` and will be missed by the standard window. To catch up, the worker performs a secondary pass immediately after recovery: it queries `target_date BETWEEN now() - interval '7 days' AND now()` AND `alert_fired_at IS NULL` (a 7-day backward look to catch recently-missed reminders). This secondary pass fires a `clinical_routine` M36 alert to the assigned counselor flagged with `lateNotice: true`. The counselor is expected to immediately schedule the outreach; the outreach itself is not auto-created (that would require a counselor decision). The `m16.bereavement.anniversary_due_in_14_days` event still emits but with `lateNotice: true` in the payload; M33 dashboards display the late-notice flag.
+
+**Recovery sequencing (per DR-BCP §10.2 Phase 2):** M16 BullMQ workers should be started after PostgreSQL, Valkey, and the M1 outbox dispatcher are healthy (Tier 1 recovery complete) and after M6 / M36 workers are running (Tier 2 partial recovery). M16 catch-up runs are automatically triggered by the workers draining their queues — no manual operator action is required beyond the standard `/ready` health-check gate. The `m16_bullmq_dlq_depth` Prometheus metric surfaces any catch-up failures requiring triage.
 
 -----
 ## 10. Implementation Tasks

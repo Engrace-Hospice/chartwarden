@@ -3,7 +3,10 @@
 **Spec version:** v0.3 — outbox events **and** M36 alert-payload types migrated to the `m26.`
 namespace (`m26.cap.*`) per M01 D8 `outbox_event_catalog` / M36 D10 alert-catalog / M03 D9
 ("modules own their `mN.` namespace"). Permission keys (`cap.event.read`, …) are intentionally
-unchanged (a separate, feature-prefixed namespace). (Prior: v0.2.)
+unchanged (a separate, feature-prefixed namespace). Also adds three missing §20.B template sections
+per ADR-0021: **M26-F08** (`Idempotency-Key` on every mutating route, §4.1), **M26-F11** (DR Tier 3
+declaration + degraded-mode posture, §8.8), **M26-F17** (BullMQ DLQ + concurrency parameters +
+cron-timezone rationale, §4.8). (Prior: v0.2.)
 
 **Module ID:** 26
 **Phase:** 1 baseline — per-beneficiary aggregate cap accrual, inpatient-cap (20% rule) accrual, nightly projection, M23 pre-submission validation feedback, M36 threshold alerts; required for Engrace go-live because 42 CFR §418.308 makes the hospice cap a statutory payment limit and a hospice operating without per-beneficiary visibility is one Medicare audit away from a six-figure recoupment. Phase 3 layers add agency-wide cap watch with tiered projections, automated PS&R reconciliation against the MAC's published reports, settlement-grade snapshots feeding M27 cost-report worksheets, and the cap-year-close workflow with reopen audit trail — same forward-seam pattern every other module uses: the seams ship at M26 lock, the consumers wire when their owning modules lock.
@@ -11,7 +14,7 @@ unchanged (a separate, feature-prefixed namespace). (Prior: v0.2.)
 
 **Consumed by:** 23 (Billing — Medicare — `CapProjectionProvider.getPatientProjectedCap(patientId, asOf)` and `CapProjectionProvider.getAgencyProjectedCap(orgId, asOf)` consumed by M23's `§11.A` pre-submission validation rule library for the "Aggregate cap projection" and "IPU cap projection" rules; result is `warn`-only per D6 — M23 never blocks claim submission on cap projection; the bidirectional dep is acknowledged in both modules' `dependsOn` lists), 27 (Cost Report — `CapAccrualReader.aggregateForPeriod(orgId, capPeriodId)` and `CapSettlementProvider.snapshotForCostReport(orgId, capPeriodId)` consumed by M27 for the cap calculation row on CMS-1984-14 Worksheet E and the per-beneficiary detail attachment; M27's `§11.B` cost-report pre-submission validation framework consumes `CapProjectionProvider` for the "Cap calculations" rule; ships forward-seam, wires when M27 locks), 30 (HQRP & Quality — `CapMetricsProvider.capUtilizationByCohort(orgId, period)` consumed for the quality-adjacent operational measures (per-cap-year aggregate cap utilization is not itself a HQRP measure but is a denominator for some agency-comparative analyses); forward-seam), 33 (Reporting & Dashboards — `CapAccrualReader`, `CapProjectionProvider`, `InpatientCapProvider`, `CapSettlementProvider` all consumed by M33's Cap Watch dashboard; M26 publishes the read-side projections; M33 owns no cap calculation logic), 28 (FHIR Gateway — none. The hospice cap is a Medicare payment construct with no FHIR resource projection. M26 publishes no `Observation`, `MeasureReport`, or `Account`; cost-report-side `Account.balance` projections live in M27)
 
-**Spec status:** Re-locked v0.3 (Phase-4 remediation; supersedes Locked v0.2)
+**Spec status:** Re-locked v0.3 (Phase-4 remediation + ADR-0021 §20.B template sweep; supersedes Locked v0.2)
 
 > **Phase-4 remediation (2026-06-11; ADR-0002/0017 D5).** The hospice **cap accounting year is
 > Oct 1 – Sep 30** (federal FY, 42 CFR 418.309) — now authoritative at the architecture layer
@@ -20,8 +23,18 @@ unchanged (a separate, feature-prefixed namespace). (Prior: v0.2.)
 > total Medicare hospice days in the cap year) numerator/denominator + overage math are corrected
 > (M26-F13). **Medicaid payments are excluded** from the Medicare aggregate cap (ADR-0017 D4).
 
+> **ADR-0021 §20.B template sweep (2026-06-13).** Three previously-missing template sections are
+> added: **M26-F08** — `Idempotency-Key` declared on all 12 mutating routes in §4.1 (ARCH-263,
+> SD-053); **M26-F11** — DR Tier 3 declared with RTO 24h / RPO 1h, degraded-mode table, DR-013
+> customer-SLA ceiling caveat, and accrual-queue-during-outage recovery path (DR-010, DR-011,
+> DR-013), added as §8.8; **M26-F17** — BullMQ queue catalog augmented with `attempts`,
+> `backoff`, `concurrency`, and DLQ columns for all six queues; cron-timezone UTC rationale
+> documented per SD-018 / OPS-005 (ARCH-262, SD-059, SD-018, OPS-005). No cap-year/regulatory
+> math content, decisions, seam contracts, or schema were altered.
+
 ## Changelog
 
+- **v0.3 (Re-locked; 2026-06-13)** — Phase-4 remediation (ADR-0002/0017) + ADR-0021 §20.B template sweep. Cap-year corrected to Oct 1–Sep 30; Medicaid excluded from Medicare aggregate cap; inpatient-cap math corrected (M26-F13). Three missing §20.B template sections added: **M26-F08** (`Idempotency-Key` on every mutating route in §4.1, ARCH-263/SD-053); **M26-F11** (DR Tier 3 + degraded-mode posture in §8.8, DR-010/011/013); **M26-F17** (BullMQ DLQ + concurrency parameters + cron UTC rationale in §4.8, ARCH-262/SD-059/SD-018/OPS-005). No schema, decisions, seam contracts, or cap math changed.
 - **v0.2 (Locked)** — Initial publication at lock-grade. Instantiates the architecture §20.B module spec template. Resolves all fourteen open questions into binding decisions (§11). Defines the **cap-year window as Oct 1 – Sep 30 per the current 42 CFR §418.309** (D1) — superseding the architecture v0.11 §J/§Module-26 legacy reference to "Nov 1 – Oct 31" which describes the pre-2017 cap year window; the BBA-2018 §51005(b) realignment moved every cap-year-ending date to September 30 starting cap year 2017, and the platform must encode the current statutory definition. Defines the **per-tenant beneficiary-counting methodology choice between streamlined and proportional, locked at cap-year-open** (D2), the **platform-constant publication of the CMS-published annual cap dollar amount, immutable to tenants and revisable only by platform-admin with audit** (D3), the **paid-amount accrual basis sourced from M25 remittance lines with outstanding-billed surfaced separately in the projection** (D4), the **nightly projection batch with single-patient real-time recompute on remittance-line posting** (D5), the **warn-only, never-blocks pre-submission validation posture** (D6) — cap is a payment cap not a service cap, and the CoP 418.52 patient-rights floor forbids ever refusing service for cap reasons — the **alert-band scheme of 90% watch / 95% warn / 100% breach at patient and agency aggregate, 18%/20% at inpatient cap** (D7), the **automated cap-year close trigger on Sep 30 with a configurable grace window and step-up-required reopen** (D8), the **CSV-upload PS&R reconciliation in Phase 1 with M29-mediated MAC adapter in Phase 3** (D9), the **cross-hospice transfer handling under proportional methodology via MBI-keyed canonical lookup against M40** (D10), the **audit and retention scheme placing accrual lines, threshold events, settlements, and PS&R artifacts in the `compliance` class for the 7-year CMS retention floor, and projection snapshots in the `operational` class for 13 months hot with archive-summary thereafter** (D11), the **step-up-biometric requirement for methodology-change, year-reopen, and settlement-finalize routes** (D12), the **inpatient-day source as M23 claim lines with revenue codes 0655 + 0656, cross-validated against the M8 level-of-care snapshot when the M8 seam is wired** (D13), the **service-continuity posture under which a cap-projection breach never blocks admission, never forces discharge, and never gates clinical operations — only generates alerts and informs cost-report planning** (D14). Wires the permission keys this module registers into Module 3 (§4.6), the ABAC predicates this module contributes (§4.7), the BullMQ queue catalog (§4.8), the M36 typed-alert payloads (§4.9), the outbox event contract (§4.10), and the destruction `eraseFn` registered with Module 4 (§3.7). Includes a **proposed manifest patch** (§13) expanding `M26.dependsOn` from `[23, 36]` to `[1, 2, 3, 4, 5, 6, 23, 25, 36, 38, 40]` *(relationship inventory - not the `dependsOn` edge set; per ADR-0005 D1/D4 seam/outbox/foundation consumers are no-edge - see audit/MANIFEST_DEPENDSON_REVIEW.md; do not bulk-apply)* — the prior encoding listed only the architecture §20.B direct-arrow set; the spec realistically depends on the foundation tier (1/2/3/4), patient and election context (5/6), the claim and remittance source modules (23/25), messaging (36), terminology for revenue-code lookup (38), and master data for canonical MBI/CCN (40) — every one of which is a typed seam consumer, not a free-floating reach across the boundary. Adds `packages/cap-management` to `codePaths` for the shared seam/event surface consumed by M23, M27, M30, M33. Populates `ownedTables` with the twelve tables defined in §3.
 - **v0.1** — Drafted within the lock-grade pass; not separately published.
 
@@ -1061,6 +1074,35 @@ M26 exposes four route surfaces: an **operational surface** (cap watch, accrual 
 
 All tenant routes mount under `/v1/cap`; platform routes mount under `/v1/platform/cap`. The platform mount is wired through the `platformOnly` Fastify pre-handler from M1, which rejects any request that carries an `orgId` claim, ensuring the platform table is unreachable from tenant context regardless of RLS state.
 
+> **M26-F08 (ARCH-263, SD-053).** Every state-mutating route below (`POST`, `PATCH`) carries an
+> `Idempotency-Key` request header enforced by M1's idempotency middleware. Behaviour: keys are
+> scoped to `(orgId, Idempotency-Key value)`, stored in Valkey for **24 hours**. Replaying the same
+> key with an identical request body returns the original response (200/201). Replaying the same key
+> with a **different** body returns **409 `IDEMPOTENCY_BODY_MISMATCH`** — the mismatch error is the
+> caller's signal that a prior attempt had a different intent; the server never silently accepts the
+> new body. Keys are client-generated UUIDs; the server never issues them. Read-only (GET) routes
+> are excluded. Routes where the idempotency contract is structural (append-only natural key in DB)
+> additionally carry the DB-level `ON CONFLICT DO NOTHING` guard as a second layer.
+>
+> **Per-route declaration:**
+>
+> | Method | Path | `Idempotency-Key` required? | Note |
+> |---|---|---|---|
+> | POST | `/v1/cap/periods` | yes | Natural key: `(orgId, ccn, capYear)`; DB constraint is the second guard |
+> | PATCH | `/v1/cap/periods/:periodId/close` | yes | State-machine transition; only one close is meaningful per period |
+> | PATCH | `/v1/cap/periods/:periodId/reopen` | yes | Step-up required (D12); idempotency prevents double-reopen on retry |
+> | POST | `/v1/cap/periods/:periodId/methodology` | yes | One-time lock; DB constraint and idempotency both guard |
+> | POST | `/v1/cap/projections/:periodId/recompute` | yes | Debounced recompute; same key = same debounce bucket |
+> | POST | `/v1/cap/psr-imports` | yes | SHA-256 of file is the dedup key in DB; HTTP key prevents double-queue on retry |
+> | PATCH | `/v1/cap/psr-imports/:importId/reconciliation/:lineId/resolve` | yes | Variance-line resolution is a state transition |
+> | POST | `/v1/cap/settlements/:periodId/propose` | yes | Proposal is idempotent if cap_settlement row already `proposed` |
+> | PATCH | `/v1/cap/settlements/:periodId/finalize` | yes | Step-up required (D12); idempotency prevents double-finalize |
+> | PATCH | `/v1/cap/threshold-events/:eventId/acknowledge` | yes | Acknowledgement state transition |
+> | POST | `/v1/platform/cap/constants` | yes | Platform-admin mutation; write is audited |
+> | PATCH | `/v1/platform/cap/constants/:capYear` | yes | Amendment allowed only before first tenant use |
+>
+> All other routes are GET (read-only) and require no `Idempotency-Key`.
+
 | Method | Path | Permission | ABAC Predicates | Description |
 |---|---|---|---|---|
 | GET | `/v1/cap/periods` | `cap.period.read` | — | List cap periods for the calling tenant, with status and methodology |
@@ -1487,18 +1529,40 @@ Each predicate has a corresponding unit test in `packages/cap-management/tests/a
 
 ### 4.8 BullMQ Queue Catalog
 
-M26 owns six BullMQ queues, all mounted on the platform Valkey instance under the `cap:` prefix. Each queue declares its retry policy, backoff strategy, and idempotency key contract.
+> **M26-F17 (ARCH-262, SD-059, SD-018, OPS-005).** Every queue below declares full BullMQ job
+> parameters: `attempts`, `backoff`, `concurrency`, and a dead-letter queue (DLQ). Every job
+> consumer is idempotent by construction — replaying a job with the same idempotency key produces
+> no additional side-effect (enforced via DB unique constraints + at-least-once outbox semantics per
+> ARCH-263 / DR-022). On exhausting all attempts BullMQ moves the job to the designated `*.dlq`
+> queue; the platform OPS-005 policy requires an operator to document findings before clearing any
+> DLQ entry. An on-call alert fires automatically when any `cap:*.dlq` depth exceeds 0.
+>
+> **Cron-expression timezone (SD-018 / OPS-005).** The platform canonical convention is that cron
+> workers run in **UTC** unless the worker explicitly names a tenant-local clock (SD-018 specifies
+> that tenant-local crons must use the `tz` option on the BullMQ `RepeatableJob` and document the
+> rationale). M26's `cap:nightly-projection` fires at **02:00 UTC** rather than platform local time
+> for the following reason: the nightly batch is cross-tenant (it fans out across all tenants) and
+> there is no single "platform local time" that is meaningful across a multi-region tenant set; UTC
+> 02:00 falls in the low-traffic overnight window for the largest US timezone concentrations
+> (22:00 ET / 23:00 CT / 21:00 PT on the prior calendar day) and avoids overlap with the
+> `cap:cap-year-close` job at 03:00 UTC. If a future tenant requires a specific nightly-projection
+> window (e.g., for East-Coast-only footprint), the fan-out architecture already supports it: the
+> per-tenant child job is the unit of work, and the child job can be enqueued at the tenant's
+> preferred offset from the 02:00 UTC parent sweep. This UTC rationale is recorded here per SD-018's
+> requirement to document UTC choice vs. local-time choice.
 
-| Queue | Trigger | Idempotency Key | Retry Policy | Description |
-|---|---|---|---|---|
-| `cap:nightly-projection` | Cron `0 2 * * *` (02:00 UTC) | `(orgId, capPeriodId, computeBasis='nightly_batch', date)` | 3 attempts, exponential 5min/15min/45min | Recomputes projection for all open/reopened periods across all tenants; one job per (tenant, period) tuple |
-| `cap:threshold-evaluator` | Post-projection-write trigger | `(orgId, capPeriodId, scope, bandTransition)` | 5 attempts, exponential 1min/5min/15min/45min/2h | Evaluates the new projection against threshold bands, persists `cap_threshold_event` rows, dispatches via M36 |
-| `cap:cap-year-close` | Cron `0 3 1 10 *` (Oct 1, 03:00 UTC) + on-demand | `(orgId, capYear)` | 3 attempts, manual after | Closes the prior cap year if grace window expired; transitions period to `closed` or `pending_settlement` |
-| `cap:psr-reconcile` | On PS&R import upload | `(importId)` | 2 attempts, then manual | Parses CSV, validates against M40 canonical CCN, computes per-patient variance, persists reconciliation rows |
-| `cap:platform-constant-refresh` | Cron `0 4 15 8 *` (Aug 15, 04:00 UTC) + on-demand | `(capYear)` | 5 attempts, exponential | Reminder to platform admin to publish next-year constants; does not auto-fetch from CMS (manual transcription required, per D3) |
-| `cap:psr-variance-watchdog` | Cron `0 5 * * 1` (Mondays 05:00 UTC) | `(orgId, capPeriodId)` | 3 attempts | Detects if a closed period's PS&R reconciliation has been pending > 90 days; emits `m26.cap.psr_variance_detected` if so |
+M26 owns six BullMQ queues, all mounted on the platform Valkey instance under the `cap:` prefix.
 
-Each handler is a typed `JobHandler<TPayload, TResult>` from M1's BullMQ wrapper; all PHI in payloads is referenced by id only (no inline values), per the platform's queue-payload PHI rule.
+| Queue | Trigger | Idempotency Key | Attempts | Backoff | Concurrency | DLQ | Description |
+|---|---|---|---|---|---|---|---|
+| `cap:nightly-projection` | Cron `0 2 * * *` (**02:00 UTC** — see timezone note above) | `(orgId, capPeriodId, computeBasis='nightly_batch', date)` | 3 | exponential 5 min / 15 min / 45 min | 4 per worker (I/O-bound fan-out; bounded by Valkey connection pool) | `cap:nightly-projection.dlq` — alert on any depth > 0; stale projections are `warn`-severity | Recomputes projection for all open/reopened periods across all tenants; one child job per (tenant, period) tuple; child jobs share the same idempotency contract |
+| `cap:threshold-evaluator` | Post-projection-write trigger (inline enqueue by projection job) | `(orgId, capPeriodId, scope, snapshotId)` | 5 | exponential 1 min / 5 min / 15 min / 45 min / 2 h | 8 (evaluations are lightweight read + write; higher concurrency safe) | `cap:threshold-evaluator.dlq` — alert on any depth > 0; unprocessed threshold event = missed alert dispatch | Evaluates new projection vs. threshold bands; persists `cap_threshold_event` rows; dispatches via M36 |
+| `cap:cap-year-close` | Cron `0 3 1 10 *` (Oct 1, **03:00 UTC**) + on-demand PATCH route | `(orgId, capYear)` | 3 | exponential 10 min / 30 min / 90 min | 2 (serialized per tenant; advisory lock guards state machine) | `cap:cap-year-close.dlq` — `critical` severity alert; un-closed period past grace window is a regulatory gap | Transitions each tenant's prior-year period to `in_settlement` or `settled` if grace window expired |
+| `cap:psr-reconcile` | PS&R import upload (`POST /v1/cap/psr-imports` success) | `(importId)` | 2 | fixed 5 min | 1 per import (CSV parse is CPU-bound; serial prevents memory spikes on large files) | `cap:psr-reconcile.dlq` — `warn` severity; import stays in `parse_failed` state; operator re-triggers after investigation | Parses CSV; validates CCN via M40; computes per-patient variance; persists `cap_psr_reconciliation` rows |
+| `cap:platform-constant-refresh` | Cron `0 4 15 8 *` (Aug 15, **04:00 UTC**) + on-demand | `(capYear)` | 5 | exponential 5 min / 15 min / 30 min / 1 h / 2 h | 1 (platform-level; only one refresh per cap year at a time) | `cap:platform-constant-refresh.dlq` — platform-admin alert; failure here means the next-year cap amount reminder was not delivered | Reminder to platform admin to publish next-year constants; does not auto-fetch from CMS (manual transcription required, per D3) |
+| `cap:psr-variance-watchdog` | Cron `0 5 * * 1` (Mondays, **05:00 UTC**) | `(orgId, capPeriodId)` | 3 | exponential 5 min / 15 min / 30 min | 4 (read-only scan; no DB write contention) | `cap:psr-variance-watchdog.dlq` — `warn` severity; stale reconciliation detection is delayed, not lost | Detects closed-period PS&R reconciliation pending > 90 days; emits `m26.cap.psr_variance_detected` |
+
+Each handler is a typed `JobHandler<TPayload, TResult>` from M1's BullMQ wrapper; all PHI in payloads is referenced by id only (no inline values), per the platform's queue-payload PHI rule. The `removeOnComplete: { count: 1000 }` / `removeOnFail: false` defaults apply to all queues; failed jobs are retained in the DLQ indefinitely until an operator clears them per OPS-005.
 
 ### 4.9 Typed M36 Alert Payloads
 
@@ -1986,7 +2050,63 @@ M26 has **zero AI surfaces in Phase 1**. Per the WardenX AI Governance v0.2 doct
 
 The "what-if" projection on the patient cap detail screen (§5.1.2) is a deterministic linear extrapolation, not an AI inference; it is explicitly labeled as a heuristic estimate and not a decision input. Should any future enhancement introduce ML-derived cap forecasting, it would be a Layer 2 advisory surface bounded by M32's HOTL governance, never a payment-decision input.
 
-### 8.8 Observability
+### 8.8 Disaster Recovery Tier & Degraded-Mode Posture (M26-F11 — DR-010, DR-011, DR-013)
+
+> **M26-F11 (DR-010, DR-011, DR-013).** ADR-0021 §4 requires every module to declare its DR/BCP
+> tier and degraded-mode behaviour. M26 was previously undeclared.
+
+#### DR Tier Declaration
+
+**Module 26 is DR Tier 3 — Revenue & Reporting.**
+
+The hospice Medicare cap is a financial obligation with no same-day patient-safety consequence. A
+24-hour outage of cap accrual or projection is a billing-department event, not a clinical event.
+The regulatory consequence (a misstated cap settlement) is only visible at the cap-year close
+18–24 months later, and is correctible via reopen + PS&R reconciliation. This aligns with the
+`WARDENX_DR_BCP_v0.1` §3.2 definition of Tier 3: "Loss impedes billing/reporting but not clinical
+care" — alongside M23 (Claims), M25 (Remittance), M33 (Reporting).
+
+| Target | Internal SLO | Customer-SLA ceiling (DR-013) |
+|---|---|---|
+| RTO | 24 hours | 48 hours |
+| RPO | 1 hour | 4 hours |
+
+> **DR-013 conformance note:** The performance SLOs in §9.6 apply under normal operating conditions
+> (single-node healthy, Valkey reachable, M25/M23 seams available). They do **not** constitute a
+> sub-24-hour RTO commitment during a declared disaster event. The DR-013 customer-SLA ceiling
+> governs outage recovery; §9.6 governs routine operation. There is no conflict because §9.6 targets
+> are tighter-than-DR-013 at steady state, and DR-013 applies only when the platform has declared a
+> disaster event under the BCP runbook.
+
+#### Degraded-Mode Behaviour
+
+M26's degraded-mode posture is governed by D14 (service-continuity floor): **cap projection status
+never affects patient care.** A degraded M26 means billing operators see stale projections and
+deferred alerts; clinicians and patients are entirely unaffected.
+
+| Dependency | Degraded behaviour | Patient-care impact |
+|---|---|---|
+| **M25 (Remittance) unavailable** | `remittance.posted.v1` events are not consumed; new accrual lines do not post. Existing accrual aggregates and projection snapshots remain valid (stale-OK). When M25 recovers, the outbox replays and accruals backfill; the nightly projection recomputes at the next 02:00 UTC window. | None — D14 ensures cap status never gates service. |
+| **M23 (Claims) unavailable** | Nightly projection jobs retry with exponential backoff (3 attempts); on exhaustion the child job lands in `cap:nightly-projection.dlq`. Dashboard shows "Projection data may be stale — last computed at &lt;timestamp&gt;". Prior snapshots remain visible. | None. |
+| **M36 (Alert dispatch) unavailable** | Threshold events are persisted to `cap_threshold_event` with `dispatch_status='pending'`. The `cap-alert-dispatch-retry` worker drains the backlog on M36 recovery. In-app threshold event queue (`/cap/events`) remains readable directly from `cap_threshold_event` (no M36 dependency on read path). | None. |
+| **M40 (MDM) unavailable** | Proportional-methodology projections fall back to per-tenant lifetime treatment (`methodologyFallback=true` in snapshot metadata). PS&R imports are rejected with an explicit error until M40 recovers (CCN validation cannot proceed). | None. |
+| **Valkey (BullMQ) unavailable** | Cron jobs and trigger-based jobs cannot enqueue. The `remittance.posted.v1` subscriber still writes accrual lines (the Postgres transaction does not depend on Valkey); however, the threshold-evaluator and projection-refresh jobs are not triggered until Valkey recovers. On recovery, BullMQ drains the deferred triggers. | None. |
+| **Postgres replica unavailable** | Writes continue to the primary (or WAL-backed standby if primary failover); the 1-hour RPO is satisfied by continuous WAL archival. Dashboard reads may temporarily hit the primary if the replica is the read-target; p95 dashboard latency degrades but correctness is maintained. | None. |
+
+#### Accrual Queue Behaviour During Outage
+
+If M26 is itself unavailable (compute layer down) while M25 continues posting remittance events,
+the outbox events accumulate in M25's outbox table (at-least-once delivery via ARCH-263 / DR-022).
+When M26 recovers, the outbox subscriber drains in chronological order; accrual lines post
+sequentially; the nightly batch (or a manual recompute) refreshes projections to current state.
+**No accrual data is lost** provided the recovery completes within the 1-hour RPO window (Postgres
+WAL archival ensures durability).
+
+A `recompute-beneficiary-accrual` batch job (`POST /v1/cap/projections/:periodId/recompute`) is
+available to billing managers to force an immediate full-period recompute after any recovery
+scenario, without waiting for the nightly batch window.
+
+### 8.9 Observability
 
 M26 emits the following metrics to the platform observability stack (OpenTelemetry):
 
@@ -2397,9 +2517,9 @@ After the patch is applied:
 
 ## End of Spec
 
-This document represents the binding lock-grade specification for WardenX Module 26 — Cap Management at version 0.2. All design decisions are resolved; implementation may proceed against the §10 task list. Subsequent material changes require a version increment and an architecture review.
+This document represents the binding lock-grade specification for WardenX Module 26 — Cap Management at version 0.3. All design decisions are resolved; implementation may proceed against the §10 task list. Subsequent material changes require a version increment and an architecture review.
 
-**Spec version**: v0.2
-**Status**: Locked
+**Spec version**: v0.3
+**Status**: Re-locked
 **Author**: FabWebDev
-**Date locked**: 2026-06-10
+**Date locked**: 2026-06-13

@@ -1043,16 +1043,195 @@ Joins existing predicates: `caseload_or_scope`, `discipline_scope`, `sud_disclos
 
 ### 4.6 BullMQ Queue Catalog
 
-| Queue | Producer | Consumer | Cadence |
-|---|---|---|---|
-| `m15.supervisory.overdue-check` | Cron every 6h | `supervisory-overdue.cron.ts` | 6h |
-| `m15.msw.initial-overdue-check` | Cron daily 02:00 org-TZ | `msw-initial-overdue.cron.ts` | Daily |
-| `m15.chaplain.initial-overdue-check` | Cron daily 02:15 org-TZ | `chaplain-initial-overdue.cron.ts` | Daily |
-| `m15.volunteer.gate-watcher` | Cron daily 03:00 org-TZ | `volunteer-gate-watcher.cron.ts` | Daily |
-| `m15.volunteer.hour-aggregator` | Cron nightly 03:30 + on-demand | `volunteer-hour-aggregator.cron.ts` | Nightly+ondemand |
-| `m15.idg-decision.apply` | M1 outbox dispatcher (sub to `m14.idg.decision_recorded`) | `idg-decision.worker.ts` | Event |
-| `m15.discharge.apply` | M1 outbox (sub to `m6.admission.discharged`) | `discharge.worker.ts` | Event |
-| `m15.bootstrap.apply` | M1 outbox (sub to `m6.admission.activated`) | `bootstrap.worker.ts` | Event |
+> **M15-F10 (ARCH-262, SD-059, OPS-035/OPS-043 — ADR-0021):** Every queue below declares full
+> BullMQ parameters. All job consumers are idempotent — repeating a job with the same `jobId`
+> produces no additional side-effect. DLQ pattern: after `attempts` exhausted, BullMQ moves the
+> job to the `*.dlq` named queue monitored by the platform ops runbook §4.3. An on-call alert
+> fires when any M15 DLQ depth > 0 (OPS-035). See §4.6.2 for the OPS-043 alert-as-code catalog.
+
+| Queue | Producer | Consumer | Cadence | Priority | Attempts | Backoff | Concurrency | DLQ |
+|---|---|---|---|---|---|---|---|---|
+| `m15.supervisory.overdue-check` | Cron every 6h | `supervisory-overdue.cron.ts` | 6h | 2 (high — overdue gate blocks CHHA encounter signing) | 5 | exponential 30 s, cap 5 min | 4 | `m15.supervisory.overdue-check.dlq` — warn-severity M36 alert; on-call page if DLQ depth > 0 at next window |
+| `m15.msw.initial-overdue-check` | Cron daily 02:00 org-TZ | `msw-initial-overdue.cron.ts` | Daily | 3 (normal) | 3 | exponential 60 s | 2 | `m15.msw.initial-overdue-check.dlq` — warn alert; stale scan is degraded, not unsafe |
+| `m15.chaplain.initial-overdue-check` | Cron daily 02:15 org-TZ | `chaplain-initial-overdue.cron.ts` | Daily | 3 (normal) | 3 | exponential 60 s | 2 | `m15.chaplain.initial-overdue-check.dlq` — warn alert; respects declined-care path idempotently |
+| `m15.volunteer.gate-watcher` | Cron daily 03:00 org-TZ | `volunteer-gate-watcher.cron.ts` | Daily | 2 (high — gate expiry flips scheduling eligibility) | 5 | exponential 30 s, cap 5 min | 4 | `m15.volunteer.gate-watcher.dlq` — critical alert; unexpired-gate-flip blocks M17 scheduling |
+| `m15.volunteer.hour-aggregator` | Cron nightly 03:30 + on-demand | `volunteer-hour-aggregator.cron.ts` | Nightly+ondemand | 3 (normal) | 3 | exponential 120 s | 2 | `m15.volunteer.hour-aggregator.dlq` — warn alert; stale ledger is degraded (ratio shows last-known), not a safety issue |
+| `m15.idg-decision.apply` | M1 outbox dispatcher (sub to `m14.idg.decision_recorded`) | `idg-decision.worker.ts` | Event | 2 (high — IDG decisions have clinician waiting) | 5 | exponential 15 s, cap 3 min | 8 (parallel decisions are independent per `idgDecisionId`) | `m15.idg-decision.apply.dlq` — critical alert; unprocessed IDG mutations block plan advancement |
+| `m15.discharge.apply` | M1 outbox (sub to `m6.admission.discharged`) | `discharge.worker.ts` | Event | 1 (critical — discharge snapshot must seal before downstream M16/M22 consume) | 5 | exponential 15 s, cap 2 min | 2 (serialized per plan to preserve snapshot ordering) | `m15.discharge.apply.dlq` — PagerDuty P1 alert; unsealed discharge snapshot is a record-completeness HIPAA gap |
+| `m15.bootstrap.apply` | M1 outbox (sub to `m6.admission.activated`) | `bootstrap.worker.ts` | Event | 1 (critical — plan stubs must exist before first clinical contact) | 5 | exponential 15 s, cap 2 min | 4 | `m15.bootstrap.apply.dlq` — PagerDuty P1 alert; missing plan stubs block CoP 418.76 clock start |
+
+Idempotency key per job: `m15.supervisory.overdue-check` on `(orgId + runWindowStart)`; `m15.volunteer.gate-watcher` on `(orgId + dateIso)`; `m15.volunteer.hour-aggregator` on `(providerEntityId + fiscalYear + aggDate)`; `m15.idg-decision.apply` on `idgDecisionId`; `m15.discharge.apply` on `(planId + admissionId + 'discharge')`; `m15.bootstrap.apply` on `(admissionId + kind)`.
+
+#### 4.6.1 Cursor Pagination on PHI List Routes (M15-F10 / SD-052)
+
+> **Finding M15-F10 (SD-052, ADR-0021 §6):** Offset pagination is forbidden on PHI-bearing list
+> routes. All M15 PHI list routes use **opaque cursor pagination** (`next_cursor` + `has_more`).
+> The cursor encodes `(sort_col_value, id)` as a base64-opaque string; clients MUST NOT decode or
+> construct cursors — the shape is internal and subject to change.
+
+The following routes from §4.1 carry PHI and are declared cursor-paginated:
+
+| Route # | Path | Default page size | Max page size | Cursor anchor |
+|---|---|---|---|---|
+| 1 | `GET /api/v1/discipline-plans` | 25 | 100 | `(updatedAt DESC, id)` |
+| 4 | `GET /api/v1/discipline-plans/:planId/versions` | 20 | 50 | `(sequence ASC, id)` |
+| 19 | `GET /api/v1/volunteer-compliance-gates` | 25 | 100 | `(validUntil ASC, id)` |
+| 23 | `GET /api/v1/volunteer-hour-ratio` | N/A — single aggregate row | — | — |
+| 25 | `GET /internal/discipline-plans/relevant-elements` | 50 | 200 | `(planId ASC, id)` |
+| 26 | `GET /internal/discipline-plans/msw-risk-factors` | 25 | 100 | `(admissionId ASC, id)` |
+| 27 | `GET /internal/discipline-plans/volunteer-effective-status` | N/A — keyed by volunteerId | — | — |
+| 28 | `GET /internal/discipline-plans/supervisory-cadence` | 50 | 200 | `(nextDueAt ASC, id)` |
+
+Response envelope for paginated routes:
+
+```typescript
+// packages/discipline-plans/src/pagination.ts
+// Authority: M15-F10 / SD-052 / ADR-0021 §6
+export type CursorPage<T> = {
+  data: T[]
+  next_cursor: string | null   // opaque base64; null means last page
+  has_more: boolean
+  total_count?: number         // only for list routes that can compute it cheaply
+}
+// Query parameter: ?cursor=<opaque>&limit=<n>
+// Offset parameter ?offset= is rejected with 400 OFFSET_PAGINATION_FORBIDDEN on PHI routes.
+```
+
+The list routes for goals, interventions, assessments, aide-supervisory-visits, and volunteer-assignments are plan-scoped (bounded by `planId`) and return all rows within the plan rather than paginating — these are small, bounded sets per plan (typically < 100 rows). They are therefore exempt from cursor pagination; they return an array directly.
+
+#### 4.6.2 Alert-as-Code Catalog (M15-F10 / OPS-035 / OPS-043)
+
+> **Finding M15-F10 (OPS-035/OPS-043, ADR-0021):** Alert thresholds are declared here in
+> OPS-043 alert-as-code format and registered as `AlertRuleSeed` entries at M15 boot via M36's
+> rule registry. Platform ops (`packages/ops/src/alerts/m15.alerts.ts`) imports and seeds these.
+
+```typescript
+// packages/ops/src/alerts/m15.alerts.ts
+// Authority: M15-F10 / OPS-035 / OPS-043
+
+import type { AlertRuleSeed } from '@wardenx/alerting/types'
+
+export const M15_ALERT_RULES: AlertRuleSeed[] = [
+  // ── Aide supervisory overdue ──────────────────────────────────────────
+  {
+    metric: 'wardenx_m15_supervisory_overdue_gauge',
+    condition: '> 0',
+    forDuration: '5m',
+    severity: 'warn',
+    summary: 'M15: Aide POC supervisory visit overdue (day 12+ warning)',
+    description: 'One or more Aide POC plans have a supervisory visit due within 2 days or already overdue. Notify supervising RN.',
+    audience: ['supervising_rn_for_plan'],
+    channel: 'in_app',
+    thresholdRef: 'OPS-043/M15/supervisory_overdue_warn',
+  },
+  {
+    metric: 'wardenx_m15_supervisory_overdue_gauge',
+    condition: '> 0',
+    forDuration: '30m',
+    severity: 'critical',
+    summary: 'M15: Aide POC supervisory OVERDUE — encounter-sign gate imminent (day 14+)',
+    description: 'Supervisory visit has passed the 14-day CoP floor. Encounter-sign gate engages at day 16. Escalate to Clinical Supervisor.',
+    audience: ['supervising_rn_for_plan', 'clinical_supervisor_for_org'],
+    channel: 'in_app',
+    thresholdRef: 'OPS-043/M15/supervisory_overdue_critical',
+  },
+  // ── MSW initial overdue ───────────────────────────────────────────────
+  {
+    metric: 'wardenx_m15_msw_initial_overdue_gauge',
+    condition: '> 0',
+    forDuration: '5m',
+    severity: 'warn',
+    summary: 'M15: MSW initial psychosocial assessment overdue (day 3+)',
+    description: 'One or more admissions have no signed MSW initial assessment past the 3-day warning window.',
+    audience: ['msw_for_plan'],
+    channel: 'in_app',
+    thresholdRef: 'OPS-043/M15/msw_initial_overdue_warn',
+  },
+  {
+    metric: 'wardenx_m15_msw_initial_overdue_gauge',
+    condition: '> 0',
+    forDuration: '15m',
+    severity: 'critical',
+    summary: 'M15: MSW initial assessment CRITICAL overdue (day 5+ — CoP 418.54(c) breach window)',
+    description: 'MSW initial assessment has exceeded the 5-day CoP 418.54(c) window. Escalate to Clinical Supervisor and DON.',
+    audience: ['msw_for_plan', 'clinical_supervisor_for_org', 'don_for_org'],
+    channel: 'in_app',
+    thresholdRef: 'OPS-043/M15/msw_initial_overdue_critical',
+  },
+  // ── Volunteer gate expiry ─────────────────────────────────────────────
+  {
+    metric: 'wardenx_m15_volunteer_gates_expiring_30d_gauge',
+    condition: '> 0',
+    forDuration: '5m',
+    severity: 'info',
+    summary: 'M15: Volunteer compliance gate(s) expiring within 30 days',
+    description: 'At least one volunteer has a gate (background check, TB screening, training, etc.) expiring within 30 days.',
+    audience: ['volunteer_coordinator_for_org'],
+    channel: 'in_app',
+    thresholdRef: 'OPS-043/M15/gate_expiring_30d',
+  },
+  {
+    metric: 'wardenx_m15_volunteer_gates_expiring_30d_gauge',
+    condition: '> 0',
+    labels: { daysOut: '7' },
+    forDuration: '5m',
+    severity: 'critical',
+    summary: 'M15: Volunteer gate expiring in ≤7 days — scheduling may be blocked imminently',
+    description: 'A volunteer gate expires within 7 days. If not renewed before expiry, the volunteer flips inactive and all open assignments are inactivated.',
+    audience: ['volunteer_coordinator_for_org'],
+    channel: 'in_app',
+    thresholdRef: 'OPS-043/M15/gate_expiring_7d',
+  },
+  // ── Volunteer ratio below floor ───────────────────────────────────────
+  {
+    metric: 'wardenx_m15_volunteer_ratio_pct',
+    condition: '< 5 AND > 3',
+    forDuration: '10m',
+    severity: 'warn',
+    summary: 'M15: Volunteer 5% hour-ratio in yellow band (3–5%) — corrective action needed',
+    description: 'The volunteer-hour-to-patient-care-hour ratio is below the 5% CoP floor. Initiate corrective-action plan.',
+    audience: ['volunteer_coordinator_for_org', 'don_for_org', 'compliance_officer_for_org'],
+    channel: 'in_app',
+    thresholdRef: 'OPS-043/M15/ratio_yellow',
+  },
+  {
+    metric: 'wardenx_m15_volunteer_ratio_pct',
+    condition: '< 3',
+    forDuration: '10m',
+    severity: 'critical',
+    summary: 'M15: Volunteer 5% ratio CRITICAL (<3%) — survey risk',
+    description: 'Volunteer hour ratio is critically low. Escalate immediately to DON and Compliance Officer.',
+    audience: ['don_for_org', 'compliance_officer_for_org', 'volunteer_coordinator_for_org'],
+    channel: 'in_app',
+    thresholdRef: 'OPS-043/M15/ratio_critical',
+  },
+  // ── DLQ depth ────────────────────────────────────────────────────────
+  {
+    metric: 'bullmq_queue_failed_count',
+    labels: { queue: 'm15.discharge.apply.dlq' },
+    condition: '> 0',
+    forDuration: '1m',
+    severity: 'critical',
+    summary: 'M15: discharge.apply DLQ non-empty — unsealed discharge snapshot (HIPAA gap)',
+    description: 'A discharge plan snapshot failed to seal. Record-completeness gap; PagerDuty P1.',
+    audience: ['ops'],
+    channel: 'pagerduty_p1',
+    thresholdRef: 'OPS-043/M15/discharge_dlq',
+  },
+  {
+    metric: 'bullmq_queue_failed_count',
+    labels: { queue: 'm15.bootstrap.apply.dlq' },
+    condition: '> 0',
+    forDuration: '1m',
+    severity: 'critical',
+    summary: 'M15: bootstrap.apply DLQ non-empty — CoP 418.76 clock cannot start',
+    description: 'Plan stubs failed to bootstrap on admission.activated. CoP clock is not running.',
+    audience: ['ops'],
+    channel: 'pagerduty_p1',
+    thresholdRef: 'OPS-043/M15/bootstrap_dlq',
+  },
+]
+```
 
 ### 4.7 M36 Typed-Alert Payloads
 
@@ -1270,6 +1449,72 @@ Pino structured JSON per M1; PHI scrubbing per architecture §15. Free-text narr
 
 Registered with M4's destruction-cert workflow per architecture §24 / `boot.ts` pattern. The eraser cryptographically shreds (a) every M15-owned PHI row for an organization or patient cohort, (b) every PHI-bearing field on the `data jsonb` column on `discipline_assessment` and `discipline_care_plan_version.state_snapshot`. Idempotent re-invocation. Destruction-cert workflow records affected-row count per table and destruction time.
 
+### 8.6 STRIDE Threat Model (M15-F11 / SEC-007 / ADR-0021)
+
+> **Finding M15-F11 (SEC-007, ADR-0021 §3):** Every module spec requires a STRIDE section mapping
+> its top threats to controls and tests. M15 was previously undeclared.
+
+| Threat | Surface | Mitigation | Test |
+|---|---|---|---|
+| **Spoofing (S)** | A non-supervisor RN creates an `aide_supervisory_visit` row impersonating the named `supervising_rn_membership_id` | Session-bound `captured_by_membership_id` verified against the plan's `supervising_rn_membership_id` at write time via `aide_supervisor_eligible` ABAC predicate; never client-supplied; Clin Supv override requires a documented reason ≥40 chars and is audited | Authz-independence test: RN not named on the plan returns 403 `NOT_AIDE_SUPERVISOR`; override path requires reason ≥40 chars |
+| **Spoofing (S)** | Gate-override abuse — a Volunteer Coordinator or Clin Supv bypasses an expired volunteer gate to book a non-compliant volunteer (§418.78 breach) | `volunteer_compliance_active` ABAC predicate enforced at INSERT on `volunteer_assignment`; override requires `volunteer_compliance.author` + documented `override_reason` ≥40 chars; every override recorded as `m15.gate.override.invoked` audit event at `warn` severity; `wardenx_m15_gate_override_counter` Prometheus metric surfaces survey-risk patterns (§8.2) | Integration test: assignment INSERT with any expired gate returns 422 `VOLUNTEER_GATE_UNMET` without override; override without reason returns 422; override with reason succeeds and emits the audit event |
+| **Tampering (T)** | IDG-payload tampering — a malformed or replayed `m14.idg.decision_recorded` outbox event is crafted to apply unauthorized goal mutations to a discipline plan | Outbox events are keyed on `idgDecisionId` (natural idempotency key); the consumer validates the payload against the TypeBox-typed `idg-decision.ts` schema before applying mutations; mismatched `organization_id` or `planId` references are rejected with an audit event; re-publishing the same `idgDecisionId` is a no-op (idempotent consumer) | Consumer unit test: tampered payload with wrong `organization_id` rejected with `IDEMPOTENCY_ORG_MISMATCH`; duplicate `idgDecisionId` produces no mutation; schema-invalid payload throws validation error before any DB write |
+| **Tampering (T)** | Editing a signed `discipline_care_plan_version.state_snapshot` to alter the historical plan record | Snapshot is sealed at `in_review` transition; the M4 audit trigger refuses any UPDATE targeting `state_snapshot` after the `in_review` transition; the `discipline_care_plan_version.version` optimistic-lock column is also a tamper signal | Integration test: direct UPDATE on `state_snapshot` after `in_review` returns a DB trigger error; PATCH via API is rejected 409 before reaching the DB |
+| **Repudiation (R)** | "I did not approve that IDG revision" — supervisory RN or MSW denies having signed a plan version | Per-version `discipline_care_plan_signature` row captures `signerMembershipId`, `signerRole`, `signedAt`, `sessionClass`, `ipAddress`, `userAgent`, `attestationText`; M4 audit event `m15.discipline_plan.version.signed` carries all fields; signatures are immutable (no UPDATE on the signatures table) | Audit-read test: signature table row survives a deliberate application-layer delete attempt; audit event contains ip/ua/session |
+| **Repudiation (R)** | Supervisory-RN repudiates an `aide_supervisory_visit` attestation | `aide_supervisory_visit` row is INSERT-only once signed (`signedAt` non-null); the M4 audit event `m15.aide_supervisory.captured` records the complete attestation context; free-text `supervisoryNarrative` is denylisted from value capture but its hash is recorded | Integration test: a signed supervisory visit cannot be UPDATEd or DELETEd via the application role |
+| **Information disclosure (I)** | SUD/family-violence psychosocial content visible to unauthorized recipient (e.g., family-member portal, therapist without consent) | SQL-level WHERE filter on read paths via `sud_disclosure_allowed` and `family_violence_disclosure_allowed` ABAC predicates (registered with M3); never post-fetch redaction; portal (`/summary` route) strips all clinical-internal fields and applies both filters; response envelope includes `redacted_categories: ['sud']` or `['family_violence']` when content is filtered | Authz-independence test: MSW Plan read from a session without SUD consent returns response with `redacted_categories: ['sud']` and zero SUD-flagged rows in the body; family-violence-flagged assessment filtered to zero rows |
+| **Denial of service (D)** | `GET /api/v1/discipline-plans` called with large offset to enumerate all PHI records across tenants | Offset pagination forbidden on all PHI list routes (§4.6.1, SD-052); opaque cursor pagination enforced; cursor encodes org-scoped sort column and id; RLS backstop prevents cross-tenant access even if cursor is forged | API test: `?offset=` query parameter returns 400 `OFFSET_PAGINATION_FORBIDDEN`; cursor constructed for Org A is rejected under Org B RLS context |
+| **Elevation (E)** | MSW attempts to author Aide POC goals, or CHHA attempts to author MSW Plan content (cross-discipline authorship) | `discipline_scope` ABAC predicate enforces per-kind author discipline; the IDG Coordinator is the only cross-discipline exception (audited at `warn`); Clin Supv override for `aide_poc` requires a documented reason; structural floor — break-glass cannot grant MSW authorship on `aide_poc` | Authz-independence test: MSW attempting `discipline_plan.author` on `aide_poc` returns 403 `DISCIPLINE_SCOPE_DENIED` even with caseload satisfied; IDG Coord authorship on any kind succeeds and emits the `warn`-severity audit event |
+
+### 8.7 Disaster Recovery Tier & Degraded-Mode Behaviour (M15-F11 / DR-010 / DR-064 / ADR-0021)
+
+> **Finding M15-F11 (DR-010, DR-064, ADR-0021 §4):** Every module must declare its DR tier and
+> degraded-mode behaviour. Tier-1/2 services may not let any external dependency block
+> documentation. M15 was previously undeclared.
+
+#### DR Tier
+
+**Module 15 is DR Tier 2 (care-plan family).** The four discipline care plans are patient-safety-critical regulatory artifacts (CoP 418.76 supervisory cadence, CoP 418.78 volunteer compliance, CoP 418.64 MSW/spiritual services). A clinician without access to the Aide POC cannot safely direct a CHHA's work; a Volunteer Coordinator without gate status cannot safely assign a volunteer. Tier 2 means:
+
+- **RTO target:** ≤ 4 hours (data-plane restore + service availability).
+- **RPO target:** ≤ 15 minutes (the last committed supervisory attestation, goal update, or plan signature must be recoverable; the outbox `m15.*` events at the subscriber side may lag up to the RPO window).
+- **Standby:** Every M15 table is replicated synchronously to the warm-standby replica per the architecture §DR standby topology. The `volunteer_compliance_gate` and `volunteer_hour_ledger` tables follow the same topology; their loss would prevent CoP 418.78 enforcement on recovery.
+- **Tier 2 constraint (DR-010):** No external dependency may block recording a supervisory attestation, a plan signature, or a volunteer gate update. If M36 (alert delivery) is unavailable, the attestation inserts and the outbox event persists; M36 drains on recovery. The recording path never awaits M36 inline.
+
+#### Fail-CLOSED Volunteer-Gate and Supervisory-Gate Semantics During M15 Outage
+
+**The platform NEVER fails open the volunteer gate or supervisory gate.** Gate and cadence enforcement follow a strict fail-CLOSED posture:
+
+| Gate | Normal state | M15 degraded / unavailable | Override path |
+|---|---|---|---|
+| `VolunteerComplianceProvider` (M17 scheduling gate) | M17 calls `effectiveStatusFor(volunteerId)` at pre-schedule; any expired gate → `VOLUNTEER_GATE_UNMET` rejection | If M15 is unreachable, M17's pre-schedule gate call returns **deny by default** (`isActive: false, reason: 'compliance_gate_unavailable'`); no volunteer visit may be booked without an explicit audited override | Volunteer Coordinator + Clinical Supervisor both invoke a documented override with reason ≥40 chars; override is emitted as `m15.gate.override.invoked` at `critical` severity; the override is time-bounded to the declared outage window (max 4h per DR-010 RTO); any visit booked under override is flagged `compliance_gate_override=true` in M8's encounter row for post-outage review |
+| Supervisory-gate (`AIDE_SUPERVISORY_OVERDUE` encounter-sign block at day 16) | M15's `SupervisoryCadenceReader` gate evaluated at CHHA encounter-sign | If M15 is unreachable, the encounter-sign gate **defaults to blocked** — the CHHA encounter cannot be signed without explicit override | Clin Supv invokes override with reason ≥40 chars; audit event `m15.gate.override.invoked` at `critical`; override valid for the duration of the M15 outage only; the supervisory attestation must be back-filled within the 72-hour BCP window on recovery |
+
+**The fail-CLOSED guarantee is architectural, not just policy:** M17's `VolunteerComplianceProvider` seam consumer is implemented with a circuit-breaker default-deny (not a circuit-breaker default-allow). Any seam call timeout or 5xx from the M15 service causes the circuit breaker to return `{ isActive: false, failingGates: [{ gateKind: 'service_unavailable', reason: 'M15 unreachable' }] }`, which M17 maps to `VOLUNTEER_GATE_UNMET`. The inverse "assume compliant on timeout" posture is explicitly rejected: booking a non-compliant volunteer during an outage exposes the agency to an immediate CoP 418.78 citation on survey.
+
+#### Degraded-Mode Behaviour
+
+| Dependency down | M15 behaviour |
+|---|---|
+| M36 (alert delivery) | Supervisory-overdue alerts, gate-expiry alerts, and MSW/chaplain initial-overdue alerts are queued in the outbox. The plan record itself shows the next-due banner inline (read from `discipline_care_plan.next_supervisory_due_at` directly). M36 drains on recovery; no alert is dropped (at-least-once delivery). |
+| M39 (consent seam) | `consent.evaluate` returns `deny` by default per ADR-0014. MSW psychosocial assessments with `sud_flag=true` are blocked; `family_violence_disclosure_allowed` defaults to deny (MSW + RN Case Manager only). Plan reads with SUD/FV content return the filtered shape. Assessments that do not carry flags are unaffected. |
+| M8 (`SignedEncountersReader`) | Aide supervisory visit creation requires a `source_encounter_id`; if M8 is unreachable the seam returns a deny-stub and the attestation creation is blocked (encounter validation cannot proceed). Phone-only supervision path (no encounter) is unaffected and can be used as a documented exception during M8 outage. |
+| M14 (`idg.decision_recorded` events) | IDG decision consumer pauses; the BullMQ `m15.idg-decision.apply` queue accumulates jobs and drains when M14 recovers. No plan content is lost; the IDG coordinator sees "awaiting application" status on the revision. |
+| M27 (`CostBasisProvider`) | Volunteer ratio denominator is unavailable; dashboard shows hours only with "cost basis unavailable — M27 unreachable" badge. Plan creation, supervisory attestation, and gate enforcement are unaffected. |
+| Valkey (BullMQ) | Cron workers pause; the supervisory-overdue check and gate-watcher do not run. The plan record's `next_supervisory_due_at` remains correct in Postgres; the chart banner reads from the DB directly and correctly reflects overdue state. The encounter-sign gate is enforced via the DB column, not via BullMQ. |
+
+#### BCP Re-Entry Path (DR-064 — 72-Hour Window)
+
+When the platform recovers from a declared disaster, supervisory attestations and plan signatures captured on paper during the outage must be entered within the **72-hour window** per DR-064:
+
+1. **Back-dated attestation capture:** `createAideSupervisoryVisit` accepts any `supervisoryAt` timestamp ≥ `admission.activatedAt` and ≤ `now() + 5 min`. Paper-origin attestations dated during the outage window are accepted verbatim. A `sourceEncounterId` may be null (the phone-supervision path) for paper-origin entries during outage.
+
+2. **Paper-origin marking:** Back-filled supervisory visits and plan signatures during BCP re-entry carry `bcp_origin: true` in the request body (an optional field declared on `CreateAideSupervisoryVisitBody` and the sign route). If `bcp_origin=true` is present, the route emits a `m15.aide_supervisory.bcp_origin_backfill` audit event at `severity=warn` in addition to the standard `m15.aide_supervisory.captured` event.
+
+3. **Post-outage gate review:** Any volunteer visit booked under a `compliance_gate_override=true` flag during the outage must be reviewed by the Volunteer Coordinator and Clinical Supervisor within the 72-hour window. M15's post-outage review surface lists all override-flagged encounters; the Coordinator confirms gate status or cancels the visit with M17.
+
+4. **72-hour enforcement:** M15 does not enforce a hard stop at 72 hours — that enforcement is organisational per DR-064. The BCP review panel shows an amber warning if any BCP-origin attestation has `supervisoryAt` more than 72 hours before `createdAt`, surfacing potential DR-064 non-compliance for the Compliance Officer's review.
+
 -----
 
 ## 9. Test Plan
@@ -1432,7 +1677,7 @@ All structural and policy decisions for Module 15 are resolved at lock time. The
 - [ ] **D10 bootstrap clocks:** Aide POC / MSW Plan / Spiritual Plan stubs created on `admission.activated`; Volunteer Plan lazy on first assignment; MSW + chaplain 5-day clocks alert appropriately.
 - [ ] **D11 required-signer constants:** per-kind quorum captured at `in_review`; CHHA acknowledgment is lighter (separate row, `is_acknowledgment='true'`) and counts toward Aide POC quorum but is not a "sign".
 - [ ] **D12 phase boundary:** five outbound seams published and registered at boot (`validateSeams()` refuses to start otherwise); test-double M14 publisher exercises the IDG decision consumer.
-- [ ] **D13 partitioning:** monthly partitions auto-rotated by M4's partition manager for `discipline_care_plan` and `discipline_assessment`.
+- [ ] **D13 no partitioning (M15-F06):** `discipline_care_plan` and `discipline_assessment` are confirmed unpartitioned; the partial unique indexes `(org, admission_id, kind) WHERE status<>'discharged'` and `(org, plan, kind) WHERE is_initial AND status='signed'` are present and enforced; `check-ddl-legality` green.
 - [ ] **D14 manifest patch:** `M15.dependsOn = [6, 7, 8, 36, 38, 39, 40]`; `M15.ownedTables = ['discipline_care_plan','discipline_care_plan_version','discipline_care_plan_signature','discipline_goal','discipline_intervention','discipline_assessment','aide_supervisory_visit','volunteer_assignment','volunteer_compliance_gate','volunteer_hour_ledger','volunteer_hour_entry']`; dependency-cruiser boundary check green; `check-table-ownership` green.
 - [ ] Permission keys (per §4.4 list, 20 keys) registered in Module 3's catalog; default role-template assignments per §6 applied; boot validation enforces presence.
 - [ ] Four new ABAC predicates (`aide_supervisor_eligible`, `volunteer_compliance_active`, `family_violence_disclosure_allowed`, `volunteer_coordinator_role`) registered with M3's named-predicate registry; missing-binding = deny.
@@ -1442,6 +1687,12 @@ All structural and policy decisions for Module 15 are resolved at lock time. The
 - [ ] WCAG 2.1 AA verified on every screen in §5.1; axe-core scan green; multi-signer attestation modal supports screen-reader "X of N signatures collected" announcements.
 - [ ] Mobile (Capacitor) Aide POC + supervisory modal + biometric sign path operational.
 - [ ] Eraser registered with M4 destruction-cert workflow; PHI-bearing fields on `data jsonb` and `state_snapshot` cryptographically shredded; destruction-cert records affected-row counts.
+- [ ] **(M15-F10 / ADR-0021)** All eight BullMQ queues (§4.6) declare priority / attempts / backoff / concurrency / DLQ; all consumers assert idempotency on their natural key; DLQ depth > 0 triggers a Prometheus alert; the two P1-severity DLQ alerts (`discharge.apply`, `bootstrap.apply`) page PagerDuty.
+- [ ] **(M15-F10 / SD-052)** Cursor pagination (`next_cursor` + `has_more`) enforced on all five PHI list routes (§4.6.1); `?offset=` query parameter returns 400 `OFFSET_PAGINATION_FORBIDDEN`; integration test exercises cursor advance across pages.
+- [ ] **(M15-F10 / OPS-043)** `M15_ALERT_RULES` seeded into M36's rule registry at boot (`packages/ops/src/alerts/m15.alerts.ts`); all nine alert rules verifiable in Grafana alertmanager.
+- [ ] **(M15-F11 / SEC-007)** Security suite green: each STRIDE row in §8.6 has a corresponding integration or authz-independence test; gate-override-abuse test confirms 422 without documented reason and emits `m15.gate.override.invoked` audit event with documented reason; IDG-payload-tamper test confirms org-mismatch rejection before any DB write.
+- [ ] **(M15-F11 / DR-010)** `VolunteerComplianceProvider` seam consumer implements circuit-breaker default-deny (not default-allow); a simulated M15 service timeout from M17's test double returns `{ isActive: false, reason: 'compliance_gate_unavailable' }`, causing M17 to reject the assignment with `VOLUNTEER_GATE_UNMET`.
+- [ ] **(M15-F11 / DR-064)** BCP re-entry: `CreateAideSupervisoryVisitBody` accepts `bcp_origin: true`; back-dated `supervisoryAt` within the admission window is accepted; `m15.aide_supervisory.bcp_origin_backfill` audit event emitted at `severity=warn`; BCP review panel surfaces all `compliance_gate_override=true`-flagged encounters from the outage window.
 
 **Lock status:** All 14 decisions (D1–D14) resolved. Module 15 is buildable now. Items completing when downstream modules exist (tracked as forward seams, not open decisions): M14 IDG-packet integration consumes `DisciplinePlanReader` when M14 locks; M16 bereavement-risk consumption consumes `MswRiskFactorReader` when M16 locks; M17 pre-schedule gate consumes `VolunteerComplianceProvider` + `SupervisoryCadenceReader` when M17 locks; M22 discipline-plan PDF rendering subscribes to `m15.plan.version_signed` when M22 locks; M27 cost-basis ratio consumer wires the real `CostBasisProvider` when M27 locks; M28 FHIR `CarePlan` / `QuestionnaireResponse` projection consumes the typed mapping when M28 locks; M30 HQRP measures read `DisciplineComplianceProvider` when M30 locks; M33 operational dashboards consume the five seams when M33 locks.
 
