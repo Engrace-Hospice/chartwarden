@@ -214,15 +214,15 @@ Cycles: **none ✓** · Consistency issues: **none ✓**.
 | 155 | evv_geofence_evaluation | M18 EVV | docs/modules/WARDENX_MODULE_18_EVV_SPEC_v0_2.md |
 | 156 | evv_geofence_policy | M18 EVV | docs/modules/WARDENX_MODULE_18_EVV_SPEC_v0_2.md |
 | 157 | evv_missing_resolution | M18 EVV | docs/modules/WARDENX_MODULE_18_EVV_SPEC_v0_2.md |
-| 158 | external_triage_vendor | M19 On-Call Triage | docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_2.md |
-| 159 | on_call_shift | M19 On-Call Triage | docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_2.md |
-| 160 | tenant_oncall_policy | M19 On-Call Triage | docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_2.md |
-| 161 | triage_call | M19 On-Call Triage | docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_2.md |
-| 162 | triage_call_answer | M19 On-Call Triage | docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_2.md |
-| 163 | triage_call_state_history | M19 On-Call Triage | docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_2.md |
-| 164 | triage_escalation | M19 On-Call Triage | docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_2.md |
-| 165 | triage_protocol | M19 On-Call Triage | docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_2.md |
-| 166 | triage_protocol_question | M19 On-Call Triage | docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_2.md |
+| 158 | external_triage_vendor | M19 On-Call Triage | docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md |
+| 159 | on_call_shift | M19 On-Call Triage | docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md |
+| 160 | tenant_oncall_policy | M19 On-Call Triage | docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md |
+| 161 | triage_call | M19 On-Call Triage | docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md |
+| 162 | triage_call_answer | M19 On-Call Triage | docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md |
+| 163 | triage_call_state_history | M19 On-Call Triage | docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md |
+| 164 | triage_escalation | M19 On-Call Triage | docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md |
+| 165 | triage_protocol | M19 On-Call Triage | docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md |
+| 166 | triage_protocol_question | M19 On-Call Triage | docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md |
 | 167 | safety_acknowledgment | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_2.md |
 | 168 | safety_check_in | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_2.md |
 | 169 | safety_check_in_schedule | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_2.md |
