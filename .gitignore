@@ -11,11 +11,10 @@ bun.lock
 wardenx-impl-starter.zip
 
 # Generated bundles — regenerable from the spec sources in docs/modules/ (module specs +
-# module-29-tasks/) and the repo-root corpus. Specific names, not *.zip, to keep the
-# authored WARDENX_UI_SCREEN_SPECS_v2.zip spec artifact tracked.
+# module-29-tasks/). Specific names, not *.zip, so the authored, tracked spec artifacts
+# WARDENX_UI_SCREEN_SPECS_v5.zip and WARDENX_PROJECT_STARTER.zip stay in git.
 WARDENX_MODULES_01-10.zip
 WARDENX_MODULES_11-20.zip
 WARDENX_MODULES_21-30.zip
 WARDENX_MODULES_31-40.zip
 WARDENX_MODULE_29_TASKS_T29.zip
-WARDENX_PROJECT_STARTER.zip
