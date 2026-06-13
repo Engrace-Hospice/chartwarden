@@ -2395,7 +2395,7 @@ Lock-grade sign-off requires every item below to be green. Each item is verifiab
 // module-manifest.ts — M24 entry
 { id: 24, name: "Billing — Medicaid",
   codePaths: ["packages/medicaid-adapters", "apps/backend/src/modules/24-billing-medicaid"],
-  dependsOn: [1, 2, 3, 4, 5, 6, 8, 18, 22, 23, 26, 28, 36, 38, 40],
+  dependsOn: [23, 40], // ADR-0005: genuine compile-time edges only; broader relationship inventory is in the "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
   ownedTables: [
     "medicaid_claim",
     "medicaid_claim_line",
@@ -2422,7 +2422,7 @@ Lock-grade sign-off requires every item below to be green. Each item is verifiab
 -    codePaths: ["packages/medicaid-adapters", "apps/backend/src/modules/24-billing-medicaid"], dependsOn: [23, 40], ownedTables: [] },
 +  { id: 24, name: "Billing — Medicaid",
 +    codePaths: ["packages/medicaid-adapters", "apps/backend/src/modules/24-billing-medicaid"],
-+    dependsOn: [1, 2, 3, 4, 5, 6, 8, 18, 22, 23, 26, 28, 36, 38, 40],
++    dependsOn: [23, 40], // ADR-0005: genuine compile-time edges only; broader relationship inventory is in the "Depends on:" header / D16 (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
 +    ownedTables: [
 +      "medicaid_claim", "medicaid_claim_line", "medicaid_claim_line_encounter",
 +      "medicaid_claim_state_history", "medicaid_submission", "medicaid_acknowledgment",

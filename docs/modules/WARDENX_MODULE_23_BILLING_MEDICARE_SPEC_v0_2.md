@@ -2727,7 +2727,7 @@ Lock-grade sign-off requires every item below to be green. Each item is verifiab
 +   "packages/x12-worker-client",
   ],
 - dependsOn: [6, 8, 22, 38, 40],
-+ dependsOn: [1, 2, 3, 4, 5, 6, 8, 18, 22, 26, 28, 36, 38, 40],
++ dependsOn: [6, 8, 22, 38, 40], // ADR-0005: genuine compile-time edges only; broader relationship inventory is in the "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
 - ownedTables: [],
 + ownedTables: [
 +   "claim",

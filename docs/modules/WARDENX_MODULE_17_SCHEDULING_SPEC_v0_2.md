@@ -1555,7 +1555,7 @@ All structural and policy decisions for Module 17 are resolved at lock time. The
 +   "packages/routing-client",
   ],
 - dependsOn: [5, 8, 40],
-+ dependsOn: [1, 2, 3, 4, 5, 7, 8, 15, 36, 38, 40],
++ dependsOn: [5, 8, 40], // ADR-0005: genuine compile-time edges only; the broader relationship inventory is in the "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
 - ownedTables: [],
 + ownedTables: [
 +   "visit",

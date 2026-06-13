@@ -2373,8 +2373,7 @@ export const MODULES: ModuleManifest[] = [
   {
     id: 34,
     name: 'SaaS Tenant Platform',
-    // EXPANDED from [2, 3, 4, 36] per D23:
-    dependsOn: [1, 2, 3, 4, 22, 36],
+    dependsOn: [2, 3, 4, 36], // ADR-0005: genuine compile-time edges only; broader relationship inventory is in the "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
     codePaths: [
       'packages/saas-tenant-platform',
       'packages/admin-ui-shell',

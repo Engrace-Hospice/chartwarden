@@ -1762,7 +1762,7 @@ All structural and policy decisions for Module 18 are resolved at lock time. The
 +   "packages/evv-aggregators",
   ],
 - dependsOn: [17],
-+ dependsOn: [1, 2, 3, 4, 5, 17, 36, 38, 40],
++ dependsOn: [17], // ADR-0005: genuine compile-time edges only; broader relationship inventory is in the "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
 - ownedTables: [],
 + ownedTables: [
 +   "evv_event",

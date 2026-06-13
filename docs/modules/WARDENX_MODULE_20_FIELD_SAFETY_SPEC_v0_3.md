@@ -2286,7 +2286,7 @@ This module is buildable now. Acceptance requires all of the following items to 
     'packages/safety-client',
     'apps/backend/src/modules/20-field-safety',
   ],
-  dependsOn: [1, 2, 3, 4, 5, 17, 18, 19, 36, 40],   // was [17, 36]
+  dependsOn: [17, 36], // ADR-0005: genuine compile-time edges only; broader relationship inventory is in the "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
   ownedTables: [
     'safety_policy',
     'safety_policy_version',

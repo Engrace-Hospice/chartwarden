@@ -2288,7 +2288,7 @@ This checklist is the gate for declaring M31 v0.2 locked. Every box must be chec
 +   "apps/staff/portal-admin",
   ],
 - dependsOn: [5, 7, 8, 22, 36, 39],
-+ dependsOn: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 21, 22, 36, 38, 39, 40],
++ dependsOn: [5, 7, 8, 22, 36, 39], // ADR-0005: genuine compile-time edges only; broader relationship inventory is in the "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
 - ownedTables: [],
 + ownedTables: [
 +   "portal_account",

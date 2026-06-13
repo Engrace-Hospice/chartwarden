@@ -1255,7 +1255,7 @@ The manifest's M6 entry currently has `ownedTables: []`. With this spec it becom
 ```typescript
 { id: 6, name: "Admission, Election & Certification",
   codePaths: ["apps/backend/src/modules/06-admission", "packages/domain/admission"],
-  dependsOn: [1, 2, 3, 4, 5, 29, 38, 39, 40],
+  dependsOn: [5, 38, 40, 39], // ADR-0005: genuine compile-time edges only; the broader relationship inventory is in the "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
   ownedTables: [
     "referral",
     "admission",

@@ -175,14 +175,19 @@ Grounding: `architecture/module-manifest.ts` is the single source of truth (alre
 - **M35-F02** → **[ADR-0025](../docs/adr/ADR-0025-m34-m35-dependency-direction.md)** (Accepted). M34↔M35 ruled a bidirectional seam relationship. Applied: `module-manifest.{ts,cjs}` M35 `dependsOn [34]→[]`; M35 D23/D24 + M34 D23 cite ADR-0025. CLOSED.
 - **M14-F04** → **[ADR-0024](../docs/adr/ADR-0024-m14-notification-composition-ownership.md)** (Accepted, Option A). Notification composition + recipient resolution for cross-module events moved to M36. Applied: 2 tables (`notification_template`, `tenant_notification_template_overlay`) moved M14→M36 in `module-manifest.{ts,cjs}` (M14 11→9, M36 13→15, total 451); M14 spec shed the role (D14/D15/D16 tombstoned, composers/tables/prose removed); M36 spec gained the tables (§3.13) + composition role (§4.11) + RecipientResolvers; M6/M22 consumer decls repointed to M36 (M11 already correct). `arch:fitness` green. CLOSED.
 
-**Remaining (~21 specs) — NOT a blind sweep.** Every other spec's §13 carries the over-claimed
-"relationship inventory" list. Per the prior `MANIFEST_DEPENDSON_REVIEW` the accepted resolution is
-**keep the manifest minimal + annotate the spec list "do not bulk-apply" + strip invented ModuleDef
-fields** — not force each spec to the manifest verbatim (the manifest has its own quirks: M34 omits 1,
-M22 omits 2/3/4, etc., reflecting actual-import calls the module owner must confirm). Residual work per
-spec: (a) ensure the §13 block carries the relationship-inventory clarifier inline, (b) strip any
-invented `ModuleDef` fields, (c) flag any genuine direction-reversal as DISPUTED. Best done as a
-per-module pass, not a corpus find/replace.
+**Batch-3 remainder — DONE (2026-06-13).** Aligned the §13 manifest-entry `dependsOn` of **all 22
+divergent specs** (M06, M15–M21, M23–M37) to the authoritative manifest, each with an inline
+"relationship inventory — not the edge set — do not bulk-apply (ADR-0005)" clarifier; the broader list
+stays in each spec's prose "Depends on:" header. M22/M39 were done earlier; M35→`[]` per ADR-0025.
+Verified: every spec's own §13 entry now mirrors the manifest; `arch:fitness` green. Two benign
+non-divergences remain (not module-own edge sets): M32 §14.3 quotes M8's `dependsOn` as a downstream
+illustration (stale vs M8's real `[6,7,36,38]` — a minor M8 illustration nit), and M39's `[]` is a diff
+"before" line.
+
+**Flagged for architecture-owner (manifest hygiene, separate):** the manifest is internally
+inconsistent on whether foundation deps (1–4) are listed as edges — M34=`[2,3,4,36]` lists them,
+M22=`[1,5]`/M16=`[5,6,36]` don't. Specs now mirror the manifest as-is; a future pass should make the
+foundation-edge convention consistent across the manifest.
 
 ### Batch 2 — §20.B template sections (ADR-0021), wave 1 (2026-06-13) ✅ applied, `arch:fitness` green
 

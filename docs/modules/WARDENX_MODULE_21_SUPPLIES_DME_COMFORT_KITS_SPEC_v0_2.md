@@ -3441,21 +3441,7 @@ This checklist gates M21 from `v0.2 Locked (spec)` to `v1.0 Shipped (code)`.
 {
   id: 21,
   name: 'Supplies, DME & Comfort Kits',
-  dependsOn: [
-    1,   // M1 Foundation (boot, config, logger)
-    2,   // M2 Identity & Org (sessions, roles, locations)
-    3,   // M3 Authorization (RBAC + ABAC predicates)
-    4,   // M4 Audit & Compliance Log (PHI audit triggers, retention)
-    5,   // M5 Patient & Demographics (patient seam for routing + dispatch)
-    6,   // M6 Admission/Election/Certification (cascade-relevant patient status)
-    11,  // M11 Orders (primary cascade upstream)
-    13,  // M13 eMAR (comfort-kit deployment + replenishment + return cascade upstream/downstream)
-    22,  // M22 Documents/Signatures (caregiver signature for delivery; signature persistence for return witness)
-    28,  // M28 Notifications (deny-stub forward seam — M36 is the canonical alerts pathway, but M28 carries patient/caregiver-facing channels)
-    36,  // M36 Secure Messaging & Alerts (alert publishing pathway)
-    38,  // M38 Terminology (RxNorm + HCPCS + SNOMED CT resolution)
-    40,  // M40 MDM (canonical SKU master)
-  ],
+  dependsOn: [11, 40], // ADR-0005: genuine compile-time edges only; broader relationship inventory is in the "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
   codePaths: [
     'apps/backend/src/modules/21-supplies',
     'packages/vendor-edi',  // deny-stub adapter (D9 Phase 2)

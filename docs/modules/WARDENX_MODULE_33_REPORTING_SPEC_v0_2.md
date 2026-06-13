@@ -2203,12 +2203,7 @@ The manifest patch applied as part of T-28:
 +      "apps/backend/src/modules/33-reporting",
 +      "packages/reporting"
 +    ],
-+    dependsOn: [
-+      1, 2, 3, 4,
-+      5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-+      21, 22, 23, 24, 25, 26, 27, 28,
-+      30, 36, 38, 39, 40
-+    ],
++    dependsOn: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 30, 38, 40], // ADR-0005: genuine compile-time edges only; broader relationship inventory is in the "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
 +    ownedTables: [
 +      "report_base_catalog",
 +      "report_metric_catalog",

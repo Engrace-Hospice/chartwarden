@@ -1834,7 +1834,7 @@ All structural and policy decisions for Module 27 are resolved at lock time. The
 +   "packages/gusto-client",
   ],
 - dependsOn: [23, 26, 38],
-+ dependsOn: [1, 2, 3, 4, 6, 8, 12, 13, 22, 23, 26, 36, 38, 40],
++ dependsOn: [23, 26, 38], // ADR-0005: genuine compile-time edges only; broader relationship inventory is in the "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
 - ownedTables: [],
 + ownedTables: [
 +   "cost_report",

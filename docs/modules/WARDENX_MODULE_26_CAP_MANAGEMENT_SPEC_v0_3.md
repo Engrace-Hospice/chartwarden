@@ -2458,7 +2458,7 @@ The following diff applies to `tooling/manifest/module-manifest.ts`. The patch u
      // Non-ModuleDef fields (seams/registrations/phase/key/riskProfile/metadata) removed per ARCH-146/ADR-0005 — wired at boot, not in the manifest.
 -    dependsOn: [23, 36],
 -    ownedTables: [],
-+    dependsOn: [1, 2, 3, 4, 5, 6, 23, 25, 36, 38, 40],
++    dependsOn: [23, 36], // ADR-0005: genuine compile-time edges only; broader relationship inventory is in the "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
 +    ownedTables: [
 +      'cap_period_platform_constant',
 +      'cap_period',

@@ -3800,37 +3800,7 @@ This section is the **binding deliverable** for integrating M30 into the platfor
     "packages/quality",
     "packages/cahps-vendors",
   ],
-  dependsOn: [
-    // Foundation tier
-    1,  // Foundation (config, errors, outbox primitives)
-    2,  // Identity & Org (org_unit, user, role assignment)
-    3,  // Authorization (RBAC + ABAC predicate registry)
-    4,  // Audit & Compliance Log (audit_event sink + denylist)
-    36, // Secure Messaging & Alerts (alert delivery, escalation)
-    38, // Terminology (LOINC, SNOMED, ICD-10, infection pathogen value sets)
-    40, // (referenced indirectly via M40 PHI partitioning conventions; not added as dep edge — M40 publishes platform conventions read by all clinical modules; manifest direction policy treats this as platform-floor, not consumer-dep)
-
-    // Clinical tier — measure & incident inputs
-    5,  // Patient & Demographics (PatientHeaderReader)
-    6,  // Admission/Election/Certification (LevelOfCarePeriodReader, AdmissionCensusReader, DischargeReader, ComplianceWindowReader; m6.discharge.death event)
-    7,  // Care Plan / IPOC (CarePlanComplianceProvider)
-    8,  // Encounters & Visit Notes (EncounterStatisticsProvider, SignedEncountersReader)
-    9,  // Clinical Assessments (LatestAssessmentProvider, ScaleSeriesProvider)
-    10, // HOPE Engine (HopeSubmissionProvider, HopeTimepointProvider, HopeJ2051Provider)
-    11, // Orders (OrderProvider — for adverse-event correlation)
-    12, // DoseSpot/Prescribing (MedicationOrderProvider — for medication_error incident correlation)
-    13, // eMAR / Med Administration (MedicationAdministrationProvider)
-    14, // IDG (IdgScheduleProvider, IdgDecisionProvider)
-    15, // Discipline Care Plans (DisciplineComplianceProvider)
-    16, // Bereavement (BereavementComplianceProvider)
-    17, // Visit Verification metrics (VisitMetricsProvider)
-    18, // EVV (EvvMetricsProvider — Cures Act compliance feed)
-
-    // Billing & cost tier
-    22, // Letters/Templates (downstream PDF render consumer — manifest direction policy: M30 publishes outbox, M22 consumes; edge documents render dependency for SRA/QAPI/incident exports)
-    23, // Claims & Billing (ClaimLineReader, PatientDaysProvider — HCI denominators)
-    27, // Cost Report (CostReportProvider — HCI Indicator 9 RN-hours-per-patient-day)
-  ],
+  dependsOn: [10, 23, 27, 36, 38], // ADR-0005: genuine compile-time edges only. The broader relationship inventory (M1–M22 foundation/seam/outbox consumers, with per-dep rationale) lives in the "Depends on:" header and §4.4 — seam/outbox/foundation consumers are no-edge per D1/D4; do not bulk-apply.
   ownedTables: [
     // Measures (append-only fact store)
     "quality_measure_value",
@@ -4140,7 +4110,7 @@ Before merging this manifest patch, the following must be true (verified by CI):
 - { id: 30, name: "HQRP & Quality", codePaths: ["apps/backend/src/modules/30-quality"], dependsOn: [10, 23, 27, 36, 38], ownedTables: [] },
 + { id: 30, name: "HQRP & Quality",
 +   codePaths: ["apps/backend/src/modules/30-quality", "packages/quality", "packages/cahps-vendors"],
-+   dependsOn: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,22,23,27,36,38],
++   dependsOn: [10, 23, 27, 36, 38], // ADR-0005: genuine compile-time edges only; broader relationship inventory is in the "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
 +   ownedTables: [
 +     "quality_measure_value","measure_recompute_queue",
 +     "cahps_vendor_binding","cahps_decedent_sample","cahps_result_summary",

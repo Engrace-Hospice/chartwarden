@@ -2386,7 +2386,7 @@ Sequencing: T-M28-22, T-M28-23, T-M28-24 in parallel → T-M28-25.
    { id: 28, name: "FHIR Gateway",
 -    codePaths: ["packages/fhir", "apps/backend/src/modules/28-fhir"], dependsOn: [5, 6, 7, 8, 11, 12, 13, 38, 40], ownedTables: [] },
 +    codePaths: ["packages/fhir", "apps/backend/src/modules/28-fhir"],
-+    dependsOn: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 22, 23, 29, 36, 38, 39, 40],
++    dependsOn: [5, 6, 7, 8, 11, 12, 13, 38, 40], // ADR-0005: genuine compile-time edges only; broader relationship inventory is in the "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
 +    ownedTables: [
 +      "tenant_fhir_config",
 +      "fhir_client",

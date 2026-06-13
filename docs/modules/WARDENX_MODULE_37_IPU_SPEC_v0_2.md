@@ -2522,11 +2522,7 @@ Module 37 is "Locked" when every line below is checked.
 +      "apps/backend/src/modules/37-ipu",
 +      "packages/inpatient"
 +    ],
-+    dependsOn: [
-+      1, 2, 3, 4,
-+      5, 6, 8, 9, 11, 12, 13, 14, 15, 17, 18,
-+      21, 22, 23, 26, 27, 36, 38, 40
-+    ],
++    dependsOn: [6, 8, 11, 13, 17, 23], // ADR-0005: genuine compile-time edges only; broader relationship inventory is in the "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
 +    ownedTables: [
 +      "inpatient_unit",
 +      "ipu_room",

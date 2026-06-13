@@ -2163,7 +2163,7 @@ Sequencing for the external-source track: T-M16-17 → T-M16-18 → T-M16-19.
 +   "packages/domain/bereavement",
   ],
 - dependsOn: [5, 6, 36],
-+ dependsOn: [5, 6, 8, 9, 15, 22, 32, 36, 38, 39, 40],
++ dependsOn: [5, 6, 36], // ADR-0005: genuine compile-time edges only; the broader relationship inventory is in the "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
 - ownedTables: [],
 + ownedTables: [
 +   "bereavement_plan",

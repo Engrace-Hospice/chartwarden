@@ -3356,7 +3356,7 @@ The module is **LOCKED** when every box below is checked. Each box is binary; "p
 -  dependsOn: [5, 11, 40],
 -  codePaths: ['apps/backend/src/modules/29-external-interfaces'],
 -  ownedTables: [],
-+  dependsOn: [1, 2, 3, 4, 5, 11, 22, 27, 36, 38, 39, 40],
++  dependsOn: [5, 11, 40], // ADR-0005: genuine compile-time edges only; broader relationship inventory is in the "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
 +  codePaths: [
 +    'apps/backend/src/modules/29-external-interfaces',
 +    'apps/frontend/src/routes/external-interfaces',

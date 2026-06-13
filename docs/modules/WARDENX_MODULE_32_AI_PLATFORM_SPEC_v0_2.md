@@ -2569,7 +2569,7 @@ The following must each be observable before M32 v0.2 is considered locked-and-s
      name: 'AI Platform',
      // Non-ModuleDef fields (seams/registrations/phase/key/riskProfile/metadata) removed per ARCH-146/ADR-0005 — wired at boot, not in the manifest.
 -    dependsOn: [1, 2, 3, 4],
-+    dependsOn: [1, 2, 3, 4, 36, 38],
++    dependsOn: [1, 2, 3, 4], // ADR-0005: genuine compile-time edges only; broader relationship inventory is in the "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
      codePaths: [
        'packages/ai-platform',
        'apps/backend/src/modules/32-ai-platform',

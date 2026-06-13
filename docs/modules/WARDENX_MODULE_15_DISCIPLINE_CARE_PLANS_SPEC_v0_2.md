@@ -1709,7 +1709,7 @@ All structural and policy decisions for Module 15 are resolved at lock time. The
 +   "packages/discipline-plans",
   ],
 - dependsOn: [7, 8],
-+ dependsOn: [6, 7, 8, 36, 38, 39, 40],
++ dependsOn: [7, 8], // ADR-0005: genuine compile-time edges only; the broader relationship inventory is in the "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
 - ownedTables: [],
 + ownedTables: [
 +   "discipline_care_plan",

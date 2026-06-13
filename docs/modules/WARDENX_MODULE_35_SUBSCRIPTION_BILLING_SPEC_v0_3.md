@@ -2905,7 +2905,7 @@ Before promoting M35 from "spec locked" to "implementation in progress" → "in 
 +      "packages/subscription-billing",
 +      "apps/backend/src/modules/35-subscription-billing"
 +    ],
-+    dependsOn: [1, 2, 3, 4, 5, 28, 29, 32, 36, 38],
++    dependsOn: [], // ADR-0025: M34<->M35 seam-based, no edge; minimal set per ADR-0005 D5 pass.
 +    ownedTables: [
 +      "plan",
 +      "plan_meter",

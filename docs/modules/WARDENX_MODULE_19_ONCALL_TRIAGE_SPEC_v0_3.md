@@ -1986,7 +1986,7 @@ All structural and policy decisions for Module 19 are resolved at lock time. The
 +   "packages/triage/vendor-adapter",
   ],
 - dependsOn: [5, 17, 36],
-+ dependsOn: [1, 2, 3, 4, 5, 8, 11, 12, 17, 18, 32, 36, 38, 39, 40],
++ dependsOn: [5, 17, 36], // ADR-0005: genuine compile-time edges only; broader relationship inventory is in the "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
 - ownedTables: [],
 + ownedTables: [
 +   "tenant_oncall_policy",

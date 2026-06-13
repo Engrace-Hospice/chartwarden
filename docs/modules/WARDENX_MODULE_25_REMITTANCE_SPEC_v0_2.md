@@ -2068,7 +2068,7 @@ Patch against `module-manifest.ts`:
   id: 25,
   name: 'Remittance & Denials',
   // Non-ModuleDef fields (seams/registrations/outbox-event lists/phase/tier/metadata) removed per ARCH-146/ADR-0005 — wired at boot, not in the manifest.
-  dependsOn: [1, 2, 3, 4, 18, 22, 23, 24, 36, 38, 40],
+  dependsOn: [23, 36], // ADR-0005: genuine compile-time edges only; broader relationship inventory is in the "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4) — do not bulk-apply.
   ownedTables: [
     'remittance_advice',
     'remittance_line',
