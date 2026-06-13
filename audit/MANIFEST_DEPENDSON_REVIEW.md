@@ -85,19 +85,26 @@ An edge here would create an import cycle; the relationship is necessarily seam/
 Every proposed `+1 / +2 / +3 / +4` across M12/M13/M14/M17/M18/M19/M20/M21/M22/M23/M25/M26/
 M27/M28/M29/M30/M34 — rejected per **D4** (audit/auth/tenancy/db-schema are import-free).
 
-### 4c. Default NO-EDGE — acyclic candidates (119)
-These do not form a cycle, so the cycle test alone cannot reject them — but the
-`FITNESS_EVENT_SEAM_CATALOG.md` §A consumption map shows them to be **seam / reader / outbox**
-relationships (e.g. `M14→CarePlanReader(M7)`, `M30→*MetricsProvider`, `M9→ConsentEvaluator(M39)`,
-`M16→DocumentRenderer(M22)` outbox). Per **D1** those are **no-edge**. An edge is warranted only
-where a module's *code compile-imports the producer's package* (its exported repository/
-service/types) — which the current manifest already captures.
+### 4c. CONFIRMED NO-EDGE — acyclic candidates (119) ✅ per-spec pass complete
+These do not form a cycle, so the cycle test alone cannot reject them — so each was confirmed
+against its owning spec's **patch rationale**, which states the consumption mechanism per dep.
+**Every rationale is outbox / seam / reader / forward-seam** — none is a compile-time import of
+another module's feature package. Representative (verbatim from the specs):
 
-> **Action for the architecture owner:** for each of the 119, confirm against the owning spec
-> whether the relationship is a compile-time import (→ add the edge, then re-run
-> `scripts/audit-fitness.ts` for cycles per D5) or seam/outbox/reader (→ no-edge, the default).
-> The full 119-edge list is reproducible from `scripts/audit-fitness.ts` + the targets in this
-> file. Based on the §A catalog, the expected outcome is **few or zero** genuine additions.
+| Proposed dep | Spec rationale | Mechanism → disposition |
+|---|---|---|
+| M16 → 22 | "emitting `m16.bereavement.outreach_artifact_requested` **to** M22" | outbox → **no-edge** |
+| M16 → 8 | "**subscribing to** `m8.encounter.signed`" | outbox → **no-edge** |
+| M16 → 39 | "M39 **owning** the per-contact consent gate" | ConsentEvaluator seam → **no-edge** |
+| M16 → 38 | "**referencing** the relationship value set" | TerminologyProvider seam → **no-edge** |
+| M16 → 40 | "discipline taxonomy / MDM catalog **consumed**" | MDM reader seam → **no-edge** |
+| M16 → 9 | "**forward seam** — the column is nullable…" | forward seam → **no-edge** |
+| M11 → 5 | "referencing `patient.id`" | PatientReader seam → **no-edge** |
+
+Cross-check: the only "imports `packages/…`" statements in the corpus are either *forbidden*-
+import rules ("dependency-cruiser fails CI") or "only the interface / only the seam types" —
+i.e. seam access. **Result: 0 of the 119 are compile-imports; 0 edges added.** The current
+minimal `dependsOn` set is complete and correct; no further manifest change is warranted.
 
 ---
 
@@ -107,12 +114,15 @@ service/types) — which the current manifest already captures.
    over-specify (relationship inventory) and would introduce 12 cycles.
 2. **The edge corrections are done:** inverted `M9/M10/M11 → M8` and incorrect `M22 → M39`
    removed (`fix(manifest): remove inverted dependsOn edges`).
-3. **Update the specs' patch notes** (optional, doc hygiene): reword the "proposed manifest
-   patch" sentences to state they document the *relationship inventory*, not the edge set, and
-   that per ADR-0005 D1/D4 only compile-time imports are edges — preventing a future
-   well-meaning bulk-apply that breaks the DAG.
-4. **No fitness-gate change required** — `arch:fitness` already enforces acyclicity + ownership
-   on the correct minimal manifest.
+3. **Spec patch notes reworded — DONE.** Each of the 26 patch-carrying specs now carries an
+   inline clarifier after its `dependsOn from […] to […]` target: *"relationship inventory —
+   not the `dependsOn` edge set; per ADR-0005 D1/D4 seam/outbox/foundation consumers are
+   no-edge — see audit/MANIFEST_DEPENDSON_REVIEW.md; do not bulk-apply"* (47 insertions).
+4. **Manifest header guard — DONE.** `architecture/module-manifest.ts` now warns explicitly
+   against bulk-applying the spec targets and points here.
+5. **No fitness-gate change required** — `arch:fitness` already enforces acyclicity + ownership
+   on the correct minimal manifest (40 modules, 451 tables, 153 edges, 0 cycles).
 
-This review changes no code; it records the analysis and the recommended (no-bulk-apply)
-disposition for ratification.
+**Net:** the 119 acyclic candidates were confirmed per-spec as **all no-edge** (0 compile
+imports); no further manifest change is warranted. The minimal `dependsOn` set is complete and
+correct, and the spec/manifest guards prevent a future drift-inducing bulk-apply.

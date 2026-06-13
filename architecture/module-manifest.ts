@@ -47,6 +47,12 @@
  * compile-time-imports a new module) update dependsOn. Any dependsOn delta beyond
  * this manifest is made as ONE consolidated ADR per module, with a TRANSITIVE cycle
  * analysis (not just direct edges) — ADR-0005 D5. Nothing else changes.
+ *
+ * ⚠ DO NOT bulk-apply the "proposed manifest patch" / "Depends on:" lists from the module
+ * specs. Those are RELATIONSHIP INVENTORIES (compile imports + seams + outbox + foundation
+ * helpers), NOT the edge set. Per D1/D4 above, seam/outbox consumption and foundation helpers
+ * (M1–M4) are NO-EDGE; applying the spec targets verbatim creates import cycles. The add-edge
+ * proposals were reviewed and confirmed all no-edge — see audit/MANIFEST_DEPENDSON_REVIEW.md.
  */
 
 export const LEAF_PACKAGES = [
