@@ -51,8 +51,12 @@ the prose docs in `docs/architecture/`.
   `codePaths`, `dependsOn`, and `ownedTables` (451 tables across 40 modules).
 - `architecture/.dependency-cruiser.cjs` — import-boundary rules.
 - `scripts/check-table-ownership.ts`, `check-tenancy.ts`, `check-ddl-legality.ts`,
-  `check-ui-screens.ts` — enforced via `package.json` scripts (`bun run arch:fitness`; the
-  UI-corpus check also runs standalone as `bun run docs:ui`).
+  `check-fitness-gaps.ts` (event-catalog `mN.` convention, seam-registry completeness, PHI
+  RLS/audit-trigger presence — armed-inert until app source lands), `check-ui-screens.ts` —
+  enforced via `package.json` scripts (`bun run arch:fitness`; UI-corpus check also standalone
+  as `bun run docs:ui`).
+- `scripts/audit-fitness.ts` — point-in-time enforcement audit (module matrix, table
+  ownership, dependency graph/cycles); writes `audit/FITNESS_ENFORCEMENT_AUDIT.md`.
 
 ### Governance & history
 
