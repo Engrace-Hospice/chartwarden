@@ -2,7 +2,7 @@
 
 **Auditor protocol:** `audit/_criteria/AUDITOR_INSTRUCTIONS.md` v1.0
 **Criteria packs:** CRITERIA_ARCHITECTURE.md, CRITERIA_SECURITY_AI.md, CRITERIA_OPS_DR_INTEGRATIONS.md, module-manifest.ts
-**Specs audited (in full):** `WARDENX_MODULE_18_EVV_SPEC_v0_2.md` (1,703 lines), `WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_2.md` (2,167 lines)
+**Specs audited (in full):** `WARDENX_MODULE_18_EVV_SPEC_v0_2.md` (1,703 lines), `WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_3.md` (audited at v0.2; renamed to v0.3 for the `m20.` event-naming migration)
 **Blocker verification sources consulted directly:** `WARDENX_INTEGRATIONS_v0_1.md` (grep: zero occurrences of "EVV", "Sandata", "aggregator", "HHAeXchange", "Tellus"), `WARDENX_ARCHITECTURE_v0_11.md` (§11 M18/M20 module entries lines 1737–1760; §20 dependency row line 2356 `|18|EVV|17|`; §20.A Phase tables lines 2405–2450), `WARDENX_SYSTEM_DESIGN_v0.3.md` (§1.3.5 lines 266–292; §4.6 lines 693–704), `WARDENX_DR_BCP_v0.1.md` (§3.1 Tier 1 line 106).
 **Date:** 2026-06-10
 

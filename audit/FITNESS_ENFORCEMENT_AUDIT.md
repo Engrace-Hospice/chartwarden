@@ -223,19 +223,19 @@ Cycles: **none ✓** · Consistency issues: **none ✓**.
 | 164 | triage_escalation | M19 On-Call Triage | docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md |
 | 165 | triage_protocol | M19 On-Call Triage | docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md |
 | 166 | triage_protocol_question | M19 On-Call Triage | docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md |
-| 167 | safety_acknowledgment | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_2.md |
-| 168 | safety_check_in | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_2.md |
-| 169 | safety_check_in_schedule | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_2.md |
-| 170 | safety_emergency_contact_consent | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_2.md |
-| 171 | safety_high_risk_area | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_2.md |
-| 172 | safety_incident | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_2.md |
-| 173 | safety_incident_state_history | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_2.md |
-| 174 | safety_policy | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_2.md |
-| 175 | safety_policy_version | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_2.md |
-| 176 | safety_sos_alert | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_2.md |
-| 177 | safety_sos_alert_state_history | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_2.md |
-| 178 | safety_sos_location_stream | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_2.md |
-| 179 | safety_supervisor_subscription | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_2.md |
+| 167 | safety_acknowledgment | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_3.md |
+| 168 | safety_check_in | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_3.md |
+| 169 | safety_check_in_schedule | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_3.md |
+| 170 | safety_emergency_contact_consent | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_3.md |
+| 171 | safety_high_risk_area | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_3.md |
+| 172 | safety_incident | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_3.md |
+| 173 | safety_incident_state_history | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_3.md |
+| 174 | safety_policy | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_3.md |
+| 175 | safety_policy_version | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_3.md |
+| 176 | safety_sos_alert | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_3.md |
+| 177 | safety_sos_alert_state_history | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_3.md |
+| 178 | safety_sos_location_stream | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_3.md |
+| 179 | safety_supervisor_subscription | M20 Field Safety | docs/modules/WARDENX_MODULE_20_FIELD_SAFETY_SPEC_v0_3.md |
 | 180 | comfort_kit_dispatch | M21 Supplies, DME & Comfort Kits | docs/modules/WARDENX_MODULE_21_SUPPLIES_DME_COMFORT_KITS_SPEC_v0_2.md |
 | 181 | comfort_kit_dispatched_content | M21 Supplies, DME & Comfort Kits | docs/modules/WARDENX_MODULE_21_SUPPLIES_DME_COMFORT_KITS_SPEC_v0_2.md |
 | 182 | comfort_kit_return | M21 Supplies, DME & Comfort Kits | docs/modules/WARDENX_MODULE_21_SUPPLIES_DME_COMFORT_KITS_SPEC_v0_2.md |
