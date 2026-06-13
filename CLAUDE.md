@@ -43,8 +43,9 @@ the prose docs in `docs/architecture/`.
 - `architecture/module-manifest.ts` (+ `.cjs`) — single source of truth for each module's
   `codePaths`, `dependsOn`, and `ownedTables` (451 tables across 40 modules).
 - `architecture/.dependency-cruiser.cjs` — import-boundary rules.
-- `scripts/check-table-ownership.ts`, `check-tenancy.ts`, `check-ddl-legality.ts` — enforced via
-  `package.json` scripts (`bun run arch:fitness`).
+- `scripts/check-table-ownership.ts`, `check-tenancy.ts`, `check-ddl-legality.ts`,
+  `check-ui-screens.ts` — enforced via `package.json` scripts (`bun run arch:fitness`; the
+  UI-corpus check also runs standalone as `bun run docs:ui`).
 
 ### Governance & history
 - `docs/adr/` — Architecture Decision Records (ADR-0001…).
