@@ -306,18 +306,18 @@ Cycles: **none ✓** · Consistency issues: **none ✓**.
 | 247 | remittance_line | M25 Remittance & Denials | docs/modules/WARDENX_MODULE_25_REMITTANCE_SPEC_v0_2.md |
 | 248 | remittance_remark | M25 Remittance & Denials | docs/modules/WARDENX_MODULE_25_REMITTANCE_SPEC_v0_2.md |
 | 249 | remittance_service_line | M25 Remittance & Denials | docs/modules/WARDENX_MODULE_25_REMITTANCE_SPEC_v0_2.md |
-| 250 | cap_beneficiary_accrual | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_2.md |
-| 251 | cap_beneficiary_accrual_line | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_2.md |
-| 252 | cap_inpatient_accrual | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_2.md |
-| 253 | cap_inpatient_day_line | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_2.md |
-| 254 | cap_period | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_2.md |
-| 255 | cap_period_methodology_lock | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_2.md |
-| 256 | cap_period_platform_constant | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_2.md |
-| 257 | cap_projection_snapshot | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_2.md |
-| 258 | cap_psr_import | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_2.md |
-| 259 | cap_psr_reconciliation | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_2.md |
-| 260 | cap_settlement | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_2.md |
-| 261 | cap_threshold_event | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_2.md |
+| 250 | cap_beneficiary_accrual | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_3.md |
+| 251 | cap_beneficiary_accrual_line | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_3.md |
+| 252 | cap_inpatient_accrual | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_3.md |
+| 253 | cap_inpatient_day_line | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_3.md |
+| 254 | cap_period | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_3.md |
+| 255 | cap_period_methodology_lock | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_3.md |
+| 256 | cap_period_platform_constant | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_3.md |
+| 257 | cap_projection_snapshot | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_3.md |
+| 258 | cap_psr_import | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_3.md |
+| 259 | cap_psr_reconciliation | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_3.md |
+| 260 | cap_settlement | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_3.md |
+| 261 | cap_threshold_event | M26 Cap Management | docs/modules/WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_3.md |
 | 262 | bad_debt_record | M27 Cost Report | docs/modules/WARDENX_MODULE_27_COST_REPORT_SPEC_v0_2.md |
 | 263 | cost_center_mapping | M27 Cost Report | docs/modules/WARDENX_MODULE_27_COST_REPORT_SPEC_v0_2.md |
 | 264 | cost_report | M27 Cost Report | docs/modules/WARDENX_MODULE_27_COST_REPORT_SPEC_v0_2.md |

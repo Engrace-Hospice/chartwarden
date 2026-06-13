@@ -1,5 +1,11 @@
 # Module 26 — Cap Management Specification
 
+**Spec version:** v0.3 — outbox events migrated to the `m26.` namespace (`m26.cap.*`) per the
+M01 D8 `outbox_event_catalog` / M03 D9 ("modules own their `mN.` namespace") convention.
+Permission keys (`cap.event.read`, …) and M36 alert-payload types (`cap.patient_watch_90`, …)
+are intentionally unchanged — those are separate catalogs; the alert-payload `mN.` migration is
+tracked separately. (Prior: v0.2.)
+
 **Module ID:** 26
 **Phase:** 1 baseline — per-beneficiary aggregate cap accrual, inpatient-cap (20% rule) accrual, nightly projection, M23 pre-submission validation feedback, M36 threshold alerts; required for Engrace go-live because 42 CFR §418.308 makes the hospice cap a statutory payment limit and a hospice operating without per-beneficiary visibility is one Medicare audit away from a six-figure recoupment. Phase 3 layers add agency-wide cap watch with tiered projections, automated PS&R reconciliation against the MAC's published reports, settlement-grade snapshots feeding M27 cost-report worksheets, and the cap-year-close workflow with reopen audit trail — same forward-seam pattern every other module uses: the seams ship at M26 lock, the consumers wire when their owning modules lock.
 **Depends on:** 1 (Foundation — `withOrgContext`, `audit()` helper, outbox dispatcher, idempotency middleware via natural-key `(source_kind, source_id, line_seq)`, BullMQ on Valkey, partitioned-table convention for `cap_beneficiary_accrual_line` and `cap_inpatient_day_line` by `cap_period_id`, RLS generator, per-tenant DEK envelope-encryption helper for PS&R raw file storage keys, circuit-breaker and `DegradedError` envelope for the platform-constant CMS-publication-refresh worker), 2 (Identity — `user`, `membership`; session classes for step-up re-auth on cap-year-close, settlement-finalize, methodology-change, year-reopen per D12; discipline resolution for the `cap_admin` and `cap_reviewer` predicate scopes), 3 (Authorization — `cap.*` permission keys M26 contributes per §4.6; ABAC predicates `cap_period_open`, `cap_period_in_settlement`, `cap_period_settled`, `cap_period_methodology_unlocked`, `cap_platform_admin` registered into M3's named-predicate registry; the `caseload_or_scope` predicate reused for per-patient cap-detail reads so a billing clerk sees only patients in their assignment scope), 4 (Audit — PHI write-audit trigger generator on every owned table that carries `patient_id`; audit-read declaration on every per-patient cap-detail route; retention class `compliance` for `cap_beneficiary_accrual`, `cap_beneficiary_accrual_line`, `cap_inpatient_accrual`, `cap_inpatient_day_line`, `cap_threshold_event`, `cap_psr_import`, `cap_psr_reconciliation`, `cap_settlement`, `cap_period`, `cap_period_methodology_lock` — these are cost-report material and must survive the 7-year CMS retention floor per 42 CFR §418.104(d) and the cost-report extension to 10 years for some MACs; retention class `operational` for `cap_projection_snapshot` (13 months hot, then archived to summary; see D11); `eraseFn` registered into M4's destruction-cert callback registry that *retains* the per-cap-period aggregates and *redacts* the `patient_id` link to an `[ERASED]` sentinel — see D14: the cap is settled at the cap-year-aggregate level; CMS-side reconciliation must remain reproducible from our ledger even after an individual patient's right-to-erasure is honored), 5 (Patient & Demographics — `PatientReader` consumed via `packages/patient` for patient identity, deceased status, and `medicare_election_id` lookup; `m5.patient.deceased` consumed via outbox to mark `cap_beneficiary_accrual.deceased_at` and freeze the patient's per-cap-year projection denominator at death rather than continuing to extrapolate empty days; M26 never imports M5 schema directly — only the typed reader), 6 (Admission/Election/Certification — `ElectionPeriodReader` consumed for benefit-period-anchored cap math: a patient's contribution to a cap year is bounded by their hospice election dates and revocation date; `MedicareBeneficiaryIdProvider.normalizedMbiForPatient(patientId)` consumed to canonicalize the HICN/MBI used for cross-hospice reconciliation under D10; `m6.revocation.created` consumed via outbox to freeze the patient's contribution to the active cap period at the revocation date; `m6.transfer.created` consumed under proportional methodology so the patient's pre-transfer days are honored as already-counted by the prior hospice), 23 (Billing — Medicare — `MedicareClaimReader` consumed for claim-line detail when projecting outstanding-billed against paid; `ClaimLineReader.inpatientDaysForPatient(patientId, periodWindow)` consumed for revenue-code-0655/0656 day extraction per D13; M26 *contributes back* the `CapProjectionProvider` seam consumed by M23's `§11.A Claim Pre-Submission Validation Framework` for the "Aggregate cap projection" and "IPU cap projection" rules per architecture v0.11 §11.A — warn-only, never blocks, per D6 and D14), 25 (Remittance & Denials — `RemittanceReader.postedRemittanceLinesForPatient(patientId, periodWindow)` consumed for the paid-amount source of truth; `m25.remittance.advice_posted` consumed via outbox as the trigger for `record-accrual-line`; M25 is the authoritative paid-amount source — every cent in a cap accrual line traces to an 835-derived remittance line by `source_id`), 36 (Secure Messaging & Alerts — `cap_watch` channel kind per M36 §2.3 derives its membership from M26's `CapWatchSubscriberProvider` seam — published by M26, consumed by M36 at every tenant-policy update; M26 emits typed alerts (`cap.patient_watch_90`, `cap.patient_warn_95`, `cap.patient_breach_100`, `cap.agency_watch_90`, `cap.agency_warn_95`, `cap.agency_breach_100`, `cap.inpatient_watch_18`, `cap.inpatient_warn_20`, `cap.inpatient_breach`, `cap.year_close_reminder`, `cap.psr_variance_detected`) and consumes `m36.notification.delivery_failed` to surface stuck cap-watch notifications on the operational queue; M26 owns no out-of-band delivery code — every SMS/email/push path is M36's), 38 (Clinical Terminology — `TerminologyProvider.lookup('rev-code', code, asOfDate)` consumed for revenue-code-to-level-of-care mapping (0655 IRC, 0656 GIP) with `asOfDate` resolution so a code-set revision in 2027 doesn't retroactively change a 2026 cap-year inpatient day; the platform-floor revenue-code value set is M38-owned; M26 contributes no terminology), 40 (Master Data Management — `MasterPatientReader.canonicalMbiForPatient(patientId)` consumed to canonicalize HICN/MBI before cross-cap-year reconciliation; `MasterProviderReader.canonicalCcnForOrg(orgId)` consumed to anchor the cap period to a CCN — a tenant operating two CCNs has two parallel cap periods per cap year, never merged; M26 contributes no master data)
@@ -38,7 +44,7 @@ Module 26 is the deterministic, ledger-grade accounting of every Medicare hospic
 - **Manages PS&R reconciliation** — quarterly CSV upload of the MAC-published Provider Statistical & Reimbursement report (Phase 1) with variance detection against M26's running accrual; variances above a configurable per-tenant threshold land on the `cap_psr_reconciliation` queue for billing-clerk investigation.
 - **Manages cap-year close and settlement proposal** — automatic close on Sep 30 + a tenant-configurable grace window; settlement proposal computed from the locked snapshot; finalize is step-up-required (D12).
 - **Manages cap-year reopen** — step-up-required (D12), reason-required, audited; used when a late PS&R settlement requires retroactive adjustment.
-- **Emits outbox events** (`cap.accrual_recorded`, `cap.projection_updated`, `cap.threshold_crossed`, `cap.year_opened`, `cap.year_closing`, `cap.year_closed`, `cap.settlement_proposed`, `cap.settlement_finalized`, `cap.psr_variance_raised`) for downstream consumers.
+- **Emits outbox events** (`m26.cap.accrual_recorded`, `m26.cap.projection_updated`, `m26.cap.threshold_crossed`, `m26.cap.year_opened`, `m26.cap.year_closing`, `m26.cap.year_closed`, `m26.cap.settlement_proposed`, `m26.cap.settlement_finalized`, `m26.cap.psr_variance_raised`) for downstream consumers.
 
 ### 1.2 What This Module Does Not Do
 
@@ -386,14 +392,14 @@ A patient/agency can have multiple unresolved events at different scopes simulta
 
 | Event | Side Effects |
 |---|---|
-| `cap_beneficiary_accrual_line` inserted | (1) Update `cap_beneficiary_accrual.paid_cents` and `last_paid_through`; (2) emit `cap.accrual_recorded`; (3) enqueue `threshold-evaluator` job with `scope='patient_aggregate'`, `patient_id`; (4) enqueue `threshold-evaluator` with `scope='agency_aggregate'` |
-| `cap_inpatient_day_line` inserted | (1) Update `cap_inpatient_accrual.gip_days`/`irc_days`/`total_days`/`inpatient_pct`; (2) emit `cap.accrual_recorded`; (3) enqueue `threshold-evaluator` with `scope='inpatient'` |
-| `cap_projection_snapshot` inserted with band higher than prior latest | (1) Insert `cap_threshold_event`; (2) emit `cap.threshold_crossed`; (3) dispatch M36 typed alert per §4.9 |
-| `cap_period.status` → `'active'` | (1) Emit `cap.year_opened` |
-| `cap_period.status` → `'in_settlement'` | (1) Emit `cap.year_closing`; (2) enqueue `cap-settlement-proposer` |
-| `cap_settlement.status` → `'final'` | (1) Update `cap_period.status='settled'`; (2) emit `cap.year_closed` and `cap.settlement_finalized` |
-| `cap_psr_import.parse_status` → `'parsed'` | (1) Enqueue `psr-reconcile` job; (2) emit `cap.psr_imported` |
-| `cap_psr_reconciliation` row inserted with variance above threshold | (1) Emit `cap.psr_variance_raised`; (2) dispatch M36 alert |
+| `cap_beneficiary_accrual_line` inserted | (1) Update `cap_beneficiary_accrual.paid_cents` and `last_paid_through`; (2) emit `m26.cap.accrual_recorded`; (3) enqueue `threshold-evaluator` job with `scope='patient_aggregate'`, `patient_id`; (4) enqueue `threshold-evaluator` with `scope='agency_aggregate'` |
+| `cap_inpatient_day_line` inserted | (1) Update `cap_inpatient_accrual.gip_days`/`irc_days`/`total_days`/`inpatient_pct`; (2) emit `m26.cap.accrual_recorded`; (3) enqueue `threshold-evaluator` with `scope='inpatient'` |
+| `cap_projection_snapshot` inserted with band higher than prior latest | (1) Insert `cap_threshold_event`; (2) emit `m26.cap.threshold_crossed`; (3) dispatch M36 typed alert per §4.9 |
+| `cap_period.status` → `'active'` | (1) Emit `m26.cap.year_opened` |
+| `cap_period.status` → `'in_settlement'` | (1) Emit `m26.cap.year_closing`; (2) enqueue `cap-settlement-proposer` |
+| `cap_settlement.status` → `'final'` | (1) Update `cap_period.status='settled'`; (2) emit `m26.cap.year_closed` and `m26.cap.settlement_finalized` |
+| `cap_psr_import.parse_status` → `'parsed'` | (1) Enqueue `psr-reconcile` job; (2) emit `m26.cap.psr_imported` |
+| `cap_psr_reconciliation` row inserted with variance above threshold | (1) Emit `m26.cap.psr_variance_raised`; (2) dispatch M36 alert |
 
 ### 2.5 Concurrency
 
@@ -1433,13 +1439,13 @@ M26 reads from eight upstream seams. All reads occur via the `SeamRegistry.requi
 
 The cap period has a deterministic lifecycle owned entirely by M26; downstream consumers (M23, M27) observe transitions via outbox events and must not mutate cap-period state directly. The contract:
 
-1. **Open** — Created on `POST /v1/cap/periods` (manual) or automatically on Oct 1 each year by the `cap-year-open` BullMQ job (if not already created). On open, M26 emits `cap.year_opened` and pre-populates a row in `cap_period` with status=`open` and the platform constant for `aggregateCapPerBeneficiary` snapshotted from `cap_period_platform_constant`. The snapshot is intentional: even if the platform constant is later corrected (which is forbidden after first use, per D3), the period-level value never changes for that period.
+1. **Open** — Created on `POST /v1/cap/periods` (manual) or automatically on Oct 1 each year by the `cap-year-open` BullMQ job (if not already created). On open, M26 emits `m26.cap.year_opened` and pre-populates a row in `cap_period` with status=`open` and the platform constant for `aggregateCapPerBeneficiary` snapshotted from `cap_period_platform_constant`. The snapshot is intentional: even if the platform constant is later corrected (which is forbidden after first use, per D3), the period-level value never changes for that period.
 
 2. **Methodology Lock** — At any point during `open`, the billing manager calls `POST /v1/cap/periods/:id/methodology` with a step-up assertion. The choice (`streamlined` or `proportional`) is permanent for that period. Subsequent accrual recomputes use the locked methodology. Pre-lock, the system runs in a "methodology-unknown" mode where it surfaces *both* projections side-by-side in the dashboard but neither is canonical.
 
-3. **Closing** — At `cap_year_end + graceWindowDays` (default 30), the `cap-year-close` job runs. If accruals are settled and no PS&R reconciliation is pending, the period transitions directly to `closed`. Otherwise it transitions to `pending_settlement` and emits `cap.year_closing`. A manager-initiated `PATCH /v1/cap/periods/:id/close` accelerates the transition.
+3. **Closing** — At `cap_year_end + graceWindowDays` (default 30), the `cap-year-close` job runs. If accruals are settled and no PS&R reconciliation is pending, the period transitions directly to `closed`. Otherwise it transitions to `pending_settlement` and emits `m26.cap.year_closing`. A manager-initiated `PATCH /v1/cap/periods/:id/close` accelerates the transition.
 
-4. **Settlement** — In `pending_settlement`, the manager calls `POST /v1/cap/settlements/:periodId/propose` to generate a settlement worksheet. The worksheet is mutable until finalized. `PATCH /v1/cap/settlements/:periodId/finalize` (step-up required) marks the settlement final, transitions the period to `closed`, and emits `cap.settlement_finalized`.
+4. **Settlement** — In `pending_settlement`, the manager calls `POST /v1/cap/settlements/:periodId/propose` to generate a settlement worksheet. The worksheet is mutable until finalized. `PATCH /v1/cap/settlements/:periodId/finalize` (step-up required) marks the settlement final, transitions the period to `closed`, and emits `m26.cap.settlement_finalized`.
 
 5. **Reopen** — From `closed`, a step-up-authenticated manager call to `PATCH /v1/cap/periods/:id/reopen` transitions to `reopened`. Reopen is heavy: it un-freezes projection snapshots, allows new remittance to flow into accruals, and the prior settlement (if any) is marked `voided`. Reopen events are flagged `severity=high` in the M4 audit log. Tenants are advised that reopen is appropriate only for material PS&R variance corrections or true-up; routine recomputes do not require reopen.
 
@@ -1565,15 +1571,15 @@ M26 publishes nine outbox event types. Each is versioned (`v1` suffix) and consu
 
 | Event Name | Payload Shape | Consumers | Description |
 |---|---|---|---|
-| `cap.accrual_recorded.v1` | `{ orgId, capPeriodId, patientId, accrualLineId, paidAmount, postingDate }` | M27 (cost report), M33 (reporting) | Emitted on each remittance-driven accrual line write |
-| `cap.projection_updated.v1` | `{ orgId, capPeriodId, scope, snapshotId, band, computedAt }` | M30, M33 | Emitted after each projection snapshot persistence (nightly batch or remittance recompute) |
-| `cap.threshold_crossed.v1` | `{ orgId, capPeriodId, scope, patientId?, bandFrom, bandTo, eventId }` | M36 (alert dispatch), M33 | Emitted only on transitions to a higher band (no spam on persistent breach) |
-| `cap.year_opened.v1` | `{ orgId, capPeriodId, capYear, methodologyHint }` | M27, M33 | Emitted on cap period creation |
-| `cap.year_closing.v1` | `{ orgId, capPeriodId, capYear, transitionsToSettlement }` | M27, M33 | Emitted when period transitions to `pending_settlement` or directly to `closed` |
-| `cap.year_closed.v1` | `{ orgId, capPeriodId, capYear, finalSettlementId? }` | M27, M30, M33 | Emitted on final close |
-| `cap.settlement_proposed.v1` | `{ orgId, capPeriodId, settlementId, direction, varianceAmount }` | M27 | Emitted on settlement proposal |
-| `cap.settlement_finalized.v1` | `{ orgId, capPeriodId, settlementId, finalizedAt, finalizedBy }` | M27, M33 | Emitted on settlement finalization (also closes the period) |
-| `cap.psr_variance_raised.v1` | `{ orgId, capPeriodId, importId, totalVariance, lineCount }` | M33 | Emitted when PS&R reconciliation produces a non-zero variance |
+| `m26.cap.accrual_recorded.v1` | `{ orgId, capPeriodId, patientId, accrualLineId, paidAmount, postingDate }` | M27 (cost report), M33 (reporting) | Emitted on each remittance-driven accrual line write |
+| `m26.cap.projection_updated.v1` | `{ orgId, capPeriodId, scope, snapshotId, band, computedAt }` | M30, M33 | Emitted after each projection snapshot persistence (nightly batch or remittance recompute) |
+| `m26.cap.threshold_crossed.v1` | `{ orgId, capPeriodId, scope, patientId?, bandFrom, bandTo, eventId }` | M36 (alert dispatch), M33 | Emitted only on transitions to a higher band (no spam on persistent breach) |
+| `m26.cap.year_opened.v1` | `{ orgId, capPeriodId, capYear, methodologyHint }` | M27, M33 | Emitted on cap period creation |
+| `m26.cap.year_closing.v1` | `{ orgId, capPeriodId, capYear, transitionsToSettlement }` | M27, M33 | Emitted when period transitions to `pending_settlement` or directly to `closed` |
+| `m26.cap.year_closed.v1` | `{ orgId, capPeriodId, capYear, finalSettlementId? }` | M27, M30, M33 | Emitted on final close |
+| `m26.cap.settlement_proposed.v1` | `{ orgId, capPeriodId, settlementId, direction, varianceAmount }` | M27 | Emitted on settlement proposal |
+| `m26.cap.settlement_finalized.v1` | `{ orgId, capPeriodId, settlementId, finalizedAt, finalizedBy }` | M27, M33 | Emitted on settlement finalization (also closes the period) |
+| `m26.cap.psr_variance_raised.v1` | `{ orgId, capPeriodId, importId, totalVariance, lineCount }` | M33 | Emitted when PS&R reconciliation produces a non-zero variance |
 
 Outbox-only cross-module communication is enforced by dependency-cruiser: any direct import of M26 internal services from M23/M27/M30/M33 is a CI blocker.
 
@@ -1722,8 +1728,8 @@ Each scenario below is expressed as a Given/When/Then specification. All scenari
 2. The corresponding `cap_beneficiary_accrual` aggregate row is upserted (created or incremented) for (capPeriodId, patientId)
 3. A `projection-recompute` job is enqueued with idempotency key `(orgId, capPeriodId, 'remittance_recompute', remittanceId)`
 4. The recompute job runs within 60 seconds; a new `cap_projection_snapshot` row is written for both `patient_aggregate` (this patient) and `agency_aggregate` (this tenant, this period)
-5. An outbox event `cap.accrual_recorded.v1` is emitted
-6. An outbox event `cap.projection_updated.v1` is emitted
+5. An outbox event `m26.cap.accrual_recorded.v1` is emitted
+6. An outbox event `m26.cap.projection_updated.v1` is emitted
 
 **Idempotency assertion**: replaying the same `remittance.posted.v1` event must not produce a duplicate accrual line (deduplication key: `(remittanceId, claimId, serviceFromDate, serviceThruDate)`).
 
@@ -1735,7 +1741,7 @@ Each scenario below is expressed as a Given/When/Then specification. All scenari
 1. The job enumerates open/reopened periods across all tenants and enqueues one child job per (tenant, period) tuple
 2. Each child job recomputes per-patient projections in batches of 50, with a 15-minute hard time budget per period
 3. Each child job writes one `cap_projection_snapshot` per scope (agency, each patient with activity, inpatient)
-4. The job emits `cap.projection_updated.v1` per scope-snapshot pair
+4. The job emits `m26.cap.projection_updated.v1` per scope-snapshot pair
 5. Threshold evaluator jobs fire for any band transitions (see scenario 7.3)
 6. The full cross-tenant batch completes within 30 minutes for a population of ≤200 tenants and ≤50,000 active patient-period pairs
 
@@ -1748,7 +1754,7 @@ Each scenario below is expressed as a Given/When/Then specification. All scenari
 **Then**:
 1. Projection recompute classifies the new band as `warn` (95%-99.99%)
 2. A `cap_threshold_event` row is written with `scope='patient_aggregate'`, `bandFrom='safe'`, `bandTo='warn'`
-3. `cap.threshold_crossed.v1` outbox event fires
+3. `m26.cap.threshold_crossed.v1` outbox event fires
 4. M36 dispatches a `cap.patient_warn_95` typed alert to all subscribers configured for warn-band patient alerts
 5. The threshold event surfaces in the dashboard "recent threshold events" feed and in `/cap/events`
 6. The patient row appears in the dashboard "patients on the watch" table with band badge `Warn`
@@ -1796,7 +1802,7 @@ Each scenario below is expressed as a Given/When/Then specification. All scenari
 **Then**:
 1. For each tenant, the job checks for an existing CY2027 (Oct 1, 2026 – Sep 30, 2027) period
 2. If none exists, a new `cap_period` row is created with `capYear=2027`, `status='open'`, `methodology=null`, `aggregateCapPerBeneficiary` snapshotted from `cap_period_platform_constant` for CY2027
-3. `cap.year_opened.v1` is emitted
+3. `m26.cap.year_opened.v1` is emitted
 4. The dashboard now shows the new period as "current"; the prior period (CY2026) remains `open` until its grace window expires (default Oct 31)
 
 **Constant-missing assertion**: if no platform constant exists for CY2027 (platform admin failed to publish by Aug 15 reminder), the job logs an error, emits a platform-tier alert to the platform-admin alert channel, and does NOT create the period. The job is retried daily until the constant is published.
@@ -1819,7 +1825,7 @@ Each scenario below is expressed as a Given/When/Then specification. All scenari
 1. For each tenant with CY2025 still `open`, the job evaluates: does a final settlement worksheet need to be proposed?
 2. If `paidToDate ≥ totalAllocatedCap × 0.95` OR the tenant has explicitly flagged the period as "requires settlement", the period transitions to `pending_settlement` and a `cap_settlement` row is auto-proposed with `status='proposed'` and the worksheet computed from current accruals.
 3. Otherwise, the period transitions directly to `closed` (no settlement needed; underutilized — no overpayment to refund).
-4. `cap.year_closing.v1` is emitted; if direct close, `cap.year_closed.v1` follows.
+4. `m26.cap.year_closing.v1` is emitted; if direct close, `m26.cap.year_closed.v1` follows.
 5. The billing manager receives a `cap.year_close_reminder` alert.
 
 ### 7.10 Scenario: Settlement Finalization
@@ -1829,8 +1835,8 @@ Each scenario below is expressed as a Given/When/Then specification. All scenari
 **Then**:
 1. The settlement row transitions to `status='finalized'`, `finalizedAt=now()`, `finalizedBy=<user>`, `finalizationStepUpAssertionId=<assertion>`
 2. The cap period transitions to `status='closed'`
-3. `cap.settlement_finalized.v1` is emitted
-4. `cap.year_closed.v1` is emitted
+3. `m26.cap.settlement_finalized.v1` is emitted
+4. `m26.cap.year_closed.v1` is emitted
 5. M27 consumes both events to populate the cost-report cap section
 6. The dashboard removes CY2025 from "current periods" view; it remains accessible via "historical periods"
 
@@ -1844,7 +1850,7 @@ Each scenario below is expressed as a Given/When/Then specification. All scenari
 1. The CSV is parsed; the file's CCN header field is validated against M40's `canonicalCcnForOrg` for the tenant (rejects upload if mismatch)
 2. Each line is matched to a `cap_beneficiary_accrual` row by MBI (via M40 canonical lookup) and compared
 3. `cap_psr_reconciliation` rows are written for each matched patient; variance lines (non-zero delta) are flagged
-4. If total variance > $1,000 OR > 0.5% of total cap, a `cap.psr_variance_raised.v1` outbox event is emitted
+4. If total variance > $1,000 OR > 0.5% of total cap, a `m26.cap.psr_variance_raised.v1` outbox event is emitted
 5. M36 dispatches a `cap.psr_variance_detected` alert to the reimbursement specialist and compliance officer
 6. The import detail screen surfaces the variance lines for resolution
 
@@ -1886,7 +1892,7 @@ Each scenario below is expressed as a Given/When/Then specification. All scenari
 3. The prior settlement row is updated to `status='voided'` (the row is retained for audit; not deleted)
 4. The frozen projection snapshots from close are marked `superseded` (retained, but new live snapshots take precedence in seam reads)
 5. The missed $15,000 accrual is now eligible to be recorded (typically via re-ingestion of the M25 remittance once corrected)
-6. `cap.year_opened.v1` is NOT re-emitted (this is a reopen, not a new open); instead, a `cap.year_reopened.v1` event is emitted (added to the outbox event catalog in §4.10 — for clarity, listed there as a sub-variant of `cap.year_opened` with a `reopen=true` flag in the payload)
+6. `m26.cap.year_opened.v1` is NOT re-emitted (this is a reopen, not a new open); instead, a `cap.year_reopened.v1` event is emitted (added to the outbox event catalog in §4.10 — for clarity, listed there as a sub-variant of `m26.cap.year_opened` with a `reopen=true` flag in the payload)
 7. The audit log records the reopen event with `severity=high`, the actor, the step-up assertion id, and the reason text
 8. After re-recording the accrual and recomputing the projection, a new settlement is proposed and finalized (rerunning scenario 7.10)
 

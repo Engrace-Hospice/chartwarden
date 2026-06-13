@@ -969,9 +969,9 @@ export const OUTBOX_SUBSCRIPTION_MAP: Record<string, string[]> = {
   'm25.appeal.decided': ['mv_appeal_outcomes_org_month'],
 
   // M26 cap management
-  'cap.accrual_recorded.v1': ['mv_cap_watch_org_period', 'mv_cap_projection_patient_org'],
-  'cap.projection_updated.v1': ['mv_cap_watch_org_period', 'mv_cap_projection_patient_org'],
-  'cap.threshold_crossed.v1': ['mv_cap_watch_org_period'],
+  'm26.cap.accrual_recorded.v1': ['mv_cap_watch_org_period', 'mv_cap_projection_patient_org'],
+  'm26.cap.projection_updated.v1': ['mv_cap_watch_org_period', 'mv_cap_projection_patient_org'],
+  'm26.cap.threshold_crossed.v1': ['mv_cap_watch_org_period'],
 
   // M27 cost report
   'm27.cost_report.created': ['mv_cost_report_status_org_fy'],
