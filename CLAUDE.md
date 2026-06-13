@@ -21,6 +21,8 @@ Every spec declares a named layout pattern (`Use <name>.`) defined in
 [`docs/ui/WARDENX_UI_LAYOUT_PATTERNS.md`](./docs/ui/WARDENX_UI_LAYOUT_PATTERNS.md) — the
 authoritative glossary of layout patterns, shared regions, and composition rules. Like module
 specs, **UI screen specs are implementation proposals** (architecture wins on conflict).
+Run `bun run docs:ui` (`scripts/check-ui-screens.ts`) to verify corpus consistency —
+index parity, layout-heading hygiene, and pattern resolution against the glossary.
 
 ### Authoritative architecture documents → `docs/architecture/`
 These **win over module specs** in any conflict (module specs are implementation proposals).

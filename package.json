@@ -9,7 +9,8 @@
     "arch:tenancy": "bun run scripts/check-tenancy.ts",
     "arch:ddl": "bun run scripts/check-ddl-legality.ts",
     "arch:graph": "depcruise apps packages --config architecture/.dependency-cruiser.cjs --output-type dot | dot -T svg > docs/architecture-graph.svg",
-    "arch:fitness": "bun run arch:boundaries && bun run arch:tables && bun run arch:tenancy && bun run arch:ddl"
+    "arch:fitness": "bun run arch:boundaries && bun run arch:tables && bun run arch:tenancy && bun run arch:ddl",
+    "docs:ui": "bun run scripts/check-ui-screens.ts"
   },
   "devDependencies": {
     "dependency-cruiser": "^16"
