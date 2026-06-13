@@ -6,14 +6,17 @@ kit** (no application source yet). Use this guide to locate authoritative docume
 ## Document map
 
 ### Module specifications → `docs/modules/`
+
 **All 40 module specs live in [`docs/modules/`](./docs/modules/).** Start at the index:
 [`docs/modules/README.md`](./docs/modules/README.md) — every module, its version, and a link.
-The Module 29 forward-engineering sub-tasks (T-29.01–T-29.13) are in
-[`docs/modules/module-29-tasks/`](./docs/modules/module-29-tasks/).
+The Module 29 forward-engineering sub-tasks are in
+[`docs/modules/module-29-tasks/`](./docs/modules/module-29-tasks/) — 12 files spanning
+T-29.01–T-29.13 (tasks 12 and 13 share one file, `WARDENX_T-29.12_13_FRONTEND.md`).
 
 > When you need a module spec, **resolve it under `docs/modules/`**, not the repo root.
 
 ### UI screen specifications → `docs/ui/`
+
 The UI screen specs (core/app-shell, clinical, revenue, admin, portal, platform/ops) live under
 [`docs/ui/screens/`](./docs/ui/screens/), indexed by
 [`docs/ui/WARDENX_UI_COMPLETE_SCREEN_INDEX.md`](./docs/ui/WARDENX_UI_COMPLETE_SCREEN_INDEX.md).
@@ -25,8 +28,10 @@ Run `bun run docs:ui` (`scripts/check-ui-screens.ts`) to verify corpus consisten
 index parity, layout-heading hygiene, and pattern resolution against the glossary.
 
 ### Authoritative architecture documents → `docs/architecture/`
+
 These **win over module specs** in any conflict (module specs are implementation proposals).
 All live in [`docs/architecture/`](./docs/architecture/):
+
 - `WARDENX_ARCHITECTURE_v0_11.md` — system architecture (authoritative)
 - `WARDENX_SYSTEM_DESIGN_v0.3.md`
 - `WARDENX_SECURITY_HARDENING_v0_2.md`
@@ -37,9 +42,11 @@ All live in [`docs/architecture/`](./docs/architecture/):
 > When you need an architecture document, **resolve it under `docs/architecture/`**, not the repo
 > root. (Older docs reference these by bare filename or version — same files, new location.)
 
-### Architecture-fitness kit (code — `architecture/`, not `docs/architecture/`)
+### Architecture-fitness kit (enforcement code under the repo-root `architecture/`)
+
 Note: the `architecture/` directory at the repo root holds the *enforcement code*, distinct from
 the prose docs in `docs/architecture/`.
+
 - `architecture/module-manifest.ts` (+ `.cjs`) — single source of truth for each module's
   `codePaths`, `dependsOn`, and `ownedTables` (451 tables across 40 modules).
 - `architecture/.dependency-cruiser.cjs` — import-boundary rules.
@@ -48,11 +55,14 @@ the prose docs in `docs/architecture/`.
   UI-corpus check also runs standalone as `bun run docs:ui`).
 
 ### Governance & history
+
 - `docs/adr/` — Architecture Decision Records (ADR-0001…).
 - `docs/reviews/` — audit/review prompt templates.
 - `docs/REMEDIATION_SUMMARY.md`, `audit/` — point-in-time audit reports. These reference module
   specs **by filename**; resolve those filenames under `docs/modules/`.
 
 ## Authority rule
-Architecture documents are authoritative. Module specifications are implementation proposals.
-**If a module conflicts with architecture, architecture wins.**
+
+Architecture documents are authoritative. Module and UI screen specifications are
+implementation proposals.
+**If a module or screen spec conflicts with architecture, architecture wins.**
