@@ -1,5 +1,11 @@
 # Module 7 — Care Plan (IPOC) Specification
 
+**Spec version:** v0.3 — the §2.4 outbox events migrated to the `m7.` namespace
+(`m7.care_plan.*`, `m7.problem.*`, `m7.goal.*`, `m7.intervention.*`) per the M01 D8
+`outbox_event_catalog` / M03 D9 convention. Permission keys (`care_plan.author`, …), schema
+field names (`goal.problem_id`, …), and the T+13 `care_plan.review_due` alert are unchanged.
+(Prior: v0.2.)
+
 **Module ID:** 7
 **Phase:** 1 (v1 — required for Engrace go-live; CoP 418.56)
 **Depends on:** 6 (Admission, Election & Certification — provides `admission`, `election_period`, `certification_period`, the admission state machine, and the patient-on-service signal that opens the 5-day clock), 38 (Clinical Terminology — ICD-10-CM problem codes, SNOMED CT problem/goal/intervention concepts, value-set validation, `asOfDate` lookups), 39 (Consent & Authorization — DPOA agent identity & scope, 42 CFR Part 2 SUD release, advance-directive acknowledgment). Transitively via M6: 1 (Foundation — `organization`, `withOrgContext`, `audit()` helper, outbox, idempotency, RLS generator), 2 (Identity — actor resolution), 3 (Authorization — RBAC/ABAC), 4 (Audit — PHI write-audit trigger generator, audit-read declaration, retention class), 5 (Patient & Demographics — `patient` row + `privacy_flag`), 36 (Secure Messaging — overdue-review alerts), 40 (MDM — external attending physician reference), 22 (Documents — care plan PDF artifact).
@@ -299,15 +305,15 @@ All emitted through Module 1's outbox helper. Subscribers may be in-tenant (Modu
 
 | Event type | Trigger | Subscribers | Payload (summary) |
 |---|---|---|---|
-| `care_plan.created` | admission.activated processed | M33 | `{ planId, patientId, admissionId }` |
-| `care_plan.version_drafted` | new version opened (any kind) | M14 (when kind=idg_review confirms), M33 | `{ planId, versionId, kind, sequence }` |
-| `care_plan.version_signed` | last required signer signs | M14, M22 (PDF), M28 (FHIR future), M30, M33 | `{ planId, versionId, kind, snapshotRef }` |
-| `care_plan.review_overdue` | 15-day gate engages | M36 (alerts), M8 (encounter gate), M33 | `{ planId, patientId, dueAt, overdueAt }` |
-| `care_plan.initial_overdue` | 5-day gate engages | M36, M8, M33 | `{ planId, patientId, admissionActivatedAt }` |
-| `problem.added/updated/resolved` | mutation | M14 (next packet aggregation), M28 (FHIR Condition) | `{ planId, problemId, status }` |
-| `goal.added/updated/met/discontinued` | mutation | M14, M28 (FHIR Goal) | `{ planId, goalId, status, source }` |
-| `intervention.added/updated/discontinued` | mutation | M14, M11 (if linked), M28 (FHIR CarePlanActivity) | `{ planId, interventionId, status, discipline }` |
-| `care_plan.discharged` | admission ends | M16 (bereavement plan init), M30, M33 | `{ planId, patientId, reason }` |
+| `m7.care_plan.created` | admission.activated processed | M33 | `{ planId, patientId, admissionId }` |
+| `m7.care_plan.version_drafted` | new version opened (any kind) | M14 (when kind=idg_review confirms), M33 | `{ planId, versionId, kind, sequence }` |
+| `m7.care_plan.version_signed` | last required signer signs | M14, M22 (PDF), M28 (FHIR future), M30, M33 | `{ planId, versionId, kind, snapshotRef }` |
+| `m7.care_plan.review_overdue` | 15-day gate engages | M36 (alerts), M8 (encounter gate), M33 | `{ planId, patientId, dueAt, overdueAt }` |
+| `m7.care_plan.initial_overdue` | 5-day gate engages | M36, M8, M33 | `{ planId, patientId, admissionActivatedAt }` |
+| `m7.problem.added/updated/resolved` | mutation | M14 (next packet aggregation), M28 (FHIR Condition) | `{ planId, problemId, status }` |
+| `m7.goal.added/updated/met/discontinued` | mutation | M14, M28 (FHIR Goal) | `{ planId, goalId, status, source }` |
+| `m7.intervention.added/updated/discontinued` | mutation | M14, M11 (if linked), M28 (FHIR CarePlanActivity) | `{ planId, interventionId, status, discipline }` |
+| `m7.care_plan.discharged` | admission ends | M16 (bereavement plan init), M30, M33 | `{ planId, patientId, reason }` |
 
 Idempotent dispatch via the outbox dispatcher (Module 1 §4.8).
 
@@ -928,7 +934,7 @@ export const SummaryDto = Type.Object({
 | Event | Direction | Payload | Purpose |
 |---|---|---|---|
 | `care_plan.changed` | server → patient room | `{ planId, kind: 'problem'\|'goal'\|'intervention'\|'version', id }` | Live refresh of patient chart |
-| `care_plan.review_overdue` | server → org/PE room | `{ planId, patientId, dueAt }` | Live overdue banner |
+| `m7.care_plan.review_overdue` | server → org/PE room | `{ planId, patientId, dueAt }` | Live overdue banner |
 
 ### 4.5 Permission Keys this Module Registers into Module 3
 
@@ -950,7 +956,7 @@ Per Module 3 §3.3, each module contributes its own permission keys to the centr
 
 | Queue | Job | Purpose | Trigger |
 |---|---|---|---|
-| `care-plan.gates` | `5day-warning` | Daily scan: plans where `initial_due_at` falls within 2 days; emit `care_plan.initial_overdue` warnings | Daily cron 06:00 org-tz |
+| `care-plan.gates` | `5day-warning` | Daily scan: plans where `initial_due_at` falls within 2 days; emit `m7.care_plan.initial_overdue` warnings | Daily cron 06:00 org-tz |
 | `care-plan.gates` | `15day-overdue` | Daily scan: plans where `next_review_due_at < now()`; mark overdue, emit event, engage encounter-sign gate | Daily cron 06:00 org-tz + on-demand after each signed version |
 | `care-plan.idg` | `apply-idg-decision` | Consume `idg.decision_recorded` outbox events from M14; create draft version with decisions applied | Outbox subscriber |
 | `care-plan.snapshot` | `build-summary` | On `version_signed` and on portal request, rebuild summary cache (Valkey, 1-hour TTL) | Outbox subscriber + on-demand |
@@ -1041,7 +1047,7 @@ ABAC predicates in this matrix (registered with Module 3):
 
 ### 7.1 Initial care plan within 5 days
 
-**Done means:** Patient admitted on day 0, `admission.activated` published. `care_plan` row created with `initial_due_at = day 5 (org-tz, end of day)`. RN drafts problems/goals/interventions across days 0–4. On day 3 the system fires `care_plan.initial_overdue` warning (yellow banner; alert to clinical supervisor). On day 5 if unsigned, escalation alert to medical director. On day 6 the encounter-sign gate engages: Module 8 refuses to mark new visits as `signed` until the initial version is signed; in-progress notes remain editable and can be saved unsigned. An override-with-reason path is available to the Clinical Supervisor and Medical Director (audited `critical`, reason required), used only for documented edge cases (system outage, late post-admission corrections). Signing requires Hospice Physician + RN Case Manager. On signature, `care_plan.status` transitions `draft → active`, `active_version_id` is set, `next_review_due_at` is set to signed_at + 15 calendar days, encounter-sign gate lifts.
+**Done means:** Patient admitted on day 0, `admission.activated` published. `care_plan` row created with `initial_due_at = day 5 (org-tz, end of day)`. RN drafts problems/goals/interventions across days 0–4. On day 3 the system fires `m7.care_plan.initial_overdue` warning (yellow banner; alert to clinical supervisor). On day 5 if unsigned, escalation alert to medical director. On day 6 the encounter-sign gate engages: Module 8 refuses to mark new visits as `signed` until the initial version is signed; in-progress notes remain editable and can be saved unsigned. An override-with-reason path is available to the Clinical Supervisor and Medical Director (audited `critical`, reason required), used only for documented edge cases (system outage, late post-admission corrections). Signing requires Hospice Physician + RN Case Manager. On signature, `care_plan.status` transitions `draft → active`, `active_version_id` is set, `next_review_due_at` is set to signed_at + 15 calendar days, encounter-sign gate lifts.
 
 ### 7.2 15-day IDG review
 
@@ -1085,16 +1091,16 @@ All events route through `packages/audit` (`audit()` helper for system/app event
 
 | Event type | Actor | Target | Payload (post-scrub) |
 |---|---|---|---|
-| `care_plan.created` | system | care_plan | `{ planId, patientId, admissionId }` |
+| `m7.care_plan.created` | system | care_plan | `{ planId, patientId, admissionId }` |
 | `care_plan.activated` | system | care_plan | `{ planId, initialVersionId }` |
-| `care_plan.discharged` | system | care_plan | `{ planId, reason }` |
-| `care_plan.version_drafted` | user/system | care_plan_version | `{ versionId, kind, sequence }` |
+| `m7.care_plan.discharged` | system | care_plan | `{ planId, reason }` |
+| `m7.care_plan.version_drafted` | user/system | care_plan_version | `{ versionId, kind, sequence }` |
 | `care_plan.version_finalized` | user | care_plan_version | `{ versionId, requiredSignerSet }` |
-| `care_plan.version_signed` | user | care_plan_version | `{ versionId, role, sequence, signaturesCollected, signaturesNeeded }` |
+| `m7.care_plan.version_signed` | user | care_plan_version | `{ versionId, role, sequence, signaturesCollected, signaturesNeeded }` |
 | `care_plan.version_completed` | system | care_plan_version | `{ versionId, signedAt }` (transition to `signed`) |
 | `care_plan.version_returned_to_draft` | user | care_plan_version | `{ versionId, reason }` |
-| `care_plan.initial_overdue` | system | care_plan | `{ planId, admissionActivatedAt, dueAt }` (severity warn) |
-| `care_plan.review_overdue` | system | care_plan | `{ planId, lastSignedAt, dueAt }` (severity warn) |
+| `m7.care_plan.initial_overdue` | system | care_plan | `{ planId, admissionActivatedAt, dueAt }` (severity warn) |
+| `m7.care_plan.review_overdue` | system | care_plan | `{ planId, lastSignedAt, dueAt }` (severity warn) |
 | `care_plan.review_gate_engaged` | system | care_plan | `{ planId, gateEngagedAt }` (severity warn) |
 | `care_plan.gate_overridden` | user | care_plan | `{ planId, reason, gateKind }` (severity **critical**) |
 | `problem.created/updated/resolved/inactivated` | user | problem | trigger-emitted with scrubbed diff |
@@ -1257,7 +1263,7 @@ All open questions decided. Decisions are wired to single constants/interfaces, 
 - [ ] WCAG 2.1 AA verified on care plan view, draft editor, version history, sign modal, IDG-driven revision review, overdue banner.
 - [ ] Mobile (Capacitor) read + biometric-sign path operational; encounter relevance picker integrated.
 
-**Lock status:** All decisions resolved (§11). Buildable now. Items that complete when downstream modules exist: Module 8 wires the encounter-sign gate against `careplan.isReviewOverdue` (M8 dep on M7); Module 14 emits IDG outbox events against the typed payload (M14 dep on M7); Module 16 subscribes to `care_plan.discharged`; Module 22 subscribes to `care_plan.version_signed` for PDF rendering; Module 28 maps versions to FHIR `CarePlan`; Module 31 calls `/care-plans/:planId/summary` from portal. M9's `LatestAssessmentProvider` seam is consumed via the registry — a deny-stub today, the real provider when M9 lands. Nothing in M7 is gated on Modules 8–40 existing for its Phase 1 "done" definition.
+**Lock status:** All decisions resolved (§11). Buildable now. Items that complete when downstream modules exist: Module 8 wires the encounter-sign gate against `careplan.isReviewOverdue` (M8 dep on M7); Module 14 emits IDG outbox events against the typed payload (M14 dep on M7); Module 16 subscribes to `m7.care_plan.discharged`; Module 22 subscribes to `m7.care_plan.version_signed` for PDF rendering; Module 28 maps versions to FHIR `CarePlan`; Module 31 calls `/care-plans/:planId/summary` from portal. M9's `LatestAssessmentProvider` seam is consumed via the registry — a deny-stub today, the real provider when M9 lands. Nothing in M7 is gated on Modules 8–40 existing for its Phase 1 "done" definition.
 
 -----
 

@@ -882,8 +882,8 @@ export const OUTBOX_SUBSCRIPTION_MAP: Record<string, string[]> = {
   'm6.f2f.attested': ['mv_f2f_calendar_org'],
 
   // M7 care plan
-  'care_plan.review_overdue': ['mv_care_plan_review_overdue_org'],
-  'care_plan.version_signed': ['mv_care_plan_review_overdue_org'],
+  'm7.care_plan.review_overdue': ['mv_care_plan_review_overdue_org'],
+  'm7.care_plan.version_signed': ['mv_care_plan_review_overdue_org'],
 
   // M8 encounters
   'm8.encounter.signed': ['mv_encounter_productivity_membership_day', 'mv_cosignature_lag_org_month'],

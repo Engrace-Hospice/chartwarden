@@ -118,12 +118,12 @@ Cycles: **none ✓** · Consistency issues: **none ✓**.
 | 59 | referral | M06 Admission, Election & Certification | docs/modules/WARDENX_MODULE_06_ADMISSION_ELECTION_CERTIFICATION_SPEC_v0_4.md |
 | 60 | revocation_event | M06 Admission, Election & Certification | docs/modules/WARDENX_MODULE_06_ADMISSION_ELECTION_CERTIFICATION_SPEC_v0_4.md |
 | 61 | transfer_event | M06 Admission, Election & Certification | docs/modules/WARDENX_MODULE_06_ADMISSION_ELECTION_CERTIFICATION_SPEC_v0_4.md |
-| 62 | care_plan | M07 Care Plan (IPOC) | docs/modules/WARDENX_MODULE_07_CARE_PLAN_SPEC_v0_2.md |
-| 63 | care_plan_signature | M07 Care Plan (IPOC) | docs/modules/WARDENX_MODULE_07_CARE_PLAN_SPEC_v0_2.md |
-| 64 | care_plan_version | M07 Care Plan (IPOC) | docs/modules/WARDENX_MODULE_07_CARE_PLAN_SPEC_v0_2.md |
-| 65 | goal | M07 Care Plan (IPOC) | docs/modules/WARDENX_MODULE_07_CARE_PLAN_SPEC_v0_2.md |
-| 66 | intervention | M07 Care Plan (IPOC) | docs/modules/WARDENX_MODULE_07_CARE_PLAN_SPEC_v0_2.md |
-| 67 | problem | M07 Care Plan (IPOC) | docs/modules/WARDENX_MODULE_07_CARE_PLAN_SPEC_v0_2.md |
+| 62 | care_plan | M07 Care Plan (IPOC) | docs/modules/WARDENX_MODULE_07_CARE_PLAN_SPEC_v0_3.md |
+| 63 | care_plan_signature | M07 Care Plan (IPOC) | docs/modules/WARDENX_MODULE_07_CARE_PLAN_SPEC_v0_3.md |
+| 64 | care_plan_version | M07 Care Plan (IPOC) | docs/modules/WARDENX_MODULE_07_CARE_PLAN_SPEC_v0_3.md |
+| 65 | goal | M07 Care Plan (IPOC) | docs/modules/WARDENX_MODULE_07_CARE_PLAN_SPEC_v0_3.md |
+| 66 | intervention | M07 Care Plan (IPOC) | docs/modules/WARDENX_MODULE_07_CARE_PLAN_SPEC_v0_3.md |
+| 67 | problem | M07 Care Plan (IPOC) | docs/modules/WARDENX_MODULE_07_CARE_PLAN_SPEC_v0_3.md |
 | 68 | cosignature_request | M08 Encounters & Visit Notes | docs/modules/WARDENX_MODULE_08_ENCOUNTERS_SPEC_v0_2.md |
 | 69 | encounter | M08 Encounters & Visit Notes | docs/modules/WARDENX_MODULE_08_ENCOUNTERS_SPEC_v0_2.md |
 | 70 | encounter_addendum | M08 Encounters & Visit Notes | docs/modules/WARDENX_MODULE_08_ENCOUNTERS_SPEC_v0_2.md |

@@ -3,7 +3,7 @@
 **Auditor protocol:** `audit/_criteria/AUDITOR_INSTRUCTIONS.md` v1.0
 **Criteria packs applied:** CRITERIA_ARCHITECTURE.md, CRITERIA_SECURITY_AI.md, CRITERIA_OPS_DR_INTEGRATIONS.md, `module-manifest.ts`
 **Specs audited (read in full):**
-- `WARDENX_MODULE_07_CARE_PLAN_SPEC_v0_2.md` (1,212 lines, Locked v0.2)
+- `WARDENX_MODULE_07_CARE_PLAN_SPEC_v0_3.md` (audited at Locked v0.2; renamed to v0.3 for the `m7.` event-naming migration)
 - `WARDENX_MODULE_15_DISCIPLINE_CARE_PLANS_SPEC_v0_2.md` (1,429 lines, Locked v0.2)
 
 **Authoritative sources directly verified for BLOCKER-rated findings:** `WARDENX_ARCHITECTURE_v0_11.md` (§3 cross-cutting rules line 224; §11 M7 lines 1638–1644; §11 M14 lines 1700–1714; §11 M15 lines 1715–1721; §20.A lines 2388–2452; §23 traceability lines 2698–2699), `WARDENX_SYSTEM_DESIGN_v0.3.md` (RLS template lines 616–617, 977–984), `module-manifest.ts` (verbatim), `dependency-cruiser.cjs` (`tsPreCompilationDeps: true`, line 140), `check-table-ownership.ts`, plus cross-spec verification against `WARDENX_MODULE_14_IDG_SPEC_v0_4.md`, `WARDENX_MODULE_08_ENCOUNTERS_SPEC_v0_2.md`, `WARDENX_MODULE_06_ADMISSION_..._SPEC_v0_4.md`.
