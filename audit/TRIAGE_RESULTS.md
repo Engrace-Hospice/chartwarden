@@ -189,6 +189,22 @@ inconsistent on whether foundation deps (1–4) are listed as edges — M34=`[2,
 M22=`[1,5]`/M16=`[5,6,36]` don't. Specs now mirror the manifest as-is; a future pass should make the
 foundation-edge convention consistent across the manifest.
 
+### Batch 5 — internal-coherence reconciliations (ADR-0022) (2026-06-13) — in progress
+
+- **M30-F03 (BLOCKER) — DONE.** Reconciled three contradictions into a single truth:
+  (a) **Incident state machine** — two machines existed; adopted **Machine A** (the DB enum
+  `m30_incident_lifecycle`: draft→submitted→triaged→under_investigation→resolved→
+  closed_followup_complete|reopened) as canonical and rewrote every Machine-B site
+  (routes R-55..R-60, `IncidentStateT` TypeBox, D8 decision, test plan) to it; the
+  `under_review`/`cap_pending`/`cap_verified` states are gone. Preserved the corrective-action
+  field + ≥40-char closure guard + the two-person self-signoff-forbidden control (now on
+  under_investigation→resolved). (b) **Schema** — conformed §3.8 v0.3 migration/Drizzle to the
+  §3.3 canonical (`cahps_decedent_sample` not `cahps_sample`; `death_at` not `death_date`/
+  `death_source`; `org_id`/`kind_data`); kept the D23 `retention_class` trigger (not a stray
+  column). (c) **Validators** — §2.3 made canonical; fixed WF-08/WF-10 (V-11 PIP-close /
+  V-12 SRA-close were swapped) and the STRIDE V-1/V-13 mis-citations. `arch:fitness` green.
+- Remaining Batch-5: M18-F09, M19-F06, M22-F16/F19, M26-F06.
+
 ### Batch 2 — §20.B template sections (ADR-0021), wave 1 (2026-06-13) ✅ applied, `arch:fitness` green
 
 Added the missing template sections (STRIDE, DR-tier+degraded-mode, BullMQ queue params/DLQ,

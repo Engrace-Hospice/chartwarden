@@ -1287,13 +1287,15 @@ These additions extend the v0.2 schema for external-source death provenance (D20
 ALTER TABLE mortality_review
   ADD COLUMN external_source_metadata JSONB,                                 -- nullable; populated for hl7_external source
   ADD COLUMN completion_target_at TIMESTAMPTZ;                               -- nullable until cosign for external-source
--- Backfill: completion_target_at = death_date + INTERVAL '30 days' for existing rows (all internal-source by definition pre-v0.3)
-UPDATE mortality_review SET completion_target_at = (death_date::timestamptz + INTERVAL '30 days')
+-- Backfill: completion_target_at = death_at + INTERVAL '30 days' for existing rows (all internal-source by definition pre-v0.3)
+-- M30-F03 / ADR-0022: §3.3 canonical column is `death_at` (single source of truth), not `death_date`.
+UPDATE mortality_review SET completion_target_at = (death_at + INTERVAL '30 days')
   WHERE completion_target_at IS NULL;
 -- Note: keep nullable; v0.3 external-source rows initialize NULL until cosign
 
--- Phase B: cahps_sample death source discriminator
-ALTER TABLE cahps_sample
+-- Phase B: cahps_decedent_sample death source discriminator
+-- M30-F03 / ADR-0022: manifest-owned / §3.3 canonical table name is `cahps_decedent_sample`.
+ALTER TABLE cahps_decedent_sample
   ADD COLUMN death_source TEXT NOT NULL DEFAULT 'internal_clinician_recorded'
     CHECK (death_source IN ('internal_clinician_recorded', 'hl7_external'));
 -- Default is back-compat for any existing rows (all pre-v0.3 deaths were internal)
@@ -1339,8 +1341,8 @@ CREATE INDEX idx_mortality_review_external_pending
   WHERE external_source_metadata IS NOT NULL
     AND external_source_metadata->>'cosignStatus' = 'pending';
 
--- Phase E: index on cahps_sample death_source for QAPI review
-CREATE INDEX idx_cahps_sample_death_source ON cahps_sample (death_source) WHERE death_source = 'hl7_external';
+-- Phase E: index on cahps_decedent_sample death_source for QAPI review
+CREATE INDEX idx_cahps_decedent_sample_death_source ON cahps_decedent_sample (death_source) WHERE death_source = 'hl7_external';
 ```
 
 #### 3.8.2 Drizzle additions
@@ -1353,8 +1355,9 @@ export const mortalityReview = pgTable('mortality_review', {
   completionTargetAt: timestamp('completion_target_at'),                      // new in v0.3 (nullable)
 })
 
-// packages/db/src/schema/quality/cahps-sample.ts (v0.3 extension)
-export const cahpsSample = pgTable('cahps_sample', {
+// packages/db/src/schema/quality/cahps-decedent-sample.ts (v0.3 extension)
+// M30-F03 / ADR-0022: conforms to §3.3 canonical / manifest-owned table `cahps_decedent_sample`.
+export const cahpsDecedentSample = pgTable('cahps_decedent_sample', {
   // ... v0.2 columns ...
   deathSource: text('death_source').notNull().default('internal_clinician_recorded'),
 })
@@ -1419,12 +1422,12 @@ All routes mount under `apps/backend/src/modules/30-quality/routes/`. Permission
 | R-52 | GET | `/v1/quality/incidents/:incident_id` | Detail with state history + investigation notes | `incident.read` | `inOrg + incidentVisibility` | yes if patient | org+patient |
 | R-53 | PATCH | `/v1/quality/incidents/:incident_id` | Update draft fields | `incident.write` | `inOrg + ownsIncident` | yes if patient | org+patient |
 | R-54 | POST | `/v1/quality/incidents/:incident_id/submit` | Submit (draft→submitted) | `incident.submit` | `inOrg + ownsIncident` | yes if patient | org+patient |
-| R-55 | POST | `/v1/quality/incidents/:incident_id/triage` | Triage (submitted→under_review, assign owner+severity) | `incident.triage` | `inOrg` | yes if patient | org+patient |
+| R-55 | POST | `/v1/quality/incidents/:incident_id/triage` | Triage (submitted→triaged, assign owner+severity) | `incident.triage` | `inOrg` | yes if patient | org+patient |
 | R-56 | POST | `/v1/quality/incidents/:incident_id/investigation` | Add investigation note (append-only) | `incident.investigate` | `inOrg + assignedToIncident` | yes if patient | org+patient |
-| R-57 | POST | `/v1/quality/incidents/:incident_id/cap` | Open corrective action plan (under_review→cap_pending) | `incident.cap` | `inOrg + assignedToIncident` | yes if patient | org+patient |
-| R-58 | POST | `/v1/quality/incidents/:incident_id/verify` | Verify CAP (cap_pending→cap_verified) | `incident.verify` | `inOrg + capVerifyAuthority` | yes if patient | org+patient |
-| R-59 | POST | `/v1/quality/incidents/:incident_id/close` | Close incident (cap_verified→closed) | `incident.close` | `inOrg + capVerifyAuthority` | yes if patient | org+patient |
-| R-60 | POST | `/v1/quality/incidents/:incident_id/reopen` | Reopen (closed→under_review) | `incident.reopen` | `inOrg + capVerifyAuthority` | yes if patient | org+patient |
+| R-57 | POST | `/v1/quality/incidents/:incident_id/investigate` | Open corrective action plan / begin investigation (triaged→under_investigation) | `incident.cap` | `inOrg + assignedToIncident` | yes if patient | org+patient |
+| R-58 | POST | `/v1/quality/incidents/:incident_id/resolve` | Resolve incident; verify corrective action (under_investigation→resolved). Resolver MUST NOT be the incident's assignee (M30-F03 / ADR-0022, two-person control). | `incident.resolve` | `inOrg + capVerifyAuthority` | yes if patient | org+patient |
+| R-59 | POST | `/v1/quality/incidents/:incident_id/close` | Close incident with follow-up complete (resolved→closed_followup_complete) | `incident.close` | `inOrg + capVerifyAuthority` | yes if patient | org+patient |
+| R-60 | POST | `/v1/quality/incidents/:incident_id/reopen` | Reopen (closed_followup_complete→reopened; reopened→under_investigation to resume) | `incident.reopen` | `inOrg + capVerifyAuthority` | yes if patient | org+patient |
 | R-61 | GET | `/v1/quality/incidents/abuse-allegations` | Filtered list for abuse-allegation co-sign queue | `incident.abuse_review` | `inOrg + abuseAllegationAccess` | yes if patient | org+patient |
 | **Mortality** ||||||||
 | R-70 | GET | `/v1/quality/mortality` | List mortality reviews | `mortality.read` | `inOrg` | yes | org+patient |
@@ -1477,8 +1480,8 @@ All routes mount under `apps/backend/src/modules/30-quality/routes/`. Permission
 | R-51 POST `/v1/quality/incidents` | `(orgId, reportedByMembershipId, occurredAt, kind)` | Different `kind` or `occurredAt` in replay |
 | R-54 POST `/v1/quality/incidents/:incident_id/submit` | `(orgId, incidentId)` | Always idempotent on same `incidentId` |
 | R-55 POST `/v1/quality/incidents/:incident_id/triage` | `(orgId, incidentId, triagedByMembershipId)` | Different triager in replay |
-| R-57 POST `/v1/quality/incidents/:incident_id/cap` | `(orgId, incidentId, rootCauseSummary[:64])` | Different root cause summary in replay |
-| R-58 POST `/v1/quality/incidents/:incident_id/verify` | `(orgId, incidentId, verifiedByMembershipId)` | Different verifier in replay |
+| R-57 POST `/v1/quality/incidents/:incident_id/investigate` | `(orgId, incidentId, rootCauseSummary[:64])` | Different root cause summary in replay |
+| R-58 POST `/v1/quality/incidents/:incident_id/resolve` | `(orgId, incidentId, resolvedByMembershipId)` | Different resolver in replay |
 | R-59 POST `/v1/quality/incidents/:incident_id/close` | `(orgId, incidentId)` | Always idempotent on same `incidentId` |
 | R-60 POST `/v1/quality/incidents/:incident_id/reopen` | `(orgId, incidentId, reopenReason[:64])` | Different reopen reason in replay |
 | R-73 POST `/v1/quality/mortality/:review_id/complete` | `(orgId, reviewId, reviewerMembershipId)` | Different reviewer in replay |
@@ -1649,14 +1652,16 @@ export const IncidentKindT = Type.Union([
   Type.Literal('other_safety_event'),
 ]);
 
+// M30-F03 / ADR-0022: single incident state machine — the DB enum `m30_incident_lifecycle`
+// (§3.2, seven states). No `under_review` / `cap_pending` / `cap_verified` / `rejected`.
 export const IncidentStateT = Type.Union([
   Type.Literal('draft'),
   Type.Literal('submitted'),
-  Type.Literal('under_review'),
-  Type.Literal('cap_pending'),
-  Type.Literal('cap_verified'),
-  Type.Literal('closed'),
-  Type.Literal('rejected'),
+  Type.Literal('triaged'),
+  Type.Literal('under_investigation'),
+  Type.Literal('resolved'),
+  Type.Literal('closed_followup_complete'),
+  Type.Literal('reopened'),
 ]);
 
 export const IncidentSeverityT = Type.Union([
@@ -2037,7 +2042,7 @@ export const M30_PERMISSIONS = [
   'sra.read', 'sra.write', 'sra.admin', 'sra.close',
   // Incidents
   'incident.read', 'incident.write', 'incident.submit', 'incident.triage',
-  'incident.investigate', 'incident.cap', 'incident.verify', 'incident.close',
+  'incident.investigate', 'incident.cap', 'incident.resolve', 'incident.close',
   'incident.reopen', 'incident.abuse_review',
   // Mortality
   'mortality.read', 'mortality.write', 'mortality.close',
@@ -2263,11 +2268,13 @@ export function registerMortalityReviewConsumer(outbox: Outbox): void {
         ? new Date(new Date(payload.deathDate).getTime() + 30 * 24 * 60 * 60 * 1000)
         : null
 
+      // M30-F03 / ADR-0022: insert keys match the §3.3 canonical `mortality_review` columns
+      // (orgId, deceasedPatientId, admissionId, deathAt) — not the M6 event payload field names.
       await db.insert(mortalityReview).values({
-        organizationId: payload.organizationId,
-        patientId: payload.patientId,
+        orgId: payload.organizationId,
+        deceasedPatientId: payload.patientId,
         admissionId: payload.admissionId,
-        deathDate: payload.deathDate,
+        deathAt: payload.deathDate,
         status: 'pending',                                            // v0.2 lifecycle unchanged
         externalSourceMetadata,
         completionTargetAt,
@@ -2346,15 +2353,16 @@ export async function sampleEligibleDecedent(input: DischargeDeathPayload): Prom
   const eligibility = await checkCmsSampleEligibility(input)                 // v0.2 logic unchanged
   if (!eligibility.eligible) return
 
-  await db.insert(cahpsSample).values({
-    organizationId: input.organizationId,
-    patientId: input.patientId,
-    admissionId: input.admissionId,
-    deathDate: input.deathDate,
-    sampledAt: new Date(),
+  // M30-F03 / ADR-0022: §3.3 canonical / manifest-owned table is `cahps_decedent_sample`,
+  // with `org_id` and the deceased* column names.
+  await db.insert(cahpsDecedentSample).values({
+    orgId: input.orgId,
+    deceasedPatientId: input.patientId,
+    deceasedAdmissionId: input.admissionId,
+    samplingCycleMonth: input.samplingCycleMonth,
     status: 'pending_export',
     deathSource: input.source,                                                // v0.3 new
-    // ... rest of v0.2 fields ...
+    // ... rest of v0.2 fields (providerEntityId, primaryCaregiverContact*, etc.) ...
   })
 }
 ```
@@ -2602,9 +2610,9 @@ All routes mount under `/quality/*` in web; under `/quality/*` in mobile with a 
 
 **S-11 Incident Editor (`/quality/incidents/new`, `/quality/incidents/:incidentId/edit`).** Step-1: kind selection. Step-2: per-kind dynamic form rendered from the TypeBox `data` schema (V-2/V-3/V-4/V-5/V-6 per-kind invariants are surfaced as inline validators). Step-3: patient link (typeahead through M5 `PatientHeaderReader`), reported-at, occurred-at. Step-4: submit confirmation. Drafts are auto-saved every 30s; submit transitions draft→submitted.
 
-**S-12 Incident Detail (`/quality/incidents/:incidentId`).** Header strip (kind, state, severity, ages-of-state), timeline of state transitions, investigation-notes append-only feed, CAP plan card (collapsed when empty, expandable when planning), action buttons gated by current state + permissions. Reopen affordance only visible for closed incidents and only to actors holding `capVerifyAuthority`.
+**S-12 Incident Detail (`/quality/incidents/:incidentId`).** Header strip (kind, state, severity, ages-of-state), timeline of state transitions, investigation-notes append-only feed, CAP plan card (collapsed when empty, expandable when planning), action buttons gated by current state + permissions. Reopen affordance only visible for `closed_followup_complete` incidents and only to actors holding `capVerifyAuthority`.
 
-**S-13 Incident CAP Builder (`/quality/incidents/:incidentId/cap`).** Form for root-cause summary, list of actions (each with owner typeahead, due-date picker, completion-toggle), verification-criteria text. Verify action is gated by `capVerifyAuthority`, which enforces `actor.id ≠ assignedToUserId`.
+**S-13 Incident CAP Builder (`/quality/incidents/:incidentId/cap`).** Form for root-cause summary, list of actions (each with owner typeahead, due-date picker, completion-toggle), verification-criteria text. Resolve action (verifies the corrective action; `under_investigation → resolved`) is gated by `capVerifyAuthority`, which enforces `actor.id ≠ assignedToUserId` (M30-F03 / ADR-0022).
 
 **S-14 Mortality Reviews (`/quality/mortality`).** List + detail. Detail panel exposes the 3 dimensions (clinical / satisfaction / compliance) as separate tabs, each with structured fields (clinical: pain/symptom management adequacy, last-7-day visit cadence, comfort-pack readiness; satisfaction: caregiver concerns flagged, follow-up plan; compliance: timeliness of cert/recert, IDG decisions captured). Complete action is gated by `mortality.close` and the `assignedToMortality` predicate.
 
@@ -2686,7 +2694,7 @@ The `quality.cahps.system` row shows ✗ across every interactive role; this key
 | `qapi.admin` | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `qapi.close` (PIP) | ✓ | ✗ | 2P | ✗ | ✗ | 2P | ✗ | ✗ | ✗ |
 
-PIP close requires `qapi.close` from **both** the QAPI Coordinator and the Medical Director (per D12 / V-12). The MD-and-QC pairing is the platform default; tenants may add `qapi.close` to other roles via ABAC override but the predicate `qapiCloseAuthority` still requires the two signers to differ in role.
+PIP close requires `qapi.close` from **both** the QAPI Coordinator and the Medical Director (per D12 / V-11). The MD-and-QC pairing is the platform default; tenants may add `qapi.close` to other roles via ABAC override but the predicate `qapiCloseAuthority` still requires the two signers to differ in role.
 
 ### 6.4 SRA permissions
 
@@ -2697,7 +2705,7 @@ PIP close requires `qapi.close` from **both** the QAPI Coordinator and the Medic
 | `sra.admin` | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ |
 | `sra.close` | ✓ | ✗ | ✗ | ✗ | 2P | 2P | ✗ | ✗ | ✗ | ✗ |
 
-SRA close requires `sra.close` from both Security Officer and Compliance Officer (per V-11 / D12).
+SRA close requires `sra.close` from both Security Officer and Compliance Officer (per V-12 / D12).
 
 ### 6.5 Incident permissions
 
@@ -2711,12 +2719,12 @@ The incident matrix is structured: **report-creation** is broad (any clinical ro
 | `incident.triage` | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | `incident.investigate` | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ◎ | ✗ | ◎ | ✗ | ✗ | ✗ | ◎ | ✗ | ◎ | ✗ | ✗ | ✗ |
 | `incident.cap` | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| `incident.verify` | ✓ | ✓ | ✗ | ✗ | ✓ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| `incident.resolve` | ✓ | ✓ | ✗ | ✗ | ✓ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | `incident.close` | ✓ | ✓ | ✗ | ✗ | ✓ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | `incident.reopen` | ✓ | ✓ | ✗ | ✗ | ✓ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | `incident.abuse_review` | ✓ | ✓ | ✗ | ✗ | ✓ | ✗ | ◎ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 
-The two-actor invariants are enforced by the predicates `capVerifyAuthority` (verify/close) and the application-level check that `actor.id ≠ incident.assignedToUserId` — both held holders of `incident.verify` would not be able to verify a CAP they personally led, by design.
+The two-actor invariants are enforced by the predicates `capVerifyAuthority` (resolve/close) and the application-level check that `actor.id ≠ incident.assignedToUserId` — holders of `incident.resolve` cannot resolve (verify the corrective action on) an incident they were assigned to investigate, by design (M30-F03 / ADR-0022, the `under_investigation → resolved` two-person control).
 
 ### 6.6 Mortality, CoP, Infection, Risk permissions
 
@@ -2798,7 +2806,7 @@ Each subsection states the workflow under test, the Given/When/Then frame, and t
 **WF-08: PIP close requires two-person co-sign with role-distinct signers.**
 
 - *Given* a PIP at phase `verifying` and an actor holding `qapi.close` invokes R-31.
-- *When* the route validates `qapiCloseAuthority`: caller must be QAPI Coordinator OR Medical Director, AND `closedByUserId2` (the second signer) must be the *other* role (V-12).
+- *When* the route validates `qapiCloseAuthority`: caller must be QAPI Coordinator OR Medical Director, AND `closedByUserId2` (the second signer) must be the *other* role (V-11 — PIP-closure co-sign; M30-F03 / ADR-0022).
 - *Then* on success the PIP is set to `closed`, both signer user IDs are recorded, `closedAt` is stamped, `m30.qapi.pip_closed` outbox fires. On failure (same actor twice, missing role, missing second signer): 422 with explicit error code (`pip_close_requires_distinct_role_cosigners`).
 
 ### 7.4 SRA annual workflow
@@ -2812,7 +2820,7 @@ Each subsection states the workflow under test, the Given/When/Then frame, and t
 **WF-10: SRA close requires Security Officer + Compliance Officer co-sign.**
 
 - *Given* an SRA cycle with all assessable controls evaluated, at least one finding (per NIST 800-66r2 minimum) recorded, and an open call to R-47.
-- *When* the route validates `sraCloseAuthority` (V-11): caller is SO, second signer is CO, OR vice versa. Both signers must be distinct individuals.
+- *When* the route validates `sraCloseAuthority` (V-12 — SRA-cycle-closure co-sign; M30-F03 / ADR-0022): caller is SO, second signer is CO, OR vice versa. Both signers must be distinct individuals.
 - *Then* the cycle transitions to `closed`, `closedAt` is stamped, `m30.sra.cycle_closed` outbox fires, the M34 tenant-gate freshness predicate updates. On failure: 422 with `sra_close_requires_distinct_role_cosigners`.
 
 ### 7.5 Incident lifecycle
@@ -2823,11 +2831,11 @@ Each subsection states the workflow under test, the Given/When/Then frame, and t
 - *When* the route handler emits `m30.incident.submitted` with `severity` and `kind` fields.
 - *Then* M36 dispatches `incident_sentinel` or `incident_abuse_allegation` alerts to the configured recipients immediately, with the platform-floor re-fire cadence (§4.9) until acknowledged in the triage queue.
 
-**WF-12: CAP verification enforces separation-of-duties.**
+**WF-12: Incident resolution enforces separation-of-duties (M30-F03 / ADR-0022).**
 
-- *Given* an incident at state `cap_pending` and a verify call (R-58) by an actor who is also the `assignedToUserId` for the incident.
+- *Given* an incident at state `under_investigation` and a resolve call (R-58) by an actor who is also the `assignedToUserId` for the incident.
 - *When* the route evaluates `capVerifyAuthority` and detects `actor.id === assignedToUserId`.
-- *Then* the call is rejected with 403 and error code `cap_verify_self_signoff_forbidden`. The state remains `cap_pending`.
+- *Then* the call is rejected with 403 and error code `resolve_self_signoff_forbidden`. The state remains `under_investigation`. (Preserves the corrective-action two-person control on the `under_investigation → resolved` transition: the resolver who verifies the corrective action must not be the incident's assignee.)
 
 **WF-13: Abuse-allegation list is hidden by default.**
 
@@ -2883,7 +2891,7 @@ Each subsection states the workflow under test, the Given/When/Then frame, and t
 
 - *Given* the materialized `risk_register_view` is refreshed.
 - *When* a user holding `risk.read` queries R-95.
-- *Then* the response includes rows from: open SRA findings, open incidents (state ∈ {submitted, under_review, cap_pending}), QAPI projects (phase ∈ {planned, measuring, improving, verifying}), CoP citations (status ∈ {needs_attention, citation_open, under_remediation}). Each row carries `source`, `sourceId`, `severityBand`, `openedAt`, `lastActivityAt`, and a back-link URL.
+- *Then* the response includes rows from: open SRA findings, open incidents (state ∈ {submitted, triaged, under_investigation, reopened}), QAPI projects (phase ∈ {planned, measuring, improving, verifying}), CoP citations (status ∈ {needs_attention, citation_open, under_remediation}). Each row carries `source`, `sourceId`, `severityBand`, `openedAt`, `lastActivityAt`, and a back-link URL.
 
 **WF-21: Materialized view refresh is idempotent and bounded.**
 
@@ -3010,13 +3018,13 @@ M30 holds PHI in four tables: `incident_report` (when patient-linked), `mortalit
 |--------|--------|----------------|
 | **Spoofing** | Attacker impersonates QAPI Coordinator to close a PIP. | Better Auth session + step-up re-auth on close-PIP and close-cycle drawers; two-person co-sign requires the second signer to authenticate inline. |
 | **Spoofing** | Vendor service account spoofed at R-16. | mTLS with vendor-issued client cert pinned per `cahps_vendor_binding.client_cert_fingerprint`; HMAC-SHA256 request signing as defense-in-depth for SHP. |
-| **Tampering** | Mutate `quality_measure_value` to mask a threshold breach. | Append-only enforced by trigger (V-1); no UPDATE permission on the table for app roles; `snapshotContentHash` makes silent edit detectable on re-verify. |
+| **Tampering** | Mutate `quality_measure_value` to mask a threshold breach. | Append-only / supersede-only enforced by the single-current-row invariant (V-4, §2.3); no UPDATE permission on the table for app roles; `snapshotContentHash` makes silent edit detectable on re-verify. |
 | **Tampering** | Backdate an incident's `submittedAt` to evade CMS reporting clock. | `submittedAt` populated server-side at state transition; client-supplied timestamps are ignored on transition routes (R-54..R-60); audit log captures actor + server clock. |
 | **Repudiation** | "I didn't close the SRA cycle." | M4 audit captures actor + IP + UA + DB-server clock; co-signer records preserved on the row; close emits a non-repudiation outbox event. |
 | **Information disclosure** | Cross-tenant leak of a measure value via shared cache. | Valkey cache keys include `orgId`; M3's per-request `current_org_id()` is read from session, not from request headers; integration tests assert key-collision-free cache namespaces (§9). |
 | **Information disclosure** | Abuse-allegation incident leaks to unauthorized user via list endpoint. | RLS predicate `can_see_incident_kind` filters at row level (8.1); IDOR test in §9 verifies. |
 | **Denial of service** | Attacker enqueues thousands of recompute jobs. | R-04 rate-limited per actor (10/min, 100/hour); per-org queue depth ceiling of 50 pending jobs; excess returns 429. |
-| **Elevation of privilege** | Same actor verifies their own CAP. | `capVerifyAuthority` predicate denies; check is at route guard AND DB constraint (V-13 — defense-in-depth). |
+| **Elevation of privilege** | Same actor resolves/verifies the corrective action on an incident they were assigned to. | `capVerifyAuthority` predicate plus the `resolve_self_signoff_forbidden` separation-of-duties check (`actor.id ≠ incident.assignedToUserId`, §7.5 WF-12) deny it; enforced at route guard AND DB constraint (defense-in-depth). No §2.3 V-number governs this incident two-person control. |
 | **Elevation of privilege** | SRA closed by a single signer. | DB check constraint `closed_by_user_id_2 <> closed_by_user_id` plus role validation in `sraCloseAuthority`. |
 
 ### 8.5 Retention and erasure
@@ -3169,7 +3177,7 @@ Located at `apps/backend/src/modules/30-quality/__tests__/integration/`. Stack: 
 
 - **RLS isolation suite.** Two orgs (`orgA`, `orgB`) seeded with overlapping measure ranges, incidents, and SRA cycles. For every M30 route, the test asserts a Postgres role bound to `orgA` cannot see `orgB` rows. Repeated per-table on every M30 base table. Tests also include direct SQL probes from the test harness using the `app_user` role.
 - **Patient scope isolation.** A patient in `orgA` is "removed" from a clinician's caseload via M3's caseload provider; the clinician must no longer see that patient's mortality review or PHI-bearing incidents. Includes a deliberate URL-tampering attack (R-71 with a different orgA patient's review_id by a non-clinician with `mortality.read` but no patient scope) — expected: 404.
-- **Two-actor invariants.** For R-31 (PIP close), R-47 (SRA close), R-58 (CAP verify): test that (a) single-actor calls fail with the documented error code, (b) same-actor twice fails, (c) wrong-role second signer fails, (d) correct distinct-role co-sign succeeds and emits the right outbox event.
+- **Two-actor invariants.** For R-31 (PIP close), R-47 (SRA close), R-58 (incident resolve / CAP verify): test that (a) single-actor calls fail with the documented error code, (b) same-actor twice fails, (c) wrong-role second signer fails, (d) correct distinct-role co-sign succeeds and emits the right outbox event.
 - **Outbox emission.** Every state transition route is followed by an assertion that the expected outbox event was inserted in the same transaction (read from the outbox table within the test harness, not via the relay).
 - **Idempotency.** Recompute job replay (same idempotency key) does not insert a duplicate `quality_measure_value`. CAHPS export with same `(orgId, samplePeriod, vendorBindingId)` returns the existing export_id.
 - **Outbreak detection trigger.** Insert two events; assert no case is created. Insert third matching event; assert case is created and `m30.alerts.outbreak_detected` outbox emitted within the same transaction.
@@ -3411,7 +3419,7 @@ Tasks are organized into 7 phases. Each phase has a target completion (in eng-we
 
 | Task | Description | Files | Deps |
 |------|-------------|-------|------|
-| **T-M30-37** | Migration `0030_m30_v03_external_source_and_part2.sql` — mortality_review external_source_metadata + completion_target_at; cahps_sample death_source; Part 2 auto-promotion trigger; indexes | `packages/db/src/migrations/0030_m30_v03_*.sql`; drizzle | None |
+| **T-M30-37** | Migration `0030_m30_v03_external_source_and_part2.sql` — mortality_review external_source_metadata + completion_target_at; cahps_decedent_sample death_source; Part 2 auto-promotion trigger; indexes | `packages/db/src/migrations/0030_m30_v03_*.sql`; drizzle | None |
 | **T-M30-38** | HVLDL calculator snapshot enrichment + Risk Register cms_attribution flag emission; mortality_review consumer branch on source + cosign-receipt consumer; completion gate service; CAHPS sampler death_source population | `packages/quality/src/measures/hvldl.ts`; `apps/backend/src/modules/30-quality/consumers/*.ts`; services | T-M30-37 |
 | **T-M30-39** | Registry contributions — `alerts-by-m30.ts` (8 entries), `events-by-m30.ts` (12 entries), `audit-actions/m30.ts` (~30 entries), `seams-by-m30.ts` (5 entries); STEP_UP_POLICY reference in cosign service | `packages/foundation/src/alert-payloads/alerts-by-m30.ts`; outbox-events; audit-actions; seams; cosign.ts | None (parallel to T-M30-37/38) |
 | **T-M30-40** | Retroactive CMSR YAMLs for v0.3 M30 cross-module schema relationships (M30 reads M11 v0.3 sud_redaction_status; M30 reads M22 v0.3 retention class signals; M30 reads M6 v0.3 source field) | `packages/foundation/src/cross-module-schema-requests/CMSR-NNN-m30-*.yaml` | None |
@@ -3491,11 +3499,11 @@ The 25 decisions below are binding. Each carries the decision text, the alternat
 
 ### D8 — Incident XState lifecycle (7 states)
 
-**Decision.** Incident states: `draft → submitted → under_review → cap_pending → cap_verified → closed`, with `rejected` as a terminal off-ramp from `submitted` or `under_review`. Reopen returns `closed → under_review`. State machine in `packages/quality/src/state/incident-machine.ts`.
+**Decision (M30-F03 / ADR-0022 single truth).** There is exactly ONE incident state machine: the DB enum `m30_incident_lifecycle` (§3.2, §2.2). The seven states are `draft → submitted → triaged → under_investigation → resolved → closed_followup_complete | reopened`. Transitions: submit (`draft → submitted`), triage (`submitted → triaged`), open corrective action plan / begin investigation (`triaged → under_investigation`), resolve & verify corrective action (`under_investigation → resolved`, two-person — resolver MUST NOT be the assignee), close with follow-up complete (`resolved → closed_followup_complete`), reopen (`closed_followup_complete → reopened`, then `reopened → under_investigation` to resume). There is no `rejected` state — an incident dismissed as non-actionable is routed `triaged → resolved` with a disposition of "no action required", then `resolved → closed_followup_complete`. The corrective-action semantics are preserved on `under_investigation → resolved`: `corrective_action_taken_text ≥ 40 chars` for severity ≥ moderate (closure guard), and the self-signoff-forbidden two-person control. State machine in `packages/quality/src/state/incident-machine.ts`.
 
 **Alternatives.** (a) Simpler 3-state (open / cap / closed). (b) Per-kind state machines. (c) Unified 7-state machine (chosen).
 
-**Rationale.** The same lifecycle is appropriate across all 6 incident kinds; per-kind branching would create divergent UX and complicate the abuse-allegation co-sign flow. The 7-state model directly mirrors the platform's incident-investigation policy (draft → submit → triage → investigate → CAP → verify → close), which all 6 kinds share.
+**Rationale.** The same lifecycle is appropriate across all 6 incident kinds; per-kind branching would create divergent UX and complicate the abuse-allegation co-sign flow. The 7-state model directly mirrors the platform's incident-investigation policy (draft → submit → triage → investigate → resolve/verify-CAP → close), which all 6 kinds share.
 
 ### D9 — Mortality review auto-created from `m6.discharge.death`
 
@@ -3593,13 +3601,13 @@ The 25 decisions below are binding. Each carries the decision text, the alternat
 
 ### D21 — Mortality review external-source handling
 
-**Decision.** The `mortality_review` table gains: (a) `external_source_metadata JSONB` (mirrors M16 v0.3 D16 shape: `{ sourceProposalId, sourceMessageId, sourceFacilityMdmId, sourceFacilityName, ackReceivedAt, cosignStatus: 'pending' | 'cosigned', cosignedAt?, medicalDirectorMembershipId? }`); (b) `completion_target_at TIMESTAMPTZ` replacing the v0.2-implicit `death_date + 30 days` calculation — for `source='internal_clinician_recorded'`, the value is `death_date + 30 days` (back-compat); for `source='hl7_external'`, the value is initially NULL and is updated to `cosignedAt + 30 days` when M30's `m6-cosign-receipt` consumer fires. The 21/28/30-day M36 reminders re-anchor on `completion_target_at` — if it's NULL the reminders are SUPPRESSED (no completion clock; no overdue alerts). The structured review form's cause-of-death field is rendered as "Pending medical director attestation — clinical cause-of-death will be entered upon cosign of the external-source death-discharge per M6 v0.3" until `cosignStatus='cosigned'`. The Medical Director (or assignee per the v0.2 `mortality_reviewer_eligible` predicate) cannot mark the review `complete` while `cosignStatus='pending'` — attempting returns `409 Conflict: external_source_cosign_pending`.
+**Decision.** The `mortality_review` table gains: (a) `external_source_metadata JSONB` (mirrors M16 v0.3 D16 shape: `{ sourceProposalId, sourceMessageId, sourceFacilityMdmId, sourceFacilityName, ackReceivedAt, cosignStatus: 'pending' | 'cosigned', cosignedAt?, medicalDirectorMembershipId? }`); (b) `completion_target_at TIMESTAMPTZ` replacing the v0.2-implicit `death_at + 30 days` calculation — for `source='internal_clinician_recorded'`, the value is `death_at + 30 days` (back-compat); for `source='hl7_external'`, the value is initially NULL and is updated to `cosignedAt + 30 days` when M30's `m6-cosign-receipt` consumer fires. The 21/28/30-day M36 reminders re-anchor on `completion_target_at` — if it's NULL the reminders are SUPPRESSED (no completion clock; no overdue alerts). The structured review form's cause-of-death field is rendered as "Pending medical director attestation — clinical cause-of-death will be entered upon cosign of the external-source death-discharge per M6 v0.3" until `cosignStatus='cosigned'`. The Medical Director (or assignee per the v0.2 `mortality_reviewer_eligible` predicate) cannot mark the review `complete` while `cosignStatus='pending'` — attempting returns `409 Conflict: external_source_cosign_pending`.
 
 **Rationale.** The mortality review's purpose is post-death clinical learning; without a cosigned cause-of-death, the review's central question (was the death well-managed?) cannot be answered. The v0.2 30-day clock is unforgiving for external-source cases where the cosign may take 24-72 hours alone. Re-anchoring on the cosign event keeps the review SLA meaningful. The form-gating ensures Medical Directors don't prematurely close reviews on incomplete data.
 
 ### D22 — CAHPS sampling marks external-source cases distinctly
 
-**Decision.** The `cahps_sample` row gains a `death_source TEXT NOT NULL` column with values `'internal_clinician_recorded' | 'hl7_external'` populated from the `m6.discharge.death` source field at sample-creation time. The CMS-specified eligibility logic (patient on hospice service ≥48 hours before death; not in skilled nursing facility at death without hospice election; etc.) runs identically for both sources — the platform does NOT change eligibility based on source. The QAPI Coordinator UI's CAHPS Sample Review page filters/sorts on `death_source` so external-source samples can be spot-checked for CMS eligibility rule correctness. Sampled external-source cases proceed to the SHP (or alternate per v0.2 D5) CAHPS adapter export without modification — the vendor doesn't know about the source distinction; CMS doesn't expose it.
+**Decision.** The `cahps_decedent_sample` row gains a `death_source TEXT NOT NULL` column with values `'internal_clinician_recorded' | 'hl7_external'` populated from the `m6.discharge.death` source field at sample-creation time. The CMS-specified eligibility logic (patient on hospice service ≥48 hours before death; not in skilled nursing facility at death without hospice election; etc.) runs identically for both sources — the platform does NOT change eligibility based on source. The QAPI Coordinator UI's CAHPS Sample Review page filters/sorts on `death_source` so external-source samples can be spot-checked for CMS eligibility rule correctness. Sampled external-source cases proceed to the SHP (or alternate per v0.2 D5) CAHPS adapter export without modification — the vendor doesn't know about the source distinction; CMS doesn't expose it.
 
 **Rationale.** The discrepancy between "patient died at our facility" and "patient died at an external facility while our hospice was responsible" matters operationally for CAHPS interpretation. CAHPS surveys the primary caregiver; for external-source deaths the caregiver experience of "the last days" may have been at the source facility rather than under hospice care. Surfacing this in QAPI review lets the Coordinator interpret CAHPS results with the appropriate operational context. CMS rules are unchanged; the surface is platform-side.
 
