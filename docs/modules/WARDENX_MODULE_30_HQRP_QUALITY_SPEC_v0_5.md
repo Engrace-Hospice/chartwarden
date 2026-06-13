@@ -3025,7 +3025,7 @@ Located at `apps/backend/src/modules/30-quality/__tests__/`. Coverage focus area
 
 ### 9.3 Integration tests (Testcontainers)
 
-Located at `apps/backend/src/modules/30-quality/__tests__/integration/`. Stack: Postgres 16 with the M30 migration set applied, Valkey 8, MinIO. Each test spins up a clean container per file (sharing within file via beforeAll).
+Located at `apps/backend/src/modules/30-quality/__tests__/integration/`. Stack: PostgreSQL 18 with the M30 migration set applied, Valkey 8, MinIO. Each test spins up a clean container per file (sharing within file via beforeAll).
 
 - **RLS isolation suite.** Two orgs (`orgA`, `orgB`) seeded with overlapping measure ranges, incidents, and SRA cycles. For every M30 route, the test asserts a Postgres role bound to `orgA` cannot see `orgB` rows. Repeated per-table on every M30 base table. Tests also include direct SQL probes from the test harness using the `app_user` role.
 - **Patient scope isolation.** A patient in `orgA` is "removed" from a clinician's caseload via M3's caseload provider; the clinician must no longer see that patient's mortality review or PHI-bearing incidents. Includes a deliberate URL-tampering attack (R-71 with a different orgA patient's review_id by a non-clinician with `mortality.read` but no patient scope) — expected: 404.

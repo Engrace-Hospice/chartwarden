@@ -3177,7 +3177,7 @@ and dedicated k6 perf coverage on the routing engine and the par-monitor cron.
 
 ### 9.2 Integration Tests (Testcontainers)
 
-Postgres 16 + Valkey + an in-process MinIO mock + a one-process Fastify backend with M2/M3/M4/M21
+PostgreSQL 18 + Valkey + an in-process MinIO mock + a one-process Fastify backend with M2/M3/M4/M21
 loaded. Outbox is real (Postgres) but consumed in-process via the test harness's worker
 pool so events flow end-to-end.
 

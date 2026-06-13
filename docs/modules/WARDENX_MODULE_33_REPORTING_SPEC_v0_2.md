@@ -1853,7 +1853,7 @@ The minimum unit coverage bar is **90% line coverage across the module**, with n
 
 ### 9.2 Integration Tests (Testcontainers)
 
-All integration tests run against an ephemeral Postgres 16 + Valkey via Testcontainers, with the full M33 migration applied. Test scenarios:
+All integration tests run against an ephemeral PostgreSQL 18 + Valkey via Testcontainers, with the full M33 migration applied. Test scenarios:
 
 | Test | Coverage |
 |---|---|

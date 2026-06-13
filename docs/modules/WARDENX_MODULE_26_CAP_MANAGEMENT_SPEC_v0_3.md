@@ -1901,7 +1901,7 @@ Each scenario below is expressed as a Given/When/Then specification. All scenari
 
 ### 8.1 Row-Level Security (RLS)
 
-All tenant-scoped tables enforce RLS via the platform-standard `org_id = current_setting('app.current_org_id')::uuid` predicate; the `cap_period_platform_constant` table is unique in the M26 surface as it is platform-scoped (no `org_id` column) and is governed by a different policy that admits read to any authenticated principal and write only to principals holding the `platform_admin` role.
+All tenant-scoped tables enforce RLS via the platform-standard `org_id = current_setting('app.org_id')::uuid` predicate; the `cap_period_platform_constant` table is unique in the M26 surface as it is platform-scoped (no `org_id` column) and is governed by a different policy that admits read to any authenticated principal and write only to principals holding the `platform_admin` role.
 
 Specifically, the policy on `cap_period_platform_constant` is:
 
@@ -2030,7 +2030,7 @@ Unit tests run in-memory with no DB dependency (services receive DI-injected rep
 
 The 14 scenarios in §7 are mirrored 1:1 as integration tests under `packages/cap-management/tests/integration/scenarios/`. Each test:
 
-- Spins a fresh Postgres 16 container via Testcontainers
+- Spins a fresh PostgreSQL 18 container via Testcontainers
 - Runs all M26 migrations (including the partitioning DDL)
 - Seeds platform constants, a synthetic tenant, and the upstream fixture data (M5, M6, M23, M25 fixtures)
 - Asserts the scenario's "Then" clauses including database state, outbox event emission, and BullMQ job enqueueing
@@ -2042,7 +2042,7 @@ The integration suite is gated on the CI pipeline with a 15-minute time budget; 
 A dedicated suite in `tests/rls/cap-management.test.ts` covers every owned table. The pattern:
 
 1. Create two synthetic tenants (orgA, orgB) with disjoint rows in each owned table
-2. Establish a Postgres session as orgA (set `app.current_org_id`)
+2. Establish a Postgres session as orgA (set `app.org_id`)
 3. Assert that every SELECT against every owned table returns zero rows belonging to orgB
 4. Assert that every INSERT/UPDATE/DELETE attempt against orgB rows from orgA session is rejected (RLS policy violation)
 5. For `cap_period_platform_constant`: assert that a tenant session cannot mutate the table, even with the table's read-all policy

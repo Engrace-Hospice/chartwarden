@@ -2208,7 +2208,7 @@ The `BaaStatusProvider` is registered in M3's `REQUIRED_SEAMS` list per M40 v0.3
 -----
 ## 5. UI Surfaces
 
-M22 ships three categories of UI: (a) **clinician-facing web surfaces** under `apps/frontend-web/src/modules/22-documents/`, (b) **field-clinician mobile surfaces** under `apps/frontend-mobile/src/modules/22-documents/` (Capacitor), and (c) **portal surfaces** under `apps/frontend-portal/src/modules/22-documents/` consumed by M31 (Patient/Family Portal — forward-seam). All three share the same TanStack Query keys and TanStack Router routes (`/documents`, `/documents/:documentId`, `/intake`, `/intake/:batchId`) where applicable.
+M22 ships three categories of UI: (a) **clinician-facing web surfaces** under `apps/frontend/src/modules/22-documents/`, (b) **field-clinician mobile surfaces** under `apps/mobile/src/modules/22-documents/` (Capacitor), and (c) **portal surfaces** under `apps/portal/src/modules/22-documents/` consumed by M31 (Patient/Family Portal — forward-seam). All three share the same TanStack Query keys and TanStack Router routes (`/documents`, `/documents/:documentId`, `/intake`, `/intake/:batchId`) where applicable.
 
 ### 5.1 Screen Inventory (Web)
 
@@ -2255,7 +2255,7 @@ These screens are owned by the portal app shell (M31) but consume M22 reader sea
 
 ### 5.4 Component Library Integration
 
-All screens use the `@wardenx/ui` design system (M1-owned). M22-specific components ship from `packages/forms/components/` and `apps/frontend-web/src/modules/22-documents/components/`:
+All screens use the `@wardenx/ui` design system (M1-owned). M22-specific components ship from `packages/forms/components/` and `apps/frontend/src/modules/22-documents/components/`:
 
 - `<DocumentList />` — virtualized list, server-side pagination via TanStack Query infinite query; columns are user-configurable and persisted in M40 user preferences
 - `<DocumentPreview />` — wraps `<iframe>` / PDF.js per browser capability; falls back to download link
@@ -2812,7 +2812,7 @@ A baseline integration test in §9 verifies, for each table M22 owns: with two t
 ### 9.1 Coverage Targets
 
 - **Unit tests** ≥ 90% line coverage on `packages/forms/`, `packages/intake-extraction/`, `packages/domain/documents/`, and `apps/backend/src/modules/22-documents/`. Coverage measured by Vitest. New lab-results / external-source-discharge consumers + renderer target ~95% line coverage.
-- **Integration tests** (Testcontainers — Postgres 16, MinIO, Valkey, BullMQ) cover every API route in §4.1 plus every outbox consumer in §4.11 with at least one happy path and one error path each.
+- **Integration tests** (Testcontainers — PostgreSQL 18, MinIO, Valkey, BullMQ) cover every API route in §4.1 plus every outbox consumer in §4.11 with at least one happy path and one error path each.
 - **End-to-end tests** (Playwright on the deployed staging environment) cover W1, W2 (one source module), W3, W6, W7, W9 explicitly; W4, W5, W8, W10–W14, W-M22-22 through W-M22-25 covered as part of integration with browser-level smoke screening.
 - **Performance tests** (k6) cover signed-URL p95 latency, render queue throughput, extraction queue saturation, critical-results render latency.
 

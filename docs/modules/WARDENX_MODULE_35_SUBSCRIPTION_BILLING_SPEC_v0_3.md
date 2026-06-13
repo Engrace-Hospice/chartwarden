@@ -1020,8 +1020,8 @@ ALTER TABLE subscription ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY subscription_tenant_isolation ON subscription
   FOR ALL
-  USING (organization_id = current_setting('app.current_organization_id')::uuid)
-  WITH CHECK (organization_id = current_setting('app.current_organization_id')::uuid);
+  USING (organization_id = current_setting('app.org_id')::uuid)
+  WITH CHECK (organization_id = current_setting('app.org_id')::uuid);
 
 CREATE POLICY subscription_platform_admin_bypass ON subscription
   FOR ALL

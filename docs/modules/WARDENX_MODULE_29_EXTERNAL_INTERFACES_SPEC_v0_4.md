@@ -1063,11 +1063,11 @@ export const externalFeedHealth = pgTable('external_feed_health', {
 -- Standard per-tenant RLS on M29 tables that carry organization_id
 ALTER TABLE external_feed ENABLE ROW LEVEL SECURITY;
 CREATE POLICY external_feed_org_isolation ON external_feed
-  USING (organization_id = current_setting('app.organization_id', true)::uuid);
+  USING (organization_id = current_setting('app.org_id', true)::uuid);
 
 ALTER TABLE external_feed_credential ENABLE ROW LEVEL SECURITY;
 CREATE POLICY efc_org_isolation ON external_feed_credential
-  USING (organization_id = current_setting('app.organization_id', true)::uuid);
+  USING (organization_id = current_setting('app.org_id', true)::uuid);
 
 -- Pattern repeats for hl7_message_inbound, hl7_message_outbound,
 -- hl7_inbound_proposal, lab_observation, lab_observation_value,
@@ -2509,7 +2509,7 @@ M29 is among the **highest-blast-radius modules** in the platform: it terminates
 
 ### 8.1 RLS Enforcement
 
-All **tenant-owned** M29 tables (`external_feed`, `external_feed_credential`, `hl7_message_inbound`, `hl7_message_outbound`, `hl7_inbound_proposal`, `lab_observation`, `lab_observation_value`, `lab_observation_inbound_link`, `external_feed_health`) carry RLS policies enforcing `organization_id = current_setting('app.organization_id')::uuid`. The policy is `FOR ALL` with both `USING` and `WITH CHECK` clauses; INSERTs that supply a different `organization_id` are refused by Postgres, not just the application layer.
+All **tenant-owned** M29 tables (`external_feed`, `external_feed_credential`, `hl7_message_inbound`, `hl7_message_outbound`, `hl7_inbound_proposal`, `lab_observation`, `lab_observation_value`, `lab_observation_inbound_link`, `external_feed_health`) carry RLS policies enforcing `organization_id = current_setting('app.org_id')::uuid`. The policy is `FOR ALL` with both `USING` and `WITH CHECK` clauses; INSERTs that supply a different `organization_id` are refused by Postgres, not just the application layer.
 
 **Platform-shared** M29 tables (`nppes_provider`, `nppes_sync_run`) carry a *different* policy:
 

@@ -939,7 +939,7 @@ All 13 tables follow the standard tenant-scoped pattern (M1 §17):
 ```sql
 ALTER TABLE safety_sos_alert ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON safety_sos_alert
-  USING (organization_id = current_setting('app.current_organization_id')::uuid);
+  USING (organization_id = current_setting('app.org_id')::uuid);
 ```
 
 **PHI / coordinate considerations:**
@@ -1724,7 +1724,7 @@ Maria dispatches help and acknowledges. The stream continues until the SOS resol
 
 ### 8.1 RLS
 
-All 13 owned tables enforce `organization_id = current_setting('app.current_organization_id')::uuid` via the M1 RLS generator. Cross-tenant reads are impossible by row; cross-tenant writes are impossible by row. The leak RLS does not catch (cross-module same-tenant access) is enforced by `scripts/check-table-ownership.ts` per architecture §25.15 check 6 — no other module may import `packages/db/src/schema/safety-*.ts`; cross-module access goes through the seven published seams in §4.3.
+All 13 owned tables enforce `organization_id = current_setting('app.org_id')::uuid` via the M1 RLS generator. Cross-tenant reads are impossible by row; cross-tenant writes are impossible by row. The leak RLS does not catch (cross-module same-tenant access) is enforced by `scripts/check-table-ownership.ts` per architecture §25.15 check 6 — no other module may import `packages/db/src/schema/safety-*.ts`; cross-module access goes through the seven published seams in §4.3.
 
 ### 8.2 ABAC
 

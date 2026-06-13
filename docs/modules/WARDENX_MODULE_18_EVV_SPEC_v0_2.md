@@ -701,7 +701,7 @@ All six tables follow the standard tenant-scoped pattern (M1 §17):
 ```sql
 ALTER TABLE evv_event ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON evv_event
-  USING (organization_id = current_setting('app.current_organization_id')::uuid);
+  USING (organization_id = current_setting('app.org_id')::uuid);
 ```
 
 `evv_event` PHI considerations:

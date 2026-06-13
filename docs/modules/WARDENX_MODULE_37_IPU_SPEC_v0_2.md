@@ -1320,7 +1320,7 @@ export const IvSafetyOverlaySpec = Type.Object({
 
 ### 3.5 RLS and Partitioning
 
-**RLS install pattern.** Every M37 table follows the M1 RLS generator pattern (`organization_id` column → `app.current_org_id` GUC → policy `USING (organization_id = current_setting('app.current_org_id')::uuid)`); the platform-shared exemption (canonical M40 entities) does not apply since every M37 table is tenant-owned.
+**RLS install pattern.** Every M37 table follows the M1 RLS generator pattern (`organization_id` column → `app.org_id` GUC → policy `USING (organization_id = current_setting('app.org_id')::uuid)`); the platform-shared exemption (canonical M40 entities) does not apply since every M37 table is tenant-owned.
 
 **Partitioned tables.** Four tables are RANGE-partitioned by their primary time axis per M4's PHI partition cadence and per the M11 D12 / M13 D13 / M17 D14 / M21 §3.5 precedent:
 
@@ -2005,7 +2005,7 @@ Every M37 screen passes axe-core scans with zero violations. Key concerns specif
 
 ### 7.1 RLS
 
-Every M37 owned table carries `organization_id` and the M1 RLS generator install pattern: row-level policies `USING (organization_id = current_setting('app.current_org_id')::uuid)`. `withOrgContext` middleware sets the GUC; absence of the GUC denies all access. Cross-org queries are impossible at the SQL level.
+Every M37 owned table carries `organization_id` and the M1 RLS generator install pattern: row-level policies `USING (organization_id = current_setting('app.org_id')::uuid)`. `withOrgContext` middleware sets the GUC; absence of the GUC denies all access. Cross-org queries are impossible at the SQL level.
 
 The two exemptions to the standard RLS pattern:
 - `ipu_rn_coverage_window` is intentionally tenant-scoped (no platform-shared fallback) — this is per-tenant operational state, not a shared catalog.

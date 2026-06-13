@@ -1634,7 +1634,7 @@ The five alert payloads are typed in `packages/messaging/src/alerts/consent.ts` 
 
 ### 5.1 Web Inventory
 
-All screens live under `apps/frontend-web/src/modules/39-consent/` and share TanStack Query keys + TanStack Router routes.
+All screens live under `apps/frontend/src/modules/39-consent/` and share TanStack Query keys + TanStack Router routes.
 
 | # | Path | Screen | Notes |
 |---|---|---|---|
@@ -2344,8 +2344,8 @@ This section is the **binding deliverable** for integrating M39 into the platfor
     "apps/backend/src/modules/39-consent",
     "packages/consent",
     "packages/domain/consent",
-    "apps/frontend-web/src/modules/39-consent",
-    "apps/frontend-mobile/src/modules/39-consent",
+    "apps/frontend/src/modules/39-consent",
+    "apps/mobile/src/modules/39-consent",
   ],
   dependsOn: [
     // Foundation tier
