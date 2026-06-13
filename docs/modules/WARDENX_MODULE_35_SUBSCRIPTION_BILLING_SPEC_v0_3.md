@@ -1540,6 +1540,58 @@ predicateRegistry.declare('promo_applicable_to_subscription', async (_ctx, targe
 
 All consumer-style queues are idempotent on `(event_id, target_id)` so redelivery is a no-op; cron-style queues use `SKIP LOCKED` to prevent inter-tenant contention.
 
+### 4.9.1 — M35-F07: Queue Retry / Backoff / DLQ Parameters (ARCH-262, SD-059, OPS-035)
+
+Every M35 BullMQ queue declares its full operational parameters. No queue ships with undeclared retry or DLQ semantics. All queues assert idempotent consumers (redelivery is a no-op for every handler). DLQ policy: a job that exhausts all attempts moves to the named DLQ; the DLQ must be **documented before being cleared** — every DLQ clear requires an ops-runbook entry referencing the incident or the reason (OPS-035). The monitoring alert for each DLQ is defined in §9.10.
+
+| Queue | `priority` | `attempts` | Backoff | `concurrency` | DLQ name | DLQ triage |
+|---|---|---|---|---|---|---|
+| `m35.stripe-dispatcher` | 1 (high) | 6 | Exponential, delay 2s, factor 2 (2s → 4s → 8s → 16s → 32s → 64s) | 5 per worker | `m35.stripe-dispatcher.dlq` | Each DLQ job maps to a `stripe_api_call_audit` row; triage via `/admin/webhooks/stripe`; confirm Stripe-side state before retrying or abandoning; document disposition in incident log before `bull dlq clear`. |
+| `m35.stripe-webhook-handler` | 2 | 5 | Exponential, delay 1s, factor 2 (1s → 2s → 4s → 8s → 16s) | 10 per worker | `m35.stripe-webhook-handler.dlq` | Each DLQ job references a `stripe_webhook_event.id`; inspect `error_text`; replay via `/admin/webhooks/stripe/replay/:eventId` (requires `stripe.admin.replay`); document before clear. |
+| `m35.usage-aggregator` | 3 | 4 | Exponential, delay 5s, factor 2 (5s → 10s → 20s → 40s) | 1 per tenant | `m35.usage-aggregator.dlq` | DLQ failure = usage period may under-count for the affected tenant; check `usage_event` table for the failed org + period; re-trigger aggregation after fix; document before clear. |
+| `m35.stripe-usage-posting` | 3 | 5 | Exponential, delay 30s, factor 2 (30s → 60s → 120s → 240s → 480s) | 5 per worker | `m35.stripe-usage-posting.dlq` | DLQ failure = Stripe `usage_record` not posted for a period; check `usage_period_aggregate.stripe_usage_record_id` (null means unposted); re-post via cron re-trigger; reconciler cron will flag drift; document before clear. |
+| `m35.subscription-reconciler` | 4 | 3 | Fixed, delay 60s | 1 per tenant | `m35.subscription-reconciler.dlq` | DLQ failure = a tenant's reconciler is stuck; inspect Stripe API availability; manual reconcile via `/admin/subscriptions/:id` if Stripe is back; flag subscription for manual review if drift persists; document before clear. |
+| `m35.dunning-engine` | 4 | 3 | Exponential, delay 60s, factor 2 (60s → 120s → 240s) | 1 per tenant | `m35.dunning-engine.dlq` | DLQ failure = dunning stage may not advance for that tenant that day; the next day's cron will re-run; check `dunning_state` for the affected subscription; escalate to `platform_admin` if the subscription should have suspended; document before clear. |
+| `m35.revenue-snapshot` | 5 | 2 | Fixed, delay 300s | 1 (singleton) | `m35.revenue-snapshot.dlq` | Singleton; on DLQ trigger `/admin/revenue/snapshots/compute` (requires `revenue.admin.write`) to manually recompute the month; document before clear. |
+| `m35.patient-active-period-aggregator` | 3 | 5 | Exponential, delay 2s, factor 2 | 1 per tenant | `m35.patient-active-period-aggregator.dlq` | DLQ failure = a patient's pseudonym ingest was lost for the affected period; if the source event is still in M5's outbox, replay is possible; otherwise compute pseudonym manually from M5 data under forensic protocol (platform_admin); document before clear. |
+| `m35.user-active-period-aggregator` | 3 | 5 | Exponential, delay 2s, factor 2 | 1 per tenant | `m35.user-active-period-aggregator.dlq` | Same as patient aggregator; source event is `m2.session.created`; replay from M2 outbox if available; document before clear. |
+| `m35.payment-method-expiry-watch` | 5 | 2 | Fixed, delay 300s | 1 (singleton) | `m35.payment-method-expiry-watch.dlq` | Singleton; failure means the daily scan did not run; manually trigger if within 48h of a threshold crossing; document before clear. |
+| `m35.org-lifecycle-handler` | 2 | 5 | Exponential, delay 5s, factor 2 | 1 per tenant | `m35.org-lifecycle-handler.dlq` | DLQ failure = a lifecycle event (org suspended/closed) was not forwarded to Stripe; manually pause/cancel via `/admin/subscriptions/:id/pause` or `/cancel`; document before clear. |
+
+**BullMQ configuration sketch (shared across M35 queues):**
+
+```typescript
+// apps/backend/src/modules/35-subscription-billing/workers/queue-config.ts
+export const M35_QUEUE_DEFAULTS = {
+  defaultJobOptions: {
+    removeOnComplete: { count: 1000, age: 7 * 24 * 3600 },  // keep 1 000 completed jobs for 7 days
+    removeOnFail: false,                                       // failed jobs stay in queue until DLQ
+  },
+}
+
+// Per-queue overrides (subset):
+export const QUEUE_CONFIGS = {
+  'm35.stripe-dispatcher': {
+    priority: 1,
+    attempts: 6,
+    backoff: { type: 'exponential', delay: 2000 },
+    concurrency: 5,
+  },
+  'm35.stripe-webhook-handler': {
+    priority: 2,
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 1000 },
+    concurrency: 10,
+  },
+  // ... remaining queues per table above
+} as const
+
+// DLQ: BullMQ moves exhausted jobs to the failed set of the queue;
+// a separate DLQ-drainer cron (per M1 platform-wide pattern) archives
+// DLQ jobs to the `m35_dlq_archive` table for ops review.
+// OPS-035: platform-ops must document before clearing.
+```
+
 ### 4.10 M36 Typed Alert Payloads
 
 ```typescript
@@ -1843,6 +1895,74 @@ The handler worker (`stripe-webhook-handler`) drains `m35.stripe.webhook_receive
 Any successful payment at any stage transitions to `resolved` and resets to `current`. Manual admin overrides (`/admin/dunning/:id/skip_stage`, `/admin/dunning/:id/reset`) record the override actor + audit-event linkage in the `dunning_state` row.
 
 **Platform-floor cadences are platform-set.** Tenant overrides may *tighten* (suspend sooner) but never *loosen* (suspend later). The override is via `Organization.settings.m35_dunning_override_days` (capped server-side: `max(daysOverride, 28)` is rejected, only `min(daysOverride, 28)` is accepted as a tighter override).
+
+### 4.16 — M35-F14: Valkey DB Numbering + Idempotency TTLs (SD-032, ARCH-263)
+
+M35 respects the platform-wide Valkey database separation defined in SD-032:
+
+| Valkey DB | Purpose | Who uses it |
+|---|---|---|
+| `db 0` | Cache + session storage **+ M1 idempotency middleware** | All modules via M1 primitives |
+| `db 1` | BullMQ broker (all BullMQ queues platform-wide, including all M35 queues) | M1 BullMQ wrapper, all modules |
+| `db 2` | Socket.IO adapter (pub/sub for M36 real-time alerts) | M36; M35 does not write to db 2 directly |
+
+**M35-specific Valkey usage:**
+
+- **M35 BullMQ queues** (`m35.stripe-dispatcher`, `m35.stripe-webhook-handler`, and all §4.9 queues) → **Valkey db 1** via the M1 BullMQ wrapper. M35 never connects to a Valkey instance or DB number outside this configuration; the connection string is inherited from the M1-provided BullMQ factory.
+- **Inbound `Idempotency-Key` header storage** → **Valkey db 0**, TTL 24 hours, managed entirely by the M1 idempotency middleware (§4.17). M35 never writes to or reads from Valkey db 0 directly — it is handled transparently by the middleware.
+- **M35 does not use Valkey for any PHI or pseudonym storage.** Valkey is ephemeral; PostgreSQL is the system of record for all M35 state (§14.4).
+- **Outbound Stripe idempotency keys** are *not* stored in Valkey — they are derived deterministically from `(operation, businessKey, attempt_index)` and checked against `stripe_api_call_audit` in PostgreSQL (§4.13). This is distinct from the inbound `Idempotency-Key` header mechanism.
+
+**TTL summary:**
+
+| Key type | Valkey DB | TTL | Managed by |
+|---|---|---|---|
+| Inbound `Idempotency-Key` entries | db 0 | 24 h | M1 middleware |
+| BullMQ job metadata (`m35.*` queues) | db 1 | Until processed + removed-on-complete policy (7 days / 1000 jobs) | BullMQ / M1 wrapper |
+| Socket.IO rooms / events | db 2 | Session-scoped | M36 |
+
+### 4.17 — M35-F08: Idempotency-Key on All Mutating Routes (ARCH-263, SD-053)
+
+All M35 POST, PATCH, PUT, and DELETE routes accept an `Idempotency-Key` request header processed by the **M1 idempotency middleware**. The middleware behavior is:
+
+- Stores `(org_id, Idempotency-Key, request_hash, response_status, response_body)` in Valkey db 0 with a **24-hour TTL**.
+- On repeat: **same key + same body** → returns the cached response (idempotent replay).
+- On repeat: **same key + different body** → returns **HTTP 409 Conflict** with body `{ "error": "idempotency_key_body_mismatch" }`.
+- The header is optional; requests without it are processed normally (no caching). Routes that are natively idempotent (GET, the webhook POST) are exempt.
+
+**M35 mutating routes that honor `Idempotency-Key`:**
+
+| Method | Path | Typical `Idempotency-Key` pattern (client-chosen) |
+|---|---|---|
+| `POST` | `/v1/subscription` | `create-sub-{orgId}-{timestamp}` |
+| `PATCH` | `/v1/subscription` | `plan-change-{subscriptionId}-{newPlanSlug}-{timestamp}` |
+| `POST` | `/v1/subscription/cancel` | `cancel-{subscriptionId}-{timestamp}` |
+| `POST` | `/v1/subscription/resume` | `resume-{subscriptionId}-{timestamp}` |
+| `POST` | `/v1/payment_methods/setup_intent` | `setup-intent-{orgId}-{timestamp}` |
+| `POST` | `/v1/payment_methods/attach` | `attach-pm-{orgId}-{stripePaymentMethodId}` |
+| `PATCH` | `/v1/payment_methods/:id/set_default` | `set-default-pm-{paymentMethodId}-{timestamp}` |
+| `DELETE` | `/v1/payment_methods/:id` | `detach-pm-{paymentMethodId}-{timestamp}` |
+| `POST` | `/admin/plans` | `create-plan-{slug}-{timestamp}` |
+| `PATCH` | `/admin/plans/:id` | `update-plan-{planId}-{timestamp}` |
+| `POST` | `/admin/plans/:id/activate` | `activate-plan-{planId}` |
+| `POST` | `/admin/plans/:id/deprecate` | `deprecate-plan-{planId}` |
+| `POST` | `/admin/subscriptions/:id/pause` | `pause-sub-{subscriptionId}-{timestamp}` |
+| `POST` | `/admin/subscriptions/:id/resume` | `resume-sub-{subscriptionId}-{timestamp}` |
+| `POST` | `/admin/subscriptions/:id/cancel` | `cancel-sub-{subscriptionId}-{timestamp}` |
+| `POST` | `/admin/subscriptions/:id/apply_promo` | `apply-promo-{subscriptionId}-{promoCode}` |
+| `POST` | `/admin/dunning/:subscriptionId/skip_stage` | `skip-dunning-{subscriptionId}-{stage}-{timestamp}` |
+| `POST` | `/admin/dunning/:subscriptionId/reset` | `reset-dunning-{subscriptionId}-{timestamp}` |
+| `POST` | `/admin/refunds` | `request-refund-{invoiceId}-{amountCents}` |
+| `POST` | `/admin/refunds/:id/approve` | `approve-refund-{refundId}-{approverMembershipId}` |
+| `POST` | `/admin/refunds/:id/deny` | `deny-refund-{refundId}-{approverMembershipId}` |
+| `POST` | `/admin/promos` | `create-promo-{stripeCouponId}` |
+| `POST` | `/admin/webhooks/stripe/replay/:eventId` | `replay-webhook-{stripeEventId}` |
+
+**Important distinction — inbound vs outbound idempotency:**
+
+The `Idempotency-Key` header mechanism (M1 middleware, Valkey db 0, 24h TTL) is for **inbound requests from clients** to the M35 API — it prevents double-submission from retrying browsers or platform callers.
+
+The **outbound Stripe idempotency key** (§4.13, `stripe_api_call_audit`) is a *separate, orthogonal mechanism* for M35's calls to the Stripe API. The outbound key is derived deterministically from `(operation, businessKey, attempt_index)` by `packages/subscription-billing/src/stripe/idempotency.ts` and is stored in PostgreSQL, not Valkey. These two mechanisms are independent: a client retrying a request with the same `Idempotency-Key` hits the M1 middleware cache before M35 code runs; if M35 code does run (e.g. no cached response), it emits an outbox event that the stripe-dispatcher will call Stripe with its own idempotency key.
 
 -----
 
@@ -2293,6 +2413,66 @@ Boot refuses if any of these conditions fail. A future M32 prompt that genuinely
 
 The `STRIPE_SECRET_KEY` has restricted-key permissions per Stripe's restricted key feature: only the operations M35 actually needs (`customer.*`, `subscription.*`, `invoice.*`, `payment_method.*`, `refund.*`, `usage_record.*`, `coupon.*`, `promotion_code.*`, `meter.*`, `tax.*` for Stripe Tax). Other API operations (transfers, payouts to third parties, Connect operations) are denied by the key.
 
+### 8.10 — M35-F09: 404/403 RLS Discipline + Error Envelope (SD-051, SEC-036)
+
+#### Standard Error Envelope
+
+All M35 routes return errors in the platform-standard error envelope (SD-051). No raw exception strings, no stack traces, no Drizzle/PostgreSQL error messages in production responses:
+
+```typescript
+// Shared from packages/core/src/error-envelope.ts
+interface ErrorEnvelope {
+  error: {
+    code: string          // machine-readable: 'not_found', 'forbidden', 'conflict', 'validation_error', ...
+    message: string       // human-readable; no PHI; no internal system names
+    requestId: string     // correlation id for support triage
+    details?: unknown     // optional structured detail (validation field errors, etc.)
+  }
+}
+```
+
+Example: a request for `/v1/invoices/some-other-org-invoice-id` by a tenant actor whose RLS policy returns 0 rows returns:
+
+```json
+{ "error": { "code": "not_found", "message": "Invoice not found.", "requestId": "req_..." } }
+```
+
+**Not:** `{ "error": "RLS policy violation: organization_id mismatch" }` — which would confirm cross-tenant existence.
+
+#### 404-for-RLS-Hidden Rule
+
+M35 adopts the platform 404-for-RLS-hidden rule (SEC-036): when a row exists but RLS denies visibility to the requesting actor, M35 routes return **HTTP 404**, not HTTP 403. This prevents IDOR enumeration — a tenant actor cannot distinguish "this invoice does not exist" from "this invoice exists but belongs to a different tenant."
+
+The rule applies to all `:id` routes on tenant-scoped tables:
+
+| Route | RLS-hidden response |
+|---|---|
+| `GET /v1/invoices/:id` | 404 |
+| `GET /v1/invoices/:id/hosted_url` | 404 |
+| `GET /v1/invoices/:id/pdf` | 404 |
+| `PATCH /v1/payment_methods/:id/set_default` | 404 |
+| `DELETE /v1/payment_methods/:id` | 404 |
+| `GET /admin/subscriptions/:id` | 404 (platform actor: 403 if not `subscription.admin.read`) |
+| `POST /admin/subscriptions/:id/pause` | 404 (platform actor: 403 if not `subscription.admin.write`) |
+| `POST /admin/subscriptions/:id/resume` | 404 (platform actor: 403 if not `subscription.admin.write`) |
+| `POST /admin/subscriptions/:id/cancel` | 404 (platform actor: 403 if not `subscription.admin.write`) |
+| `POST /admin/refunds/:id/approve` | 404 |
+| `POST /admin/refunds/:id/deny` | 404 |
+
+Platform-ops routes (`/admin/`) where the actor is expected to have cross-tenant access: if the subscription or refund does not exist at all, return 404; if the actor lacks permission, return 403 with the standard error envelope. The distinction is: "resource does not exist" = 404; "resource exists but actor has no permission" = 403 (platform actors know the resource universe, tenants do not).
+
+#### Object-Level IDOR Tests (Required)
+
+The security test suite (§9.4) must include object-level IDOR tests for every `:id` route. Test pattern:
+
+1. Create resource `R` belonging to org A.
+2. Authenticate as a `billing_admin` in org B.
+3. `GET /v1/invoices/{R.id}` → assert HTTP 404 (not 403, not 200 with R's data).
+4. `PATCH /v1/payment_methods/{pm-of-org-A}/set_default` → assert HTTP 404.
+5. Repeat for every `:id` route in §4.1 and §4.2 with a cross-tenant or cross-subscription resource id.
+
+These tests are CI-gated and must remain green. A regression to 403 or 200 on a cross-tenant `:id` route is a P0 security finding.
+
 -----
 
 ## 9. Testing & Observability
@@ -2401,6 +2581,133 @@ The M33 reporting dashboard surfaces these via the `RevenueMetricsProvider` seam
 - **Webhook delivery delay:** Stripe holds webhook delivery for 6 hours then bursts; assert dedup absorbs the burst and processing catches up within 15 minutes
 - **Pseudonym key not retrievable** (KMS outage): assert that `patient-active-period-aggregator` enqueues retry instead of dropping events; the BullMQ DLQ tracks unrecoverable events for forensics
 - **Reconciler drift:** force a divergence (insert a fake Stripe subscription); assert that the next reconciler pass detects and emits an alert; if drift is unresolvable in 3 attempts, the subscription is flagged for manual review
+
+### 9.10 — M35-F17: Operational Alerts as OPS-043 YAML (OPS-043, SD-080)
+
+M35 ships three infrastructure-level alert definitions as `alerts/*.yaml` files under `apps/backend/src/modules/35-subscription-billing/alerts/`. These complement the M36 typed alert rules (§4.10) which notify human users; these OPS-043 alerts notify the ops monitoring stack (Prometheus Alertmanager / PagerDuty / on-call rotation).
+
+```yaml
+# apps/backend/src/modules/35-subscription-billing/alerts/m35-webhook-backlog.yaml
+# OPS-043 alert definition — webhook processing backlog
+alert: M35WebhookBacklog
+annotations:
+  summary: "M35 Stripe webhook handler queue backlog is elevated"
+  description: >
+    The m35.stripe-webhook-handler BullMQ queue has more than {{ $value }} unprocessed
+    jobs waiting for longer than 10 minutes. Stripe requires fast processing; backlog
+    may cause webhook redelivery and duplicate events.
+  runbook: "https://internal.wardenx.io/runbooks/m35/webhook-backlog"
+expr: |
+  bullmq_queue_waiting_jobs{queue="m35.stripe-webhook-handler"} > 50
+    AND
+  bullmq_queue_oldest_waiting_age_seconds{queue="m35.stripe-webhook-handler"} > 600
+for: 5m
+labels:
+  severity: warning
+  module: m35
+  team: platform-ops
+---
+alert: M35WebhookBacklogCritical
+annotations:
+  summary: "M35 Stripe webhook handler queue critically backed up"
+  description: >
+    The m35.stripe-webhook-handler queue has {{ $value }} jobs waiting longer than
+    30 minutes. Risk of webhook timeout and Stripe disabling the endpoint.
+  runbook: "https://internal.wardenx.io/runbooks/m35/webhook-backlog"
+expr: |
+  bullmq_queue_waiting_jobs{queue="m35.stripe-webhook-handler"} > 200
+    OR
+  bullmq_queue_oldest_waiting_age_seconds{queue="m35.stripe-webhook-handler"} > 1800
+for: 2m
+labels:
+  severity: critical
+  module: m35
+  team: platform-ops
+```
+
+```yaml
+# apps/backend/src/modules/35-subscription-billing/alerts/m35-reconciler-drift.yaml
+# OPS-043 alert definition — subscription reconciler drift
+alert: M35ReconcilerDrift
+annotations:
+  summary: "M35 subscription reconciler has detected drift between WardenX and Stripe"
+  description: >
+    The m35.subscription-reconciler has corrected {{ $value }} subscriptions in the
+    last hour where WardenX state differed from Stripe state. Occasional corrections
+    are expected (e.g., Stripe Dashboard manual changes). A sustained rate indicates
+    a systemic issue (missed webhook, dispatcher failure, or bug).
+  runbook: "https://internal.wardenx.io/runbooks/m35/reconciler-drift"
+expr: |
+  increase(m35_subscription_reconciler_drift_corrections_total[1h]) > 3
+for: 0m
+labels:
+  severity: warning
+  module: m35
+  team: platform-ops
+---
+alert: M35ReconcilerDriftCritical
+annotations:
+  summary: "M35 reconciler drift rate is critically high — possible data integrity issue"
+  description: >
+    More than 10 subscriptions required reconciler-driven state corrections in the
+    last hour. Investigate dispatcher health and Stripe webhook delivery before
+    the next billing cycle runs.
+  runbook: "https://internal.wardenx.io/runbooks/m35/reconciler-drift"
+expr: |
+  increase(m35_subscription_reconciler_drift_corrections_total[1h]) > 10
+for: 0m
+labels:
+  severity: critical
+  module: m35
+  team: platform-ops
+```
+
+```yaml
+# apps/backend/src/modules/35-subscription-billing/alerts/m35-stripe-api-failure-rate.yaml
+# OPS-043 alert definition — Stripe API failure rate
+alert: M35StripeApiFailureRateElevated
+annotations:
+  summary: "M35 Stripe API call failure rate is elevated"
+  description: >
+    More than 5% of outbound Stripe API calls have failed (non-2xx) in the last
+    5 minutes. Failures are retried with exponential backoff; sustained failures
+    indicate Stripe API degradation or an M35 credential issue.
+  runbook: "https://internal.wardenx.io/runbooks/m35/stripe-api-failures"
+expr: |
+  (
+    rate(m35_stripe_api_call_total{status_code!~"2.."}[5m])
+    /
+    rate(m35_stripe_api_call_total[5m])
+  ) > 0.05
+for: 5m
+labels:
+  severity: warning
+  module: m35
+  team: platform-ops
+---
+alert: M35StripeApiFailureRateCritical
+annotations:
+  summary: "M35 Stripe API failure rate critical — billing operations impaired"
+  description: >
+    More than 25% of outbound Stripe API calls have failed in the last 5 minutes.
+    Dispatcher is likely retrying; risk of BullMQ DLQ overflow. Check Stripe status
+    page and STRIPE_SECRET_KEY validity. Revenue impact possible if invoices cannot
+    be created or subscriptions cannot be updated.
+  runbook: "https://internal.wardenx.io/runbooks/m35/stripe-api-failures"
+expr: |
+  (
+    rate(m35_stripe_api_call_total{status_code!~"2.."}[5m])
+    /
+    rate(m35_stripe_api_call_total[5m])
+  ) > 0.25
+for: 2m
+labels:
+  severity: critical
+  module: m35
+  team: platform-ops
+```
+
+**Alert→runbook linkage:** each alert YAML references a runbook URL at `https://internal.wardenx.io/runbooks/m35/<topic>`. The runbook content lives in `apps/backend/src/modules/35-subscription-billing/runbooks/` and is included in the OPS Runbook composite during CI (T-43). The three runbook stubs required are: `webhook-backlog.md`, `reconciler-drift.md`, `stripe-api-failures.md`.
 
 -----
 
@@ -2701,3 +3008,84 @@ After applying: `bun run arch:fitness` is green (dependency-cruiser boundary che
 **Phase boundary (binding):** Phase 1 ships nothing visible for M35 — Engrace runs unbilled. The lock-grade spec lands in v0.2 so implementation is unblocked at Phase 2 start, with the proximate trigger being "first paying tenant joins beyond Engrace." Forward-seam deny-stubs (§4.6) and the AI-boundary boot gate (§8.8) ship at M35 lock; the full implementation activates at Phase 2.
 
 **End of M35 Lock-Grade Spec v0.2**
+
+---
+
+## 14. Disaster Recovery, Statelessness & Update Obligations
+
+### 14.1 — M35-F10: DR Tier Declaration (DR-010, DR-013)
+
+#### DR Tier: Tier 3 — Revenue & Reporting
+
+M35 (Subscription Billing) is classified as **DR Tier 3** per `WARDENX_DR_BCP_v0.1.md` §3.1. Rationale: M35 loss impedes billing operations and revenue collection, but does not directly affect patient care, medication administration, clinical documentation, or any Tier-1/2 function. A billing platform outage is a cash-flow event; it is never a patient safety event.
+
+| Scope | RTO | RPO |
+|---|---|---|
+| Internal engineering target (DR-010) | 24 hours | 1 hour |
+| Customer-facing SLA (DR-013) | 48 hours | 4 hours |
+
+The customer-facing SLA (48h RTO / 4h RPO) applies to tenants' ability to view invoices, update payment methods, and have subscriptions reflect their current status. Stripe itself is the authoritative billing system; even if WardenX M35 is fully unavailable, tenants can access Stripe-hosted invoice URLs and the Stripe Customer Portal directly. The WardenX SLA covers WardenX-side access and the Stripe-dispatching pipeline.
+
+**Recovery sequencing:** M35 is recovered after Tier-1 and Tier-2 services in the DR sequencing order: `PostgreSQL primary → Valkey → MinIO → Backend API (Tier 1) → Tier-2 modules → M35 workers + crons`. M35 does not participate in the critical-path startup that enables patient care.
+
+#### 14.2 Degraded-Mode Behavior
+
+When M35 is partially degraded (e.g., Stripe API unreachable, workers down, Valkey unavailable), the following degraded-mode posture applies:
+
+| Degradation scenario | M35 behavior | Patient care impact |
+|---|---|---|
+| **Stripe API unreachable** | Outbox events accumulate in PostgreSQL; `stripe-dispatcher` retries with exponential backoff (§4.9.1). Subscriptions stay in current state (no new activations or cancellations until Stripe recovers). Webhook handler queue backs up. | None — M35 is Tier 3; clinical care does not depend on Stripe availability. |
+| **Valkey unavailable** | BullMQ queues stall (BullMQ depends on Valkey). In-flight jobs may be lost if Valkey state is unrecoverable; jobs not yet dequeued re-run after recovery (idempotent consumers handle duplicates). Inbound `Idempotency-Key` lookups fail open (M1 middleware falls back to pass-through if Valkey is unavailable per M1's degraded-mode spec). | None. |
+| **M35 workers all down** (crons and BullMQ consumers stopped) | No outbound Stripe API calls until workers recover. No dunning advancement. No usage aggregation. Webhook events queue in `stripe_webhook_event` (unprocessed). Revenue snapshot skips the missed period (re-triggerable via `/admin/revenue/snapshots/compute`). | None. |
+| **PostgreSQL unavailable** | M35 routes return 503; no state mutations possible. Stripe continues billing per the last-known subscription state. `stripe_webhook_event` inserts fail (Stripe will retry webhook delivery per Stripe TOS up to 72 hours). | None directly from M35. |
+| **M35 fully unavailable (all of the above)** | Tenant billing screens return 503. Stripe continues operating independently. Tenants can access Stripe-hosted invoice URLs from prior emails. `platform_admin` can use Stripe Dashboard for emergency operations. | None. |
+
+**Billing blocked during degraded mode:** If M35 is degraded while a dunning sequence is active, the dunning engine does not advance. This is the *safer* default — tenants are not suspended due to a system outage. Recovery runs the dunning engine pass immediately; stage transitions are replayed from where the sequence left off.
+
+**Platform commitment during M35 degradation:** WardenX will not cancel or suspend any tenant subscription due to a failure to process a Stripe webhook caused by an M35 outage. Subscription state corrections are applied after recovery via the reconciler cron.
+
+#### 14.3 Statelessness Affirmation
+
+M35 is **stateless at the application layer**. The M35 backend process (`apps/backend`) holds no in-memory state that cannot be lost:
+
+- All subscription state, invoice mirrors, dunning state, usage aggregates, pseudonyms, and Stripe audit records are in **PostgreSQL** (the system of record).
+- BullMQ job metadata is in **Valkey db 1** (ephemeral; recovered from PostgreSQL state on re-enqueueing).
+- Inbound `Idempotency-Key` cache is in **Valkey db 0** (ephemeral; 24h TTL; on loss, duplicate requests are processed again — all M35 handlers are idempotent, so this is safe).
+- The XState subscription and dunning machines are reconstituted from PostgreSQL (`subscription.status`, `dunning_state`) on each invocation; they carry no in-memory state across requests.
+- Stripe is the authoritative source of Customer / Subscription / Invoice / PaymentMethod / UsageRecord state; M35 mirrors are rebuilt by the reconciler if PostgreSQL state is lost or stale.
+
+**Valkey-ephemeral / PG-system-of-record posture:** Valkey loss → workers stall, idempotency cache clears → safe recovery by re-enqueueing from PostgreSQL state and allowing duplicate-but-idempotent replays. PostgreSQL loss is the only non-trivially-recoverable scenario; it is covered by PG WAL shipping + point-in-time recovery per the DR BCP (RPO 1h internal, 4h customer SLA).
+
+#### 14.4 — M35-F18: DR/INT Document Update Obligations (DR-073, INT-048)
+
+By shipping Module 35 with its Stripe integration surface and a new partitioned table (`usage_event`), two standing update obligations are triggered:
+
+**DR-073 — DR/BCP document update on new external dependency:**
+
+M35 adds the **Stripe API** as a new external dependency with a billing-critical path. The DR/BCP document (`WARDENX_DR_BCP_v0.1.md`) must be updated before M35 ships to Phase 2 to record:
+
+1. Stripe as a Tier-3 external dependency in the DR dependency matrix.
+2. Stripe-specific failure mode: Stripe API degradation → M35 dispatcher queue backs up → subscriptions freeze in current state → acceptable (Tier 3, 24h RTO) if recovered within the RTO window.
+3. Stripe-specific recovery procedure: On recovery, the dispatcher drains the backlog; the reconciler confirms WardenX ↔ Stripe state consistency; any subscription that should have transitioned during the outage is corrected by the reconciler.
+4. The `stripe_api_call_audit` table (append-only, platform retention) as the forensic trail for Stripe-side operations during an outage window.
+
+The DR-073 update is **owned by the M35 tech lead** and must be reviewed by the platform-ops rotation lead before the M35 Phase 2 build begins. Acceptance-checklist item §12.11 tracks this.
+
+**INT-048 — Integrations document update on new external vendor surface or new partitioned table:**
+
+M35 adds:
+
+1. **Stripe** as a new integration surface. The `WARDENX_INTEGRATIONS_v0_1.md` integrations table already includes a row for Stripe (row 11); however, the detailed integration spec (§6.11 in WARDENX_INTEGRATIONS) must be updated to confirm: (a) M35's Stripe surface is not BAA-bearing (per D14); (b) the restricted-key permissions (§8.9); (c) the webhook endpoint (`POST /v1/webhooks/stripe`) and HMAC verification posture; (d) Stripe Tax as the sole tax engine (D10); (e) the Stripe Test Clock usage in CI. This update is an **augmentation of the existing row**, not a new row.
+
+2. **`usage_event` (partitioned table)**. The integrations document's data-flow section must note that `usage_event` is partitioned by month and that old partitions are archived after 24 months. This informs the backup/restore procedure (restoring a `usage_event` partition is not identical to restoring a regular table), the DDL-legality checker (`check-ddl-legality.ts` must allow `CREATE TABLE ... PARTITION OF` for M35), and the eraser path (the eraser must drop each partition independently per §3.7).
+
+The INT-048 update is **owned by the M35 tech lead** and reviewed by the platform-ops rotation lead. Acceptance-checklist item §12.11 tracks this alongside the DR-073 update.
+
+### 12.11 — DR and Integrations Update Obligations
+
+> *(Appended to §12 Acceptance Sign-Off Checklist)*
+
+- [ ] **DR-073:** `WARDENX_DR_BCP_v0.1.md` updated to add Stripe as a Tier-3 external dependency, including failure mode, recovery procedure, and audit trail reference — reviewed by platform-ops lead
+- [ ] **INT-048 (Stripe):** `WARDENX_INTEGRATIONS_v0_1.md` §6.11 Stripe detail updated with M35-specific posture (non-BAA, restricted-key, webhook HMAC, Stripe Tax, CI test clocks)
+- [ ] **INT-048 (partitioned table):** `WARDENX_INTEGRATIONS_v0_1.md` data-flow notes updated for `usage_event` monthly partitioning; `check-ddl-legality.ts` allows `PARTITION OF`; eraser path confirmed to handle partitions
+- [ ] **OPS-043:** Three alert YAML files present in `alerts/`; three runbook stubs present in `runbooks/`; alert firing tested in staging Prometheus/Alertmanager before Phase 2 go-live

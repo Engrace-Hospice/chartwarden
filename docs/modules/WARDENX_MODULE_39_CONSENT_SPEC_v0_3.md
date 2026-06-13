@@ -53,7 +53,7 @@ unchanged (separate, feature-prefixed namespaces). (Prior: v0.2.)
 | M39-F07 | MAJOR | Invented manifest fields (`publishedSeams`/`registers*`/…) dropped — registrations live in boot code + the seam registry, not `ModuleDef` (ARCH-146). |
 | M39-F08 | MAJOR | Cross-module revocation/recipient-change outbox events emitted from the **service layer** via the M1 outbox helper in-transaction, not from DB triggers (ARCH-144/264). |
 | M39-F09 | MAJOR | `m39.consent.expiration_imminent` re-tiered off CRITICAL for routine expiry; the M20/Twilio-Voice SOS escalation removed from consent reminders (INT-031 voice = field-safety SOS only). |
-| M39-F10..F15 | MINOR | M3 SoD constraint cited by ID not asserted; per-route ABAC attribute sets made explicit; OPEN-022 note (M4 owns `state_retention_override`); draft TTL labeled housekeeping; **cursor pagination** on all PHI list/audit routes; per-resource synchronous eval-audit on bulk FHIR egress batched / moved to the once-per-recipient disclosure boundary. |
+| M39-F10..F15 | MINOR | M3 SoD constraint cited by ID not asserted (OPEN-021); per-route ABAC attribute sets made explicit (F11 — §4.11); OPEN-022 note (M4 owns `state_retention_override`); draft TTL labeled housekeeping NOT a §24 retention commitment (F13 — §2.2.1 + §4.9); **cursor pagination** on all PHI list/audit routes 18, 22, 23 (F14 — §4.12); per-resource synchronous eval-audit on bulk FHIR egress batched to once-per-recipient/request boundary (F15 — §4.3 `evaluateBulk` + §9.7). |
 
 ## Changelog
 
@@ -306,7 +306,7 @@ The diagram captures the eleven owned tables. The platform-shared `consent_type_
                  └────────────┘
 ```
 
-- **`draft`** — captured-but-unsigned; the route layer creates a draft when staff opens the consent-capture wizard or when a patient-portal session begins the flow. Drafts auto-expire after 30 days unless tenant tightens (the platform-floor is 30 days per D8).
+- **`draft`** — captured-but-unsigned; the route layer creates a draft when staff opens the consent-capture wizard or when a patient-portal session begins the flow. Drafts auto-expire after 30 days unless tenant tightens (the platform-floor is 30 days per D8). **M39-F13 / ARCH-250 / OPEN-020 — draft TTL is a UX/housekeeping TTL only:** drafts in the `draft` state carry no signed PHI consent (no signature has been collected; `signed_at` is NULL; `effective_at` has no regulatory force). The 30-day auto-expire is therefore a housekeeping boundary — abandoned wizard sessions are cleaned up, not regulatory consent records. It is **NOT** a §24 / `compliance`-class retention-class commitment; the `compliance` retention class (7-year floor per D20) attaches **only** to rows whose `status` has advanced to `active` (i.e., post-sign). Dropped drafts are deleted, not archived under a retention class; their deletion is not gated by M4 legal-hold or destruction-cert workflows. This distinction must be preserved in any tenant overlay that shortens the 30-day window — shortening is allowed; treating the window as a retention floor is not.
 - **`active`** — signed; `effective_at` is in the past; `expires_at` (if set) is in the future; `superseded_at` is NULL; `revoked_at` is NULL. The vast majority of `evaluate()` queries match against rows in this state.
 - **`expired`** — `expires_at` is in the past. Tick-driven; the `consent_expiration_cron` worker (hourly) walks rows whose `expires_at < now()` AND `status='active'` and transitions to `expired`. Emits `m39.consent.expired`.
 - **`superseded`** — a newer consent record exists that points at this one via `supersedes_consent_record_id`. The newer record is `active`; the older row stays alive for survey reconstruction.
@@ -1047,11 +1047,11 @@ All routes mount at `/api/v1/consents/*` unless otherwise noted; portal-side rou
 | 15 | POST | `/api/v1/consents/:consentId/dpoa-agents` | `consent.author` | `caseload_or_scope` | **yes** | new consent_record_dpoa_agent row |
 | 16 | PATCH | `/api/v1/consents/:consentId/dpoa-agents/:agentId` | `consent.author` | `caseload_or_scope` | **yes** | mutate scope_kind, term, activation_condition |
 | 17 | GET | `/api/v1/patients/:patientId/dpoa/active-primary` | `consent.read` | `caseload_or_scope` | no | the active DPOA primary agent (consumed by M7/M11/M14) |
-| 18 | GET | `/api/v1/patients/:patientId/expiring-consents` | `consent.read` | `caseload_or_scope` or `compliance_officer` | no | consents within 90-day window |
+| 18 | GET | `/api/v1/patients/:patientId/expiring-consents` | `consent.read` | `caseload_or_scope` or `compliance_officer` | no | consents within 90-day window; cursor-paginated (M39-F14) |
 | 19 | GET | `/api/v1/consents/:consentId/renewal-cycle` | `consent.read` | `consent_owner_or_compliance` | no | open + closed cycles |
 | 20 | POST | `/api/v1/consents/:consentId/renew` | `consent.sign` | `caseload_or_scope` | **yes** | new consent_record with `renewed_from_consent_record_id=<this>` |
 | 21 | GET | `/api/v1/patients/:patientId/delegated-access` | `consent.read` | `caseload_or_scope` | no | projection rows |
-| 22 | GET | `/api/v1/consents/:consentId/eval-audit` | `consent.read_eval_audit` | `compliance_officer` or `privacy_officer` | no | partitioned audit query |
+| 22 | GET | `/api/v1/consents/:consentId/eval-audit` | `consent.read_eval_audit` | `compliance_officer` or `privacy_officer` | no | partitioned audit query; cursor-paginated (M39-F14) |
 | 23 | GET | `/api/v1/consents/eval-audit/by-patient` | `consent.read_eval_audit` | `compliance_officer` or `privacy_officer` | no | patient-scoped **consent-decision** audit (NOT §164.528 — that is M4's disclosure sink, ADR-0013); cursor-paginated (M39-F14) |
 | 24 | POST | `/api/v1/consents/:consentId/document/re-render` | `consent.admin_re_render` | `compliance_officer` | **yes** | re-emit `m39.consent.signed` to force M22 re-render |
 | 25 | GET | `/api/v1/portal/consents/active` | (portal session) | `portal_self_service` | no | patient or delegate's active consents |
@@ -1359,7 +1359,26 @@ export interface ConsentEvaluator {
     redactFamilyViolenceFields: boolean
   }>
 
-  /** Bulk read for caseload-list paths (M5, M33, M30, M28 bulk export). */
+  /** Bulk read for caseload-list paths (M5, M33, M30, M28 bulk export).
+   *
+   * M39-F15 / ARCH-110 — bulk FHIR egress eval-audit batching:
+   * When `callerModule` is `'m28'` (FHIR Gateway bulk export) or any caller passing
+   * `batchContext.recipientClientId`, `evaluateBulk` writes a SINGLE `consent_eval_audit`
+   * row per (recipient × batch-request), not one row per resource or per patientId in the
+   * batch. The single audit row carries:
+   *   - `batch_patient_count` — how many patientIds were evaluated
+   *   - `batch_allowed_count` / `batch_denied_count` — summary tallies
+   *   - `recipient_resolved_kind` / `recipient_resolved_id` — the egress recipient
+   *   - `caller_route` — identifies the bulk-export request (e.g., `$export` operation ID)
+   *
+   * This prevents the O(patients × resources) eval-audit fan-out that would arise if M28
+   * called `evaluate()` or `evaluateForDisclosure()` once per FHIR resource in a bulk export.
+   * Per-resource evaluation correctness is preserved (the method still evaluates each patientId
+   * individually against the active consent record set); only the audit write is batched.
+   *
+   * Non-bulk callers (M5, M33, M30 caseload-list paths without a recipient context) write one
+   * `consent_eval_audit` row per patientId in the batch as before (no change for those paths).
+   */
   evaluateBulk(args: {
     organizationId: string
     patientIds: readonly string[]
@@ -1367,6 +1386,13 @@ export interface ConsentEvaluator {
     asOf?: string
     callerModule: ModuleId
     callerRoute?: string
+    /** Present on FHIR bulk-export paths; triggers batched eval-audit write (M39-F15). */
+    batchContext?: {
+      recipientClientId: string
+      recipientResolvedKind?: RecipientResolvedKind
+      recipientResolvedId?: string
+      exportRequestId: string   // M28 $export operation ID; becomes the audit row's batch key
+    }
   }): Promise<Map<string, {
     allowed: boolean
     consentRecordId?: string
@@ -1606,7 +1632,7 @@ M39 owns the resolvers for these eleven predicates. Each resolver is a pure type
 | `m39-consent-expiration` | cron `0 * * * *` (hourly) | `consent-expiration.cron.ts` | Transition `expires_at<now()` + `status='active'` rows to `expired`; emit |
 | `m39-revocation-cascade-retry` | every 30s | `revocation-cascade-retry.cron.ts` | Re-fire stuck `cascade_status IN ('pending','in_progress')` AND `cascade_started_at < now() - interval '5 minutes'` |
 | `m39-renewal-cycle-close` | cron `0 3 * * *` (nightly 3 AM) | `renewal-cycle-close.cron.ts` | Close cycles whose source expired without renewal |
-| `m39-draft-auto-expire` | cron `0 4 * * *` (daily 4 AM) | `draft-auto-expire.cron.ts` | Discard drafts older than 30 days |
+| `m39-draft-auto-expire` | cron `0 4 * * *` (daily 4 AM) | `draft-auto-expire.cron.ts` | Discard (`DELETE`) drafts older than 30 days. **M39-F13 / ARCH-250 / OPEN-020 — housekeeping TTL only:** deletes rows whose `status='draft'` AND `created_at < now() - INTERVAL '30 days'`. These rows have never been signed (`signed_at IS NULL`) and carry no §24/`compliance`-class retention obligation. Deletion is not gated by M4 legal-hold or destruction-cert workflows. The 30-day window is a UX/housekeeping boundary; it is NOT a §24 retention-class commitment. See §2.2.1 for the full clarification. |
 | `m39-eval-audit-partition` | cron `30 23 * * *` (nightly 11:30 PM) | `eval-audit-partition.cron.ts` | Pre-create next-month `consent_eval_audit_yyyy_mm` partition |
 | `m39-m22-document-rendered` | event | `m22-document-rendered.worker.ts` | Subscribe M22 |
 | `m39-m5-patient-deceased` | event | `m5-patient-deceased.worker.ts` | D13 cascade |
@@ -1627,6 +1653,69 @@ M39 registers five alert types with M36's alert-rule registry:
 | `m39.consent.renewal_overdue` | HIGH (7d past expiry without renewal) → CRITICAL (30d) | platform-floor 7d/30d | compliance_officer + assigned RN case manager | only for compliance-critical types (`42_cfr_part_2_release`, `hipaa_release`, `dpoa_healthcare`) |
 
 The five alert payloads are typed in `packages/messaging/src/alerts/consent.ts` and consumed by M36's typed-alert-payload registry.
+
+### 4.11 ABAC Attribute Sets on Patient-Scoped PHI Read Routes (M39-F11 / ARCH-053 / ARCH-066/067)
+
+For every patient-scoped read route that returns PHI, the ABAC gate must evaluate the **full attribute set** — not just a bare `caseload_or_scope` flag. The table below makes the required attributes explicit per route. The route layer must resolve all four dimensions **before** handing the result set to the caller; missing any attribute is a deny.
+
+| Route # | Path | ABAC attributes required (all must pass) |
+|---|---|---|
+| **3** | `GET /api/v1/patients/:patientId/consents` | **caseload** (`CaseloadProvider.isOnCaseload(membershipId, patientId)`); **discipline scope** (member's licensed discipline must include consent-management; Compliance Officer and Privacy Officer bypass discipline scope); **on-call window** (applies only if session class is `on_call` — membership must be in the on-call rotation for this organization at the current wall-clock time per M17's schedule seam); **bereavement window** (if patient is deceased, read is gated by `bereavement_window` status — M16's eligibility flag must be active AND the requesting membership must be assigned to the bereavement program for this patient) |
+| **4** | `GET /api/v1/consents/:consentId` | Same four attributes as route 3; additionally, the `consent_record.patient_id` must equal the resolved patient scope for the session — prevents IDOR across patients within the same caseload |
+| **11** | `GET /api/v1/consents/:consentId/recipients` | Same four attributes as route 4 |
+| **14** | `GET /api/v1/consents/:consentId/dpoa-agents` | Same four attributes as route 4 |
+| **17** | `GET /api/v1/patients/:patientId/dpoa/active-primary` | **caseload** (mandatory; this route is consumed by M7/M11/M14 via the seam — the consuming module's service principal must itself be within caseload scope for the patient; the seam call carries the originating `callerModule` and the patient's `organizationId`); **discipline scope** (clinical roles only — `rn_case_manager`, `msw`, `medical_director`, `clinical_supervisor`, `intake_nurse`, `idg_coord`; Compliance Officer and Privacy Officer bypass); **on-call window** (if session class is `on_call`, membership must hold on-call assignment at current time); **bereavement window** (same post-mortem gate as route 3 — even the active DPOA primary query is restricted to bereavement-eligible sessions post-death, because the DPOA may drive care decisions that affect post-mortem estate handling) |
+| **21** | `GET /api/v1/patients/:patientId/delegated-access` | **caseload** (mandatory; the projection is consumed by M31 portal-session-minter via the `DelegatedAccessReader` seam — the session principal must be caseload-scoped or the Compliance Officer role); **discipline scope** (clinical roles + bereavement_counselor; the delegate-projection read is not restricted to the assigning clinician's discipline, but it is restricted to clinical and bereavement roles); **on-call window** (on-call sessions may read this projection to determine caregiver contact scope during a triage call per M19 §4.4); **bereavement window** (post-death reads of `delegated_access` that survived death via `survives_death=true` are only accessible to bereavement-eligible sessions; expired delegated-access rows with `revoked_at IS NOT NULL` are still readable by Compliance Officer for audit purposes) |
+| **28** | `GET /api/v1/consents/post-mortem-eligible/:patientId` | **bereavement window** (mandatory — this route exists for post-mortem use; patient must be deceased AND membership must be in the active bereavement program for this patient per M16); **caseload** (OR compliance_officer — Compliance Officer bypass applies); **discipline scope** (bereavement_counselor, msw, clinical_supervisor, compliance_officer; no on-call override) |
+
+**Implementation note (route layer):** The four attributes are resolved as a short-circuiting predicate chain in this order: (1) session class validity, (2) `consent.read` permission key present in M3's decision for this membership, (3) caseload membership, (4) discipline scope, (5) on-call window if applicable, (6) bereavement window if applicable. The chain short-circuits at the first deny; the deny reason is logged to `consent_eval_audit` as a `deny_reason='abac_attribute_deny:<attribute_name>'` entry (structural, no PHI in the deny reason). Compliance Officer and Privacy Officer bypass (4) discipline scope only — they do not bypass (3) caseload (both roles are org-wide) or (5)/(6) temporal windows.
+
+**Seam consumers (routes 17, 21 via seam):** When M7, M11, M14 call route 17 via the `ConsentEvaluator` seam's `evaluate(type='dpoa_healthcare', …)` method, the `sessionContext.membershipId` passed in is the **originating clinical membership** on whose behalf the call is made, not a platform-admin bypass. The seam enforcer applies the same four-attribute check against the originating membership. Callers that pass `callerModule` without a valid `membershipId` (e.g., a background job) receive `allowed=false reason='abac_attribute_deny:no_session_membership'` — background jobs must use the M1 break-glass service principal pattern to access these routes, which routes through the `compliance_officer` bypass tier and emits a break-glass audit event.
+
+### 4.12 Cursor Pagination on PHI List and Audit Query Routes (M39-F14 / SD-052)
+
+All PHI list routes and audit query routes use **cursor-based pagination** (opaque cursor, not offset/limit). Offset-based pagination is prohibited on M39 routes because `consent_eval_audit` is partitioned monthly and can have O(10M) rows; offset scans degrade quadratically and expose patients to time-of-check/time-of-use skew in compliance audits.
+
+**Routes with mandatory cursor pagination:**
+
+| Route # | Path | Cursor key | Default page size | Max page size |
+|---|---|---|---|---|
+| **18** | `GET /api/v1/patients/:patientId/expiring-consents` | `(expires_at, id)` composite — ascending by `expires_at`, then `id` for tie-breaking; cursor is base64-encoded JSON `{"ea":"<ISO8601>","id":"<uuid>"}` | 50 | 200 |
+| **22** | `GET /api/v1/consents/:consentId/eval-audit` | `(evaluated_at, id)` composite — descending by `evaluated_at` (most-recent-first audit view); cursor encodes `{"eat":"<ISO8601>","id":"<uuid>"}` | 100 | 500 |
+| **23** | `GET /api/v1/consents/eval-audit/by-patient` | `(evaluated_at, id)` composite — same as route 22; already marked cursor-paginated in §4.1 | 100 | 500 |
+
+**Request/response shape (uniform across routes 18, 22, 23):**
+
+```typescript
+// Query parameters (example for route 22)
+export const EvalAuditCursorQuery = Type.Object({
+  cursor: Type.Optional(Type.String()),       // opaque base64 cursor from prior response
+  limit:  Type.Optional(Type.Integer({ minimum: 1, maximum: 500, default: 100 })),
+  // route-specific filters (e.g., type_key, allowed, caller_module, date_from, date_to)
+  type_key:       Type.Optional(Type.String()),
+  allowed:        Type.Optional(Type.Boolean()),
+  caller_module:  Type.Optional(Type.String()),
+  date_from:      Type.Optional(Type.String({ format: 'date-time' })),
+  date_to:        Type.Optional(Type.String({ format: 'date-time' })),
+})
+
+// Response envelope (uniform)
+export const CursorPagedResponse = <T extends TSchema>(itemSchema: T) => Type.Object({
+  items:       Type.Array(itemSchema),
+  nextCursor:  Type.Union([Type.String(), Type.Null()]),  // null when no more pages
+  hasMore:     Type.Boolean(),
+  totalHint:   Type.Optional(Type.Integer()),  // approximate count from partition stats; absent when too expensive
+})
+```
+
+**Cursor semantics:**
+- The cursor is opaque to the caller and must not be constructed or decoded client-side — treat it as a token.
+- Cursors are stateless (no server-side cursor objects); they encode the last-seen keyset values.
+- A cursor is valid for 1 hour; after expiry the route returns `422 cursor_expired` and the caller must restart from the beginning. This prevents stale cursors spanning partition boundaries across monthly rotations.
+- Filters passed with a cursor must be identical to the original request filters; a mismatch returns `422 cursor_filter_mismatch`.
+- Audit query routes (22, 23) write a `consent_eval_audit` row for the *query itself* only when the caller is a portal user or an external collaborator; internal compliance officer / privacy officer queries do not self-audit (to avoid audit-of-audit fan-out).
+
+**Implementation note:** Route 18 uses `consent_record.expires_at` as the primary sort key, which is indexed by `ix_cr_expiring_soon` (partial index on active rows with `expires_at IS NOT NULL`). Routes 22 and 23 use `consent_eval_audit.evaluated_at` as the primary sort key, which is the partition key — the query planner partition-prunes by `date_from`/`date_to` before applying the cursor predicate. Never apply `OFFSET` as a fallback; the route must error rather than degrade to offset pagination.
 
 -----
 
@@ -2083,6 +2172,7 @@ Representative cases:
 - `ConsentEvaluator.evaluate()` p95 = 30ms / p99 = 60ms at 1000 RPS across 1M consent records.
 - `evaluateBulk()` p95 for 100 patient batch = 200ms; p99 = 500ms.
 - `evaluateForDisclosure()` (per-FHIR-resource cost) p95 = 25ms / p99 = 50ms (the M28 hot path; budget is tight).
+- **M39-F15 / ARCH-110 — bulk FHIR egress eval-audit write:** `evaluateBulk()` with `batchContext` (M28 `$export` paths) writes exactly **1 `consent_eval_audit` row per (recipient × export request)**, regardless of the number of patientIds or FHIR resources in the export. The single batched audit write must complete within the same DB transaction as the bulk evaluation; target p95 = 10ms for the batched write (same as a single-row eval-audit insert — the row is wider but the count is fixed at 1). The k6 bulk-export fixture (10K patients × 1 export request) must produce exactly 1 `consent_eval_audit` row, not 10K rows; the integration test asserts `SELECT COUNT(*) FROM consent_eval_audit WHERE caller_route = '<exportRequestId>'` = 1.
 - Revocation cascade end-to-end (M2 + M22 + M5 + M28 fake consumers) p95 = 5s / p99 = 15s.
 - Consent capture (POST draft → POST sign → M22 render arrival) p95 = 15s / p99 = 30s.
 - Expiration reminder cron full sweep across 100K consents p95 = 2 minutes.

@@ -14,7 +14,7 @@ names (`document.status`, `document.retention_class`, …) are unchanged. (Prior
 **Depends on:** 1 (Foundation — `packages/db`, `packages/tenancy`, `withOrgContext`, RLS generator, `audit()` / `auditRead()` helpers, outbox helper, idempotency middleware, BullMQ on Valkey, error envelope, per-tenant DEK envelope-encryption helper for `intake_extraction_candidate.value_cipher` and `document_version.byte_payload_cipher` columns, the MinIO client with per-tenant bucket scope, the partition manager for monthly partitions of `extraction_job` / `extraction_candidate` / `document_access_log`, the typed `SeamRegistry` with boot validation; the M1 outbox event catalog where the `m22.document.rendered_critical_results` event is registered), 2 (Identity — actor resolution; per-membership credentialing for reviewer eligibility; SESSION_POLICY step-up enforcement for the `documents.export_phi_bundle` and DocLens `extraction.commit` paths; M2 funeral magic-link is **not** how external reviewers authenticate — external reviewer access is M31 portal + M39 grant), 3 (Authorization — `documents.*` and `intake.*` permission keys; the named ABAC predicate registry M22 contributes to and consumes from: `caseload_or_scope` (consumed), `sud_consent_present` (consumed), `document_owner_or_caseload` (registered), `extraction_reviewer_eligible` (registered), `extraction_high_risk_field_per_field_only` (registered), `form_template_publish_authority` (registered), `tenant_template_overlay_edit_authority` (registered); the `REQUIRED_SEAMS` list where `BaaStatusProvider` presence is validated before the signed-URL service is ready; the step-up flow that the lab-results renderer must never bypass for SUD unredact), 4 (Audit — write-audit trigger generator with per-table denylist (§3.6); `auditRead()` helper invoked on every document content access; destruction-cert workflow + `eraseFn` registration for the `document_record` and `intake_extraction` data classes; the `compliance`, `clinical_record`, `bereavement`, `operational`, the `intake_artifact`, and the `compliance_42cfr_part2` retention classes; the `eraseAuditRows` Part 2 refusal-during-patient-lifetime semantic that M22's destruction worker passes through to; legal-hold tombstone propagation), 5 (Patient — `PatientReader` for chart-target resolution at upload + writeback and for the lab-results / external-source discharge patient header; the `patient.bereavement_opt_out` flag observed during letter-render dispatch; the `patient.merged → merged_into_id` redirect resolved at every document fetch so a document attached pre-merge stays reachable post-merge; the `patient.privacy_flag_snapshot` consulted via M3's `sud_consent_present` predicate; the M5 `clinical_record` retention class anchored to the patient lifecycle), 6 (Hospice Lifecycle — the `m6.discharge.created` event with the `source` field discriminator (`m29_proposal_accept`) for external-source death-discharge variants, and `m6.discharge.cosigned` for the medical-director cosign render), 11 (Orders — the `m11.order.results_received` and `m11.order.results_received_critical` outbox events consumed on lab observation attachment to render the lab results PDF; the `OrderProvider` seam for order resolution during lab-results rendering), 29 (External Interfaces — the `LabObservationReader` seam for SUD-aware observation loading; the `lab_observation.sud_redaction_status` field that drives D20 redaction; the M29 proposal traceability surfaced on the external-source discharge variant; the `SudUnredactProvider` that the renderer NEVER calls), 32 (AI Platform — `packages/ai-platform` SDK for DocLens classifier (`DocLensClassifier`), extractor (`DocLensExtractor`), and vision verification (`DocLensVisionVerifier`); the prompt registry where M22's DocLens prompt templates land; the M32 hard-block list for AI-prohibited mutations; until M32 lands, the three seams ship as deny-stubs and the DocLens routes return `503 EXTRACTION_DISABLED` with `Retry-After: 0`), 36 (Secure Messaging & Alerts — typed alert payloads (`m22.document.render_failed`, `m22.extraction.review_required`, `m22.extraction.discrepancy_detected`, `extraction.sud_detected`, `m22.document.legal_hold_applied`, `document.retention_destruction_pending`); the M36 alert-rule catalog where M22 contributes 14 rule keys; the `extraction_reviewer_for_intake` resolver M22 registers with M36; the per-tenant channel-membership scope for the intake-review channel), 38 (Terminology — `TerminologyProvider` for code lookups during extraction (ICD-10, RxNorm, NDC, LOINC, SNOMED) so the extractor's per-type schemas can resolve human strings to canonical codes; the LOINC binding for medication-list documents; the SNOMED binding for advance-directive documents), 40 (MDM — `ExternalPhysicianReader` / `PharmacyReader` / `FacilityReader` / `ReferralSourceReader` for NPI-based resolution of names appearing in extracted documents to canonical M40 IDs; the `external_physician.nppes_synced_at` checked before binding extracted prescriber names to M40 entities; M40's MergeRequest workflow followed when DocLens proposes a new physician that may match an existing one; the `FacilityReader.findByMdmId` used to resolve the external source facility name on the discharge variant; the focused `BaaStatusProvider.baaStatusByMdmEntity` seam consumed by the signed-URL service before presigning any URL targeting an external partner, with the `MdmEntityProvider.baaStatus` call path preserved via the M40 compatibility shim).
 **Consumed by:** M5 (SUD-detected interim PrivacyFlag, amendment-denied → Statement of Disagreement round-trip), M6/M8/M11/M12/M13/M14/M15/M16/M17/M18/M23/M39 (form-render handshake back-refs), M36 (the `m22.document.rendered_critical_results` event for high-priority inbox push — per ADR-0024, M36 resolves recipients + dispatches), M28 (FHIR `DocumentReference` / `DiagnosticReport` projection of `m22.document.rendered`), M30 (HQRP AI-governance provenance signal), M31 (portal document list via `PortalDocumentReader`), M33 (reporting via `DocumentReader` / `IntakeMetricsProvider`).
 **Owns:** `apps/backend/src/modules/22-documents`, `packages/forms`, `packages/intake-extraction`, the canonical document spine, the form-render service, the DocLens patient-intake extraction pipeline, and the 17 tables enumerated in §13.
-**Spec status:** Re-locked v0.5 (Phase-5 remediation; supersedes Locked v0.4)
+**Spec status:** Re-locked v0.5 (Phase-5 remediation + ADR-0021 §20.B template sweep; supersedes Locked v0.4)
 
 > **Phase-5 remediation (2026-06-11; ADR-0020).** **M22 (BLOCKER):** the **print/mail vendor** and
 > the **fax/email document-ingest** surfaces are now in the Integration Catalog (inventory rows 29–30,
@@ -25,7 +25,16 @@ names (`document.status`, `document.retention_class`, …) are unchanged. (Prior
 > retention, and the manifest 22↔39 resolution (ADR-0006) — are Phase-6 reconciliation / already
 > ADR-pinned.)*
 
+> **ADR-0021 §20.B template sweep (2026-06-13).** Five template-gap findings addressed in this revision (F11, F14, F24, F25, F27). Out of scope: F10 (encryption design), F16/F19 (permission-catalog/vocab reconciliation — Batch 5). See §15 Open Questions for remaining items and §"End of Specification" for the complete finding inventory.
+> - **M22-F11** (SEC-051/052/038) — §164.524 bulk-export SEC-052 workflow added to §8.9.
+> - **M22-F14** (DR-010/064/070/073) — DR Tier 2 declaration, per-dependency degraded behavior, Weekly BCP Print feed, and post-recovery MinIO check added to §8.10.
+> - **M22-F24** (ARCH-003 §20.B / ARCH-262 / SD-052/059) — Open Questions §15 added; Idempotency-Key + pagination columns added to §4.1 route inventory; retry/backoff/DLQ columns added to §4.8 queue catalog; §9.2 authoring artifact ("Wait, narrowing the enum is tightening…") corrected.
+> - **M22-F25** (SEC-075 / ARCH-274) — §5.2.1 encrypted SQLCipher offline cache + logout eviction + FLAG_SECURE screen-capture protection added.
+> - **M22-F27** (ARCH-263 / SD-053) — Idempotency-Key column added to §4.1; "single-use" signed-URL claim corrected in §4.12 correction note and §1.3 table.
+
 ## Changelog
+
+- **v0.5 (Phase-5 remediation + ADR-0021 §20.B template sweep)** — Adds §8.9 (SEC-052 bulk-export controls), §8.10 (DR/BCP posture — Tier 2, degraded-mode, BCP Print feed, post-recovery check), §5.2.1 (mobile offline encrypted cache), §15 (Open Questions). Augments §4.1 route inventory with Idempotency-Key and Pagination columns. Augments §4.8 queue catalog with attempts/backoff/DLQ. Corrects §9.2 authoring artifact and §1.3/§4.12 single-use URL claim. No scope change; no decision reversals; F10/F16/F19 explicitly deferred.
 
 - **v0.4 (Consolidated)** — Rolls the v0.2 base and v0.3 delta into a single self-contained specification. No scope change; no decision reversals.
 
@@ -104,7 +113,7 @@ This list is binding. Every item here is owned by another module and reached via
 | HIPAA §164.524 — Right of Access | Patient/family on-request export | M22's `documents.export_phi_bundle` route generates a zip of patient-facing documents; gated by `documents.export_phi_bundle` permission + step-up; emits `document.phi_bundle_exported` audit event with hash manifest |
 | HIPAA §164.526 — Right to amend | Statement of disagreement attaches to disclosures | M22 renders the Statement of Disagreement; the document carries `attach_to_disclosures=true`; M28 + M22's outbound disclosure subsetter include the statement when disclosing the underlying record (D13) |
 | HIPAA §164.528 — Accounting of disclosures | Per-disclosure log queryable per patient | Every `documents.disclose` + `documents.download_url_issued` emits an audit event with recipient (or recipient class), patient, time, purpose; M4 owns the queryable accounting surface |
-| HIPAA §164.312(a) — Access controls | Unique user identification, automatic logoff, encryption | M2 session bound; signed URLs short-lived (≤60min) and single-use idempotency-keyed; AES-256 at rest in MinIO; per-tenant DEK envelope encryption on PHI-bearing version-content (cipher columns); TLS 1.3 transit |
+| HIPAA §164.312(a) — Access controls | Unique user identification, automatic logoff, encryption | M2 session bound; signed URLs short-lived (≤60min) — short TTL + per-URL audit trail is the primary access control (URLs are not single-use; see §4.12 correction note, M22-F27/ARCH-263/SD-053); AES-256 at rest in MinIO; per-tenant DEK envelope encryption on PHI-bearing version-content (cipher columns); TLS 1.3 transit |
 | HIPAA §164.312(b) — Audit controls | Every PHI access logged | M4 trigger on every M22 table; `auditRead()` on every document fetch route; signed-URL generation audited; download confirmation captured via MinIO access-log webhook (D17) |
 | HIPAA §164.316(b)(2) — Retention | 6+ year clinical record retention | `compliance` class = 7y default per M4 D1; `clinical_record` class anchored to patient lifecycle; `intake_artifact` class = original disposition + 7y if writeback occurred else original disposition + 30d, never less than the M4 `audit_event` retention for the corresponding disclosure events |
 | 42 CFR §418.104(a) — Clinical records authentication, completeness, retention | Immutable, attributed, timestamped, retained | Append-only `document_version`; original preserved; correction inserts a new version with `replaces_version_id`; the M4 audit trigger captures every state mutation; sha256 integrity on every byte payload |
@@ -1444,43 +1453,50 @@ VALUES
 
 ### 4.1 Route Inventory
 
-| Method | Path | Auth | Permission key | Purpose |
-|---|---|---|---|---|
-| POST | `/api/v1/documents` | session | `documents.upload` | upload new document (multipart); creates `document` + `document_version` v1 |
-| POST | `/api/v1/documents/:id/versions` | session | `documents.upload` | upload new version of existing document |
-| GET | `/api/v1/documents/:id` | session | `documents.read` | read document metadata + current version metadata |
-| GET | `/api/v1/documents/:id/versions` | session | `documents.read` | list version history |
-| GET | `/api/v1/documents/:id/versions/:versionId` | session | `documents.read` | read version metadata |
-| GET | `/api/v1/documents/:id/versions/:versionId/content` | session | `documents.read_phi_content` | mint signed URL + redirect (302) to MinIO |
-| GET | `/api/v1/documents` | session | `documents.read` | list (filtered by patient, aggregate_type, retention_class) |
-| PATCH | `/api/v1/documents/:id` | session | `documents.edit_metadata` | edit title, tags, patient_facing flag |
-| POST | `/api/v1/documents/:id/tags` | session | `documents.edit_metadata` | add tag |
-| DELETE | `/api/v1/documents/:id/tags/:tagId` | session | `documents.edit_metadata` | remove tag |
-| POST | `/api/v1/documents/:id/export-phi-bundle` | session + step-up | `documents.export_phi_bundle` | export zip of patient documents (§164.524 right of access) |
-| POST | `/api/v1/intake/uploads` | session | `intake.upload` | upload a new intake batch (PDF, multi-page, mixed-type); creates `intake_upload_batch` + initial document |
-| GET | `/api/v1/intake/uploads/:id` | session | `intake.read` | read batch metadata + pipeline status |
-| GET | `/api/v1/intake/uploads/:id/classification` | session | `intake.read` | read classifier output (classified_page list) |
-| POST | `/api/v1/intake/uploads/:id/classification/confirm` | session | `intake.confirm_classification` | human-confirm classifier results (may adjust page ranges) |
-| GET | `/api/v1/intake/uploads/:id/jobs` | session | `intake.read` | list extraction_jobs for the batch |
-| GET | `/api/v1/intake/jobs/:id` | session | `intake.read` | read job + candidates |
-| POST | `/api/v1/intake/uploads/:id/review` | session | `intake.review` | open extraction_review session (acquires lock) |
-| GET | `/api/v1/intake/reviews/:id` | session | `intake.review` | read review state (candidates + decisions so far) |
-| POST | `/api/v1/intake/reviews/:id/decisions` | session | `intake.review` | record per-candidate decision (approve/edit/reject) |
-| POST | `/api/v1/intake/reviews/:id/decisions:bulk-approve` | session | `intake.review` | bulk-approve low-risk candidates; rejected if any high-risk in scope |
-| POST | `/api/v1/intake/reviews/:id/discrepancies/:discrepancyId/resolve` | session | `intake.review` | resolve a discrepancy |
-| POST | `/api/v1/intake/reviews/:id/complete` | session | `intake.review` | attest and trigger writeback dispatcher |
-| POST | `/api/v1/intake/reviews/:id/abandon` | session | `intake.review` | release lock; decisions preserved |
-| POST | `/api/v1/intake/uploads/:id/discard` | session | `intake.discard_batch` | mark batch as non-actionable |
-| GET | `/api/v1/form-templates` | session | `documents.read_templates` | list all templates |
-| GET | `/api/v1/form-templates/:key` | session | `documents.read_templates` | read template + active version |
-| GET | `/api/v1/form-templates/:key/versions/:versionId` | session | `documents.read_templates` | read specific version |
-| POST | `/api/v1/admin/form-templates/:key/versions` | session + platform_admin | `documents.publish_template` | publish new version (platform-only) |
-| GET | `/api/v1/tenant-overlays` | session | `documents.read_templates` | list org's overlays |
-| PUT | `/api/v1/tenant-overlays/:templateKey` | session + step-up | `documents.manage_overlay` | publish overlay (golden-template diff enforced) |
-| GET | `/api/v1/admin/form-fills/:id` | session + platform_admin | `documents.admin_read_fills` | inspect a form fill record (debug) |
-| POST | `/api/v1/admin/form-fills/:id/retry` | session + platform_admin | `documents.admin_retry_render` | manually retry a failed render; audited as elevated |
+<!-- M22-F24 (ARCH-003 §20.B / ARCH-262 / SD-052): added Idempotency-Key and Pagination columns per ADR-0021 template requirements. -->
+<!-- M22-F27 (ARCH-263 / SD-053): Idempotency-Key column added; single-use URL claim removed (see §4.12 correction note). -->
+
+| Method | Path | Auth | Permission key | Idempotency-Key | Pagination | Purpose |
+|---|---|---|---|---|---|---|
+| POST | `/api/v1/documents` | session | `documents.upload` | `Idempotency-Key` header required; 24 h window; `409` on body mismatch (ARCH-263) | — | upload new document (multipart); creates `document` + `document_version` v1 |
+| POST | `/api/v1/documents/:id/versions` | session | `documents.upload` | `Idempotency-Key` header required | — | upload new version of existing document |
+| GET | `/api/v1/documents/:id` | session | `documents.read` | — | — | read document metadata + current version metadata |
+| GET | `/api/v1/documents/:id/versions` | session | `documents.read` | — | opaque cursor (`next_cursor` + `has_more`); SD-052 | list version history |
+| GET | `/api/v1/documents/:id/versions/:versionId` | session | `documents.read` | — | — | read version metadata |
+| GET | `/api/v1/documents/:id/versions/:versionId/content` | session | `documents.read_phi_content` | — | — | mint signed URL + redirect (302) to MinIO; short TTL + audit is the primary security control (see §4.12) |
+| GET | `/api/v1/documents` | session | `documents.read` | — | opaque cursor (`next_cursor` + `has_more`); SD-052 | list (filtered by patient, aggregate_type, retention_class) |
+| PATCH | `/api/v1/documents/:id` | session | `documents.edit_metadata` | `Idempotency-Key` header required | — | edit title, tags, patient_facing flag |
+| POST | `/api/v1/documents/:id/tags` | session | `documents.edit_metadata` | `Idempotency-Key` header required | — | add tag |
+| DELETE | `/api/v1/documents/:id/tags/:tagId` | session | `documents.edit_metadata` | `Idempotency-Key` header required | — | remove tag |
+| POST | `/api/v1/documents/:id/export-phi-bundle` | session + step-up | `documents.export_phi_bundle` | `Idempotency-Key` header required | — | §164.524 right-of-access bulk export; SEC-052 workflow applies (see §8.9) |
+| POST | `/api/v1/intake/uploads` | session | `intake.upload` | `Idempotency-Key` header required | — | upload a new intake batch (PDF, multi-page, mixed-type); creates `intake_upload_batch` + initial document |
+| GET | `/api/v1/intake/uploads/:id` | session | `intake.read` | — | — | read batch metadata + pipeline status |
+| GET | `/api/v1/intake/uploads/:id/classification` | session | `intake.read` | — | opaque cursor (`next_cursor` + `has_more`); SD-052 | read classifier output (classified_page list) |
+| POST | `/api/v1/intake/uploads/:id/classification/confirm` | session | `intake.confirm_classification` | `Idempotency-Key` header required | — | human-confirm classifier results (may adjust page ranges) |
+| GET | `/api/v1/intake/uploads/:id/jobs` | session | `intake.read` | — | opaque cursor (`next_cursor` + `has_more`); SD-052 | list extraction_jobs for the batch |
+| GET | `/api/v1/intake/jobs/:id` | session | `intake.read` | — | opaque cursor for candidates (`next_cursor` + `has_more`); SD-052 | read job + candidates |
+| POST | `/api/v1/intake/uploads/:id/review` | session | `intake.review` | `Idempotency-Key` header required | — | open extraction_review session (acquires lock) |
+| GET | `/api/v1/intake/reviews/:id` | session | `intake.review` | — | opaque cursor for decisions (`next_cursor` + `has_more`); SD-052 | read review state (candidates + decisions so far) |
+| POST | `/api/v1/intake/reviews/:id/decisions` | session | `intake.review` | `Idempotency-Key` header required | — | record per-candidate decision (approve/edit/reject) |
+| POST | `/api/v1/intake/reviews/:id/decisions:bulk-approve` | session | `intake.review` | `Idempotency-Key` header required | — | bulk-approve low-risk candidates; rejected if any high-risk in scope |
+| POST | `/api/v1/intake/reviews/:id/discrepancies/:discrepancyId/resolve` | session | `intake.review` | `Idempotency-Key` header required | — | resolve a discrepancy |
+| POST | `/api/v1/intake/reviews/:id/complete` | session | `intake.review` | `Idempotency-Key` header required | — | attest and trigger writeback dispatcher |
+| POST | `/api/v1/intake/reviews/:id/abandon` | session | `intake.review` | `Idempotency-Key` header required | — | release lock; decisions preserved |
+| POST | `/api/v1/intake/uploads/:id/discard` | session | `intake.discard_batch` | `Idempotency-Key` header required | — | mark batch as non-actionable |
+| GET | `/api/v1/form-templates` | session | `documents.read_templates` | — | opaque cursor (`next_cursor` + `has_more`); SD-052 | list all templates |
+| GET | `/api/v1/form-templates/:key` | session | `documents.read_templates` | — | — | read template + active version |
+| GET | `/api/v1/form-templates/:key/versions/:versionId` | session | `documents.read_templates` | — | — | read specific version |
+| POST | `/api/v1/admin/form-templates/:key/versions` | session + platform_admin | `documents.publish_template` | `Idempotency-Key` header required | — | publish new version (platform-only) |
+| GET | `/api/v1/tenant-overlays` | session | `documents.read_templates` | — | — | list org's overlays |
+| PUT | `/api/v1/tenant-overlays/:templateKey` | session + step-up | `documents.manage_overlay` | `Idempotency-Key` header required | — | publish overlay (golden-template diff enforced) |
+| GET | `/api/v1/admin/form-fills/:id` | session + platform_admin | `documents.admin_read_fills` | — | — | inspect a form fill record (debug) |
+| POST | `/api/v1/admin/form-fills/:id/retry` | session + platform_admin | `documents.admin_retry_render` | `Idempotency-Key` header required | — | manually retry a failed render; audited as elevated |
 
 All `/api/v1/admin/*` routes are audited as `audit.elevated_access` per M4 §6. All PHI-reading routes declare `requireReadAudit` so the M4 helper triggers a `<resource>.viewed` event automatically.
+
+> **Idempotency-Key semantics (M22-F24/F27 — ARCH-263).** Every mutating route (POST/PUT/PATCH/DELETE) requires the `Idempotency-Key` request header (UUID v4, client-generated). The M1 idempotency middleware deduplicates within a 24-hour window keyed on `(organizationId, membershipId, Idempotency-Key)`: a second request with the same key and identical body returns the stored response (`200`/`201`); a second request with the same key but a different body returns `409 IDEMPOTENCY_BODY_MISMATCH`. Absence of the header on a mutating route returns `400 IDEMPOTENCY_KEY_REQUIRED`.
+
+> **Cursor pagination (M22-F24 — SD-052).** All PHI list routes use opaque cursor pagination (`next_cursor` + `has_more`). Offset-based pagination is forbidden on PHI lists. The cursor encodes `(created_at DESC, id)` and is HMAC-signed to prevent manipulation. Default page size: 50. Maximum: 200.
 
 ### 4.2 Representative TypeBox Schemas
 
@@ -1829,19 +1845,21 @@ The `document_owner_or_caseload` predicate composes M5's `caseload_or_scope` pre
 
 ### 4.8 BullMQ Queue Catalog
 
-| Queue | Trigger | Work | Concurrency |
-|---|---|---|---|
-| `form-render` | `form_fill` row inserted (`status='queued'`) | render via react-pdf or Puppeteer adapter; store version; emit `m22.document.rendered` | 4 |
-| `forms-render-critical` | `m11.order.results_received_critical` consumed (D22) | render critical lab-results PDF at priority 1; 30s timeout; emit `m22.document.rendered` + `m22.document.rendered_critical_results` | 5 |
-| `docling-pass` | `intake_upload_batch.status='uploaded'` | call docling-worker; persist layout markdown + page coordinates | 2 |
-| `classifier-pass` | `docling_complete` | call `DocLensClassifier` per page; create `classified_page` rows | 4 |
-| `extraction-pass` | `classified_page` confirmed by human | call `DocLensExtractor` per page-range × document_type; create `extraction_candidate` rows | 4 |
-| `vision-verification` | candidate with `risk_level='high'` | call `DocLensVisionVerifier`; set `vision_verified`, `vision_disagreement` | 2 |
-| `discrepancy-detection` | extraction_job exits `verifying` | detect cross-source + chart-existing disagreements; create `extraction_discrepancy` rows; emit M36 alerts | 4 |
-| `chart-writeback-dispatch` | `extraction_review.complete` | emit one `m22.extraction.commit_requested` per approved candidate; insert `extraction_provenance` rows | 1 (sequential per review) |
-| `retention-rotation` | cron daily 03:00 org-TZ | scan `intake_artifact`-class documents past `disposition_at + 30d` with no writeback; promote-or-erase | 1 (per tenant) |
-| `ai-block-validator` | cron nightly 02:00 + boot-time | scan M32 prompt registry for any prompt template whose output schema includes a structured chart mutation; fail boot if found (D7) | 1 |
-| `minio-access-log-ingestor` | webhook from MinIO bucket-notification | append `document_access_log` row with `access_kind='signed_url_consumed'` | 8 |
+<!-- M22-F24 (SD-059 / DR-022 / ADR-0021): added attempts, backoff, and DLQ columns per §20.B template requirement. All consumers are idempotent (keyed on eventId × consumerName per D17). -->
+
+| Queue | Trigger | Work | Concurrency | Attempts | Backoff | DLQ |
+|---|---|---|---|---|---|---|
+| `form-render` | `form_fill` row inserted (`status='queued'`) | render via react-pdf or Puppeteer adapter; store version; emit `m22.document.rendered` | 4 | 3 | exponential 30 s / 2 min / 10 min | `form-render-dlq`; on DLQ entry set `form_fill.status='failed'` + emit `m22.document.render_failed`; M36 critical alert to org_admin + ops-on-call |
+| `forms-render-critical` | `m11.order.results_received_critical` consumed (D22) | render critical lab-results PDF at priority 1; 30 s timeout; emit `m22.document.rendered` + `m22.document.rendered_critical_results` | 5 | 2 | exponential 10 s / 60 s | `form-render-critical-dlq`; M36 critical alert immediately; ops paged |
+| `docling-pass` | `intake_upload_batch.status='uploaded'` | call docling-worker; persist layout markdown + page coordinates | 2 | 3 | exponential 60 s / 5 min / 20 min | `docling-pass-dlq`; set batch status `parse_failed`; M36 warn alert to intake supervisor |
+| `classifier-pass` | `docling_complete` | call `DocLensClassifier` per page; create `classified_page` rows | 4 | 3 | exponential 30 s / 2 min / 10 min | `classifier-pass-dlq`; mark pages as `classifier_failed`; M36 warn |
+| `extraction-pass` | `classified_page` confirmed by human | call `DocLensExtractor` per page-range × document_type; create `extraction_candidate` rows | 4 | 3 | exponential 60 s / 5 min / 20 min | `extraction-pass-dlq`; set `extraction_job.status='failed'`; M36 warn |
+| `vision-verification` | candidate with `risk_level='high'` | call `DocLensVisionVerifier`; set `vision_verified`, `vision_disagreement` | 2 | 3 | exponential 30 s / 2 min / 10 min | `vision-verification-dlq`; mark candidates `vision_failed`; reviewer sees warning badge; M36 warn |
+| `discrepancy-detection` | extraction_job exits `verifying` | detect cross-source + chart-existing disagreements; create `extraction_discrepancy` rows; emit M36 alerts | 4 | 3 | exponential 30 s / 2 min / 10 min | `discrepancy-detection-dlq`; batch halted at discrepancy stage; M36 warn |
+| `chart-writeback-dispatch` | `extraction_review.complete` | emit one `m22.extraction.commit_requested` per approved candidate; insert `extraction_provenance` rows | 1 (sequential per review) | 5 | exponential 10 s / 60 s / 5 min / 20 min / 60 min | `chart-writeback-dlq`; emit `m22.extraction.commit_failed`; M36 critical alert; provenance row marked `dispatch_failed` |
+| `retention-rotation` | cron daily 03:00 org-TZ | scan `intake_artifact`-class documents past `disposition_at + 30d` with no writeback; promote-or-erase | 1 (per tenant) | 2 | exponential 5 min / 30 min | `retention-rotation-dlq`; M36 warn to compliance_officer; document skipped that run |
+| `ai-block-validator` | cron nightly 02:00 + boot-time | scan M32 prompt registry for any prompt template whose output schema includes a structured chart mutation; fail boot if found (D7) | 1 | 1 | — | no DLQ; boot failure is the signal; ops paged |
+| `minio-access-log-ingestor` | webhook from MinIO bucket-notification | append `document_access_log` row with `access_kind='signed_url_consumed'` | 8 | 3 | exponential 10 s / 60 s / 5 min | `minio-access-log-dlq`; log entry dropped after DLQ; M36 warn — best-effort ingest; audit gap is acceptable for access-log only (not for write events) |
 
 ### 4.9 M36 Typed Alert Payloads
 
@@ -2174,6 +2192,8 @@ A separate consumer on `m6.discharge.cosigned` triggers the cosigned variant ren
 
 ### 4.12 M40 BaaStatusProvider — Signed-URL Service Update
 
+> **Signed-URL "single-use" correction (M22-F27 — ARCH-263 / SD-053).** Prior prose in §1.3 and the general spec described signed URLs as "single-use." That claim was inaccurate: MinIO presigned URLs are not single-use by default, and M22 does not implement a single-use redemption gate. The actual security posture is: **short TTL (≤5 min for non-portal, ≤60 min for portal) + mandatory per-URL audit event** (`document.download_url_issued` on mint; `document.download_url_consumed` on MinIO webhook). The combination of short TTL and audit trail is the primary access control — consistent with HIPAA §164.312(a). Implementing true single-use semantics (e.g., a Valkey token gate consumed on first MinIO access) is an open question (see §15). References to "single-use" elsewhere in this spec should be read as "short TTL + audit."
+
 M22's signed-URL service (§4.3) gates external-disclosure URL grants via a BAA check. The check calls the focused `BaaStatusProvider.baaStatusByMdmEntity(...)` with `asOf: new Date()`. The `documents.export_phi_bundle` route signature and behavior are unchanged. The M40 compatibility shim ensures any remaining `MdmEntityProvider.baaStatus(orgId, kind, id)` callers in M22 work without modification.
 
 For new disclosure paths (signing a URL targeting a partner-lab feed for results export), M22 calls the focused seam directly:
@@ -2234,6 +2254,8 @@ M22 ships three categories of UI: (a) **clinician-facing web surfaces** under `a
 
 ### 5.2 Screen Inventory (Mobile — Capacitor)
 
+<!-- M22-F25 (SEC-075 / ARCH-274 / ADR-0021): encrypted offline cache, logout eviction, and screen-capture protection added per §20.B template requirement. -->
+
 | Screen ID | Purpose | Primary roles |
 |---|---|---|
 | `DOC.Mobile.PatientDocuments` | Per-patient documents list (subset of categories — clinical, election, EVV); offline-cached up to 50 most-recent versions per patient | field clinicians |
@@ -2242,6 +2264,15 @@ M22 ships three categories of UI: (a) **clinician-facing web surfaces** under `a
 | `INTAKE.Mobile.UploadFromCamera` | Field-staff capture of a paper document at the patient's home (e.g. hospital discharge summary); uploads to intake batch tagged with the visit context | field nurses, RN case managers |
 
 Mobile surfaces never render the side-by-side DocLens review UI — reviews are clinical-desktop work. Mobile screens are list/upload/read-only.
+
+#### 5.2.1 Mobile Offline Encrypted Cache (M22-F25 — SEC-075 / ARCH-274)
+
+All PHI documents cached for offline use on the mobile app (Capacitor) are subject to the following controls:
+
+- **Encrypted storage.** Cached document metadata and signed-URL content are persisted in a **SQLCipher-encrypted SQLite database** (`packages/mobile/src/offline/db.ts`). The encryption key is derived from the authenticated user's device-bound credential (Capacitor Secure Storage — iOS Keychain / Android Keystore). Plaintext SQLite or IndexedDB is prohibited for any PHI-bearing offline data (SEC-075 / ADR-0021).
+- **Cache scope.** Up to 50 most-recent document versions per patient per field clinician are eligible for offline cache. Documents tagged `retain_offline=false` (e.g., `compliance_42cfr_part2`-class lab results with SUD content) are excluded from the offline cache regardless of access pattern.
+- **Logout eviction.** On session logout or session expiry, the offline cache is **fully wiped**: the SQLCipher key is deleted from Keychain/Keystore and the encrypted database file is deleted from the device. The wipe runs before the logout confirmation screen clears. A background-app termination while logout is in progress re-attempts the wipe on next foreground.
+- **Screen-capture protection.** Every screen that renders a cached PHI document applies `FLAG_SECURE` (Android) and the equivalent `UIScreen.main.isCaptured` gate (iOS) to prevent screen recording, screenshots, and AirPlay mirroring of document content (SEC-075). The Capacitor plugin `@wardenx/capacitor-secure-screen` implements this across both platforms.
 
 ### 5.3 Screen Inventory (Portal — M31 forward-seam)
 
@@ -2806,6 +2837,102 @@ m22_baa_gate_blocked_total                        labels: kind, status (from Baa
 
 A baseline integration test in §9 verifies, for each table M22 owns: with two tenants A and B and one user per tenant, user A cannot SELECT, INSERT, UPDATE, or DELETE any row owned by tenant B, even with crafted IDs. Tests run with the actual JIT RLS context the API uses (not bypassed via superuser).
 
+### 8.9 §164.524 Bulk-Export Controls (M22-F11 — SEC-051 / SEC-052 / SEC-038)
+
+The `POST /api/v1/documents/:id/export-phi-bundle` route implements the HIPAA §164.524 right-of-access export. Per SEC-052 and ADR-0021, every invocation of this route is subject to the following controls:
+
+1. **Per-export justification capture.** The request body must include a `justification` field (free text, 20–2000 characters) explaining the reason for the export (e.g., "Patient request for records per §164.524 submitted 2026-06-12 by guardian"). The justification is stored on the `phi_bundle_export` audit row and included in the `m22.phi_bundle.exported` outbox event payload (SEC-051).
+
+2. **Approver capture.** The request body must include `approverMembershipId` — the membership ID of a `compliance_officer` or `org_admin` who approved the export. The route validates that the referenced membership holds an eligible role. The approver's identity is stored on the audit row and the outbox event (SEC-038 — dual-party oversight for PHI bundle exports).
+
+3. **Rate limit: 1 export per user per hour.** The route enforces a Valkey-backed per-user rate limit: `phi_export:ratelimit:{membershipId}` with a 1-hour TTL. A second attempt within the window returns `429 EXPORT_RATE_LIMIT_EXCEEDED` with a `Retry-After` header indicating seconds until the window resets. The rate limit applies to the initiating membership, not the approver (SEC-052).
+
+4. **10,000-record cap.** The route counts the documents matching the export scope (patient, date range, aggregate_type filters). If the count exceeds 10,000, the request is rejected with `422 EXPORT_RECORD_CAP_EXCEEDED` and `{ count, cap: 10000 }`. Exports exceeding 10k records require an elevated approval path (currently manual — ops must trigger a capped-split export; this is the out-of-band approval noted in ADR-0021) (SEC-052).
+
+5. **Encrypted storage under `exports/` prefix.** The generated zip is stored in MinIO under the tenant bucket's `exports/{exportId}/phi_bundle_{exportId}.zip` prefix — separate from the `documents/` prefix — with SSE-KMS encryption and a bucket lifecycle rule that deletes the object after 7 days. The object key is never surfaced in filenames or error messages (SEC-052 / D11 free-text PHI denylist).
+
+6. **24-hour signed URL.** The route returns a presigned MinIO URL with a 24-hour TTL pointing at the export zip. This URL is the only access path; no download is streamed directly from the route. The URL is included in the `m22.phi_bundle.exported` outbox event so M36 can include it in the notification. The 24-hour TTL is distinct from the standard signed-URL 5/60-min cap (which applies to per-document URLs, not to §164.524 bundle exports) (SEC-052).
+
+7. **7-day auto-delete.** The MinIO lifecycle rule on the `exports/` prefix deletes objects 7 days after creation. After deletion, the audit row and outbox event remain (both are `compliance`-class retention) but the zip bytes are gone. The `m22.phi_bundle.exported` event payload includes the `sha256` of the zip at creation time so auditors can verify the export content against any copy the recipient retained (SEC-052).
+
+8. **Audit record per export.** Every export writes a `document_access_log` row with `access_kind='disclosure_export'`, `purpose='patient_access'`, `correlationId`, `justification` (stored encrypted), `approverMembershipId`, and `exportBundleId`. The `m22.phi_bundle.exported` outbox event carries the same payload and triggers a `warn`-severity M36 alert to `compliance_officer + privacy_officer` (per §4.9 existing catalog entry).
+
+**Schema addition (no new table; augments the export route's request/response TypeBox schemas):**
+
+```typescript
+// routes/schemas/export-phi-bundle.ts
+export const ExportPhiBundleRequest = Type.Object({
+  justification: Type.String({ minLength: 20, maxLength: 2000 }),
+  approverMembershipId: Type.String({ format: 'uuid' }),
+  scope: Type.Object({
+    patientId: Type.String({ format: 'uuid' }),
+    aggregateTypes: Type.Optional(Type.Array(Type.String())),
+    fromDate: Type.Optional(Type.String({ format: 'date' })),
+    toDate: Type.Optional(Type.String({ format: 'date' })),
+  }),
+})
+
+export const ExportPhiBundleResponse = Type.Object({
+  exportId: Type.String({ format: 'uuid' }),
+  downloadUrl: Type.String({ format: 'uri' }),       // 24 h presigned URL
+  expiresAt: Type.String({ format: 'date-time' }),   // +24 h from now
+  documentCount: Type.Integer(),
+  sha256: Type.String(),                             // sha256 of zip bytes
+  autoDeleteAt: Type.String({ format: 'date-time' }),// +7 d from now
+})
+// Errors: 422 EXPORT_RECORD_CAP_EXCEEDED; 429 EXPORT_RATE_LIMIT_EXCEEDED;
+//         422 APPROVER_NOT_ELIGIBLE; 400 JUSTIFICATION_TOO_SHORT
+```
+
+### 8.10 Disaster Recovery / Business Continuity (M22-F14 — DR-010 / DR-064 / DR-070 / DR-073)
+
+#### 8.10.1 DR Tier Declaration
+
+M22 — Document Management is declared **DR Tier 2** (per DR/BCP v0.1 §3 service-tier table):
+
+| Attribute | Value |
+|---|---|
+| DR Tier | **2 — Clinical operations** |
+| Internal RTO | 4 hours |
+| Internal RPO | 15 minutes |
+| Customer SLA RTO | 8 hours |
+| Customer SLA RPO | 1 hour |
+| Rationale | Document rendering and retrieval are required for clinical workflow continuity (election statement signing, discharge summary rendering, discharge orders, lab results delivery). A prolonged M22 outage blocks form-signing across all source modules. However, M22 does not carry immediate patient-safety data in real time (medication administration is M13/M12, which have their own Tier-2 classifications) — hence Tier 2, not Tier 1. |
+
+#### 8.10.2 Degraded-Mode Behavior by Dependency
+
+When an upstream dependency is unavailable, M22 degrades gracefully rather than failing completely:
+
+| Dependency | Degraded behavior when down |
+|---|---|
+| **MinIO** | Document uploads fail with `503 STORAGE_UNAVAILABLE`; render workers pause and re-queue at 60-second intervals (max 3 attempts before DLQ); signed-URL generation fails with `503`; existing audit rows are unaffected (Postgres-only); field clinicians see "Document storage temporarily unavailable — retry in a few minutes" on mobile and web. Renders already queued in BullMQ are preserved and will process when MinIO recovers. |
+| **Docling** (intake extraction stage 1) | Intake pipeline halts at `docling_complete` stage; `intake_upload_batch.status` stays `uploaded`; M36 alert dispatched to intake supervisor; document upload and form rendering are unaffected (Docling is only used for DocLens — Pillar 3). |
+| **M32 (DocLens AI capabilities)** | DocLens classifier, extractor, and vision verifier seams return deny-stub responses; new extraction jobs queue with `status='awaiting_capability'`; reviewer queue shows "AI extraction temporarily unavailable"; manual document upload and form rendering (Pillars 1 and 2) are fully operational. |
+| **M36 (alerts)** | M22 alert emissions are non-blocking; if M36 is unreachable, alert payloads are written to the M1 outbox and delivered when M36 recovers (outbox durability). Document operations proceed normally. |
+| **M40 (BaaStatusProvider)** | External-partner signed URL generation is blocked (BAA gate cannot be confirmed); non-partner signed URLs (internal clinician access) are unaffected. New render jobs for external-source discharge variants are queued and processed when M40 recovers. |
+| **Valkey** (BullMQ + rate-limit) | BullMQ workers reconnect with exponential backoff (M1 Valkey client); pending jobs are durable on Valkey AOF. Export rate-limit gate fails open with a warn log (allowing the export rather than blocking patient access). Signed-URL 5-second dedup window is skipped; each request mints a new URL (slightly higher audit volume). |
+
+#### 8.10.3 Weekly BCP Print Feed (DR-070)
+
+M22 is a contributor to the **Weekly BCP Print** job defined in DR/BCP v0.1 §11.6. The following M22-rendered documents are included in the per-patient weekly print pack:
+
+- **Code-status directive** (`code_status_directive` template) — the current active code-status PDF rendered when M5/M7 last updated the patient's code status.
+- **Advance directive / POLST / MOLST** — the most-recent `advance_directive` document stored in M22 for the patient (if present; rendered from DocLens intake or sourced from M5 upload).
+- **DPOA document** — the most-recent `dpoa` document stored in M22 for the patient (if present).
+
+The BCP print job is a scheduled BullMQ task (`bcp-print-weekly`, runs Sunday 02:00 org-TZ) that calls `DocumentReader.documentsForPatient` with `aggregateType` filters for the three above types, mints a 24-hour signed URL per document, and delivers the URLs to the tenant's BCP print endpoint (email/FTP per tenant configuration). No new table is needed — this is a reader-seam query plus signed-URL mint. The BCP print job is registered in M1's cron registry and logged in M4 audit with `purpose='operations'`.
+
+#### 8.10.4 Post-Recovery MinIO Check (DR-043)
+
+After M22 returns from a DR failover or a MinIO outage, the following post-recovery checks must pass before M22 is declared operational:
+
+1. **MinIO upload smoke test.** Upload a 1 KB synthetic object to `tenant-{tenantId}/healthcheck/post-recovery.bin` for each active tenant. Verify the object is readable via a presigned URL. Delete the object. This verifies SSE-KMS is operational and per-tenant IAM policies are intact.
+2. **MinIO download smoke test.** Fetch the most-recent `document_version.minio_object_key` per active tenant via a presigned URL. Verify the response has the expected `Content-Type` and `Content-Length`. This verifies replication has caught up and no objects were lost during the outage window.
+3. **Render queue drain check.** Verify the `form-render` and `forms-render-critical` BullMQ queues have no jobs stuck in `active` state for more than 5 minutes (indicates a zombie worker from before the outage). If found, drain and re-enqueue.
+4. **DLQ inspection.** Inspect all M22 DLQs (§4.8) for entries that landed during the outage. Ops manually reviews and re-enqueues eligible jobs; DLQ entries that cannot be re-processed are documented in the post-incident report.
+
+These checks are codified in `scripts/m22-post-recovery-check.ts` and run automatically by the DR runbook (`RUNBOOK_M22.md` §DR-Recovery) after the platform-level post-recovery checklist (DR/BCP §7 — which already includes the generic MinIO upload/download check at step DR-043).
+
 -----
 ## 9. Test Plan
 
@@ -2840,8 +2967,7 @@ A baseline integration test in §9 verifies, for each table M22 owns: with two t
 
 **`apps/backend/src/modules/22-documents/policies/overlay-diff.test.ts`** (D16 validator)
 - Overlay that drops a required field → rejected with field-level error.
-- Overlay that narrows an enum (`['M','F','U']` → `['M','F']`) → rejected with widening-detection.
-- Wait, narrowing the enum is tightening — verify the test asserts the opposite direction (widening the enum is the loosening case).
+- Overlay that widens an enum (`['M','F']` → `['M','F','U','X']`) → rejected with widening-detection (widening is loosening; narrowing is tightening and is permitted).
 - Overlay that adds a custom logo (no constraint change) → accepted.
 - Overlay that tightens date format → accepted.
 
@@ -3480,13 +3606,30 @@ This patch must be reviewed and applied as the first M22 PR. Subsequent M22 PRs 
 
 -----
 
+## 15. Open Questions
+
+<!-- M22-F24 (ARCH-003 §20.B / ADR-0021): Open Questions section added per §20.B template requirement. -->
+
+This section tracks unresolved design questions for M22. Each item is an architectural decision that has not yet been resolved; it may be raised as a new ADR or resolved in a subsequent spec revision. Items are annotated with the finding ID that surfaced them and the authority requiring resolution.
+
+| # | Question | Authority | Status | Notes |
+|---|---|---|---|---|
+| OQ-1 | **True single-use signed URL gate.** Should M22 implement a Valkey-backed single-use token gate (consume token on first MinIO presign-URL access, reject reuse) in addition to short TTL? The current posture (short TTL + audit) satisfies HIPAA §164.312(a) but does not prevent URL forwarding within the TTL window. | ARCH-263 / SD-053 / M22-F27 | Open | Implementing true single-use semantics adds a per-URL Valkey check on every PDF access; at high MinIO-webhook volume this may become a latency concern. Evaluate against §9.5 signed-URL p95 budget (200 ms). |
+| OQ-2 | **Export rate-limit fail-open vs. fail-closed when Valkey is unavailable.** §8.9 currently specifies fail-open (allow the export with a warn log) when Valkey is unreachable during rate-limit enforcement. This means a Valkey outage window could allow burst exports. Should this be fail-closed instead? | SEC-052 / M22-F11 | Open | Fail-closed blocks legitimate §164.524 patient-access requests during a Valkey outage (a HIPAA access-right concern). Fail-open is the current choice; revisit when Valkey HA topology is finalized. |
+| OQ-3 | **BCP Print job — code-status/AD/DPOA document freshness threshold.** The weekly BCP print job (§8.10.3) renders the most-recent documents of each type. If a patient's advance directive was uploaded 18 months ago and has not changed, should the print job still include it, or only include documents updated within a configurable freshness window? | DR-070 / M22-F14 | Open | Including stale documents is safer for the paper-binder BCP use case (the binder is the source of truth during outage). However, reprinting an 18-month-old document that may have been superseded by a new intake-uploaded version could confuse field staff. Recommend freshness flag on the template; default = include always. |
+| OQ-4 | **PHI bundle export >10k — elevated approval path.** §8.9 specifies that exports exceeding 10,000 records are rejected with `422 EXPORT_RECORD_CAP_EXCEEDED` and require an "out-of-band ops manual process." This out-of-band path is not specified in the current spec. Should a `documents.export_phi_bundle_elevated` permission + a `POST /api/v1/admin/documents/export-phi-bundle-elevated` route be added for ops-level large exports? | SEC-052 / M22-F11 | Open | Out of scope for v0.5. The expected frequency of >10k exports is very low (large agencies with long patient histories). Deferring to Phase 7. |
+| OQ-5 | **Mobile offline cache eviction on DEK rotation.** If a tenant's per-tenant DEK is rotated (key rotation event from M1 KMS), the mobile offline SQLCipher database key (derived from device credential, not directly from the tenant DEK) is unaffected. However, cached document bytes in MinIO objects are re-encrypted under the new DEK; the cached presigned URLs would now serve objects the device cannot decrypt with the old object-level key (SSE-KMS). What is the eviction / re-cache strategy on DEK rotation? | SEC-075 / ARCH-274 / M22-F25 | Open | One approach: on DEK rotation, push a silent push notification to all field-clinician devices telling the mobile app to evict and re-download the cache. This requires M36 → M22 mobile push integration. Deferred to Phase 6. |
+
+---
+
 ## End of Specification
 
-**Document version:** v0.4 (Consolidated)
+**Document version:** v0.5 (Phase-5 remediation + ADR-0021 §20.B template sweep)
 **Module:** 22 — Document Management
 **Authors:** WardenX Architecture Team (Fabrice V. Adjam, FabWebDev)
-**Date:** 2026-06-10
-**Status:** Locked v0.4 (Consolidated) — rolls the v0.2 base and v0.3 delta into one self-contained specification
+**Date:** 2026-06-13
+**Status:** Re-locked v0.5 (Phase-5 remediation; supersedes Locked v0.4)
+**Findings addressed in v0.5:** M22-F11 (SEC-051/052/038 bulk-export controls), M22-F14 (DR Tier 2 + DR/BCP posture), M22-F24 (ARCH-003 §20.B template sections — Open Questions, idempotency/pagination columns, queue DLQ/retry, §9.2 authoring artifact removed), M22-F25 (SEC-075/ARCH-274 mobile offline encrypted cache), M22-F27 (ARCH-263/SD-053 Idempotency-Key column + single-use URL correction). Out of scope for v0.5: F10 (encryption design), F16/F19 (permission-catalog/vocab reconciliation — Batch 5).
 **Decisions in force:** D1 through D23 (23 total)
 **Owned tables:** 17 (document, document_version, document_tag, document_access_log, document_legal_hold, form_template, form_template_version, tenant_template_overlay, form_fill, intake_upload_batch, classified_page, extraction_job, extraction_candidate, extraction_discrepancy, extraction_review, extraction_decision, extraction_provenance)
 **Form templates:** 31 (28 base + lab_results_pdf, discharge_summary_v2_external_source, discharge_summary_v2_external_source_cosigned)
@@ -3494,4 +3637,5 @@ This patch must be reviewed and applied as the first M22 PR. Subsequent M22 PRs 
 **Outbox events published:** 28 (including `m22.document.rendered_critical_results`)
 **Implementation tasks:** Phases A–E plus Phase F (T-M22-27 through T-M22-30)
 **Migrations:** `0022_documents.sql`, `0037_m22_v03_new_form_templates.sql`
+**Open questions:** OQ-1 through OQ-5 (§15)
 **Sibling specs locked at same caliber:** M1, M2, M3, M4, M5, M6, M7, M8, M9, M10, M11, M12, M14, M15 (referenced), M16, M17, M18, M19, M20, M36, M38, M40

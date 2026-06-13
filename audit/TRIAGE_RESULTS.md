@@ -196,7 +196,9 @@ each module's real routes/queues/threats — to **6 modules**:
 - **M18** (F10 DR Tier 1, F11 idempotency, F14 §8 audit + queue DLQ, F16 OOB-payload)
 - **M19** (F08 DR Tier 1 + BCP re-entry + boot-refusal removal, F12 queue + single cadence, F15 STRIDE + cursor + audit catalog)
 **Wave 2** added them to **6 more modules**: **M03** (STRIDE F08, queue+retention F11), **M15** (cursor+queue+alert-as-code F10, STRIDE+DR-Tier-2+fail-closed gates F11), **M16** (queue F07, STRIDE+authz F08, DR-Tier-3+cron-catch-up+coverage F15), **M20** (DR-Tier-1 SOS path F09, §8 Audit&Observability F15), **M26** (idempotency F08, DR-Tier-3 F11, queue-DLQ+cron-tz F17), **M30** (idempotency F05, cursor F06, DR-Tier-3-correction F07, queue-DLQ+V-8-fix F17, degraded-mode F18, RLS-tests F20 — NOT the F03 state-machine BLOCKER).
-Remaining Batch-2 modules (wave 3): M10, M22, M34, M35, M36, M39.
+**Wave 3** completed the final **6 modules**: **M10** (queue-DLQ F10, alert-PHI F13, adapter-resilience+envelope F17, BCP+sqlcipher+SFV-severity F19), **M22** (SEC-052 export F11, DR/BCP+Weekly-BCP-Print F14, template-sections F24, sqlcipher F25, idempotency+URL-claim F27), **M34** (DSAR-24h-URL+SEC-052 F06, two-phase-migration F16, RLS-tests F17), **M35** (queue-DLQ F07, idempotency F08, error-envelope+IDOR F09, DR-Tier-3 F10, Valkey-DB F14, alerts-YAML F17, DR/INT-obligations F18), **M36** (retention-tombstone F02, body_sha256 F03, STRIDE F09, queue-params F12, webhook-replay F13), **M39** (ABAC-attrs F11, draft-TTL F13, cursor F14, batch-eval-audit F15).
+
+**Batch 2 COMPLETE — all 18 modules have their §20.B template sections; `arch:fitness` green.** Out-of-band items deliberately left for their tracks (M10-F12 SECURITY DEFINER, M36-F07 TCPA, AI-lifecycle gates, M22-F10 encryption).
 
 ### Batch 3b — strip invented ModuleDef fields (2026-06-13) ✅ applied, `arch:fitness` green
 

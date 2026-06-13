@@ -29,7 +29,9 @@ the illegal DDL is removed. The spec now passes `arch:fitness` (checks 10/12).
 | **M36-F07** | MAJOR | **TCPA / SMS opt-out (S14):** a Twilio **inbound-message webhook** handles STOP/START/HELP; `opted_out_at` on `delivery_endpoint` with **dispatcher suppression + audit**; consent text required at SMS endpoint registration; carrier opt-out semantics documented in INT §6.12. |
 | **M36-F08** | MAJOR | The four AI features (response drafts, urgency triage, thread summarization, auto-categorization) **register in M32's capability catalog** with risk classes (urgency triage = High — HITL + deterministic fallback + clinical review), `ai.<cap>_kill` switches, per-clinician opt-out, "Report this output", prompt-template versioning, and **thread-content PHI minimization / local-backend default** (ADR-0012). Default-off ≠ ungated. |
 | **M36-F09** | MAJOR | Vendor SDKs (`twilio`/`postmark`/`web-push`) confined to **`packages/messaging`** sub-paths per the manifest `VENDOR_ADAPTERS` (the standalone `<vendor>-client` packages dropped, DC-1 resolved on the manifest side); **STRIDE threat model** added (spoofed webhooks, PHI exfil via notification payloads, room-membership tampering, presence info-disclosure, alert-suppression DoS, cross-tenant DM). |
-| M36-F10..F14 | MINOR | Push-token 90-day-from-last-success TTL (ADR/§24.1); portal-view **watermark** + immediate M39-revocation channel-sync (ARCH-185/190); per-queue retry/backoff/concurrency/DLQ + deterministic job IDs (SD-059); webhook 5-min replay window + Postmark verification aligned (SD-056); legal-hold skip on retention scans, M19 `OnCallProvider` **deny-stub for Phase-1 boot**, dispatch namespace guard, user-scoped-pattern documentation. |
+| M36-F10..F11, F14 | MINOR | Push-token 90-day-from-last-success TTL (ADR/§24.1); portal-view **watermark** + immediate M39-revocation channel-sync (ARCH-185/190); legal-hold skip on retention scans, M19 `OnCallProvider` **deny-stub for Phase-1 boot**, dispatch namespace guard, user-scoped-pattern documentation. |
+| **M36-F12** | MINOR | **Full BullMQ queue parameters:** priority / attempts / backoff / concurrency / DLQ name for every M36 queue declared in §4.4.1 (SD-059/060, ARCH-262, OPS-035); DLQ document-before-clear protocol; `m36.dlq_job` audit event per DLQ landing. |
+| **M36-F13** | MINOR | **Webhook replay window + Postmark verify:** 5-minute `assertReplayWindow` guard on all three webhook handlers (§4.9.1, SD-056); Postmark verification aligned to SD-056/INT-016 (DNS IP-allowlist + bearer token, both required — §4.9.2); `REPLAY_WINDOW_EXPIRED` / `INVALID_SIGNATURE` / `FORBIDDEN_SOURCE` error codes documented. |
 
 **Net:** the BLOCKER (cycles) is cleared, the two subsystems are one, the migration-breaking duplicate
 enum and the illegal CHECK subquery are fixed (CI-verifiable), and tenancy/retention/TCPA are
@@ -345,11 +347,11 @@ stateDiagram-v2
 
 ```mermaid
 stateDiagram-v2
-    [*] --> sent: author posts; body_cipher written; receipts seeded for current members
-    sent --> edited: author edits within edit window (default 5 min); audit retained
-    sent --> deleted: author deletes; body_cipher zeroed; deleted_at set; tombstone visible
+    [*] --> sent: author posts; body_cipher written; body_sha256 stored; receipts seeded for current members
+    sent --> edited: author edits within edit window (default 5 min); audit retained; new body_sha256 stored
+    sent --> deleted: author deletes; status=deleted; deleted_at set; tombstone visible to members\n(M36-F02 / ADR-0004 / ARCH-185: body_cipher RETAINED until retention expiry for clinical-channel\ncontent — cipher zeroing is forbidden before the 6-yr window closes; §164.530(j) record integrity)
     edited --> deleted: same
-    deleted --> [*]: at retention expiry, full row destroyed (with channel)
+    deleted --> [*]: at retention expiry, full row destroyed (with channel); M4 destruction certificate filed
 ```
 
 #### 2.4.3 Alert
@@ -446,7 +448,7 @@ packages/messaging/
 │   │   ├── send.ts                     # write message; seed receipts; encrypt body
 │   │   ├── read.ts                     # decrypt; mark receipts; emit message.read
 │   │   ├── edit.ts                     # edit within window; audit
-│   │   └── delete.ts                   # tombstone + zero body_cipher
+│   │   └── delete.ts                   # tombstone: set status=deleted + deleted_at; body_cipher RETAINED (M36-F02/ADR-0004)
 │   ├── presence/
 │   │   ├── tracker.ts                  # Socket.IO connect/disconnect → presence
 │   │   └── room-membership.ts          # compute Socket.IO room joins from channel_member at connect
@@ -565,13 +567,18 @@ export const channels = pgTable('channel', {
   uniqueSubject: uniqueIndex('channel_unique_subject')
     .on(t.organizationId, t.channelKind, t.subjectId)
     .where(sql`subject_id IS NOT NULL AND channel_kind IN ('care_team','on_call','bereavement','location','discipline')`),
+  // M36-F02 / ADR-0004 / ARCH-185: retention classes corrected.
+  // `dm` was incorrectly mapped to 'operational'; clinician DMs routinely discuss patients and are
+  // clinical communication (6+ yr).  The ELSE branch (discipline/location/on_call) is also
+  // 'care_related' for the same reason — shift-handoff and after-hours coordination is survey-
+  // relevant.  Only the non-clinical tenant-wide `announcement` channel stays 'operational'.
   kindSubjectShape: check('channel_kind_subject_shape', sql`
     CASE channel_kind
-      WHEN 'care_team' THEN subject_id IS NOT NULL AND retention_class = 'care_related'
-      WHEN 'bereavement' THEN subject_id IS NOT NULL AND retention_class = 'bereavement' AND archives_at IS NOT NULL
-      WHEN 'dm' THEN subject_id IS NULL AND retention_class = 'operational'
-      WHEN 'announcement' THEN subject_id IS NULL AND retention_class = 'operational'
-      ELSE subject_id IS NOT NULL AND retention_class = 'operational'
+      WHEN 'care_team'    THEN subject_id IS NOT NULL AND retention_class = 'care_related'
+      WHEN 'bereavement'  THEN subject_id IS NOT NULL AND retention_class = 'bereavement' AND archives_at IS NOT NULL
+      WHEN 'dm'           THEN subject_id IS NULL     AND retention_class = 'care_related'
+      WHEN 'announcement' THEN subject_id IS NULL     AND retention_class = 'operational'
+      ELSE                     subject_id IS NOT NULL AND retention_class = 'care_related'
     END
   `),
 }))
@@ -614,6 +621,14 @@ export const messages = pgTable('message', {
   bodyCipher: customType<{ data: Buffer }>({
     dataType() { return 'bytea' },
   })('body_cipher').notNull(),                          // envelope-encrypted under tenant DEK
+  // M36-F03 / ARCH-206 / ARCH-240 (HIPAA §164.312(c) integrity):
+  // SHA-256 of the plaintext body, computed PRE-ENCRYPTION at write time and re-computed on edit.
+  // Stored as hex TEXT (64 chars).  The scheduled hash-verification job (§4.4) decrypts each
+  // body_cipher and asserts the resulting SHA-256 matches body_sha256; mismatches are written to
+  // the M4 audit log as `m36.integrity.hash_mismatch` (compliance-class) and paged to ops.
+  // body_sha256 is intentionally NOT zeroed on author delete — the cipher is retained (M36-F02 /
+  // ADR-0004) and the hash lets the verification job confirm integrity during the retention window.
+  bodySha256: text('body_sha256').notNull(),            // hex SHA-256 of plaintext pre-encryption
   bodyKind: messageBodyKind('body_kind').notNull().default('plain'),
   parentMessageId: uuid('parent_message_id').references((): any => messages.id),
   quotedMessageId: uuid('quoted_message_id').references((): any => messages.id),
@@ -628,13 +643,36 @@ export const messages = pgTable('message', {
   byParentIdx: index('message_parent_idx').on(t.parentMessageId).where(sql`parent_message_id IS NOT NULL`),
   authorShape: check('message_author_shape',
     sql`(author_kind = 'user') = (author_user_id IS NOT NULL)`),
+  // M36-F02: body_cipher is NEVER zeroed on 'deleted'; the tombstone merely flips status + sets
+  // deleted_at.  Cipher zeroing before retention expiry would violate §164.530(j) for clinical
+  // channel content.  The statusShape constraint does not mandate cipher absence on delete.
   statusShape: check('message_status_shape', sql`
     (status = 'edited') = (edited_at IS NOT NULL)
     AND (status = 'deleted') = (deleted_at IS NOT NULL)
   `),
+  // M36-F03: body_sha256 must be a valid hex string (64 lowercase hex chars = SHA-256)
+  sha256Shape: check('message_sha256_shape',
+    sql`body_sha256 ~ '^[0-9a-f]{64}$'`),
 }))
 
-// message-attachments.ts
+// message-attachments.ts — see also §3.4.1 for body_sha256 migration note
+
+// §3.4.1  Message-body integrity hash — migration note (M36-F03 / ARCH-206 / ARCH-240)
+//
+// The `body_sha256` TEXT column is added in migration `0036_messaging` alongside the table
+// creation.  On INSERT (send) and each UPDATE where `body_cipher` changes (edit), the application
+// layer computes SHA-256(plaintext_body) as a 64-char lowercase hex string BEFORE encryption and
+// writes it atomically in the same INSERT/UPDATE statement.  The column is NEVER nullable:
+//
+//   ALTER TABLE message ADD COLUMN body_sha256 TEXT NOT NULL CHECK (body_sha256 ~ '^[0-9a-f]{64}$');
+//
+// Author "delete" (status = 'deleted') does NOT change body_sha256 — the hash still anchors
+// the retained cipher to its original plaintext for the retention period (M36-F02 / ADR-0004).
+//
+// Audit actions registered in M4's audit-action-catalog for this feature:
+//   m36.integrity.hash_mismatch  — compliance-class; emitted by hash_verify job on cipher/hash divergence
+//   m36.hash_verify.run          — operational-class; summary of each nightly run { scanned, matched, mismatched, skipped_deleted_tenant }
+
 export const messageAttachments = pgTable('message_attachment', {
   id: uuid('id').primaryKey().defaultRandom(),
   messageId: uuid('message_id').notNull()
@@ -1581,8 +1619,12 @@ export const tenantNotificationTemplateOverlay = pgTable('tenant_notification_te
 ```typescript
 // Body (Twilio form): MessageSid, MessageStatus, ErrorCode?
 // 200 -> { ok: true }
-//   Verifies X-Twilio-Signature; idempotent on MessageSid; updates notification_delivery.status.
+//   M36-F13 / SD-056: Verifies X-Twilio-Signature (HMAC-SHA1 per Twilio docs, using the
+//   configured Twilio Auth Token); rejects requests whose Timestamp header falls outside the
+//   ±5-minute replay window (see §4.9 — Webhook Security).
+//   Idempotent on MessageSid; updates notification_delivery.status.
 // 401 INVALID_SIGNATURE
+// 400 REPLAY_WINDOW_EXPIRED (timestamp outside ±5 min)
 ```
 
 ### 4.3 Socket.IO — Event & Room Contract
@@ -1638,9 +1680,30 @@ export const tenantNotificationTemplateOverlay = pgTable('tenant_notification_te
 | `messaging.send_email` | per delivery | Postmark via adapter |
 | `messaging.channel_sync` | scheduled (5 min) + on M5/M16/M17/M19/M2 events via outbox | reconcile auto-managed channel membership against current source-of-truth seams |
 | `messaging.endpoint_health` | scheduled (daily) | mark endpoints with > N consecutive failures as `expired`; prompt user re-verify next session |
-| `messaging.retention_scan` | scheduled (weekly) | identify channels/messages past retention class window → create pending destruction certificates (via M4 D4) |
+| `messaging.retention_scan` | scheduled (weekly) | identify channels/messages past retention class window → create pending destruction certificates (via M4 D4); **skips legal-hold messages** (M36-F10: retention scan must check for legal-hold flag before scheduling destruction) |
 | `messaging.bereavement_close` | scheduled (daily) | flip `bereavement` channels past `archives_at` to archived |
 | `messaging.delivery_reconcile` | scheduled (hourly) | match Twilio/Postmark webhook events to deliveries; flag stale `sent` deliveries |
+| `messaging.hash_verify` | scheduled (nightly, off-peak) | **M36-F03 / ARCH-206 / ARCH-240:** for a sample of messages whose `body_sha256` has not been verified since last scan, decrypt `body_cipher` under the tenant DEK and assert `sha256(plaintext) == body_sha256`; on mismatch write `m36.integrity.hash_mismatch` audit event (compliance-class) and page ops; job output: `{ scanned, matched, mismatched, skipped_deleted_tenant }` written to audit as `m36.hash_verify.run` (operational-class) |
+
+#### 4.4.1 Queue Parameters (SD-059 / SD-060 / ARCH-262 / OPS-035)
+
+Per ADR-0021 §20.B requirement, every BullMQ queue below declares its full parameters.
+**DLQ protocol (all queues):** jobs landing in the DLQ are written to the `m36.dlq_job` audit record (compliance-class: `{ queue, jobId, jobData_hash, failedAt, finalError }`); **DLQ must be reviewed and a disposition documented before any job is cleared from it** (OPS-035: no silent DLQ drain; dead-letter jobs are a signal, not noise). DLQ jobs may be retried (if the failure was transient), dropped (if the payload is poisonous/obsolete — with rationale in audit), or escalated to engineering (if a logic bug is indicated).
+
+| Queue | Priority | Attempts (retries) | Backoff | Concurrency | DLQ name | Consumer idempotency |
+|---|---|---|---|---|---|---|
+| `messaging.fan_out` | 10 (high) | 5 | exponential, 1 s base, ×2 | 20 | `messaging.fan_out.dlq` | idempotent on `correlationId`: if alert row already exists with same `correlationId`, skip fan-out |
+| `messaging.send_in_app` | 10 (high) | 3 | fixed 500 ms | 100 | `messaging.send_in_app.dlq` | idempotent on `notification_delivery.id`: Socket.IO emit is fire-and-forget; already-`delivered` rows skipped |
+| `messaging.send_push` | 8 | 4 | exponential, 2 s base, ×2 | 50 | `messaging.send_push.dlq` | idempotent on `notification_delivery.id + endpoint_id` |
+| `messaging.send_sms` | 8 | 5 | exponential, 5 s base, ×2, cap 5 min; respect Twilio 429 `Retry-After` header | 10 | `messaging.send_sms.dlq` | idempotent on `vendor_message_id` (Twilio SID returned on first successful submit); if SID already stored, skip re-send |
+| `messaging.send_voice` | 10 (Tier-1, critical path) | 3 | fixed 2 s; on all 3 failures immediately trigger `field_safety.escalated` + page ops | 5 | `messaging.send_voice.dlq` | idempotent on `notification_delivery.id`; SOS-only guard re-checked at consumer entry |
+| `messaging.send_email` | 6 | 5 | exponential, 5 s base, ×2, cap 10 min | 20 | `messaging.send_email.dlq` | idempotent on `vendor_message_id` (Postmark Message-ID); skip if already stored |
+| `messaging.channel_sync` | 5 | 3 | fixed 10 s | 10 | `messaging.channel_sync.dlq` | idempotent on `(orgId, channelKind, subjectId)`; duplicate sync jobs deduplicated via BullMQ `deduplication` key |
+| `messaging.endpoint_health` | 3 | 2 | fixed 30 s | 5 | `messaging.endpoint_health.dlq` | idempotent on `(userId, channel)` per daily window |
+| `messaging.retention_scan` | 2 | 2 | fixed 5 min | 3 | `messaging.retention_scan.dlq` | idempotent on `(channelId, retentionClass, windowEnd)`; legal-hold rows skipped |
+| `messaging.bereavement_close` | 3 | 2 | fixed 60 s | 5 | `messaging.bereavement_close.dlq` | idempotent on `channelId` |
+| `messaging.delivery_reconcile` | 4 | 3 | fixed 60 s | 5 | `messaging.delivery_reconcile.dlq` | idempotent on `(vendorMessageId, channel)` per reconcile window |
+| `messaging.hash_verify` | 2 (off-peak, low priority) | 2 | fixed 5 min | 3 | `messaging.hash_verify.dlq` | idempotent on `(messageId, verifyRunId)`; decryption failure for a destroyed-DEK (offboarded tenant) is skipped, not a mismatch |
 
 ### 4.5 Permission Keys Registered into Module 3
 
@@ -1893,6 +1956,120 @@ The lint rule (added to architecture §25.15 manifest):
 - **Recipient resolver results** cached briefly (60 s) keyed by `(resolverName, orgId, hash(args))` — covers bursts of similar alerts (e.g. multiple `visit.late` for the same scheduler). Quiet-hours and vacation evaluation NOT cached (must always be fresh).
 - **Channel unread counts** in Valkey hash `unread:user:<id>` per channelId; incremented on `message.new` for non-author recipients; decremented on `message.read`. PG fallback via `message_receipt` count when missing.
 
+### 4.9 Webhook Security (SD-056 / INT-016 / M36-F13)
+
+All three inbound webhook routes (`/webhooks/twilio/sms-status`, `/webhooks/twilio/voice-status`,
+`/webhooks/postmark/event`) share the following two-layer defense. Neither layer may be
+short-circuited — a request that fails either check is rejected with HTTP 400 or 401 before any
+application logic runs.
+
+#### 4.9.1 Timestamp Replay Window (5-minute gate)
+
+Per SD-056, every inbound webhook payload is gated against a **5-minute (±300 s) timestamp replay
+window** anchored to server UTC time:
+
+```typescript
+// packages/messaging/src/webhooks/replay-guard.ts
+//
+// Shared by all three webhook handlers.  Call at the top of each handler, before signature
+// verification — a stale request need not be verified at all (avoid timing oracle).
+
+export function assertReplayWindow(
+  timestampHeader: string | undefined,    // 'X-Twilio-Timestamp' (epoch string) or Postmark 'Date' header
+  nowMs: number = Date.now(),
+): void {
+  if (!timestampHeader) throw new WebhookError(400, 'MISSING_TIMESTAMP_HEADER')
+  const tMs = Number(timestampHeader) * 1000   // Twilio sends epoch seconds; Postmark sends ISO-8601
+  if (Number.isNaN(tMs)) throw new WebhookError(400, 'INVALID_TIMESTAMP_HEADER')
+  const diffSeconds = Math.abs((nowMs - tMs) / 1000)
+  if (diffSeconds > 300) {
+    throw new WebhookError(400, 'REPLAY_WINDOW_EXPIRED')    // log diffSeconds for ops
+  }
+}
+```
+
+- **Twilio:** `X-Twilio-Timestamp` (Unix epoch string). The window catches replayed Twilio callbacks.
+- **Postmark:** The `Date` header (ISO-8601 UTC). Postmark retries are legitimate (≤ 72 h on failure), but each retry carries a fresh `Date`; the window rejects stale forged copies while allowing legitimate Postmark retries.
+- The `REPLAY_WINDOW_EXPIRED` error is logged at `warn` level with the `diffSeconds` value; repeated offenders at the same source IP are rate-limited by the API gateway.
+
+#### 4.9.2 Signature Verification
+
+**Twilio (SD-056 / ARCH §6.12–6.13):**
+
+Twilio signs each callback with HMAC-SHA1 over `(POST URL + sorted-params)` using the account Auth Token. Verification uses the `twilio` SDK's `validateRequest` helper (which implements the algorithm from the Twilio security docs). Auth Token is stored in the tenant secret store (M1 §8.3); the signing URL must match the configured public URL exactly (including scheme, host, port, and path prefix).
+
+```typescript
+// packages/messaging/src/webhooks/verify-twilio.ts
+import twilio from 'twilio'
+
+export function verifyTwilioSignature(req: {
+  url: string
+  headers: Record<string, string>
+  body: Record<string, string>        // form-encoded key/value pairs
+  authToken: string
+}): void {
+  const valid = twilio.validateRequest(
+    req.authToken,
+    req.headers['x-twilio-signature'] ?? '',
+    req.url,
+    req.body,
+  )
+  if (!valid) throw new WebhookError(401, 'INVALID_SIGNATURE')
+}
+```
+
+**Postmark (SD-056 / INT-016):**
+
+Per INT-016, Postmark webhook authenticity is established via **two complementary controls** — both are active and both must pass:
+
+1. **DNS-based sender validation** — the incoming HTTP request originates from a Postmark-owned IP range. The API gateway (or the webhook router) maintains a periodically refreshed allowlist of Postmark's published IP ranges (Postmark publishes these at `https://postmarkapp.com/ips`). Requests from IPs outside this allowlist are rejected at the network layer (`403 FORBIDDEN_SOURCE`) before the handler runs. The allowlist is refreshed every 6 hours via a background task and cached in Valkey.
+2. **Bearer token verification** — every Postmark event webhook is configured with a shared secret passed as an `Authorization: Bearer <token>` header. The token is tenant-specific (per-webhook configuration in the Postmark account), stored in the tenant secret store (M1 §8.3), and rotated on a 90-day schedule. The handler validates the token via constant-time comparison (`crypto.timingSafeEqual`).
+
+```typescript
+// packages/messaging/src/webhooks/verify-postmark.ts
+import { timingSafeEqual } from 'node:crypto'
+
+export function verifyPostmarkWebhook(req: {
+  headers: Record<string, string>
+  expectedToken: string                  // from tenant secret store
+  sourceIpAllowed: boolean               // pre-checked by API gateway / IP allowlist middleware
+}): void {
+  if (!req.sourceIpAllowed) throw new WebhookError(403, 'FORBIDDEN_SOURCE')
+  const auth = req.headers['authorization'] ?? ''
+  if (!auth.startsWith('Bearer ')) throw new WebhookError(401, 'MISSING_BEARER_TOKEN')
+  const provided = Buffer.from(auth.slice(7))
+  const expected = Buffer.from(req.expectedToken)
+  if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+    throw new WebhookError(401, 'INVALID_BEARER_TOKEN')
+  }
+}
+```
+
+Both controls are tested in the §9.4 boundary test suite: a request from a non-Postmark IP is rejected even with a valid token; a request with an invalid token from a valid IP is also rejected.
+
+### 4.10 STRIDE Threat Model (SEC-007 / M36-F09)
+
+Per ADR-0021 §20.B, every module spec must carry a STRIDE threat model covering its principal attack
+surfaces. M36 is the system's realtime nervous system — it routes PHI-adjacent alerts, manages
+multi-tenant channel membership, and exposes inbound webhooks from external vendors.
+
+| # | Threat class | Concrete threat | Impact | Controls | Test reference |
+|---|---|---|---|---|---|
+| S-1 | **Spoofing** | Forged Twilio/Postmark webhook — attacker submits a crafted delivery-status or bounce callback from outside Postmark/Twilio infrastructure, manipulating `notification_delivery.status` rows (e.g., faking delivery of an SOS that was never sent, or suppressing a bounce to keep a bad endpoint active) | Incorrect delivery state; delayed clinical escalation; phishing link in forged email body (if body field were trusted) | **§4.9.1 replay window** (5 min timestamp gate) + **§4.9.2 Twilio HMAC-SHA1 / Postmark DNS allowlist + bearer token** — both run before any handler logic; forged webhooks are rejected `401 INVALID_SIGNATURE` or `403 FORBIDDEN_SOURCE` | §9.4 boundary test: forged Twilio signature rejected; non-Postmark-IP request rejected |
+| S-2 | **Spoofing** | Cross-tenant DM attempt — an authenticated user in Tenant A constructs a direct API call to `POST /api/v1/messaging/dm` targeting a user ID from Tenant B | PHI channel opened across tenant boundary; M36-F02 clinical content in wrong tenant | RLS on `channel` (`organization_id = current_setting('app.org_id')`) rejects the insert; `DM is within-tenant only` validation in `openChannel`; §7.13 edge case documented and tested | §9.5 RLS isolation test; §7.13 cross-tenant DM → 403 |
+| T-1 | **Tampering** | Message body cipher replacement — a privileged DB user (or compromised migration) replaces `body_cipher` on a clinical message with different ciphertext, altering the historical record without leaving an application-layer trace | Record tampering (HIPAA §164.312(c)); audit trail invalidated | **M36-F03 `body_sha256`**: SHA-256 of plaintext computed pre-encryption at write time and stored separately; `messaging.hash_verify` nightly job decrypts and verifies; mismatch written to compliance-class audit (`m36.integrity.hash_mismatch`) and paged to ops; M4 write-audit trigger also records any UPDATE to the `message` row | §9.4 integrity test: mutate `body_cipher` in a fixture row → hash-verify job detects and emits audit event |
+| T-2 | **Tampering** | Room membership tampering — attacker (or compromised internal service) directly modifies `channel_member` rows via a migration or direct DB access to add themselves to a patient care-team channel without going through the auto-sync or admin-override path | Unauthorized PHI access; ABAC enforcement bypassed | M4 write-audit trigger on `channel_member` (`compliance`-class) records every INSERT/UPDATE/DELETE; `assertChannelVisible` checks `channel_member` membership at read time; auto-managed membership changes outside the seam produce an orphaned audit trail gap detectable by the M4 audit sweep | §9.2 ABAC test: manually-inserted channel_member row without matching audit trail is detected by M4 audit sweep; ABAC check still runs at API layer |
+| T-3 | **Tampering** | Alert rule tightening bypass — tenant constructs a `tenant_alert_routing_override` row that reduces the default `escalated_severity` (loosening the platform floor), removes default channels, or suppresses the alert by adding a null resolver | Clinical alerts silently downgraded; SOS may not reach on-call | DB trigger `enforce_alert_routing_tighten_only` (§3.11.1) rejects any `escalated_severity` below the catalog default at INSERT/UPDATE; `added_channels` / `added_recipients` are additive-only (no removal columns exist on the table); `system_locked` rules have a separate RLS policy | §9.4 tighten-only trigger test: loosen attempt → `alert_routing_override_loosen_forbidden` |
+| R-1 | **Repudiation** | Author denies sending or deleting a message — particularly for a clinical care-team message whose deletion may affect care decisions | Record integrity dispute; HIPAA compliance gap | M4 write-audit trigger (`compliance`-class) on `message` records every INSERT (`sent`), UPDATE (`edited`), and the tombstone transition (`deleted`); `body_sha256` anchors the pre-encryption plaintext to the author's session at the moment of send; audit rows are immutable (M4 prevents modification by `wardenx_app`) | §9.2 audit trail: fixture send + delete → two M4 audit rows with correct actor + session ID |
+| I-1 | **Information Disclosure** | PHI exfiltration via notification payloads — attacker exploits a dispatcher bug or a new dispatcher that bypasses `sanitizeForOutOfBand`, leaking patient names, diagnoses, or message bodies into SMS/email/push | HIPAA breach; regulatory penalty | `sanitizeForOutOfBand` is the **only** path to out-of-band channels (architecture §25.15 dependency-cruiser rule blocks direct vendor calls outside `packages/messaging/notification/dispatchers/*`); golden-test suite asserts no `phi:true`-tagged field traverses the sanitizer output for every alert category × channel; voice script is a static string | §7.2 PHI sanitizer; §9.4 dependency-cruiser rule; §9.4 sanitizer chokepoint |
+| I-2 | **Information Disclosure** | Presence information disclosure — non-member of Org A queries Socket.IO or the presence endpoint to enumerate online users in a tenant they are not a member of | Disclosure of staffing patterns / operational intelligence | `presence_self_or_coworker` RLS policy restricts presence reads to the requesting user's own row or active co-workers in the same tenant (`membership` join); Socket.IO room joins computed at connect from `channel_member` (no cross-tenant rooms); `org:<orgId>` room requires active session in that org | §9.5 RLS: non-member cannot read presence rows; cross-org join refused at connect |
+| D-1 | **Denial of Service** | Alert-suppression DoS — attacker floods `AlertEmitter.emit` (or the BullMQ fan-out queue) with a high volume of synthetic events, overwhelming the `messaging.fan_out` and `messaging.send_sms` workers and delaying or dropping legitimate clinical alerts | Clinical alert delivery degraded; SOS delayed | **Rate limiting** at the API gateway for the alert-emitting route; BullMQ `messaging.send_sms` and `messaging.send_voice` are separate queues with fixed concurrency (10 / 5 workers) and Twilio-rate-limit-aware backoff; `system_locked` SOS alerts use `priority: 10` (highest) across all queues, jumping ahead of lower-priority commercial traffic; circuit-breaker state monitored via `messaging_dispatcher_breaker_state` metric; M1 system-status event fires on breaker-open | §9.3 concurrency test: 1k concurrent emits; Tier-1 SOS queued at priority 10 ahead of bulk |
+| D-2 | **Denial of Service** | Webhook replay flood — attacker replays thousands of captured valid Twilio/Postmark webhooks within the 5-minute replay window to DDoS the webhook handlers and inflate Valkey/PG write load | Webhook worker saturation; delayed delivery-status reconciliation | §4.9.1 replay window (rejects stale payloads); **idempotency on `vendor_message_id`** means replayed webhooks within the window still produce no extra DB writes (idempotent consumer); API gateway rate-limits the `/webhooks/*` path per source IP; BullMQ `messaging.delivery_reconcile` is decoupled from the webhook handler (handler returns 200 immediately and enqueues; worker processes async) | §9.2 webhook idempotency: replay → no double-write; §9.4 replay-window test |
+| E-1 | **Elevation of Privilege** | Breaking out of the `care_team` ABAC predicate — a clinical user constructs a request to read messages in a care-team channel for a patient they are not assigned to, by guessing or enumerating channel IDs | Unauthorized PHI access; HIPAA §164.502(b) minimum-necessary violation | `assertChannelVisible` (§3.8) calls M3's `evaluate('caseload_membership', { patientId })` for `care_team` channels; RLS additionally restricts the `channel` row to the correct org; `channel_member` check is a second gate at the Socket.IO connect path; guessing channel IDs yields only a 403 — no information about the patient or channel contents | §9.2 ABAC: `clinical_rn` not on patient X's care team → 403 on channel read; channel ID does not leak patient identity |
+| E-2 | **Elevation of Privilege** | Disabling a `system_locked` alert rule — org_admin or Compliance Officer (who hold `alert.rules.manage`) attempts to set `enabled = false` on the SOS, NOE late-risk, or backup-failure rules | Life-safety alert suppressed; compliance violation | `alert_rule_update` RLS policy (`WITH CHECK`) enforces `system_locked = false` on all UPDATE operations by `wardenx_app`; UI marks `system_locked` rules as read-only; the `system_locked` column itself is protected from UPDATE by the same RLS policy (it can only be set to `true` by a migration, never toggled back by tenants) | §7.4 / §9.4: `wardenx_app` UPDATE on `system_locked = true` row → DB rejects |
+
+> **STRIDE sign-off required from:** Security Officer (S-1, S-2, I-1, I-2, E-1, E-2); Compliance Officer (T-1, T-2, R-1); Platform team (D-1, D-2). Sign-off is a gate for PR merge on any change to `packages/messaging/`, `packages/messaging/notification/`, or the M36 migration files.
+
 ### 4.11 Cross-Module Notification Composition + Recipient Resolution (ADR-0024)
 
 > **ADR-0024 (Accepted 2026-06-13).** Notification **composition** and **recipient resolution** for
@@ -2134,6 +2311,14 @@ All structural writes also flow through M4 audit triggers per §3.9.
 | `m36.alert.payload_validation_refused` | `compliance` | `payloadType, violation, callerModule` |
 | `m36.alert.tenant_override_applied` | `operational` | `organizationId, payloadType, addedChannels, escalatedSeverity` |
 
+#### 8.1.2 Message-Integrity Audit Actions (M36-F03 / ARCH-206)
+
+| Action | Retention class | Payload (keys) | Notes |
+|---|---|---|---|
+| `m36.integrity.hash_mismatch` | `compliance` | `messageId, channelId, organizationId, storedHash, computedHash, detectedAt` | Emitted by `messaging.hash_verify` job when `sha256(decrypted_body_cipher) ≠ body_sha256`; paged to ops; investigated before next retention scan |
+| `m36.hash_verify.run` | `operational` | `runId, startedAt, completedAt, scanned, matched, mismatched, skipped_deleted_tenant, skipped_legal_hold` | One row per nightly `messaging.hash_verify` job execution; query-able for compliance reporting |
+| `m36.dlq_job` | `compliance` | `queue, jobId, jobDataHash, failedAt, finalError, disposition` | Written for every job landing in any DLQ (OPS-035 protocol; §4.4.1); `disposition` is recorded when ops clears the job (retry / drop / escalate) |
+
 #### 8.1.2 Outbox Events Emitted (consumer-facing)
 
 These are M36-owned outbox events published via the M1 outbox dispatcher for downstream modules to consume. Distinct from the internal audit/observability events in §8.1 (keyed by `alertId`) and the audit actions in §8.1.1 (record-keeping only): these carry the per-delivery detail a consumer needs to react.
@@ -2325,7 +2510,11 @@ The catalog track sequences T-M36-10 → T-M36-11 → T-M36-12.
 - [ ] In-app always-available floor: chaos test stubs all out-of-band vendors down → in-app delivery still succeeds; `alert.outcome = 'partial'`
 - [ ] Quiet hours: `info` skipped, `critical` (≥ severity override) delivered; vacation forwarding within bounded `vacationUntil`
 - [ ] Endpoint health: pruning on 404/410; verification flows working for SMS code, email confirm, push browser-issued
-- [ ] Webhooks: Twilio SMS/Voice + Postmark signatures verified; idempotent on vendor message id
+- [ ] **Webhooks (M36-F13 / SD-056 / INT-016):** Twilio HMAC-SHA1 signature + 5-minute timestamp replay window active on all three webhook routes; Postmark bearer-token + DNS IP-allowlist active; `REPLAY_WINDOW_EXPIRED` and `INVALID_SIGNATURE` boundary tests green; idempotent on vendor message id
+- [ ] **Retention conformance (M36-F02 / ADR-0004 / ARCH-185):** `dm`, `discipline`, `location`, `on_call`, `care_team`, and `bereavement` channels all carry `care_related` (6+ yr) retention class; only `announcement` stays `operational`; `channel_kind_subject_shape` CHECK reflects the corrected `dm` → `care_related` mapping; author "delete" sets `status = 'deleted'` + `deleted_at` — does NOT zero `body_cipher`; tombstone visible; cipher retained until retention expiry
+- [ ] **Message-body integrity (M36-F03 / ARCH-206 / ARCH-240):** `body_sha256` column (hex SHA-256 pre-encryption) present on `message` table; computed at INSERT and at each body-changing UPDATE; NOT zeroed on delete; `messaging.hash_verify` nightly job decrypts and verifies; `m36.integrity.hash_mismatch` audit event emitted on mismatch + ops paged; `m36.hash_verify.run` audit event written per nightly run
+- [ ] **Queue parameters (M36-F12 / SD-059 / OPS-035):** every BullMQ queue declares priority / attempts / backoff / concurrency / DLQ name per §4.4.1; idempotent consumer assertion documented per queue; `m36.dlq_job` audit event written for every DLQ landing; DLQ-document-before-clear protocol enforced (no silent drain)
+- [ ] **STRIDE sign-offs (M36-F09 / SEC-007):** Security Officer signed off on S-1, S-2, I-1, I-2, E-1, E-2; Compliance Officer signed off on T-1, T-2, R-1; Platform team signed off on D-1, D-2; §4.10 STRIDE table complete
 - [ ] Alert-rule edit clones platform-default to tenant-scoped on first override; platform default remains pristine
 - [ ] **Alert payload catalog:** boot UPSERT populates `alert_payload_catalog`; per-module contribution files land for M2, M5, M6, M11, M22, M40; runtime dispatch refuses unregistered payloads; CI catalog-coverage check active
 - [ ] **CRITICAL four-channel fan-out (D12):** `m11.lab_results.critical` + `m22.document.rendered_critical_results` reach socket_push + inbox + sms + email in parallel; SMS failure leaves the other three succeeding
@@ -2362,11 +2551,18 @@ Three refinements anticipated for a later revision:
 
 **Document Footer**
 
-**Spec version:** v0.4 (Consolidated)
+**Spec version:** v0.4 (Consolidated) + §20.B additions (ADR-0021)
 **Decisions in force:** D1 through D12
 **Owned tables:** 11 core messaging tables + `alert_payload_catalog` + `tenant_alert_routing_override` + (ADR-0024) `notification_template` + `tenant_notification_template_overlay` = **15**
-**Schema:** `0036_messaging` (enums, 12 tables, RLS, audit triggers, alert-rule seed) + `0036_m36_alert_catalog` (`alert_payload_severity` enum — distinct from the legacy `alert_severity`, M36-F06b; `alert_payload_catalog`, `tenant_alert_routing_override` + RLS + enum-ordinal tighten-only trigger) + `0036_m36_notification_templates` (ADR-0024 — `notification_template` versioned `(organization_id, template_key, version)` + `tenant_notification_template_overlay` + RLS + audit triggers + platform-floor seed). **Owned-table count: 15.**
+**Schema:** `0036_messaging` (enums, 12 tables + `body_sha256` column on `message`, RLS, audit triggers, alert-rule seed) + `0036_m36_alert_catalog` (`alert_payload_severity` enum — distinct from the legacy `alert_severity`, M36-F06b; `alert_payload_catalog`, `tenant_alert_routing_override` + RLS + enum-ordinal tighten-only trigger) + `0036_m36_notification_templates` (ADR-0024 — `notification_template` versioned `(organization_id, template_key, version)` + `tenant_notification_template_overlay` + RLS + audit triggers + platform-floor seed). **Owned-table count: 15.**
 **Workflow acceptance criteria:** §7.1–§7.9 plus W-M36-08 (§7.10), W-M36-09 (§7.11), W-M36-10 (§7.12)
-**Implementation tasks:** 1–22 plus T-M36-10 through T-M36-12
+**Implementation tasks:** 1–22 plus T-M36-10 through T-M36-12 plus T-M36-13 (ADR-0024)
+
+**§20.B additions (ADR-0021, applied 2026-06-13):**
+- **M36-F02** — Retention corrected: `dm` CHECK fixed from `operational` → `care_related`; author-delete is a visibility tombstone — `body_cipher` retained until retention expiry (§3.3, §2.4.2, §3.4, §12 checklist)
+- **M36-F03** — `body_sha256` (hex SHA-256 pre-encryption) added to `message` schema; `messaging.hash_verify` nightly job; `m36.integrity.hash_mismatch` + `m36.hash_verify.run` audit events (§3.4, §3.4.1, §4.4, §4.4.1, §8.1.2)
+- **M36-F09** — STRIDE threat model (§4.10): 10 threats across S/T/R/I/D/E with controls + test references; sign-off gates added to §12
+- **M36-F12** — Full BullMQ queue parameters (priority / attempts / backoff / concurrency / DLQ) for all 12 queues; DLQ document-before-clear protocol; `m36.dlq_job` audit event (§4.4, §4.4.1, §8.1.2)
+- **M36-F13** — 5-minute webhook replay window (`assertReplayWindow`); Postmark verification aligned to SD-056 (DNS IP allowlist + bearer token, both required); Twilio HMAC-SHA1 verification clarified; §4.9 Webhook Security section added; §12 checklist updated
 
 **End of Module 36 — Secure Messaging & Alerts Specification v0.4 (Consolidated)**

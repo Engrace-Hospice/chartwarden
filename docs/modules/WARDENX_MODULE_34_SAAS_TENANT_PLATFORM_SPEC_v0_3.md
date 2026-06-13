@@ -473,7 +473,7 @@ Locked at v0.2:
 10. `dsar_export_job.extended_until` may be set at most once per job (HIPAA permits one 30-day extension). Enforced by CHECK `(extended_until IS NULL OR extended_until <= sla_due_at + interval '30 days')`.
 11. `platform_tenant_baa_record.executed_on <= effective_on <= expires_on` when all three are set. Enforced by CHECK.
 12. `tenant_account.status = 'active'` requires the existence of a `platform_tenant_baa_record` with `baa_status='executed'` and `(expires_on IS NULL OR expires_on > NOW())` — enforced by the `onboarding → active` transition function, not by a DB constraint (because the BAA can lapse while the tenant is in any state and the lapse handling is a separate workflow).
-13. `tenant_export_job.bundle_presigned_url_expires_at = requested_at + interval '7 days'`. Hard cap.
+13. `tenant_export_job.bundle_presigned_url_expires_at = requested_at + interval '7 days'`. Hard cap for MinIO object auto-delete (the object lives 7 days in storage). The **presigned download URL TTL** however is **24 hours** per SEC-052 / M34-F06 (SD-052): the route `GET .../download` generates a fresh 24-hour presigned URL on each call; calling it again produces a new 24-hour URL up until the 7-day MinIO auto-delete fires. The field `bundle_presigned_url_expires_at` records the object-level auto-delete deadline (7 days from `requested_at`); the URL-level TTL of 24 hours is enforced at URL-generation time in the route handler, not stored in the row. Same applies to `dsar_export_job.bundle_presigned_url_expires_at`.
 14. `tenant_signup_token.expires_at <= issued_at + interval '24 hours'`. Hard cap.
 15. `onboarding_task.status = 'blocked'` requires `blocker_reason IS NOT NULL`.
 16. `onboarding_task.status = 'skipped'` requires `completion_evidence ? 'skip_rationale'` (free-form text key required in the JSONB).
@@ -1152,7 +1152,18 @@ dsar-export-2026-06-10T15-30-00Z-{patientId}.tar.gz
 └── sha256.txt
 ```
 
-The bundle is uploaded to MinIO under `tenants/<orgId>/exports/{dsar|tenant}/<job-id>.tar.gz` with a 7-day presigned URL. The `bundleDownloadedAt` is set on first download and the 7-day expiry begins ticking from the **earlier of (a) first download or (b) bundle_presigned_url_expires_at** — that is, a single download starts the destruction timer per Security Hardening §8.5.2.
+The bundle is uploaded to MinIO under `tenants/<orgId>/exports/{dsar|tenant}/<job-id>.tar.gz`. The MinIO object auto-deletes after **7 days** from fulfillment (`bundle_presigned_url_expires_at` records this deadline). Each call to the download route generates a fresh **24-hour presigned URL** (SEC-052 / M34-F06, SD-052) — the caller cannot share or bookmark a URL that stays valid for days. The `bundleDownloadedAt` is set on first download and the 7-day MinIO object expiry ticks from `fulfilled_at` per Security Hardening §8.5.2; a single download starts the deletion timer, but subsequent calls produce new 24-hour URLs until the object itself is deleted at the 7-day mark.
+
+> **SEC-052 bulk-export controls** (applies to every call to `GET .../download` for both DSAR and tenant-export bundles):
+>
+> | Control | Specification |
+> |---|---|
+> | **Per-export justification** | The `POST .../tenant-export-jobs` and `POST .../dsar-export-jobs` routes already capture `requested_purpose` and `requestor_identity_verification_evidence` respectively. No additional field needed at download time — the justification is captured at job creation. |
+> | **Approver capture** | Tenant-export downloads require `tenant_export_org_admin_or_platform_ops` ABAC + `passkey_recent_5min` step-up. The downloading actor's `membership_id` is recorded in `bundle_downloaded_by_membership_id` (added to both job tables) alongside `bundle_downloaded_at`. |
+> | **Rate limit — 1 download URL / user / hour** | The download route enforces a per-user sliding-window rate limit of **1 URL generation per hour per job** via the M1 rate-limiter keyed on `(membership_id, job_id)`. Re-downloading within the hour returns `429` with `Retry-After`. Tenant-export and DSAR use separate key namespaces so they do not share quota. |
+> | **Size cap** | Bundles up to **10,000 patient-records equivalent** (or ≤ 50 GB, whichever is smaller) generate without elevated approval. Tenant-export bundles exceeding this cap remain at `status='review_pending'` and require a second platform-ops actor's explicit approval (`POST /api/v1/platform/tenant-export-jobs/:id/approve-oversized` with `passkey_recent_2min` + co-signer) before a download URL is issued. DSAR exports are single-patient and inherently below this cap. |
+> | **Audit thresholds — warn / critical** | M4 audit + M36 alert rules: `m34_export.download_warn` fires when a single org produces > 3 download events for tenant-export within 24 hours (`severity=warn`, routes to `compliance_officer_for_tenant` + platform-ops). `m34_export.download_critical` fires when > 5 such events occur within 1 hour for the same org (`severity=critical`, routes to `platform_security_owner`). These are registered as M36 alert rule keys alongside the thirteen existing M34 rules (§4.8 + §4.9). |
+> | **URL TTL** | 24 hours from URL-generation time. The MinIO presign call uses `expiry=86400s`. Recorded as `bundle_presigned_url_last_generated_at` in the job row (for audit reconstruction, not for enforcement). |
 
 ### 3.8 Platform-Tenant BAA Table
 
@@ -1404,6 +1415,7 @@ Routes split across three namespaces by execution context. Step-up column is the
 | POST | `/api/v1/platform/support-sessions/:id/close` | `support_session.close` | `tenant_lifecycle_platform_ops` | — | closes a session with reason='manual' |
 | GET | `/api/v1/platform/dsar-export-jobs` | `dsar_export.list_platform` | `tenant_lifecycle_platform_ops` | — | platform-ops view across tenants; supports SLA filtering |
 | GET | `/api/v1/platform/tenant-export-jobs` | `tenant_export.list_platform` | `tenant_lifecycle_platform_ops` | — | platform-ops view across tenants |
+| POST | `/api/v1/platform/tenant-export-jobs/:id/approve-oversized` | `tenant_export.approve_oversized` | `tenant_lifecycle_platform_ops` | `passkey_recent_2min` + co-signer | SEC-052: required before download URL is issued for bundles exceeding 10k-records / 50 GB cap; second actor must be distinct from the tenant-export requestor |
 | GET | `/api/v1/platform/feature-flags` | `feature_flag.read_platform` | `feature_flag_write_authority` (read-side gates list shape) | — | platform-global + per-tenant flags listing |
 | POST | `/api/v1/platform/feature-flags` | `feature_flag.write_platform` | `feature_flag_write_authority` | step-up | create/update a flag (calls M1 `FeatureFlagAdmin.upsert`) |
 | POST | `/api/v1/platform/feature-flags/:flagKey/kill-switch` | `feature_flag.kill_switch` | `feature_flag_write_authority` | step-up | toggles `killSwitchActive=true`; emits M36 `feature_flag.platform_emergency_changed` |
@@ -1428,10 +1440,10 @@ Routes split across three namespaces by execution context. Step-up column is the
 | POST | `/api/v1/tenant/dsar-export-jobs/:id/fulfill` | `dsar_export.fulfill` | `dsar_export_patient_caseload_or_org_admin` | step-up | flips to fulfilled and triggers presigned URL email |
 | POST | `/api/v1/tenant/dsar-export-jobs/:id/extend` | `dsar_export.extend` | `dsar_export_patient_caseload_or_org_admin` | — | invokes 30-day extension (one-time per §164.524) |
 | POST | `/api/v1/tenant/dsar-export-jobs/:id/deny` | `dsar_export.deny` | `dsar_export_patient_caseload_or_org_admin` | step-up | denies with permitted-denial reason |
-| GET | `/api/v1/tenant/dsar-export-jobs/:id/download` | `dsar_export.download` | `dsar_export_patient_caseload_or_org_admin` | — | returns presigned URL; sets `bundle_downloaded_at` |
+| GET | `/api/v1/tenant/dsar-export-jobs/:id/download` | `dsar_export.download` | `dsar_export_patient_caseload_or_org_admin` | — | generates a **24h presigned URL** (SEC-052); records `bundle_downloaded_at` + `bundle_downloaded_by_membership_id` on first call; rate-limited 1 URL/user/hour per job (M1 rate-limiter, `429` with `Retry-After` if exceeded) |
 | POST | `/api/v1/tenant/tenant-export-jobs` | `tenant_export.request` | `tenant_export_org_admin_or_platform_ops` | step-up | tenant-initiated full export (migration/baa_termination/etc.) |
 | GET | `/api/v1/tenant/tenant-export-jobs` | `tenant_export.list_own` | — | — | tenant's export queue |
-| GET | `/api/v1/tenant/tenant-export-jobs/:id/download` | `tenant_export.download` | `tenant_export_org_admin_or_platform_ops` | step-up | presigned URL |
+| GET | `/api/v1/tenant/tenant-export-jobs/:id/download` | `tenant_export.download` | `tenant_export_org_admin_or_platform_ops` | step-up | generates a **24h presigned URL** (SEC-052); records `bundle_downloaded_at` + `bundle_downloaded_by_membership_id`; rate-limited 1 URL/user/hour per job; oversized bundles require prior `approve-oversized` before URL is issued |
 | GET | `/api/v1/tenant/baa` | `platform_tenant_baa.read_own` | — | — | tenant's BAA history |
 | POST | `/api/v1/tenant/baa/:id/attest` | `platform_tenant_baa.attest` | `tenant_platform_baa_compliance_officer` | step-up | compliance officer attestation |
 | GET | `/api/v1/tenant/feature-flags` | `feature_flag.read_own` | — | — | flags effective for this tenant |
@@ -1779,6 +1791,8 @@ M34 contributes thirteen alert rule keys to M36's catalog. The rules ship as M36
 | `dsar_export.sla_escalation_20d` | DSAR `requested_at < NOW() - 20d AND status not in final states` | DSAR-officer + `compliance_officer_for_tenant` | warn |
 | `dsar_export.sla_escalation_27d` | DSAR aged 27d | DSAR-officer + `compliance_officer_for_tenant` + platform-ops | error |
 | `dsar_export.sla_escalation_30d` | DSAR aged 30d (SLA breach) | DSAR-officer + `compliance_officer_for_tenant` + `platform_security_owner` | critical |
+| `m34_export.download_warn` | Tenant-export download events > 3 within 24h for same org | `compliance_officer_for_tenant` + platform-ops | warn |
+| `m34_export.download_critical` | Tenant-export download events > 5 within 1h for same org (SEC-052 threshold) | `platform_security_owner` | critical |
 
 ### 4.9 Outbox Event Catalog
 
@@ -1957,7 +1971,7 @@ Live updates via M36 Socket.IO rooms `platform_ops` and `org:<orgId>` — any st
    - Uploads the Bundle archive to MinIO under `tenants/<orgId>/exports/dsar/<jobId>.tar.gz`
    - Computes bundle_sha256, sets bundle_presigned_url_expires_at, status=`review_pending`
 4. Tenant DSAR officer reviews the bundle in apps/web/admin/exports/dsar/:id; can fulfill, extend (one extension only), or deny with permitted reason.
-5. Fulfillment emails the patient a one-time presigned URL via M36 (no PHI in email body; deep-link to verified-portal-session download).
+5. Fulfillment emails the patient a one-time presigned URL via M36 (no PHI in email body; deep-link to verified-portal-session download). The URL has a **24-hour TTL** per SEC-052; if the patient does not download within 24 hours they re-request via the portal and a new 24h URL is generated (subject to the 1/hour rate limit on the requesting membership). The MinIO object itself persists until `bundle_presigned_url_expires_at` (7 days from fulfillment) or until downloaded, whichever is first.
 6. SLA escalations: at day 20, day 27, day 30 the M36 alert engine emits the corresponding alert. Day 30 = SLA breach = `severity=critical`.
 7. **Acceptance:** A patient request for "all my data" results in a downloadable FHIR Bundle + PDF within 30d; the audit log contains the request, the per-module shard execution receipts, the assembly receipt, the upload receipt, the fulfillment, the download. The bundle sha256 in the audit chain matches the file the patient downloads.
 
@@ -1984,8 +1998,8 @@ Live updates via M36 Socket.IO rooms `platform_ops` and `org:<orgId>` — any st
 1. Tenant org_admin POSTs `/api/v1/tenant/tenant-export-jobs` with purpose. Step-up required.
 2. The `tenant.export` worker (concurrency 2) iterates `TenantExportShard` registry; for each, calls `streamShardForOrg(orgId, ndjsonSink)`.
 3. Per-module shard writes NDJSON files into `modules/<moduleKey>/<table>.ndjson` of the bundle; M34 writes the manifest.json with per-module sha256 set.
-4. The tar.gz uploaded to MinIO; presigned URL 7-day TTL emailed to tenant org_admin.
-5. **Acceptance:** A tenant requesting full export receives a tar.gz containing every PHI-bearing module's NDJSON; the manifest validates against the per-file sha256; loading the NDJSON into a fresh schema reconstructs the tenant's data.
+4. The tar.gz uploaded to MinIO; a **24-hour presigned URL** (SEC-052) is generated and emailed to the tenant org_admin. The MinIO object auto-deletes after 7 days. Each subsequent call to `GET .../download` generates a fresh 24-hour URL (rate-limited: 1/user/hour per job). Bundles exceeding the 10k-records/50 GB cap remain at `review_pending` and require platform-ops co-sign (`approve-oversized`) before a download URL is issued.
+5. **Acceptance:** A tenant requesting full export receives a tar.gz containing every PHI-bearing module's NDJSON; the manifest validates against the per-file sha256; loading the NDJSON into a fresh schema reconstructs the tenant's data. The M4 audit chain shows: job requested → per-module shard receipts → bundle assembled → bundle uploaded → download URL generated (with downloading actor captured in `bundle_downloaded_by_membership_id`) → object deleted at 7 days.
 
 ### 7.7 Edge Cases & Failure Paths
 
@@ -2104,14 +2118,76 @@ The DEK ciphertext is part of the tier-1 backup. A backup restore restores the c
 - `tenant-export-multi-module.test.ts` — register fake shards for m5, m6, m7; tenant-export worker collects all; manifest sha256 validates per-module.
 - `baa-onboarding-gate.test.ts` — onboarding → active rejected without executed BAA; accepted with executed BAA having >90d to expiry.
 
-### 9.3 RLS Tests (Testcontainers PostgreSQL with role switching)
+### 9.3 RLS Tests (Testcontainers PostgreSQL with role switching) — M34-F17, ARCH-211, SEC-053, SD-081
 
-`apps/backend/test/rls/m34/`:
+`apps/backend/test/rls/m34/`
 
-- `tenant-account-cross-tenant-deny.test.ts` — tenant A's actor cannot SELECT tenant B's `tenant_account`.
-- `tenant-key-ring-ciphertext-deny.test.ts` — `wardenx_app` cannot SELECT `current_dek_kek_wrapped_ciphertext` directly.
-- `support-grant-tenant-isolation.test.ts` — tenant A cannot SELECT tenant B's grants.
-- `signup-intent-tenant-deny.test.ts` — `wardenx_app` cannot SELECT signup intents (platform_ops only via tenant_platform_writer).
+The RLS test suite must cover **every tenant-scoped M34 table** and every `withPlatformContext` bypass path. Cross-tenant-denial tests are not optional — they are the CI gate that proves the canonical `org_id` predicate (ADR-0010 / M34-F02) is wired correctly on every table. Tests that depend on F02's `organization_id NOT NULL` column existing are marked `@requires-f02` and run after the Contract migration lands; they are skipped (not removed) in CI until then.
+
+**Fixture setup:** Two tenant organizations are seeded (`orgA`, `orgB`) with actors (`actorA`, `actorB`, each a `wardenx_app` role connection with `SET LOCAL app.org_id = '<orgId>'`). A third connection plays the `tenant_platform_writer` role (the SECURITY DEFINER role). A fourth connection plays `wardenx_admin` (DBA-equivalent; must never be used by any application path — verified by absence of `wardenx_admin` in application code per dependency-cruiser).
+
+#### 9.3.1 Per-Table Cross-Tenant Denial Tests
+
+**`tenant_account`**
+- `tenant-account-cross-tenant-deny.test.ts` — `actorA` cannot SELECT orgB's `tenant_account` row. Asserts zero rows returned (not a 403 — RLS silently returns empty, which is the correct behavior).
+- `tenant-account-writer-only-update.test.ts` — `actorA` (wardenx_app) cannot UPDATE `tenant_account`; UPDATE via `tenant_platform_writer` succeeds. `@requires-f02` variant: same test after `organization_id NOT NULL` constraint lands.
+
+**`tenant_account_status_event`** (`@requires-f02` — gains own `organization_id` column in F02)
+- `status-event-cross-tenant-deny.test.ts` — `actorA` cannot SELECT orgB's status events. Before F02: status events are FK-join-scoped (only reachable via their `tenant_account_id` → `tenant_account` policy); after F02: the canonical `organization_id` predicate applies directly.
+
+**`tenant_key_ring`**
+- `tenant-key-ring-ciphertext-deny.test.ts` — `wardenx_app` (any actor) cannot SELECT `current_dek_kek_wrapped_ciphertext` from the base table; only the `tenant_key_ring_metadata_v` view is selectable. Assert `pg_catalog.has_column_privilege('wardenx_app', 'tenant_key_ring', 'current_dek_kek_wrapped_ciphertext', 'SELECT')` is false.
+- `tenant-key-ring-cross-tenant-deny.test.ts` — `actorA` cannot SELECT orgB's metadata view row. (`@requires-f02` for the direct `organization_id` predicate; pre-F02 the policy is via `tenant_account` FK.)
+- `tenant-key-ring-destroy-definer-only.test.ts` — `actorA` cannot call `m34_destroy_tenant_key_ring(...)` directly; call must be via the SECURITY DEFINER function owned by `tenant_platform_writer`. Assert `pg_catalog.has_function_privilege('wardenx_app', 'm34_destroy_tenant_key_ring(uuid,uuid)', 'EXECUTE')` is false.
+
+**`tenant_key_destruction_log`** (`@requires-f02`)
+- `destruction-log-cross-tenant-deny.test.ts` — `actorA` cannot SELECT orgB's destruction log rows.
+
+**`tenant_invitation`** (`@requires-f02`)
+- `invitation-cross-tenant-deny.test.ts` — `actorA` cannot SELECT orgB's invitations. Pre-F02: FK-join scoped. Post-F02: canonical predicate.
+- `invitation-writer-only-insert.test.ts` — `actorA` cannot INSERT a `tenant_invitation`; only `tenant_platform_writer` can.
+
+**`onboarding_task`** (`@requires-f02`)
+- `onboarding-task-cross-tenant-deny.test.ts` — `actorA` cannot SELECT or UPDATE orgB's tasks.
+- `onboarding-task-template-read-any.test.ts` — `onboarding_task_template` is a platform reference table; any `wardenx_app` actor can SELECT it (no org scoping). Assert both `actorA` and `actorB` can read all templates.
+
+**`support_consent_grant`** (`@requires-f02`)
+- `support-grant-cross-tenant-deny.test.ts` — `actorA` cannot SELECT orgB's grants.
+- `support-grant-compliance-officer-only-insert.test.ts` — an `actorA` without `compliance_officer` role receives ABAC rejection at the application layer; at the DB layer, the INSERT policy requires `organization_id = current_setting('app.org_id')::uuid` (RLS check predicate), so orgB's grant cannot be inserted under orgA's context.
+
+**`support_session`** (`@requires-f02`)
+- `support-session-cross-tenant-deny.test.ts` — `actorA` cannot SELECT orgB's sessions.
+- `support-session-phi-break-glass-gate.test.ts` — even when `actorA` is in an active support session for orgA, they cannot SELECT orgB's `support_session_event` rows. The ABAC predicate `tenant_consented_support_active` checks `ctx.tenant` (the app.org_id setting) and the grant's `tenant_account_id` — a mismatched org results in predicate failure before the RLS check even runs.
+
+**`support_session_event`** (`@requires-f02`)
+- `session-event-cross-tenant-deny.test.ts` — `actorA` cannot SELECT orgB's session events.
+- `session-event-platform-bypass-audited.test.ts` — a `withPlatformContext` cross-tenant read of `support_session_event` (the legitimate platform-ops path) produces an `audit_event` row with `kind='audit.elevated_access'` and `actor_kind='platform_ops_cross_tenant'`. Proves the audit hook fires on the bypass path, not just the tenant path. (This test uses the separately-pooled `withPlatformContext` DB connection with the M1 audit middleware wired.)
+
+**`dsar_export_job` / `dsar_export_job_event`**
+- `dsar-export-cross-tenant-deny.test.ts` — `actorA` cannot SELECT orgB's DSAR jobs or events.
+- `dsar-export-worker-org-context.test.ts` — the DSAR export worker, running under `withOrgContext(orgA)`, cannot access orgB's rows via the shard registry. Simulates a misconfigured shard that tries to read orgB rows and asserts RLS returns zero (F09 regression guard).
+
+**`tenant_export_job` / `tenant_export_job_event`**
+- `tenant-export-cross-tenant-deny.test.ts` — `actorA` cannot SELECT orgB's export jobs or events.
+- `tenant-export-worker-org-context.test.ts` — same as DSAR variant; export worker under `withOrgContext(orgA)` cannot read orgB rows.
+
+**`platform_tenant_baa_record`** (`@requires-f02`)
+- `baa-record-cross-tenant-deny.test.ts` — `actorA` cannot SELECT orgB's BAA records.
+
+**`tenant_signup_intent` / `tenant_signup_token`**
+- `signup-intent-wardenx-app-deny.test.ts` — `wardenx_app` cannot SELECT signup intents regardless of `app.org_id` setting. These are platform-only (`tenant_platform_writer`). Assert zero rows under both `actorA` and `actorB` roles.
+- `signup-token-hash-not-selectable.test.ts` — the `token_hash` column is in the `valueCaptureDenylist` for audit purposes; assert the audit trigger does not capture `token_hash` in before/after JSONB by inspecting the M4 audit event row after a token INSERT.
+
+#### 9.3.2 `withPlatformContext` Bypass Path Tests
+
+The `withPlatformContext` helper is a separately-pooled DB connection that bypasses the `app.org_id` RLS predicate (M1 M01-F05). It is the only legitimate path for platform-ops to read cross-tenant rows. Every bypass read must produce an audit event. These tests prove both that the bypass works **and** that the audit hook fires — a bypass without audit is a SEC-053 violation.
+
+- `platform-context-cross-tenant-read-audited.test.ts` — `withPlatformContext` can SELECT orgB's `tenant_account` row when `actorA` is a platform_ops member. Asserts: (a) the row is returned; (b) `audit_event` table contains a row with `kind='audit.elevated_access'`, `actor_membership_id = actorA.id`, `target_org_id = orgB.id`, `severity='critical'`. No `audit.elevated_access` row = test failure.
+- `platform-context-without-platform-ops-role-denied.test.ts` — `withPlatformContext` with an actor whose M3 RBAC role is `org_admin` (not `platform_ops`) returns an M3 ABAC rejection **before** the DB query fires. The audit event is written with `outcome='denied'`. Proves the ABAC predicate `tenant_lifecycle_platform_ops` gates the bypass path, not just the regular tenant path.
+- `platform-context-phi-read-requires-break-glass.test.ts` — a `withPlatformContext` read of `support_session_event` rows (which carry `patient_id` — PHI-adjacent) requires an active break-glass session per M34-F01 / ARCH-056. Without break-glass: the M2/M3 middleware returns `403` with `code='BREAK_GLASS_REQUIRED'` before the DB query is issued. With break-glass: the row is returned AND `audit_event.actor_kind='break_glass'` is set alongside `audit.elevated_access`.
+- `platform-context-dsar-worker-runs-under-org-context.test.ts` — regression test proving the DSAR worker does NOT use `withPlatformContext`. The worker sets `withOrgContext(job.organizationId)` before executing; a spy on the `withPlatformContext` pool connection asserts zero calls during worker execution.
+
+> **Note:** All `@requires-f02` tests depend on the F02 schema change (`organization_id NOT NULL` columns) landing via the two-phase Expand/Contract migration described in §10.1. Until then, these tests run against the Expand schema (column present but nullable) and their assertions on the `NOT NULL` predicate are conditional. The test file uses a runtime schema-version check: `IF (column is NOT NULL) THEN assert predicate ELSE assert nullable path`. This avoids a permanent skip while still providing meaningful coverage in both schema states.
 
 ### 9.4 E2E Tests (Playwright)
 
@@ -2191,6 +2267,29 @@ The DEK ciphertext is part of the tier-1 backup. A backup restore restores the c
 | 44 | Security hardening doc addendum: STRIDE deltas, encryption boundaries, retention discipline (§8) | M | all | low |
 
 **Sequencing notes:** Tasks 1-7 are migration-stack and must land first. Tasks 8-25 form the package internals and can be parallelized once 7 is done. Tasks 28-30 (routes) depend on the package internals. Tasks 31-37 (UI) depend on routes. Tasks 38-40 are the architecture-fitness wiring. Task 41 is the test suite (largest by volume; runs throughout). Tasks 42-44 are documentation that lands with the lock.
+
+### 10.1 Migration Discipline — Forward-Only + Two-Phase Expand/Contract (M34-F16, ARCH-271, SD-083, OPS-016)
+
+M34 is the reference tenancy implementation; its migrations set the pattern every downstream module follows. All M34 migrations must adhere to the following discipline:
+
+**Forward-only rule (ARCH-271):** Every migration in `migrations/0034_*.sql` is irreversible by design — there are no `down` scripts. Rollback is a forward-migration to the prior schema state, not a backward execution of `ALTER TABLE … DROP`. This is enforced by the CI migration runner which rejects any file containing `-- revert` or a matching `down` export. If a migration was applied in error the fix is a new `0034_<N+1>_fix_*.sql`.
+
+**Two-phase expand/contract for breaking changes (SD-083):** Any migration that adds a `NOT NULL` column to a live table — most relevantly the future F02 `organization_id NOT NULL` column additions across the nine FK-join-scoped tables — must be deployed in two phases:
+
+- **Phase A — Expand:** Add the column as `NULL` (or `DEFAULT NULL`) with the application already writing the new column on every new row. A backfill job runs as a low-priority background task (`UPDATE … WHERE organization_id IS NULL LIMIT 5000`) so it does not lock the table. The migration file is `0034_<N>_expand_<name>.sql`.
+- **Phase B — Contract:** Once the backfill is confirmed complete (zero `WHERE organization_id IS NULL` rows) and the application has been deployed to read the column on all paths, a second migration applies `ALTER TABLE … ALTER COLUMN organization_id SET NOT NULL` and adds the SD-028 composite index. This file is `0034_<N+1>_contract_<name>.sql` and ships in the **next release**, not the same release as the Expand migration.
+
+This pattern is binding for all nine tables receiving `organization_id` per F02: `tenant_account_status_event`, `tenant_key_ring`, `tenant_key_destruction_log`, `tenant_invitation`, `onboarding_task`, `support_consent_grant`, `support_session`, `support_session_event`, `platform_tenant_baa_record`. The `dsar_export_job`, `dsar_export_job_event`, `tenant_export_job`, `tenant_export_job_event` tables already carry `organization_id` in the v0.3 schema DDL above and ship NOT NULL from day one (new tables, no live data to backfill).
+
+**Pre-migration pgBackRest backup tag (OPS-016):** Before executing the Contract phase of any breaking migration (or any migration that is not trivially reversible — index creation, NOT NULL constraint, column rename, type change), the migration CI pipeline must:
+
+1. Trigger a `pgbackrest backup --type=incr --stanza=wardenx-prod` and capture the resulting WAL segment label.
+2. Tag the resulting backup with the short SHA of the migration commit: `pgbackrest annotate --set backup-label=pre-migration-<sha>` where `<sha>` is the 7-character git SHA of the migration file's commit.
+3. Confirm the backup completed successfully (exit 0) before proceeding. If the backup fails, the migration is held in CI and a `migration-backup-failed` alert routes to the ops oncall.
+
+This produces a deterministic, human-readable restore target (`pre-migration-<sha>`) that any on-call engineer can use to restore to the state immediately before a problematic migration: `pgbackrest restore --stanza=wardenx-prod --set pre-migration-<sha>`. The tag name and the backup completion timestamp are logged in the CI run summary and in the Ops Runbook incident template.
+
+The M34 initial schema migration (tasks 1-5 above) is itself tagged `pre-migration-<sha>` so that a restore to a pre-M34 database state is always one known tag away, even after subsequent migrations have run.
 
 -----
 

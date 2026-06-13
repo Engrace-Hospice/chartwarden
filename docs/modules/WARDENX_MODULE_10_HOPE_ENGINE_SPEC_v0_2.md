@@ -4,7 +4,7 @@
 **Phase:** 1 (clinical-regulatory engine — required for Engrace go-live; HQRP non-compliance carries a 4-percentage-point APU reduction)
 **Depends on:** 6 (Admission, Election & Certification — the admission row + activation timestamp is the anchor for every HOPE timepoint window; `level_of_care_period` discriminates SFV obligations under GIP/IRC; discharge events from M6's outbox drive the Discharge RFA timepoint), 9 (Clinical Assessments Suite — `LatestAssessmentProvider` returns PPS / ESAS-r at HOPE completion for snapshotting; the M9 series feeds the HUV trend context per architecture §11), 36 (Secure Messaging & Alerts — timepoint-window alerts, SFV-deadline alerts, submission-deadline alerts; typed-alert payload per M36 §4.9; care-team channel broadcast on overdue timepoints), 38 (Clinical Terminology — HOPE J-code value sets (`hope_j_codes`, `j2051_severity`), hospice diagnosis value set for Section I, LOINC bindings for J-item externalization, `asOfDate` lookups for survey-grade historical reconstruction). Transitively via M6: 1 (Foundation — `withOrgContext`, `audit()` helper, outbox dispatcher, idempotency middleware, RLS generator, partitioned-table conventions, per-tenant DEK, BullMQ queue runner), 2 (Identity — actor resolution; discipline resolution from membership for the RN/NP-only HOPE-author rule), 3 (Authorization — RBAC + ABAC; the `hope.*` permission keys this module contributes), 4 (Audit — PHI write-audit trigger generator, audit-read helper, destruction-cert workflow + `eraseFn` registration, `compliance` retention class with extended retention for submitted assessments), 5 (Patient & Demographics — `patient` row, deceased status driving the Discharge-by-death RFA branch, `medicare_beneficiary_identifier` for iQIES submission), 40 (MDM — discipline taxonomy used by the HOPE-author eligibility rule).
 **Consumed by:** 8 (Encounters & Visit Notes — an encounter whose type is `hope_admission` / `hope_huv1` / `hope_huv2` / `hope_sfv` / `hope_discharge` calls M10's `recordHopeTimepoint` API with `source_encounter_id`; encounter-sign workflow consults M10's "required HOPE items" rules), 14 (IDG — packet builder surfaces J2051 trigger + open SFV obligations; "open HOPE windows" appears on the IDG dashboard), 22 (Documents — HOPE summary PDF rendering per submission cycle via the outbox `hope.summary_requested` event), 28 (FHIR Gateway — HOPE assessment row exposed as FHIR R4 `Observation` (J-items) and `QuestionnaireResponse` (HOPE Section A–Z) when M28 lands; the LOINC bindings travel with the typed payload), 30 (HQRP & Quality — HCI / Timely Follow-Up for Pain / Timely Follow-Up for Non-Pain Symptom Impact / future HOPE-derived measures all read M10's `HopeTimepointProvider`, `HopeSubmissionProvider`, and `HopeJ2051Provider` seams; M30 is the operational dashboard for the 4-point APU compliance posture), 31 (Portal — patient/family-facing "what we measure and how often" surface, consent-gated; J2051 individual responses are not portal-surfaced), 32 (AI Platform — `HopeJ2051Provider` feeds the symptom-trajectory model alongside M9's `ScaleSeriesProvider`; the decline-prediction model reads `HopeTimepointProvider`), 33 (Reporting — operational dashboards: HOPE-window-on-time rate, SFV-on-time rate, submission-acceptance rate, late-completion-reason distribution).
-**Spec status:** Re-locked v0.3 (Phase-2 + Phase-4 remediation; supersedes Locked v0.2)
+**Spec status:** Re-locked v0.3 (Phase-2 + Phase-4 + ADR-0021 §20.B template sweep; supersedes Locked v0.2)
 
 > **Phase-4 remediation (2026-06-11; ADR-0018).** **M10-F02 (BLOCKER):** the SFV 2-calendar-day clock
 > now anchors to the **HOPE assessment visit date**, not `signed_at` (§1.1, §1.3) — delaying the
@@ -24,6 +24,8 @@
 > three-column rule. Now gated by `check-tenancy` (fitness #10). See §3.3.
 
 ## Changelog
+
+- **v0.3 (Re-locked; 2026-06-13)** — ADR-0021 §20.B template sweep (four findings added; no schema, decisions, seam contracts, or queue catalog changed). **M10-F10 (ARCH-262, SD-059, OPS-035):** Full BullMQ queue parameter table added as §4.8.1 — all 11 queues declare priority / attempts / backoff / concurrency / DLQ + DLQ triage instructions. **M10-F13 (SEC-048, ARCH-185):** §4.9.1 declares that `patientDisplayName` and other PHI fields in `HopeTimepointWindowAlert` / `HopeSfvAlert` are in-app-render only; out-of-band push/SMS channels carry no payload PHI — `buildOutOfBandPayload()` contract added; `HopeSfvAlert` at SFV creation is classified `severity='clinical_urgent'` from first emission (SD-015). **M10-F17 (INT-009, SD-075, SD-033/034):** §4.10.1 declares the `packages/iqies-client` circuit-breaker config (SD-075 defaults with iQIES-specific 25 s timeout), the `DegradedError` five-field shape, and the MinIO per-tenant prefix (`tenants/<org_id>/iqies-envelopes/…`) with `COMPLIANCE` object-lock (10 years) + lifecycle (12 years total) for submitted envelopes. **M10-F19 (DR-066/067, SEC-075, SD-015):** §5.6 adds the DR tier declaration (confirmed Tier 2 capture / Tier 3 submission), degraded-mode behaviour table, BCP re-entry path (`system_outage` late-reason code, `data.Z.bcpPaperOrigin` marker, `m10.hope.paper_origin_transcribed` audit event, BCP re-entry panel on the HQRP compliance dashboard, missed-window triage via `lateOverrideReason: "system_outage_bcp"`), and the sqlcipher pin for mobile offline HOPE drafts (`hope_assessment_draft` table in the shared `@wardenx/mobile-offline` encrypted store; no IndexedDB fallback; evict-PHI-on-logout).
 
 - **v0.2 (Locked)** — Initial publication at lock-grade. Instantiates the architecture §20.B module spec template. Resolves all twelve open questions into binding decisions (§11). Defines the **shared `hope_assessment` row with per-section TypeBox-typed `data` jsonb** (D1), the **soft-window + hard-cutoff timepoint enforcement** (D2), the **2-calendar-day SFV trigger** (D3), the **per-symptom J2051 trigger model with one-SFV-per-source-timepoint semantics** (D4), the **CMS HOPE submission XML batch via `packages/iqies-client`** (D5), the **iQIES adapter package boundary** (D6), the **append-only correction-of-record submission to iQIES with original retained** (D7), the **PPS / ESAS-r snapshot at HOPE completion** (D8), the **Discharge RFA timepoint listener on M6's `admission.discharged` outbox** (D9), the **`HopeTimepointProvider` / `HopeSubmissionProvider` / `HopeJ2051Provider` seams published for M30/M32 consumption** (D10), the **single-`data`-jsonb section storage avoiding annual ALTER TABLE churn** (D11), and the **late-completion capture with mandatory reason and HQRP counter** (D12). Wires the permission keys this module registers into Module 3 (§4.6), the BullMQ queue catalog (§4.8), the M36 typed-alert payload (§4.9), the iQIES submission worker (§4.10), and the destruction `eraseFn` registered with Module 4 (§8.4). Includes a **proposed manifest patch** (§12, last item) correcting `M10.dependsOn` from `[8, 9, 36, 38]` to `[6, 9, 36, 38]` *(relationship inventory - not the `dependsOn` edge set; per ADR-0005 D1/D4 seam/outbox/foundation consumers are no-edge - see audit/MANIFEST_DEPENDSON_REVIEW.md; do not bulk-apply)* — the prior encoding inverted the M8↔M10 dep direction; the architecture flow ("an RN's HOPE-timepoint encounter records HOPE items via M10's API") is M8 → M10, and the M9 lock established the precedent that consumers (M8) carry the dep, not the data-owner (M10). Also adds `packages/iqies-client` to `M10.codePaths` per D6.
 - **v0.1** — Drafted within the lock-grade pass; not separately published.
@@ -1251,6 +1253,33 @@ export const M10_ABAC_PREDICATES = {
 | `hope:submission` | `submit-correction-rfa` | event-driven from `hope.correction.submitted` | Queues a Correction RFA submission to iQIES referencing the original `iqies_record_id` |
 | `hope:retention` | `hope-partition-rotation` | cron, monthly | Coordinates with M1 partition-rotation: ensures `extended_for_cms` partitions are not dropped before the 10-year horizon |
 
+#### 4.8.1 Queue Parameters (M10-F10 — ARCH-262, SD-059, OPS-035)
+
+> **M10-F10 (ARCH-262, SD-059, OPS-035 — ADR-0021):** Every BullMQ queue below declares the full
+> SD-059 parameter tuple (priority / attempts / backoff / concurrency / DLQ). No M10 queue ships
+> with undeclared semantics. Every job consumer is idempotent — repeating a job with the same
+> `jobId` produces no additional side-effect (window-watchdog transitions are already-state-checked;
+> submission assembly is guarded by the unique-active-item index; alert dispatch is deduped by
+> the `alert_cadence` offset+anchor key). DLQ policy (OPS-035): depth > 0 on any queue fires a
+> `warn`-severity alert within 15 minutes; clinical-path queues (`hope:windows`, `hope:sfv`,
+> `hope:alerts`) fire `critical` at depth > 0 for > 5 minutes.
+
+| Queue | Job | Priority | Attempts | Backoff | Concurrency | DLQ | DLQ triage |
+|---|---|---|---|---|---|---|---|
+| `hope:scheduling` | `schedule-hope-timepoints` | 2 (high) | 5 | exponential 30 s, max 5 min | 4 | `hope:scheduling.dlq` — critical alert at depth > 0 for > 5 min | Re-check if `admission.activated` was re-emitted; rerun is idempotent; if schedule rows exist, job is a no-op — discard safely |
+| `hope:scheduling` | `materialize-discharge-timepoint` | 2 (high) | 5 | exponential 30 s, max 5 min | 4 | `hope:scheduling.dlq` — critical alert at depth > 0 for > 5 min | Confirm M6 `admission.discharged` payload; rerun is idempotent; if Discharge schedule already exists, job is a no-op — discard safely |
+| `hope:windows` | `hope-window-watchdog` | 1 (critical) | 5 | exponential 30 s | 2 | `hope:windows.dlq` — critical PagerDuty P1 at depth > 0 for > 5 min | Transition is timestamp-guarded (`status='open' AND late_deadline_at < now()`); safe to retry; failed transitions left `open` create HQRP exposure — escalate immediately |
+| `hope:sfv` | `sfv-watchdog` | 1 (critical) | 5 | exponential 30 s | 2 | `hope:sfv.dlq` — critical PagerDuty P1 at depth > 0 for > 5 min | Transition is timestamp-guarded; safe to retry; uncaught overdue SFVs affect HQRP Timely Follow-Up measure — escalate immediately |
+| `hope:alerts` | `hope-alert-dispatcher` | 2 (high) | 3 | fixed 15 s | 8 | `hope:alerts.dlq` — P2 alert at depth > 0 for > 15 min | Alert dispatch is at-least-once; M36 handles dedup via `alert_cadence` idempotency key; safe to retry or discard after 1 h |
+| `hope:validation` | `revalidate-on-terminology-update` | 3 (normal) | 3 | exponential 60 s | 4 | `hope:validation.dlq` — warn alert at depth > 0 | Revalidation is idempotent; affected assessment IDs are in the job payload; retry after M38 health is confirmed |
+| `hope:submission` | `assemble-hope-submission` | 3 (normal) | 3 | exponential 60 s | 2 | `hope:submission.dlq` — P2 alert at depth > 0 for > 15 min | Assembly is protected by the `uniq_hope_sub_item_assessment_active` partial unique index; retry is safe; confirm DB connectivity before retrying |
+| `hope:submission` | `iqies-submit-worker` | 3 (normal) | 5 | exponential 30 s, max 10 min | 2 | `hope:submission.dlq` — P2 alert at depth > 0 for > 15 min | Check iQIES adapter health (`hope_iqies_adapter_health` metric); if adapter is open-circuited, hold the DLQ item until adapter recovers; CMS 30-day deadline gives headroom |
+| `hope:submission` | `iqies-reconcile-worker` | 3 (normal) | 5 | exponential 60 s | 2 | `hope:submission.dlq` — P2 alert at depth > 0 for > 15 min | Reconcile is idempotent (re-fetching acceptance report is a read operation); retry after confirming iQIES reachability |
+| `hope:submission` | `submit-correction-rfa` | 2 (high) | 5 | exponential 30 s, max 5 min | 2 | `hope:submission.dlq` — P2 alert at depth > 0 for > 5 min | Correction RFA references `iqies_record_id`; confirm original was accepted before retrying; if iQIES is open-circuited, hold until adapter recovers |
+| `hope:retention` | `hope-partition-rotation` | 5 (low) | 3 | exponential 300 s | 1 | `hope:retention.dlq` — warn alert; next monthly run will reattempt | Confirm M1 partition-rotation worker sequence; safe to retry; `extended_for_cms` flag prevents premature drops even if cron is delayed |
+
+**DLQ message shape (all queues):** `{ originalJobId, queueName, failedAt, attemptNumber, errorMessage, jobData }` — `jobData` carries the original BullMQ job payload verbatim (may be PHI-bearing; DLQ storage inherits the same Valkey encryption-at-rest and RLS-equivalent key-scoping as the live queue). **Document-before-clear (OPS-035):** on-call engineer must open a DLQ ops ticket capturing this shape before calling `queue.drain()` or `obliterate()`.
+
 ### 4.9 M36 Typed Alert Payload
 
 M10 emits typed alerts through M36's `alert.dispatch` seam per M36 §4.9. The payload shapes:
@@ -1309,6 +1338,31 @@ Alert routing per category:
 - **SFV alerts** → care-team channel + on-call (after `overdue`); severity escalates.
 - **Submission deadline / rejection** → compliance channel + provider-entity admin; severity escalates as deadline approaches.
 
+#### 4.9.1 Alert Payload PHI — Out-of-Band Channel Restriction (M10-F13 — SEC-048, ARCH-185)
+
+> **M10-F13 (SEC-048, ARCH-185 — ADR-0021):** The alert payload types in §4.9 carry
+> `patientDisplayName` and other PHI fields. These fields are **in-app render only** — they are
+> populated in the payload consumed by the in-app Socket.IO and in-app notification surface (M36
+> §5.4 `inApp` channel). Out-of-band channels (push notifications, SMS via Twilio) **must not
+> carry any PHI in the notification body or title**, including `patientDisplayName`,
+> `rfaKind`, triggering-symptom labels, or SFV `dueAt` timestamp (which combined with context
+> could identify a patient). This matches the platform-wide rule (architecture §2036:
+> "No PHI in push/SMS/email notification payloads — they say 'You have a new message' with a
+> deep link to the authenticated app").
+
+**Binding constraints for M10 alert types:**
+
+| Alert type | `patientDisplayName` / PHI fields | Out-of-band push / SMS body | Resolution |
+|---|---|---|---|
+| `HopeTimepointWindowAlert` | `patientId`, `patientDisplayName`, `rfaKind`, `ctaUrl` | **Omit all.** Body: `"HOPE timepoint action required — open WardenX"` + `ctaUrl` deep-link | In-app renders full patient name and RFA context; push/SMS carries only the deep-link and a generic notice |
+| `HopeSfvAlert` | `patientId`, `patientDisplayName`, `triggeringSymptoms`, `dueAt` | **Omit all.** Body: `"Symptom Follow-Up Visit due — open WardenX"` + `ctaUrl` deep-link | In-app renders patient, symptoms, and countdown; push/SMS carries only deep-link |
+| `HopeSubmissionDeadlineAlert` | `providerEntityId`, `itemCount`, `daysUntilDeadline` | `itemCount` + `daysUntilDeadline` are **not PHI** and may appear in the push/SMS body (no patient identifiers present) | No patient identifier in submission deadline alerts; these are safe for out-of-band |
+| `HopeIqiesRejectionAlert` | `submissionId`, `rejectedCount`, `topRejectionReasons[].ruleId` | Rule IDs are **not PHI** and may appear in the push/SMS body | No patient identifier in rejection alerts; these are safe for out-of-band |
+
+**Implementation contract in `packages/hope/src/alerts.ts`:** The `buildOutOfBandPayload(alert)` function emitted to M36 for push/SMS channels strips every field whose `kind` maps to a patient-identifying string, substituting only the deep-link `ctaUrl` and a static template string. The in-app `buildInAppPayload(alert)` receives the full typed payload. M36's dispatch layer selects the appropriate builder per delivery channel before calling Twilio or the VAPID push endpoint. The M10 alert tests assert that `buildOutOfBandPayload` returns zero patient-name tokens for `HopeTimepointWindowAlert` and `HopeSfvAlert` inputs.
+
+**SFV trigger-time severity (M10-F19 / SD-015):** The `HopeSfvAlert` emitted at SFV creation (`state: 'created'`) is classified `severity='clinical_urgent'` from first emission — not deferred to an escalation cron. A freshly-created SFV obligation has a 2-calendar-day deadline; waiting 24 hours to escalate to clinical-urgent (the default escalation-cron model for non-critical alerts) would consume half the allowable window silently. Routing at `clinical_urgent` on creation ensures the care-team channel and the clinical lead receive immediate notification. The `hope:alerts` alert-dispatcher cron escalates the `state: 'overdue'` alert to `severity='critical'` after 24 additional hours per the existing cadence.
+
 ### 4.10 iQIES Submission Worker Loop
 
 The submission pipeline is the most operationally critical path in M10. Its design choices:
@@ -1356,6 +1410,76 @@ The submission pipeline is the most operationally critical path in M10. Its desi
 **Per-tenant credentialing.** The adapter selects iQIES sandbox vs prod based on the environment per `WARDENX_INTEGRATIONS §6.7` and authenticates with per-ProviderEntity submitter credentials sourced from M34's secret store. The credentials never appear in audit logs or error envelopes; the audit payload records only the ProviderEntity ID and the envelope SHA-256.
 
 **Per-ProviderEntity blast radius.** A 401/403 from iQIES for one ProviderEntity does not pause submissions for other ProviderEntities. Each ProviderEntity's submission queue is independent.
+
+#### 4.10.1 Adapter Resilience + Envelope Storage (M10-F17 — INT-009, SD-075, SD-033/034)
+
+> **M10-F17 (INT-009, SD-075, SD-033/034 — ADR-0021):** `packages/iqies-client` is an external
+> adapter package (D6). Per WARDENX_INTEGRATIONS §3.2 (INT-009), every external adapter must
+> declare its circuit-breaker configuration and expose a typed `DegradedError` — raw `fetch`
+> rejections must never propagate to M10 callers. The iQIES submission envelopes (PHI-bearing
+> XML) must be stored under a declared per-tenant MinIO prefix with explicit object-lock and
+> lifecycle policy (SD-033/034).
+
+**Circuit-breaker configuration (SD-075 defaults, iQIES-specific overrides):**
+
+```ts
+// packages/iqies-client/src/circuit-breaker.ts
+export const IQIES_CIRCUIT_BREAKER_CONFIG = {
+  // SD-075 platform default: 5 failures in 30 s → open 60 s → half-open with 1 probe
+  failureThreshold: 5,
+  windowSeconds: 30,
+  openDurationSeconds: 60,
+  halfOpenProbeCount: 1,
+  // iQIES-specific override: iQIES batch submissions are slow (up to 20 s each);
+  // use a longer window to avoid spurious opens under load.
+  timeoutMs: 25_000,
+} as const;
+```
+
+The breaker is instantiated once per ProviderEntity endpoint (one per CCN / per MAC) so a single-PE outage does not open the circuit for other PEs. On open-circuit, the adapter throws `DegradedError` immediately; the caller (`iqies-submit-worker`) re-queues the job with BullMQ exponential backoff rather than blocking the Tier-2 capture path.
+
+**`DegradedError` five-field shape (INT-009):**
+
+```ts
+// packages/iqies-client/src/errors.ts
+export class DegradedError extends Error {
+  constructor(
+    public readonly integration: "iqies",              // field 1 — integration name
+    public readonly operation: "submitBatch"            // field 2 — which operation failed
+      | "fetchAcceptanceReport" | "submitCorrection",
+    public readonly retryable: boolean,                // field 3 — transient vs permanent
+    public readonly customerMessage: string,           // field 4 — human-readable, no PHI
+    public readonly correlationId: string,             // field 5 — request correlation UUID
+  ) {
+    super(`[iqies/${operation}] ${customerMessage} (correlationId=${correlationId})`);
+  }
+}
+```
+
+`retryable: true` covers 429, 5xx, and network timeouts (BullMQ will retry per §4.8.1).
+`retryable: false` covers 400 validation errors and permanent CMS rejections (job is DLQ'd immediately; a `hope_validation_finding` row is written with the iQIES error details).
+
+Open-circuit events emit a **System** alert (M36 category `system.integration_failure`) to the tenant admin and to WardenX ops, carrying only the `integration`, `operation`, and `correlationId` — no PHI per §4.9.1.
+
+**iQIES envelope storage — MinIO prefix + object-lock (SD-033/034):**
+
+All CMS HOPE submission XML envelopes are PHI-bearing and subject to the CMS 10-year retention requirement. They are stored in MinIO under the following per-tenant prefix:
+
+```
+tenants/<org_id>/iqies-envelopes/<provider_entity_id>/<submission_period>/<submission_id>.xml.enc
+```
+
+- **Prefix:** `tenants/<org_id>/` is the platform-standard per-tenant bucket prefix (architecture §8(3)); the `iqies-envelopes/` sub-prefix isolates iQIES objects from documents, claims, and exports within the same tenant bucket; the `<provider_entity_id>/` sub-level enforces PE-scope at the storage layer so IAM policies can gate per-CCN if needed.
+- **Encryption:** AES-256 encrypted at rest via MinIO SSE-S3 with the tenant's per-DEK. The `.enc` extension is a convention — the MinIO SSE layer applies transparently; the extension signals to operators that the object is PHI-bearing and encrypted.
+- **Object lock:** `COMPLIANCE` mode, retention period `3650 days` (10 years from object creation date, satisfying the CMS extended retention for submitted HOPE assessments). This matches the `extended_for_cms` flag in the DB retention class. Object-lock prevents overwrite or deletion by any principal including platform admins until the retention period expires.
+- **Lifecycle rule:** After the 10-year object-lock period, a MinIO lifecycle rule transitions the objects to the `GLACIER`-equivalent (cold tier) for an additional 2-year legal-hold buffer, then permanently deletes. The lifecycle rule is registered under prefix `tenants/*/iqies-envelopes/` with `ExpirationDays: 4380` (12 years total from creation).
+- **`envelope_storage_uri` column:** The `hope_submission.envelope_storage_uri` column records the full MinIO object key (not a presigned URL). The envelope is accessed only via the M4 audit-read proxy, which generates a time-limited presigned URL on each authorized read — consistent with the architecture §8(3) presigned-URL pattern.
+
+The bucket-level strategy entry for `tenants/<org>/iqies-envelopes/` is:
+
+| Bucket prefix | Versioning | Object Lock | Replication |
+|---|---|---|---|
+| `tenants/<org_id>/iqies-envelopes/` | Enabled | Compliance, 10 years | wardenx-backup-01 (real-time) + off-site daily |
 
 -----
 
@@ -1408,6 +1532,93 @@ When M31 lands, the portal will show patient/family-facing HOPE in lay language:
 - **Time-based alert visuals** carry text equivalents ("Window closes in 3 hours" plus the colored countdown ring).
 
 axe-core passes on every M10 screen in CI per the §9.5 E2E suite.
+
+### 5.6 Disaster Recovery Tier, BCP Re-entry, and Mobile Storage (M10-F19 — DR-066/067, SEC-075, SD-015)
+
+> **M10-F19 (DR-066/067, SEC-075, SD-015 — ADR-0021):** ADR-0021 §4 requires every module to
+> declare its DR tier, its degraded-mode posture, its BCP re-entry path, and its encrypted
+> offline storage approach. The existing spec header already declares the DR tiers (Tier 2 for
+> capture; Tier 3 for iQIES submission). This section adds the missing BCP re-entry workflow,
+> the outage late-reason path, the sqlcipher pin for mobile offline storage, and the
+> trigger-time SFV alert severity already treated in §4.9.1.
+
+#### DR Tier Declaration
+
+**Module 10 is split-tier (confirmed binding in the spec header):**
+- **HOPE timepoint capture path (Tier 2) — RTO ≤ 4 hours / RPO ≤ 15 minutes.** Recording a HOPE timepoint at the bedside must remain available during degradation because a missed window cannot be recovered after `late_deadline_at` passes. Missing a timepoint is irreversible HQRP non-compliance and potential 4-point APU exposure.
+- **iQIES submission path (Tier 3) — RTO ≤ 24 hours / RPO ≤ 1 hour.** The CMS 30-day submission deadline provides operational slack. An iQIES outage does not affect clinical care delivery.
+
+**Tier 2 constraint (DR-010):** No external dependency — M36 alert delivery, M38 terminology seam, M9 `LatestAssessmentProvider` — may block the `recordHopeTimepoint` write path. If M36 is unavailable, the assessment inserts and the outbox event persists; M36 will drain on recovery. If M9 is unavailable, the PPS/ESAS-r snapshot is skipped and a `warning` finding is written (D8 / §7.13 edge case). The `recordHopeTimepoint` service never awaits an external call inline.
+
+#### Degraded-Mode Behaviour
+
+| Dependency down | M10 capture-path behaviour |
+|---|---|
+| M36 (alert delivery) | Assessment records normally; `m10.hope.timepoint_signed` and `m10.hope.j2051_trigger_fired` land in the outbox; M36 drains on recovery. The SFV row is still inserted in the same transaction — the trigger fires even without alert delivery. |
+| M9 (PPS/ESAS-r seam) | `LatestAssessmentProvider` call fails; snapshot omitted; `hope_validation_finding` `severity='warning'` written (non-blocking). Assessment proceeds to `signed`. |
+| M38 (terminology seam) | `recordHopeTimepoint` proceeds; Section I value-set check is skipped (resolved against the last-cached value set); `revalidate-on-terminology-update` re-runs when M38 recovers. |
+| BullMQ (Valkey) | Scheduling and watchdog crons pause. The recording transaction does not use BullMQ. Open windows and overdue SFVs remain visible in the DB; the dashboard reads them directly. |
+| iQIES adapter (Tier 3) | Capture path is unaffected. Queued submissions accumulate; `iqies-submit-worker` retries per §4.8.1; circuit-breaker holds open while adapter is down; M36 fires `system.integration_failure` alert per §4.10.1. |
+
+#### BCP Re-entry Path (DR-066/067 — 72-Hour Window)
+
+When the platform recovers from a declared outage event, HOPE timepoints captured on paper during the outage must be entered within the **72-hour re-entry window mandated by DR-066/DR-067**. M10 supports this as follows:
+
+1. **Back-dated capture:** `recordHopeTimepoint` accepts any `targetDate` within the open (or late) window of the corresponding schedule. There is no "must be within X hours of `now()`" constraint — paper-origin assessments dated during the outage are accepted verbatim, subject to the normal `window_opens_at` / `late_deadline_at` boundaries.
+
+2. **Outage late-reason code:** A HOPE assessment recorded after `window_closes_at` but within `late_deadline_at` normally requires a `late_completion_reason_code` from the CMS list (D12). For BCP re-entry scenarios, the CMS late-reason `"system_outage"` is added to the M10 late-reason codelist (an extension code recognised by M10's validator but mapped to the nearest CMS-reportable code before iQIES submission). This surfaces correctly in the HQRP late-completion-reason distribution in M30, distinguishing genuine outage lateness from staffing or patient-access lateness.
+
+3. **Paper-origin marking:** An assessment re-entered from a paper form carries `data.Z.bcpPaperOrigin: true` and `data.Z.bcpPaperFormReference: string` (free-form, e.g., `"Paper HOPE form from 2026-06-14 HUV1 visit — transcribed by J. Smith RN per DR-066 BCP"`). These fields are declared in `packages/hope/src/sections/Z/schema.ts` as optional BCP fields. The recording service emits an additional audit event when `bcpPaperOrigin` is set:
+
+   ```typescript
+   // Emitted when data.Z.bcpPaperOrigin === true.
+   // Authority: M10-F19 / DR-066 / DR-067.
+   {
+     kind: 'm10.hope.paper_origin_transcribed',
+     organizationId: string,
+     patientId: string,
+     assessmentId: string,
+     rfaKind: HopeRfaKind,
+     targetDate: string,            // the original visit date (paper form timestamp)
+     transcribedAt: string,         // server now() — when transcription was recorded
+     transcribedByMembershipId: string,
+     paperFormReference: string,    // value of data.Z.bcpPaperFormReference
+   }
+   ```
+
+4. **BCP re-entry panel:** The HQRP compliance dashboard (§5.1) surfaces a **BCP Re-entry** panel (visible when any `m10.hope.paper_origin_transcribed` event exists in the audit log within the past 30 days) showing the count of re-entered assessments, the RFA kinds, the date range, and the transcribers. An amber warning appears if any paper-origin assessment has `targetDate` more than 72 hours before `transcribedAt`, supporting the DR-067 post-incident documentation requirement for the compliance officer's review.
+
+5. **Missed-window triage:** If an assessment window has already expired when re-entry is attempted (i.e., `targetDate + late_deadline_at` passed during the outage), the admin late-deadline override path (`hope.admin.late_deadline_override`) must be invoked to extend the deadline. The override audit event records `lateOverrideReason: "system_outage_bcp"` automatically when triggered from the BCP re-entry worklist, so the override is distinguishable from routine clinical-override requests.
+
+#### Mobile Offline Storage — sqlcipher Pin (M10-F19 / SEC-075)
+
+The M10 mobile recording modal (§5.3) supports offline draft-save for HOPE assessments recorded at the bedside without network connectivity. Per SEC-075 and ADR-0021 §7, offline PHI must be stored in **encrypted SQLite (sqlcipher)** — IndexedDB is forbidden for PHI drafts.
+
+M10's offline layer uses the **platform `@wardenx/mobile-offline` shared sqlcipher store** (the same store used by M5 / M6 / M8 / M9 mobile offline layers, keyed per-org per-session via the platform per-tenant DEK):
+
+- **Table:** `hope_assessment_draft` in the encrypted SQLite database opened with the session-derived AES-256-CBC key (PBKDF2-SHA256, 100k iterations, salt = `org_id || device_id`).
+- **Draft schema (sqlcipher table):**
+
+  ```sql
+  CREATE TABLE IF NOT EXISTS hope_assessment_draft (
+    draft_id           TEXT PRIMARY KEY,   -- client UUID; becomes Idempotency-Key on submit
+    patient_id         TEXT NOT NULL,
+    admission_id       TEXT NOT NULL,
+    schedule_id        TEXT,               -- nullable; matched when timepoint is completed
+    rfa_kind           TEXT NOT NULL,      -- '01_admission'|'02_huv1'|...|'05_discharge'
+    data_json          TEXT NOT NULL,      -- JSON of the per-section data payload (PHI)
+    target_date_iso    TEXT NOT NULL,      -- visit date; ISO-8601
+    source_encounter_id TEXT,
+    created_at_iso     TEXT NOT NULL,
+    synced             INTEGER NOT NULL DEFAULT 0  -- 0=pending, 1=submitted, 2=confirmed, 3=failed
+  );
+  ```
+
+- **Key derivation:** same as M9's `packages/mobile-offline/src/key-derivation.ts` (shared store; no per-module key fork).
+- **Evict-PHI-on-logout:** The shared `logout` event handler runs `DELETE FROM hope_assessment_draft` and all other PHI tables before dropping the derived key from Secure Storage (iOS Keychain / Android Keystore). Without the key the DB is opaque ciphertext. This satisfies SEC-075's "no residual PHI on device after session end."
+- **Sync-on-reconnect:** The `@wardenx/mobile-offline` sync worker reads `synced=0` draft rows in `created_at_iso` order and submits each as `POST /admissions/:admissionId/hope/timepoints` with `draft_id` as the `Idempotency-Key`. On HTTP 200 or 409 (already processed), the row is marked `synced=2`. On 4xx validation failure, the row is marked `synced=3` and a conflict dialog surfaces (per §5.3 sync-conflict behaviour).
+- **Screen-capture posture:** Assessment form screens carrying J2051 PHI set `FLAG_SECURE` (Android) / `allowScreenRecording=false` (iOS) while visible on screen (SEC-075).
+- **No IndexedDB fallback:** The web PWA variant of M10 does not support offline draft persistence — it requires connectivity to submit. Attempting to use IndexedDB for HOPE drafts in any context is a lint violation (`eslint-plugin-wardenx/no-phi-indexeddb`).
 
 -----
 
