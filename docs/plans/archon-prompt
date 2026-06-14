@@ -3,7 +3,7 @@ Archon launch sequence
 Prerequisites (once):
 - Merge PR #1 so your base branch has the buildable scaffold + all plans.
 - From a normal terminal (not nested in Claude Code): cd /Users/fabrice/Apps/WardenX and git checkout main && git pull.
-- Each run creates an isolated worktree, loops the plan task-by-task gating on bun run build && bun run arch:fitness && bun run test, pauses at the approval node, then opens a PR. Merge each wave's PR before starting the next (later waves assume earlier seams exist). Watch with archon workflow status or archon serve.
+- Each run creates an isolated worktree, loops the plan task-by-task gating on bun run build && bun run arch:fitness && bun run test, pauses at the approval node, then opens a PR. Merge each wave's PR before starting the next (later waves assume earlier seams exist). Watch with archon workflow status (v0.3.2 has no serve/web dashboard).
 
 Phase 1 — in order:
 archon workflow run wardenx-piv --branch feat/m1-m2-slice

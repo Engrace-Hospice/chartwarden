@@ -73,7 +73,7 @@ to follow each run. See [`../ARCHON_SETUP.md`](../ARCHON_SETUP.md) for install +
   M9 ∥ M11 → M10, M12 → M13; Wave C: M5 → M39). The implement-loop builds "next unstarted task" in plan
   order — respect it when scoping per-module.
 - **Recover a failed run:** `archon workflow run wardenx-piv --resume` (resumes the most recent failed run).
-- **Watch progress:** `archon workflow status` (CLI) or `archon serve` (web dashboard).
+- **Watch progress:** `archon workflow status` (CLI; v0.3.2 has no `serve`/web dashboard).
 - **Don't nest:** launch from a normal terminal, not inside an existing Claude Code session
   (Archon drives its own `claude`).
 - **Flags stay off until their phase:** no Phase-1 route may depend on a Phase-2/3 flag; no Phase-2

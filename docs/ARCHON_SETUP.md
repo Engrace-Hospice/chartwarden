@@ -62,8 +62,7 @@ cd /Users/fabrice/Apps/WardenX
 archon workflow list                       # bundled defaults + our wardenx-piv
 archon validate workflows wardenx-piv      # expect: 1 valid, 0 with errors
 archon                                      # launches Claude Code in this repo under the harness
-# optional dashboard:
-archon serve                               # downloads + serves the web UI
+archon workflow status                     # monitor active runs (CLI; no web dashboard in v0.3.2)
 ```
 
 > **Always run from the WardenX repo root, not the Archon repo** (per Archon's docs).
@@ -109,7 +108,7 @@ archon workflow run wardenx-piv --branch feat/wave-a "Use the plan at docs/plans
 
 The loop implements one plan task at a time in a **fresh context**, runs the fitness gate after each,
 self-fixes on red, and **pauses at the `interactive` approval node** before opening the PR — so run it
-from a terminal where you can approve. Watch progress with `archon workflow status` (or `archon serve`).
+from a terminal where you can approve. Watch progress with `archon workflow status`.
 
 > **Note on nesting.** Archon drives the `claude` CLI. Launch it from a **normal terminal**, not from
 > inside an existing Claude Code session, to avoid nested-agent conflicts.
