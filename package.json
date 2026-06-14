@@ -11,6 +11,8 @@
     "packages/*"
   ],
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
+    "setup:hooks": "git config core.hooksPath .githooks && echo 'core.hooksPath -> .githooks'",
     "build": "tsc -b",
     "typecheck": "tsc -b --pretty",
     "clean": "tsc -b --clean",

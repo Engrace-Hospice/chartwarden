@@ -84,3 +84,19 @@ scripts/     fitness gates + the scaffold generator; __fixtures__ (gate red-proo
 `scripts/__tests__/fitness-gates.test.ts` runs each gate against a one-violation fixture in
 `scripts/__fixtures__/` and asserts it goes **red**, then asserts **green** at the repo root. If
 you weaken a gate, a fixture test fails — that's the regression net.
+
+## Enforcement model (free / private repo — no GitHub branch protection)
+
+GitHub branch protection + rulesets require a paid plan on private repos, so `main` is protected by
+three free layers instead:
+
+1. **CI on every PR** — `.github/workflows/ci.yml` runs `build-and-verify` (install → `tsc -b` →
+   `arch:fitness` → `vitest`) on each PR. The green/red status is visible before you merge.
+2. **Local pre-push hook** — `.githooks/pre-push` blocks a **direct push to `main`** unless the full
+   fitness suite passes. Activate once: `bun run setup:hooks` (auto-runs via the `prepare` script on
+   `bun install`). Emergency bypass: `git push --no-verify` or `SKIP_FITNESS=1 git push`.
+3. **PR discipline** — always merge via a PR after CI is green (see `plans/ARCHON_RUN_TRACKER.md`).
+
+This isn't server-enforced (a paid plan would add that), but it catches the realistic failure modes:
+broken code reaching `main` by direct push, and red PRs (CI flags them). If you later upgrade, enable a
+ruleset requiring the `build-and-verify` check — the command is in the run tracker's notes.

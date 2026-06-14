@@ -13,10 +13,15 @@ to follow each run. See [`../ARCHON_SETUP.md`](../ARCHON_SETUP.md) for install +
   (approval gate) · `✅` merged.
 
 ## Prerequisites (once)
-- [ ] **PR #1 merged** (Phase 0 scaffold + Archon harness + all plans on the base branch).
+- [x] **PRs #1 + #2 merged** — `main` is the buildable baseline.
 - [ ] `cd /Users/fabrice/Apps/WardenX && git checkout main && git pull`
+- [ ] `bun install` (auto-activates the pre-push gate via `prepare`) — or `bun run setup:hooks`
 - [ ] `archon validate workflows wardenx-piv` → `1 valid, 0 with errors`
 - [ ] `archon workflow list` shows `wardenx-piv`
+
+> **Enforcement (free, private repo):** no GitHub branch protection (paid-only on private). `main` is
+> guarded by CI-on-every-PR (`build-and-verify`) + the `.githooks/pre-push` gate + PR discipline. See
+> `../DEVELOPMENT.md` → "Enforcement model".
 
 ---
 

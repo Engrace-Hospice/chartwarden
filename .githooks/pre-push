@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# WardenX pre-push gate — the free, private-repo alternative to GitHub branch protection.
+# Blocks a push that updates `main` unless the full fitness suite passes locally.
+# (GitHub branch protection / rulesets require a paid plan on private repos; this hook
+#  enforces the same intent on the one path that can bypass PR review: a direct push to main.)
+#
+# Activate once:  bun run setup:hooks   (or: git config core.hooksPath .githooks)
+# Emergency bypass: git push --no-verify   OR   SKIP_FITNESS=1 git push
+set -euo pipefail
+
+if [ "${SKIP_FITNESS:-}" = "1" ]; then
+  echo "pre-push: SKIP_FITNESS=1 set — skipping fitness gate."
+  exit 0
+fi
+
+PROTECTED="refs/heads/main"
+pushing_main=0
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  [ "$remote_ref" = "$PROTECTED" ] && pushing_main=1
+done
+
+# Only gate pushes that update main; feature-branch pushes go through PR CI.
+[ "$pushing_main" -eq 0 ] && exit 0
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "pre-push: bun not found — install it or use 'git push --no-verify' deliberately." >&2
+  exit 1
+fi
+if [ ! -d node_modules ]; then
+  echo "pre-push: node_modules missing — run 'bun install' first (or 'git push --no-verify')." >&2
+  exit 1
+fi
+
+echo "pre-push: updating main → running fitness gate (build + arch:fitness + test)…"
+bun run build && bun run arch:fitness && bun run test
+echo "pre-push: ✓ gate green — allowing push to main."
