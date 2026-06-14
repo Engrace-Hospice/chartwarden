@@ -1,6 +1,10 @@
 # WardenX — Phase 0 Scaffold Plan (proposal)
 
-**Status:** Toolchain decisions (§2) LOCKED 2026-06-14; PR sequencing pending go-ahead. No code written.
+**Status:** ✅ EXECUTED 2026-06-14 (PR-0.1 … PR-0.7). Toolchain (§2) ratified in
+[ADR-0027](./adr/ADR-0027-phase-0-toolchain-and-scaffold.md); runbook in [DEVELOPMENT.md](./DEVELOPMENT.md).
+`bun install && bun run build && bun run arch:fitness && bun run test` is green; each gate has a
+red-proof fixture. (Original plan status: "Toolchain decisions LOCKED 2026-06-14; PR sequencing
+pending go-ahead. No code written.")
 **Author:** generated 2026-06-14 in response to the architecture-readiness audit.
 **Goal:** turn the spec corpus + fitness kit into a *buildable* monorepo skeleton, so a coding
 agent (Archon or otherwise) can implement feature modules against working CI gates —
