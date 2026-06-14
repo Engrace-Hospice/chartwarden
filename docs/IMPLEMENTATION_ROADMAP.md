@@ -41,6 +41,37 @@ Each task closes on a specific fitness gate; cross-module access is seam/outbox 
 All 29 Phase-1 modules are covered exactly once. Build order across waves is the §20 dependency order;
 within a wave, the plan states the internal parallelism and which forward-seams/deny-stubs it opens or closes.
 
+### Phase 2 wave plans
+
+`PHASE_2_PLAN.md` = Part A (5 flag-activation upgrades to Phase-1 modules) + Part B (10 new modules).
+
+| Wave | Modules / upgrades | Plan |
+|---|---|---|
+| Part A | M32 `ai.full`, M8 `hearthnote.layer2`, M14 full IDG, M22 `documents.doclens`, M17 `route_optimization` | [`plans/PHASE_2A_UPGRADES_PLAN.md`](./plans/PHASE_2A_UPGRADES_PLAN.md) |
+| P2-1 | M15, M16, M21, M24 | [`plans/WAVE_P2-1_M15-M16-M21-M24_PLAN.md`](./plans/WAVE_P2-1_M15-M16-M21-M24_PLAN.md) |
+| P2-2 | M19, M20 | [`plans/WAVE_P2-2_M19-M20_PLAN.md`](./plans/WAVE_P2-2_M19-M20_PLAN.md) |
+| P2-3 | M27, M31, M33, M35 | [`plans/WAVE_P2-3_M27-M31-M33-M35_PLAN.md`](./plans/WAVE_P2-3_M27-M31-M33-M35_PLAN.md) |
+
+Phase 2 leaves only **M37 (Inpatient Unit)** for Phase 3, plus the Phase-3 flag activations. Adapter
+packages some Phase-2 specs reference (`xero-client`, `gusto-client`, `triage-vendors`, `evv-aggregators`)
+are **not in any manifest codePath** — each needs a deliberate codePath-addition ADR before it is
+fitness-governed (flagged in the relevant wave plans).
+
+### Phase 3 wave plans
+
+`PHASE_3_PLAN.md` = 1 new build (M37) + 5 flag-activation upgrades (2 certification-gated).
+
+| Wave | Modules / upgrades | Plan |
+|---|---|---|
+| New build | M37 IPU (26 tables; raw CREATE TABLE → pgTable first) | [`plans/WAVE_P3_M37_IPU_PLAN.md`](./plans/WAVE_P3_M37_IPU_PLAN.md) |
+| Upgrades | M34 `saas.multi_tenant`, M30 `cahps`+`hvldl_hci`, M26 `cap.full_projection`, M28 `fhir.write`†, M12 `dosespot.epcs`† | [`plans/PHASE_3_UPGRADES_PLAN.md`](./plans/PHASE_3_UPGRADES_PLAN.md) |
+
+† external certification gate (FHIR conformance / DEA EPCS) — flag stays off until certified.
+
+**With Phase 3, all 40 modules are built and every feature flag activated.** All five phase decompositions
+(Phase 0 scaffold + Phases 1–3 task plans) are complete; Phase 4/v2 is state expansion + enterprise
+certification (`PHASE_4_PLAN.md`), not decomposed here.
+
 ## Rules that bind every phase
 
 1. **Dependency order is law (§20).** A module is *done* — "tests + UI + audit + RBAC" — before a
