@@ -107,7 +107,8 @@ the CI checks that gate the remaining sweeps are in place and validated.
   `organization_id` rename stays tracked as a cosmetic normalization — both halves agree on `org_id`,
   so it was never part of the divergence.)
 - **Manifest `ownedTables` pass (M07-F02 + analogues → CLOSED, all 40 modules).** `ownedTables` is now
-  populated for **all 40 modules — 451 tables** — in **both** `module-manifest.ts` and `.cjs` (verified
+  populated for **all 40 modules — 453 tables** (was 451; +2 M35 platform-retention tables per M35-F06,
+  ADR-0011/ARCH-251) — in **both** `module-manifest.ts` and `.cjs` (verified
   byte-consistent), extracted directly from each spec's `pgTable` / `CREATE TABLE` declarations with a
   cross-module collision check (no table is claimed by two modules). `check-table-ownership` (#11) now
   **enforces the full corpus** rather than "enforcing only what is declared," and the suite stays

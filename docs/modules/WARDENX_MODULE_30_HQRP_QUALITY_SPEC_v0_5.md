@@ -124,7 +124,7 @@ This list is binding. Every item here is owned by another module and reached via
 - **Secure messaging.** Module 36. M30 emits typed alert payloads to M36; M36 owns delivery.
 - **Inpatient unit management.** Module 37. M30 reads `IpuComplianceProvider.restraintUseRate` (when M37 lands) for the IPU-specific restraint-use quality indicator; M30 does not write to M37.
 - **Clinical terminology.** Module 38. M30 consumes `lookup` for the pathogen and body-site value sets used in infection surveillance and the CoP-citation value set used in CoP compliance tracking; the `cms_quality_measure_v<FY>` taxonomy is registered with M38 as the platform-shipped measure-code value set.
-- **Consent and authorization.** Module 39. M30 has no patient-consent surface — quality data is not patient-consent-gated; mortality-review and incident-report read paths respect M5 PrivacyFlag snapshots per the normal M5 D4 read-audit and ABAC `privacy_flag_redaction` predicate.
+- **Consent and authorization.** Module 39. M30 has no patient-consent *capture* surface — general quality data is not patient-consent-gated; mortality-review and incident-report read paths respect M5 PrivacyFlag snapshots per the normal M5 D4 read-audit and ABAC `privacy_flag_redaction` predicate. **Exception (M30-F14, ADR-0014 / SEC-046):** for Part-2-promoted rows (D23-promoted `incident_report` / `mortality_review` carrying `retention_class = 'compliance_42cfr_part2'`), the READ path additionally consults M39's `42_cfr_part_2_release` consent via the `part2Redisclosure` ABAC predicate (§4.7, §8.1) — a default-deny/fail-closed re-disclosure gate on top of the M5 PrivacyFlag check.
 - **Master data management.** Module 40. M30 consumes `ProviderEntityReader` for the per-PE measure aggregation and `external_physician` for the CAHPS sampling exclusion criteria (decedents under a physician with active medical-board action are excluded per CMS); M30 does not write to M40.
 
 - **Silent exclusion of external-source deaths from CMS submissions.** M30 does NOT exclude external-source deaths from HVLDL denominators, CAHPS samples, or any other HQRP measure unless CMS technical specifications explicitly permit it. Excluding without CMS authorization would constitute a submission deviation. M30 surfaces the source for review; M30 does not unilaterally reinterpret CMS measure denominators.
@@ -2073,6 +2073,7 @@ M30 contributes the following predicates to the M3 named-predicate registry. Eac
 | `ownsSraCycle` | `actor.id === sra_cycle.owner_user_id` OR actor holds `sra.admin` |
 | `sraCloseAuthority` | Two-actor: caller must be `Security Officer` AND second co-signer must be `Compliance Officer` (or vice versa) |
 | `assignedToMortality` | `actor.id === mortality_review.assigned_to_user_id` |
+| `part2Redisclosure` | (M30-F14, ADR-0014 / SEC-046) Applies to Part-2-promoted rows only (`retention_class = 'compliance_42cfr_part2'`, the D23 target on `incident_report` / `mortality_review`). True iff the linked patient's M5 PrivacyFlag snapshot carries a 42 CFR Part 2 protection AND a valid unexpired M39 `42_cfr_part_2_release` consent covers the actor's access to that patient. **Default-deny / fail-closed:** missing snapshot, unreachable M39 consent reader, or no covering release ⇒ false (row redacted). Rows whose `retention_class ≠ 'compliance_42cfr_part2'` pass unconditionally. |
 
 The predicate registry validates these at boot: any predicate name referenced by a route guard or seam handler that is not declared in `m3.predicateRegistry.declare(30, ...)` throws.
 
@@ -2161,7 +2162,7 @@ Per architecture v0.11 §7 (Outbox-only cross-module communication), M30 emits t
 - `m6.election.signed` → handler enqueues `m30.measure_recompute` for HCI denominators that include the new election.
 - `m10.hope.submission_accepted` → handler enqueues recompute for HOPE-derived measures.
 - `m23.claim.adjudicated` → handler enqueues recompute for HCI claims-derived indicators.
-- `m12.medication.error_reported` (if M12 emits a dedicated event) OR direct API call from M12 to R-51: creates incident with `kind=medication_error` and `medicationOrderId` populated.
+- `m12.medication.error_reported` → handler creates incident with `kind=medication_error` and `medicationOrderId` populated. M12 emits this typed outbox event when a medication error is reported; M30 subscribes to it. There is no synchronous M12→M30 API path — per architecture v0.11 §7 (outbox-only cross-module communication, ADR-0011 / ARCH-272), M30 never accepts a direct cross-module call into R-51 to create an incident.
 - `m18.evv.visit_verified` → triggers HVLDL recompute for any death within ±3 days of the verification.
 
 All outbox emissions are inside the same DB transaction as the state change that produced them (transactional outbox); the relay worker is the architecture v0.11 platform component shared by all modules.
@@ -2991,13 +2992,20 @@ Every M30 table — base tables and the materialized view — enables PostgreSQL
 | `qapi_program` / `qapi_indicator` / `qapi_project` / `qapi_pip` / `qapi_governance_minutes` | `current_org_id() = org_id` | Aggregate; org-only |
 | `sra_cycle` / `sra_finding` / `sra_remediation` | `current_org_id() = org_id` | Aggregate; org-only |
 | `cop_compliance_status` | `current_org_id() = org_id` | Aggregate; org-only |
-| `incident_report` | `current_org_id() = org_id AND (patient_id IS NULL OR can_access_patient(patient_id)) AND can_see_incident_kind(kind, current_user_permissions())` | Org + patient + kind |
-| `mortality_review` | `current_org_id() = org_id AND can_access_patient(deceased_patient_id)` | Org + patient-scope |
+| `incident_report` | `current_org_id() = org_id AND (patient_id IS NULL OR can_access_patient(patient_id)) AND can_see_incident_kind(kind, current_user_permissions()) AND part2_redisclosure_ok(retention_class, patient_id)` | Org + patient + kind + Part 2 re-disclosure |
+| `mortality_review` | `current_org_id() = org_id AND can_access_patient(deceased_patient_id) AND part2_redisclosure_ok(retention_class, deceased_patient_id)` | Org + patient-scope + Part 2 re-disclosure |
 | `infection_surveillance_event` | `current_org_id() = org_id AND (patient_id IS NULL OR can_access_patient(patient_id))` | Org + patient (when patient-linked) |
 | `infection_outbreak_case` | `current_org_id() = org_id` | Aggregate; org-only |
 | `risk_register_view` | `current_org_id() = org_id` | Materialized; refresh runs as `app_admin` |
 
 `can_see_incident_kind` is the database-level expression of the `incidentVisibility` ABAC predicate from §4.7 — abuse-allegation rows are filtered at the row level for users lacking `incident.abuse_review`. This is double-defense: even if a route guard regresses, the RLS layer denies the row.
+
+**Part 2 re-disclosure gate (M30-F14, ADR-0014 / SEC-046).** `part2_redisclosure_ok(retention_class, patientId)` is the database-level expression of the `part2Redisclosure` ABAC predicate (§4.7). It applies only to the two D23-promoted tables — `incident_report` and `mortality_review` — and only to rows whose `retention_class = 'compliance_42cfr_part2'` (the D23 auto-promotion target; all other rows pass the predicate unconditionally). For a Part-2-promoted row, the read is permitted **only if both** of the following hold, evaluated against authoritative source data (not a cached copy):
+
+1. The linked patient's M5 PrivacyFlag snapshot indicates the patient carries a 42 CFR Part 2 protection (`privacy_flag_snapshot.has_sud` / Part 2 flag per M5 v0.2 D3), **and**
+2. The requesting actor's access is covered by a valid, unexpired M39 `42_cfr_part_2_release` consent for the patient (consulted via M39's consent reader seam).
+
+The gate is **default-deny / fail-closed**: if the M5 PrivacyFlag snapshot is unavailable, the M39 consent reader is unreachable, or no covering `42_cfr_part_2_release` consent is found, the predicate returns false and the row is **redacted** (filtered from the result set at the RLS layer; the `*WithPatient` seam variants likewise return the row with Part-2-bearing fields stripped). This re-disclosure control sits **on the READ path** in addition to the D23 retention-class auto-promotion (which governs destruction, not disclosure) — D23 ensures Part-2-touching rows are retained per 42 CFR §2.13; F14 ensures those same rows are not re-disclosed without the patient's specific Part 2 release. Re-disclosure decisions (grant and deny) are audited via M4 per the §8.3 PHI handling rules. **(Note D23.)**
 
 ### 8.2 ABAC composition
 

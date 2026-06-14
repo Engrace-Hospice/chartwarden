@@ -249,3 +249,20 @@ comment noting these are wired at boot, not in the manifest. This closes the **F
 field findings (M39-F07 etc.) and the **M16-F02 illegal `phase` field**. `dependsOn` values were left
 unchanged (the edge-set trims are the separate, judgment-laden Batch-3 remainder; M35's dependsOn is
 the disputed item).
+
+### Batch 4 — cross-module ownership / §164.528 disclosure / 42-CFR-Part-2 (ADR-0011/0013/0014), 2026-06-13 ✅ applied, runnable fitness green
+The Part-2 / disclosure-accounting / ownership-inversion MAJORs not already swept up by Batches 3/5
+(M10-F01, M26-F02, M30-F01, M39-F01/F02/F03, M09-F01, M15-F01 were already done). One agent per module,
+each **verify-then-fix** (skip if already resolved). **Several caught the same banner-vs-body trap**:
+M34-F08/F13 and M39-F04/F05/F08 had changelog rows *claiming* resolution that the spec bodies did not
+back — all confirmed still-present and now actually fixed.
+
+- **M09-F05** (ADR-0014 D1) — removed the AIMS/SUD-context record-**creation** write-gate (`SUD_CONSENT_REQUIRED` 403 → `SUD_DISCLOSURE_DENIED` on read/egress only). Record always created `sud_context=true`; Part 2 enforced at every disclosure boundary (M5 PrivacyFlag + M39). Reconciled §2.3/§4.1/§4.4/§7.6/§8/§9/§11-D10.
+- **M30-F08** (ADR-0011/ARCH-272) — removed the "OR direct API call from M12 to R-51" synchronous fallback in §4.10; M12 emits `m12.medication.error_reported` outbox event, M30 subscribes. **M30-F14** (ADR-0014/SEC-046) — added a Part-2 re-disclosure read gate (`part2_redisclosure_ok`) on the D23-promoted `incident_report`/`mortality_review` rows (§8.1 RLS + §4.7 ABAC predicate; fail-closed).
+- **M34-F08** (ADR-0014/ARCH-251) — DEK destruction now **conditional**: if any eraser returns `refused_part_two_retention`, Phase-3 shred aborts, tenant re-defers to `retained`, refused-row counts on the cert (§3.5/§2.2/§2.5/§7.2/§7.7). **M34-F13** (SEC-046) — `dsar_export_job.patient_id` + `support_session_event.patient_id` classified `phi_sensitive`; DSAR Bundle honors M5/M39 redaction-by-default; Part-2 support sessions get heightened controls.
+- **M35-F04** (ADR-0011/ARCH-147) — dropped cross-module Drizzle `organizations`/`memberships` imports in 12 schema files → plain-uuid logical FKs (RLS-governed). **M35-F05** (ADR-0144) — §3.6 no longer redefines M4's audit denylist; routes through `m4.audit()`/registers advisory posture. **M35-F06** (ARCH-186/085/251) — replaced the in-place `organization_id`→`legacy_tenant_<sha>` rewrite with copy-then-delete into **two new platform-retention tables** (`platform_retained_invoice`, `platform_retained_invoice_line`). **Manifest: M35.ownedTables 19→21; corpus 451→453** (both `.ts`/`.cjs`; REMEDIATION_SUMMARY + CLAUDE.md counts updated).
+- **M39-F04** (ADR-0251/ARCH-234) — eraser re-keyed `consent_record_subtree`→`consent`; no longer `DELETE`s immutable `consent_eval_audit` (routed through M4 audit-partition destruction). **M39-F05** (ADR-0014) — `redactHiv/MentalHealth/Genetic` flags given backing (SUD→Part-2 consent, family-violence→M15 resolver, HIV/MH/genetic→M5 PrivacyFlag), default-redact fail-closed (new §4.3.1). **M39-F08** (ADR-0011/ARCH-272) — `trg_*_outbox` triggers rewritten to derived-column maintenance only; outbox emission moved to service layer via M1 helper.
+- **M22-F07** (ADR-0013/0234/0251) — eraser re-keyed to `documents`; M40→**M4** attribution fixed (destruction-cert registry is M4's); access-log cascade-delete removed (rows are §164.528 accounting inputs); version-aware MinIO deletion (all versions + delete markers) per DR-019/ARCH-085.
+
+**Batch 4 COMPLETE.** Runnable checks (`arch:tables`/`tenancy`/`ddl`/`gaps`/`docs:ui`) green; 453 tables,
+all unique. (`arch:boundaries` remains armed-inert — no app source / `depcruise` absent.)

@@ -15,7 +15,25 @@
 
 ## Changelog
 
-- **v0.2 (Locked)** — Initial publication at lock-grade. Instantiates the architecture §20.B module spec template. Resolves all twenty-four open questions into binding decisions (§11). Defines the **hybrid per-seat + per-patient-month plan model closing ADR-001** (D1) — three platform-owned plan tiers (Starter / Professional / Enterprise) each with included quantities of active patients and active users plus per-meter overage pricing for AI tokens, claim volume, FHIR egress requests, and HL7 message counts; the meter catalog is platform-owned (D11) with no tenant overlay because every meter must map to a Stripe `meter` resource. Defines the **outbox-only Stripe API submission posture** (D3) — every outbound call to the Stripe API is made by the `stripe-dispatcher` BullMQ worker draining the M35 outbox; deterministic Stripe idempotency keys derived from `(operation, businessKey, attempt_index)` mean a retried submission is a no-op at Stripe; mirrors M23 D2 MAC submission and M12 D3 DoseSpot submission. Defines the **webhook handler posture** (D4) — Stripe-Signature HMAC verification against `STRIPE_WEBHOOK_SECRET` at the route boundary, dedup on Stripe event id via `stripe_webhook_event` with 30-day replay protection, envelope-encryption of the payload at rest (D15), and a single outbox emit (`m35.stripe.webhook_received`) that decouples receipt from processing. Defines the **append-only usage-event ledger** (D5) partitioned by month and aggregated into per-period `usage_period_aggregate` rows that are the source of truth for `stripe usage_record` posting; three-level idempotency (`source_event_id` on ingest, aggregate uniqueness on `(org_id, subscription_id, event_type, period)`, `stripe_usage_record_id` on post) means a multi-source replay storm produces correct totals. Defines the **HMAC-pseudonym discipline** (D6) — every per-patient and per-user meter event recorded by M35 stores a pseudonym computed as `HMAC-SHA256(platform_key_id, patient_id_or_membership_id)` with platform-key rotation; the raw patient_id never enters an M35 table; the same patient produces the same pseudonym deterministically within a key epoch so dedup of `active_patient` events works. Defines the **dunning XState v5 lifecycle** (D7) — `current → past_due → at_risk → suspended → canceled` with platform-floor cadences (`day_1 → day_7 → day_14 → day_21 → day_28 (suspend) → day_60 (cancel)`); tenant overrides may *tighten* (suspend sooner) but never *loosen* (suspend later) per the platform-floor / tenant-tighten-only architecture rule. Defines the **AI-prohibited zone for M35** (D8) — Module 32's LLM may not synthesize, modify, or redact subscriptions, invoices, dunning copy, refund decisions, or plan changes; enforced at boot via `validateM35AIBlock()` against M32's prompt registry mirroring M12 D12 / M13 D15 / M22 D-pattern / M28 D14. Defines the **USD-only Phase 1, ISO 4217 platform-floor currency catalog** (D9) sourced from M38 with multi-currency deferred to Phase 3. Defines the **Stripe Tax as the sole tax engine** (D10) — WardenX never computes tax. Defines the **platform-owned plan catalog** with no tenant overlay (D11). Defines the **14-day platform-floor trial** with tenant-tighten allowed and tenant-extend requiring `platform_admin` (D12). Defines the **7-year invoice retention floor** per IRS §6001 with platform-retention-class invoice records that survive tenant offboarding (D13). Defines the **hard PHI boundary** (D14) and the **envelope-encrypted webhook payloads** (D15). Defines the **four-stage refund workflow** with `platform_admin` approval gate (D16). Defines the **platform-ops-only promo-code apply** (D17). Defines the **MRR/ARR monthly snapshot computation** (D18). Defines the **tenant-lifecycle integration via M2 organization outbox events** (D19). Defines the **6 published seams** registered into the M1 seam registry with boot validation (D20). Defines the **outbox subscription catalog** (D21). Defines the **STRIDE map** (D22). Defines the **proposed manifest patch** updating `M35.dependsOn` from the architecture §20 sketch `[34]` to `[1, 2, 3, 4, 5, 28, 29, 32, 36, 38]` *(relationship inventory - not the `dependsOn` edge set; per ADR-0005 D1/D4 seam/outbox/foundation consumers are no-edge - see audit/MANIFEST_DEPENDSON_REVIEW.md; do not bulk-apply)* — the architecture's `[34]` was build-sequence shorthand (M35 ships after M34's tenant infrastructure exists in Phase 2) and not a code-level dependency; the correct direction is M34→M35 (M34 consumes M35's `SubscriptionStateProvider` / `BillingStatusProvider` from its tenant admin console); M35 does not depend on M34 at the code level and instead reads `OrganizationReader` from M2 directly with a forward-seam-deny-stub consumption of `OnboardingStatusProvider` that wires when M34 locks (D23, D24). Populates `M35.ownedTables` with the 19 owned tables: 12 tenant-scoped (RLS-enforced, `organization_id`-FK'd) + 5 platform-shared (`plan`, `plan_meter`, `promo_code`, `revenue_recognition_snapshot`, `patient_pseudonym_key`) + 2 platform-only Stripe audit (`stripe_webhook_event`, `stripe_api_call_audit`). Adds `packages/subscription-billing` to `codePaths`.
+- **v0.3 (Locked)** — Batch-4 cross-module ownership fixes applied.
+  **M35-F04 (ADR-0011 / ARCH-147):** All §3.3 schema files that imported `organizations` or
+  `memberships` from `packages/db/src/schema` and called `.references(() => organizations.id /
+  memberships.id)` are corrected. `organization_id` and membership-id columns are now plain
+  `uuid()` columns (logical FKs, RLS-governed); cross-module `.references()` calls removed.
+  Affected files: `subscription.ts`, `subscription-state-history.ts`, `payment-method.ts`,
+  `invoice.ts`, `invoice-line.ts`, `usage-event.ts`, `usage-period-aggregate.ts`,
+  `patient-active-period.ts`, `user-active-period.ts`, `dunning-state.ts`,
+  `promo-code-application.ts`, `refund.ts`.
+  **M35-F05 (ADR-0144 / ARCH-281#5):** §3.6 reworded. M35 no longer defines its own audit-trigger
+  denylist; it registers advisory posture hints with M4's `AuditDenylistRegistry` at boot.
+  M4 owns the trigger-suppression decision. §8.4 updated to match.
+  **M35-F06 (ARCH-186/085/251):** §3.7 `preserveInvoicesForRetention` in-place org_id rewrite
+  replaced by a copy-then-delete transfer to first-class platform-retention tables
+  (`platform_retained_invoice`, `platform_retained_invoice_line`). These tables carry
+  `original_organization_id` for forensic/regulatory traceability and are declared in
+  `M35.ownedTables` (19 → 21 tables). D13, W-SB-13, §8.6, §12.2, and the §13 manifest
+  patch updated accordingly. (Prior: v0.2.)
+- **v0.2 (Locked)** — Initial publication at lock-grade. Instantiates the architecture §20.B module spec template. Resolves all twenty-four open questions into binding decisions (§11). Defines the **hybrid per-seat + per-patient-month plan model closing ADR-001** (D1) — three platform-owned plan tiers (Starter / Professional / Enterprise) each with included quantities of active patients and active users plus per-meter overage pricing for AI tokens, claim volume, FHIR egress requests, and HL7 message counts; the meter catalog is platform-owned (D11) with no tenant overlay because every meter must map to a Stripe `meter` resource. Defines the **outbox-only Stripe API submission posture** (D3) — every outbound call to the Stripe API is made by the `stripe-dispatcher` BullMQ worker draining the M35 outbox; deterministic Stripe idempotency keys derived from `(operation, businessKey, attempt_index)` mean a retried submission is a no-op at Stripe; mirrors M23 D2 MAC submission and M12 D3 DoseSpot submission. Defines the **webhook handler posture** (D4) — Stripe-Signature HMAC verification against `STRIPE_WEBHOOK_SECRET` at the route boundary, dedup on Stripe event id via `stripe_webhook_event` with 30-day replay protection, envelope-encryption of the payload at rest (D15), and a single outbox emit (`m35.stripe.webhook_received`) that decouples receipt from processing. Defines the **append-only usage-event ledger** (D5) partitioned by month and aggregated into per-period `usage_period_aggregate` rows that are the source of truth for `stripe usage_record` posting; three-level idempotency (`source_event_id` on ingest, aggregate uniqueness on `(org_id, subscription_id, event_type, period)`, `stripe_usage_record_id` on post) means a multi-source replay storm produces correct totals. Defines the **HMAC-pseudonym discipline** (D6) — every per-patient and per-user meter event recorded by M35 stores a pseudonym computed as `HMAC-SHA256(platform_key_id, patient_id_or_membership_id)` with platform-key rotation; the raw patient_id never enters an M35 table; the same patient produces the same pseudonym deterministically within a key epoch so dedup of `active_patient` events works. Defines the **dunning XState v5 lifecycle** (D7) — `current → past_due → at_risk → suspended → canceled` with platform-floor cadences (`day_1 → day_7 → day_14 → day_21 → day_28 (suspend) → day_60 (cancel)`); tenant overrides may *tighten* (suspend sooner) but never *loosen* (suspend later) per the platform-floor / tenant-tighten-only architecture rule. Defines the **AI-prohibited zone for M35** (D8) — Module 32's LLM may not synthesize, modify, or redact subscriptions, invoices, dunning copy, refund decisions, or plan changes; enforced at boot via `validateM35AIBlock()` against M32's prompt registry mirroring M12 D12 / M13 D15 / M22 D-pattern / M28 D14. Defines the **USD-only Phase 1, ISO 4217 platform-floor currency catalog** (D9) sourced from M38 with multi-currency deferred to Phase 3. Defines the **Stripe Tax as the sole tax engine** (D10) — WardenX never computes tax. Defines the **platform-owned plan catalog** with no tenant overlay (D11). Defines the **14-day platform-floor trial** with tenant-tighten allowed and tenant-extend requiring `platform_admin` (D12). Defines the **7-year invoice retention floor** per IRS §6001 with platform-retention-class invoice records that survive tenant offboarding (D13). Defines the **hard PHI boundary** (D14) and the **envelope-encrypted webhook payloads** (D15). Defines the **four-stage refund workflow** with `platform_admin` approval gate (D16). Defines the **platform-ops-only promo-code apply** (D17). Defines the **MRR/ARR monthly snapshot computation** (D18). Defines the **tenant-lifecycle integration via M2 organization outbox events** (D19). Defines the **6 published seams** registered into the M1 seam registry with boot validation (D20). Defines the **outbox subscription catalog** (D21). Defines the **STRIDE map** (D22). Defines the **proposed manifest patch** updating `M35.dependsOn` from the architecture §20 sketch `[34]` to `[1, 2, 3, 4, 5, 28, 29, 32, 36, 38]` *(relationship inventory - not the `dependsOn` edge set; per ADR-0005 D1/D4 seam/outbox/foundation consumers are no-edge - see audit/MANIFEST_DEPENDSON_REVIEW.md; do not bulk-apply)* — the architecture's `[34]` was build-sequence shorthand (M35 ships after M34's tenant infrastructure exists in Phase 2) and not a code-level dependency; the correct direction is M34→M35 (M34 consumes M35's `SubscriptionStateProvider` / `BillingStatusProvider` from its tenant admin console); M35 does not depend on M34 at the code level and instead reads `OrganizationReader` from M2 directly with a forward-seam-deny-stub consumption of `OnboardingStatusProvider` that wires when M34 locks (D23, D24). Populates `M35.ownedTables` with 21 owned tables (updated from the original 19 by M35-F06): 12 tenant-scoped (RLS-enforced, `organization_id`-FK'd) + 5 platform-shared (`plan`, `plan_meter`, `promo_code`, `revenue_recognition_snapshot`, `patient_pseudonym_key`) + 2 platform-only Stripe audit (`stripe_webhook_event`, `stripe_api_call_audit`) + 2 platform-retention (`platform_retained_invoice`, `platform_retained_invoice_line`). Adds `packages/subscription-billing` to `codePaths`.
 - **v0.1** — Drafted within the lock-grade pass; not separately published.
 
 -----
@@ -517,15 +535,19 @@ export const patientPseudonymKey = pgTable('patient_pseudonym_key', {
 ```typescript
 // packages/subscription-billing/src/schema/subscription.ts
 // Tenant-scoped. RLS enabled. One per Organization.
+// M35-F04 (ADR-0011 / ARCH-147): organization_id is a plain uuid column (logical FK, RLS-governed).
+// M35 must NOT import the M1/M2 `organizations` Drizzle schema. Cross-module org/membership
+// identity is resolved via OrganizationReader / MembershipReader seams and request context;
+// the database FK constraint is enforced by the M1 RLS/tenancy helper, not by a Drizzle
+// .references() call into packages/db/src/schema/organizations.
 import { pgTable, uuid, integer, boolean, timestamp, text, uniqueIndex, index } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
-import { organizations } from '../../../db/src/schema/organizations'
 import { plan } from './plan'
 import { subscriptionStatus } from './enums'
 
 export const subscription = pgTable('subscription', {
   id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'restrict' }),
+  organizationId: uuid('organization_id').notNull(), // logical FK to M2 organizations; RLS-governed — no cross-module .references()
   planId: uuid('plan_id').notNull().references(() => plan.id, { onDelete: 'restrict' }),
 
   // Stripe linkage:
@@ -561,14 +583,14 @@ export const subscription = pgTable('subscription', {
 ```typescript
 // packages/subscription-billing/src/schema/subscription-state-history.ts
 // Tenant-scoped. RLS enabled. Append-only (M4 audit trigger denies UPDATE/DELETE).
+// M35-F04 (ADR-0011 / ARCH-147): organization_id is a plain uuid column — no cross-module .references().
 import { pgTable, uuid, text, timestamp, index } from 'drizzle-orm/pg-core'
-import { organizations } from '../../../db/src/schema/organizations'
 import { subscription } from './subscription'
 import { subscriptionStatus } from './enums'
 
 export const subscriptionStateHistory = pgTable('subscription_state_history', {
   id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'restrict' }),
+  organizationId: uuid('organization_id').notNull(), // logical FK to M2 organizations; RLS-governed
   subscriptionId: uuid('subscription_id').notNull().references(() => subscription.id, { onDelete: 'restrict' }),
   fromStatus: subscriptionStatus('from_status'),
   toStatus: subscriptionStatus('to_status').notNull(),
@@ -586,14 +608,14 @@ export const subscriptionStateHistory = pgTable('subscription_state_history', {
 ```typescript
 // packages/subscription-billing/src/schema/payment-method.ts
 // Tenant-scoped. RLS enabled. Stripe-mirrored metadata only — no PAN, no CVV.
+// M35-F04 (ADR-0011 / ARCH-147): organization_id is a plain uuid column — no cross-module .references().
 import { pgTable, uuid, text, boolean, integer, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
-import { organizations } from '../../../db/src/schema/organizations'
 import { paymentMethodKind } from './enums'
 
 export const paymentMethod = pgTable('payment_method', {
   id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'restrict' }),
+  organizationId: uuid('organization_id').notNull(), // logical FK to M2 organizations; RLS-governed
   stripePaymentMethodId: text('stripe_payment_method_id').notNull(),
   kind: paymentMethodKind('kind').notNull(),
 
@@ -630,14 +652,14 @@ export const paymentMethod = pgTable('payment_method', {
 ```typescript
 // packages/subscription-billing/src/schema/invoice.ts
 // Tenant-scoped. RLS enabled. Stripe-authoritative; this is a mirror.
+// M35-F04 (ADR-0011 / ARCH-147): organization_id is a plain uuid column — no cross-module .references().
 import { pgTable, uuid, text, bigint, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core'
-import { organizations } from '../../../db/src/schema/organizations'
 import { subscription } from './subscription'
 import { invoiceStatus } from './enums'
 
 export const invoice = pgTable('invoice', {
   id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'restrict' }),
+  organizationId: uuid('organization_id').notNull(), // logical FK to M2 organizations; RLS-governed
   subscriptionId: uuid('subscription_id').references(() => subscription.id, { onDelete: 'restrict' }),
   stripeInvoiceId: text('stripe_invoice_id').notNull(),
   invoiceNumber: text('invoice_number'),                                              // Stripe-assigned, e.g. 'WX-2026-0001'
@@ -670,15 +692,15 @@ export const invoice = pgTable('invoice', {
 
 ```typescript
 // packages/subscription-billing/src/schema/invoice-line.ts
+// M35-F04 (ADR-0011 / ARCH-147): organization_id is a plain uuid column — no cross-module .references().
 import { pgTable, uuid, text, integer, bigint, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core'
-import { organizations } from '../../../db/src/schema/organizations'
 import { invoice } from './invoice'
 import { planMeter } from './plan-meter'
 import { invoiceLineKind, usageEventType } from './enums'
 
 export const invoiceLine = pgTable('invoice_line', {
   id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'restrict' }),
+  organizationId: uuid('organization_id').notNull(), // logical FK to M2 organizations; RLS-governed
   invoiceId: uuid('invoice_id').notNull().references(() => invoice.id, { onDelete: 'restrict' }),
   stripeLineId: text('stripe_line_id').notNull(),
   kind: invoiceLineKind('kind').notNull(),
@@ -700,13 +722,13 @@ export const invoiceLine = pgTable('invoice_line', {
 // packages/subscription-billing/src/schema/usage-event.ts
 // Tenant-scoped, RLS enabled. Append-only. Partitioned by `recorded_at` (monthly).
 // The partitioning is declared in the migration with `PARTITION BY RANGE (recorded_at)`.
+// M35-F04 (ADR-0011 / ARCH-147): organization_id is a plain uuid column — no cross-module .references().
 import { pgTable, uuid, text, bigint, jsonb, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core'
-import { organizations } from '../../../db/src/schema/organizations'
 import { usageEventType, usageEventSourceModule } from './enums'
 
 export const usageEvent = pgTable('usage_event', {
   id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'restrict' }),
+  organizationId: uuid('organization_id').notNull(), // logical FK to M2 organizations; RLS-governed
   subscriptionId: uuid('subscription_id'),                                            // nullable; might be unbilled
   eventType: usageEventType('event_type').notNull(),
   quantity: bigint('quantity', { mode: 'number' }).notNull(),
@@ -725,14 +747,14 @@ export const usageEvent = pgTable('usage_event', {
 
 ```typescript
 // packages/subscription-billing/src/schema/usage-period-aggregate.ts
+// M35-F04 (ADR-0011 / ARCH-147): organization_id is a plain uuid column — no cross-module .references().
 import { pgTable, uuid, text, bigint, integer, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core'
-import { organizations } from '../../../db/src/schema/organizations'
 import { subscription } from './subscription'
 import { usageEventType } from './enums'
 
 export const usagePeriodAggregate = pgTable('usage_period_aggregate', {
   id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'restrict' }),
+  organizationId: uuid('organization_id').notNull(), // logical FK to M2 organizations; RLS-governed
   subscriptionId: uuid('subscription_id').notNull().references(() => subscription.id, { onDelete: 'restrict' }),
   eventType: usageEventType('event_type').notNull(),
   periodStart: timestamp('period_start', { withTimezone: true }).notNull(),
@@ -757,14 +779,14 @@ export const usagePeriodAggregate = pgTable('usage_period_aggregate', {
 ```typescript
 // packages/subscription-billing/src/schema/patient-active-period.ts
 // Tenant-scoped, RLS enabled. Pseudonymized — never holds raw patient_id.
+// M35-F04 (ADR-0011 / ARCH-147): organization_id is a plain uuid column — no cross-module .references().
 import { pgTable, uuid, text, boolean, timestamp, uniqueIndex, index, check } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
-import { organizations } from '../../../db/src/schema/organizations'
 import { inactivityReason } from './enums'
 
 export const patientActivePeriod = pgTable('patient_active_period', {
   id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'restrict' }),
+  organizationId: uuid('organization_id').notNull(), // logical FK to M2 organizations; RLS-governed
   patientPseudonym: text('patient_pseudonym').notNull(),                              // 32-hex HMAC-SHA256
   pseudonymKeyEpoch: text('pseudonym_key_epoch').notNull(),                            // FK in patient_pseudonym_key.key_epoch
   periodYearMonth: text('period_year_month').notNull(),                                // 'YYYY-MM'
@@ -785,13 +807,13 @@ export const patientActivePeriod = pgTable('patient_active_period', {
 ```typescript
 // packages/subscription-billing/src/schema/user-active-period.ts
 // Tenant-scoped, RLS enabled. Pseudonymized — never holds raw membership_id.
+// M35-F04 (ADR-0011 / ARCH-147): organization_id is a plain uuid column — no cross-module .references().
 import { pgTable, uuid, text, boolean, timestamp, uniqueIndex, index, check } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
-import { organizations } from '../../../db/src/schema/organizations'
 
 export const userActivePeriod = pgTable('user_active_period', {
   id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'restrict' }),
+  organizationId: uuid('organization_id').notNull(), // logical FK to M2 organizations; RLS-governed
   membershipPseudonym: text('membership_pseudonym').notNull(),                        // 32-hex HMAC-SHA256
   pseudonymKeyEpoch: text('pseudonym_key_epoch').notNull(),
   periodYearMonth: text('period_year_month').notNull(),
@@ -858,14 +880,14 @@ export const stripeApiCallAudit = pgTable('stripe_api_call_audit', {
 
 ```typescript
 // packages/subscription-billing/src/schema/dunning-state.ts
+// M35-F04 (ADR-0011 / ARCH-147): organization_id is a plain uuid column — no cross-module .references().
 import { pgTable, uuid, text, integer, timestamp, index } from 'drizzle-orm/pg-core'
-import { organizations } from '../../../db/src/schema/organizations'
 import { subscription } from './subscription'
 import { dunningStage } from './enums'
 
 export const dunningStateRow = pgTable('dunning_state', {
   id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'restrict' }),
+  organizationId: uuid('organization_id').notNull(), // logical FK to M2 organizations; RLS-governed
   subscriptionId: uuid('subscription_id').notNull().references(() => subscription.id, { onDelete: 'restrict' }),
   stage: dunningStage('stage').notNull(),
   enteredAt: timestamp('entered_at', { withTimezone: true }).notNull().defaultNow(),
@@ -936,19 +958,21 @@ export const promoCode = pgTable('promo_code', {
 
 ```typescript
 // packages/subscription-billing/src/schema/promo-code-application.ts
+// M35-F04 (ADR-0011 / ARCH-147): organization_id and applied_by_membership_id are plain uuid
+// columns (logical FKs, RLS-governed). M35 must NOT import M1/M2 `organizations` or
+// `memberships` Drizzle schemas. Membership identity is resolved via MembershipReader seam
+// and request context; the FK is logically enforced by the M1 RLS/tenancy helper.
 import { pgTable, uuid, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core'
-import { organizations } from '../../../db/src/schema/organizations'
 import { subscription } from './subscription'
 import { promoCode } from './promo-code'
-import { memberships } from '../../../db/src/schema/memberships'
 
 export const promoCodeApplication = pgTable('promo_code_application', {
   id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'restrict' }),
+  organizationId: uuid('organization_id').notNull(), // logical FK to M2 organizations; RLS-governed
   subscriptionId: uuid('subscription_id').notNull().references(() => subscription.id, { onDelete: 'restrict' }),
   promoCodeId: uuid('promo_code_id').notNull().references(() => promoCode.id, { onDelete: 'restrict' }),
   appliedAt: timestamp('applied_at', { withTimezone: true }).notNull().defaultNow(),
-  appliedByMembershipId: uuid('applied_by_membership_id').notNull().references(() => memberships.id, { onDelete: 'restrict' }),
+  appliedByMembershipId: uuid('applied_by_membership_id').notNull(), // logical FK to M2 memberships; resolved via MembershipReader seam
   startedAt: timestamp('started_at', { withTimezone: true }),
   endsAt: timestamp('ends_at', { withTimezone: true }),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
@@ -963,28 +987,30 @@ export const promoCodeApplication = pgTable('promo_code_application', {
 
 ```typescript
 // packages/subscription-billing/src/schema/refund.ts
+// M35-F04 (ADR-0011 / ARCH-147): organization_id and all membership_id columns are plain uuid
+// columns (logical FKs, RLS-governed). M35 must NOT import M1/M2 `organizations` or
+// `memberships` Drizzle schemas. Membership identity is resolved via MembershipReader seam
+// and request context; the FK is logically enforced by the M1 RLS/tenancy helper.
 import { pgTable, uuid, text, bigint, timestamp, check, index } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
-import { organizations } from '../../../db/src/schema/organizations'
 import { invoice } from './invoice'
-import { memberships } from '../../../db/src/schema/memberships'
 import { refundStatus, refundKind } from './enums'
 
 export const refund = pgTable('refund', {
   id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'restrict' }),
+  organizationId: uuid('organization_id').notNull(), // logical FK to M2 organizations; RLS-governed
   invoiceId: uuid('invoice_id').notNull().references(() => invoice.id, { onDelete: 'restrict' }),
   stripeRefundId: text('stripe_refund_id'),
   amountCents: bigint('amount_cents', { mode: 'number' }).notNull(),
   kind: refundKind('kind').notNull(),
   reasonCode: text('reason_code').notNull(),                                          // 'duplicate', 'fraudulent', 'requested_by_customer', 'other'
   reasonDetail: text('reason_detail').notNull(),                                       // free text, ≥40 chars
-  requestedByMembershipId: uuid('requested_by_membership_id').notNull().references(() => memberships.id, { onDelete: 'restrict' }),
+  requestedByMembershipId: uuid('requested_by_membership_id').notNull(), // logical FK to M2 memberships; resolved via MembershipReader seam
   requestedAt: timestamp('requested_at', { withTimezone: true }).notNull().defaultNow(),
-  approvedByMembershipId: uuid('approved_by_membership_id').references(() => memberships.id, { onDelete: 'restrict' }),
+  approvedByMembershipId: uuid('approved_by_membership_id'), // logical FK to M2 memberships; resolved via MembershipReader seam
   approvedAt: timestamp('approved_at', { withTimezone: true }),
   approverStepUpAuditEventId: uuid('approver_step_up_audit_event_id'),
-  deniedByMembershipId: uuid('denied_by_membership_id').references(() => memberships.id, { onDelete: 'restrict' }),
+  deniedByMembershipId: uuid('denied_by_membership_id'), // logical FK to M2 memberships; resolved via MembershipReader seam
   deniedAt: timestamp('denied_at', { withTimezone: true }),
   deniedReason: text('denied_reason'),
   executedAt: timestamp('executed_at', { withTimezone: true }),
@@ -1050,33 +1076,62 @@ Same pattern for `plan_meter` and `promo_code` (universal read; platform-only wr
 
 The Stripe audit tables (`stripe_webhook_event`, `stripe_api_call_audit`) are platform-only — they may carry data spanning multiple tenants in one row.
 
-### 3.6 Audit Trigger Denylist (M11 D11 / M17 §3.6 Pattern)
+### 3.6 Audit Integration with M4 (ADR-0144 / ARCH-281#5)
 
-Every M35 owned table is registered in the M4 audit-trigger denylist with the appropriate scope. The denylist registration prevents the audit trigger from firing on these tables — instead, M35-internal audit writes are the source-of-truth, which prevents recursive write amplification on high-volume tables like `usage_event`.
+> **M35-F05 fix (ADR-0144 / ARCH-281#5):** M35 does NOT own or redefine the audit-trigger
+> denylist. High-volume trigger-suppression decisions belong exclusively to M4. M35's
+> obligation is to (a) call M4's `audit()` / `auditRead()` helpers on every state-mutating
+> route, and (b) register each owned table with M4's `AuditDenylistRegistry` at boot via
+> `registerAuditPosture(table, posture)`, supplying M35's *requested* posture as advisory
+> input. M4 is the decision-maker; if M4's denylist policy changes, M35 adapts automatically.
+> The field-exclusion hints and high-volume exclusions below are M35's *advisory registrations*,
+> not M35-owned overrides.
 
-| Table | M4 audit posture |
+All M35 state-mutating routes call `m4.audit(ctx)` (write) or `m4.auditRead(ctx)` (sensitive
+reads). M35 additionally registers per-table posture hints with M4's `AuditDenylistRegistry`
+at boot (`register-eraser.ts` → `registerAuditPostures()`). M4 applies, may modify, or may
+override these hints as its own policy requires. The hint table below documents M35's intent:
+
+| Table | M35's advisory posture registered with M4 |
 |---|---|
-| `subscription` | Audited on every UPDATE; INSERT and DELETE audit-traced (M4 denylist: no field-level capture of `stripe_*` fields) |
-| `subscription_state_history` | NOT audited (it IS the audit trail); M4 denylist: full table excluded |
-| `payment_method` | Audited on UPDATE/DELETE; field-level capture excludes all `card_*` and `ach_*` and `sepa_*` columns (already metadata-only but denylisted defensively) |
-| `invoice` | Audited on UPDATE (status transitions); `hosted_invoice_url` and `invoice_pdf_url` denylisted (they leak Stripe-side URL structure that could be guessable) |
-| `invoice_line` | Audited on INSERT; UPDATE rare; no denylist |
-| `usage_event` | NOT audited (high volume; append-only); M4 denylist: full table excluded; M35-internal `stripe_api_call_audit` is the canonical trail for usage flow |
-| `usage_period_aggregate` | Audited on `stripe_usage_record_id` set; otherwise denylisted |
-| `patient_active_period` | NOT audited at row level; M4 denylist: full table excluded; the pseudonyms are append-only and the M35-internal eraser handles destruction |
+| `subscription` | Request audit on every UPDATE; field-exclusion hint: `stripe_*` fields (high-churn Stripe metadata) |
+| `subscription_state_history` | Request full table exclusion (it IS the audit trail; M4 audit of it would be recursive) |
+| `payment_method` | Request audit on UPDATE/DELETE; field-exclusion hint: `card_*`, `ach_*`, `sepa_*` columns (metadata-only but defence-in-depth) |
+| `invoice` | Request audit on UPDATE (status transitions); field-exclusion hint: `hosted_invoice_url`, `invoice_pdf_url` (guessable Stripe URL structure) |
+| `invoice_line` | Request audit on INSERT; UPDATE rare; no exclusion hint |
+| `usage_event` | Request full table exclusion (high volume; append-only; `stripe_api_call_audit` is the canonical usage-flow trail) |
+| `usage_period_aggregate` | Request partial exclusion: audit only when `stripe_usage_record_id` is set; otherwise exclude |
+| `patient_active_period` | Request full table exclusion (append-only pseudonym rows; M35-internal eraser handles destruction) |
 | `user_active_period` | Same as `patient_active_period` |
-| `stripe_webhook_event` | NOT audited (it IS the source-of-truth log); M4 denylist: full table excluded |
-| `stripe_api_call_audit` | NOT audited (it IS the audit ledger); M4 denylist: full table excluded |
-| `dunning_state` | Audited on stage transitions |
-| `revenue_recognition_snapshot` | NOT audited (append-only platform-shared aggregate) |
-| `promo_code` | Audited on UPDATE (rarely happens; mostly platform-admin actions) |
-| `promo_code_application` | Audited on INSERT and on `revoked_at` UPDATE |
-| `refund` | Audited on every transition (requested → approved → executed); the `approver_step_up_audit_event_id` joins to M2's step-up audit row |
-| `plan` | Audited on every UPDATE (platform-admin actions) |
-| `plan_meter` | Audited on UPDATE |
-| `patient_pseudonym_key` | NOT audited (the audit log itself would leak the key rotation timeline); access to this table is platform-only and recorded via M4's table-level access log |
+| `stripe_webhook_event` | Request full table exclusion (it IS the source-of-truth log) |
+| `stripe_api_call_audit` | Request full table exclusion (it IS the audit ledger) |
+| `dunning_state` | Request audit on stage transitions |
+| `revenue_recognition_snapshot` | Request full table exclusion (append-only platform-shared aggregate) |
+| `promo_code` | Request audit on UPDATE (platform-admin actions) |
+| `promo_code_application` | Request audit on INSERT and on `revoked_at` UPDATE |
+| `refund` | Request audit on every status transition; `approver_step_up_audit_event_id` links to M2's step-up audit row |
+| `plan` | Request audit on every UPDATE (platform-admin actions) |
+| `plan_meter` | Request audit on UPDATE |
+| `patient_pseudonym_key` | Request full table exclusion (key-rotation timeline must not appear in the audit log); M4's table-level access log records operator access separately |
+
+M4 owns whether trigger suppression is granted for each table. M35's `registerAuditPostures()`
+call runs at boot alongside `registerSeams()` and `validateSeams()`; M4 validates the
+registrations and refuses startup if a mandatory hint field is missing.
 
 ### 3.7 Eraser Registration (M4 Destruction Workflow)
+
+> **M35-F06 fix (ARCH-186/085/251):** The previous approach rewrote `organization_id`
+> in-place to a `legacy_tenant_<sha256(orgId)>` placeholder string on the live `invoice`
+> table rows. This is structurally unsafe: it corrupts the FK value that RLS and all
+> downstream readers depend on, and "survived" only because the tenant RLS policy had
+> already been torn down at that point. The replacement approach is a first-class
+> **`platform_retained_invoice`** table (declared in M35's `ownedTables` — see manifest
+> patch note at the end of this section) that accepts invoice rows transferred out of
+> the tenant-scoped `invoice` table. The transfer is a copy-then-delete, not an in-place
+> rewrite. `platform_retained_invoice` carries its own `original_organization_id` column
+> (for forensic/regulatory traceability) without being RLS-tenant-scoped. M4's
+> destruction-certification step and M34's offboarding orchestration both consume the
+> updated `EraseReceipt` to confirm platform-retention rows were moved, not deleted.
 
 M35 registers a `DataEraser` implementation with M4 for tenant offboarding. The eraser behavior:
 
@@ -1091,19 +1146,24 @@ export class M35DataEraser implements DataEraser {
     //    this is defense-in-depth.
     await this.cancelStripeSubscription(organizationId)
 
-    // 2. Delete tenant-scoped tables in FK order:
+    // 2. PRESERVE platform-retention rows FIRST (before deleting tenant rows):
+    //    Copy invoice + invoice_line rows into platform_retained_invoice /
+    //    platform_retained_invoice_line (platform-retention tables, not tenant-scoped).
+    //    These rows carry `original_organization_id` for forensic/regulatory traceability.
+    //    After the copy succeeds, delete the source rows from the tenant-scoped tables.
+    //    This is a copy-then-delete, NOT an in-place organization_id rewrite.
+    //    Integrated with M4's destruction-certification (M4 receives the platform_retention_ids
+    //    in the EraseReceipt) and M34's offboarding orchestration.
+
+    const retentionResult = await this.transferInvoicesToPlatformRetention(organizationId, tx)
+
+    // 3. Delete remaining tenant-scoped rows in FK order:
     //    refund → promo_code_application → user_active_period → patient_active_period →
-    //    usage_period_aggregate → usage_event (partitioned) → invoice_line → invoice →
-    //    payment_method → dunning_state → subscription_state_history → subscription
+    //    usage_period_aggregate → usage_event (partitioned) → dunning_state →
+    //    subscription_state_history → subscription → payment_method
+    //    (invoice + invoice_line already moved to platform_retained_* in step 2)
 
     const counts = await this.deleteTenantRows(organizationId, tx)
-
-    // 3. PRESERVE platform-retention rows: invoice + invoice_line are KEPT in a
-    //    platform-retention class with organization_id REASSIGNED to a placeholder
-    //    `legacy_tenant_<sha256>` per D13 — 7-year IRS §6001 floor.
-    //    (Implemented by INSERT INTO platform_retained_invoice ... + DELETE from invoice)
-
-    await this.preserveInvoicesForRetention(organizationId, tx)
 
     // 4. Stripe Customer remains at Stripe (Stripe-side retention) but is marked
     //    as `metadata.wardenx_tenant_erased=true` so it's filtered out of operational views.
@@ -1112,7 +1172,8 @@ export class M35DataEraser implements DataEraser {
       moduleId: this.moduleId,
       organizationId,
       tablesErased: counts,
-      tablesPreserved: ['invoice', 'invoice_line'],
+      tablesPreservedInPlatformRetention: retentionResult.transferredIds,
+      platformRetentionTables: ['platform_retained_invoice', 'platform_retained_invoice_line'],
       stripeCustomerStatus: 'tagged_erased',
       erasedAt: new Date(),
     }
@@ -1120,7 +1181,46 @@ export class M35DataEraser implements DataEraser {
 }
 ```
 
-Boot validator (`validateErasers()` in M4) asserts that every M35-owned tenant-scoped table has a corresponding entry in the eraser plan.
+**Platform-retention table schema (sketch):**
+
+```typescript
+// packages/subscription-billing/src/schema/platform-retained-invoice.ts
+// Platform-only. NOT tenant-scoped (no RLS organization_id policy).
+// Holds invoice rows transferred from the tenant-scoped `invoice` table on tenant offboarding.
+// 7-year IRS §6001 retention floor per D13.
+// M35-F06 (ARCH-186/085/251): replaces the unsafe in-place organization_id rewrite.
+export const platformRetainedInvoice = pgTable('platform_retained_invoice', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  originalInvoiceId: uuid('original_invoice_id').notNull(),         // PK from the source invoice row
+  originalOrganizationId: uuid('original_organization_id').notNull(), // forensic traceability only
+  transferredAt: timestamp('transferred_at', { withTimezone: true }).notNull().defaultNow(),
+  retainUntil: timestamp('retain_until', { withTimezone: true }).notNull(), // original_transferred_at + 7 years
+  // ... all invoice payload columns copied verbatim (stripeInvoiceId, status, totals, dates, urls, etc.)
+  stripeInvoiceId: text('stripe_invoice_id').notNull(),
+  invoiceNumber: text('invoice_number'),
+  status: invoiceStatus('status').notNull(),
+  subtotalCents: bigint('subtotal_cents', { mode: 'number' }).notNull(),
+  taxCents: bigint('tax_cents', { mode: 'number' }).notNull(),
+  totalCents: bigint('total_cents', { mode: 'number' }).notNull(),
+  amountPaidCents: bigint('amount_paid_cents', { mode: 'number' }).notNull(),
+  currencyCode: text('currency_code').notNull(),
+  periodStart: timestamp('period_start', { withTimezone: true }),
+  periodEnd: timestamp('period_end', { withTimezone: true }),
+  issuedAt: timestamp('issued_at', { withTimezone: true }),
+  paidAt: timestamp('paid_at', { withTimezone: true }),
+})
+
+// Companion: platform_retained_invoice_line (parallel structure for invoice_line rows)
+```
+
+> **Manifest ownedTables impact (flagged — do not edit the manifest here):** The two new
+> platform-retention tables (`platform_retained_invoice`, `platform_retained_invoice_line`)
+> must be added to `M35.ownedTables` in `architecture/module-manifest.ts`. The §13 manifest
+> patch currently lists 19 tables; after this fix it should list 21. The manifest update
+> must accompany the Phase 2 implementation of M35-F06 (T-36 or a new T-36a task). Track
+> this in the acceptance checklist (§12.2).
+
+Boot validator (`validateErasers()` in M4) asserts that every M35-owned tenant-scoped table has a corresponding entry in the eraser plan, and that the `EraseReceipt.platformRetentionTables` list matches the registered platform-retention tables.
 
 -----
 
@@ -2267,15 +2367,28 @@ Each workflow is the definitive contract for "what working looks like" on a code
 
 ### W-SB-13 — Tenant Eraser Preserves Invoice Records
 
+> **M35-F06 (ARCH-186/085/251):** The eraser uses a copy-then-delete transfer to
+> `platform_retained_invoice` / `platform_retained_invoice_line`, not an in-place
+> `organization_id` rewrite. See §3.7 for the full rationale and schema sketch.
+
 **Given** a tenant in offboarding; org_admin requests data deletion per HIPAA Right of Erasure
 **When** the M4 destruction workflow runs `M35DataEraser.eraseTenantData(orgId)`
 **Then**:
 1. Stripe subscription is canceled (best-effort)
-2. All tenant-scoped M35 rows are deleted: `refund`, `promo_code_application`, `user_active_period`, `patient_active_period`, `usage_period_aggregate`, `usage_event` (across all partitions), `payment_method`, `dunning_state`, `subscription_state_history`, `subscription`
-3. **`invoice` + `invoice_line` are NOT deleted**; instead, their `organization_id` is re-assigned to a placeholder `legacy_tenant_<sha256(originalOrgId)>` and they enter a platform-retention class
+2. **`invoice` + `invoice_line` rows are COPIED** into `platform_retained_invoice` /
+   `platform_retained_invoice_line` (platform-retention tables with `original_organization_id`
+   for forensic/regulatory traceability); the source rows are then deleted from the tenant-scoped
+   `invoice` / `invoice_line` tables. No in-place org_id rewrite occurs.
+3. All remaining tenant-scoped M35 rows are deleted in FK order: `refund`, `promo_code_application`,
+   `user_active_period`, `patient_active_period`, `usage_period_aggregate`, `usage_event`
+   (across all partitions), `payment_method`, `dunning_state`, `subscription_state_history`,
+   `subscription`
 4. The Stripe Customer at Stripe is tagged `metadata.wardenx_tenant_erased=true`
-5. `EraseReceipt` returns with `tablesPreserved: ['invoice', 'invoice_line']`
-6. After 7 years (per D13), a separate platform-retention cleanup job is eligible to delete the legacy rows if all applicable retention regulations have lapsed
+5. `EraseReceipt` returns with `platformRetentionTables: ['platform_retained_invoice', 'platform_retained_invoice_line']`
+   and `transferredIds` containing the new platform-retention row ids; M4's destruction-certification
+   and M34's offboarding orchestration both receive this receipt
+6. After 7 years (per D13), a separate platform-retention cleanup job is eligible to delete the
+   `platform_retained_*` rows if all applicable retention regulations have lapsed
 
 ### W-SB-14 — Payment Method Expiry Watch
 
@@ -2348,13 +2461,18 @@ The `refund_requires_step_up_approval` predicate is the highest-risk gate (contr
 
 ### 8.4 Audit & Compliance Log
 
-M35 writes to M4 on every state-mutating route. The M4 audit row captures:
+M35 writes to M4 on every state-mutating route by calling `m4.audit(ctx)`. The M4 audit row captures:
 - Actor membership_id, IP prefix, user-agent, M2 session class
 - Route + permission key + ABAC predicate decisions
-- Pre-mutation snapshot (for UPDATEs) — but excluding denylisted fields
+- Pre-mutation snapshot (for UPDATEs) — excluding any fields that M4's trigger-suppression policy has denylisted
 - Post-mutation snapshot
 
-The denylist (§3.6) excludes high-volume tables (`usage_event`, `patient_active_period`, `user_active_period`, `stripe_webhook_event`, `stripe_api_call_audit`) from the row-level audit trigger because M35's own append-only state-history tables already capture the equivalent trail.
+Per M35-F05 (ADR-0144 / ARCH-281#5), M35 does NOT own the audit-trigger denylist. M35 registers
+advisory posture hints for each owned table with M4's `AuditDenylistRegistry` at boot (§3.6).
+M4 decides which high-volume tables (`usage_event`, `patient_active_period`, `user_active_period`,
+`stripe_webhook_event`, `stripe_api_call_audit`) are trigger-excluded and which field-level
+exclusions apply. M35's own append-only state-history tables provide the equivalent audit trail
+for the excluded tables; this rationale is communicated to M4 as an advisory hint, not a unilateral decision.
 
 `refund` is fully audited per state transition; the `approver_step_up_audit_event_id` joins M35's refund flow into M2's step-up audit row, producing a forensically reconstructable chain.
 
@@ -2370,7 +2488,7 @@ The denylist (§3.6) excludes high-volume tables (`usage_event`, `patient_active
 
 | Class | Retention floor | Erasure behavior |
 |---|---|---|
-| `invoice`, `invoice_line` | 7 years (IRS §6001) | Preserved on tenant offboarding; org_id reassigned to `legacy_tenant_<sha256>` placeholder |
+| `invoice`, `invoice_line` | 7 years (IRS §6001) | On tenant offboarding, rows are **copied** into `platform_retained_invoice` / `platform_retained_invoice_line` (platform-retention tables carrying `original_organization_id` for forensic traceability) then **deleted** from the tenant-scoped tables. No in-place `organization_id` rewrite. M4 destruction-certification receives the platform_retention_ids in the `EraseReceipt`. (M35-F06, ARCH-186/085/251) |
 | `subscription`, `subscription_state_history`, `payment_method`, `dunning_state`, `refund`, `promo_code_application` | tenant-retention class | Deleted on tenant offboarding |
 | `usage_event`, `usage_period_aggregate` | 24 months operational; archived to cold storage after | Deleted on tenant offboarding |
 | `patient_active_period`, `user_active_period` | tenant-retention class | Deleted on tenant offboarding |
@@ -2789,7 +2907,7 @@ The build is organized into four phases. Each task is granular enough to map to 
 | **D10** | Tax computation | **Stripe Tax as sole engine.** WardenX never computes tax. Invoice tax lines mirror Stripe Tax. | (a) Build a tax engine — months of compliance work for no differentiation. (b) Manual tax entry per tenant — operational nightmare. | Integrations §6.11 |
 | **D11** | Plan catalog ownership | **Platform-owned; no tenant overlay.** Every meter maps to a Stripe `meter` resource. | (a) Tenant-overlayable plans — explodes the cross-product of Stripe pricing models; operational complexity. (b) Hybrid (platform + tenant) — same issue at lower scale. | M23 D-platform-floor pattern; M26 cap-period-platform-constant |
 | **D12** | Trial period | **14-day platform floor.** Tenant may tighten (shorter trial); extending requires `platform_admin` role with audited reason. | (a) Tenant-fully-configurable — tenants set 365-day trials and never convert. (b) No trial — anti-competitive in B2B SaaS. | Platform-floor / tenant-tighten-only rule |
-| **D13** | Invoice retention | **7-year platform retention floor** (IRS §6001). On tenant offboarding, `invoice` + `invoice_line` are PRESERVED with `organization_id` re-assigned to a placeholder; other M35 tenant data is destroyed per the standard eraser path. | (a) Delete invoices on offboarding — IRS §6001 violation risk. (b) Indefinite retention — privacy creep; the 7-year floor matches the longest non-fraud IRS lookback. | IRS §6001; Treasury Reg §6001 |
+| **D13** | Invoice retention | **7-year platform retention floor** (IRS §6001). On tenant offboarding, `invoice` + `invoice_line` rows are **copied** into first-class platform-retention tables (`platform_retained_invoice`, `platform_retained_invoice_line`) that carry `original_organization_id` for forensic/regulatory traceability, then deleted from the tenant-scoped tables. No in-place `organization_id` rewrite. Other M35 tenant data is destroyed per the standard eraser path. (M35-F06, ARCH-186/085/251.) | (a) Delete invoices on offboarding — IRS §6001 violation risk. (b) Indefinite retention — privacy creep; the 7-year floor matches the longest non-fraud IRS lookback. (c) In-place org_id rewrite (prior design) — corrupts the FK value that RLS and downstream readers depend on; replaced by the copy-then-delete transfer. | IRS §6001; Treasury Reg §6001 |
 | **D14** | PHI boundary | **Hard NO. No PHI in any M35 row, route, payload, log, alert, or outbound Stripe API call.** Pseudonymization at ingest (D6); redactor enforces denylist; STRIDE worst-case is commercial-billing-counts disclosure. | (a) Best-effort minimization — porous; we'd find PHI in the system within 6 months. (b) "PHI allowed but audited" — opens BAA exposure on the Stripe vendor surface (currently not BAA-bearing per Integrations §6.11). | §8.5 PHI-Minimization; Integrations §6.11 no-BAA posture |
 | **D15** | Webhook payload encryption at rest | **Envelope-encrypted via the standard WardenX KMS-wrapped DEK pattern.** Stripe payloads carry commercial-sensitive data (amounts, customer ids) but no PHI by contract — encryption is defense-in-depth. | (a) Plaintext at rest — Stripe data is sensitive even without PHI; ops staff with DB read could see customer-level financials. (b) Encrypt only the body field — partial measure; metadata is also sensitive. | M29 §3 PHI ciphertext pattern (applied non-PHI here) |
 | **D16** | Refund workflow | **Four-stage:** requested (`platform_billing_admin`) → approved (`platform_admin` only; step-up + 4-eyes) → executed (outbox dispatcher; Stripe-side) → success or failed. Reason ≥40 chars. | (a) One-step refund — no oversight on money flow. (b) Two-step (request + execute) — no 4-eyes check; insider risk. | M2 SESSION_POLICY billing-credential-admin step-up + M23 D-override-pattern |
@@ -2812,7 +2930,7 @@ Before promoting M35 from "spec locked" to "implementation in progress" → "in 
 - [ ] All 24 decisions D1–D24 recorded in §11 with chosen approach + rejected alternatives
 - [ ] Manifest patch (§13) applied to `module-manifest.ts`; reviewed against actual `dependsOn` direction (no inverted edges)
 - [ ] Dependency-cruiser config merged; CI enforces M35 boundaries including the Stripe-SDK adapter mandate (§8.7)
-- [ ] Table-ownership lint registers all 19 owned tables (12 tenant + 5 platform-shared + 2 platform-only Stripe audit)
+- [ ] Table-ownership lint registers all 21 owned tables (12 tenant + 5 platform-shared + 2 platform-only Stripe audit + 2 platform-retention per M35-F06)
 - [ ] Five new ABAC predicates landed in M3 registry; boot validator passes
 - [ ] Six published seams declared in M35's `publishedSeams`; eight inbound outbox subscriptions declared
 - [ ] Forward-seam deny-stubs land for M32 `AITokenMeterProvider` and M34 `OnboardingStatusProvider`
@@ -2826,7 +2944,8 @@ Before promoting M35 from "spec locked" to "implementation in progress" → "in 
 - [ ] `usage_event` partitioning by month works; first six partitions pre-created
 - [ ] Indexes per §3.4 present and used by `EXPLAIN` on canonical queries
 - [ ] Audit denylist registers all M35 tables per §3.6 with the right posture
-- [ ] `M35DataEraser` registered; eraser test deletes tenant rows and preserves `invoice` + `invoice_line`
+- [ ] `M35DataEraser` registered; eraser test confirms `invoice` + `invoice_line` rows are COPIED to `platform_retained_invoice` / `platform_retained_invoice_line` then deleted from tenant-scoped tables (M35-F06 — no in-place org_id rewrite)
+- [ ] `platform_retained_invoice` and `platform_retained_invoice_line` added to `M35.ownedTables` in `architecture/module-manifest.ts` (M35-F06 manifest impact — 19 → 21 tables)
 
 ### 12.3 Routes & Seams
 - [ ] All routes from §4.1 / §4.2 / §4.3 implemented; TypeBox schemas enforced
@@ -2925,7 +3044,11 @@ Before promoting M35 from "spec locked" to "implementation in progress" → "in 
 +      "revenue_recognition_snapshot",
 +      "promo_code",
 +      "promo_code_application",
-+      "refund"
++      "refund",
++      // M35-F06 (ARCH-186/085/251): two platform-retention tables added (19 → 21 total).
++      // These replace the unsafe in-place organization_id rewrite in the prior eraser design.
++      "platform_retained_invoice",
++      "platform_retained_invoice_line"
 +    ],
 +    // Non-ModuleDef fields (seams/registrations/phase/tier/status/metadata) removed per ARCH-146/ADR-0005 — wired at boot, not in the manifest.
 +  },

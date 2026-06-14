@@ -48,7 +48,7 @@ Note: the `architecture/` directory at the repo root holds the *enforcement code
 the prose docs in `docs/architecture/`.
 
 - `architecture/module-manifest.ts` (+ `.cjs`) — single source of truth for each module's
-  `codePaths`, `dependsOn`, and `ownedTables` (451 tables across 40 modules).
+  `codePaths`, `dependsOn`, and `ownedTables` (453 tables across 40 modules).
 - `architecture/.dependency-cruiser.cjs` — import-boundary rules.
 - `scripts/check-table-ownership.ts`, `check-tenancy.ts`, `check-ddl-legality.ts`,
   `check-fitness-gaps.ts` (event-catalog `mN.` convention, seam-registry completeness, PHI

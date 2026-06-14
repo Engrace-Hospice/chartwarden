@@ -932,7 +932,10 @@ CREATE TRIGGER trg_cea_immutable
 -- (handled by packages/consent/seeds/v1-types.sql; idempotent INSERT...ON CONFLICT)
 
 -- 7. Eraser registration via M4
-SELECT m4_register_eraser('consent_record_subtree', 'consent', 'apps/backend/src/modules/39-consent/services/eraser.ts:eraseConsentSubtree');
+-- M39-F04 / ADR-0251 (ARCH-234): the eraser registers under the DATA-CLASS key the M4 boot
+-- validator expects (`consent`), NOT `consent_record_subtree`. The function name keeps its
+-- descriptive identifier; only the registration key is the data class.
+SELECT m4_register_eraser('consent', 'consent', 'apps/backend/src/modules/39-consent/services/eraser.ts:eraseConsentSubtree');
 
 -- 8. Retention class registration
 SELECT m4_register_retention_class('consent', 7 * 365 * 24 * 3600, true);  -- 7y, state-overridable
@@ -966,8 +969,8 @@ Extra ABAC overlay (applied at route layer, not as RLS):
 | `consent_record` | `trg_cr_set_signed_audit_event` | On UPDATE that transitions `status` from `draft → active`, write the `audit_event_id` linkage to the matching audit row created in the same transaction |
 | `consent_record` | `trg_cr_supersede_consistency` | On INSERT with `supersedes_consent_record_id IS NOT NULL`, UPDATE the superseded row's `superseded_at = now()`, `superseded_by_consent_record_id = NEW.id`, `status = 'superseded'` — in the same transaction (D1 invariant) |
 | `consent_record` | `trg_cr_chain_of_authority_validate` | On INSERT/UPDATE that sets `acting_consent_id`, validate the chain (§2.3 rule); reject with check-constraint-style error if invalid |
-| `consent_record_recipient` | `trg_crr_emit_consent_change` | On INSERT/UPDATE that flips `removed_at`, emit a deferred outbox row for the M22 disclosure-subsetter to re-evaluate prior signed-URLs |
-| `consent_revocation` | `trg_revocation_outbox` | On INSERT, write the canonical `m39.consent.revoked` event to the outbox with the typed cascade payload per consent type |
+| `consent_record_recipient` | `trg_crr_touch_subsetter_dirty` | On INSERT/UPDATE that flips `removed_at`, maintain the derived `subsetter_dirty_at` column so the service layer knows the disclosure-subsetter cache for prior signed-URLs is stale. **Derived-column maintenance only — this trigger must NOT write `outbox_event`** (ARCH-144/264 / M39-F08). The `m39.consent.recipient_added`/`recipient_removed` outbox events are emitted by the service layer (routes 12/13 → `addRecipient`/`removeRecipient`) via the M1 outbox helper in the same transaction as the recipient write — see §4.5. |
+| `consent_revocation` | `trg_revocation_set_cascade_status` | On INSERT, initialize the derived `cascade_status='pending'` + stamp `cascade_payload_kind` (the per-consent-type cascade descriptor) for the service layer to read. **Derived-column maintenance only — this trigger must NOT write `outbox_event`** (ARCH-144/264 / M39-F08). The canonical `m39.consent.revoked` event is emitted by the service layer (route 10/27 → `revokeConsent`) via the M1 outbox helper in the same transaction as the `consent_revocation` INSERT — see §4.5. |
 | `consent_eval_audit` | `trg_cea_immutable` | DENY UPDATE/DELETE; enforces D12 invariant |
 | `delegated_access` | `trg_da_refresh_on_consent_change` (deferred constraint trigger) | When the source consent_record_recipient changes, the projector service updates this row; this trigger only verifies the consent_record_recipient is still active or the row is marked revoked (defense-in-depth) |
 
@@ -997,8 +1000,17 @@ export async function eraseConsentSubtree(args: {
       return { rowsDeleted: 0, retainedClasses: ['consent_held_by_legal_hold'] }
     }
   }
-  // 2. Cascade-delete consent_eval_audit (the largest table); use partition-wise delete
-  await db.execute(sql`DELETE FROM consent_eval_audit WHERE patient_id = ${args.patientId} AND organization_id = ${args.organizationId}`)
+  // 2. M39-F04 / ADR-0251 (ARCH-234): consent_eval_audit is IMMUTABLE audit (INSERT-only,
+  //    enforced by trg_cea_immutable). The eraser MUST NOT DELETE FROM it. Its destruction is
+  //    routed through M4's audit-partition retention/destruction-cert workflow (the partitioned
+  //    audit table is owned by the M4 retention sweep + destruction certificate, NOT by this
+  //    domain eraser). We hand M4 the patient scope so the audit partitions are destroyed under
+  //    the certified audit-retention path, and assert no DELETE crosses the immutable boundary here.
+  await m4.auditPartitionRetention.scheduleEvalAuditDestruction({
+    table: 'consent_eval_audit',
+    patientId: args.patientId,
+    organizationId: args.organizationId,
+  })
   // 3. Delete the projection table (delegated_access)
   await db.delete(delegated_access).where(/* patient + org */)
   // 4. Delete the satellite tables in FK order
@@ -1015,7 +1027,7 @@ export async function eraseConsentSubtree(args: {
   return { rowsDeleted: /* sum */ , retainedClasses: [] }
 }
 
-registerEraser('consent_record_subtree', eraseConsentSubtree)
+registerEraser('consent', eraseConsentSubtree)  // M39-F04: data-class key the M4 boot validator expects (was 'consent_record_subtree')
 ```
 
 The eraser is called by M4's destruction-cert workflow when the patient's overall retention class transitions to `eligible_for_destruction`. Erasure is atomic per patient; partial failure rolls the entire patient back (M4 destruction-cert pattern).
@@ -1415,6 +1427,45 @@ export type ConsentDenyReason =
   | 'scope_does_not_cover_request'
 ```
 
+#### 4.3.1 Sensitive-category redaction flags — backing & computation (M39-F05 / ADR-0014 / ARCH-190/154)
+
+Each `redact*Content`/`redact*Fields` flag returned by `evaluateForDisclosure` and
+`evaluateForIngressRedaction` is **fail-closed by default (= `true`, redact)** and is set to
+`false` (disclose) **only** when M39 can point to an authoritative backing fact. A flag M39
+cannot authoritatively decide is **delegated to M5** (the `PrivacyFlag` snapshot owner) and M39
+never invents a disclose decision for it. The backing per category:
+
+| Flag | Sensitive category | Authoritative backing that can flip it to `false` (disclose) | Owner / source of truth | Default when no backing |
+|---|---|---|---|---|
+| `redactSudContent` / `redactSubstanceUseDisorderFields` | 42 CFR Part 2 SUD | An **active `42_cfr_part_2_release` consent record** whose `consent_record_recipient` set **names the resolved recipient** (`recipientResolvedKind`/`recipientResolvedId`, or `recipientClientId` for FHIR) with an unexpired per-recipient window, AND whose scope/purpose covers the request. This is the same fact the `sud_disclosure_allowed` predicate resolves. | **M39** (it owns `42_cfr_part_2_release`) | `true` — redact (no §2.31 consent names the recipient) |
+| `redactHivContent` / `redactHivFields` | HIV/AIDS status | M39 owns **no** HIV-specific consent type, so it **delegates to M5**: disclose only when `patient.privacy_flag_snapshot.hiv_disclosure_permitted` is set for the resolved recipient context (M5 D10), itself derived from a `hipaa_release` consent record naming the recipient with HIV in scope where the tenant/state requires specific HIV authorization. M39 reads the M5 snapshot via `PatientReader`; if M5 has no affirmative flag, M39 redacts. | **M5 PrivacyFlag** (M39 delegates) | `true` — redact |
+| `redactMentalHealthContent` / `redactMentalHealthFields` | Mental-health / psychotherapy-note-adjacent | Delegated to **M5**: disclose only when `patient.privacy_flag_snapshot.mental_health_disclosure_permitted` is affirmatively set for the recipient context (derived from a `hipaa_release` naming the recipient with mental-health content in scope per state law). | **M5 PrivacyFlag** (M39 delegates) | `true` — redact |
+| `redactGeneticContent` / `redactGeneticFields` | Genetic information (GINA) | Delegated to **M5**: disclose only when `patient.privacy_flag_snapshot.genetic_disclosure_permitted` is affirmatively set for the recipient context (derived from a `hipaa_release` naming the recipient with genetic content in scope). | **M5 PrivacyFlag** (M39 delegates) | `true` — redact |
+| `redactFamilyViolenceContent` / `redactFamilyViolenceFields` | Domestic/family-violence safety content | The `family_violence_disclosure_allowed` predicate (registered by M15, resolved by M39 per M15 §4.5); disclose only when that resolver returns `true` for the recipient context. | **M39** (resolver) via **M15** registration | `true` — redact |
+
+**Rationale for delegating HIV/MH/Genetic to M5 (ADR-0014):** M39 ships ten typed consent
+types; none is an HIV-, mental-health-, or genetics-specific release. Authoritatively deciding
+those categories requires the per-state sensitivity rules and the per-recipient disclosure
+posture that M5 already computes into `patient.privacy_flag_snapshot`. M39 therefore does not
+fabricate a backing it does not own: for those three categories it reads the M5 flag and
+**fails closed to redact** whenever M5 has no affirmative disclose flag. Only the SUD and
+family-violence flags are decided in M39 (it owns the `42_cfr_part_2_release` consent type and
+the `family_violence_disclosure_allowed` resolver respectively).
+
+**PHI-Sensitive extra controls enumerated (OPEN-021):** beyond the per-category flag, every
+disclosure under a sensitive-category release additionally enforces:
+1. **Per-recipient segmentation** — the redaction decision is computed **per resolved recipient**,
+   never patient-global; a release naming recipient A never discloses to recipient B.
+2. **§2.31 per-recipient grant** — SUD disclosure requires a `consent_record_recipient` row
+   naming that exact recipient with an unexpired window; absence ⇒ redact (`no_active_recipient_matches`).
+3. **Enforced re-disclosure gate (§2.32)** — any SUD-category disclosure carries the §2.32
+   prohibition-on-re-disclosure notice (M22 renders it on the PDF; M28 includes it in
+   `Bundle.text.div`); the disclosure path must attach it or the egress is blocked.
+4. **Fail-closed default** — every flag defaults to redact; a missing/erroring backing fact
+   (including an unavailable M5 snapshot) resolves to redact, never disclose.
+5. **Eval-audit `redacted_categories[]`** — each `evaluate*` call records which categories were
+   redacted in the `consent_eval_audit` row so the redaction decision is reconstructable per §3.x.
+
 **Companion seams M39 also publishes:**
 
 ```typescript
@@ -1534,7 +1585,7 @@ export function initM39(reg: SeamRegistry): void {
   m3.predicateRegistry.register('family_violence_disclosure_allowed', familyViolenceDisclosureAllowedResolver)
 
   // Register the eraser + retention class
-  m4.eraserRegistry.register('consent_record_subtree', eraseConsentSubtree)
+  m4.eraserRegistry.register('consent', eraseConsentSubtree)  // M39-F04: data-class key the M4 boot validator expects
   m4.retentionClassRegistry.register('consent', { defaultYears: 7, stateOverridable: true })
 
   // Register the SESSION_POLICY consent_management step-up profile with M2
@@ -2069,9 +2120,9 @@ All spans correlate via the request `traceId` propagated through the M1 outbox e
 - **Retention class:** `consent` (registered with M4 retention class registry at boot per §4.4).
 - **Default retention:** 7 years from `expires_at` (or from `revoked_at` if revoked, or from `superseded_at` if superseded — the latest applicable date) per HIPAA §164.530(j)(2) hospice extension; state-overridable via M4.
 - **Legal hold:** the M4 legal-hold mechanism extends retention indefinitely while the hold is active; the eraser refuses to delete consent records under hold.
-- **Destruction-cert eraser** (registered as `consent_record_subtree`):
+- **Destruction-cert eraser** (registered under the data-class key `consent` — M39-F04 / ADR-0251 / ARCH-234; the M4 boot validator keys erasers by data class, not by the descriptive `consent_record_subtree` label):
   - Refuses if any consent record on the patient has an active legal hold (unless `legalHoldOverride=true`).
-  - Partition-wise deletes `consent_eval_audit` (the largest table).
+  - Does **NOT** delete `consent_eval_audit` — that table is immutable audit (INSERT-only, `trg_cea_immutable`); its destruction is routed through M4's audit-partition retention / destruction-cert workflow (M39-F04 / ADR-0251). The eraser schedules eval-audit destruction with M4 but never issues a `DELETE` against the immutable audit table.
   - Cascade-deletes the projection (`delegated_access`).
   - Cascade-deletes the satellite tables (`consent_renewal_cycle`, `consent_expiration_reminder`, `consent_revocation`, `consent_record_dpoa_agent`, `consent_record_recipient`, `consent_document_link`) in FK order.
   - Finally deletes the consent records in supersession-chain order (leaves first), walking the self-FK.
@@ -2204,7 +2255,7 @@ Phase B — Consent capture + sign + revoke (week 2):
 6. **B2** Service `consent-record-service.ts` — sign + supersede + revoke; chain-of-authority validator wired; service-layer self-FK guard.
 7. **B3** Routes 10, 11, 12, 13 (revoke, recipient list, add/remove recipient).
 8. **B4** Route 9 (supersede) + the `m39.consent.supersedes` event emission.
-9. **B5** Trigger `trg_cr_supersede_consistency` + `trg_cr_chain_of_authority_validate` + `trg_revocation_outbox`.
+9. **B5** Triggers `trg_cr_supersede_consistency` + `trg_cr_chain_of_authority_validate` + `trg_revocation_set_cascade_status` (derived-column maintenance only; **no `outbox_event` writes** — the `m39.consent.revoked` event is emitted by `revokeConsent` in the service layer via the M1 outbox helper in-transaction per §4.5, M39-F08 / ARCH-144/264).
 
 Phase C — DPOA + delegated_access projection (week 3):
 10. **C1** Routes 14, 15, 16, 17 (DPOA agent list, add, modify, active-primary lookup).
@@ -2370,7 +2421,7 @@ Every box must be checked before M39 is promoted from `v0.2 Locked (spec)` to `v
 ### 12.8 Cross-Module Sign-Off
 
 - [ ] **M3 (Authorization)** confirms the 11 ABAC predicate resolvers are accepted into the named-predicate registry; predicate signatures match consumer expectations across M5/M7/M8/M9/M11/M12/M13/M14/M15/M16/M17/M18/M19/M22/M27/M28/M29/M30/M33.
-- [ ] **M4 (Audit)** confirms the `consent` retention class registration, the eraser registration (`consent_record_subtree`), the audit denylist registration, and the INSERT-only `consent_eval_audit` immutability trigger.
+- [ ] **M4 (Audit)** confirms the `consent` retention class registration, the eraser registration under the data-class key `consent` (M39-F04), that the eraser does NOT delete the immutable `consent_eval_audit` (its destruction routes through M4's audit-partition retention / destruction-cert workflow), the audit denylist registration, and the INSERT-only `consent_eval_audit` immutability trigger.
 - [ ] **M5 (Patient)** confirms its `m39.consent.signed` and `m39.consent.revoked` subscribers are operative and recompute `patient.privacy_flag_snapshot` correctly per M5 D3 + D10.
 - [ ] **M16 (Bereavement)** confirms `bereaved_contact.consent_record_id` FK contracts and the `m39.consent.revoked` cascade satisfy M16 §2.6 D6.
 - [ ] **M22 (Documents)** confirms the `consent_record` template rendering path is operative; the `m39.consent.signed` consumer renders within target latency; the per-tenant overlay applies correctly without loosening platform-floor fields.
@@ -2541,7 +2592,7 @@ This patch must be applied as the first M39 PR. Subsequent M39 PRs (Phase A thro
 **M36 alert types registered:** Five (per §4.10).
 **SESSION_POLICY profile registered:** One (`consent_management`, per D16).
 **Retention class registered:** One (`consent`, per D20).
-**Eraser registered:** One (`consent_record_subtree`, per §8.6).
+**Eraser registered:** One, under the data-class key `consent` (per §8.6; M39-F04). It does NOT delete the immutable `consent_eval_audit` — that destruction routes through M4's audit-partition retention / destruction-cert workflow.
 **Forward-seam consumer deny-stubs:** Two (`m31.portal-session-terminator`, `m28.fhir-client-cache-invalidator`).
 **AI surface:** Prohibited (boot validator + nightly cron per D17).
 

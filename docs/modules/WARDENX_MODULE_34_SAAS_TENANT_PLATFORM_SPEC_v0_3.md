@@ -30,10 +30,11 @@ highest-priority Phase-2 fixes (`audit/AUDIT_M34.md`; ADR-0010/0011).
 | M34-F05 | MAJOR | Package kept as `packages/saas` (least churn) so `VENDOR_ADAPTERS["stripe"]` binding holds; if renamed, the manifest patch repoints the Stripe adapter and architecture §4 tree. |
 | M34-F06 | MAJOR | DSAR/tenant-export download URL → **24-hour** TTL (MinIO object auto-delete stays 7 d); full SEC-052 bulk-export controls added (justification, approver, 1/hr/user, 10k cap + elevated approval, warn/critical thresholds). |
 | M34-F07 | MAJOR | Step-up expressed against M2's actual `STEP_UP_POLICY` (factors ∈ {webauthn, totp} + freshness, tenant-tighten only); `password_recent_*` removed. |
-| M34-F08 | MAJOR | DEK destruction made **conditional on all erasers returning non-refusal**: a `refused_part_two_retention` (M4 D8) blocks Phase-3 DEK destruction and re-defers the tenant to `retained`, exactly as legal hold does; refused-row counts surfaced on the cert. |
+| M34-F08 | MAJOR | DEK destruction made **conditional on all erasers returning non-refusal** (ADR-0014 / ARCH-251): the shred worker runs an eraser-refusal gate between the eraseFn callbacks and Phase-3 DEK destruction — a `refused_part_two_retention` (M4 D8) aborts DEK destruction and re-defers the tenant `destruction_pending → retained` (reason `part_two_retention`), exactly as legal hold does; refused-row counts surfaced on the cert. Implemented in §3.5 shred-worker, §2.2 transition rules + state diagram, §2.5 side-effects, §7.2 step 5 + §7.7 edge cases. |
 | M34-F09 | MAJOR | DSAR/export workers run under the requesting tenant's `withOrgContext`; `pg_has_role('wardenx_admin')` removed from tenant-read policies; platform-ops cross-tenant reads require break-glass + `audit.elevated_access` (§3.10 SQL). |
 | M34-F10 | MAJOR | `support_session_event`/`dsar_export_job_event`/`tenant_export_job_event` carry `organization_id`, co-partition `LIST org → RANGE occurred_at`, registered in `partition.rotate` (OPS-021). |
 | M34-F11..F17 | MINOR | Queue retry/backoff/DLQ + OPS-036 secret inventory; `SupportTicket` omission noted; RLS isolation suite expanded to 100% of PHI tables incl. platform-bypass paths; two-phase expand/contract for the org_id column adds; entity-name traceability mapped. |
+| M34-F13 | MAJOR | **Part 2 / PHI-Sensitive classification of patient-referencing surfaces** (ADR-0014 / SEC-046): `support_session_event.patient_id` and `dsar_export_job.patient_id` tagged `phi_sensitive`; the DSAR FHIR Bundle honors **M5/M39 Part 2 redaction-by-default** (redact-unless-consent, redaction-stub `DocumentReference`); support sessions over Part 2 patients carry heightened controls (Part 2-marked `severity=critical` audit, read-only — PHI write/elevation denied, Part 2-named grantor alert). Added to §8.2/§8.4 + §7.3 DSAR worker + §7.4 support session. |
 
 ## Changelog
 
@@ -196,7 +197,7 @@ erDiagram
     tenant_key_destruction_log {
         uuid id PK
         uuid tenant_key_ring_id FK
-        text destruction_phase "deks_zeroized|module_erasers_complete|minio_scope_destroyed|certificate_filed"
+        text destruction_phase "deks_zeroized|module_erasers_complete|minio_scope_destroyed|certificate_filed|dek_destruction_aborted_part_two_retention"
         timestamptz occurred_at
         jsonb per_module_eraser_receipts "[{module:'m5',rowsErased:1234,sha256:...}, ...]"
     }
@@ -272,7 +273,7 @@ erDiagram
         text event_kind "phi_read|phi_write|elevation_requested|elevation_granted|session_warning_emitted"
         text resource_kind "patient|encounter|document|order|message|audit_event|other"
         uuid resource_id
-        uuid patient_id "where applicable; for surveyor query"
+        uuid patient_id "where applicable; for surveyor query; M34-F13 phi_sensitive — potential Part 2"
         timestamptz occurred_at
         text actor_ip
         jsonb context "minimal-necessary; redacted of PHI body"
@@ -281,7 +282,7 @@ erDiagram
     dsar_export_job {
         uuid id PK
         uuid organization_id FK
-        uuid patient_id "the data subject; M5 follow-merge-redirect at job creation"
+        uuid patient_id "the data subject; M5 follow-merge-redirect at job creation; M34-F13 phi_sensitive — potential Part 2"
         text request_source "patient|caregiver|legal_representative|authorized_third_party"
         text requestor_identity_verification_evidence "free-form; tenant compliance officer's attestation"
         uuid requesting_membership_id FK "org_admin or DSAR-officer-role member of tenant"
@@ -394,6 +395,7 @@ stateDiagram-v2
     final_export_pending --> retained: tenant downloads OR explicitly waives final export
     retained --> destruction_pending: retention_ends_at reached AND no legal_hold active
     destruction_pending --> destroyed: tenant.shred worker complete + M4 destruction-certificate filed + DEK destroyed
+    destruction_pending --> retained: M34-F08 — an eraseFn returned refused_part_two_retention; DEK destruction aborted; re-defer until Part 2 retention lapses
     destroyed --> [*]
 ```
 
@@ -421,7 +423,7 @@ stateDiagram-v2
 - `active → suspended` is reversible; sessions for the tenant are immediately terminated at the transition via the M2 session-revocation cascade.
 - `active → offboarding_initiated` is **not** reversible directly; reversal requires a separate decision and a `tenant_account_status_event` documenting the unwind, with the platform security owner as actor. The lifecycle treats this as defense in depth against accidental destruction.
 - `retained → destruction_pending` triggers automatically when `retention_ends_at <= NOW()` AND no row in `legal_hold` (M4-owned table) references this `organization_id`. Manual trigger requires platform security owner.
-- `destruction_pending → destroyed` is irreversible. The `tenant.shred` worker is the **only** code path that effects this transition; manual SQL transition is blocked by a CHECK constraint that requires `destroyed_at IS NOT NULL` and `destroyed_by_membership_id IS NOT NULL` and `destruction_certificate_id IS NOT NULL`.
+- `destruction_pending → destroyed` is irreversible. The `tenant.shred` worker is the **only** code path that effects this transition; manual SQL transition is blocked by a CHECK constraint that requires `destroyed_at IS NOT NULL` and `destroyed_by_membership_id IS NOT NULL` and `destruction_certificate_id IS NOT NULL`. **The transition to `destroyed` is conditional on every eraseFn returning a non-refusal outcome (M34-F08 / ADR-0014 / ARCH-251):** if any module's eraseFn returns `refused_part_two_retention` (M4 D8 — a 42 CFR Part 2 record under a retention obligation), the shred worker aborts Phase-3 DEK destruction and instead transitions `destruction_pending → retained` (reason `part_two_retention`), surfacing the refused-row counts on the destruction certificate. This mirrors the legal-hold re-defer: the DEK is the only key that can decrypt the retained Part 2 ciphertext, so it must survive until the retention obligation lapses, after which `tenant.shred_eligibility_check` re-fires.
 - **Multi-CCN tenants (D20):** A tenant with multiple `provider_entity` rows (multi-CCN — e.g., a tenant operating CCNs in OR and WA) is still **one** `tenant_account` referencing **one** `organization`. The provider entities are M2-owned and live under that organization. M34 does not multiply the tenant per CCN; the multi-CCN-ness is purely structural within the tenant.
 
 ### 2.3 Onboarding State Machine (D3)
@@ -489,7 +491,7 @@ Locked at v0.2:
 | `active → offboarding_initiated` | (1) M2 session revocation cascade. (2) M35 subscription cancellation scheduled (via outbox). (3) M36 alert `tenant.offboarding_initiated` to all platform-ops + tenant compliance officer. (4) Outbox `m34.tenant.offboarding_initiated`. (5) `tenant_export_job(purpose='baa_termination'|'migration')` row offered to org admin via apps/admin. |
 | `final_export_pending → retained` | (1) `tenant_account.retention_ends_at = NOW() + retention_class_default_interval`. (2) `tenant.shred_eligibility_check` scheduled (daily cron). (3) Outbox `m34.tenant.retained` emitted. (4) M36 alert at 30d / 7d / 0d before `retention_ends_at`. |
 | `retained → destruction_pending` | (1) M4 `requestDestruction('saas_tenant_platform_class', {orgId})` called. (2) M36 alert `tenant.shred_pending_approval` routed to platform security owner. |
-| `destruction_pending → destroyed` | (1) `tenant.shred` worker invoked. (2) Per-module `eraseFn` callbacks invoked through M4 destruction-cert workflow. (3) Per-tenant MinIO scope destroyed. (4) `tenant_key_ring.destroyed_at` set, `current_dek_kek_wrapped_ciphertext = NULL`, all `prior_dek_versions[*].kek_wrapped_ciphertext = NULL`. (5) `tenant_key_destruction_log` rows for each phase. (6) M4 `data.destruction_certified` audit event at `severity=critical`. (7) Outbox `m34.tenant.destroyed`. |
+| `destruction_pending → destroyed` | (1) `tenant.shred` worker invoked. (2) Per-module `eraseFn` callbacks invoked through M4 destruction-cert workflow. (2a) **M34-F08 / ADR-0014 / ARCH-251 eraser-refusal check** — if any eraseFn returned `refused_part_two_retention` (M4 D8), Phase-3 DEK destruction **aborts**, the refused-row counts are recorded on the destruction certificate, the tenant is **re-deferred to `retained`** (status transition `destruction_pending → retained` with reason `part_two_retention`), a `data.destruction_deferred` audit event at `severity=critical` is written, and steps (3)–(7) do **not** run (the DEK survives because it is the only key that can decrypt the retained Part 2 ciphertext). (3) Per-tenant MinIO scope destroyed. (4) `tenant_key_ring.destroyed_at` set, `current_dek_kek_wrapped_ciphertext = NULL`, all `prior_dek_versions[*].kek_wrapped_ciphertext = NULL`. (5) `tenant_key_destruction_log` rows for each phase. (6) M4 `data.destruction_certified` audit event at `severity=critical`. (7) Outbox `m34.tenant.destroyed`. |
 
 ### 2.6 Idempotency & Outbox
 
@@ -926,6 +928,8 @@ export const tenantKeyDestructionLog = pgTable(
       .references(() => organizations.id, { onDelete: 'restrict' }),
     destructionPhase: text('destruction_phase').notNull(),
     // 'deks_zeroized' | 'module_erasers_complete' | 'minio_scope_destroyed' | 'certificate_filed'
+    // | 'dek_destruction_aborted_part_two_retention' (M34-F08 / ADR-0014: an eraseFn returned
+    //   'refused_part_two_retention'; Phase-3 DEK destruction aborted, tenant re-deferred to 'retained')
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
     perModuleEraserReceipts: jsonb('per_module_eraser_receipts').notNull().default([]),
   },
@@ -947,14 +951,48 @@ export async function executeShred(args: ShredArgs) {
 
   // Phase 1: M4 destruction-cert callback fires every module's eraseFn.
   // M34 itself receives the callback for its own saas_tenant_platform_class.
+  // Each eraseFn returns either an erased receipt OR a refusal outcome
+  // ('refused_part_two_retention' per M4 D8 — a 42 CFR Part 2 record that
+  // must be retained past the tenant's general retention window).
   const eraserReceipts = await callbackAllEraserFns(args)
   await insertLog(tenantKeyRingId, 'module_erasers_complete', eraserReceipts)
+
+  // M34-F08 / ADR-0014 / ARCH-251: eraser-refusal check BETWEEN the eraser
+  // callbacks and DEK destruction. If ANY eraseFn returned
+  // 'refused_part_two_retention', Phase-3 DEK destruction MUST abort — the DEK
+  // is the only key that can decrypt the retained Part 2 ciphertext, so zeroing
+  // it would violate the retention obligation. The tenant is re-deferred to
+  // 'retained' (exactly as a legal hold re-defers it) until the retention
+  // obligation lapses, at which point shred eligibility re-fires.
+  const refusals = eraserReceipts.filter((r) => r.outcome === 'refused_part_two_retention')
+  if (refusals.length > 0) {
+    const refusedRowsByModule = refusals.map((r) => ({ module: r.module, refusedRows: r.refusedRows }))
+    // Surface refused-row counts on the (now-aborted) destruction certificate.
+    await m4RecordCertificateRefusal(args.destructionCertId, {
+      reason: 'part_two_retention',
+      refusedRowsByModule,
+    })
+    await insertLog(tenantKeyRingId, 'dek_destruction_aborted_part_two_retention', { refusedRowsByModule })
+    await reDeferToRetained(args.tenantAccountId, {
+      reason: 'part_two_retention',
+      refusedRowsByModule,
+    })
+    await audit({
+      kind: 'data.destruction_deferred',
+      severity: 'critical',
+      actorMembershipId: args.actorMembershipId,
+      targetOrgId: args.orgId,
+      payload: { destructionCertificateId: args.destructionCertId, refusedRowsByModule },
+    })
+    return // DEK survives; no Phase 2/3/4.
+  }
 
   // Phase 2: per-tenant MinIO scope destroyed via M1 helper.
   const minioReceipt = await m1MinioClient.destroyTenantPrefix(args.orgId)
   await insertLog(tenantKeyRingId, 'minio_scope_destroyed', { minioReceipt })
 
   // Phase 3: cryptographic shred — DEK destroyed. This is the irreversible event.
+  // Reached ONLY when every eraseFn returned a non-refusal outcome.
   // Executed via SECURITY DEFINER function m34_destroy_tenant_key_ring.
   await db.execute(sql`SELECT m34_destroy_tenant_key_ring(${args.tenantAccountId}, ${args.destructionCertId})`)
   await insertLog(tenantKeyRingId, 'deks_zeroized', {})
@@ -974,7 +1012,7 @@ export async function executeShred(args: ShredArgs) {
 }
 ```
 
-The DEK destruction function (`m34_destroy_tenant_key_ring`) runs as `tenant_platform_writer` SECURITY DEFINER and is the only code that may set `current_dek_kek_wrapped_ciphertext = NULL` and clear `prior_dek_versions`. Any other path is blocked by the table grants.
+The DEK destruction function (`m34_destroy_tenant_key_ring`) runs as `tenant_platform_writer` SECURITY DEFINER and is the only code that may set `current_dek_kek_wrapped_ciphertext = NULL` and clear `prior_dek_versions`. Any other path is blocked by the table grants. Per **M34-F08 / ADR-0014 / ARCH-251** the function is **never** reached when an eraseFn returned `refused_part_two_retention`: the refusal check aborts before Phase 3, re-defers the tenant to `retained`, and the destruction certificate carries the refused-row counts so the deferral is auditable.
 
 ### 3.6 Support Session Tables
 
@@ -1072,6 +1110,9 @@ export const supportSessionEvent = pgTable(
     resourceKind: text('resource_kind'),
     resourceId: uuid('resource_id'),
     patientId: uuid('patient_id'), // surveyor query: by patient_id + actor_kind='platform_ops_via_support_session'
+    // M34-F13 / ADR-0014 / SEC-046: phiClass='phi_sensitive' — potential 42 CFR Part 2.
+    // Sessions over Part 2 patients carry heightened controls (read-only; Part 2-marked
+    // severity=critical audit; elevation denied) per §7.4 step 4a / §8.2.
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
     actorIp: text('actor_ip'),
     context: jsonb('context').notNull().default({}),
@@ -1120,6 +1161,8 @@ export const dsarExportJob = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: 'restrict' }),
     patientId: uuid('patient_id').notNull(), // follows M5 merged_into_id at create time
+    // M34-F13 / ADR-0014 / SEC-046: phiClass='phi_sensitive' — potential 42 CFR Part 2.
+    // The DSAR Bundle honors M5/M39 Part 2 redaction-by-default (§7.3, §8.2).
     requestSource: dsarRequestSource('request_source').notNull(),
     requestorIdentityVerificationEvidence: text('requestor_identity_verification_evidence').notNull(),
     requestingMembershipId: uuid('requesting_membership_id').notNull(),
@@ -2146,8 +2189,9 @@ Live updates via M36 Socket.IO rooms `platform_ops` and `org:<orgId>` — any st
 3. The security owner reviews and either denies (returns to `retained` with a deferral note) or approves. Approval triggers `requestDestruction('saas_tenant_platform_class', {orgId})` against M4 — M4 generates the pending destruction certificate; the certificate requires the second approver per M4 D4.
 4. With M4 certificate approved, a platform-ops actor invokes `POST /api/v1/platform/tenants/:orgId/shred` with passkey-recent-2min step-up + the certificate id.
 5. The `tenant.shred` worker executes the four-phase sequence (§3.5):
-   - Phase 1 — every M4-registered eraseFn called; each returns rows-erased + sha256 receipt
-   - Phase 2 — per-tenant MinIO scope destroyed via M1 helper
+   - Phase 1 — every M4-registered eraseFn called; each returns rows-erased + sha256 receipt, **or a refusal outcome** `refused_part_two_retention` (M4 D8) with a refused-row count
+   - **Eraser-refusal gate (M34-F08 / ADR-0014 / ARCH-251)** — between Phase 1 and Phase 2 the worker inspects every receipt. If **any** eraseFn returned `refused_part_two_retention`, the worker **aborts** before Phase 3: it records the refused-row counts on the destruction certificate, writes a `tenant_key_destruction_log` row with phase `dek_destruction_aborted_part_two_retention`, transitions the tenant `destruction_pending → retained` (reason `part_two_retention`), emits a `data.destruction_deferred` audit event at `severity=critical`, and returns. The DEK is **not** destroyed (it is the only key for the retained Part 2 ciphertext). `tenant.shred_eligibility_check` re-fires when the Part 2 retention obligation lapses.
+   - Phase 2 — per-tenant MinIO scope destroyed via M1 helper (reached only when no eraser refused)
    - Phase 3 — DEK destroyed (`m34_destroy_tenant_key_ring` SECURITY DEFINER; `current_dek_kek_wrapped_ciphertext = NULL`; `prior_dek_versions` cleared)
    - Phase 4 — M4 certificate finalized with destruction timestamps; `tenant_account` status → `destroyed`; outbox `m34.tenant.destroyed`
 6. **Acceptance:** A post-shred query of any envelope-encrypted column for this tenant raises `TenantKeyDestroyed`. A query of `tenant_key_ring` shows `destroyed_at IS NOT NULL AND current_dek_kek_wrapped_ciphertext IS NULL`. A restore of a backup containing the encrypted ciphertext is **still cryptographically inaccessible** because the wrapping KEK has no DEK to decrypt — this is the "cryptographic shred" property.
@@ -2159,9 +2203,10 @@ Live updates via M36 Socket.IO rooms `platform_ops` and `org:<orgId>` — any st
 2. Job inserted with `status='requested'`, `sla_due_at = NOW() + 30d`. Outbox `m34.dsar_export.requested` emitted.
 3. The `tenant.dsar_export` worker (concurrency 4, keyed by job_id):
    - Resolves patient_id through `M5.patientResolver.load(patientId)` (follows `merged_into_id`)
-   - Iterates `TenantExportShard` registry; for each registered shard, calls `streamDsarShardForPatient(orgId, patientId, fhirResourceSink)`
-   - Assembles FHIR R4 Bundle from per-module shards
-   - Emits `m22.document.upload_requested` for the rendered chart PDF (M22 renders from the Bundle)
+   - **Part 2 redaction-by-default (M34-F13 / ADR-0014 / SEC-046):** consults the M39 Part 2 segmentation seam for the subject. The FHIR Bundle **honors M5/M39 Part 2 redaction-by-default** — any resource M39 designates as 42 CFR Part 2 is **omitted** from the Bundle unless the requesting tenant has captured the specific Part 2 re-disclosure consent for this subject and purpose. Omitted resources are represented by a redaction-stub `DocumentReference` recording the omission and the missing-consent reason. M34 never widens the M5/M39 Part 2 posture; it inherits it. The `dsar_export_job.patient_id` surface is `phi_sensitive`-classified per §8.2.
+   - Iterates `TenantExportShard` registry; for each registered shard, calls `streamDsarShardForPatient(orgId, patientId, fhirResourceSink)` — each shard applies its own M39 Part 2 segmentation before emitting resources
+   - Assembles FHIR R4 Bundle from per-module shards (post-redaction)
+   - Emits `m22.document.upload_requested` for the rendered chart PDF (M22 renders from the redacted Bundle)
    - Uploads the Bundle archive to MinIO under `tenants/<orgId>/exports/dsar/<jobId>.tar.gz`
    - Computes bundle_sha256, sets bundle_presigned_url_expires_at, status=`review_pending`
 4. Tenant DSAR officer reviews the bundle in apps/web/admin/exports/dsar/:id; can fulfill, extend (one extension only), or deny with permitted reason.
@@ -2175,7 +2220,8 @@ Live updates via M36 Socket.IO rooms `platform_ops` and `org:<orgId>` — any st
 2. The grant is M4-audited and M36-alerted to platform-ops.
 3. A WardenX support engineer with passkey-recent-5min step-up POSTs `/api/v1/platform/support-sessions` with the grant_id. The ABAC predicate `support_session_actor_distinct_from_grantor` refuses if actor == grantor membership (D16). The session is created with `expires_at = LEAST(grant.expires_at, started_at + 8h)`.
 4. During the session, the support engineer's PHI access is M4-audited with `actor_kind='platform_ops_via_support_session'` because the audit middleware reads `TenantSupportSessionProvider.isActorInSupportSession(actorMembershipId, orgId)` at every PHI read/write.
-5. PHI write attempts during a session require additional step-up via `POST /api/v1/platform/support-sessions/:id/elevate` (passkey-recent-2min). The elevation event is M4-audited and M36-alerted to the grantor.
+4a. **Part 2-heightened sessions (M34-F13 / ADR-0014 / SEC-046):** if the grant is `patient_scoped` and any in-scope patient carries an M39 Part 2 designation, the session is flagged Part 2-heightened. Every `support_session_event` over that patient is audited at `severity=critical` with the Part 2 marker (`support_session_event.patient_id` is `phi_sensitive`-classified per §8.2); PHI **write is denied outright** (support over Part 2 patients is read-only — the elevation path in step 5 is unavailable); and the M36 grantor alert names the Part 2 sensitivity so the tenant compliance officer can revoke if the consent basis is insufficient.
+5. PHI write attempts during a session require additional step-up via `POST /api/v1/platform/support-sessions/:id/elevate` (passkey-recent-2min). The elevation event is M4-audited and M36-alerted to the grantor. **Elevation is refused for Part 2-heightened sessions** (step 4a) — those sessions are read-only regardless of step-up.
 6. Session ends by: tenant revocation of grant (cascades), `expires_at` reached (the close-sweep job closes), or manual close. M36 alert `support_session.expired` emitted.
 7. **Acceptance:** A surveyor query "show me every WardenX engineer who accessed patient X's chart during 2026-05" returns a deterministic list: `SELECT * FROM audit_event WHERE patient_id = $1 AND actor_kind = 'platform_ops_via_support_session' AND occurred_at IN range` returns the rows; joining `support_session` → `support_consent_grant` proves consent was on file for each access. **Without a support session, no WardenX engineer can access tenant PHI without break-glass** (the without-consent emergency path — D21).
 
@@ -2199,6 +2245,7 @@ Live updates via M36 Socket.IO rooms `platform_ops` and `org:<orgId>` — any st
 
 - **Provisioning failure mid-way:** Worker is idempotent; partial rows survive. Re-run picks up from the last completed step. If the DEK was created but MinIO prefix not yet, the worker creates the prefix and proceeds. If MinIO is down, worker fails the job and retries with backoff; tenant remains in `provisioning` state until manual intervention.
 - **Shred worker crash between phases:** Phase receipts in `tenant_key_destruction_log` are the truth. Phase 3 (DEK destruction) is the irreversible point — crashes before phase 3 are recoverable; after phase 3, the data is destroyed; the worker just resumes Phase 4 (certificate filing + status flip).
+- **Eraser refuses a Part 2 record (M34-F08 / ADR-0014):** If any eraseFn returns `refused_part_two_retention` (a 42 CFR Part 2 record under a retention obligation per M4 D8), the worker aborts before Phase 3 and re-defers the tenant `destruction_pending → retained` with the refused-row counts on the destruction certificate. The DEK is preserved — destroying it would render the legally-retained Part 2 ciphertext permanently unrecoverable. This is the same posture as an active legal hold blocking destruction; the daily `tenant.shred_eligibility_check` re-evaluates once the Part 2 retention window lapses.
 - **Support session expiry mid-action:** The audit middleware checks session validity on every PHI read/write; an expired session causes the request to return 403 with `code='SUPPORT_SESSION_EXPIRED'`. The actor's open work is lost (deliberate — encourages short, focused sessions).
 - **DSAR for a merged patient:** The patient_id is resolved through M5's `merged_into_id` at job creation; the bundle reflects the canonical (post-merge) patient. The job row records the originally-requested patient_id for §164.528 disclosure-accounting.
 - **DSAR for a deceased patient:** Permitted — the personal representative or estate authority continues to have access rights. The request_source captures the relationship; the requestor_identity_verification_evidence is the proof.
@@ -2232,6 +2279,16 @@ M34 does **not** introduce new envelope-encrypted columns — every PHI-related 
 
 The `support_session_event.context` JSONB is **explicitly required to be PHI-free** — it captures resource identifiers, not resource bodies. The M4 audit log carries the resource body; the session event carries only the access metadata.
 
+**PHI-Sensitive / 42 CFR Part 2 classification (M34-F13 / ADR-0014 / SEC-046).** Two patient-referencing surfaces in M34 must be treated as **potentially PHI-Sensitive / Part 2** even though they store only an FK, because the *mere association* of a `patient_id` with a hospice/SUD-adjacent record can itself be a Part 2 disclosure:
+
+- **`dsar_export_job.patient_id`** — the data subject of a DSAR export. The fact that a DSAR is in flight for a specific patient, plus any Part 2 content materialized into the export Bundle, is Part 2-sensitive.
+- **`support_session_event.patient_id`** — the patient whose chart a WardenX support engineer accessed during a consented support session. That a named WardenX actor touched a specific patient's record is Part 2-sensitive disclosure metadata.
+
+These two columns are tagged `phiClass = 'phi_sensitive'` in the table metadata so the M4 audit projection, the M33 reporting shards, and any tenant-export shard treat them under the heightened Part 2 handling rules. Consequences:
+
+- The **DSAR FHIR Bundle honors M5/M39 Part 2 redaction-by-default** (see §7.3): the DSAR worker assembles the Bundle through the M5 patient resolver and the M39 Part 2 segmentation seam, which redact Part 2-designated resources unless the requesting tenant has captured the specific Part 2 re-disclosure consent for that subject. Redaction-by-default means a Part 2 resource is *omitted* from the Bundle (with a redaction-stub `DocumentReference` noting the omission and the consent gap) unless an explicit Part 2 consent is on file — M34 never widens M5/M39's Part 2 posture, it inherits it.
+- **Support sessions over Part 2 patients carry the heightened controls** (see §7.4 / §8.3): when a `support_consent_grant` is `patient_scoped` and any in-scope patient carries an M39 Part 2 designation, the resulting support session is flagged Part 2-heightened — every PHI access is audited at `severity=critical` *with the Part 2 marker*, PHI **write** is denied outright (read-only support over Part 2 patients), and the M36 grantor alert names the Part 2 sensitivity so the tenant compliance officer can revoke if the consent basis is insufficient.
+
 ### 8.3 Audit Strategy
 
 Every M34 write is M4-audited via the write-audit trigger generator (§3.11). The trigger payload includes `before` and `after` JSONB for the changed row, the actor membership id, the session id, the action verb, and the resource kind. For tables with `valueCaptureDenylist` (notably `tenant_key_ring`), the trigger blanks the denylisted columns in the before/after capture.
@@ -2250,6 +2307,8 @@ The critical-severity events (D8, D21):
 All thirteen M34-owned tables (counting the seventeen including helper partitions) are retention class `compliance` (D12) — that is, they live a minimum of seven years from creation regardless of whether the tenant remains active. The DEK destruction at shred clears the **DEK ciphertext columns**; it does not delete the row in `tenant_key_ring`. The row remains, the row's `destroyed_at` is set, the destruction is auditable for the full retention window. The same pattern applies to `tenant_account` — a destroyed tenant has `tenant_account.status='destroyed'`, not a deleted row.
 
 The non-tenant-scoped tables (`onboarding_task_template`, `tenant_signup_intent`, `tenant_signup_token`) retain per architecture §11 retention table: templates `compliance`; signup intents `operational` (3y); signup tokens `operational` (90d after consumption).
+
+**42 CFR Part 2 retention interaction (M34-F13 / ADR-0014 / SEC-046).** The two PHI-Sensitive surfaces classified in §8.2 (`dsar_export_job.patient_id`, `support_session_event.patient_id`) inherit the standard `compliance` (7-year) M34 retention, but the *underlying patient records* they reference may carry a **distinct, longer 42 CFR Part 2 retention obligation** held by M5/M39, not by M34. M34 does not shorten or override that obligation. This is the explicit link to **M34-F08**: at cryptographic shred, if any module's eraseFn returns `refused_part_two_retention`, the DEK is preserved and the tenant re-deferred to `retained` — because zeroing the DEK would render the still-obligated Part 2 ciphertext permanently unrecoverable. M34's own DSAR/support rows are not the Part 2 record of authority; they are disclosure-accounting metadata about access to it.
 
 ### 8.5 Observability
 
