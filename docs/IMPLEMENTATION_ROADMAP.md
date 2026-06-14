@@ -20,6 +20,27 @@ Phase 2/3 "upgrades" re-open already-built modules to flip default-off flags; th
 counts. (Architecture §20.A previously had an off-by-one — prose "28" vs 29 enumerated — now corrected
 in `WARDENX_ARCHITECTURE_v0_11.md`.)
 
+## Phase 1 wave plans (Archon task plans)
+
+`PHASE_1_PLAN.md` schedules Phase 1 into dependency-ordered waves; each wave is decomposed into
+**DoD-aligned, gate-bound tasks** an Archon workflow executes (see [`ARCHON_SETUP.md`](./ARCHON_SETUP.md)).
+Each task closes on a specific fitness gate; cross-module access is seam/outbox only.
+
+| Wave | Modules | Plan |
+|---|---|---|
+| Slice | M1, M2 | [`plans/M01-M02_VERTICAL_SLICE_PLAN.md`](./plans/M01-M02_VERTICAL_SLICE_PLAN.md) (+ reusable per-module template) |
+| A | M3, M4 | [`plans/WAVE_A_M3-M4_PLAN.md`](./plans/WAVE_A_M3-M4_PLAN.md) |
+| B | M36, M38, M40 | [`plans/WAVE_B_M36-M38-M40_PLAN.md`](./plans/WAVE_B_M36-M38-M40_PLAN.md) |
+| C | M5, M39 | [`plans/WAVE_C_M5-M39_PLAN.md`](./plans/WAVE_C_M5-M39_PLAN.md) |
+| D | M6, M7, M8 | [`plans/WAVE_D_M6-M7-M8_PLAN.md`](./plans/WAVE_D_M6-M7-M8_PLAN.md) |
+| E | M9, M10, M11, M12, M13 | [`plans/WAVE_E_M9-M13_PLAN.md`](./plans/WAVE_E_M9-M13_PLAN.md) |
+| F | M14, M17, M18, M22 | [`plans/WAVE_F_M14-M17-M18-M22_PLAN.md`](./plans/WAVE_F_M14-M17-M18-M22_PLAN.md) |
+| G | M23, M25, M26 | [`plans/WAVE_G_M23-M25-M26_PLAN.md`](./plans/WAVE_G_M23-M25-M26_PLAN.md) |
+| H | M28, M29, M30, M32, M34 | [`plans/WAVE_H_M28-M29-M30-M32-M34_PLAN.md`](./plans/WAVE_H_M28-M29-M30-M32-M34_PLAN.md) |
+
+All 29 Phase-1 modules are covered exactly once. Build order across waves is the §20 dependency order;
+within a wave, the plan states the internal parallelism and which forward-seams/deny-stubs it opens or closes.
+
 ## Rules that bind every phase
 
 1. **Dependency order is law (§20).** A module is *done* — "tests + UI + audit + RBAC" — before a
