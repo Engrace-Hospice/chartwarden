@@ -10,7 +10,7 @@ cron-timezone rationale, §4.8). (Prior: v0.2.)
 
 **Module ID:** 26
 **Phase:** 1 baseline — per-beneficiary aggregate cap accrual, inpatient-cap (20% rule) accrual, nightly projection, M23 pre-submission validation feedback, M36 threshold alerts; required for Engrace go-live because 42 CFR §418.308 makes the hospice cap a statutory payment limit and a hospice operating without per-beneficiary visibility is one Medicare audit away from a six-figure recoupment. Phase 3 layers add agency-wide cap watch with tiered projections, automated PS&R reconciliation against the MAC's published reports, settlement-grade snapshots feeding M27 cost-report worksheets, and the cap-year-close workflow with reopen audit trail — same forward-seam pattern every other module uses: the seams ship at M26 lock, the consumers wire when their owning modules lock.
-**Depends on:** 1 (Foundation — `withOrgContext`, `audit()` helper, outbox dispatcher, idempotency middleware via natural-key `(source_kind, source_id, line_seq)`, BullMQ on Valkey, partitioned-table convention for `cap_beneficiary_accrual_line` and `cap_inpatient_day_line` by `cap_period_id`, RLS generator, per-tenant DEK envelope-encryption helper for PS&R raw file storage keys, circuit-breaker and `DegradedError` envelope for the platform-constant CMS-publication-refresh worker), 2 (Identity — `user`, `membership`; session classes for step-up re-auth on cap-year-close, settlement-finalize, methodology-change, year-reopen per D12; discipline resolution for the `cap_admin` and `cap_reviewer` predicate scopes), 3 (Authorization — `cap.*` permission keys M26 contributes per §4.6; ABAC predicates `cap_period_open`, `cap_period_in_settlement`, `cap_period_settled`, `cap_period_methodology_unlocked`, `cap_platform_admin` registered into M3's named-predicate registry; the `caseload_or_scope` predicate reused for per-patient cap-detail reads so a billing clerk sees only patients in their assignment scope), 4 (Audit — PHI write-audit trigger generator on every owned table that carries `patient_id`; audit-read declaration on every per-patient cap-detail route; retention class `compliance` for `cap_beneficiary_accrual`, `cap_beneficiary_accrual_line`, `cap_inpatient_accrual`, `cap_inpatient_day_line`, `cap_threshold_event`, `cap_psr_import`, `cap_psr_reconciliation`, `cap_settlement`, `cap_period`, `cap_period_methodology_lock` — these are cost-report material and must survive the 7-year CMS retention floor per 42 CFR §418.104(d) and the cost-report extension to 10 years for some MACs; retention class `operational` for `cap_projection_snapshot` (13 months hot, then archived to summary; see D11); `eraseFn` registered into M4's destruction-cert callback registry that *retains* the per-cap-period aggregates and *redacts* the `patient_id` link to an `[ERASED]` sentinel — see D14: the cap is settled at the cap-year-aggregate level; CMS-side reconciliation must remain reproducible from our ledger even after an individual patient's right-to-erasure is honored), 5 (Patient & Demographics — `PatientReader` consumed via `packages/patient` for patient identity, deceased status, and `medicare_election_id` lookup; `m5.patient.deceased` consumed via outbox to mark `cap_beneficiary_accrual.deceased_at` and freeze the patient's per-cap-year projection denominator at death rather than continuing to extrapolate empty days; M26 never imports M5 schema directly — only the typed reader), 6 (Admission/Election/Certification — `ElectionPeriodReader` consumed for benefit-period-anchored cap math: a patient's contribution to a cap year is bounded by their hospice election dates and revocation date; `MedicareBeneficiaryIdProvider.normalizedMbiForPatient(patientId)` consumed to canonicalize the HICN/MBI used for cross-hospice reconciliation under D10; `m6.revocation.created` consumed via outbox to freeze the patient's contribution to the active cap period at the revocation date; `m6.transfer.created` consumed under proportional methodology so the patient's pre-transfer days are honored as already-counted by the prior hospice), 23 (Billing — Medicare — `MedicareClaimReader` consumed for claim-line detail when projecting outstanding-billed against paid; `ClaimLineReader.inpatientDaysForPatient(patientId, periodWindow)` consumed for revenue-code-0655/0656 day extraction per D13; M26 *contributes back* the `CapProjectionProvider` seam consumed by M23's `§11.A Claim Pre-Submission Validation Framework` for the "Aggregate cap projection" and "IPU cap projection" rules per architecture v0.11 §11.A — warn-only, never blocks, per D6 and D14), 25 (Remittance & Denials — `RemittanceReader.postedRemittanceLinesForPatient(patientId, periodWindow)` consumed for the paid-amount source of truth; `m25.remittance.advice_posted` consumed via outbox as the trigger for `record-accrual-line`; M25 is the authoritative paid-amount source — every cent in a cap accrual line traces to an 835-derived remittance line by `source_id`), 36 (Secure Messaging & Alerts — `cap_watch` channel kind per M36 §2.3 derives its membership from M26's `CapWatchSubscriberProvider` seam — published by M26, consumed by M36 at every tenant-policy update; M26 emits typed alerts (`m26.cap.patient_watch_90`, `m26.cap.patient_warn_95`, `m26.cap.patient_breach_100`, `m26.cap.agency_watch_90`, `m26.cap.agency_warn_95`, `m26.cap.agency_breach_100`, `m26.cap.inpatient_watch_18`, `m26.cap.inpatient_warn_20`, `m26.cap.inpatient_breach`, `m26.cap.year_close_reminder`, `m26.cap.psr_variance_detected`) and consumes `m36.notification.delivery_failed` to surface stuck cap-watch notifications on the operational queue; M26 owns no out-of-band delivery code — every SMS/email/push path is M36's), 38 (Clinical Terminology — `TerminologyProvider.lookup('rev-code', code, asOfDate)` consumed for revenue-code-to-level-of-care mapping (0655 IRC, 0656 GIP) with `asOfDate` resolution so a code-set revision in 2027 doesn't retroactively change a 2026 cap-year inpatient day; the platform-floor revenue-code value set is M38-owned; M26 contributes no terminology), 40 (Master Data Management — `MasterPatientReader.canonicalMbiForPatient(patientId)` consumed to canonicalize HICN/MBI before cross-cap-year reconciliation; `MasterProviderReader.canonicalCcnForOrg(orgId)` consumed to anchor the cap period to a CCN — a tenant operating two CCNs has two parallel cap periods per cap year, never merged; M26 contributes no master data)
+**Depends on:** 1 (Foundation — `withOrgContext`, `audit()` helper, outbox dispatcher, idempotency middleware via natural-key `(source_kind, source_id, line_seq)`, BullMQ on Valkey, partitioned-table convention for `cap_beneficiary_accrual_line` and `cap_inpatient_day_line` by `cap_period_id`, RLS generator, per-tenant DEK envelope-encryption helper for PS&R raw file storage keys, circuit-breaker and `DegradedError` envelope for the platform-constant CMS-publication-refresh worker), 2 (Identity — `user`, `membership`; session classes for step-up re-auth on cap-year-close, settlement-finalize, methodology-change, year-reopen per D12; discipline resolution for the `cap_admin` and `cap_reviewer` predicate scopes), 3 (Authorization — `cap.*` permission keys M26 contributes per §4.6; ABAC predicates `cap_period_open`, `cap_period_in_settlement`, `cap_period_settled`, `cap_period_methodology_unlocked`, `cap_platform_admin` registered into M3's named-predicate registry; the `caseload_or_scope` predicate reused for per-patient cap-detail reads so a billing clerk sees only patients in their assignment scope), 4 (Audit — PHI write-audit trigger generator on every owned table that carries `patient_id`; audit-read declaration on every per-patient cap-detail route; retention class `compliance` for `cap_beneficiary_accrual`, `cap_beneficiary_accrual_line`, `cap_inpatient_accrual`, `cap_inpatient_day_line`, `cap_threshold_event`, `cap_psr_import`, `cap_psr_reconciliation`, `cap_settlement`, `cap_period`, `cap_period_methodology_lock` — these are cost-report material and must survive the 7-year CMS retention floor per 42 CFR §418.104(d) and the cost-report extension to 10 years for some MACs; retention class `operational` for `cap_projection_snapshot` (13 months hot, then archived to summary; see D11); `eraseFn` registered into M4's destruction-cert callback registry that *retains* the per-cap-period aggregates and *redacts* the `patient_id` link to an `[ERASED]` sentinel — see D14: the cap is settled at the cap-year-aggregate level; CMS-side reconciliation must remain reproducible from our ledger even after an individual patient's right-to-erasure is honored), 5 (Patient & Demographics — `PatientReader` consumed via `packages/patient` for patient identity, deceased status, and `medicare_election_id` lookup; `m5.patient.deceased` consumed via outbox to mark `cap_beneficiary_accrual.deceased_at` and freeze the patient's per-cap-year projection denominator at death rather than continuing to extrapolate empty days; M26 never imports M5 schema directly — only the typed reader), 6 (Admission/Election/Certification — `ElectionPeriodReader` consumed for benefit-period-anchored cap math: a patient's contribution to a cap year is bounded by their hospice election dates and revocation date; `MedicareBeneficiaryIdProvider.normalizedMbiForPatient(patientId)` consumed to canonicalize the HICN/MBI used for cross-hospice reconciliation under D10; `m6.revocation.created` consumed via outbox to freeze the patient's contribution to the active cap period at the revocation date; `m6.transfer.created` consumed under proportional methodology so the patient's pre-transfer days are honored as already-counted by the prior hospice), 23 (Billing — Medicare — `MedicareClaimReader` consumed for claim-line detail when projecting outstanding-billed against paid; `ClaimLineReader.inpatientDaysForPatient(patientId, periodWindow)` consumed for revenue-code-0655/0656 day extraction per D13; M26 *contributes back* the `CapProjectionProvider` seam consumed by M23's `§11.A Claim Pre-Submission Validation Framework` for the "Aggregate cap projection" and "IPU cap projection" rules per architecture v0.11 §11.A — warn-only, never blocks, per D6 and D14), 25 (Remittance & Denials — `RemittanceReader.postedRemittanceLinesForPatient(patientId, periodWindow)` consumed for the paid-amount source of truth; `m25.remittance.advice_posted` consumed via outbox as the trigger for `record-accrual-line`; M25 is the authoritative paid-amount source — every cent in a cap accrual line traces to an 835-derived remittance line by `source_id`), 36 (Secure Messaging & Alerts — M26 routes cap alerts through M36's existing generic `AlertEmitter` using its registered typed alert payloads; there is **no** `cap_watch` channel kind (M36-F03: M36's `channel_kind` enum is fixed to care_team/discipline/location/on_call/dm/announcement/bereavement — cap alerts do not introduce a new kind). M26 supplies recipient resolution via the `CapAlertSubscriberProvider` seam — published by M26, consumed by M36 at dispatch time; M26 emits typed alerts (`m26.cap.patient_watch_90`, `m26.cap.patient_warn_95`, `m26.cap.patient_breach_100`, `m26.cap.agency_watch_90`, `m26.cap.agency_warn_95`, `m26.cap.agency_breach_100`, `m26.cap.inpatient_watch_18`, `m26.cap.inpatient_warn_20`, `m26.cap.inpatient_breach`, `m26.cap.year_close_reminder`, `m26.cap.psr_variance_detected`) and consumes `m36.notification.delivery_failed` to surface stuck cap-alert notifications on the operational queue; M26 owns no out-of-band delivery code — every SMS/email/push path is M36's), 38 (Clinical Terminology — `TerminologyProvider.lookup('rev-code', code, asOfDate)` consumed for revenue-code-to-level-of-care mapping (0655 IRC, 0656 GIP) with `asOfDate` resolution so a code-set revision in 2027 doesn't retroactively change a 2026 cap-year inpatient day; the platform-floor revenue-code value set is M38-owned; M26 contributes no terminology), 40 (Master Data Management — `MasterPatientReader.canonicalMbiForPatient(patientId)` consumed to canonicalize HICN/MBI before cross-cap-year reconciliation; `MasterProviderReader.canonicalCcnForOrg(orgId)` consumed to anchor the cap period to a CCN — a tenant operating two CCNs has two parallel cap periods per cap year, never merged; M26 contributes no master data)
 
 **Consumed by:** 23 (Billing — Medicare — `CapProjectionProvider.getPatientProjectedCap(patientId, asOf)` and `CapProjectionProvider.getAgencyProjectedCap(orgId, asOf)` consumed by M23's `§11.A` pre-submission validation rule library for the "Aggregate cap projection" and "IPU cap projection" rules; result is `warn`-only per D6 — M23 never blocks claim submission on cap projection; the bidirectional dep is acknowledged in both modules' `dependsOn` lists), 27 (Cost Report — `CapAccrualReader.aggregateForPeriod(orgId, capPeriodId)` and `CapSettlementProvider.snapshotForCostReport(orgId, capPeriodId)` consumed by M27 for the cap calculation row on CMS-1984-14 Worksheet E and the per-beneficiary detail attachment; M27's `§11.B` cost-report pre-submission validation framework consumes `CapProjectionProvider` for the "Cap calculations" rule; ships forward-seam, wires when M27 locks), 30 (HQRP & Quality — `CapMetricsProvider.capUtilizationByCohort(orgId, period)` consumed for the quality-adjacent operational measures (per-cap-year aggregate cap utilization is not itself a HQRP measure but is a denominator for some agency-comparative analyses); forward-seam), 33 (Reporting & Dashboards — `CapAccrualReader`, `CapProjectionProvider`, `InpatientCapProvider`, `CapSettlementProvider` all consumed by M33's Cap Watch dashboard; M26 publishes the read-side projections; M33 owns no cap calculation logic), 28 (FHIR Gateway — none. The hospice cap is a Medicare payment construct with no FHIR resource projection. M26 publishes no `Observation`, `MeasureReport`, or `Account`; cost-report-side `Account.balance` projections live in M27)
 
@@ -476,7 +476,7 @@ apps/backend/src/modules/26-cap/
 │   ├── inpatient-cap-provider.ts                  # implements InpatientCapProvider seam
 │   ├── cap-accrual-reader.ts                      # implements CapAccrualReader seam
 │   ├── cap-settlement-provider.ts                 # implements CapSettlementProvider seam
-│   ├── cap-watch-subscriber-provider.ts           # implements CapWatchSubscriberProvider seam (M36-consumed)
+│   ├── cap-alert-subscriber-provider.ts           # implements CapAlertSubscriberProvider seam (M36-consumed)
 │   └── cap-metrics-provider.ts                    # implements CapMetricsProvider seam (M30-consumed)
 ├── workers/
 │   ├── nightly-projection.cron.ts                 # 02:00 local; computes projections for all open cap_periods
@@ -587,7 +587,6 @@ Platform-scope: no `org_id`, no RLS predicate; access is permission-gated to `ca
 ```typescript
 import { pgTable, uuid, char, date, bigint, decimal, smallint, timestamp, text, pgEnum, unique, check } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { org } from '@/modules/02-identity/schema';
 
 export const capPeriodStatus = pgEnum('cap_period_status', [
   'open', 'active', 'in_settlement', 'settled', 'reopened',
@@ -596,7 +595,7 @@ export const capMethodology = pgEnum('cap_methodology', ['streamlined', 'proport
 
 export const capPeriod = pgTable('cap_period', {
   id: uuid('id').primaryKey().defaultRandom(),
-  orgId: uuid('org_id').notNull().references(() => org.id, { onDelete: 'restrict' }),
+  orgId: uuid('org_id').notNull(),  // M26-F02 / ADR-0011: RLS-governed tenant key; logical FK to M2 org only — no cross-module DB-level reference
   ccn: char('ccn', { length: 6 }).notNull(),
   capYear: char('cap_year', { length: 7 }).notNull(),                          // FK soft to cap_period_platform_constant
   startsOn: date('starts_on').notNull(),
@@ -1109,7 +1108,7 @@ All tenant routes mount under `/v1/cap`; platform routes mount under `/v1/platfo
 | POST | `/v1/cap/periods` | `cap.period.manage` | — | Open a new cap period; requires step-up if reopening a prior year |
 | GET | `/v1/cap/periods/:periodId` | `cap.period.read` | — | Fetch a single period including methodology lock and current projection |
 | PATCH | `/v1/cap/periods/:periodId/close` | `cap.period.manage` | `cap_period_open` | Close a cap period; transitions `active → in_settlement` (M26-F06 / ADR-0022) |
-| PATCH | `/v1/cap/periods/:periodId/reopen` | `cap.period.manage` | `cap_period_settled` | Reopen a closed/settled period (step-up biometric required, audit-heavy) |
+| PATCH | `/v1/cap/periods/:periodId/reopen` | `cap.period.manage` | `cap_period_settled` | Reopen a closed/settled period (M2 step-up per `STEP_UP_POLICY` required, audit-heavy) |
 | POST | `/v1/cap/periods/:periodId/methodology` | `cap.period.manage` | `cap_period_methodology_unlocked` | Lock methodology (`streamlined` or `proportional`) for the period; one-time, step-up required |
 | GET | `/v1/cap/projections` | `cap.projection.read` | — | List latest projection snapshots (agency, patient_aggregate, inpatient) for a period |
 | GET | `/v1/cap/projections/agency/:periodId` | `cap.projection.read` | — | Agency-aggregate snapshot with utilization, breach forecast, allocated cap dollars |
@@ -1429,11 +1428,14 @@ export interface CapSettlementView {
 ```
 
 ```ts
-// packages/cap-management/src/seams/published/cap-watch-subscriber.ts
-export interface CapWatchSubscriberProvider {
+// packages/cap-management/src/seams/published/cap-alert-subscriber.ts
+// M26-F03: recipient resolution for M36's generic AlertEmitter — NOT a channel kind.
+export interface CapAlertSubscriberProvider {
   /**
-   * Returns the list of M2 user ids who should receive cap watch alerts for a tenant.
-   * M36 reads this at dispatch time to build the channel membership.
+   * Returns the list of M2 user ids who should receive cap alerts for a tenant.
+   * M36 reads this at dispatch time to resolve recipients for the typed cap alert
+   * payloads (§4.9); cap alerts route through M36's existing generic AlertEmitter,
+   * not a dedicated channel kind.
    * Default population: any user holding the `cap.event.read` permission;
    * tenants may override by explicit subscription record.
    */
@@ -1492,7 +1494,7 @@ The cap period has a deterministic lifecycle owned entirely by M26; downstream c
 
 4. **Settlement** — In `in_settlement`, the manager calls `POST /v1/cap/settlements/:periodId/propose` to generate a settlement worksheet. The worksheet is mutable until finalized. `PATCH /v1/cap/settlements/:periodId/finalize` (step-up required) marks the settlement `final`, transitions the period `in_settlement → settled` (M26-F06 / ADR-0022), and emits `m26.cap.settlement_finalized`.
 
-5. **Reopen** — From `settled`, a step-up-authenticated manager call to `PATCH /v1/cap/periods/:id/reopen` transitions to `reopened`. Reopen is heavy: it un-freezes projection snapshots, allows new remittance to flow into accruals, and the prior settlement (if any) is rolled back to a non-`final` state for re-proposal. Reopen events are flagged `severity=high` in the M4 audit log. Tenants are advised that reopen is appropriate only for material PS&R variance corrections or true-up; routine recomputes do not require reopen.
+5. **Reopen** — From `settled`, a step-up-authenticated manager call to `PATCH /v1/cap/periods/:id/reopen` transitions to `reopened`. Reopen is heavy: it un-freezes projection snapshots, allows new remittance to flow into accruals, and the prior settlement (if any) is rolled back to a non-`final` state for re-proposal. Reopen events are flagged `severity=high` in M4's `audit_event` trail (M26-F04). Tenants are advised that reopen is appropriate only for material PS&R variance corrections or true-up; routine recomputes do not require reopen.
 
 The state machine transitions defined in §2.2 are the canonical specification; this section narrates the business meaning. Any transition rejected by the state machine MUST surface as a 409 Conflict with a structured `transition_rejected` error containing the current and attempted states.
 
@@ -1693,7 +1695,7 @@ List view of cap periods (current + historical), with row actions for open/close
 - **Pending settlement** (orange)
 - **Closed** (gray)
 
-The "Open new period" CTA is hidden until Aug 15 of the year prior (60 days before Oct 1 cap-year start); the "Reopen" action surfaces a step-up biometric prompt before submission. Methodology lock for an open period is a separate action with its own step-up flow.
+The "Open new period" CTA is hidden until Aug 15 of the year prior (60 days before Oct 1 cap-year start); the "Reopen" action surfaces a step-up prompt (M2 `STEP_UP_POLICY` — webauthn or totp) before submission. Methodology lock for an open period is a separate action with its own step-up flow.
 
 #### 5.1.4 Threshold Event Queue (`/cap/events`)
 
@@ -1719,7 +1721,7 @@ Single-page worksheet showing the final cap calculation per the locked methodolo
 - Direction (overpayment owed to CMS / underpayment owed to provider / balanced)
 - Footnotes: any unresolved PS&R variance lines surface as warnings; the finalize action is blocked until either resolved or explicitly waived (with reason)
 
-Finalize triggers a step-up biometric prompt and an attestation text field; on success, the period transitions to `settled`, the settlement is marked `final`, and the outbox event fires for M27 consumption (M26-F06 / ADR-0022).
+Finalize triggers a step-up prompt (M2 `STEP_UP_POLICY` — webauthn or totp) and an attestation text field; on success, the period transitions to `settled`, the settlement is marked `final`, and the outbox event fires for M27 consumption (M26-F06 / ADR-0022).
 
 #### 5.1.7 Platform Constants Admin (`/platform/cap/constants`)
 
@@ -1743,7 +1745,7 @@ All M26 screens conform to WCAG 2.1 AA. Specific requirements:
 - Color is never the sole signal: every band badge pairs a color with a textual label (`Safe`, `Watch`, `Warn`, `Breach`) and an icon
 - The ring and gauge visualizations are paired with a textual summary (e.g., "Agency utilization: 87% — Safe band") for screen-reader users
 - All interactive controls have visible focus indicators (4.5:1 contrast against background)
-- Step-up biometric prompts have a keyboard-accessible fallback (PIN entry) for users without biometric hardware
+- Step-up prompts surface M2's `STEP_UP_POLICY` factors (`webauthn`, `totp`); users without a WebAuthn authenticator complete step-up via TOTP, which is fully keyboard-accessible (M26-F03)
 - The PS&R variance table supports keyboard sort and filter; row drilldown is enter-key activable
 - Color contrast for band colors meets 4.5:1 against both light and dark theme backgrounds (verified via automated axe-core runs in CI)
 
@@ -1898,7 +1900,7 @@ Each scenario below is expressed as a Given/When/Then specification. All scenari
 ### 7.10 Scenario: Settlement Finalization
 
 **Given** CY2025 is `in_settlement` with a proposed settlement worksheet showing `totalPaidFinal=$1,710,000`, `totalCapFinal=$1,650,000`, `variance=$60,000` (overpayment direction), and no unresolved PS&R variance lines,
-**When** the billing manager clicks "Finalize settlement" and presents a valid step-up biometric assertion + attestation text,
+**When** the billing manager clicks "Finalize settlement" and presents a valid M2 step-up assertion (per `STEP_UP_POLICY`) + attestation text,
 **Then**:
 1. The settlement row transitions to `status='final'`, `finalizedAt=now()`, `finalizedBy=<user>`, `finalizationStepUpAssertionId=<assertion>` (M26-F06 / ADR-0022)
 2. The cap period transitions to `status='settled'` (M26-F06 / ADR-0022)
@@ -1954,13 +1956,13 @@ Each scenario below is expressed as a Given/When/Then specification. All scenari
 **Given** CY2024 is `settled` with a finalized settlement showing $42,000 overpayment owed to CMS, and the reimbursement specialist discovers a $15,000 claim that was paid in Aug 2024 but never accrued (M25 ingestion gap),
 **When** the billing manager initiates `PATCH /v1/cap/periods/<CY2024>/reopen` with a step-up assertion and a reason text,
 **Then**:
-1. The step-up assertion is verified against M2 (must be ≤ 5 minutes old, biometric class)
+1. The step-up assertion is verified against M2's `STEP_UP_POLICY` (factor ∈ `{ webauthn, totp }`, within the default 300s window) (M26-F03)
 2. The period transitions from `settled` to `reopened` (M26-F06 / ADR-0022)
 3. The prior settlement row is rolled back from `status='final'` to `status='proposed'` for re-proposal (the row is retained and updated in place per §3.3; M4 captures the prior `final` state on the UPDATE)
 4. The frozen projection snapshots from close are marked `superseded` (retained, but new live snapshots take precedence in seam reads)
 5. The missed $15,000 accrual is now eligible to be recorded (typically via re-ingestion of the M25 remittance once corrected)
 6. `m26.cap.year_opened.v1` is NOT re-emitted (this is a reopen, not a new open); instead, a `cap.year_reopened.v1` event is emitted (added to the outbox event catalog in §4.10 — for clarity, listed there as a sub-variant of `m26.cap.year_opened` with a `reopen=true` flag in the payload)
-7. The audit log records the reopen event with `severity=high`, the actor, the step-up assertion id, and the reason text
+7. The `audit_event` trail records the reopen event with `severity=high`, the actor, the step-up assertion id, and the reason text (M26-F04)
 8. After re-recording the accrual and recomputing the projection, a new settlement is proposed and finalized (rerunning scenario 7.10)
 
 -----
@@ -2004,22 +2006,22 @@ Predicate evaluation is cached per-request (request-scoped memoization) to avoid
 
 | Threat | Vector | Mitigation |
 |---|---|---|
-| **Spoofing** — A user impersonates a billing manager to finalize a settlement they shouldn't see | Stolen session, weak auth | Settlement finalize requires step-up biometric (M2 step-up assertion ≤ 5 minutes old, biometric class); session token reuse is detected by M2's anomaly heuristics |
+| **Spoofing** — A user impersonates a billing manager to finalize a settlement they shouldn't see | Stolen session, weak auth | Settlement finalize requires M2 step-up per `STEP_UP_POLICY` (factor ∈ `{ webauthn, totp }`, within the default 300s window) (M26-F03); session token reuse is detected by M2's anomaly heuristics |
 | **Tampering** — A user modifies an accrual line to under-report paid amounts and hide an impending breach | Direct SQL access, route bypass | All accrual writes go through M25's `remittance.posted` event handler (no direct UI); the handler is idempotent by `(remittanceId, claimId, serviceFromDate, serviceThruDate)`; the audit trigger on `cap_beneficiary_accrual_line` captures every change including the actor |
 | **Repudiation** — A user denies having finalized a settlement | Missing audit | Every settlement finalize records the actor, timestamp, step-up assertion id, attestation text, and the snapshot of the worksheet at the moment of finalization (in `cap_settlement.finalizationSnapshot` JSONB column); the audit trigger captures the row mutation independently |
 | **Information Disclosure** — Cross-tenant leakage of cap utilization | RLS bypass, missing org_id filter | RLS enforced on all tenant tables; the M26 boot script verifies RLS is enabled on each table via `pg_class.relrowsecurity = true`; the M3 RLS isolation test suite covers every table |
-| **Information Disclosure (PHI in payloads)** — Alert payloads or outbox events leak patient identifiers to over-broad subscribers | M36 channel membership too broad | Alert payloads include `patientId` (UUID, opaque) and a `patientDisplayName` field that is recipient-permission-redacted by M36 at dispatch time (per-recipient PHI redaction); outbox event payloads are tenant-scoped and only consumed by modules within the same tenant context |
+| **Information Disclosure (PHI in payloads)** — Alert payloads or outbox events leak patient identifiers to over-broad subscribers | M36 alert recipient set too broad | Alert payloads include `patientId` (UUID, opaque) and a `patientDisplayName` field that is recipient-permission-redacted by M36 at dispatch time (per-recipient PHI redaction); outbox event payloads are tenant-scoped and only consumed by modules within the same tenant context |
 | **Denial of Service** — A malicious or buggy projection recompute storm exhausts DB resources | Storm of `remittance.posted` events | Projection recomputes are queue-debounced via the idempotency key on `cap:nightly-projection`; duplicate triggers within a 60-second window for the same (orgId, periodId) collapse to a single execution |
 | **Elevation of Privilege** — A user with `cap.event.read` somehow gains `cap.settlement.manage` | RBAC misconfiguration | Permission keys are platform-scoped and registered at boot in a frozen registry; tenant role customization can only remove (not add) permissions; the boot validation walks the registry against the role table and fails closed on any drift |
 | **Elevation of Privilege (platform admin escape)** — A tenant user accesses platform constants | Bypass of `platformOnly` middleware | The platform routes are mounted under a distinct Fastify shell; the `platformOnly` middleware verifies the request lacks an `orgId` claim AND the user holds the `platform_admin` role; the RLS policy on `cap_period_platform_constant` is the second line of defense |
 
 ### 8.4 Audit & Compliance Log Integration
 
-M26 contributes to M4's audit log via two mechanisms:
+M26 contributes to M4's audit trail (the platform `audit_event` table) via two mechanisms (M26-F04):
 
-1. **Row-level audit triggers** on the four high-sensitivity owned tables: `cap_period`, `cap_period_methodology_lock`, `cap_settlement`, `cap_psr_reconciliation`. The trigger writes a JSONB `before` and `after` snapshot plus actor metadata to `audit_log`. Denylist: high-volume churn tables (`cap_beneficiary_accrual_line`, `cap_inpatient_day_line`, `cap_projection_snapshot`) are excluded from the trigger; their writes are captured via the BullMQ job execution log and the outbox events instead.
+1. **Row-level audit triggers** on the four high-sensitivity owned tables: `cap_period`, `cap_period_methodology_lock`, `cap_settlement`, `cap_psr_reconciliation`. The trigger writes a JSONB `before` and `after` snapshot plus actor metadata to `audit_event`. Denylist: high-volume churn tables (`cap_beneficiary_accrual_line`, `cap_inpatient_day_line`, `cap_projection_snapshot`) are excluded from the trigger; their writes are captured via the BullMQ job execution log and the outbox events instead.
 
-2. **Application-level audit events** for sensitive non-mutating actions: settlement worksheet generation, PS&R import upload, projection recompute (manual), threshold event acknowledgement. These are written via `M4.recordAuditEvent({ type, actor, target, severity, payload })`.
+2. **Application-level audit events** for sensitive non-mutating actions: settlement worksheet generation, PS&R import upload, projection recompute (manual), threshold event acknowledgement. These are written via M4's `audit({ type, actor, target, severity, payload })` helper (read-only access logging uses `auditRead(...)`).
 
 High-severity events (period reopen, settlement finalize, methodology lock) are flagged `severity=high` and surface on M4's compliance dashboard for proactive review.
 
@@ -2294,7 +2296,7 @@ The implementation is decomposed into 30 tasks across six phases. Each task is s
 - **T14** — Wire the outbox event publishers for the nine events in §4.10; integration tests verifying event emission on each lifecycle transition
 - **T15** — Wire the M25 `remittance.posted.v1` subscriber; integration test for the scenario 7.1 flow
 - **T16** — Register the 11 typed alert payloads with M36 per §4.9; integration test for M36 dispatch
-- **T17** — Wire the `CapWatchSubscriberProvider` to M36 channel membership resolution; default-subscription population by permission
+- **T17** — Wire the `CapAlertSubscriberProvider` to M36 alert recipient resolution (M36-F03: M36's generic `AlertEmitter`, not a `cap_watch` channel kind); default-subscription population by permission
 
 ### Phase D — API Routes (T18-T22)
 
@@ -2377,7 +2379,7 @@ The 14 decisions below are binding for v0.2. Any subsequent change requires a ne
 
 ### D8 — Year Close Mechanics
 
-**Decision**: Auto cap-year close on **September 30 + configurable grace window** (default 30 days, max 90 days). Reopen requires **step-up biometric authentication** and audit-heavy logging.
+**Decision**: Auto cap-year close on **September 30 + configurable grace window** (default 30 days, max 90 days). Reopen requires **M2 step-up authentication per `STEP_UP_POLICY`** (factor ∈ `{ webauthn, totp }`; M26-F03) and audit-heavy logging.
 
 **Rationale**: Auto-close ensures regulatory hygiene without manual ceremony; the grace window allows late remittance posting. Reopen is rare and consequential (voids any finalized settlement); step-up + audit creates the necessary friction.
 
@@ -2401,9 +2403,9 @@ The 14 decisions below are binding for v0.2. Any subsequent change requires a ne
 
 ### D12 — Step-Up Required Actions
 
-**Decision**: Step-up biometric authentication is required for: **methodology lock, cap-year reopen, settlement finalize**. The step-up assertion must be biometric class (not PIN-only) and ≤ 5 minutes old.
+**Decision**: Step-up authentication is required for: **methodology lock, cap-year reopen, settlement finalize**. These routes are gated by M2's `STEP_UP_POLICY` (M26-F03): the assertion factor must be one of M2's real step-up factors `{ webauthn, totp }`, and the assertion must fall within M2's default 300-second (5-minute) freshness window.
 
-**Rationale**: These three actions are irreversible or audit-heavy. Biometric step-up provides the highest assurance level available in the M2 step-up vocabulary; the 5-minute window prevents assertion reuse.
+**Rationale**: These three actions are irreversible or audit-heavy. M2's `STEP_UP_POLICY` provides the highest assurance available in the M2 step-up vocabulary; the 300s window prevents assertion reuse. (M26-F03: M2 exposes no "biometric class" step-up tier — the real factor set is `{ webauthn, totp }`; M26 must not invent one.)
 
 ### D13 — Inpatient Day Source
 
@@ -2528,7 +2530,7 @@ The following diff applies to `tooling/manifest/module-manifest.ts`. The patch u
 | M6 (Admission/Election/Certification) | M26 reads from M6 | `ElectionPeriodReader` + `MedicareBeneficiaryIdProvider` for methodology calculation |
 | M23 (Claims & Billing) | M26 reads from M23 | `MedicareClaimReader` + `ClaimLineReader` for inpatient day source and claim attribution |
 | M25 (Remittance) | M26 reads from M25 | `remittance.posted.v1` event subscription is the canonical accrual source |
-| M36 (Secure Messaging & Alerts) | M26 writes to M36 | Alert dispatch via `AlertDispatcher`; also reads back via `CapWatchSubscriberProvider` channel resolution |
+| M36 (Secure Messaging & Alerts) | M26 writes to M36 | Alert dispatch via M36's generic `AlertEmitter` (typed cap payloads, §4.9); M36 reads back via `CapAlertSubscriberProvider` for recipient resolution (M36-F03 — no `cap_watch` channel kind) |
 | M38 (Terminology) | M26 reads from M38 | Revenue code 0655/0656 validation and display labels |
 | M40 (MDM) | M26 reads from M40 | `canonicalMbiForPatient` and `canonicalCcnForOrg` for cross-hospice federation and PS&R validation |
 
@@ -2542,7 +2544,7 @@ The following modules consume M26's published seams. Their manifest entries will
 | M27 (Cost Report) | `CapProjectionProvider`, `CapAccrualReader`, `CapSettlementProvider` | M27 not yet locked; will add `M26` to `M27.dependsOn` |
 | M30 (HQRP & Quality Reporting) | `InpatientCapProvider`, `CapMetricsProvider` | M30 not yet locked; will add `M26` to `M30.dependsOn` |
 | M33 (Reporting & BI) | `CapProjectionProvider`, `CapAccrualReader`, `CapMetricsProvider` | M33 not yet locked; will add `M26` to `M33.dependsOn` |
-| M36 (Secure Messaging) | `CapWatchSubscriberProvider` (M36 reads M26 to resolve channel membership) | M36 currently locked without this consumption; v0.3 of M36 will add it |
+| M36 (Secure Messaging) | `CapAlertSubscriberProvider` (M36 reads M26 to resolve cap-alert recipients for the generic `AlertEmitter`; M36-F03 — no `cap_watch` channel kind) | M36 currently locked without this consumption; v0.3 of M36 will add it |
 
 ### Boot Validation Expectations
 

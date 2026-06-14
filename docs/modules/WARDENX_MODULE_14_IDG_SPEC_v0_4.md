@@ -96,7 +96,7 @@ This list is binding. Every item below is owned by another module and reached vi
 | Driver | Requirement | How Module 14 satisfies it |
 |---|---|---|
 | 42 CFR §418.56(b)(3) — IDG composition | The IDG must include a hospice physician/medical director, an RN, an MSW, and a pastoral or other counselor | `IDG_REQUIRED_QUORUM` typed constant (D3) enforced at decision-write time via the `quorate_decision` ABAC predicate; per-decision attendance check; non-quorate decisions stamped and surfaced as carry-forward |
-| 42 CFR §418.56(d) — IDG review of plan of care | Review no less frequently than every 15 calendar days | `IDG_SCHEDULE_POLICY = { defaultCadenceDays: 14, platformFloorMaxGapDays: 15, tenantMayTightenTo: 7 }` constant (D2); schedule worker materialises future meetings 90 days out per location; M30 consumes `IdgScheduleProvider.getCadenceAdherence` to compute the compliance counter |
+| 42 CFR §418.56(d) — IDG review of plan of care | Review no less frequently than every 15 calendar days, **per plan of care / per patient** | **Authoritative control is the per-patient (per-POC) 15-day floor (M14-F01 / ADR-0018 D2):** `idg_patient_packet.last_idg_reviewed_at + 15 days`, stamped per included patient on meeting adjournment, guarded on CANCEL/RESCHEDULE (`perPatientReviewFloorClear`, §2.2/§2.7), and escalated at T-3/T-0/T+1 by the `idg.review-clock-sweep` cron (§4.9). The location-wide `IDG_SCHEDULE_POLICY = { defaultCadenceDays: 14, platformFloorMaxGapDays: 15, tenantMayTightenTo: 7 }` constant (D2) and 90-day rolling materialisation are an **operational cadence backstop only** — they do not, by themselves, satisfy §418.56(d), because a cancel/reschedule can slip the location cadence while the per-patient floor remains binding. M30 consumes `IdgScheduleProvider.getCadenceAdherence` for the compliance counter; the per-patient clock is the citation-relevant control |
 | 42 CFR §418.56(c) — Plan of care content | Patient and family goals; problems; interventions; scope and frequency | M14 records decisions that mutate plan-of-care elements; the canonical `IdgDecisionPayload` (M7 D4) carries the structured add/update/discontinue with patient-stated-goal preservation per M7 D6 |
 | 42 CFR §418.104 — Clinical record | The hospice must maintain an accurate clinical record for every patient including the IDG minutes | `idg_minutes` row is the authoritative minutes artifact; immutable on `final` (D10); amendments via `idg_minutes_amendment` per M5 §164.526 pattern; M22 renders the minutes PDF on `m14.minutes.signed` |
 | 42 CFR §164.508 / §164.526 — Right to amend | Patients have the right to request amendment of PHI; the hospice must accept or deny in writing | The minutes-amendment workflow surfaces patient-initiated amendment requests through Module 5's amendment intake; M14 stores the amendment row and links to the M5 request |
@@ -174,6 +174,7 @@ erDiagram
         uuid admission_id FK
         timestamptz built_at "partition key"
         timestamptz frozen_at "set on meeting adjournment"
+        timestamptz last_idg_reviewed_at "M14-F01/ADR-0018 D2: per-patient 15-day review anchor; nullable until first review"
         text since_cursor_iso "last IDG adjourned_at or admission activated_at"
         jsonb built_snapshot "typed PacketSnapshot — see §2.4"
         jsonb discipline_views "typed Record<DisciplineKey,DisciplineViewBlock> — see §2.5"
@@ -283,9 +284,9 @@ export const idgMeetingMachine = createMachine({
   id: 'idg_meeting',
   initial: 'scheduled',
   states: {
-    scheduled:        { on: { BUILD_PACKETS: 'packets_building', CANCEL: 'cancelled', RESCHEDULE: 'rescheduled' } },
+    scheduled:        { on: { BUILD_PACKETS: 'packets_building', CANCEL: { target: 'cancelled', cond: 'perPatientReviewFloorClear' /* M14-F01/ADR-0018 D2 */ }, RESCHEDULE: { target: 'rescheduled', cond: 'perPatientReviewFloorClear' } } },
     packets_building: { on: { PACKETS_READY: 'packets_ready', BUILD_FAILED: 'scheduled' /* with retry */ } },
-    packets_ready:    { on: { START: 'live', CANCEL: 'cancelled', RESCHEDULE: 'rescheduled' } },
+    packets_ready:    { on: { START: 'live', CANCEL: { target: 'cancelled', cond: 'perPatientReviewFloorClear' }, RESCHEDULE: { target: 'rescheduled', cond: 'perPatientReviewFloorClear' } } },
     live:             { on: { ADJOURN: 'adjourned' /* requires step-up — D13 */ } },
     adjourned:        { type: 'final' },
     cancelled:        { type: 'final' },
@@ -299,9 +300,9 @@ Transitions are side-effect-bearing:
 - `BUILD_PACKETS` — enqueues per-patient packet build jobs against the active caseload at scheduled date; one job per patient per meeting; idempotency key `(meeting_id, patient_id)`.
 - `PACKETS_READY` — emits `m14.packets.ready` (T-24h alert to all assigned attendees via M36).
 - `START` — opens write paths for decisions and action items; per-patient timer starts.
-- `ADJOURN` — requires step-up auth within 5 minutes per D13; freezes all packets (`frozen_at = now()`), emits `idg.decision_recorded` for every `idg_decision.status='open'` row (transitions them to `emitted`), assigns all action items their final due dates and assignees, finalizes the minutes (`status='final'`, `finalized_at = now()`, `finalized_by_membership_id = caller`), and emits `m14.minutes.signed`.
-- `CANCEL` — terminal; requires reason; emits `m14.meeting.cancelled`; carry-forward action items from prior meetings flow to the next scheduled meeting instead.
-- `RESCHEDULE` — terminal for this row; spawns a new `idg_meeting` with `rescheduled_from_meeting_id` set; carry-forward applies.
+- `ADJOURN` — requires step-up auth within 5 minutes per D13; freezes all packets (`frozen_at = now()`), **stamps `idg_patient_packet.last_idg_reviewed_at = adjourned_at` for every included patient (M14-F01 / ADR-0018 D2 — this is the moment that patient's plan of care was reviewed; it resets that patient's per-patient 15-day floor)**, emits `idg.decision_recorded` for every `idg_decision.status='open'` row (transitions them to `emitted`), assigns all action items their final due dates and assignees, finalizes the minutes (`status='final'`, `finalized_at = now()`, `finalized_by_membership_id = caller`), and emits `m14.minutes.signed`. Note: the per-patient clock is reset by **review**, not by mere attendance — every included patient's packet is stamped because the IDG reviewed that POC at this meeting.
+- `CANCEL` — terminal; requires reason; emits `m14.meeting.cancelled`; carry-forward action items from prior meetings flow to the next scheduled meeting instead. **Guarded by `perPatientReviewFloorClear` (M14-F01 / ADR-0018 D2):** the transition is refused with `PER_PATIENT_REVIEW_FLOOR_BREACH` if cancelling this meeting would leave **any** included patient with no covering IDG review before `last_idg_reviewed_at + 15 days` (i.e. there is no other `scheduled`/`packets_*`/`live` meeting at the patient's location on or before that per-patient floor). The floor is evaluated **per patient against `last_idg_reviewed_at`**, not against the location cadence. Cancellation may proceed only with an audited override carrying a reason (`idg.override_review_floor` permission + step-up — §4.1, §4.6) — see §2.7; the override is recorded as an `audit_event` and emits `m14.review_floor.override_recorded` (§4.4) with the breaching patient set and the actor's step-up identity.
+- `RESCHEDULE` — terminal for this row; spawns a new `idg_meeting` with `rescheduled_from_meeting_id` set; carry-forward applies. **Same `perPatientReviewFloorClear` guard as `CANCEL` (M14-F01 / ADR-0018 D2):** the reschedule is refused with `PER_PATIENT_REVIEW_FLOOR_BREACH` unless the **new** `scheduled_start` still falls on or before every included patient's per-patient floor (`last_idg_reviewed_at + 15 days`), or another covering meeting does — otherwise an audited override is required. A reschedule that pushes the meeting later than a patient's floor without a covering meeting is precisely the slip ADR-0018 D2 prohibits.
 
 ### 2.3 Patient Inclusion Criteria (D9)
 
@@ -466,7 +467,9 @@ The discriminated union is **exhaustive** — adding a new decision kind is a co
 | `START` transition | coordinator clicks "Start meeting" | emit `m14.meeting.started`; opens decision-write path |
 | `idg_decision` insert | coordinator records a decision while meeting is `live` | `quorate_decision` ABAC predicate evaluated; `was_quorate` + `quorum_snapshot` stamped; row created with `status='open'`; no outbox event yet (events emit on adjournment) |
 | `idg_action_item` insert | decision recording or coordinator-direct add | row created; assigned-to membership notified via M36 |
-| `ADJOURN` transition | coordinator clicks "Adjourn" + step-up within 5 min | for each `status='open'` `idg_decision` of actionable kind, emit `idg.decision_recorded` to outbox (single transaction with status flip to `emitted`); finalize minutes; freeze packets; emit `m14.meeting.adjourned` |
+| `ADJOURN` transition | coordinator clicks "Adjourn" + step-up within 5 min | for each `status='open'` `idg_decision` of actionable kind, emit `idg.decision_recorded` to outbox (single transaction with status flip to `emitted`); finalize minutes; freeze packets; **stamp `idg_patient_packet.last_idg_reviewed_at = adjourned_at` for every included patient (M14-F01 / ADR-0018 D2 — resets the per-patient 15-day review floor)**; emit `m14.meeting.adjourned` |
+| **Per-patient review-floor guard on CANCEL / RESCHEDULE (M14-F01 / ADR-0018 D2)** | `CANCEL` or `RESCHEDULE` attempted on a `scheduled`/`packets_ready` meeting | `perPatientReviewFloorClear` evaluated: for each included patient, compute floor = `last_idg_reviewed_at + 15 days` (fallback admission `activated_at + 15 days` when never reviewed). If the meeting being cancelled/rescheduled is the **only** covering review on or before that floor, the transition is **refused** with `PER_PATIENT_REVIEW_FLOOR_BREACH (422)`. The floor is **per patient against `last_idg_reviewed_at`**, never the location cadence. Override path: `idg.override_review_floor` permission + step-up; the override writes an `audit_event` capturing the breaching `{patientId, floorAt}[]` set and the reason, and emits `m14.review_floor.override_recorded` |
+| **Per-patient review-clock escalation (M14-F01 / ADR-0018 D2)** | `idg.review-clock-sweep` daily cron evaluates each active admission's `last_idg_reviewed_at` | at **T-3 days** before floor → M36 `clinical_routine` alert to IDG Coordinator; at **T-0** (floor day, no covering meeting completed) → escalate to `critical`; at **T+1** (floor breached) → `critical` Compliance alert to Compliance inbox + Clinical Supervisor. Payload `IdgPerPatientReviewClockAlert` (§4.10); ships Phase 1 |
 | Carry-forward computation | T-24h cron on next meeting build | open action items past `due_date` are added as `idg_agenda_item` of `kind='carry_forward'` with `carried_from_action_item_id` set; `meeting_carry_forward_count` incremented; if ≥ 3, emit critical-severity Compliance alert via M36 |
 | Auto-close on downstream artifact | M7 `m7.care_plan.version_signed`, M11 `m11.order.signed`/`m11.order.completed`, M8 `m8.encounter.signed` matching assignee, M12 `m12.medication_order.signed`/`m12.medication_order.active` | action item flips to `auto_closed`; `linked_artifact_id` confirmed; `closed_at = now()`; M36 informational confirmation to assignee |
 | Step-up gate on adjournment | `ADJOURN` attempted without fresh step-up | 412 `STEP_UP_REQUIRED`; M2 step-up flow redirects; on success, retry adjournment |
@@ -593,6 +596,14 @@ All M14 tables follow the M11 / M12 conventions verbatim: every table carries `o
 
 **Owned tables (9):** `idg_meeting`, `idg_recurring_policy`, `idg_attendance`, `idg_patient_packet`, `idg_agenda_item`, `idg_decision`, `idg_action_item`, `idg_minutes`, `idg_minutes_amendment`.
 
+> **M14-F01 / ADR-0018 D2 (per-patient review clock).** The CoP §418.56(b)/(d) 15-day review is a
+> **per-patient (per-plan-of-care) floor**, not the location-wide cadence. It is realized as the
+> `idg_patient_packet.last_idg_reviewed_at` **column** (§3.3.1) — deliberately a column, not a new
+> table, so the owned-table count stays **9**. The per-patient floor is
+> `last_idg_reviewed_at + 15 days`; it is authoritative over `IDG_SCHEDULE_POLICY.platformFloorMaxGapDays`
+> (which is the location-cadence backstop only). Cancel/reschedule guards (§2.2, §2.7) and the
+> T-3/T-0/T+1 escalation sweep (§4.9) evaluate against this per-patient anchor.
+
 **Partitioning (D12):** `idg_patient_packet` is monthly-partitioned on `built_at` (matches M4 PHI-table conventions and M9/M10/M11 precedent). Other tables non-partitioned given the lower volume (one `idg_meeting` per location per 7–15 days; one `idg_minutes` per meeting; attendance/decisions/action-items proportional to patients on caseload).
 
 #### 3.3.1 Drizzle table definitions (IDG core)
@@ -674,6 +685,13 @@ export const idgPatientPacket = pgTable('idg_patient_packet', {
   admissionId: uuid('admission_id').notNull().references(() => admission.id),
   builtAt: timestamp('built_at', { withTimezone: true }).notNull().defaultNow(), // monthly partition key (D12)
   frozenAt: timestamp('frozen_at', { withTimezone: true }),
+  // M14-F01 / ADR-0018 D2 — per-patient (per-POC) 15-day review anchor (CoP §418.56(b)/(d)).
+  // The timestamp of the last IDG review recorded for THIS admission's plan of care; the
+  // per-patient floor is `last_idg_reviewed_at + 15 days`. Stamped at meeting adjournment for
+  // every included patient (carried forward to the next packet build), so cancel/reschedule of a
+  // future meeting cannot silently slip a patient past their own clock. NULL until the first
+  // review (cursor then falls back to admission `activated_at`, mirroring `since_cursor_iso`).
+  lastIdgReviewedAt: timestamp('last_idg_reviewed_at', { withTimezone: true }),
   sinceCursorIso: text('since_cursor_iso').notNull(),
   builtSnapshot: jsonb('built_snapshot').$type<PacketSnapshot>().notNull(),
   disciplineViews: jsonb('discipline_views').$type<Record<DisciplineKey, DisciplineViewBlock>>().notNull(),
@@ -788,6 +806,11 @@ CREATE INDEX idg_meeting_location_scheduled_idx
 CREATE UNIQUE INDEX idg_patient_packet_meeting_patient_uniq
   ON idg_patient_packet (organization_id, idg_meeting_id, patient_id);
 
+-- M14-F01 / ADR-0018 D2: per-patient review-clock lookup — "most recent reviewed-at for an
+-- admission" (the cancel/reschedule guard and the T-3/T-0/T+1 escalation sweep both read this).
+CREATE INDEX idg_patient_packet_admission_reviewed_idx
+  ON idg_patient_packet (organization_id, admission_id, last_idg_reviewed_at DESC);
+
 -- Hot path: "decisions for meeting" + "open decisions for adjournment emit"
 CREATE INDEX idg_decision_meeting_status_idx
   ON idg_decision (organization_id, idg_meeting_id, status);
@@ -835,8 +858,8 @@ The migration file is `migrations/0014_idg.sql`. It applies in this order: creat
 | POST | `/api/v1/idg/recurring-policies` | required | `idg.schedule` | tenant-admin scope | `Idempotency-Key` |
 | PATCH | `/api/v1/idg/recurring-policies/:id` | required | `idg.schedule` | tenant-admin scope | `Idempotency-Key` + `If-Match` |
 | GET | `/api/v1/idg/meetings/:id` | required | `idg.read` | `idg_meeting_scope` | n/a |
-| POST | `/api/v1/idg/meetings/:id/cancel` | required | `idg.schedule` | `idg_meeting_scope` | `Idempotency-Key` |
-| POST | `/api/v1/idg/meetings/:id/reschedule` | required | `idg.schedule` | `idg_meeting_scope` | `Idempotency-Key` |
+| POST | `/api/v1/idg/meetings/:id/cancel` | required | `idg.schedule` (+ `idg.override_review_floor` + step-up if breaching, M14-F01 / ADR-0018 D2) | `idg_meeting_scope` + `per_patient_review_floor_clear` | `Idempotency-Key` |
+| POST | `/api/v1/idg/meetings/:id/reschedule` | required | `idg.schedule` (+ `idg.override_review_floor` + step-up if breaching, M14-F01 / ADR-0018 D2) | `idg_meeting_scope` + `per_patient_review_floor_clear` | `Idempotency-Key` |
 | POST | `/api/v1/idg/meetings/:id/packets/build` | required | `idg.coordinate` | `idg_meeting_scope` | `Idempotency-Key` |
 | POST | `/api/v1/idg/meetings/:id/start` | required | `idg.coordinate` | `idg_meeting_scope` | `Idempotency-Key` |
 | POST | `/api/v1/idg/meetings/:id/adjourn` | required | `idg.coordinate` + **fresh step-up (≤5min, D13)** | `idg_meeting_scope` | `Idempotency-Key` |
@@ -939,6 +962,7 @@ export const recordDecisionResponse = Type.Object({
 | `ACTION_ITEM_AUTO_CLOSED` | 409 | Action item already closed by the auto-close engine |
 | `DECISION_PAYLOAD_INVALID` | 422 | TypeBox discriminated-union validation failure (server side); 400 if it is the route-level shape that fails |
 | `CADENCE_FLOOR_VIOLATION` | 422 | Recurring policy attempts cadence > 15 days (platform floor on max gap) |
+| `PER_PATIENT_REVIEW_FLOOR_BREACH` | 422 | CANCEL/RESCHEDULE would push an included patient past their per-patient 15-day review floor (`last_idg_reviewed_at + 15d`) with no covering meeting; requires `idg.override_review_floor` + step-up (M14-F01 / ADR-0018 D2) |
 
 ### 4.4 Outbox Event Catalog
 
@@ -963,6 +987,8 @@ Every state change emits one event row into the M1 outbox table inside the same 
 | `m14.meeting.adjourned` | `ADJOURN` transition | `meetingId, adjournedByMembershipId, adjournedAt, decisionsEmittedCount, actionItemsAssignedCount, attendanceSnapshot` | M22 (minutes render trigger via `m14.minutes.signed`), M28, M30, M33 |
 | `m14.meeting.cancelled` | `CANCEL` transition | `meetingId, cancelledBy, cancellationReason, cancelledAt` | M36 (warn to attendees), M33 |
 | `m14.meeting.rescheduled` | `RESCHEDULE` transition | `priorMeetingId, newMeetingId, newScheduledStart, reason` | M36, M33 |
+| `m14.review_floor.override_recorded` | CANCEL/RESCHEDULE override path (M14-F01 / ADR-0018 D2) | `meetingId, actorMembershipId, reason, breachingPatients: {patientId, floorAt}[], overriddenAt` | M36 (warn to Compliance), M30 (cadence-adherence measure), M33 |
+| `m14.review_clock.escalated` | `idg.review-clock-sweep` cron (M14-F01 / ADR-0018 D2) | `admissionId, patientId, locationId, lastIdgReviewedAt, floorAt, stage: 't_minus_3'\|'t_zero'\|'t_plus_1', severity` | M36 (clinical_routine → critical), M30, M33 |
 | `m14.minutes.signed` | adjournment-time (mirror of `meeting.adjourned` for M22) | `minutesId, meetingId, finalizedByMembershipId, renderPayload` | M22 |
 | `m14.minutes.amended` | `POST /amendments` approved | `amendmentId, minutesId, requestedByMembershipId, approvedByMembershipId, amendmentReasonHash` | M22 (re-render), M28, M33 |
 | `m14.packet.frozen` | `ADJOURN` transition (per packet) | `meetingId, patientId, packetId, frozenAt` | M33 |
@@ -1005,12 +1031,13 @@ M14 contributes these keys to M3's permission catalog (`packages/auth/src/permis
 | `idg.decide` | Record / supersede decisions | RN Case Manager, MSW, Chaplain, MD/NP, Medical Director, IDG Coordinator |
 | `idg.act` | Update assigned action items (self-scoped) | All assignees (predicate `is_assignee`) |
 | `idg.schedule` | Manage recurring policies, cancel/reschedule meetings | IDG Coordinator, Clinical Supervisor, Tenant Admin |
+| `idg.override_review_floor` | Override the per-patient 15-day review-floor guard on CANCEL/RESCHEDULE (audited + step-up; M14-F01 / ADR-0018 D2) | Clinical Supervisor, Medical Director, Compliance |
 | `idg.amend_minutes` | Submit minutes amendments | IDG Coordinator, Clinical Supervisor, Compliance |
 | `idg.system` | Internal system principal — packet build, action-item auto-close consumers, FHIR/render reads | System actor only |
 
 ### 4.7 ABAC Predicates Registered into Module 3
 
-M14 registers two predicates with M3's named-predicate registry:
+M14 registers three predicates with M3's named-predicate registry:
 
 ```typescript
 // packages/auth/src/abac/predicates/quorate-decision.ts
@@ -1040,6 +1067,28 @@ export const idgMeetingScope: AbacPredicate<{ meetingId: string }> = {
       return { allow: false, reason: 'location_scope_missing' }
     }
     return { allow: true }
+  },
+}
+
+// packages/auth/src/abac/predicates/per-patient-review-floor-clear.ts
+// M14-F01 / ADR-0018 D2 — guards CANCEL / RESCHEDULE so neither can slip an included patient
+// past their per-patient 15-day review floor (`last_idg_reviewed_at + 15d`). Authoritative over
+// the location cadence. Mirrors the state-machine `perPatientReviewFloorClear` guard cond (§2.2).
+export const perPatientReviewFloorClear: AbacPredicate<
+  { meetingId: string; proposedTransition: 'cancel' | 'reschedule'; newScheduledStart?: string }
+> = {
+  key: 'per_patient_review_floor_clear',
+  evaluate: async (ctx, resource) => {
+    const breaches = await m14.reviewClock.evaluateBreachesFor(ctx.organizationId, resource)
+    // breaches[] = patients whose floor (last_idg_reviewed_at + 15d, fallback activated_at + 15d)
+    // would be left uncovered by any other scheduled/packets_*/live meeting after this transition.
+    if (breaches.length === 0) return { allow: true }
+    // Audited escape valve: override permission + fresh step-up; the route handler writes the
+    // audit_event and emits m14.review_floor.override_recorded.
+    if (ctx.hasPermission('idg.override_review_floor') && (await ctx.stepUpFresh())) {
+      return { allow: true, detail: { override: true, breaches } }
+    }
+    return { allow: false, reason: 'per_patient_review_floor_breach', detail: { breaches } }
   },
 }
 ```
@@ -1145,6 +1194,7 @@ export function initM14(reg: SeamRegistry): void {
 | `idg.packets` | `build-packet` | Per `(meetingId, patientId)` build job: join across upstream seams + outbox projection cache; upsert `idg_patient_packet` row | T-24h cron + on-demand POST + retry on `build_failed_for_patient` |
 | `idg.packets-cron` | `tminus-24h-build` | Sweep `status='scheduled'` meetings within `now() + 24h..30h`, transition to `packets_building`, enqueue per-patient build jobs | Hourly cron |
 | `idg.carry-forward` | `compute-carry-forward` | At T-24h, compute carry-forward agenda items for next meeting + emit Compliance alert if `count >= 3` | T-24h cron (same sweep) |
+| `idg.review-clock-sweep` | `evaluate-per-patient-floor` | Per active admission, compute the per-patient 15-day floor from `idg_patient_packet.last_idg_reviewed_at` (fallback admission `activated_at`); emit `m14.review_clock.escalated` at T-3 / T-0 / T+1 against each patient's own clock when no covering completed review exists (M14-F01 / ADR-0018 D2) | Daily cron 03:00 org-tz |
 | `idg.decision-emitter` | `emit-decisions-on-adjournment` | At `ADJOURN`, iterate `status='open'` decisions in the meeting and publish `idg.decision_recorded` events to outbox (one transaction) | `ADJOURN` route handler |
 | `idg.eraser` | `erase-idg-records` | Module 4 destruction-certificate callback (`eraseFn`); erases all M14 rows for a patient under an approved certificate | M4 destruction workflow |
 
@@ -1162,10 +1212,11 @@ export function initM14(reg: SeamRegistry): void {
 | `idg.packets` (`build-packet`) | 8 (high — clinicians blocked on packet review) | 5 | exponential 10 s base, jitter ±20 % | 10 per queue instance (per-patient jobs are independent; I/O-bound seam calls dominate) | `idg.packets.dlq` | emit `m14.packets.build_failed_for_patient` with `willRetry=false`; M36 warn to IDG Coordinator; coordinator may trigger on-demand rebuild via `POST /meetings/:id/packets/build` |
 | `idg.packets-cron` (`tminus-24h-build`) | 7 (high — gating the T-24h alert fanout) | 2 | fixed 60 s (single retry only; the cron fires again in 1 h if the sweep fails) | 1 (cron sweep is a single-threaded scan; per-patient enqueue is the fan-out) | `idg.packets-cron.dlq` | alert OPS-on-call immediately; missed T-24h sweep means patients may enter the meeting without a built packet; manual trigger via admin endpoint required |
 | `idg.carry-forward` (`compute-carry-forward`) | 6 (medium — runs alongside packets-cron sweep) | 3 | exponential 20 s base | 5 per queue instance (per-meeting carry-forward computations; read-heavy) | `idg.carry-forward.dlq` | emit `m14.carry_forward.compute_failed`; M36 warn to IDG Coordinator; overdue items remain open but carry-forward agenda items will be missing from the next meeting — coordinator must manually review |
+| `idg.review-clock-sweep` (`evaluate-per-patient-floor`) | 7 (high — a missed sweep means a per-patient 15-day breach goes un-escalated, a direct CoP §418.56(d) citation risk) | 3 | exponential 30 s base | 1 per org shard (serial scan of active admissions; reads `last_idg_reviewed_at`) | `idg.review-clock-sweep.dlq` | alert OPS-on-call + Compliance immediately; a failed sweep risks a silent per-patient review lapse — the daily cron re-fires within 24 h but a T-0/T+1 escalation may be delayed; manual trigger via admin endpoint required (M14-F01 / ADR-0018 D2) |
 | `idg.decision-emitter` (`emit-decisions-on-adjournment`) | 10 (critical — adjournment is the commit point; clinicians waiting on resolution) | 5 | exponential 5 s base, max 120 s total wait | 1 per meeting (single-threaded per meeting to maintain transactional ordering; no cross-meeting concurrency limit) | `idg.decision-emitter.dlq` | BLOCKER: if the emit-decisions job lands in DLQ, the meeting is stuck in `live` state with `status='open'` decisions; alert OPS-on-call + Clinical Supervisor immediately; manual DLQ replay after investigation; do NOT silently discard — every item in this DLQ is an undelivered `idg.decision_recorded` envelope that M7/M11/M12 have not received |
 | `idg.eraser` (`erase-idg-records`) | 3 (lowest — destruction runs under a compliance-approved certificate; not time-critical at the second level) | 3 | fixed 60 s | 1 (erases are serialized per patient to avoid FK cascade races) | `idg.eraser.dlq` | alert M4 destruction-certificate workflow; flag certificate as `partially_applied`; destruction cannot be considered complete until DLQ is drained; do not close the certificate |
 
-**DLQ global policy (OPS-035):** All six DLQ topics are monitored by the M33 operational dashboard with a `queue_dlq_depth_gauge` metric; depth > 0 on `idg.decision-emitter.dlq` triggers a P1 PagerDuty alert; depth > 0 on `idg.packets.dlq` or `idg.packets-cron.dlq` triggers a P2 alert; all others trigger P3. DLQ items are retained for 14 days; at expiry an `idg.dlq.item_expired` audit event is emitted (severity `warn`) and the item is permanently dropped. DLQ message shape: `{ originalJobId, queueName, failedAt, attemptNumber, errorMessage, jobData }` — `jobData` carries the original BullMQ job payload verbatim (PHI-bearing; DLQ storage inherits the same Valkey encryption-at-rest and RLS-equivalent key-scoping as the live queue).
+**DLQ global policy (OPS-035):** All seven DLQ topics are monitored by the M33 operational dashboard with a `queue_dlq_depth_gauge` metric; depth > 0 on `idg.decision-emitter.dlq` triggers a P1 PagerDuty alert; depth > 0 on `idg.packets.dlq`, `idg.packets-cron.dlq`, or `idg.review-clock-sweep.dlq` triggers a P2 alert (the last because a stalled per-patient review-clock sweep is a CoP §418.56(d) citation risk per M14-F01 / ADR-0018 D2); all others trigger P3. DLQ items are retained for 14 days; at expiry an `idg.dlq.item_expired` audit event is emitted (severity `warn`) and the item is permanently dropped. DLQ message shape: `{ originalJobId, queueName, failedAt, attemptNumber, errorMessage, jobData }` — `jobData` carries the original BullMQ job payload verbatim (PHI-bearing; DLQ storage inherits the same Valkey encryption-at-rest and RLS-equivalent key-scoping as the live queue).
 
 ### 4.10 M36 Typed Alert Payloads
 
@@ -1209,6 +1260,40 @@ export type IdgNonQuorateDecisionAlert = {
   decisionId: string
   missingDisciplines: string[]
   severity: 'low'
+  bodyTemplate: string
+}
+
+// M14-F01 / ADR-0018 D2 — per-patient (per-POC) 15-day review-clock escalation.
+// Emitted by the `idg.review-clock-sweep` cron at T-3 / T-0 / T+1 against each patient's OWN
+// clock (`last_idg_reviewed_at + 15d`), independent of the location cadence. Ships Phase 1.
+export type IdgPerPatientReviewClockAlert = {
+  kind: 'm14.review_clock.escalated'
+  organizationId: string
+  admissionId: string
+  patientId: string
+  locationId: string
+  lastIdgReviewedAt: string | null   // null => never reviewed; floor anchored to admission activated_at
+  floorAt: string                    // last_idg_reviewed_at + 15 days (or activated_at + 15 days)
+  stage: 't_minus_3' | 't_zero' | 't_plus_1'
+  severity: 'clinical_routine' | 'critical'  // clinical_routine at T-3; critical at T-0 and T+1
+  recipients: {
+    idgCoordinatorMembershipId: string
+    clinicalSupervisorMembershipId?: string  // added at T-0/T+1
+    complianceInbox?: boolean                // true at T+1 (floor breached)
+  }
+  bodyTemplate: string
+}
+
+// M14-F01 / ADR-0018 D2 — audited override of the per-patient review-floor guard on CANCEL/RESCHEDULE.
+export type IdgReviewFloorOverrideAlert = {
+  kind: 'm14.review_floor.override_recorded'
+  organizationId: string
+  meetingId: string
+  actorMembershipId: string
+  reason: string
+  breachingPatients: Array<{ patientId: string; floorAt: string }>
+  severity: 'attention'
+  recipients: { complianceInbox: true; clinicalSupervisorMembershipId: string }
   bodyTemplate: string
 }
 ```
@@ -1386,7 +1471,15 @@ Layout notes:
 
 **Done means:** Meeting M is adjourned; all packets are frozen (`frozen_at` set). A coordinator attempts `POST /meetings/M/packets/build` (perhaps after noticing a packet had stale data). Route returns `422 PACKET_FROZEN`. The remedy is to record any corrections as decisions in the *next* meeting (the carry-forward agenda surface) — the adjourned meeting's packets are survey-reconstruction artifacts and immutable.
 
-### 7.13–7.15 Notification-composition workflows (W-M14-11 through W-M14-13) — Superseded by ADR-0024
+### 7.13 Per-patient review-floor guard on reschedule (W-RVW-01 — M14-F01 / ADR-0018 D2)
+
+**Done means:** Patient P's plan of care was last reviewed at the IDG meeting adjourned 2026-06-02 — so `idg_patient_packet.last_idg_reviewed_at = 2026-06-02`, and P's per-patient 15-day floor is 2026-06-17. Meeting M is scheduled 2026-06-16 (covers P). A coordinator attempts to `RESCHEDULE` M to 2026-06-20 with no other meeting covering P before 2026-06-17. The route returns `422 PER_PATIENT_REVIEW_FLOOR_BREACH` with `detail.breaches = [{ patientId: P, floorAt: '2026-06-17' }]` — the per-patient floor is evaluated against P's own `last_idg_reviewed_at`, not the location cadence. With `idg.override_review_floor` permission + fresh step-up + a reason, the reschedule proceeds, writes an `audit_event`, and emits `m14.review_floor.override_recorded`. Same behavior for `CANCEL`. Conversely, if a *second* meeting covers P on 2026-06-16, the reschedule of M is allowed with no override (P remains covered).
+
+### 7.14 Per-patient review-clock escalation (W-RVW-02 — M14-F01 / ADR-0018 D2)
+
+**Done means:** Patient Q's `last_idg_reviewed_at = 2026-06-01` → floor 2026-06-16. No completed covering IDG review exists. The `idg.review-clock-sweep` daily cron emits `m14.review_clock.escalated` for Q at: 2026-06-13 (`stage='t_minus_3'`, `severity='clinical_routine'`, M36 alert to IDG Coordinator); 2026-06-16 (`stage='t_zero'`, `severity='critical'`, adds Clinical Supervisor); 2026-06-17 (`stage='t_plus_1'`, `severity='critical'`, adds Compliance inbox — floor breached). Each escalation is per Q's own clock; another patient reviewed on time produces no alert. A meeting adjournment that reviews Q before the floor stamps `last_idg_reviewed_at` and clears the escalation for the next cycle.
+
+### 7.15 Notification-composition workflows (W-M14-11 through W-M14-13) — Superseded by ADR-0024
 
 > **Superseded by ADR-0024 (2026-06-13).** The three cross-module notification-composition
 > acceptance criteria (W-M14-11 `referral.withdrawn`, W-M14-12 critical-results, W-M14-13
@@ -1525,7 +1618,8 @@ Target coverage: ≥ 90% statements; ≥ 95% on the named services below.
 - `services/action-item-engine.ts` — carry-forward computation against fixture meetings; auto-close from each downstream event source (M7/M8/M11/M12); compliance-alert firing at `count >= 3`.
 - `services/since-cursor.ts` — cursor resolution: prior IDG present → `adjourned_at`; no prior IDG → admission `activated_at`; multiple prior IDGs → latest `adjourned_at`.
 - TypeBox validation of every `IdgDecisionPayload` discriminator including malformed inputs (returns 422 with `DECISION_PAYLOAD_INVALID`).
-- `state/meeting-lifecycle.ts` — every transition + every refused transition (no `START` from `scheduled`, no `ADJOURN` from `packets_ready`, no `BUILD_PACKETS` from `adjourned`).
+- `state/meeting-lifecycle.ts` — every transition + every refused transition (no `START` from `scheduled`, no `ADJOURN` from `packets_ready`, no `BUILD_PACKETS` from `adjourned`); the `perPatientReviewFloorClear` guard on `CANCEL`/`RESCHEDULE` (M14-F01 / ADR-0018 D2): floor breach refused, covering-meeting case allowed, override-with-step-up case allowed; `ADJOURN` stamps `last_idg_reviewed_at` for every included patient.
+- `services/review-clock.ts` — per-patient floor computation (`last_idg_reviewed_at + 15d`, fallback admission `activated_at + 15d`); `evaluateBreachesFor` covering-meeting logic; the T-3/T-0/T+1 escalation-stage selection and severity mapping (M14-F01 / ADR-0018 D2).
 
 ### 9.2 Integration (Testcontainers)
 
@@ -1604,7 +1698,8 @@ Ordered by dependency. **PR boundaries** marked.
 | 11 | Minutes service (in_progress → final on adjournment) + amendment workflow + amendment routes | M | 10 | E |
 | 12 | SUD redactor (SQL-level filter consulting M39's `consent.evaluate` per M7 D7 pattern) | M | 6 | E |
 | 13 | `IdgPacketProvider` / `IdgDecisionProvider` / `IdgScheduleProvider` seams in `packages/domain/idg/seams.ts`; boot-time `validateSeams()` | M | 6, 8, 10 | F |
-| 14 | Permission keys registered into M3 catalog (`packages/auth/src/permissions/idg.ts`); ABAC `quorate_decision` and `idg_meeting_scope` predicates; boot validation | S | 8, M3 catalog model | F |
+| 14 | Permission keys registered into M3 catalog (`packages/auth/src/permissions/idg.ts`, incl. `idg.override_review_floor`); ABAC `quorate_decision`, `idg_meeting_scope`, and `per_patient_review_floor_clear` (M14-F01 / ADR-0018 D2) predicates; boot validation | S | 8, M3 catalog model | F |
+| 14a | **Per-patient review clock (M14-F01 / ADR-0018 D2):** `last_idg_reviewed_at` stamp on `ADJOURN`; `services/review-clock.ts` (floor + `evaluateBreachesFor`); `perPatientReviewFloorClear` guard wired into CANCEL/RESCHEDULE routes; `idg.review-clock-sweep` daily cron emitting `m14.review_clock.escalated` at T-3/T-0/T+1; `m14.review_floor.override_recorded` audit emit | M | 4, 5, 10 | F |
 | 15 | M22 `m14.packet.render_requested` + `m14.minutes.signed` outbox emitter wired; `consumers/m22-document-backref.ts` consumer | M | 10, 11 | F |
 | 16 | Frontend (web): Schedule view, Meeting Detail, Live Meeting Surface, Per-Patient Packet chart embed, My Action Items, Action Item Detail, Minutes view | L | 5–14 | G |
 | 17 | Frontend (mobile, Capacitor): Live Meeting Surface (tablet variant); biometric step-up on adjournment | M | 16, M8 integration point | G |
@@ -1627,7 +1722,7 @@ All structural and policy decisions for Module 14 are resolved at lock time. The
 | ID | Decision | Rationale | Rejected alternatives | Realized in |
 |---|---|---|---|---|
 | D1 | **Packet model = derived materialised read-side artifact: mutable `idg_patient_packet` row pre-meeting, immutable `built_snapshot` jsonb frozen on adjournment.** Per-patient idempotent build keyed on `(meeting_id, patient_id)`. Rebuilds replace the row in place pre-meeting; `frozen_at` set on adjournment makes the snapshot the survey-reconstruction artifact. | Mirrors the M7 D1 hybrid-versioning approach in spirit: clinicians get a fresh editable artifact pre-meeting, surveyors get a deterministic snapshot after. Per-patient row keeps the build idempotent and the storage shape uniform across meetings. | (a) Per-meeting single jsonb document — kills query-ability and balloons row size. (b) Per-discipline view as separate rows — fragments the survey-reconstruction surface for no read gain. (c) Live computation on read — eliminates the survey artifact and the offline-mobile read path. | §2.4, §3.3 (`idg_patient_packet`), §5 (chart embed), §7.2/7.12 |
-| D2 | **Cadence policy = `IDG_SCHEDULE_POLICY = { defaultCadenceDays: 14, platformFloorMaxGapDays: 15, tenantMayTightenTo: 7 }`. Schedule worker materialises 90 days forward per active `idg_recurring_policy`.** The CoP 418.56(d) "no less frequently than 15 calendar days" is the floor on the **gap between consecutive reviews**, not the cadence policy directly — the cadence default of 14 days gives a 1-day operational buffer for weekend/holiday slippage. | The 14-day default pattern matches real-world hospice operations (biweekly Wednesday is common) without giving surveyors the citation room. The platform-floor / tenant-tighten-only structure mirrors M9 D2 and M11 D3. The 90-day rolling materialisation gives the scheduler enough lead time for clinician PTO planning without burdening the meeting table with infinite future rows. | (a) 15-day cadence default — no operational buffer; weekend slippage creates citation risk. (b) Tenant fully configurable — invites loosening below the CoP floor. (c) Materialise meetings only on need — breaks the "see next 8 weeks" UX. | §1.3, §2.2, §4.9 (`idg.schedule`), §7.1 |
+| D2 | **Cadence policy = `IDG_SCHEDULE_POLICY = { defaultCadenceDays: 14, platformFloorMaxGapDays: 15, tenantMayTightenTo: 7 }`. Schedule worker materialises 90 days forward per active `idg_recurring_policy`.** This is the **location-wide operational cadence backstop only — NOT the §418.56(d) compliance control.** Per M14-F01 / ADR-0018 D2, the authoritative control is the **per-patient (per-POC) 15-day floor** in D17 (`idg_patient_packet.last_idg_reviewed_at + 15d`), because a CANCEL/RESCHEDULE can slip the location cadence while the per-patient floor remains binding. The cadence default of 14 days gives a 1-day operational buffer for weekend/holiday slippage. | The 14-day default pattern matches real-world hospice operations (biweekly Wednesday is common) without giving surveyors the citation room. The platform-floor / tenant-tighten-only structure mirrors M9 D2 and M11 D3. The 90-day rolling materialisation gives the scheduler enough lead time for clinician PTO planning without burdening the meeting table with infinite future rows. | (a) 15-day cadence default — no operational buffer; weekend slippage creates citation risk. (b) Tenant fully configurable — invites loosening below the CoP floor. (c) Materialise meetings only on need — breaks the "see next 8 weeks" UX. | §1.3, §2.2, §4.9 (`idg.schedule`), §7.1 |
 | D3 | **`IDG_REQUIRED_QUORUM = [{ role: 'hospice_physician' \| 'medical_director', count: 1 }, { role: 'rn_case_manager', count: 1 }, { role: 'msw', count: 1 }, { role: 'chaplain' \| 'spiritual_counselor', count: 1 }]`. Tenants may tighten (add a volunteer coordinator for CA, e.g.) but cannot loosen below this floor. Per-decision quorate check at write time via the `quorate_decision` ABAC predicate.** | CoP 418.56(b)(3) defines the IDG composition; capturing the requirement as a typed constant and evaluating per-decision (not per-meeting) lets a meeting proceed while a member is briefly absent (the discussion happens) while still blocking the *recording* of decisions during that gap. The tenant-tightening path covers state-specific overlays without a code change. | (a) Meeting-level quorum check at start time — falsely allows decisions recorded after a member leaves. (b) Quorum requirement waivable by coordinator — opens the survey-citation barn door. (c) Roles listed in flat array (not OR-of-roles for the physician slot) — fails the medical-director-substitute-for-hospice-physician case. | §2.1 (`idg_attendance`), §2.7, §4.7 (`quorate_decision`), §7.3/7.4 |
 | D4 | **The canonical `idg.decision_recorded` outbox event with `IdgDecisionPayload` discriminated-union payload (9 kinds).** Single typed payload covers care-plan mutations (per M7 D4), order requests (per M11 D6), medication recommendations (per M12 §1.1 forward seam), LOC and recert considerations (advisory; M6 owns enforcement), family meeting flags, bereavement risk flags (M16 forward), referrals, and team notes. Schema-versioned envelope (`'2026-01-v1'`) with consumer-side validation and DLQ on mismatch. | Single payload prevents shape drift across the four downstream consumers that already lock against it (M7, M11, M12, M16-future). The exhaustive discriminated union compels coordinated multi-module change for new kinds — exactly the friction we want around the spec boundary per architecture §25.15. The schema-version field gives the upgrade path. | (a) Per-decision-kind outbox topic — fragments the consumer side, requires four subscriptions per consumer; defeats the M11 D6 "one consumer" pattern. (b) Per-kind table on the M14 side — duplicates `idg_decision`'s structure for no gain. (c) Free-form jsonb payload — defeats the compile-time exhaustiveness check at consumer call sites. | §2.6, §4.4 (`idg.decision_recorded`), §7.5 |
 | D5 | **Two-trigger packet build: T-24h cron + on-demand `POST /meetings/:id/packets/build`. Idempotent on `(meeting_id, patient_id)`; rebuild replaces the row in place pre-meeting. Freeze on `ADJOURN` transition.** | The cron pattern is the architecture §10.5.5 baseline; the on-demand path covers urgent rebuilds when intake data lands inside the 24-hour window. Per-patient idempotency keeps retries safe under outbox-dispatch redelivery semantics. The freeze-on-adjourn boundary is the survey-reconstruction invariant. | (a) Continuous incremental rebuild — wasteful; the only practical update window is T-24h to meeting start. (b) Snapshot at meeting start — loses the pre-meeting clinician-review value. (c) Multiple immutable snapshot versions per patient — storage explosion for no operational gain. | §2.7, §4.9 (`idg.packets`, `idg.packets-cron`), §7.2/7.12 |
@@ -1642,6 +1737,7 @@ All structural and policy decisions for Module 14 are resolved at lock time. The
 | D14 | **Superseded by ADR-0024** — notification composition + recipient resolution for cross-module events moved to M36 (SD-017). *(Originally: `m6.referral.withdrawn` gets a notification template distinct from `m6.referral.declined`.)* | — | — | — (tombstone) |
 | D15 | **Superseded by ADR-0024** — notification composition + recipient resolution for cross-module events moved to M36 (SD-017). *(Originally: M14 is the platform's notification-composition layer for cross-module events where M14 was the declared consumer.)* | — | — | — (tombstone) |
 | D16 | **Superseded by ADR-0024** — notification composition + recipient resolution for cross-module events moved to M36 (SD-017). *(Originally: new `notification_template` + `tenant_notification_template_overlay` tables owned by M14.)* | — | — | — (tombstone) |
+| D17 | **Per-patient (per-POC) 15-day review floor is the authoritative §418.56(d) control (M14-F01 / ADR-0018 D2).** Realized as the `idg_patient_packet.last_idg_reviewed_at` column (no new table — owned-table count stays 9), stamped per included patient on `ADJOURN`. The floor is `last_idg_reviewed_at + 15 days` (fallback admission `activated_at + 15d` when never reviewed). CANCEL and RESCHEDULE are guarded by `perPatientReviewFloorClear`, refused with `PER_PATIENT_REVIEW_FLOOR_BREACH` unless a covering meeting exists or an audited `idg.override_review_floor` (step-up) is recorded. The `idg.review-clock-sweep` daily cron escalates via M36 at T-3 (`clinical_routine`) / T-0 / T+1 (`critical`) against each patient's own clock. Ships Phase 1. | The location cadence (D2) is escapable by cancel/reschedule and is per-location, not per-POC; surveyors cite the missed review of *a patient's* plan of care, so the clock must be per-patient and cancel/reschedule must not be able to slip it silently. A column (not a table) keeps the structural change inside the locked 9-table envelope. A missed review **escalates**, it does not silently lapse — matching the ADR-0018 D2 mandate. | (a) Rely on the location cadence floor (D2) alone — the escapable-by-reschedule gap M14-F01 flags. (b) New per-admission tracking table — changes the owned-table count and the manifest/ownership assertions for no schema-shape gain over a column on the existing per-(meeting,patient) row. (c) Hard-block cancel/reschedule with no override — clinically untenable (legitimate reschedules happen); the audited override + escalation is the correct survey-defensible shape. | §1.3, §2.2, §2.7, §3.3 (`idg_patient_packet.last_idg_reviewed_at`), §4.3, §4.9, §4.10 |
 
 -----
 
@@ -1669,6 +1765,7 @@ All structural and policy decisions for Module 14 are resolved at lock time. The
 - [ ] **(blocker) D12** `idg_patient_packet` monthly partitioning live; next 6 months created at migration time; daily rotation worker adds `+1 month ahead`.
 - [ ] **(blocker) D13** Adjournment requires fresh ≤5-min step-up; `STEP_UP_REQUIRED` returned otherwise; biometric step-up on mobile path.
 - [ ] ~~**D14 / D15 / D16**~~ **Superseded by ADR-0024** — notification composition + recipient resolution for cross-module events moved to M36 (SD-017); no M14 sign-off item.
+- [ ] **(blocker) D17 (M14-F01 / ADR-0018 D2)** `idg_patient_packet.last_idg_reviewed_at` column live (owned-table count unchanged at 9); stamped per included patient on `ADJOURN`; CANCEL/RESCHEDULE refused with `PER_PATIENT_REVIEW_FLOOR_BREACH` when no covering meeting clears a patient's `last_idg_reviewed_at + 15d` floor; `idg.override_review_floor` (step-up) override audited via `m14.review_floor.override_recorded`; `idg.review-clock-sweep` cron escalates at T-3 (`clinical_routine`) / T-0 / T+1 (`critical`) per patient; per-patient floor is authoritative over the location cadence.
 
 ### Cross-module handshakes
 
@@ -1767,6 +1864,6 @@ All structural and policy decisions for Module 14 are resolved at lock time. The
 **Decisions:** D1–D13 resolved; D14–D16 superseded by ADR-0024 (notification composition moved to M36)
 **Schema:** 9 IDG tables; monthly partitioning on `idg_patient_packet` (notification-template tables moved to M36 per ADR-0024)
 **Published seams:** `IdgPacketProvider`, `IdgDecisionProvider`, `IdgScheduleProvider`
-**Workflows:** W-SCH-01, W-PKT-01/02, W-DEC-01/02, W-ADJ-01/02, W-ACT-01/02, W-MIN-01, W-SUD-01, W-CON-01 (W-M14-11 through W-M14-13 superseded by ADR-0024)
+**Workflows:** W-SCH-01, W-PKT-01/02, W-DEC-01/02, W-ADJ-01/02, W-ACT-01/02, W-MIN-01, W-SUD-01, W-CON-01, W-RVW-01/02 (per-patient review floor + escalation, M14-F01 / ADR-0018 D2) (W-M14-11 through W-M14-13 superseded by ADR-0024)
 **Implementation tasks:** 1–21 (T-M14-14 through T-M14-16 superseded by ADR-0024)
 **ADR-0021 §20.B additions (2026-06-13):** M14-F06 queue parameters (§4.9.1); M14-F09 STRIDE + authz matrix (§4.12); M14-F13 Idempotency-Key on PATCH/DELETE (§4.1 note); M14-F17 DR Tier 2 + degraded mode (§8.5)

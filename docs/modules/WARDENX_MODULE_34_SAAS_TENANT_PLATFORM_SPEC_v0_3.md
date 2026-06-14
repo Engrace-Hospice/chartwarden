@@ -714,6 +714,12 @@ export const tenantAccountStatusEvent = pgTable(
     tenantAccountId: uuid('tenant_account_id')
       .notNull()
       .references(() => tenantAccount.id, { onDelete: 'restrict' }),
+    // M34-F02 / ADR-0010: tenant-scoping key. Was FK-join-scoped via tenant_account;
+    // now carries its own organization_id NOT NULL so the canonical app.org_id RLS
+    // predicate applies directly (ADR-0010 D2/D3). Two-phase Expand/Contract per §10.1.
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
     fromStatus: tenantAccountStatus('from_status'),
     toStatus: tenantAccountStatus('to_status').notNull(),
     transitionReason: text('transition_reason').notNull(),
@@ -723,6 +729,8 @@ export const tenantAccountStatusEvent = pgTable(
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
+    // M34-F02 / ADR-0010: SD-028 composite index leads with organization_id.
+    orgOccurredIdx: index('tenant_account_status_event_org_occurred_idx').on(t.organizationId, t.occurredAt),
     tenantIdx: index('tenant_account_status_event_tenant_idx').on(t.tenantAccountId, t.occurredAt),
   }),
 )
@@ -732,6 +740,9 @@ export const tenantAccountStatusEvent = pgTable(
 
 ```typescript
 // packages/saas-tenant-platform/src/schema/onboarding-task-template.ts
+// M34-F02 / ADR-0010: schema files that newly carry organization_id below
+// (onboarding-task.ts, tenant-invitation.ts) import the M1 organization FK target:
+//   import { organizations } from '@wardenx/db/schema/organization' // M1 — read only; FK reference
 export const onboardingTaskTemplate = pgTable(
   'onboarding_task_template',
   {
@@ -746,6 +757,11 @@ export const onboardingTaskTemplate = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
 )
+// M34-F02 / ADR-0010: onboarding_task_template is a PLATFORM-SHARED, read-only catalog
+// (platform-seeded floor of canonical onboarding steps — §3.12 seed). It is deliberately
+// LEFT WITHOUT organization_id and declared SD-036 pattern-2 (platform-shared read-only):
+// every tenant reads the same template rows; no per-organization data lives here. RLS grants
+// SELECT to all roles (read-only reference); writes are platform-ops/migration only.
 
 // packages/saas-tenant-platform/src/schema/onboarding-task.ts
 export const onboardingTaskStatus = pgEnum('onboarding_task_status', [
@@ -763,6 +779,12 @@ export const onboardingTask = pgTable(
     tenantAccountId: uuid('tenant_account_id')
       .notNull()
       .references(() => tenantAccount.id, { onDelete: 'restrict' }),
+    // M34-F02 / ADR-0010: tenant-scoping key (per-organization runtime task rows).
+    // Was FK-join-scoped via tenant_account; now carries its own organization_id NOT NULL
+    // for the canonical app.org_id RLS predicate (ADR-0010 D2/D3). Two-phase per §10.1.
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
     templateKey: text('template_key')
       .notNull()
       .references(() => onboardingTaskTemplate.key, { onDelete: 'restrict' }),
@@ -780,6 +802,8 @@ export const onboardingTask = pgTable(
       t.tenantAccountId,
       t.templateKey,
     ),
+    // M34-F02 / ADR-0010: SD-028 composite index leads with organization_id.
+    orgStatusIdx: index('onboarding_task_org_status_idx').on(t.organizationId, t.status),
     tenantStatusIdx: index('onboarding_task_tenant_status_idx').on(t.tenantAccountId, t.status),
     dueIdx: index('onboarding_task_due_idx').on(t.dueAt).where(sql`status IN ('pending','in_progress','blocked')`),
     blockerCheck: sql`CONSTRAINT onboarding_task_blocker_check CHECK (
@@ -803,6 +827,13 @@ export const tenantInvitation = pgTable(
     tenantAccountId: uuid('tenant_account_id')
       .notNull()
       .references(() => tenantAccount.id, { onDelete: 'restrict' }),
+    // M34-F02 / ADR-0010: tenant-scoping key. The tenant_account / organization already
+    // exists at provisioning when the platform → first-admin invitation is issued (D18),
+    // so organization_id is available NOT NULL and the canonical app.org_id RLS predicate
+    // applies directly (ADR-0010 D2/D3). Two-phase Expand/Contract per §10.1.
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
     inviteeEmail: text('invitee_email').notNull(),
     inviteeFullName: text('invitee_full_name').notNull(),
     inviteePhone: text('invitee_phone'),
@@ -816,6 +847,8 @@ export const tenantInvitation = pgTable(
   },
   (t) => ({
     tokenHashUnique: uniqueIndex('tenant_invitation_token_unique').on(t.tokenHash),
+    // M34-F02 / ADR-0010: SD-028 composite index leads with organization_id.
+    orgStatusIdx: index('tenant_invitation_org_status_idx').on(t.organizationId, t.status),
     tenantStatusIdx: index('tenant_invitation_tenant_status_idx').on(t.tenantAccountId, t.status),
     expiresAtCheck: sql`CONSTRAINT tenant_invitation_expires_check CHECK (
       expires_at <= issued_at + interval '14 days'
@@ -830,6 +863,8 @@ export const tenantInvitation = pgTable(
 
 ```typescript
 // packages/saas-tenant-platform/src/schema/tenant-key-ring.ts
+// M34-F02 / ADR-0010: organization_id FK target imported from M1 (read-only):
+//   import { organizations } from '@wardenx/db/schema/organization'
 export const tenantKeyRing = pgTable(
   'tenant_key_ring',
   {
@@ -837,6 +872,12 @@ export const tenantKeyRing = pgTable(
     tenantAccountId: uuid('tenant_account_id')
       .notNull()
       .references(() => tenantAccount.id, { onDelete: 'restrict' }),
+    // M34-F02 / ADR-0010: tenant-scoping key. Was FK-join-scoped via tenant_account;
+    // now carries its own organization_id NOT NULL so the canonical app.org_id RLS
+    // predicate applies directly to the metadata view (ADR-0010 D2/D3). Two-phase per §10.1.
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
     // Monotonic version label; 'v1' at creation, 'v2' after first rotation, etc.
     currentDekVersion: text('current_dek_version').notNull(),
     // The DEK ciphertext wrapped by the platform KEK. AEAD-encrypted.
@@ -858,6 +899,9 @@ export const tenantKeyRing = pgTable(
   },
   (t) => ({
     tenantUnique: uniqueIndex('tenant_key_ring_tenant_unique').on(t.tenantAccountId),
+    // M34-F02 / ADR-0010: org is 1:1 with the key ring; UNIQUE doubles as the SD-028
+    // composite index leading with organization_id.
+    orgUnique: uniqueIndex('tenant_key_ring_org_unique').on(t.organizationId),
     // CHECK: ciphertext NULL iff destroyed.
     destroyedConsistency: sql`CONSTRAINT tenant_key_ring_destroyed_consistency CHECK (
       (destroyed_at IS NOT NULL) = (current_dek_kek_wrapped_ciphertext IS NULL)
@@ -872,12 +916,22 @@ export const tenantKeyDestructionLog = pgTable(
     tenantKeyRingId: uuid('tenant_key_ring_id')
       .notNull()
       .references(() => tenantKeyRing.id, { onDelete: 'restrict' }),
+    // M34-F02 / ADR-0010: tenant-scoping key. Was FK-join-scoped via tenant_key_ring;
+    // now carries its own organization_id NOT NULL for the canonical app.org_id RLS
+    // predicate (ADR-0010 D2/D3). Note: the org_id remains readable on this log row even
+    // after the key ring's DEK is shredded — it is not envelope-encrypted PHI, it is the
+    // forensic tenant key for the destruction-audit trail. Two-phase per §10.1.
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
     destructionPhase: text('destruction_phase').notNull(),
     // 'deks_zeroized' | 'module_erasers_complete' | 'minio_scope_destroyed' | 'certificate_filed'
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
     perModuleEraserReceipts: jsonb('per_module_eraser_receipts').notNull().default([]),
   },
   (t) => ({
+    // M34-F02 / ADR-0010: SD-028 composite index leads with organization_id.
+    orgPhaseIdx: index('tenant_key_destruction_log_org_phase_idx').on(t.organizationId, t.destructionPhase),
     keyRingPhaseIdx: index('tenant_key_destruction_log_keyring_phase_idx').on(t.tenantKeyRingId, t.destructionPhase),
   }),
 )
@@ -938,6 +992,13 @@ export const supportConsentGrant = pgTable(
     tenantAccountId: uuid('tenant_account_id')
       .notNull()
       .references(() => tenantAccount.id, { onDelete: 'restrict' }),
+    // M34-F02 / ADR-0010: tenant-scoping key. Was FK-join-scoped via tenant_account;
+    // now carries its own organization_id NOT NULL so the canonical app.org_id RLS predicate
+    // (and the compliance_officer INSERT WITH CHECK) apply directly (ADR-0010 D2/D3).
+    // FK target imported from M1: import { organizations } from '@wardenx/db/schema/organization'.
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
     scope: supportConsentGrantScope('scope').notNull(),
     patientIdsInScope: uuid('patient_ids_in_scope').array(), // populated only when scope=patient_scoped
     grantReason: text('grant_reason').notNull(),
@@ -949,6 +1010,8 @@ export const supportConsentGrant = pgTable(
     revocationReason: text('revocation_reason'),
   },
   (t) => ({
+    // M34-F02 / ADR-0010: SD-028 composite index leads with organization_id.
+    orgIssuedIdx: index('support_grant_org_issued_idx').on(t.organizationId, t.issuedAt),
     tenantIssuedIdx: index('support_grant_tenant_issued_idx').on(t.tenantAccountId, t.issuedAt),
     expiresAtCheck: sql`CONSTRAINT support_grant_expires_check CHECK (
       expires_at <= issued_at + interval '72 hours'
@@ -967,6 +1030,12 @@ export const supportSession = pgTable(
     supportConsentGrantId: uuid('support_consent_grant_id')
       .notNull()
       .references(() => supportConsentGrant.id, { onDelete: 'restrict' }),
+    // M34-F02 / ADR-0010: tenant-scoping key. Was FK-join-scoped via the consent grant;
+    // now carries its own organization_id NOT NULL (denormalized from the grant at session
+    // start) so the canonical app.org_id RLS predicate applies directly (ADR-0010 D2/D3).
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
     actorMembershipId: uuid('actor_membership_id').notNull(),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
@@ -974,6 +1043,8 @@ export const supportSession = pgTable(
     closeReason: text('close_reason'), // manual|expired|grant_revoked|forced_terminated
   },
   (t) => ({
+    // M34-F02 / ADR-0010: SD-028 composite index leads with organization_id.
+    orgStartedIdx: index('support_session_org_started_idx').on(t.organizationId, t.startedAt),
     grantIdx: index('support_session_grant_idx').on(t.supportConsentGrantId),
     actorStartedIdx: index('support_session_actor_started_idx').on(t.actorMembershipId, t.startedAt),
     activeIdx: index('support_session_active_idx').on(t.expiresAt).where(sql`closed_at IS NULL`),
@@ -990,6 +1061,13 @@ export const supportSessionEvent = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     supportSessionId: uuid('support_session_id').notNull(),
+    // M34-F02 / M34-F10 / ADR-0010: tenant-scoping key + co-partition key. Carries its own
+    // organization_id NOT NULL (denormalized from the session) so the canonical app.org_id
+    // RLS predicate applies directly (ADR-0010 D2/D3), and the table co-partitions
+    // LIST organization_id → RANGE occurred_at (M34-F10; see partitioned DDL below).
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
     eventKind: text('event_kind').notNull(),
     resourceKind: text('resource_kind'),
     resourceId: uuid('resource_id'),
@@ -999,10 +1077,17 @@ export const supportSessionEvent = pgTable(
     context: jsonb('context').notNull().default({}),
   },
   (t) => ({
+    // M34-F02 / ADR-0010: SD-028 composite index leads with organization_id.
+    orgOccurredIdx: index('support_session_event_org_occurred_idx').on(t.organizationId, t.occurredAt),
     sessionEventIdx: index('support_session_event_session_idx').on(t.supportSessionId, t.occurredAt),
     patientEventIdx: index('support_session_event_patient_idx').on(t.patientId, t.occurredAt).where(sql`patient_id IS NOT NULL`),
   }),
-).partitionedByRange('occurred_at')
+)
+// M34-F10 / ADR-0010: co-partitioned LIST organization_id → RANGE occurred_at.
+// Drizzle's fluent partition helper expresses only the top tier; the org→range
+// sub-partition layout is created in the migration DDL (§3.10) and registered in
+// partition.rotate (OPS-021).
+.partitionedByList('organization_id')
 ```
 
 ### 3.7 DSAR and Tenant Export Tables
@@ -1029,7 +1114,11 @@ export const dsarExportJob = pgTable(
   'dsar_export_job',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    organizationId: uuid('organization_id').notNull(),
+    // M34-F02 / ADR-0010: tenant-scoping key (new table — ships NOT NULL day one).
+    // FK → M1 organization; canonical app.org_id RLS predicate applies directly.
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
     patientId: uuid('patient_id').notNull(), // follows M5 merged_into_id at create time
     requestSource: dsarRequestSource('request_source').notNull(),
     requestorIdentityVerificationEvidence: text('requestor_identity_verification_evidence').notNull(),
@@ -1047,6 +1136,7 @@ export const dsarExportJob = pgTable(
     bundleDownloadedAt: timestamp('bundle_downloaded_at', { withTimezone: true }),
   },
   (t) => ({
+    // M34-F02 / ADR-0010: SD-028 composite index leads with organization_id.
     orgPatientIdx: index('dsar_export_org_patient_idx').on(t.organizationId, t.patientId),
     slaIdx: index('dsar_export_sla_idx').on(t.slaDueAt).where(sql`status IN ('requested','generating','review_pending','extended')`),
     extensionCheck: sql`CONSTRAINT dsar_extension_check CHECK (
@@ -1061,6 +1151,12 @@ export const dsarExportJobEvent = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     dsarExportJobId: uuid('dsar_export_job_id').notNull(),
+    // M34-F02 / M34-F10 / ADR-0010: tenant-scoping key + co-partition key. Carries its own
+    // organization_id NOT NULL (denormalized from the parent job) so the canonical app.org_id
+    // RLS predicate applies directly; co-partitions LIST organization_id → RANGE occurred_at.
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
     eventKind: text('event_kind').notNull(),
     fromStatus: text('from_status'),
     toStatus: text('to_status'),
@@ -1068,9 +1164,14 @@ export const dsarExportJobEvent = pgTable(
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
+    // M34-F02 / ADR-0010: SD-028 composite index leads with organization_id.
+    orgOccurredIdx: index('dsar_event_org_occurred_idx').on(t.organizationId, t.occurredAt),
     jobEventIdx: index('dsar_event_job_idx').on(t.dsarExportJobId, t.occurredAt),
   }),
-).partitionedByRange('occurred_at')
+)
+// M34-F10 / ADR-0010: co-partitioned LIST organization_id → RANGE occurred_at
+// (sub-partition DDL in §3.10; registered in partition.rotate, OPS-021).
+.partitionedByList('organization_id')
 
 // packages/saas-tenant-platform/src/schema/tenant-export-job.ts
 export const tenantExportJobStatus = pgEnum('tenant_export_job_status', [
@@ -1092,7 +1193,11 @@ export const tenantExportJob = pgTable(
   'tenant_export_job',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    organizationId: uuid('organization_id').notNull(),
+    // M34-F02 / ADR-0010: tenant-scoping key (new table — ships NOT NULL day one).
+    // FK → M1 organization; canonical app.org_id RLS predicate applies directly.
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
     requestedPurpose: tenantExportJobPurpose('requested_purpose').notNull(),
     requestingMembershipId: uuid('requesting_membership_id').notNull(),
     status: tenantExportJobStatus('status').notNull().default('requested'),
@@ -1106,6 +1211,7 @@ export const tenantExportJob = pgTable(
     bundleDownloadedAt: timestamp('bundle_downloaded_at', { withTimezone: true }),
   },
   (t) => ({
+    // M34-F02 / ADR-0010: SD-028 composite index leads with organization_id.
     orgStatusIdx: index('tenant_export_org_status_idx').on(t.organizationId, t.status),
     presignedExpiresIdx: index('tenant_export_presigned_expires_idx').on(t.bundlePresignedUrlExpiresAt),
   }),
@@ -1116,15 +1222,26 @@ export const tenantExportJobEvent = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     tenantExportJobId: uuid('tenant_export_job_id').notNull(),
+    // M34-F02 / M34-F10 / ADR-0010: tenant-scoping key + co-partition key. Carries its own
+    // organization_id NOT NULL (denormalized from the parent job) so the canonical app.org_id
+    // RLS predicate applies directly; co-partitions LIST organization_id → RANGE occurred_at.
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
     eventKind: text('event_kind').notNull(),
     moduleKey: text('module_key'),
     shardReceipt: jsonb('shard_receipt'),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
+    // M34-F02 / ADR-0010: SD-028 composite index leads with organization_id.
+    orgOccurredIdx: index('tenant_export_event_org_occurred_idx').on(t.organizationId, t.occurredAt),
     jobEventIdx: index('tenant_export_event_job_idx').on(t.tenantExportJobId, t.occurredAt),
   }),
-).partitionedByRange('occurred_at')
+)
+// M34-F10 / ADR-0010: co-partitioned LIST organization_id → RANGE occurred_at
+// (sub-partition DDL in §3.10; registered in partition.rotate, OPS-021).
+.partitionedByList('organization_id')
 ```
 
 **Bundle format (D19) — same shape for DSAR and tenant export:**
@@ -1183,6 +1300,13 @@ export const platformTenantBaaRecord = pgTable(
     tenantAccountId: uuid('tenant_account_id')
       .notNull()
       .references(() => tenantAccount.id, { onDelete: 'restrict' }),
+    // M34-F02 / ADR-0010: tenant-scoping key. Was FK-join-scoped via tenant_account;
+    // now carries its own organization_id NOT NULL so the canonical app.org_id RLS predicate
+    // (and the compliance_officer INSERT/UPDATE ABAC) apply directly (ADR-0010 D2/D3).
+    // FK target imported from M1: import { organizations } from '@wardenx/db/schema/organization'.
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'restrict' }),
     addendumVersion: text('addendum_version').notNull(),
     baaStatus: platformTenantBaaStatus('baa_status').notNull(),
     executedOn: date('executed_on'),
@@ -1198,6 +1322,8 @@ export const platformTenantBaaRecord = pgTable(
   (t) => ({
     tenantAddendumUnique: uniqueIndex('platform_tenant_baa_unique')
       .on(t.tenantAccountId, t.addendumVersion),
+    // M34-F02 / ADR-0010: SD-028 composite index leads with organization_id.
+    orgStatusIdx: index('platform_tenant_baa_org_status_idx').on(t.organizationId, t.baaStatus),
     expiresIdx: index('platform_tenant_baa_expires_idx').on(t.expiresOn).where(sql`expires_on IS NOT NULL`),
     dateOrderCheck: sql`CONSTRAINT platform_tenant_baa_dates_check CHECK (
       executed_on IS NULL OR effective_on IS NULL OR expires_on IS NULL
@@ -1225,6 +1351,15 @@ export const tenantSignupIntentSource = pgEnum('tenant_signup_intent_source', [
   'partner_referral',
 ])
 
+// M34-F02 / ADR-0010: tenant_signup_intent and tenant_signup_token are deliberately LEFT
+// WITHOUT organization_id — they are genuinely PRE-ORGANIZATION (the org/tenant_account does
+// not exist until the intent is provisioned). They are the one legitimate org-less exemption
+// (§3.10): NOT tenant-scoped, so the canonical app.org_id RLS predicate does not apply.
+// RLS denies wardenx_app SELECT entirely; only tenant_platform_writer reads them. They are
+// NOT SD-036 pattern-2 platform-shared catalogs either (no cross-tenant read of a shared row);
+// they are platform-private pre-provision intake rows. On provisioning, the resulting
+// tenant_account.organization_id is recorded on tenant_signup_intent.tenant_account_id (the
+// bridge to the now-org-scoped world); the intent/token rows themselves remain org-less.
 export const tenantSignupIntent = pgTable('tenant_signup_intent', { /* ... per ERD ... */ })
 
 export const tenantSignupToken = pgTable(
@@ -1304,25 +1439,84 @@ CREATE POLICY tenant_account_select_own
 REVOKE INSERT, UPDATE, DELETE ON tenant_account FROM wardenx_app;
 GRANT INSERT, UPDATE ON tenant_account TO tenant_platform_writer;
 
--- tenant_key_ring: ciphertext column masked at view layer
+-- tenant_key_ring: ciphertext column masked at view layer. M34-F02 / ADR-0010: the metadata
+-- view now surfaces organization_id so the canonical SELECT predicate applies to the view row.
 CREATE VIEW tenant_key_ring_metadata_v AS
-  SELECT id, tenant_account_id, current_dek_version, current_dek_kek_id,
+  SELECT id, tenant_account_id, organization_id, current_dek_version, current_dek_kek_id,
          dek_created_at, dek_last_rotated_at, destroyed_at, destroyed_by_membership_id,
          destruction_certificate_id
-    FROM tenant_key_ring;
+    FROM tenant_key_ring
+   WHERE organization_id = current_setting('app.org_id', true)::uuid;  -- M34-F02 / ADR-0010
 REVOKE SELECT ON tenant_key_ring FROM wardenx_app;
 GRANT SELECT ON tenant_key_ring_metadata_v TO wardenx_app;
 GRANT SELECT, UPDATE ON tenant_key_ring TO tenant_platform_writer;
 
--- Similar policies for the remaining tables; abbreviated for brevity.
--- support_consent_grant — tenant-scoped + grantor must be compliance_officer per ABAC
+-- M34-F02 / ADR-0010: the CANONICAL per-table pattern for EVERY tenant-scoped M34 table.
+-- FK-join-subquery scoping is REMOVED (each table now carries its own organization_id) and
+-- the `OR pg_has_role('wardenx_admin','MEMBER')` is REMOVED (M34-F09 — it granted silent
+-- cross-tenant read). Applied to: tenant_account_status_event, tenant_key_ring,
+-- tenant_key_destruction_log, tenant_invitation, onboarding_task, support_consent_grant,
+-- support_session, support_session_event, dsar_export_job, dsar_export_job_event,
+-- tenant_export_job, tenant_export_job_event, platform_tenant_baa_record.
+--
+--   ALTER TABLE <table> ENABLE ROW LEVEL SECURITY;
+--   CREATE POLICY <table>_tenant_scope ON <table> FOR ALL TO wardenx_app
+--     USING       (organization_id = current_setting('app.org_id', true)::uuid)
+--     WITH CHECK  (organization_id = current_setting('app.org_id', true)::uuid);
+--
+-- Worked example — support_consent_grant (tenant-scoped; INSERT further narrowed to the
+-- tenant compliance_officer by the M3 ABAC predicate at the application layer):
 ALTER TABLE support_consent_grant ENABLE ROW LEVEL SECURITY;
 CREATE POLICY support_grant_tenant_scope
   ON support_consent_grant FOR ALL TO wardenx_app
-  USING (
-    tenant_account_id IN (SELECT id FROM tenant_account WHERE organization_id = current_setting('app.org_id', true)::uuid)
-    OR pg_has_role('wardenx_admin', 'MEMBER')
-  );
+  USING      (organization_id = current_setting('app.org_id', true)::uuid)
+  WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);
+
+-- onboarding_task_template — M34-F02 / SD-036 pattern-2: PLATFORM-SHARED, read-only catalog.
+-- No organization_id; readable by all roles, never tenant-writable.
+ALTER TABLE onboarding_task_template ENABLE ROW LEVEL SECURITY;
+CREATE POLICY onboarding_task_template_read_all
+  ON onboarding_task_template FOR SELECT TO wardenx_app
+  USING (true);  -- platform-floor catalog; identical rows for every tenant
+REVOKE INSERT, UPDATE, DELETE ON onboarding_task_template FROM wardenx_app;
+GRANT INSERT, UPDATE, DELETE ON onboarding_task_template TO tenant_platform_writer;
+```
+
+**M34-F02 / ADR-0010 — column-add migration DDL (two-phase Expand/Contract per §10.1).** The
+nine FK-join-scoped tables receive `organization_id` via the Expand→Contract pattern; the four
+export tables already ship `NOT NULL` from day one. Representative Contract-phase DDL:
+
+```sql
+-- migrations/0034_<N+1>_contract_org_id.sql  (M34-F02 / ADR-0010)
+ALTER TABLE tenant_account_status_event
+  ADD CONSTRAINT tenant_account_status_event_org_fk
+  FOREIGN KEY (organization_id) REFERENCES organization(id) ON DELETE RESTRICT;
+ALTER TABLE tenant_account_status_event ALTER COLUMN organization_id SET NOT NULL;
+CREATE INDEX tenant_account_status_event_org_occurred_idx
+  ON tenant_account_status_event (organization_id, occurred_at);  -- SD-028
+-- (repeat for tenant_key_ring, tenant_key_destruction_log, tenant_invitation, onboarding_task,
+--  support_consent_grant, support_session, support_session_event, platform_tenant_baa_record)
+```
+
+**M34-F10 / ADR-0010 — co-partition DDL for the three `*_event` tables.** Each is partitioned
+`LIST organization_id → RANGE occurred_at` and registered in `partition.rotate` (OPS-021):
+
+```sql
+-- migrations/0034_<N>_event_copartition.sql  (M34-F10 / ADR-0010)
+-- Top tier: LIST by organization_id; per-org sub-partition: RANGE by occurred_at (monthly).
+CREATE TABLE support_session_event (
+  -- ...columns incl. organization_id uuid NOT NULL REFERENCES organization(id)...
+) PARTITION BY LIST (organization_id);
+
+-- Per provisioned tenant, the provision worker creates the org partition...
+CREATE TABLE support_session_event_org_<orgKey>
+  PARTITION OF support_session_event FOR VALUES IN ('<org-uuid>')
+  PARTITION BY RANGE (occurred_at);
+-- ...and partition.rotate (OPS-021) maintains the monthly RANGE sub-partitions:
+CREATE TABLE support_session_event_org_<orgKey>_2026_06
+  PARTITION OF support_session_event_org_<orgKey>
+  FOR VALUES FROM ('2026-06-01') TO ('2026-07-01');
+-- (identical layout for dsar_export_job_event and tenant_export_job_event)
 ```
 
 ### 3.11 Write-Audit Triggers (consumes M4 generator)

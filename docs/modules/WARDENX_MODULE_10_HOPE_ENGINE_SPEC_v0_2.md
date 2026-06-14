@@ -568,8 +568,8 @@ import {
   index, uniqueIndex, foreignKey, primaryKey,
 } from "drizzle-orm/pg-core";
 import { organization, providerEntity, location, user } from "packages/db/schema";  // location added — ARCH-011 tenancy spine (M10-F09)
-import { patient } from "apps/backend/src/modules/05-patient/schema";  // imported via seam at compile time
-import { admission } from "apps/backend/src/modules/06-admission/schema";
+// No cross-module schema imports for M5.patient / M6.admission (ADR-0011, M10-F01):
+// patient_id / admission_id are plain uuid columns (logical FK only) resolved at runtime via the M5/M6 reader seams.
 import {
   hopeRfaKind, hopeDischargeReason, hopeAssessmentStatus,
   hopeScheduleStatus, hopeSfvStatus, hopeSubmissionStatus,
@@ -583,8 +583,8 @@ export const hopeTimepointSchedule = pgTable("hope_timepoint_schedule", {
   organizationId: uuid("organization_id").notNull().references(() => organization.id),
   providerEntityId: uuid("provider_entity_id").notNull().references(() => providerEntity.id),  // ARCH-011 / M10-F09 (NOT NULL — see §3.3 tenancy note)
   locationId: uuid("location_id").notNull().references(() => location.id),                      // ARCH-011 / M10-F09 (NOT NULL — see §3.3 tenancy note)
-  patientId: uuid("patient_id").notNull(),  // M5 FK
-  admissionId: uuid("admission_id").notNull(),  // M6 FK
+  patientId: uuid("patient_id").notNull(),  // logical FK to M5.patient — resolved at runtime via the M5 reader seam (ADR-0011)
+  admissionId: uuid("admission_id").notNull(),  // logical FK to M6.admission — resolved at runtime via the M6 reader seam (ADR-0011)
   rfaKind: hopeRfaKind("rfa_kind").notNull(),
   windowOpensAt: timestamp("window_opens_at", { withTimezone: true }).notNull(),
   windowClosesAt: timestamp("window_closes_at", { withTimezone: true }).notNull(),
@@ -617,8 +617,8 @@ export const hopeAssessment = pgTable("hope_assessment", {
   organizationId: uuid("organization_id").notNull().references(() => organization.id),
   providerEntityId: uuid("provider_entity_id").notNull().references(() => providerEntity.id),  // ARCH-011 / M10-F09 (NOT NULL — see §3.3 tenancy note)
   locationId: uuid("location_id").notNull().references(() => location.id),                      // ARCH-011 / M10-F09 (NOT NULL — see §3.3 tenancy note)
-  patientId: uuid("patient_id").notNull(),  // M5 FK
-  admissionId: uuid("admission_id").notNull(),  // M6 FK
+  patientId: uuid("patient_id").notNull(),  // logical FK to M5.patient — resolved at runtime via the M5 reader seam (ADR-0011)
+  admissionId: uuid("admission_id").notNull(),  // logical FK to M6.admission — resolved at runtime via the M6 reader seam (ADR-0011)
   scheduleId: uuid("schedule_id").references(() => hopeTimepointSchedule.id),  // nullable for SFV-driven
   sourceEncounterId: uuid("source_encounter_id"),  // M8 forward seam; FK added at M8 lock
   rfaKind: hopeRfaKind("rfa_kind").notNull(),
@@ -670,8 +670,8 @@ export const symptomFollowUpVisit = pgTable("symptom_follow_up_visit", {
   organizationId: uuid("organization_id").notNull().references(() => organization.id),
   providerEntityId: uuid("provider_entity_id").notNull().references(() => providerEntity.id),  // ARCH-011 / M10-F09 (NOT NULL — see §3.3 tenancy note)
   locationId: uuid("location_id").notNull().references(() => location.id),                      // ARCH-011 / M10-F09 (NOT NULL — see §3.3 tenancy note)
-  patientId: uuid("patient_id").notNull(),
-  admissionId: uuid("admission_id").notNull(),
+  patientId: uuid("patient_id").notNull(),  // logical FK to M5.patient — resolved at runtime via the M5 reader seam (ADR-0011)
+  admissionId: uuid("admission_id").notNull(),  // logical FK to M6.admission — resolved at runtime via the M6 reader seam (ADR-0011)
   triggeringAssessmentId: uuid("triggering_assessment_id").notNull(),  // FK to hope_assessment
   completingAssessmentId: uuid("completing_assessment_id"),  // nullable until completed
   triggeredAt: timestamp("triggered_at", { withTimezone: true }).notNull(),

@@ -20,10 +20,7 @@ names (`document.status`, `document.retention_class`, …) are unchanged. (Prior
 > the **fax/email document-ingest** surfaces are now in the Integration Catalog (inventory rows 29–30,
 > §5 BAA register, §8 degraded-mode) via the INT-002 five-step addition. Both carry PHI (patient name,
 > address, document content / inbound clinical), so each vendor's **BAA must be EXECUTED (INT-014 hard
-> gate)** before production PHI flows, with a SEC-099 vendor review. *(M22's earlier-audited items —
-> S2 PHI-in-signed-URL-filename, S15 file-upload MIME/magic-byte validation, the 13-month bereavement
-> retention, and the manifest 22↔39 resolution (ADR-0006) — are Phase-6 reconciliation / already
-> ADR-pinned.)*
+> gate)** before production PHI flows, with a SEC-099 vendor review. *(M22's earlier-audited items — S2 PHI-in-signed-URL-filename (now resolved as M22-F02 / SEC-015: opaque object-key pattern adopted, §7.10 + D11 updated), S15 file-upload MIME/magic-byte validation, the 13-month bereavement retention, and the manifest 22↔39 resolution (ADR-0006) — were Phase-6 reconciliation / already ADR-pinned. S2 / SEC-015 is now closed in this revision.)*
 
 > **ADR-0021 §20.B template sweep (2026-06-13).** Five template-gap findings addressed in this revision (F11, F14, F24, F25, F27). See §15 Open Questions for remaining items and §"End of Specification" for the complete finding inventory.
 >
@@ -2618,7 +2615,7 @@ Each workflow lists actors, preconditions, the sequence of events, postcondition
 - **GIVEN** a document with 3 versions **WHEN** user previews v2 **THEN** access log row written; signed URL is valid for 5 minutes and 5 minutes only.
 - **GIVEN** a superseded version (a later version replaced it via `active_version_id` flip; versions are append-only, never soft-deleted) **WHEN** queried via the standard reader **THEN** only the current version is returned; the full version history (including superseded versions) is returned only to a user holding `documents.read_history` + admin/compliance role.
 
-### 7.10 W10 — Signed URL TTL (D11 — free-text PHI denylist applies to filename only)
+### 7.10 W10 — Signed URL TTL (D11 — opaque object-key / filename; no PHI in URL or object key) (M22-F02 / SEC-015)
 
 **Actors:** Any document reader.
 
@@ -2627,13 +2624,13 @@ Each workflow lists actors, preconditions, the sequence of events, postcondition
 1. User requests a signed URL for a document version.
 2. Server constructs URL with TTL = min(requestedTtl, 5min for non-portal / 60min for portal — D11).
 3. URL includes a watermark parameter passed to a server-side rasterization layer that overlays "DOWNLOADED BY <user> AT <timestamp>" on each page of the rendered PDF for portal access; non-portal access does not watermark (it's a direct stream).
-4. URL filename pattern: `{documentType}-{patientLastName}-{patientFirstInitial}-{shortVersionId}.pdf`. The free-text PHI denylist (D11) ensures no SSN, MRN, full DOB appears in filename.
+4. **Object key / URL filename pattern (opaque): `{documentType}-{shortVersionId}.pdf`** — where `shortVersionId` is a random 12-character opaque token. No patient identifier (name, DOB, MRN, or any other PHI) appears in the object key, the presigned URL, or any URL parameter. The human-readable download filename (which may incorporate patient-context for end-user convenience) is applied **client-side** after fetch via the browser's `Content-Disposition` attachment header — this header is set by the app server on the `302` redirect response and is never embedded in the MinIO presigned URL or object key. Proxy, CDN, and MinIO access logs therefore contain no patient identifiers. (M22-F02 / SEC-015)
 
 **Acceptance criteria:**
 
 - **GIVEN** a 5-min URL **WHEN** accessed at minute 6 **THEN** MinIO returns 403; the access log captures the failed access.
 - **GIVEN** a portal access **WHEN** the rendered PDF is downloaded **THEN** every page bears the watermark; the watermark is on a separate rasterization layer (cannot be removed by editing the PDF source).
-- **GIVEN** a filename construction attempt with SSN in the patient demographics (unlikely but possible mis-store) **WHEN** filename is computed **THEN** the SSN field is stripped before composition; the filename never contains a digit run of 9 or more (denylist regex).
+- **GIVEN** any signed URL or MinIO object key **WHEN** inspected **THEN** it matches the pattern `{documentType}-{shortVersionId}.pdf` and contains no name token, DOB token, MRN token, or any other PHI; a test assertion runs the presigned URL and object key through the M1 PHI denylist regex bank and asserts zero matches. (M22-F02 / SEC-015)
 
 ### 7.11 W11 — Bereavement Letter Render
 
@@ -2775,7 +2772,7 @@ Each workflow lists actors, preconditions, the sequence of events, postcondition
 | **Tampering** — modify a rendered PDF in MinIO | Direct S3 client access | SHA256 stored at write time; `RenderedDocumentProvider.getVersionWithIntegrityCheck` re-hashes on read; mismatch raises `integrity_violation` alert |
 | **Repudiation** — clinician denies approving an extraction | Claim of unauthorized session | Every `extraction_decision` row carries the user ID, session ID, IP, user-agent fingerprint, and overwrite-confirmation token where applicable; M4 audit captures the policy decision payload |
 | **Information Disclosure** — signed URL leaked via screenshot/share | User-shared URL | TTL ≤ 5min (non-portal) / ≤ 60min (portal); portal URLs are watermarked with user identity on every page; access log captures every URL-redemption; M5 disclosure-tracking flow records the consent under which the URL was generated |
-| **Information Disclosure** — full PDF reachable via filename guessing | URL pattern prediction | Filenames include a short version ID (random 12-char), making enumeration infeasible; MinIO bucket policy denies anonymous reads; signed URLs are the only access path |
+| **Information Disclosure** — full PDF reachable via filename guessing, or PHI leaked via object key / URL into proxy or CDN logs | URL pattern prediction; log inspection | Object keys and URL filenames are opaque (`{documentType}-{shortVersionId}.pdf`, random 12-char token) — no patient name, DOB, or MRN appears in any presigned URL or object key (M22-F02 / SEC-015); enumeration is infeasible; MinIO bucket policy denies anonymous reads; signed URLs are the only access path |
 | **Information Disclosure** — SUD plaintext leaks via the rendered lab-results PDF | Cached/exported/printed PDF | The renderer NEVER writes SUD-class observation values into the PDF binary (D20); a PDF-binary-grep test asserts no plaintext SUD value in metadata or embedded font streams; the renderer never calls `SudUnredactProvider.exercise()` |
 | **Information Disclosure** — PHI leaked via OCR field cached on M32 ML worker | Worker disk persists between jobs | M32 capability contract requires per-job ephemeral disk (cleared on job completion); contract verified via M32 boot validation; M22 sets `phi_handling=ephemeral_only` on every job request |
 | **Information Disclosure** — log lines contain PHI (e.g. extracted SSN) | Standard error log | All log lines pass through the M1 PHI scrubber (D11 denylist); free-text content from extractions is never logged at info+ level; debug-level logs are off in production |
@@ -3220,7 +3217,7 @@ Ordered, PR-bounded task list. Each task is independently shippable behind a fea
 
 **E1. Statement of Disagreement attachment (D13, W5)** — `m5.patient.amendment_decided` (filter `decision='denied'`) consumer; `attach_to_disclosures=true` flag; M5 disclosure-assembly reader integration.
 
-**E2. Free-text PHI denylist (D11)** — M1 log scrubber integration; filename construction PHI-strip; column-encryption for HIGH-risk extraction candidates.
+**E2. Free-text PHI denylist (D11 / M22-F02 / SEC-015)** — M1 log scrubber integration; opaque object-key construction (no PHI in presigned URL or MinIO object key; human-readable name set client-side via `Content-Disposition`); column-encryption for HIGH-risk extraction candidates.
 
 **E3. M36 alert payloads** — All 14 typed payloads (§4.9) registered with M36. Escalation routing per role and severity.
 
@@ -3336,12 +3333,12 @@ Each decision below was resolved during spec authoring. Format: question → dec
 - **Rejected:** (i) Auto-split on high confidence — quality risk. (ii) No auto-suggest, manual split only — wastes the AI signal, slower workflow.
 - **Surfaces:** §5.1 `INTAKE.FaxSplitter`; §7.3 W3.
 
-### D11 — Free-text PHI denylist
+### D11 — Free-text PHI denylist (M22-F02 / SEC-015)
 
-- **Question:** How do we prevent PHI from leaking into log lines, filenames, error messages, audit metadata strings?
-- **Decision:** **M1 PHI scrubber + denylist patterns.** Free-text strings emitted by M22 (log lines, error messages, signed-URL filenames) pass through the M1 scrubber which strips/redacts SSN-like sequences, MRN-like sequences, full DOB patterns, and any value flagged by the scrubber's regex bank. M22 ships its own additions: never include extracted SUD content in any free-text emission. Signed-URL filenames are pattern-controlled (§7.10) and stripped of digit-runs >= 9.
-- **Why:** Defense in depth against PHI leakage outside the structured PHI-bearing tables. M1's scrubber is the single source of truth for redaction; M22 contributes patterns and consumes the scrubber.
-- **Rejected:** (i) Module-by-module ad-hoc scrubbing — inconsistent coverage. (ii) No scrubbing, trust the developers — audit failure mode.
+- **Question:** How do we prevent PHI from leaking into log lines, filenames, object keys, error messages, audit metadata strings?
+- **Decision:** **M1 PHI scrubber + denylist patterns + opaque object keys.** Free-text strings emitted by M22 (log lines, error messages) pass through the M1 scrubber which strips/redacts SSN-like sequences, MRN-like sequences, full DOB patterns, and any value flagged by the scrubber's regex bank. M22 ships its own additions: never include extracted SUD content in any free-text emission. **Critically, signed-URL object keys and URL filenames are opaque by construction** — the pattern `{documentType}-{shortVersionId}.pdf` (where `shortVersionId` is a random 12-character token) contains no patient identifiers whatsoever; the scrubber acts as a final backstop but the primary control is the opaque pattern that excludes PHI structurally. Human-readable download names are applied client-side via the app server's `Content-Disposition` header and never appear in MinIO object keys or presigned URLs. (M22-F02 / SEC-015)
+- **Why:** Defense in depth against PHI leakage outside the structured PHI-bearing tables — and specifically against PHI landing in proxy, CDN, or MinIO access logs via object keys or URL filenames. M1's scrubber is the single source of truth for redaction; M22 contributes patterns and consumes the scrubber.
+- **Rejected:** (i) Module-by-module ad-hoc scrubbing — inconsistent coverage. (ii) No scrubbing, trust the developers — audit failure mode. (iii) PHI-bearing filename with scrubber backstop (`{documentType}-{patientLastName}-{patientFirstInitial}-{shortVersionId}.pdf`) — PHI-in-URL/filename structurally lands in proxy/CDN/MinIO logs before any scrubber can act; rejected per SEC-015.
 - **Surfaces:** §8.1 STRIDE table; §8.3 field-level encryption; §7.10 W10.
 
 ### D12 — Cryptographic shred via eraser, legal-hold skip

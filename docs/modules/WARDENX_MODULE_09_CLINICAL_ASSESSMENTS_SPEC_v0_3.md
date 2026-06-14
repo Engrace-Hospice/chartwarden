@@ -277,7 +277,7 @@ All emitted through Module 1's outbox helper. Idempotent dispatch keyed on `(ass
 | `m9.scale.license_lapsed` | daily worker, on expiry | M36 (Compliance dashboard + org-admin), M33 | `{ scaleType, expiredAt }` |
 | `m9.scale.policy_changed` | tenant updates `scale_policy` | M33 | `{ scaleType, changedFields }` |
 
-The seam direction for the M7 / M10 / M32 forward consumers is **published interface + outbox**: M9 publishes the typed `LatestAssessmentProvider` and `ScaleSeriesProvider` interfaces in `packages/domain/assessments/seams.ts`; M9 emits the events; consumers attach via the outbox dispatcher *and* the synchronous provider call (for the hot "give me the latest PPS right now" path that powers the CTI narrative draft).
+The seam direction for the M7 / M10 / M32 forward consumers is **published interface + outbox**: the typed `LatestAssessmentProvider` and `ScaleSeriesProvider` interfaces are declared natively in `packages/types/seams/assessments.ts` (pure types, no feature-package import — per ADR-0005 D2, finding M09-F01); M9's `packages/assessments` feature package imports those interfaces from `packages/types` and implements them; M9 emits the events; consumers attach via the outbox dispatcher *and* the synchronous provider call (for the hot "give me the latest PPS right now" path that powers the CTI narrative draft).
 
 -----
 
@@ -308,8 +308,11 @@ apps/backend/src/modules/09-assessments/
 │   ├── license-status.cron.ts    # daily license-status scan
 │   ├── change-escalation.cron.ts # 24h-no-ack escalation
 │   └── reassessment-due.cron.ts  # daily reassessment-overdue scan
-├── domain/                        # re-exports from packages/assessments + packages/domain
+├── domain/                        # re-exports from packages/assessments (impls) + packages/types (seam interfaces)
 └── boot.ts                        # registers seams + ABAC predicates + outbox subscribers + eraseFn
+packages/types/
+└── seams/
+    └── assessments.ts            # LatestAssessmentProvider + ScaleSeriesProvider interfaces (pure types; ADR-0005 D2, M09-F01)
 packages/assessments/
 ├── src/
 │   ├── scales/
@@ -329,7 +332,7 @@ packages/assessments/
 │   │   └── aims/
 │   ├── catalog.ts                # SCALE_CATALOG with every scale's metadata
 │   ├── interpret.ts              # score → interpretation dispatch
-│   └── seams.ts                  # LatestAssessmentProvider + ScaleSeriesProvider interfaces
+│   └── seams.ts                  # imports LatestAssessmentProvider + ScaleSeriesProvider from packages/types; wires the implementations
 packages/db/src/schema/
 ├── clinical-assessments.ts
 ├── assessment-cosignatures.ts
@@ -337,7 +340,7 @@ packages/db/src/schema/
 ├── scale-licenses.ts
 └── scale-policies.ts
 packages/domain/assessments/
-├── seams.ts                       # public seam types (re-exports from packages/assessments)
+├── seams.ts                       # public seam types (re-exports the interfaces from packages/types/seams/assessments.ts)
 ├── scale-types.ts                 # ScaleType enum + the discriminated-union types
 └── significant-change.ts          # rule-id enum + payload types
 ```
