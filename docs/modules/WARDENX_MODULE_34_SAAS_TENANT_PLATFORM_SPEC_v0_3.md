@@ -57,7 +57,7 @@ Module 34 is **the SaaS control plane of WardenX** — the single module respons
 
 **Pillar 4 — DSAR & Tenant-Export Fulfillment.** Two strictly distinct export workflows: the **DSAR export** (HIPAA §164.524 Right of Access) is patient-scoped — a tenant agency requests on behalf of a patient, M34 generates a FHIR R4 Bundle plus a PDF rendering of the chart, packaged with a manifest.json, signed by the agency's compliance officer, delivered to the agency via M22 for the PDF and to the per-tenant MinIO export prefix for the FHIR Bundle (D9). The **tenant export** is org-scoped — the tenant agency requests their own full data export for migration or BAA termination, M34 generates NDJSON per table for all tenant-scoped rows across every module via the `TenantExportShard` seam each module exports, packaged with a manifest.json, in the per-tenant MinIO export prefix with a 7-day presigned URL. Both workflows are audited under retention class `compliance` (D12) and the per-job audit event carries the actor membership, the requested scope, and the bundle sha256. The DSAR has a 30-day fulfillment SLA with M36 escalations at day 20 / 27 / 30 (D17); the tenant export has no SLA (the tenant pays for it; it runs when staffing allows).
 
-**Pillar 5 — Platform-Ops Support Session & Platform-Tenant BAA Register.** The **support session** is the WardenX support-engineer surface for accessing tenant PHI **with the tenant's explicit consent** and is the *not*-break-glass path (break-glass per M2 SESSION_POLICY remains the without-consent emergency path). The workflow: (a) the tenant compliance officer files a `support_consent_grant` row with scope (`organization_scoped` | `patient_scoped`), patient list if applicable, support reason, expiration; (b) the WardenX support engineer (distinct actor — D16) starts a `support_session` referencing the grant after SESSION_POLICY step-up; (c) every PHI access within the session window is M4-audited at `severity=critical` with `actor_kind='platform_ops_via_support_session'`; (d) the session terminates at the grant expiry, on tenant revocation, or on manual close. The **platform-tenant BAA register** is distinct from M40's tenant-external BAA register (D11) — M40 tracks "this tenant has a BAA with this external referral source"; M34 tracks "WardenX has a BAA with this tenant" with the executed-date, expiration, addendum versions, breach-notification contact, and the compliance-officer attestation. The platform-tenant BAA must be `executed` and unexpired before any tenant can transition from `onboarding` to `active`.
+**Pillar 5 — Platform-Ops Support Session & Platform-Tenant BAA Register.** The **support session** is the WardenX support-engineer surface for accessing tenant PHI **with the tenant's explicit consent**, and is a **break-glass *variant*** (M34-F01 / ARCH-056/186): every staff PHI access still traverses the M2/M3 break-glass mechanism and `severity=critical` audit — the tenant `support_consent_grant` *narrows* the scope but does **not** replace break-glass dual control. (The without-consent emergency break-glass path per M2 SESSION_POLICY remains the other variant; both traverse break-glass — no staff PHI access bypasses it.) The workflow: (a) the tenant compliance officer files a `support_consent_grant` row with scope (`organization_scoped` | `patient_scoped`), patient list if applicable, support reason, expiration; (b) the WardenX support engineer (distinct actor — D16) starts a `support_session` referencing the grant after SESSION_POLICY step-up; (c) every PHI access within the session window is M4-audited at `severity=critical` with `actor_kind='platform_ops_via_support_session'`; (d) the session terminates at the grant expiry, on tenant revocation, or on manual close. The **platform-tenant BAA register** is distinct from M40's tenant-external BAA register (D11) — M40 tracks "this tenant has a BAA with this external referral source"; M34 tracks "WardenX has a BAA with this tenant" with the executed-date, expiration, addendum versions, breach-notification contact, and the compliance-officer attestation. The platform-tenant BAA must be `executed` and unexpired before any tenant can transition from `onboarding` to `active`.
 
 Concretely M34 delivers:
 
@@ -76,7 +76,7 @@ Concretely M34 delivers:
 - **Own the tenant ↔ external-entity BAA register.** M40 owns `mdm_baa_record` (tenant ↔ external referral source / payer / facility). M34 owns `platform_tenant_baa_record` (WardenX ↔ tenant). The two are deliberately disjoint per D11.
 - **Own the cryptographic primitive of envelope encryption.** M1 owns `packages/envelope` (pgcrypto wrapper, AEAD, KEK management). M34 owns the **lifecycle** (creation at provisioning, rotation, destruction at shred) and the per-tenant DEK row via `TenantKeyProvider`. M34 does not import pgcrypto directly.
 - **Own per-tenant MinIO bucket creation.** Architecture §8(3) puts the per-tenant prefix `tenant/<org_id>/` under M1's MinIO client. M34 calls the M1 helper at provisioning and tracks the resulting prefix metadata; M34 does not implement bucket creation.
-- **Own break-glass.** Break-glass is the *emergency without-consent* path described in M2 SESSION_POLICY and Security Hardening §17. Support session is the *normal with-consent* path. The two share `severity=critical` audit but are different state machines and different consent stories per D21.
+- **Own break-glass.** Break-glass is owned by M2 SESSION_POLICY + Security Hardening §17; M34 does **not** own it. The support session is the **with-consent break-glass variant** — it traverses the same M2/M3 break-glass mechanism with a `support_consent_grant` reference that narrows scope; the without-consent emergency path is the other variant. Both are `severity=critical`-audited; per M34-F01/ARCH-056 **no WardenX-staff PHI access bypasses break-glass** (consent narrows, never replaces dual control).
 - **Own the public marketing site.** If a Phase-3 marketing surface is added (`apps/marketing/`), it calls into M34's `POST /api/v1/platform/signup-intents`; M34 does not render the marketing site itself.
 - **Own the destruction-cert artifact format or the approval workflow.** M4 owns those per the M4 D4 decision. M34 calls `requestDestruction()` and M4 calls back the eraseFn registered here.
 - **Own data exports for individual records or sub-patient slices.** Single-record exports happen at the originating module (M22 for a single signed document, M8 for a single encounter PDF). M34 owns only the **full chart** DSAR export and the **full tenant** export.
@@ -1584,7 +1584,7 @@ The deny-stub is registered at boot if no real implementation is present; `valid
 
 Routes split across three namespaces by execution context. Step-up column is the M2 SESSION_POLICY level required per D10.
 
-**Platform-ops routes (`withPlatformContext` — M2 `platform_ops` session class)**
+**Platform-ops routes (`withPlatformContext` — M3 `platform_ops` RBAC role on a `staff` session; M34-F03)**
 
 | Method | Path | Permission | ABAC | Step-up | Notes |
 |---|---|---|---|---|---|
@@ -1790,9 +1790,9 @@ export const M34_PERMISSION_KEYS = [
 ```typescript
 // Registered into M3's named-predicate registry at boot
 export const M34_ABAC_PREDICATES = {
-  // Holds when current actor is platform_ops session class with active membership
+  // Holds when current actor has the platform_ops M3 RBAC role (on a staff session) with active membership (M34-F03)
   tenant_lifecycle_platform_ops: (ctx) =>
-    ctx.actor.sessionClass === 'platform_ops' && ctx.actor.membership.active,
+    ctx.actor.hasRole('platform_ops') && ctx.actor.membership.active,
 
   // Holds when there is at least one (grant, session) row pair such that:
   // - grant.tenant_account_id matches ctx.tenant
@@ -1817,12 +1817,12 @@ export const M34_ABAC_PREDICATES = {
 
   // Holds when actor is org_admin OR platform_ops
   tenant_export_org_admin_or_platform_ops: (ctx) =>
-    ctx.actor.membership.role === 'org_admin' || ctx.actor.sessionClass === 'platform_ops',
+    ctx.actor.membership.role === 'org_admin' || ctx.actor.hasRole('platform_ops'), // M34-F03: M3 RBAC role, not a session class
 
   // Holds when actor has feature_flag write authority appropriate to flag scope
   feature_flag_write_authority: async (ctx) => {
     const flag = await m1FlagReader.byKey(ctx.input.flagKey)
-    if (flag.organizationId === null) return ctx.actor.sessionClass === 'platform_ops'
+    if (flag.organizationId === null) return ctx.actor.hasRole('platform_ops') // M34-F03: M3 RBAC role, not a session class
     return ctx.actor.membership.role === 'org_admin'
         && flag.organizationId === ctx.actor.activeOrganizationId
   },
@@ -2529,7 +2529,7 @@ The M34 initial schema migration (tasks 1-5 above) is itself tagged `pre-migrati
 
 **D20 — Multi-CCN tenants: one tenant_account, multiple provider_entity rows under one organization.** A tenant operating multiple CCNs (e.g., OR + WA hospice agencies under one corporate parent using WardenX) is still one tenant. The provider_entity rows are M2-owned. M34 does not multiply the tenant per CCN.
 
-**D21 — Support session (with consent) is strictly different from break-glass (without consent, emergency only per M2 SESSION_POLICY §17 / Security Hardening §17).** Both audit at `severity=critical` but with different `actor_kind` projections. Break-glass is reserved for emergencies where consent cannot be obtained; support session is the normal path for vendor support work.
+**D21 (amended per M34-F01/ARCH-056) — Support session is the with-consent break-glass *variant*, not a separate path.** Every WardenX-staff PHI access traverses the M2/M3 break-glass mechanism (M34 does not own break-glass); the `support_consent_grant` *narrows* scope but does not replace break-glass dual control. The without-consent emergency break-glass (M2 SESSION_POLICY §17 / Security Hardening §17) is the other variant, reserved for when consent cannot be obtained. Both audit at `severity=critical` with different `actor_kind` projections; **no staff PHI access bypasses break-glass.**
 
 **D22 — `tenant_platform_writer` SECURITY DEFINER role matching M4's `wardenx_audit_writer` and M40's `mdm_canonical_writer` pattern.** One new role; not many. Owns the SECURITY DEFINER functions for DEK lifecycle.
 

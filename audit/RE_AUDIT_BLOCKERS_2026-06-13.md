@@ -49,6 +49,24 @@ plus a few OUT-OF-BAND / SME / manifest-hygiene items that can't be closed by ed
 - **Manifest hygiene (architecture-owner):** M18 `codePaths` += `packages/evv-aggregators`; and the foundation-edge-listing inconsistency flagged in Batch 3.
 - **Banner-vs-body caveat:** M34-F01/F03 (and any other module whose changelog claims a fix) should get a body-level verification before re-lock — this re-audit found M34-F02's "RESOLVED" banner was not backed by the Drizzle.
 
+## Post-re-audit remediation (2026-06-13, same day) — remaining spec-editable BLOCKERs cleared
+
+After the re-audit, the remaining spec-editable BLOCKERs were fixed (each `arch:fitness`-green):
+- **M07-F01** — `nurse_practitioner` removed from the `IDG_REVIEW` quorum (ADR-0018 D3).
+- **M09-F01 / M15-F01** — seam interfaces repointed to `packages/types` (ADR-0005 D2).
+- **M10-F01 / M26-F02** — cross-module Drizzle schema imports dropped → plain-uuid logical FKs (ADR-0011).
+- **M26-F03** — fabricated `cap_watch` M36 channel kind removed (route via `AlertEmitter`); "biometric class" → M2 `STEP_UP_POLICY`. **M26-F04(b)** — `audit_log`→`audit_event`.
+- **M22-F02** — opaque signed-URL filename (no patient name in URL/object key; SEC-015).
+- **M34-F02** — `organization_id` actually added to the 14 tenant-scoped tables (banner made real, ADR-0010). **M34-F03** — predicate bodies + route header re-based from the nonexistent `sessionClass==='platform_ops'` to the M3 `hasRole('platform_ops')` RBAC check. **M34-F01** — Pillar 5 / D21 / non-goal prose reconciled to the break-glass-*variant* model (no staff PHI access bypasses break-glass).
+- **M14-F01** — per-patient 15-day IDG clock (`last_idg_reviewed_at` + CANCEL/RESCHEDULE floor guard + T-3/T-0/T+1 escalation; ADR-0018 D2).
+- **M39-F03** — stale §12.9 sign-off line corrected (ADR-0013).
+
+**Updated state: all spec-editable BLOCKERs from the June-13 set are now resolved.** What remains is **2 OUT-OF-BAND items only** (cannot be closed by editing a spec):
+- **M18-F01** — execute the EVV state-aggregator BAA/trading-partner agreement (catalogued per ADR-0020; INT-014 hard gate).
+- **M19-F03** — route vendor-operator identity through Better Auth via a new membership category — needs a **new ADR + Security-Owner sign-off** (SEC-006 App. A.3) before the spec change can land.
+
+Plus the standing non-spec items: the **CFR-citation SME sign-off**, the **manifest foundation-edge hygiene** pass, and the general **banner-vs-body** caution for any not-yet-re-verified module changelog claim.
+
 ## Bottom line
 9 modules are now BLOCKER-clean (M02, M03, M07, M16, M20, M30, M35, M36, M39); M18 is spec-clean
 (pending BAA). The remaining ~10 blockers are concrete, well-scoped spec edits (cross-module seam/FK
