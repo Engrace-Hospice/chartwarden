@@ -25,7 +25,9 @@ names (`document.status`, `document.retention_class`, …) are unchanged. (Prior
 > retention, and the manifest 22↔39 resolution (ADR-0006) — are Phase-6 reconciliation / already
 > ADR-pinned.)*
 
-> **ADR-0021 §20.B template sweep (2026-06-13).** Five template-gap findings addressed in this revision (F11, F14, F24, F25, F27). Out of scope: F10 (encryption design), F16/F19 (permission-catalog/vocab reconciliation — Batch 5). See §15 Open Questions for remaining items and §"End of Specification" for the complete finding inventory.
+> **ADR-0021 §20.B template sweep (2026-06-13).** Five template-gap findings addressed in this revision (F11, F14, F24, F25, F27). See §15 Open Questions for remaining items and §"End of Specification" for the complete finding inventory.
+>
+> **M22-F16 / M22-F19 reconciliation (ADR-0022).** The permission-catalog (F16) and status/event/column vocabulary (F19) single-truth BLOCKERs are now resolved. F16: §6 regenerated entirely in the canonical §4.6 dot-key form; the parallel colon-key catalog is removed; `documents.read_history`, `documents.read_access_log`, `documents.attach_to_disclosures`, `documents.delete`, `documents.preview_template`, `intake.reclassify`, `intake.split_batch`, `extraction.read_provenance` added to §4.6; `legal_hold_aware` + `document_within_admission_window` added to the §4.7 ABAC registry; `high_risk_capability_floor` folded into `extraction_reviewer_eligible`. F19: workflow status drift reconciled to the §3.3 enums (`parsed→docling_complete`, `classified→classifier_complete`, `extracted→extraction_complete`, batch `committed→writeback_complete`); enum additions `intake_batch_status`{`split_into_children`,`split_resolved_no_split`,`parse_failed`} and `extraction_job_status`{`awaiting_capability`,`stalled`}; the spurious `shredded` document state replaced by the canonical `destroyed_tombstone`; seven workflow events added to §4.10; columns `document.disclosure_restricted`/`metadata`, `document_version.sha256_verified_at`, `intake_upload_batch.child_batch_ids`/`audit_metadata`, `classified_page.error_class`, `extraction_candidate.sud_detected` added to §3.3; the append-only soft-delete model corrected (D2, §2.2.2, §3.2); classifier threshold unified to 0.75. Out of scope: F10 (encryption design).
 > - **M22-F11** (SEC-051/052/038) — §164.524 bulk-export SEC-052 workflow added to §8.9.
 > - **M22-F14** (DR-010/064/070/073) — DR Tier 2 declaration, per-dependency degraded behavior, Weekly BCP Print feed, and post-recovery MinIO check added to §8.10.
 > - **M22-F24** (ARCH-003 §20.B / ARCH-262 / SD-052/059) — Open Questions §15 added; Idempotency-Key + pagination columns added to §4.1 route inventory; retry/backoff/DLQ columns added to §4.8 queue catalog; §9.2 authoring artifact ("Wait, narrowing the enum is tightening…") corrected.
@@ -34,7 +36,7 @@ names (`document.status`, `document.retention_class`, …) are unchanged. (Prior
 
 ## Changelog
 
-- **v0.5 (Phase-5 remediation + ADR-0021 §20.B template sweep)** — Adds §8.9 (SEC-052 bulk-export controls), §8.10 (DR/BCP posture — Tier 2, degraded-mode, BCP Print feed, post-recovery check), §5.2.1 (mobile offline encrypted cache), §15 (Open Questions). Augments §4.1 route inventory with Idempotency-Key and Pagination columns. Augments §4.8 queue catalog with attempts/backoff/DLQ. Corrects §9.2 authoring artifact and §1.3/§4.12 single-use URL claim. No scope change; no decision reversals; F10/F16/F19 explicitly deferred.
+- **v0.5 (Phase-5 remediation + ADR-0021 §20.B template sweep)** — Adds §8.9 (SEC-052 bulk-export controls), §8.10 (DR/BCP posture — Tier 2, degraded-mode, BCP Print feed, post-recovery check), §5.2.1 (mobile offline encrypted cache), §15 (Open Questions). Augments §4.1 route inventory with Idempotency-Key and Pagination columns. Augments §4.8 queue catalog with attempts/backoff/DLQ. Corrects §9.2 authoring artifact and §1.3/§4.12 single-use URL claim. No scope change; no decision reversals. **M22-F16/F19 (ADR-0022)** reconciled in this revision: single §4.6 dot-key permission catalog (§6 regenerated; colon-keys removed), §3.3 enum/column single-truth restored, §4.10 event catalog completed, append-only soft-delete model fixed (D2/§2.2.2), classifier threshold unified. F10 (encryption design) remains deferred.
 
 - **v0.4 (Consolidated)** — Rolls the v0.2 base and v0.3 delta into a single self-contained specification. No scope change; no decision reversals.
 
@@ -492,7 +494,11 @@ stateDiagram-v2
 stateDiagram-v2
     [*] --> uploaded: PDF lands in MinIO; intake_upload_batch row inserted
     uploaded --> docling_complete: docling-worker pass complete
+    uploaded --> parse_failed: docling terminal failure (W1 AC / §8.10)
     docling_complete --> classifier_complete: classifier pass + human confirmation done
+    docling_complete --> split_into_children: multi-doc fax bundle split confirmed (D10 / W3)
+    docling_complete --> split_resolved_no_split: reviewer confirms single document (D10 / W3)
+    split_resolved_no_split --> classifier_complete: continues as a single document
     classifier_complete --> extraction_complete: every extraction_job in ready_for_review or failed
     extraction_complete --> in_review: reviewer opens extraction_review session
     in_review --> writeback_complete: every approved candidate's extraction_provenance row emitted to target module
@@ -500,6 +506,8 @@ stateDiagram-v2
     uploaded --> discarded: classifier returns all unknown; reviewer discards
     writeback_complete --> [*]
     discarded --> [*]
+    parse_failed --> [*]
+    split_into_children --> [*]: child batches enter the pipeline independently
 ```
 
 #### 2.2.6 Extraction Job (`extraction_job.status`)
@@ -507,9 +515,13 @@ stateDiagram-v2
 ```mermaid
 stateDiagram-v2
     [*] --> queued: classified_page accepted; per-doc-type job enqueued
+    queued --> awaiting_capability: M32 DocLens seam denied / circuit open (§8.10)
+    awaiting_capability --> queued: capability returns; job auto-resumes
     queued --> extracting: langextract-worker picks up
     extracting --> verifying: extraction complete; high-risk fields routed to vision verifier
     extracting --> failed: extraction throws
+    extracting --> stalled: capability dropped mid-pipeline; ops paged, no auto-retry (W1 AC)
+    stalled --> queued: ops re-enables capability
     verifying --> discrepancy_check: vision pass complete
     verifying --> ready_for_review: no high-risk fields; vision skipped
     discrepancy_check --> ready_for_review: cross-source + chart-existing checks complete
@@ -543,7 +555,7 @@ stateDiagram-v2
 | Retention-class consistency | `document.retention_class` cannot change post-insert except `compliance ← clinical_record` upgrade (never downgrade); SUD-driven `compliance_42cfr_part2` is set at INSERT only and never mutated post-insert except via the M4 legal-hold workflow (D23) | service + M4 trigger denylist on column |
 | Patient binding stability | `document.patient_id` cannot change post-insert except via `patient.merged` cascade (always to `merged_into_id`) | service |
 | Form fill schema | `form_fill.render_payload` validates against `form_template_version.payload_schema` (TypeBox) | service at enqueue time |
-| Classifier confidence floor | `classified_page.confidence < 0.60` blocks human-confirmation = false (must be manually labelled) | service |
+| Classifier confidence floor | `classified_page.confidence < 0.75` (the single tenant-config `classifier_confidence_floor` default, F19) blocks human-confirmation = false (must be manually labelled) | service |
 | Extraction candidate source | every `extraction_candidate` MUST carry `source_page` AND `source_bounding_box` (architecture §10.6.3) | DB NOT NULL CHECK |
 | High-risk field bulk-approve block | `extraction_decision.part_of_bulk_approve = true` AND `extraction_candidate.risk_level = 'high'` REJECTED at insert | DB CHECK |
 | Source-view confirmation | `extraction_decision.decision IN ('approve','approve_with_edit')` AND `source_view_confirmed = false` REJECTED | service (route-layer) |
@@ -792,7 +804,7 @@ Phase 1:
 Phase 2:
 1. Install RLS via M1's generator: `SELECT wardenx_enable_rls('document', 'document_version', ...)` for every M22 table.
 2. Install audit triggers via M4's generator per §3.6 with denylist applied.
-3. GRANTs: `wardenx_app` has `SELECT, INSERT, UPDATE` on every M22 table and `DELETE` only on `document_tag` (tags are user-removable); soft-delete via status flip elsewhere.
+3. GRANTs: `wardenx_app` has `SELECT, INSERT, UPDATE` on every M22 table and `DELETE` only on `document_tag` (tags are user-removable). There is **no user soft-delete** of documents or versions (F19/§2.2.2): `document_version` is append-only, "superseding" flips `document.active_version_id` (service-layer), and erroneous-upload removal routes through the M4 destruction path (`status → destroyed_tombstone`).
 4. Install partition-create function calls for first 3 future months per M1's partition manager.
 5. Create the `tenant_template_overlay` golden-template-diff CHECK helper function (validates overlay is a strict superset of platform-floor mandatory fields — D16).
 
@@ -843,6 +855,11 @@ export const formFillStatus = pgEnum('form_fill_status', [
 export const intakeBatchStatus = pgEnum('intake_batch_status', [
   'uploaded', 'docling_complete', 'classifier_complete', 'extraction_complete',
   'in_review', 'writeback_complete', 'discarded',
+  // Multi-doc fax-split states (D10 / W3) — a multi-doc-detected batch is either split into
+  // children or explicitly resolved as a single document.
+  'split_into_children', 'split_resolved_no_split',
+  // Terminal failure of the Docling layout-extraction stage (W1 AC, §8.10 degraded-mode).
+  'parse_failed',
 ])
 
 export const classifiedPageDocType = pgEnum('classified_page_doc_type', [
@@ -853,6 +870,10 @@ export const classifiedPageDocType = pgEnum('classified_page_doc_type', [
 export const extractionJobStatus = pgEnum('extraction_job_status', [
   'queued', 'extracting', 'verifying', 'discrepancy_check',
   'ready_for_review', 'in_review', 'committed', 'discarded', 'failed',
+  // M32 capability unavailable: a job parked because the DocLens seam is denied/circuit-open
+  // (§8.1 DoS row, §8.10 degraded-mode, §9.3 deny-stub test) — distinct from 'failed' in that
+  // it auto-resumes when capability returns; 'stalled' is the ops-paged variant for a mid-pipeline drop.
+  'awaiting_capability', 'stalled',
 ])
 
 export const extractionCandidateRiskLevel = pgEnum('extraction_candidate_risk_level', [
@@ -900,7 +921,7 @@ export const documentAccessPurpose = pgEnum('document_access_purpose', [
 
 ```typescript
 // db/schema/documents.ts
-import { pgTable, uuid, text, timestamp, boolean, index, uniqueIndex, check } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, timestamp, boolean, jsonb, index, uniqueIndex, check } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { organization } from '@wardenx/db/schema'
 import {
@@ -919,8 +940,10 @@ export const documents = pgTable('document', {
   title: text('title').notNull(),
   patientFacing: boolean('patient_facing').notNull().default(false),
   attachToDisclosures: boolean('attach_to_disclosures').notNull().default(false),
+  disclosureRestricted: boolean('disclosure_restricted').notNull().default(false), // set true when a media_release consent is revoked and prior-rendered media is located (m22.media.disclosure_restricted, §4.10)
+  metadata: jsonb('metadata'),                                    // non-PHI render/integrity metadata: { sudRedacted?, observationId?, ... } (D20/D23, W-M22-23)
   status: documentStatus('status').notNull().default('active'),
-  activeVersionId: uuid('active_version_id'),                     // populated immediately after v1 insert
+  activeVersionId: uuid('active_version_id'),                     // populated immediately after v1 insert; the single source of "current version" (there is no per-version is_current flag)
   createdByMembershipId: uuid('created_by_membership_id').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -944,6 +967,7 @@ export const documentVersions = pgTable('document_version', {
   mimeType: text('mime_type').notNull(),
   byteSize: text('byte_size').notNull(),                          // bigint stored as text per M1 convention
   sha256Hex: text('sha256_hex').notNull(),
+  sha256VerifiedAt: timestamp('sha256_verified_at', { withTimezone: true }), // last integrity re-hash pass (RenderedDocumentProvider.getVersionWithIntegrityCheck, §8.1)
   bytePayloadCipher: text('byte_payload_cipher'),                  // DEK-encrypted PHI metadata if version contains in-row PHI
   uploadedByMembershipId: uuid('uploaded_by_membership_id'),       // nullable for system_render
   uploadedByKind: text('uploaded_by_kind').notNull(),              // user|system_render|api|portal|fax
@@ -1099,6 +1123,8 @@ export const intakeUploadBatches = pgTable('intake_upload_batch', {
   sourceChannel: text('source_channel').notNull(),                    // fax|email_ingest|portal_upload|admin_upload|api
   sourceMetadata: text('source_metadata'),
   status: intakeBatchStatus('status').notNull().default('uploaded'),
+  childBatchIds: jsonb('child_batch_ids'),                             // uuid[] of child batches when status='split_into_children' (D10 / W3)
+  auditMetadata: jsonb('audit_metadata'),                             // AI split-suggestion record retained for ML feedback even when overridden (W3 AC)
   uploadedByMembershipId: uuid('uploaded_by_membership_id').notNull(),
   correlationId: text('correlation_id').notNull(),
   uploadedAt: timestamp('uploaded_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1123,6 +1149,7 @@ export const classifiedPages = pgTable('classified_page', {
   humanConfirmedByMembershipId: uuid('human_confirmed_by_membership_id'),
   humanConfirmedAt: timestamp('human_confirmed_at', { withTimezone: true }),
   classifierModelVersionRef: text('classifier_model_version_ref').notNull(),
+  errorClass: text('error_class'),                                 // per-page processing-failure class, e.g. 'docling_parse_failed' (W1 AC); null on success
   classifiedAt: timestamp('classified_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   byBatch: index('classified_page_batch_idx').on(t.intakeUploadBatchId, t.pageRangeStart),
@@ -1167,6 +1194,7 @@ export const extractionCandidates = pgTable('extraction_candidate', {
   sourceBoundingBox: jsonb('source_bounding_box').notNull(),
   visionVerified: boolean('vision_verified').notNull().default(false),
   visionDisagreement: text('vision_disagreement'),
+  sudDetected: boolean('sud_detected').notNull().default(false),       // SUD-content flag set by classifier/extractor; drives m22.intake.sud_detected (D8 / W4)
   extractedAt: timestamp('extracted_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   byJobField: index('extraction_candidate_job_field_idx').on(t.extractionJobId, t.fieldPath),
@@ -1361,7 +1389,9 @@ The destruction-cert workflow (M4 §7) issues the cert, the platform compliance 
 
 ### 3.8 Schema Additions — Migration `0037_m22_v03_new_form_templates.sql` (seed only)
 
-M22 adds no new tables, columns, or indexes for the lab-results and external-source-discharge work. The renderer's auto-tagging (D23) writes to the existing `document.retention_class` column using the M4 enum value `compliance_42cfr_part2` (added by M4's migration `0035`). Migration `0037` seeds three new form templates and their v1 versions:
+M22 adds no new tables for the lab-results and external-source-discharge work. The renderer's auto-tagging (D23) writes to the existing `document.retention_class` column using the M4 enum value `compliance_42cfr_part2` (added by M4's migration `0035`). Migration `0037` seeds three new form templates and their v1 versions:
+
+> **M22-F19 / ADR-0022 schema reconciliation.** The §3.3 enums and columns above are the canonical vocabulary. The F19 sweep folded workflow-drifted columns back into §3.3 (`document.disclosure_restricted`, `document.metadata`, `document_version.sha256_verified_at`, `intake_upload_batch.child_batch_ids`/`audit_metadata`, `classified_page.error_class`, `extraction_candidate.sud_detected`) and added the genuinely-required states (`intake_batch_status`: `split_into_children`, `split_resolved_no_split`, `parse_failed`; `extraction_job_status`: `awaiting_capability`, `stalled`). These ship in `0022_documents.sql` Phase 1, not in `0037`.
 
 ```sql
 -- Migration 0037_m22_v03_new_form_templates.sql
@@ -1811,23 +1841,33 @@ M22 contributes these keys to M3's permission catalog (`packages/auth/src/permis
 
 | Key | Default roles | Description |
 |---|---|---|
-| `documents.upload` | clinical_admin, intake_nurse, clinical_manager, all clinical disciplines | upload new document |
-| `documents.read` | clinical_*, compliance_officer, org_admin | read document metadata |
+| `documents.upload` | clinical_admin, intake_nurse, clinical_manager, all clinical disciplines | upload new document (covers direct chart attach) |
+| `documents.read` | clinical_*, compliance_officer, org_admin | read document metadata + list patient documents |
+| `documents.read_history` | clinical_admin, clinical_manager, compliance_officer, privacy_officer, rn_case_mgr (assigned), billing, qa | view full version history (incl. superseded versions) |
+| `documents.read_access_log` | org_admin, compliance_officer, privacy_officer, qa | view the per-document access log |
 | `documents.read_phi_content` | clinical_* (within caseload), compliance_officer, medical_director, org_admin | mint signed URL / download |
-| `documents.edit_metadata` | clinical_admin, clinical_manager, compliance_officer | edit title / tags / patient_facing |
+| `documents.edit_metadata` | clinical_admin, clinical_manager, compliance_officer, privacy_officer | edit title / tags / patient_facing (covers `tag`) |
+| `documents.attach_to_disclosures` | privacy_officer | mark `attach_to_disclosures=true` (Statement-of-Disagreement carry-through) |
 | `documents.export_phi_bundle` | clinical_admin, compliance_officer (with step-up) | §164.524 right-of-access bundle |
+| `documents.delete` | org_admin, compliance_officer (legal_hold-aware; routes to the M4 destruction path → `destroyed_tombstone`) | request destruction of an erroneous upload (no user soft-delete; F19/§2.2.2) |
 | `documents.read_templates` | all roles | read template catalog |
+| `documents.preview_template` | platform_admin, compliance_officer, qa | preview-render any platform-floor template |
 | `documents.publish_template` | platform_admin | publish new template version (platform-only) |
 | `documents.manage_overlay` | org_admin (with step-up) | publish tenant overlay |
 | `documents.admin_read_fills` | platform_admin | inspect form_fill records |
 | `documents.admin_retry_render` | platform_admin (with step-up) | manually retry failed render |
-| `intake.upload` | intake_nurse, clinical_admin, intake_supervisor | upload intake batch |
+| `intake.upload` | intake_nurse, clinical_admin, intake_supervisor, rn_case_mgr | upload intake batch |
 | `intake.read` | intake_nurse, clinical_*, compliance_officer | read intake batch state |
+| `intake.reclassify` | clinical_admin, rn_case_mgr | trigger reclassification of a batch |
 | `intake.confirm_classification` | intake_nurse, clinical_admin | human-confirm classifier results |
-| `intake.review` | rn (any), intake_nurse, clinical_admin, clinical_manager, np | open + work review session |
+| `intake.split_batch` | clinical_admin, rn_case_mgr | split a multi-doc fax batch (W3/D10) |
+| `intake.review` | rn (any), intake_nurse, clinical_admin, clinical_manager, np | open + work review session (covers approve low/high-risk, reject, discrepancy resolve) |
 | `intake.discard_batch` | clinical_admin, intake_supervisor | mark batch non-actionable |
+| `extraction.read_provenance` | org_admin, compliance_officer, privacy_officer, qa, rn_case_mgr (own patients) | query extraction provenance for any chart row |
 
 > **D-AUTHZ-01.** DocLens reviewer eligibility: only roles with a documented clinical scope of practice for the field's risk level may approve high-risk fields. Aides cannot review medication candidates. Volunteers cannot review any clinical fields. Enforced by the `extraction_reviewer_eligible` ABAC predicate (§4.7).
+
+> **Single permission catalog (M22-F16 / ADR-0022).** §4.6 is the **sole** permission registry for M22; the dot-key form above is canonical. Review actions (approve low-risk, approve high-risk per-field, reject, resolve-discrepancy-with-overwrite) all map to the single route permission `intake.review`; the **risk-level eligibility** distinction (RN-or-above for high-risk medication/allergy/dx fields) is an ABAC concern enforced by `extraction_reviewer_eligible` (§4.7), not a separate permission key. Tag add/remove maps to `documents.edit_metadata` (the tag routes carry that key — §4.1). There is no user "soft-delete" permission: erroneous uploads are removed via the M4 destruction path under `documents.delete` (F19 soft-delete resolution / §2.2.2).
 
 ### 4.7 ABAC Predicates Registered with M3
 
@@ -1840,8 +1880,10 @@ M22 registers these predicates into M3's named-predicate registry (M3 §3.4). Ea
 | `extraction_high_risk_field_per_field_only` | At bulk-approve time, no candidate in scope has `risk_level='high'`; if any does, the predicate returns false and the route rejects with `422 HIGH_RISK_FIELD_BULK_DENIED` listing the offending candidates | `POST /api/v1/intake/reviews/:id/decisions:bulk-approve` |
 | `form_template_publish_authority` | The actor holds `documents.publish_template` AND is on the platform team (platform_admin role); tenant org_admin cannot publish a platform template version | `POST /api/v1/admin/form-templates/:key/versions` |
 | `tenant_template_overlay_edit_authority` | The actor holds `documents.manage_overlay` AND is org_admin for the target organization; step-up auth verified ≤5 min stale | `PUT /api/v1/tenant-overlays/:templateKey` |
+| `legal_hold_aware` | A document-mutating action (metadata edit, tag, `documents.delete`) is denied if any active `document_legal_hold` row exists for the document, regardless of RBAC grant | every `documents.edit_metadata` + `documents.delete` route |
+| `document_within_admission_window` | Post-discharge documents (bereavement letters, post-discharge Statement-of-Disagreement, post-discharge survey) remain readable by care-team members for 13 months past discharge; after that, only `compliance_officer`/`qa`/scope-bypass roles may read | `documents.read` / `documents.read_phi_content` on post-discharge `bereavement`-class and discharge-associated documents |
 
-The `document_owner_or_caseload` predicate composes M5's `caseload_or_scope` predicate via M3's named-predicate-composition mechanism (M3 D5); it does not duplicate caseload-lookup code.
+The `document_owner_or_caseload` predicate composes M5's `caseload_or_scope` predicate via M3's named-predicate-composition mechanism (M3 D5); it does not duplicate caseload-lookup code. The `extraction_reviewer_eligible` predicate subsumes the former licensure-floor check (the RN-or-above requirement for high-risk medication/allergy/dx fields lives here, not in a separate `high_risk_capability_floor` predicate — M22-F16/F19 / ADR-0022). The overlay loosening check is the D16 golden-template-diff validator (service + publish-time), gated on the `tenant_template_overlay_edit_authority` predicate.
 
 ### 4.8 BullMQ Queue Catalog
 
@@ -1897,12 +1939,19 @@ Every state transition publishes one event in the same transaction as the state 
 | `m22.document.legal_hold_applied` | info | M4 hold event consumed | `{documentId, legalHoldEventId}` |
 | `m22.document.legal_hold_released` | info | M4 release event consumed | `{documentId, legalHoldEventId}` |
 | `m22.document.tombstoned` | warn | destruction-cert eraseFn ran | `{documentId, certificateId, tombstonedAt}` |
+| `m22.document.deferred` | info | forward-seam deny-stub (M23 ABN / M39 consent) received a render event before its module landed; logs the deferral, renders nothing (C8 / §"Forward-seam deny-stubs") | `{aggregateType, aggregateId, organizationId, deferredConsumer, reason}` (consumer: M33/observability) |
+| `m22.eraser.legal_hold_skip` | warn | eraser skipped a legally-held document during a destruction-cert run (W14 / D12) | `{documentId, certificateId, legalHoldEventId}` (consumer: M4 audit) |
+| `m22.eraser.completed` | info | eraser finished tombstoning a non-held document (W14 / D12) | `{documentId, certificateId, tombstonedAt}` (consumer: M4 audit) |
 | `m22.document.statement_of_disagreement_published` | info | M5 amendment-denied → SoD rendered | `{documentId, patientId, originalAmendmentRequestId}` |
 | `m22.intake.uploaded` | info | `intake_upload_batch` inserted | `{intakeBatchId, organizationId, patientId?, sourceChannel, pages}` |
 | `m22.intake.docling_complete` | info | docling-worker pass complete | `{intakeBatchId, pageCount}` |
 | `m22.intake.page_classified` | info | classified_page inserted | `{intakeBatchId, classifiedPageId, documentType, confidence}` |
 | `m22.intake.classification_confirmed` | info | human confirmed split | `{intakeBatchId, confirmedByMembershipId, pagesClassified}` |
+| `m22.intake.multidoc_detected` | warn | classifier detects >1 document-type boundary in a batch (D10 / W3) | `{intakeBatchId, organizationId, suggestedBoundaries, pageCount}` (consumer: M36 intake-staff worklist) |
+| `m22.intake.split_completed` | info | parent batch split into children; `status='split_into_children'` (D10 / W3) | `{intakeBatchId, organizationId, childBatchIds}` (consumer: M33; child batches enter the normal pipeline) |
 | `m22.intake.sud_detected` | warn | any candidate flagged SUD by extractor/classifier | `{intakeBatchId, patientId, candidateCount, suggestedSudKind}` |
+| `m22.intake.sud_confirmed` | warn | reviewer confirms SUD status in the review UI (W4) | `{intakeBatchId, patientId, confirmedByMembershipId}` (consumer: M5 promotes the interim PrivacyFlag to `confirmed`) |
+| `m22.intake.sud_rejected` | info | reviewer marks SUD detection a false positive (W4) | `{intakeBatchId, patientId, rejectedByMembershipId}` (consumer: M5 retires the interim PrivacyFlag) |
 | `m22.intake.completed` | info | `intake_upload_batch` reaches terminal `writeback_complete` (all classified documents stored + any chart writebacks committed) | `{intakeBatchId, organizationId, patientId?, documentCount, completedAt}` (consumer: M31 portal intake-status surface) |
 | `m22.intake.rejected` | warn | `intake_upload_batch` reaches terminal `discarded` (virus/quarantine, unprocessable, or operator-rejected upload) | `{intakeBatchId, organizationId, patientId?, reason, rejectedAt}` (consumer: M31 portal intake-status surface) |
 | `m22.extraction.job_ready_for_review` | info | extraction_job transitions to `ready_for_review` | `{intakeBatchId, extractionJobId, documentType, candidatesCount, highRiskCount}` |
@@ -2339,46 +2388,48 @@ All access to M22 surfaces is gated by RBAC role + ABAC predicate combinations r
 
 ### 6.1 Role × Action Matrix
 
+> **Single permission catalog (M22-F16 / ADR-0022).** This matrix is regenerated in the canonical §4.6 dot-key form. There is no parallel colon-key catalog. Risk-level eligibility for high-risk-field approval is enforced by the `extraction_reviewer_eligible` ABAC predicate (§4.7), not by a separate permission key — so low-risk and high-risk approval, rejection, and discrepancy-overwrite all share the single route key `intake.review`.
+
 | Action | Permission key | Admin | Compliance Officer | Privacy Officer | RN Case Mgr | Field RN | Aide | MSW / Chaplain | Volunteer | Billing | QA | Patient/Family (Portal) |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| List patient documents | `document:read` | ✓ | ✓ | ✓ | ✓ (assigned patients) | ✓ (assigned patients) | ✓ (assigned, limited types) | ✓ (assigned) | ✗ | ✓ | ✓ | ✓ (only documents flagged disclosed) |
-| View document (signed URL) | `document:read` | ✓ | ✓ | ✓ | ✓ (assigned) | ✓ (assigned) | ✓ (assigned, limited types) | ✓ (assigned) | ✗ | ✓ | ✓ | ✓ (watermarked URL, 60min cap) |
-| View version history | `document:read_history` | ✓ | ✓ | ✓ | ✓ (assigned) | ✗ | ✗ | ✗ | ✗ | ✓ | ✓ | ✗ |
-| View access log for a document | `document:read_access_log` | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ |
-| Upload non-intake document (direct attach to chart) | `document:upload_direct` | ✓ | ✗ | ✗ | ✓ (assigned) | ✓ (assigned) | ✓ (limited types: wound photo, comfort kit receipt) | ✓ (assigned) | ✗ | ✗ | ✗ | ✗ |
-| Upload intake batch (paper-payer-intake-fax flow) | `intake:upload` | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Trigger reclassification of a batch | `intake:reclassify` | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Approve extraction (low-risk fields, bulk) | `intake:approve_low_risk` | ✗ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Approve extraction (high-risk fields, per-field only — D4) | `intake:approve_high_risk` | ✗ | ✗ | ✗ | ✓ (RN reviewer required for medication, allergy, dx) | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Reject extraction | `intake:reject_extraction` | ✗ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Resolve discrepancy with chart-overwrite | `intake:resolve_discrepancy_overwrite` | ✗ | ✗ | ✗ | ✓ (with explicit confirmation dialog) | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Split multi-doc fax batch | `intake:split_batch` | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Tag a document | `document:tag` | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ |
-| Mark document `attach_to_disclosures=true` | `document:attach_to_disclosures` | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| List patient documents | `documents.read` | ✓ | ✓ | ✓ | ✓ (assigned patients) | ✓ (assigned patients) | ✓ (assigned, limited types) | ✓ (assigned) | ✗ | ✓ | ✓ | ✓ (only documents flagged disclosed) |
+| View document (signed URL) | `documents.read_phi_content` | ✓ | ✓ | ✓ | ✓ (assigned) | ✓ (assigned) | ✓ (assigned, limited types) | ✓ (assigned) | ✗ | ✓ | ✓ | ✓ (watermarked URL, 60min cap) |
+| View version history | `documents.read_history` | ✓ | ✓ | ✓ | ✓ (assigned) | ✗ | ✗ | ✗ | ✗ | ✓ | ✓ | ✗ |
+| View access log for a document | `documents.read_access_log` | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ |
+| Upload non-intake document (direct attach to chart) | `documents.upload` | ✓ | ✗ | ✗ | ✓ (assigned) | ✓ (assigned) | ✓ (limited types: wound photo, comfort kit receipt) | ✓ (assigned) | ✗ | ✗ | ✗ | ✗ |
+| Upload intake batch (paper-payer-intake-fax flow) | `intake.upload` | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Trigger reclassification of a batch | `intake.reclassify` | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Approve extraction (low-risk fields, bulk) | `intake.review` | ✗ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Approve extraction (high-risk fields, per-field only — D4) | `intake.review` + `extraction_reviewer_eligible` (§4.7) | ✗ | ✗ | ✗ | ✓ (RN reviewer required for medication, allergy, dx) | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Reject extraction | `intake.review` | ✗ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Resolve discrepancy with chart-overwrite | `intake.review` | ✗ | ✗ | ✗ | ✓ (with explicit confirmation dialog) | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Split multi-doc fax batch | `intake.split_batch` | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Tag a document | `documents.edit_metadata` | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ |
+| Mark document `attach_to_disclosures=true` | `documents.attach_to_disclosures` | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Apply legal hold (write through to M22) | (driven by M4 event — no direct M22 permission) | — | — | — | — | — | — | — | — | — | — | — |
-| Soft-delete document | `document:soft_delete` | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Destroy an erroneous upload (→ M4 destruction path) | `documents.delete` | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Cryptographically shred (eraser pathway) | (driven by M4 destruction-cert event — no direct UI permission) | — | — | — | — | — | — | — | — | — | — | — |
-| List platform-floor templates | `form_template:read` | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ |
-| Publish tenant template overlay | `form_template:overlay_publish` | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Preview-render any template | `form_template:preview` | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ |
-| Query extraction provenance for any chart row | `extraction:read_provenance` | ✓ | ✓ | ✓ | ✓ (own patients) | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ |
+| List platform-floor templates | `documents.read_templates` | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ |
+| Publish tenant template overlay | `documents.manage_overlay` | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Preview-render any template | `documents.preview_template` | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ |
+| Query extraction provenance for any chart row | `extraction.read_provenance` | ✓ | ✓ | ✓ | ✓ (own patients) | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ |
 
 ### 6.2 ABAC Predicate Gates
 
-Beyond RBAC, the following ABAC predicates apply (registered in M3 named-predicate registry — D7):
+Beyond RBAC, the following ABAC predicates apply (all names resolve to the canonical §4.7 registry — M22-F16/F19 / ADR-0022):
 
-- **`assigned_to_patient`** — for every document-read action, the user must be on the patient's care team (consumed from M5 `PatientCareTeamProvider`) OR have an `intake_assignment` row for the in-flight batch, OR have admin/QA/compliance/billing role bypass.
-- **`document_within_admission_window`** — bereavement letters and post-discharge documents (statement of disagreement created after discharge, post-discharge survey) remain readable for 13 months past discharge for care-team members; after that, only compliance/QA can read.
-- **`legal_hold_aware`** — write actions (`soft_delete`, `tag`) check `document_legal_hold` table and deny if any active hold exists, regardless of permission grant.
-- **`high_risk_capability_floor`** — `intake:approve_high_risk` requires user has RN-or-above licensure stored in M2 user-attribute (`user.licensure.type ∈ {RN, NP, PA, MD, DO}`); platform-floor cannot be loosened.
-- **`overlay_does_not_loosen`** — `form_template:overlay_publish` evaluated against the golden-template-diff validator at publish time; overlay rejected if any platform-floor required field is dropped, any platform-floor field-format constraint is broadened, or any platform-required watermark is removed.
+- **`document_owner_or_caseload`** (§4.7) — for every document-read action, the user must be on the patient's care team (composes M5's `caseload_or_scope` predicate) OR have an in-flight intake-batch assignment, OR hold a scope-bypass role (compliance_officer, medical_director, survey_auditor / admin / QA). Applied to `documents.read` and `documents.read_phi_content`.
+- **`document_within_admission_window`** (§4.7) — bereavement letters and post-discharge documents (statement of disagreement created after discharge, post-discharge survey) remain readable for 13 months past discharge for care-team members; after that, only compliance/QA can read.
+- **`legal_hold_aware`** (§4.7) — write actions (`documents.edit_metadata`, `documents.delete`) check `document_legal_hold` table and deny if any active hold exists, regardless of permission grant.
+- **`extraction_reviewer_eligible`** (§4.7) — high-risk-field approval (`intake.review` on a `risk_level='high'` candidate) requires RN-or-above licensure stored in M2 user-attribute (`user.licensure.type ∈ {RN, NP, PA, MD, DO}`); this subsumes the former `high_risk_capability_floor` check; platform-floor cannot be loosened.
+- **`tenant_template_overlay_edit_authority`** (§4.7) + D16 golden-template-diff validator — `documents.manage_overlay` is gated on the authority predicate; the overlay is additionally evaluated against the golden-template-diff validator at publish time and rejected if any platform-floor required field is dropped, any field-format constraint is broadened, or any platform-required watermark is removed.
 
 ### 6.3 Negative Tests (Sample — full coverage in §9)
 
-- A field RN attempting `intake:approve_high_risk` on a medication-order extraction → denied with reason `high_risk_capability_floor: licensure RN required (actual: LPN)`. NOTE: an RN reviewer is required even at the RN-or-above tier; LPNs are not eligible. The deny event is logged to M4 with the policy decision payload.
+- A field RN (LPN licensure) attempting high-risk approval (`intake.review` on a `risk_level='high'` medication candidate) → denied by `extraction_reviewer_eligible` with reason `licensure RN required (actual: LPN)`. NOTE: an RN reviewer is required even at the RN-or-above tier; LPNs are not eligible. The deny event is logged to M4 with the policy decision payload.
 - A clinician without assignment to patient X attempts to read X's documents → RLS strips rows server-side; UI shows the empty state, never the deny banner (RLS is a silent filter, not a permission error).
-- A tenant admin publishes an overlay that removes the "physician signature block" from the F2F template → `overlay_does_not_loosen` rejects with field-level diff in the error payload; no rows written.
-- A compliance officer attempts to delete a document under legal hold → `legal_hold_aware` blocks; UI shows the legal-hold banner with hold metadata.
+- A tenant admin publishes an overlay that removes the "physician signature block" from the F2F template → the D16 golden-template-diff validator (under `tenant_template_overlay_edit_authority`) rejects with field-level diff in the error payload; no rows written.
+- A compliance officer attempts to destroy (`documents.delete`) a document under legal hold → `legal_hold_aware` blocks; UI shows the legal-hold banner with hold metadata.
 
 -----
 ## 7. Workflow Acceptance Criteria
@@ -2389,15 +2440,15 @@ Each workflow lists actors, preconditions, the sequence of events, postcondition
 
 **Actors:** Intake staff (uploader); RN case manager (reviewer); ML worker (M32-backed, via DocLens seams).
 
-**Preconditions:** Patient exists in M5; uploader has `intake:upload` permission; tenant has DocLens feature flag enabled (M32 capability registered and not denied).
+**Preconditions:** Patient exists in M5; uploader has `intake.upload` permission; tenant has DocLens feature flag enabled (M32 capability registered and not denied).
 
 **Sequence:**
 
 1. Uploader navigates to `INTAKE.Queue`, selects a patient, drops a multi-page PDF (e.g., 18-page hospital discharge packet) into the upload zone.
 2. M22 creates `intake_upload_batch` (status=`uploaded`), writes the original PDF to MinIO under `tenant-{tenantId}/intake/{batchId}/original.pdf`, emits `m22.intake.uploaded` outbox event.
-3. `intake-docling-parse` queue worker calls `DoclingParser.parse` (M32 deny-stub initially returns deny; with capability registered, returns parsed page-by-page JSON + per-page images). Status → `parsed`.
-4. `intake-classify` worker calls `DoclingClassifier.classifyPages` for each page. Writes `classified_page` rows with predicted `documentType` and confidence. Pages with confidence < threshold (default 0.75) are flagged for human classification. Status → `classified`.
-5. `intake-extract` worker for each contiguous run of same-document-type pages creates an `extraction_job`; calls `DocLensExtractor.extract` for low-risk types and `DocLensVisionVerifier.verify` afterwards for HIGH-risk types. Writes `extraction_candidate` rows per field. Status → `extracted`.
+3. `docling-pass` queue worker calls `DoclingParser.parse` (M32 deny-stub initially returns deny; with capability registered, returns parsed page-by-page JSON + per-page images). Batch status → `docling_complete` (on terminal parse failure → `parse_failed`).
+4. `classifier-pass` worker calls `DoclingClassifier.classifyPages` for each page. Writes `classified_page` rows with predicted `documentType` and confidence. Pages with confidence < the `classifier_confidence_floor` threshold (single tenant-config constant, default 0.75 — §2.3) are flagged for human classification. Batch status → `classifier_complete`.
+5. `extraction-pass` worker for each contiguous run of same-document-type pages creates an `extraction_job`; calls `DocLensExtractor.extract` for low-risk types and `DocLensVisionVerifier.verify` afterwards for HIGH-risk types. Writes `extraction_candidate` rows per field. Batch status → `extraction_complete` (each `extraction_job` reaches `ready_for_review`).
 6. M22 computes discrepancies: for each candidate field that maps to an existing M5/M7/M9/M11/M12 chart value, fetches current value via reader seam, writes `extraction_discrepancy` row if values differ.
 7. M22 emits `m22.extraction.review_required` outbox event → M36 routes alert to the RN case manager assigned to the patient.
 8. Reviewer opens `INTAKE.ReviewSideBySide`, sees source-page image on left, per-field candidates on right with confidence chips and bounding-box overlays.
@@ -2436,7 +2487,7 @@ Each workflow lists actors, preconditions, the sequence of events, postcondition
 **Acceptance criteria:**
 
 - **GIVEN** a CTI signed event **WHEN** M22 renders **THEN** within p95=15s a rendered PDF is queryable via `RenderedDocumentProvider.getLatestVersion(M6:cti, ctiId)` and M6's CTI row references the M22 documentId/versionId.
-- **GIVEN** a rendering failure (template version missing, adapter crash) **WHEN** the worker retries 3 times **THEN** on terminal failure the document is created with `status='render_failed'`, M36 alerts the compliance officer, the source module's row is NOT linked, and the source module's downstream workflow (e.g., M6 CTI must reach `documented` state) is blocked until manual re-render.
+- **GIVEN** a rendering failure (template version missing, adapter crash) **WHEN** the worker retries 3 times **THEN** on terminal failure the `form_fill.status='failed'` (no `document` row is created), `m22.document.render_failed` is emitted, M36 alerts the compliance officer, the source module's row is NOT linked, and the source module's downstream workflow (e.g., M6 CTI must reach `documented` state) is blocked until manual re-render.
 - **GIVEN** an addendum on an encounter **WHEN** M8 emits `encounter.addendum_signed` **THEN** M22 creates a NEW `document_version` (not a new `document`); version chain is `v1, v1.addendum1`; both versions are independently retrievable; the addendum version contains the addendum block appended after the original.
 - **GIVEN** a tenant overlay that customizes the encounter PDF header colors **WHEN** the template is rendered **THEN** the overlay is applied; if the overlay attempts to remove the platform-required "for hospice use only" footer, the render fails fast with `overlay_loosens_platform_floor` (caught earlier at overlay publish time per W8).
 
@@ -2536,7 +2587,7 @@ Each workflow lists actors, preconditions, the sequence of events, postcondition
 
 ### 7.8 W8 — High-Risk Per-Field-Only Enforcement (D4)
 
-**Actors:** Server-side authorization on `intake:approve_high_risk` endpoint.
+**Actors:** Server-side authorization on the `intake.review` bulk-approve endpoint (`extraction_reviewer_eligible` + `extraction_high_risk_field_per_field_only` predicates, §4.7).
 
 **Sequence:**
 
@@ -2565,7 +2616,7 @@ Each workflow lists actors, preconditions, the sequence of events, postcondition
 **Acceptance criteria:**
 
 - **GIVEN** a document with 3 versions **WHEN** user previews v2 **THEN** access log row written; signed URL is valid for 5 minutes and 5 minutes only.
-- **GIVEN** a soft-deleted version **WHEN** queried via the standard reader **THEN** not returned (excluded by RLS) unless user has `document:read_history` + admin/compliance role.
+- **GIVEN** a superseded version (a later version replaced it via `active_version_id` flip; versions are append-only, never soft-deleted) **WHEN** queried via the standard reader **THEN** only the current version is returned; the full version history (including superseded versions) is returned only to a user holding `documents.read_history` + admin/compliance role.
 
 ### 7.10 W10 — Signed URL TTL (D11 — free-text PHI denylist applies to filename only)
 
@@ -2639,12 +2690,12 @@ Each workflow lists actors, preconditions, the sequence of events, postcondition
 1. M4 finalizes a destruction certificate for a patient or document set; emits `m4.destruction_cert.signed`.
 2. M22 eraser (registered with M40 via `DataEraser` seam at boot) receives the destruction request scope (patientId or documentId list).
 3. For each affected document, the eraser checks `document_legal_hold` — if any active hold, the destruction skips that document and emits `m22.eraser.legal_hold_skip` for M4 audit.
-4. For each non-held document, the eraser: (a) overwrites the MinIO object with zeros (single-pass; MinIO encryption-at-rest provides the cryptographic shred), (b) marks `document.status='shredded'` and zeroes the `document_version.sha256` and `document_version.mime_type` fields, (c) writes a `document_access_log` row with `accessType='shred'`, (d) emits `m22.eraser.completed`. `compliance_42cfr_part2`-class documents are passed through to M4's `eraseAuditRows`, which refuses destruction during the patient's lifetime — the eraser skips them and reports the refusal.
+4. For each non-held document, the eraser: (a) overwrites the MinIO object with zeros (single-pass; MinIO encryption-at-rest provides the cryptographic shred), (b) marks `document.status='destroyed_tombstone'` (preserving the row + retention_class + aggregate refs for FK integrity per §2.2.1), nulls `document.active_version_id`, and cryptographically shreds the per-tenant DEK for the version cipher columns, (c) writes a `document_access_log` row with `access_kind='disclosure_export'` purpose-tagged for the destruction (audit capture), (d) emits `m22.document.tombstoned` and `m22.eraser.completed`. `compliance_42cfr_part2`-class documents are passed through to M4's `eraseAuditRows`, which refuses destruction during the patient's lifetime — the eraser skips them and reports the refusal.
 
 **Acceptance criteria:**
 
-- **GIVEN** a destruction certificate covering 100 documents, 3 of which are under legal hold **WHEN** eraser runs **THEN** 97 are shredded; 3 are reported in `m22.eraser.legal_hold_skip` event; M4 audits both outcomes.
-- **GIVEN** a shredded document **WHEN** a portal reader attempts to fetch **THEN** 404 with `errorCode='document_shredded'`; the access attempt is logged.
+- **GIVEN** a destruction certificate covering 100 documents, 3 of which are under legal hold **WHEN** eraser runs **THEN** 97 are tombstoned (`status='destroyed_tombstone'`); 3 are reported in `m22.eraser.legal_hold_skip` event; M4 audits both outcomes.
+- **GIVEN** a tombstoned document (`status='destroyed_tombstone'`) **WHEN** a portal reader attempts to fetch **THEN** 404 with `errorCode='document_destroyed'`; the access attempt is logged.
 
 ### 7.15 W-M22-22 — Lab results PDF rendered with back-ref
 
@@ -2720,7 +2771,7 @@ Each workflow lists actors, preconditions, the sequence of events, postcondition
 |---|---|---|
 | **Spoofing** — actor X reads document of patient not assigned to them | API call with crafted documentId | RLS strips rows where patient is outside care-team scope; ABAC `assigned_to_patient` predicate enforced at route layer; access_log captures every attempt |
 | **Spoofing** — fake outbox event "M6 CTI signed" triggers render of fraudulent CTI | Direct write to outbox table or upstream event injection | Outbox writes are owned by source modules only (RLS + ownedTables boundary); M22 consumer validates event payload signature when M1 envelope signing is enabled; event-replay invariant enforced via `(eventId, m22ConsumerName)` dedup |
-| **Tampering** — modify a document_version after the fact | Direct DB write | `document_version` table has UPDATE trigger that rejects all updates except `status`, `is_current`, `sha256_verified_at` columns; full audit captured via M4 |
+| **Tampering** — modify a document_version after the fact | Direct DB write | `document_version` is append-only; the UPDATE trigger rejects all updates except `sha256_verified_at` (integrity re-hash timestamp); "current version" is the `document.active_version_id` pointer, not a per-version flag; full audit captured via M4 |
 | **Tampering** — modify a rendered PDF in MinIO | Direct S3 client access | SHA256 stored at write time; `RenderedDocumentProvider.getVersionWithIntegrityCheck` re-hashes on read; mismatch raises `integrity_violation` alert |
 | **Repudiation** — clinician denies approving an extraction | Claim of unauthorized session | Every `extraction_decision` row carries the user ID, session ID, IP, user-agent fingerprint, and overwrite-confirmation token where applicable; M4 audit captures the policy decision payload |
 | **Information Disclosure** — signed URL leaked via screenshot/share | User-shared URL | TTL ≤ 5min (non-portal) / ≤ 60min (portal); portal URLs are watermarked with user identity on every page; access log captures every URL-redemption; M5 disclosure-tracking flow records the consent under which the URL was generated |
@@ -2728,9 +2779,9 @@ Each workflow lists actors, preconditions, the sequence of events, postcondition
 | **Information Disclosure** — SUD plaintext leaks via the rendered lab-results PDF | Cached/exported/printed PDF | The renderer NEVER writes SUD-class observation values into the PDF binary (D20); a PDF-binary-grep test asserts no plaintext SUD value in metadata or embedded font streams; the renderer never calls `SudUnredactProvider.exercise()` |
 | **Information Disclosure** — PHI leaked via OCR field cached on M32 ML worker | Worker disk persists between jobs | M32 capability contract requires per-job ephemeral disk (cleared on job completion); contract verified via M32 boot validation; M22 sets `phi_handling=ephemeral_only` on every job request |
 | **Information Disclosure** — log lines contain PHI (e.g. extracted SSN) | Standard error log | All log lines pass through the M1 PHI scrubber (D11 denylist); free-text content from extractions is never logged at info+ level; debug-level logs are off in production |
-| **Denial of Service** — flood of fax uploads exhausts MinIO | Single tenant abuse | Per-tenant rate limits on `intake:upload` (configured in M40 policy; default 100 batches/hour, 500MB/batch); MinIO bucket-level quota; queue backpressure |
+| **Denial of Service** — flood of fax uploads exhausts MinIO | Single tenant abuse | Per-tenant rate limits on `intake.upload` (configured in M40 policy; default 100 batches/hour, 500MB/batch); MinIO bucket-level quota; queue backpressure |
 | **Denial of Service** — extraction-job queue jam | M32 ML worker outage | Circuit breaker on DocLensExtractor seam; on open circuit, new extraction jobs queue with `status=awaiting_capability`; M36 alerts ops; reviewer UI shows "Extraction temporarily unavailable" instead of failing job rows |
-| **Elevation of Privilege** — non-RN approves HIGH-risk extraction | API call bypassing UI | Server-side `high_risk_capability_floor` ABAC predicate checks licensure; W8 prevents bulk; audit catches any drift |
+| **Elevation of Privilege** — non-RN approves HIGH-risk extraction | API call bypassing UI | Server-side `extraction_reviewer_eligible` ABAC predicate (§4.7) checks licensure; W8 prevents bulk; audit catches any drift |
 | **Elevation of Privilege** — tenant admin loosens platform-floor template | Tenant overlay publish | Golden-template-diff validator runs at publish time AND at every render (defense in depth); W7 covers |
 | **PHI breach via misrouted document** | Wrong patient ID on intake upload | M22 cross-checks the document's extracted patient identifiers (name, DOB) against the upload's claimed patientId at extraction completion; mismatch → `extraction_review.required_with_patient_mismatch_warning` |
 
@@ -2794,8 +2845,8 @@ Boot validation: a startup check enumerates all M22 outbox subscribers and verif
 
 Per D9 + D12 + D23:
 
-- **Retention classes used**: `clinical_record` (most rendered documents), `billing_record` (claims-related forms after M23 integration), `intake_artifact` (default disposition + 30 days if no writeback; promoted to `clinical_record` retention class if writeback occurred — promotion writes the new class to the row at commit time), `compliance_42cfr_part2` (SUD-class rendered documents per D23 — M4's `eraseAuditRows` refuses destruction during the patient's lifetime).
-- **`intake_artifact` class definition (D9)**: applies to `intake_upload_batch`, `classified_page`, `extraction_job`, `extraction_candidate`, `extraction_review`, `extraction_decision` rows; also applies to MinIO objects under `tenant-{tenantId}/intake/{batchId}/...` for unwritten-back batches. Default retention: 30 days post final disposition (`status='rejected'`, `status='split_resolved_no_split'`, or `status='committed'` with all candidates rejected). Tenants may tighten to as low as 7 days post-disposition. On promotion (any candidate accepted and committed), the entire batch upgrades to `clinical_record` retention class effective from that moment, and the disposition+30 timer is cancelled.
+- **Retention classes used**: `compliance` (signed clinical/regulatory forms, claims-related forms after M23 integration), `clinical_record` (most rendered documents), `bereavement` (13-month letters), `operational`, `intake_artifact` (default disposition + 30 days if no writeback; promoted to `clinical_record` retention class if writeback occurred — promotion writes the new class to the row at commit time), `compliance_42cfr_part2` (SUD-class rendered documents per D23 — M4's `eraseAuditRows` refuses destruction during the patient's lifetime). These are the only six classes in the `document_retention_class` enum (§3.3); there is no `billing_record` class.
+- **`intake_artifact` class definition (D9)**: applies to `intake_upload_batch`, `classified_page`, `extraction_job`, `extraction_candidate`, `extraction_review`, `extraction_decision` rows; also applies to MinIO objects under `tenant-{tenantId}/intake/{batchId}/...` for unwritten-back batches. Default retention: 30 days post final disposition (`status='discarded'`, `status='split_resolved_no_split'`, or `status='writeback_complete'` with all candidates rejected). Tenants may tighten to as low as 7 days post-disposition. On promotion (any candidate accepted and committed), the entire batch upgrades to `clinical_record` retention class effective from that moment, and the disposition+30 timer is cancelled.
 - **Eraser pathway** (W14): registered with M40 via `DataEraser` seam at M22 boot. Eraser receives a destruction scope (patientId, dateRange, or documentIdList) from M4, walks the affected rows, respects legal hold, and shreds. `compliance_42cfr_part2`-class documents are passed through to M4's `eraseAuditRows`, which refuses destruction during the patient's lifetime.
 - **Legal hold interaction**: any document under active `document_legal_hold` is skipped by eraser; the entire associated batch (if intake) is preserved including all child rows; M4 audit captures the skip with hold metadata.
 
@@ -2961,9 +3012,9 @@ These checks are codified in `scripts/m22-post-recovery-check.ts` and run automa
 - Given a chart value that is null/absent, no discrepancy (the extraction is additive, not an overwrite).
 
 **`packages/domain/documents/version-chain.test.ts`**
-- A new render creates a new document with version 1; subsequent re-render with same source creates version 2 with previous-version pointer.
-- Addendum source creates `version_kind='addendum'` not a new document.
-- Soft-delete on v2 makes v1 the current version again automatically.
+- A new render creates a new document with version 1; subsequent re-render with same source creates version 2 with `replaces_version_id` pointing at v1 and `document.active_version_id` flipped to v2.
+- An addendum source creates a new `document_version` (with `replaces_version_id` set), not a new document; versions are append-only (no `version_kind` column).
+- Superseding is a service-layer insert + `active_version_id` flip — versions are never soft-deleted; the prior version stays readable in history.
 
 **`apps/backend/src/modules/22-documents/policies/overlay-diff.test.ts`** (D16 validator)
 - Overlay that drops a required field → rejected with field-level error.
@@ -3006,7 +3057,7 @@ These checks are codified in `scripts/m22-post-recovery-check.ts` and run automa
 - Replay the same `m6.cti.signed` event twice. Verify only one document_version is created; the second delivery is no-op via `(eventId, m22ConsumerName)` dedup.
 
 **Eraser legal-hold skip**
-- Setup: 10 documents in tenant A, 3 with active legal_hold. Trigger eraser via fixture `m4.destruction_cert.signed`. Verify 7 documents shredded, 3 preserved, `m22.eraser.legal_hold_skip` event emitted with 3 documentIds.
+- Setup: 10 documents in tenant A, 3 with active legal_hold. Trigger eraser via fixture `m4.destruction_cert.signed`. Verify 7 documents tombstoned (`status='destroyed_tombstone'`), 3 preserved, `m22.eraser.legal_hold_skip` event emitted with 3 documentIds.
 
 **DocLens deny-stub when M32 capability unavailable**
 - Disable the `DocLensExtractor` capability in M32 capability registry. Trigger an extraction. Verify the job ends in `status='awaiting_capability'`, M36 alert is emitted, no further state changes occur until capability is re-enabled.
@@ -3145,13 +3196,13 @@ Ordered, PR-bounded task list. Each task is independently shippable behind a fea
 
 **D1. M32 AI capability deny-stub wiring** — All four capabilities (`DocLensClassifier`, `DocLensExtractor`, `DocLensVisionVerifier`, `DocLensSudDetector`) registered as deny-stubs in M32 capability registry. M22 calls succeed against the stubs with appropriate "capability_unavailable" returns until real M32 implementations land.
 
-**D2. Intake upload + Docling parse stage** — `POST /intake/batches` + worker `intake-docling-parse`. Uploads, batch creation, Docling parse via adapter. Status transitions `uploaded → parsing → parsed | parse_failed`.
+**D2. Intake upload + Docling parse stage** — `POST /api/v1/intake/uploads` + worker `docling-pass`. Uploads, batch creation, Docling parse via adapter. Status transitions `uploaded → docling_complete | parse_failed` (per the `intake_batch_status` enum, §3.3).
 
-**D3. Classification stage** — Worker `intake-classify`. Calls `DoclingClassifier.classifyPages`. Writes `classified_page` rows. Multi-doc detection (D10) fires `m22.intake.multidoc_detected`.
+**D3. Classification stage** — Worker `classifier-pass` (§4.8). Calls `DoclingClassifier.classifyPages`. Writes `classified_page` rows. Multi-doc detection (D10) fires `m22.intake.multidoc_detected`.
 
 **D4. Multi-doc fax splitter UI + API** — `INTAKE.FaxSplitter` screen + `POST /intake/batches/:id/split` route. Creates child batches with content copied from parent.
 
-**D5. Extraction stage** — Worker `intake-extract` (LOW-risk) + `intake-extract-high-risk` (HIGH-risk with vision verifier). Writes `extraction_candidate` rows. SUD detection runs in parallel (D8) and emits `m22.intake.sud_detected`.
+**D5. Extraction stage** — Worker `extraction-pass` (LOW-risk) + `vision-verification` (HIGH-risk vision verifier) per §4.8. Writes `extraction_candidate` rows. SUD detection runs in parallel (D8) and emits `m22.intake.sud_detected`.
 
 **D6. Discrepancy detection** — Worker `intake-discrepancy-check`. Uses reader seams from each target module to fetch current chart values. Writes `extraction_discrepancy` rows for divergent fields.
 
@@ -3218,10 +3269,10 @@ Each decision below was resolved during spec authoring. Format: question → dec
 ### D2 — Document + Version immutable-version shape
 
 - **Question:** How does versioning work? One row per version, or version inline?
-- **Decision:** **Two-table immutable-version shape.** `document` is the aggregate (one row per logical document — e.g., one CTI for one cert period), `document_version` is the immutable artifact (one row per rendered output, including addenda which are version variants with `version_kind='addendum'`). `document.current_version_id` is denormalized for fast reads but is recomputed by trigger on any `document_version` insert/soft-delete.
-- **Why:** Matches the version-chain pattern M11 orders use; lets the source module backref a `documentId` (stable across re-renders) while M22 can re-render without disturbing referential integrity. Soft-delete of a version cleanly demotes to the previous version.
-- **Rejected:** (i) Single-table with `version_number` column and natural-key uniqueness — addendum chains get awkward, current-version queries require window function on every read. (ii) Event-sourced version reconstruction — overkill, hard to query.
-- **Surfaces:** §3.3 schema; §7.9 version-history workflow.
+- **Decision:** **Two-table append-only-version shape.** `document` is the aggregate (one row per logical document — e.g., one CTI for one cert period), `document_version` is the immutable artifact (one row per rendered output; addenda are simply later versions whose `replaces_version_id` points at the version they amend — there is no `version_kind` column). `document_version` rows are **append-only and never soft-deleted** (§2.2.2). The current version is the pointer `document.active_version_id`; "superseding" a document is a service-layer insert of a new version + flip of `active_version_id` (the prior `document.status` becomes `superseded` for the two-PDF external-source case, D21). There is no per-version `is_current` flag — the `active_version_id` pointer is the single source of truth.
+- **Why:** Matches the version-chain pattern M11 orders use; lets the source module backref a `documentId` (stable across re-renders) while M22 can re-render without disturbing referential integrity. Append-only versions preserve the full audit / statement-of-disagreement carry-through. Removal of an erroneous upload is the M4 destruction path (`status → destroyed_tombstone`), never a user soft-delete (F19 / M22-F16/F19 / ADR-0022).
+- **Rejected:** (i) Single-table with `version_number` column and natural-key uniqueness — addendum chains get awkward, current-version queries require window function on every read. (ii) Event-sourced version reconstruction — overkill, hard to query. (iii) User soft-delete of versions — breaks the append-only integrity guarantee; superseding via `active_version_id` flip serves the same UX without mutation.
+- **Surfaces:** §2.2.2 lifecycle; §3.3 schema (`active_version_id`); §7.9 version-history workflow.
 
 ### D3 — Single canonical form-render handshake
 
@@ -3296,7 +3347,7 @@ Each decision below was resolved during spec authoring. Format: question → dec
 ### D12 — Cryptographic shred via eraser, legal-hold skip
 
 - **Question:** What's the M22 eraser implementation?
-- **Decision:** **Register with M40 via `DataEraser` seam at boot.** On `m4.destruction_cert.signed`, for each affected document: check `document_legal_hold` (skip if active hold, emit `m22.eraser.legal_hold_skip`); else overwrite the MinIO object with zeros (single-pass; MinIO SSE-KMS provides the cryptographic shred since the per-tenant KMS key can additionally be rotated), zero `document_version.sha256` and `mime_type`, mark `document.status='shredded'`, write a `document_access_log` entry, emit `m22.eraser.completed`.
+- **Decision:** **Register with M40 via `DataEraser` seam at boot.** On `m4.destruction_cert.signed`, for each affected document: check `document_legal_hold` (skip if active hold, emit `m22.eraser.legal_hold_skip`); else overwrite the MinIO object with zeros (single-pass; MinIO SSE-KMS provides the cryptographic shred since the per-tenant KMS key can additionally be rotated), cryptographically shred the per-tenant DEK for the version cipher columns, mark `document.status='destroyed_tombstone'` (row preserved for FK integrity per §2.2.1) and null `active_version_id`, write a `document_access_log` entry, emit `m22.document.tombstoned` + `m22.eraser.completed`.
 - **Why:** HIPAA-aligned destruction; cryptographic shred via key-rotation is more robust than overwrite alone but the overwrite step is belt-and-suspenders; legal-hold skip is non-negotiable.
 - **Rejected:** (i) Direct DELETE without zero-overwrite — relies entirely on KMS key rotation; brittle if rotation policy lapses. (ii) Eraser ignores legal hold — illegal.
 - **Surfaces:** §3.7 eraser registration; §7.14 W14; §8.6 retention.
@@ -3629,7 +3680,7 @@ This section tracks unresolved design questions for M22. Each item is an archite
 **Authors:** WardenX Architecture Team (Fabrice V. Adjam, FabWebDev)
 **Date:** 2026-06-13
 **Status:** Re-locked v0.5 (Phase-5 remediation; supersedes Locked v0.4)
-**Findings addressed in v0.5:** M22-F11 (SEC-051/052/038 bulk-export controls), M22-F14 (DR Tier 2 + DR/BCP posture), M22-F24 (ARCH-003 §20.B template sections — Open Questions, idempotency/pagination columns, queue DLQ/retry, §9.2 authoring artifact removed), M22-F25 (SEC-075/ARCH-274 mobile offline encrypted cache), M22-F27 (ARCH-263/SD-053 Idempotency-Key column + single-use URL correction). Out of scope for v0.5: F10 (encryption design), F16/F19 (permission-catalog/vocab reconciliation — Batch 5).
+**Findings addressed in v0.5:** M22-F11 (SEC-051/052/038 bulk-export controls), M22-F14 (DR Tier 2 + DR/BCP posture), M22-F24 (ARCH-003 §20.B template sections — Open Questions, idempotency/pagination columns, queue DLQ/retry, §9.2 authoring artifact removed), M22-F25 (SEC-075/ARCH-274 mobile offline encrypted cache), M22-F27 (ARCH-263/SD-053 Idempotency-Key column + single-use URL correction). Also reconciled (ADR-0022): M22-F16 (single dot-key permission catalog; §6 regenerated, colon-keys removed, §4.6/§4.7 registries completed) and M22-F19 (status/event/column single-truth — §3.3 enum + column additions, §4.10 event catalog completed, append-only soft-delete model corrected in D2/§2.2.2/§3.2, classifier threshold unified to 0.75). Out of scope: F10 (encryption design).
 **Decisions in force:** D1 through D23 (23 total)
 **Owned tables:** 17 (document, document_version, document_tag, document_access_log, document_legal_hold, form_template, form_template_version, tenant_template_overlay, form_fill, intake_upload_batch, classified_page, extraction_job, extraction_candidate, extraction_discrepancy, extraction_review, extraction_decision, extraction_provenance)
 **Form templates:** 31 (28 base + lab_results_pdf, discharge_summary_v2_external_source, discharge_summary_v2_external_source_cosigned)
