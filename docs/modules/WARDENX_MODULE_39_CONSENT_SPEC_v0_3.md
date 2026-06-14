@@ -2387,7 +2387,7 @@ Every box must be checked before M39 is promoted from `v0.2 Locked (spec)` to `v
 - [ ] §2.32 re-disclosure prohibition notice rendered on every `42_cfr_part_2_release` PDF (via the M22 template); M22 disclosure subsetter attaches the notice to any downstream disclosure under that consent.
 - [ ] §164.508(b)(5) revocation procedure described in the M22 platform-floor template body text; tenant overlay may extend but not remove.
 - [ ] §164.526 right-to-amend statement-of-disagreement attachment workflow operative (M5/M22 integration is unchanged; M39 audit captures the consent-evaluation context at disclosure time).
-- [ ] §164.528 accounting-of-disclosures feeder (`consent_eval_audit` via route 23) returns survey-acceptable narrative when queried by date range.
+- [ ] Route 23 consent-**decision** audit (`consent_eval_audit`) returns survey-acceptable narrative when queried by date range. (NOT the §164.528 accounting-of-disclosures feeder — that record is written by the disclosing module to M4's sink at egress per ADR-0013 / M39-F03.)
 - [ ] HHS post-death-no-transfer guidance honored — D13 cascade verified by Privacy Officer's manual walkthrough on a deceased-patient fixture.
 - [ ] Per-state advance-directive variants (POLST, MOLST, living-will, combined DPOA-AD, verbal-only) accepted by `ScopeDescriptor_AdvanceDirectiveAcknowledgment.jurisdiction_form_kind`; per-state addendum template-overlay extension point verified.
 - [ ] Notary requirement enforcement on DPOA records (when tenant overlay or jurisdiction requires) verified server-side; refused attempts audit-logged.
