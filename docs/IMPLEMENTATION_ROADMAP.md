@@ -10,15 +10,15 @@ sections into buildable waves. If a plan file ever conflicts with architecture �
 | Plan | Architecture ref | Theme | Modules | File |
 |---|---|---|---|---|
 | **Phase 0** | — (pre-build) | Buildable scaffold + fitness gates that actually run | 0 (infra) | [`PHASE_0_SCAFFOLD_PLAN.md`](./PHASE_0_SCAFFOLD_PLAN.md) |
-| **Phase 1 (v1)** | §20.A Phase 1 | Engrace go-live — minimum to operate a real hospice | 29¹ | [`PHASE_1_PLAN.md`](./PHASE_1_PLAN.md) |
+| **Phase 1 (v1)** | §20.A Phase 1 | Engrace go-live — minimum to operate a real hospice | 29 | [`PHASE_1_PLAN.md`](./PHASE_1_PLAN.md) |
 | **Phase 2 (v1.1)** | §20.A Phase 2 | AI activation + operational depth (competitive differentiation) | 10 new + 5 upgrades | [`PHASE_2_PLAN.md`](./PHASE_2_PLAN.md) |
 | **Phase 3 (v1.2)** | §20.A Phase 3 | Multi-tenant scale + inpatient | 2 new + 4 upgrades | [`PHASE_3_PLAN.md`](./PHASE_3_PLAN.md) |
 | **Phase 4 (v2)** | §20.A Phase 4 | State expansion, enterprise, certifications (future) | open | [`PHASE_4_PLAN.md`](./PHASE_4_PLAN.md) |
 
-¹ Architecture §20.A *prose* says "28 of 40"; its enumerated table lists **29**. The table is
-authoritative — see the flagged off-by-one in `PHASE_1_PLAN.md` §intro. New builds: Phase 1 = 29,
-Phase 2 = 10, Phase 3 = 1 (M37) → 40 modules, each built exactly once. Phase 2/3 "upgrades" re-open
-already-built modules to flip default-off flags; they are not new module counts.
+New builds: Phase 1 = 29, Phase 2 = 10, Phase 3 = 1 (M37) → 40 modules, each built exactly once.
+Phase 2/3 "upgrades" re-open already-built modules to flip default-off flags; they are not new module
+counts. (Architecture §20.A previously had an off-by-one — prose "28" vs 29 enumerated — now corrected
+in `WARDENX_ARCHITECTURE_v0_11.md`.)
 
 ## Rules that bind every phase
 

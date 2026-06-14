@@ -11,12 +11,11 @@ admit patients, document care, submit HOPE, prescribe, bill Medicare, and close 
 > optimization, EVV operational-only, FHIR read-only, SaaS in single-tenant mode, AI as a capability
 > shell. Anything Engrace can work around for ~6 months is Phase 2.
 >
-> ⚠️ **Source discrepancy (flagged, not resolved here):** architecture §20.A *prose* says "28 of 40,"
-> but its enumerated Phase-1 table lists **29** rows (the set above). The changelog note "25 → 28
-> (added 38, 39, 40)" suggests the prose count wasn't re-incremented after a later edit. The
-> enumerated table is the specific source of truth, so this plan uses **29**. Recommend a one-line
-> architecture-doc fix to reconcile the prose count. Phase 2 (10 new) + Phase 3 (1 new, M37) cover the
-> remaining 11 modules, so 29 + 10 + 1 = 40 with each module built exactly once.
+> **Count reconciliation (resolved):** architecture §20.A previously read "28 of 40" in prose while
+> its enumerated Phase-1 table listed **29** rows. That off-by-one has been corrected in
+> `WARDENX_ARCHITECTURE_v0_11.md` (§20.A count → 29; changelog → "26 → 29 (added 38, 39, 40)"). This
+> plan uses **29**. Phase 2 (10 new) + Phase 3 (1 new, M37) cover the remaining 11 modules, so
+> 29 + 10 + 1 = 40 with each module built exactly once.
 
 ---
 
