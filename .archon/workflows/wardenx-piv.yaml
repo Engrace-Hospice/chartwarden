@@ -44,6 +44,7 @@ nodes:
     loop:
       fresh_context: true
       until: ALL_TASKS_COMPLETE
+      max_iterations: 40
       prompt: |
         Implement the NEXT unstarted task from {{ inputs.plan }} — that task ONLY, nothing
         beyond its scope. Follow the cited spec section. Hard rules (the gates enforce them):
@@ -69,6 +70,7 @@ nodes:
     depends_on: [validate]
     loop:
       until: GATE_GREEN
+      max_iterations: 10
       prompt: |
         If `bun run build && bun run arch:fitness && bun run test` is red, fix the ROOT CAUSE
         (never weaken a gate or a fixture) and re-run it. Repeat until green.
