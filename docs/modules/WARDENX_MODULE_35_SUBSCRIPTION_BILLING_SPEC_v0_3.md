@@ -1210,7 +1210,32 @@ export const platformRetainedInvoice = pgTable('platform_retained_invoice', {
   paidAt: timestamp('paid_at', { withTimezone: true }),
 })
 
-// Companion: platform_retained_invoice_line (parallel structure for invoice_line rows)
+// Companion: platform_retained_invoice_line — line rows transferred from the tenant-scoped
+// `invoice_line` table alongside their parent invoice on tenant offboarding.
+// Platform-only. NOT tenant-scoped (no RLS organization_id policy).
+// 7-year IRS §6001 retention floor per D13. M35-F06 (ARCH-186/085/251).
+export const platformRetainedInvoiceLine = pgTable('platform_retained_invoice_line', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  originalInvoiceLineId: uuid('original_invoice_line_id').notNull(),       // PK from the source invoice_line row
+  retainedInvoiceId: uuid('retained_invoice_id').notNull()                 // parent platform_retained_invoice row
+    .references(() => platformRetainedInvoice.id, { onDelete: 'restrict' }),
+  originalInvoiceId: uuid('original_invoice_id').notNull(),                 // source invoice PK (forensic cross-ref)
+  originalOrganizationId: uuid('original_organization_id').notNull(),      // forensic traceability only
+  transferredAt: timestamp('transferred_at', { withTimezone: true }).notNull().defaultNow(),
+  retainUntil: timestamp('retain_until', { withTimezone: true }).notNull(), // original_transferred_at + 7 years
+  // ... all invoice_line payload columns copied verbatim (no .references() to tenant-scoped tables)
+  stripeLineId: text('stripe_line_id').notNull(),
+  kind: invoiceLineKind('kind').notNull(),
+  description: text('description').notNull(),
+  quantity: integer('quantity').notNull().default(1),
+  unitAmountCents: bigint('unit_amount_cents', { mode: 'number' }).notNull().default(0),
+  totalCents: bigint('total_cents', { mode: 'number' }).notNull().default(0),
+  periodStart: timestamp('period_start', { withTimezone: true }),
+  periodEnd: timestamp('period_end', { withTimezone: true }),
+  meterEventType: usageEventType('meter_event_type'),
+}, (t) => ({
+  retainedInvoiceIx: index('platform_retained_invoice_line_invoice_ix').on(t.retainedInvoiceId),
+}))
 ```
 
 > **Manifest ownedTables impact (flagged — do not edit the manifest here):** The two new
