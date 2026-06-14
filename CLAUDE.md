@@ -1,7 +1,14 @@
 # WardenX — Repository Guide
 
 Multi-tenant hospice EHR SaaS. This repo is the **specification corpus + architecture-fitness
-kit** (no application source yet). Use this guide to locate authoritative documents.
+kit + a buildable monorepo skeleton** (Phase 0 — structure + CI gates, no business logic yet).
+Use this guide to locate authoritative documents.
+
+> **Building/extending the code?** Start at [`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md)
+> (runbook + "how to add a module") and [`docs/PHASE_0_SCAFFOLD_PLAN.md`](./docs/PHASE_0_SCAFFOLD_PLAN.md).
+> One-time: `bun install && bun run build && bun run arch:fitness && bun run test` (all green).
+> The `apps/`+`packages/` tree is **generated from the manifest** via `bun run scaffold`; the
+> `arch:parity` gate keeps tree↔manifest 1:1. See [ADR-0027](./docs/adr/ADR-0027-phase-0-toolchain-and-scaffold.md).
 
 ## Document map
 

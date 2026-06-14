@@ -20,6 +20,62 @@ Phase 2/3 "upgrades" re-open already-built modules to flip default-off flags; th
 counts. (Architecture §20.A previously had an off-by-one — prose "28" vs 29 enumerated — now corrected
 in `WARDENX_ARCHITECTURE_v0_11.md`.)
 
+## Phase 1 wave plans (Archon task plans)
+
+`PHASE_1_PLAN.md` schedules Phase 1 into dependency-ordered waves; each wave is decomposed into
+**DoD-aligned, gate-bound tasks** an Archon workflow executes (see [`ARCHON_SETUP.md`](./ARCHON_SETUP.md)).
+Each task closes on a specific fitness gate; cross-module access is seam/outbox only. To **run** them,
+follow [`plans/ARCHON_RUN_TRACKER.md`](./plans/ARCHON_RUN_TRACKER.md) — the ordered command list + a
+status checklist across all three phases.
+
+| Wave | Modules | Plan |
+|---|---|---|
+| Slice | M1, M2 | [`plans/M01-M02_VERTICAL_SLICE_PLAN.md`](./plans/M01-M02_VERTICAL_SLICE_PLAN.md) (+ reusable per-module template) |
+| A | M3, M4 | [`plans/WAVE_A_M3-M4_PLAN.md`](./plans/WAVE_A_M3-M4_PLAN.md) |
+| B | M36, M38, M40 | [`plans/WAVE_B_M36-M38-M40_PLAN.md`](./plans/WAVE_B_M36-M38-M40_PLAN.md) |
+| C | M5, M39 | [`plans/WAVE_C_M5-M39_PLAN.md`](./plans/WAVE_C_M5-M39_PLAN.md) |
+| D | M6, M7, M8 | [`plans/WAVE_D_M6-M7-M8_PLAN.md`](./plans/WAVE_D_M6-M7-M8_PLAN.md) |
+| E | M9, M10, M11, M12, M13 | [`plans/WAVE_E_M9-M13_PLAN.md`](./plans/WAVE_E_M9-M13_PLAN.md) |
+| F | M14, M17, M18, M22 | [`plans/WAVE_F_M14-M17-M18-M22_PLAN.md`](./plans/WAVE_F_M14-M17-M18-M22_PLAN.md) |
+| G | M23, M25, M26 | [`plans/WAVE_G_M23-M25-M26_PLAN.md`](./plans/WAVE_G_M23-M25-M26_PLAN.md) |
+| H | M28, M29, M30, M32, M34 | [`plans/WAVE_H_M28-M29-M30-M32-M34_PLAN.md`](./plans/WAVE_H_M28-M29-M30-M32-M34_PLAN.md) |
+
+All 29 Phase-1 modules are covered exactly once. Build order across waves is the §20 dependency order;
+within a wave, the plan states the internal parallelism and which forward-seams/deny-stubs it opens or closes.
+
+### Phase 2 wave plans
+
+`PHASE_2_PLAN.md` = Part A (5 flag-activation upgrades to Phase-1 modules) + Part B (10 new modules).
+
+| Wave | Modules / upgrades | Plan |
+|---|---|---|
+| Part A | M32 `ai.full`, M8 `hearthnote.layer2`, M14 full IDG, M22 `documents.doclens`, M17 `route_optimization` | [`plans/PHASE_2A_UPGRADES_PLAN.md`](./plans/PHASE_2A_UPGRADES_PLAN.md) |
+| P2-1 | M15, M16, M21, M24 | [`plans/WAVE_P2-1_M15-M16-M21-M24_PLAN.md`](./plans/WAVE_P2-1_M15-M16-M21-M24_PLAN.md) |
+| P2-2 | M19, M20 | [`plans/WAVE_P2-2_M19-M20_PLAN.md`](./plans/WAVE_P2-2_M19-M20_PLAN.md) |
+| P2-3 | M27, M31, M33, M35 | [`plans/WAVE_P2-3_M27-M31-M33-M35_PLAN.md`](./plans/WAVE_P2-3_M27-M31-M33-M35_PLAN.md) |
+
+Phase 2 leaves only **M37 (Inpatient Unit)** for Phase 3, plus the Phase-3 flag activations. The
+adapter packages those specs reference (`iqies-client`, `evv-aggregators`, `triage-vendors`,
+`xero-client`, `gusto-client`) are now in their owners' manifest `codePaths` and fitness-governed
+([ADR-0028](./adr/ADR-0028-adapter-package-codepaths.md), applied — 36 packages). `@wardenx/mobile-offline`
+stays intentionally exempt; `x12-worker-client` (split M23/M25 ownership) is the one open item, tracked
+for a follow-up ADR.
+
+### Phase 3 wave plans
+
+`PHASE_3_PLAN.md` = 1 new build (M37) + 5 flag-activation upgrades (2 certification-gated).
+
+| Wave | Modules / upgrades | Plan |
+|---|---|---|
+| New build | M37 IPU (26 tables; raw CREATE TABLE → pgTable first) | [`plans/WAVE_P3_M37_IPU_PLAN.md`](./plans/WAVE_P3_M37_IPU_PLAN.md) |
+| Upgrades | M34 `saas.multi_tenant`, M30 `cahps`+`hvldl_hci`, M26 `cap.full_projection`, M28 `fhir.write`†, M12 `dosespot.epcs`† | [`plans/PHASE_3_UPGRADES_PLAN.md`](./plans/PHASE_3_UPGRADES_PLAN.md) |
+
+† external certification gate (FHIR conformance / DEA EPCS) — flag stays off until certified.
+
+**With Phase 3, all 40 modules are built and every feature flag activated.** All five phase decompositions
+(Phase 0 scaffold + Phases 1–3 task plans) are complete; Phase 4/v2 is state expansion + enterprise
+certification (`PHASE_4_PLAN.md`), not decomposed here.
+
 ## Rules that bind every phase
 
 1. **Dependency order is law (§20).** A module is *done* — "tests + UI + audit + RBAC" — before a
