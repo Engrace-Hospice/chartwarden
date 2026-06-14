@@ -1,7 +1,7 @@
 # WardenX Module Audit — Module 39: Consent & Authorization Management
 
 **Auditor:** Principal Architect / HIPAA Security Auditor / 42 CFR Part 2 reviewer / Medicare Hospice Compliance Auditor / Staff Engineer / QA Director (combined per AUDITOR_INSTRUCTIONS v1.0)
-**Spec under audit:** `WARDENX_MODULE_39_CONSENT_SPEC_v0_2.md` (Locked v0.2, 2026-06-10, ~230 KB, read in full)
+**Spec under audit:** `WARDENX_MODULE_39_CONSENT_SPEC_v0_3.md` (audited at Locked v0.2, 2026-06-10; renamed to v0.3 for the `m39.` event-naming migration)
 **Authoritative sources verified by Grep:** `WARDENX_ARCHITECTURE_v0_11.md`, `WARDENX_SECURITY_HARDENING_v0_2.md`, `ARCHITECTURE_25_15_FITNESS.md`, `module-manifest.ts`
 **Date:** 2026-06-11
 

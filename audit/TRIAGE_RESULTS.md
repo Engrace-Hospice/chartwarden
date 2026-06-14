@@ -1,0 +1,268 @@
+# WardenX — Open-Blockers Triage Results
+
+**Compiled:** 2026-06-13
+**Method:** One agent per module read the **current** spec text + the 23 ADRs and dispositioned every
+June-13 finding. Conservative rule: a finding is **RESOLVED-VERIFY only with hard current-spec evidence**;
+otherwise **OPEN**. Companion to `audit/OPEN_BLOCKERS_LEDGER.md`.
+
+---
+
+## 🔑 Headline finding — "changelog says fixed, body says not fixed"
+
+In the **majority** of modules, the spec carries a top-of-file *Remediation Changelog* / *re-lock
+banner* asserting each finding was fixed per its ADR — **but the spec body was not edited to match.**
+The agents repeatedly found: banner claims X resolved; the DDL / RLS SQL / enum / route table /
+`§13` manifest patch still contains the original defect.
+
+This means:
+- The **ADRs are correct and ratified**; the architecture-layer decisions are sound.
+- The **module spec bodies were largely not brought into conformance** — only a banner was prepended.
+- Therefore most "OPEN" items are **mechanical conformance edits** to make the body match its own
+  changelog + the governing ADR — not new design work.
+
+Representative (agent-verified):
+- **M22** — banner cites ADR-0020 etc., but §7.10 still embeds `{patientLastName}` in the signed-URL
+  filename (F02), §3.2 still grants UPDATE on append-only tables (F08), footer still says "v0.4."
+- **M34** — banner says `organization_id` added to 9 tables (F02) and `platform_ops` re-based on M3
+  RBAC (F03), but the Drizzle schema, RLS SQL, and ABAC predicate bodies are all unchanged.
+- **M36** — banner says `dependsOn` reverted to `[1,2,3,4]` (F01), but §12 checklist still lists
+  `+[5,6,11,22,40]` and §4.6.1 still imports from `@wardenx/foundation`.
+- **M39** — banner drops the invented manifest fields (F07) and the §164.528 claim (F03), but §13.1
+  still carries the invented fields and §12.9 still asserts the §164.528 feeder.
+
+---
+
+## Disposition tally (per module)
+
+| Module | Findings | RESOLVED-VERIFY | OPEN | STALE-FIX / DISPUTED |
+|---|--:|--:|--:|--:|
+| M02 | 19 | 6 | 13 | 0 |
+| M03 | 13 | 10 | 3 | 0 |
+| M07 | 15 | 2 | 13 | 0 |
+| M09 | 12 | 1 | 11 | 0 |
+| M10 | 20 | 3 | 17 | 0 |
+| M14 | 19 | 1 | 17 | 1 |
+| M15 | 12 | 4 | 8 | 0 |
+| M16 | 16 | 5 | 11 | 0 |
+| M18 | 17 | 1 | 16 | 0 |
+| M19 | 15 | 4 | 11 | 0 |
+| M20 | 17 | 2 | 15 | 0 |
+| M22 | 27 | 2 | 24 | 1 |
+| M26 | 20 | 0 | 19 | 1 |
+| M30 | 21 | 1 | 20 | 0 |
+| M34 | 17 | 1 | 16 | 0 |
+| M35 | 18 | 0 | 17 | 1 |
+| M36 | 14 | 4 | 10 | 0 |
+| M39 | 15 | 1 | 11 | 2 (1 stale + 1 trim) |
+| **TOTAL** | **307** | **≈48** | **≈252** | **≈7** |
+
+> M03 is the standout: foundation re-lock (step-up F01, role catalog F06, permission-key F07, seam
+> generalization F03) is genuinely implemented in the body — 10/13 resolved. M26/M35 are 0 resolved
+> (banner-only). The big regulatory specs (M22, M30, M10) are almost entirely OPEN.
+
+---
+
+## ⛔ STALE-FIX / DISPUTED — do NOT apply the audit's recommendation verbatim
+
+These would violate a ratified ADR or revert a correct value. Action is to **conform to the ADR**, not
+to apply the audit "Fix" column.
+
+| Finding | Why the audit fix is wrong | Correct action |
+|---|---|---|
+| **M26-F01** | ADR-0002 ratifies cap year = **Oct 1–Sep 30**; spec already conforms. Audit says "revert to Nov 1–Oct 31" → would reintroduce the pre-2017 bug. | None — RESOLVED. Verify ADR-0002 citation stays. |
+| **M22-F01** | Audit's proposed `dependsOn` edges create the 22→6→39→22 cycle ADR-0006 + ADR-0005 reject. | Keep manifest minimal (`[1,5]`); trim the spec's §13 proposed patch; cite ADR-0005/0006. |
+| **M35-F02** | Audit says "restore `34` to `dependsOn`"; ADR-0005 D1 + the manifest review confirm M34 is a seam consumer → **no edge**. | Leave `dependsOn` minimal; bind M34 via `TenantLifecycleProvider` seam + events. |
+| **M39-F02** | Audit says keep `[1,2,3,4,5,22]`; ADR-0006 **drops 22** (and 36/38/40). Spec §13.1 wrongly re-adds them. | Trim §13.1 to `[1,2,3,4,5]` per ADR-0006 (this is an OPEN edit, not "don't touch"). |
+| **M39-F07** | Audit fix aligns with ADR-0005 (drop invented manifest fields) — but the spec's §13.1 still carries them. | Trim §13.1 to `{id,name,codePaths,dependsOn,ownedTables}`; registrations live in boot.ts. |
+| **M14-F04** | **DISPUTED.** Agent marked STALE citing locked decision D15 (M14 owns notification composition). But **SD-017 (architecture) assigns this to M36**, and architecture wins over a module spec. | **Needs architecture-owner ruling**: either an ADR ratifying D15's cross-cutting role, or move the catalog to M36 per SD-017. Do not edit until ruled. |
+
+---
+
+## RESOLVED-VERIFY (already conformant — do not touch)
+
+- **M02:** F01, F02, F04, F07, F10, F11
+- **M03:** F01, F02, F03, F04, F05, F06, F07, F09, F10, F12
+- **M07:** F06, F08
+- **M09:** F03
+- **M10:** F01, F02, F09
+- **M14:** F11
+- **M15:** F02, F05, F06, F07
+- **M16:** F01, F09, F10, F12, F14
+- **M18:** F01
+- **M19:** F03, F04, F09, F10
+- **M20:** F04, F10
+- **M22:** F03, F18
+- **M30:** F01
+- **M34:** F09
+- **M36:** F06a, F06b, F06c, F06d (the unified-dispatch/enum/CHECK fixes)
+- **M39:** F10
+
+---
+
+## OPEN (~252) grouped for batched remediation
+
+**Cross-cutting mechanical sweeps** (one rule, recurs across many modules — safe, high-volume):
+- RLS session var → `app.org_id` + `WITH CHECK` (ADR-0010): M07-F08(done elsewhere)…, M14-F11(done), M20-F03, M22-F09, M30-F12, M34-F02, M36-F04, M39 (various).
+- Missing 3-column tenancy (`provider_entity_id`/`location_id`) (ADR-0010): M19-F02, M34-F02, M36-F04 (+ already-done M07/M09/M10/M15).
+- §20.B template sections — Idempotency-Key, queue DLQ/retry, STRIDE, DR-tier, cursor pagination, sqlcipher (ADR-0021): present as OPEN in nearly every module (M02-F09/F13/F19, M07-F09/F10/F11/F12, M09-F04/F06/F10/F12, M10-F10/F19, M14-F06/F09/F13/F17, M15-F10/F11, M16-F07/F08/F15, M18-F10/F11/F14, M19-F08/F12/F15, M20-F09/F15, M22-F11/F14/F24/F25/F27, M26-F08/F11/F17, M30-F05/F06/F07/F17/F18, M34-F06/F10/F16/F17, M35-F07/F08/F10, M36-F12).
+- Wrong CFR citations (audit gives exact targets): M07-F03, M16-F16, M19-F11.
+- PG16→PG18: M22-F24, M26-F18.
+- Canonical app-dir names: M22-F26.
+- Retention class → §24 matrix (ADR-0004): M02-F12, M10-F05, M16-F02, M19-F10, M22-F06, M30-F11, M35-F12, M36-F02/F10, M39-F06/F12/F13.
+- `dependsOn`/manifest-patch trim to cite ADR-0005 (not open a new ADR): M02-F01/F04, M03-(done), M07-F02, M09-F02, M10-F03, M14-F02/F19, M15-F01, M16-F02, M18-F02/F03, M19-F01, M20-F01/F02, M22-F01, M26-F05, M30-F02, M34-F04, M35-F01/F03, M36-F01, M39-F02/F07.
+
+**Cross-module ownership/seam fixes** (ADR-0011 / ADR-0013 / ADR-0023):
+- Cross-module table import/FK/trigger → seam/reader: M10-F01(done), M26-F02, M30-F01(done)/F08, M35-F04, M39-F08.
+- §164.528 disclosure writer placement (ADR-0013): M39-F03, M30-F14, M34-F08/F13, M22-F07.
+- Part 2 gate-disclosure-not-creation (ADR-0014): M09-F05, M19-F09(done), M30-F14.
+
+**Regulatory-judgment (needs SME sign-off — do NOT blind-edit):**
+- M07-F01 (NP in IDG physician seat — CoP) & M14-F03 (RN coordinator).
+- M10-F07 (CMS HOPE Section-J codes), M10-F02(done)/F15 (day-counting).
+- M26-F13 (inpatient-cap denominator/overage math).
+- M07-F04/F05 (IPOC content + review-clock), M15-F03/F04 (aide POC gate, volunteer ratio).
+
+**OUT-OF-BAND (cannot be closed by editing markdown — legal/operational):**
+- BAA/ZDR/QSOA execution & vendor security review: M18-F01(catalogued, exec pending), M19-F04, M22-F10, M26-F10, M36-F07 (TCPA), plus every INT-014 gate.
+- Security-Owner sign-offs: M10-F12 (SECURITY DEFINER), M20-F16 (HR/legal consent posture).
+- AI activation gates requiring BAA+ZDR: M14-F10, M16-F06.
+
+**Internal-coherence reconciliation passes (ADR-0022) — large per-spec edits:**
+- M18-F09, M19-F06, M22-F16/F19, M26-F06, M30-F03 — each is "two contradictory state machines / schemas / catalogs"; biggest single-spec efforts.
+
+---
+
+## Recommended execution order (revised after triage)
+
+1. **Cross-cutting mechanical sweeps** — safe, ADR-governed, unambiguous; clears the largest count fastest. Run `arch:fitness` after each module.
+2. **Foundation finish** — M02 (13 open) to match M03's done state; M03 has only 3 minor open (F08 STRIDE, F11 queue/retention, F13 typing).
+3. **`dependsOn`/manifest trims** — apply ADR-0005/0006 to every spec's §13 patch (incl. the M39-F02/F07 and M22-F01 stale-fix corrections).
+4. **Cross-module seam/ownership + §164.528 + Part 2** (ADR-0011/0013/0014).
+5. **Internal-coherence reconciliation passes** (ADR-0022) — M18/M19/M22/M26/M30.
+6. **Regulatory-judgment subset** — only with SME sign-off.
+7. **OUT-OF-BAND tracker** — checklist of BAA/ZDR/QSOA + Security-Owner sign-offs; gates go-live, not spec completion.
+8. **M14-F04** — escalate for architecture-owner ruling before editing.
+
+---
+
+## Sweep progress log
+
+### Batch 1 — trivial mechanical (2026-06-13) ✅ applied, `arch:fitness` green
+
+- **RLS session var → `app.org_id` (ADR-0010 D2)** — fixed in DDL/prose of **M18, M20, M26, M29, M35, M37** (token swap only; column already `organization_id`/`org_id`). Advances M20-F03 (var part; platform-floor pattern-2 still open). *Deferred: M22-F09, M25 — these use a `tenant_id` **column** and need the full §8.2 rewrite, not a token swap.*
+- **Postgres 16 → PostgreSQL 18 (ARCH-270/SD-081)** — fixed in **M21, M22, M26, M30, M33**. Closes **M26-F18**; advances M22-F24 (PG part; DLQ/OTel/§9.2 artifact still open).
+- **Canonical app-dirs (SD-001/ARCH-020)** — `apps/frontend-web→apps/frontend`, `-mobile→apps/mobile`, `-portal→apps/portal` in **M22, M31, M39**. Closes **M22-F26**.
+- Verified: no residual `Postgres 16`, no residual `apps/frontend-{web,mobile,portal}`, no residual non-canonical `current_setting('app.*')` except the deferred M22/M25 `tenant_id`-column cases.
+
+### Deferred from the "mechanical" sweep (moved to other tracks)
+- **CFR citations (M16-F16, M19-F11, M07-F03)** → **SME track.** Reason: the audit's own M16 target (`418.56(c)` for the bereavement plan-of-care) is debatable vs `§418.64(d)(2)`; CFR is regulatory-judgment, not mechanical.
+
+### Remaining sweep batches (not yet started)
+- **Batch 2 — §20.B template sections** (ADR-0021): Idempotency-Key, queue DLQ/retry, STRIDE, DR-tier, cursor pagination, sqlcipher — recurs in ~all modules. Larger per-module additions.
+- **Batch 3 — manifest/`dependsOn` trims** (ADR-0005/0006): trim each spec's §13 patch to the minimal edge set + cite ADR; includes the STALE-FIX corrections (M22-F01, M35-F02, M39-F02/F07).
+- **Batch 4 — cross-module seam/ownership + §164.528 + Part 2** (ADR-0011/0013/0014).
+- **Batch 5 — internal-coherence reconciliation passes** (ADR-0022): M18/M19/M22/M26/M30.
+
+### Batch 3 — manifest/`dependsOn` trims (2026-06-13) — partial; `arch:fitness` green
+
+Grounding: `architecture/module-manifest.ts` is the single source of truth (already minimal,
+0 cycles). Each spec's §13 "proposed patch" over-claims. Done so far:
+
+- **M39 — full §13.1 trim** (closes/advances F01, F02, F07): `dependsOn → [1,2,3,4,5]` (ADR-0006: 22 dropped, breaks 22↔39 cycle); codePaths → `[packages/consent, apps/backend/...]` (drops `packages/domain/consent`, F01); removed all invented `ModuleDef` fields (publishedSeams/consumedSeams/registers*/aiProhibitedSurface — F07). D22 row also corrected.
+- **M22 — §13.1 binding diff trim** (closes F01 manifest part): `dependsOn → [1,5]` (ADR-0005/0006); removed invented `publishedSeams`/`forwardSeamsConsumed` fields; §13.2 rationale table reframed as relationship inventory.
+
+**DISPUTES — RESOLVED 2026-06-13 (ADRs ratified Accepted + applied end-to-end):**
+- **M35-F02** → **[ADR-0025](../docs/adr/ADR-0025-m34-m35-dependency-direction.md)** (Accepted). M34↔M35 ruled a bidirectional seam relationship. Applied: `module-manifest.{ts,cjs}` M35 `dependsOn [34]→[]`; M35 D23/D24 + M34 D23 cite ADR-0025. CLOSED.
+- **M14-F04** → **[ADR-0024](../docs/adr/ADR-0024-m14-notification-composition-ownership.md)** (Accepted, Option A). Notification composition + recipient resolution for cross-module events moved to M36. Applied: 2 tables (`notification_template`, `tenant_notification_template_overlay`) moved M14→M36 in `module-manifest.{ts,cjs}` (M14 11→9, M36 13→15, total 451); M14 spec shed the role (D14/D15/D16 tombstoned, composers/tables/prose removed); M36 spec gained the tables (§3.13) + composition role (§4.11) + RecipientResolvers; M6/M22 consumer decls repointed to M36 (M11 already correct). `arch:fitness` green. CLOSED.
+
+**Batch-3 remainder — DONE (2026-06-13).** Aligned the §13 manifest-entry `dependsOn` of **all 22
+divergent specs** (M06, M15–M21, M23–M37) to the authoritative manifest, each with an inline
+"relationship inventory — not the edge set — do not bulk-apply (ADR-0005)" clarifier; the broader list
+stays in each spec's prose "Depends on:" header. M22/M39 were done earlier; M35→`[]` per ADR-0025.
+Verified: every spec's own §13 entry now mirrors the manifest; `arch:fitness` green. Two benign
+non-divergences remain (not module-own edge sets): M32 §14.3 quotes M8's `dependsOn` as a downstream
+illustration (stale vs M8's real `[6,7,36,38]` — a minor M8 illustration nit), and M39's `[]` is a diff
+"before" line.
+
+**Flagged for architecture-owner (manifest hygiene, separate):** the manifest is internally
+inconsistent on whether foundation deps (1–4) are listed as edges — M34=`[2,3,4,36]` lists them,
+M22=`[1,5]`/M16=`[5,6,36]` don't. Specs now mirror the manifest as-is; a future pass should make the
+foundation-edge convention consistent across the manifest.
+
+### Batch 5 — internal-coherence reconciliations (ADR-0022) (2026-06-13) — in progress
+
+- **M30-F03 (BLOCKER) — DONE.** Reconciled three contradictions into a single truth:
+  (a) **Incident state machine** — two machines existed; adopted **Machine A** (the DB enum
+  `m30_incident_lifecycle`: draft→submitted→triaged→under_investigation→resolved→
+  closed_followup_complete|reopened) as canonical and rewrote every Machine-B site
+  (routes R-55..R-60, `IncidentStateT` TypeBox, D8 decision, test plan) to it; the
+  `under_review`/`cap_pending`/`cap_verified` states are gone. Preserved the corrective-action
+  field + ≥40-char closure guard + the two-person self-signoff-forbidden control (now on
+  under_investigation→resolved). (b) **Schema** — conformed §3.8 v0.3 migration/Drizzle to the
+  §3.3 canonical (`cahps_decedent_sample` not `cahps_sample`; `death_at` not `death_date`/
+  `death_source`; `org_id`/`kind_data`); kept the D23 `retention_class` trigger (not a stray
+  column). (c) **Validators** — §2.3 made canonical; fixed WF-08/WF-10 (V-11 PIP-close /
+  V-12 SRA-close were swapped) and the STRIDE V-1/V-13 mis-citations. `arch:fitness` green.
+- **M26-F06 (BLOCKER) — DONE.** Cap-period/settlement state vocab + `cap_year` type were contradictory across schema/TypeBox/routes/ABAC/narrative. Schema made canonical: `cap_period.status` = open/active/in_settlement/settled/reopened; `cap_settlement.status` = proposed/reviewed/final; `cap_year` = CHAR(7) 'FY2026' string (was `Type.Integer` in the DTO). Aligned the TypeBox unions, ABAC predicate bodies, route table, and all workflow narrative; reworked the "voided-on-reopen" path to "final→proposed rollback" (no `voided` state in canon); added a §9 drift-guard test (migration enum ≡ TypeBox union). `arch:fitness` green.
+- **M19-F06 (BLOCKER) — DONE.** Pervasive contradictions reconciled to the §2-§4 canon (regenerated §6/§7/§8/§9/§13 to match): added the missing `documented_pending_encounter` state to the `triage_call_state` enum + ER diagram + state machine + the open-cases partial index; fixed the protocol count (≥25, not 12) everywhere; corrected wrong seam attributions (OutboxDispatcher is M1 not M38; CronScheduler is M1/platform not M40; AlertDispatcher→M36 `AlertEmitter`; dropped drifted reader names); single-sourced the 17 permission keys (§6 matrix relabeled to §4.6) and the ABAC predicate set (§4.7); fixed all non-enum disposition values; reconciled route paths + undefined columns/tiers/disciplines to §3.3/§4.1. `arch:fitness` green.
+- **M18-F09 (BLOCKER) — DONE.** 15+ contradictions reconciled to the §3.3 schema canon: `gps_quality='ok'`→`high` (not in enum); `kind=check_in_correction`→`check_in` (correction keeps original kind; not in enum); `correction_of_event_id`→`replaces_event_id` (schema's canonical column); added the missing partial-unique index `evv_event_active_visit_kind_uidx (org,visit_id,kind) WHERE superseded_by_event_id IS NULL` (§3.2 Phase E + §3.3 + §3.4 + §7.1); `open_missing_checkout`→`open` status; added `closed_system_checkout_received` status for the system-driven auto-close (also closes **M18-F08** — system close was mislabeled `closed_clinician_attested`); reconciled the seam set to the six canonical readers (dropped spurious `PortalEvvReader`), error codes (`DEVICE_NOT_ATTESTED`→`DEVICE_INTEGRITY_FAILED`), and portal route paths. `arch:fitness` green.
+  - *Flagged (separate finding, not F09):* §7.8/§9.5 still reference a TX/Sandata launch state vs the ADR-0008 Oregon launch (that's M18-F04/F05, EVV applicability — left for that track).
+- **M22-F16 + M22-F19 (BLOCKERs) — DONE.** (a) F16: collapsed the parallel colon-key permission catalog into the canonical §4.6 dot-key set — §6 role matrix fully regenerated; added the missing keys (`documents.read_history`, `.read_access_log`, `.attach_to_disclosures`, `.delete`, `.preview_template`, `intake.reclassify`, `intake.split_batch`, `extraction.read_provenance`) + 2 ABAC predicates; zero colon-keys remain. (b) F19: reconciled status/event/column drift to §3.3/§4.10 — renamed workflow statuses to canon (parsed→docling_complete, classified→classifier_complete, extracted→extraction_complete, batch committed→writeback_complete), ADDED genuinely-needed enum states (intake split states + parse_failed; extraction awaiting_capability/stalled), ADDED 7 workflow events to §4.10, ADDED 6 columns to §3.3, reconciled `is_current`→`active_version_id`, removed the spurious `shredded`/`version_kind=addendum`/`billing_record`. Resolved the soft-delete contradiction to the append-only model (documentStatus has no user-delete state; removal = M4 destruction → destroyed_tombstone). Unified the classifier threshold (0.60 vs 0.75 → single `classifier_confidence_floor` config, default 0.75). `arch:fitness` green.
+
+### CFR/SME track — corrections applied (2026-06-13)
+Corrected the deferred wrong CFR citations (the audit's expert targets, cross-checked against the Part 418 CoPs):
+- **M19-F11:** 24/7 availability `418.100(a)→418.100(c)(2)`; nursing core service `418.64(c)(4)→418.64(b)`; patient-rights/ED-transfer `418.62→418.52`.
+- **M16-F16:** IPOC bereavement-plan `418.56(b)(3)→418.56(c)` *(flagged: vs 418.64(d)(2))*; personnel `418.74→418.114/418.64(d)`; deceased-PHI `164.502(g)(4)→164.502(f)+(g)(4)`; coordination `418.106(c)→418.56(e)`.
+- **M07-F03 (citation part):** plan-of-care-by-IDG `418.56(b)(2)→418.56(b)(1)`; 5-day rule reanchored to `§418.54(b)` (comprehensive-assessment deadline) + `§418.56(b)(1)`; IDG-composition `418.56(b)(3)→418.56(a)(1)` (bonus fix).
+**Caveat:** these are well-established CoP references but a final **compliance-SME sign-off is still recommended** before lock (esp. the M16 plan-content and M07 5-day anchors). The non-citation parts of M07-F03 (the plan-before-care *gate*) remain an open design item.
+
+### Batch 5 — COMPLETE (2026-06-13)
+All five ADR-0022 internal-coherence BLOCKERs reconciled: **M30-F03, M26-F06, M19-F06, M18-F09 (+M18-F08), M22-F16, M22-F19.** Each made one canonical truth (DB schema as anchor), regenerated the derived sections, and stayed `arch:fitness`-green. What remains across the whole effort is only the **CFR/SME track** (regulatory-citation corrections needing SME confirmation) and the **OUT-OF-BAND** legal items (BAA/ZDR/QSOA execution, Security-Owner sign-offs) — neither closable by editing specs.
+
+### Batch 2 — §20.B template sections (ADR-0021), wave 1 (2026-06-13) ✅ applied, `arch:fitness` green
+
+Added the missing template sections (STRIDE, DR-tier+degraded-mode, BullMQ queue params/DLQ,
+per-route Idempotency-Key, cursor pagination, sqlcipher offline, audit-event catalog) — tailored to
+each module's real routes/queues/threats — to **6 modules**:
+- **M02** (F09 STRIDE, F13 queue/idempotency/error-envelope, F19 DR Tier 1)
+- **M07** (F09 idempotency, F10 queue, F11 STRIDE, F12 DR Tier 2 + gate fail-posture)
+- **M09** (F04 sqlcipher, F06 idempotency, F10 DR Tier 2 + BCP, F12 queue + clinical-urgent alerts)
+- **M14** (F06 queue, F09 STRIDE + authz matrix, F13 idempotency, F17 DR Tier 2)
+- **M18** (F10 DR Tier 1, F11 idempotency, F14 §8 audit + queue DLQ, F16 OOB-payload)
+- **M19** (F08 DR Tier 1 + BCP re-entry + boot-refusal removal, F12 queue + single cadence, F15 STRIDE + cursor + audit catalog)
+**Wave 2** added them to **6 more modules**: **M03** (STRIDE F08, queue+retention F11), **M15** (cursor+queue+alert-as-code F10, STRIDE+DR-Tier-2+fail-closed gates F11), **M16** (queue F07, STRIDE+authz F08, DR-Tier-3+cron-catch-up+coverage F15), **M20** (DR-Tier-1 SOS path F09, §8 Audit&Observability F15), **M26** (idempotency F08, DR-Tier-3 F11, queue-DLQ+cron-tz F17), **M30** (idempotency F05, cursor F06, DR-Tier-3-correction F07, queue-DLQ+V-8-fix F17, degraded-mode F18, RLS-tests F20 — NOT the F03 state-machine BLOCKER).
+**Wave 3** completed the final **6 modules**: **M10** (queue-DLQ F10, alert-PHI F13, adapter-resilience+envelope F17, BCP+sqlcipher+SFV-severity F19), **M22** (SEC-052 export F11, DR/BCP+Weekly-BCP-Print F14, template-sections F24, sqlcipher F25, idempotency+URL-claim F27), **M34** (DSAR-24h-URL+SEC-052 F06, two-phase-migration F16, RLS-tests F17), **M35** (queue-DLQ F07, idempotency F08, error-envelope+IDOR F09, DR-Tier-3 F10, Valkey-DB F14, alerts-YAML F17, DR/INT-obligations F18), **M36** (retention-tombstone F02, body_sha256 F03, STRIDE F09, queue-params F12, webhook-replay F13), **M39** (ABAC-attrs F11, draft-TTL F13, cursor F14, batch-eval-audit F15).
+
+**Batch 2 COMPLETE — all 18 modules have their §20.B template sections; `arch:fitness` green.** Out-of-band items deliberately left for their tracks (M10-F12 SECURITY DEFINER, M36-F07 TCPA, AI-lifecycle gates, M22-F10 encryption).
+
+### Batch 3b — strip invented ModuleDef fields (2026-06-13) ✅ applied, `arch:fitness` green
+
+`ModuleDef` carries EXACTLY `{id, name, codePaths, dependsOn, ownedTables}` (ARCH-146/ADR-0005).
+Stripped every non-canonical field from the §13 manifest-entry literals of **M16, M21, M25, M26,
+M29, M32, M34, M35** (in addition to M22/M39 done in Batch 3). Removed fields included:
+`publishedSeams`, `consumedSeams`, `forwardSeamDenyStubs`/`forwardSeamConsumers`,
+`consumedOutboxEvents`/`emittedOutboxEvents`/`ownsOutboxEvents`/`outboxEventKinds`,
+`prohibitedAiPromptTargets`, `riskProfile` (nested), `dataClassesOwned`,
+`securityDefinerFunctions`, `rolesOwned`, `cronJobs`, plus the non-canonical metadata
+`phase`, `tier`, `key`, `status`, `specVersion`, `specPath`, `displayName`. Each replaced with a
+comment noting these are wired at boot, not in the manifest. This closes the **F07-class** invented-
+field findings (M39-F07 etc.) and the **M16-F02 illegal `phase` field**. `dependsOn` values were left
+unchanged (the edge-set trims are the separate, judgment-laden Batch-3 remainder; M35's dependsOn is
+the disputed item).
+
+### Batch 4 — cross-module ownership / §164.528 disclosure / 42-CFR-Part-2 (ADR-0011/0013/0014), 2026-06-13 ✅ applied, runnable fitness green
+The Part-2 / disclosure-accounting / ownership-inversion MAJORs not already swept up by Batches 3/5
+(M10-F01, M26-F02, M30-F01, M39-F01/F02/F03, M09-F01, M15-F01 were already done). One agent per module,
+each **verify-then-fix** (skip if already resolved). **Several caught the same banner-vs-body trap**:
+M34-F08/F13 and M39-F04/F05/F08 had changelog rows *claiming* resolution that the spec bodies did not
+back — all confirmed still-present and now actually fixed.
+
+- **M09-F05** (ADR-0014 D1) — removed the AIMS/SUD-context record-**creation** write-gate (`SUD_CONSENT_REQUIRED` 403 → `SUD_DISCLOSURE_DENIED` on read/egress only). Record always created `sud_context=true`; Part 2 enforced at every disclosure boundary (M5 PrivacyFlag + M39). Reconciled §2.3/§4.1/§4.4/§7.6/§8/§9/§11-D10.
+- **M30-F08** (ADR-0011/ARCH-272) — removed the "OR direct API call from M12 to R-51" synchronous fallback in §4.10; M12 emits `m12.medication.error_reported` outbox event, M30 subscribes. **M30-F14** (ADR-0014/SEC-046) — added a Part-2 re-disclosure read gate (`part2_redisclosure_ok`) on the D23-promoted `incident_report`/`mortality_review` rows (§8.1 RLS + §4.7 ABAC predicate; fail-closed).
+- **M34-F08** (ADR-0014/ARCH-251) — DEK destruction now **conditional**: if any eraser returns `refused_part_two_retention`, Phase-3 shred aborts, tenant re-defers to `retained`, refused-row counts on the cert (§3.5/§2.2/§2.5/§7.2/§7.7). **M34-F13** (SEC-046) — `dsar_export_job.patient_id` + `support_session_event.patient_id` classified `phi_sensitive`; DSAR Bundle honors M5/M39 redaction-by-default; Part-2 support sessions get heightened controls.
+- **M35-F04** (ADR-0011/ARCH-147) — dropped cross-module Drizzle `organizations`/`memberships` imports in 12 schema files → plain-uuid logical FKs (RLS-governed). **M35-F05** (ADR-0144) — §3.6 no longer redefines M4's audit denylist; routes through `m4.audit()`/registers advisory posture. **M35-F06** (ARCH-186/085/251) — replaced the in-place `organization_id`→`legacy_tenant_<sha>` rewrite with copy-then-delete into **two new platform-retention tables** (`platform_retained_invoice`, `platform_retained_invoice_line`). **Manifest: M35.ownedTables 19→21; corpus 451→453** (both `.ts`/`.cjs`; REMEDIATION_SUMMARY + CLAUDE.md counts updated).
+- **M39-F04** (ADR-0251/ARCH-234) — eraser re-keyed `consent_record_subtree`→`consent`; no longer `DELETE`s immutable `consent_eval_audit` (routed through M4 audit-partition destruction). **M39-F05** (ADR-0014) — `redactHiv/MentalHealth/Genetic` flags given backing (SUD→Part-2 consent, family-violence→M15 resolver, HIV/MH/genetic→M5 PrivacyFlag), default-redact fail-closed (new §4.3.1). **M39-F08** (ADR-0011/ARCH-272) — `trg_*_outbox` triggers rewritten to derived-column maintenance only; outbox emission moved to service layer via M1 helper.
+- **M22-F07** (ADR-0013/0234/0251) — eraser re-keyed to `documents`; M40→**M4** attribution fixed (destruction-cert registry is M4's); access-log cascade-delete removed (rows are §164.528 accounting inputs); version-aware MinIO deletion (all versions + delete markers) per DR-019/ARCH-085.
+
+**Batch 4 COMPLETE.** Runnable checks (`arch:tables`/`tenancy`/`ddl`/`gaps`/`docs:ui`) green; 453 tables,
+all unique. (`arch:boundaries` remains armed-inert — no app source / `depcruise` absent.)

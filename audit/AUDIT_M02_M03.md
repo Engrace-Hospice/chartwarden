@@ -4,7 +4,7 @@
 **Criteria packs applied:** CRITERIA_ARCHITECTURE (ARCH-###), CRITERIA_SECURITY_AI (SD-/SEC-/AI-###), CRITERIA_OPS_DR_INTEGRATIONS (DR-/OPS-/INT-###), `module-manifest.ts`
 **Specs audited:**
 - `WARDENX_MODULE_02_IDENTITY_SPEC_v0_4.md` (v0.4 Consolidated, Locked, 2026-06-10, 1,605 lines — read in full)
-- `WARDENX_MODULE_03_AUTHORIZATION_SPEC_v0_2.md` (v0.2 Locked, 2026-06-10, 916 lines — read in full)
+- `WARDENX_MODULE_03_AUTHORIZATION_SPEC_v0_3.md` (audited at v0.2 Locked, 2026-06-10; renamed to v0.3 for the `m3.` event-naming migration)
 
 All BLOCKER findings were verified directly against `WARDENX_ARCHITECTURE_v0_11.md`, `WARDENX_SECURITY_HARDENING_v0_2.md`, and `module-manifest.ts`.
 

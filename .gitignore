@@ -1,6 +1,30 @@
 # Keep the WardenX corpus source-only (specs + fitness kit).
 # Tooling/build artifacts are reproducible via `bun install`.
 node_modules/
-bun.lock
 .DS_Store
 .claude/settings.local.json
+
+# TypeScript project-reference build output (regenerable via `tsc -b`).
+dist/
+*.tsbuildinfo
+
+# Local env (committed template is .env.example).
+.env
+.env.local
+
+# Phase 0: bun.lock IS committed (acceptance #1 — `bun install` resolves from a
+# committed lockfile on a clean checkout). Do NOT ignore it.
+
+# Generated build artifact — the implementation-repo starter, regenerable from the
+# manifest/docs via the scaffold step (not corpus content). Specific name, not *.zip,
+# so the authored WARDENX_UI_SCREEN_SPECS_v5.zip spec artifact stays tracked.
+wardenx-impl-starter.zip
+
+# Generated bundles — regenerable from the spec sources in docs/modules/ (module specs +
+# module-29-tasks/). Specific names, not *.zip, so the authored, tracked spec artifacts
+# WARDENX_UI_SCREEN_SPECS_v5.zip and WARDENX_PROJECT_STARTER.zip stay in git.
+WARDENX_MODULES_01-10.zip
+WARDENX_MODULES_11-20.zip
+WARDENX_MODULES_21-30.zip
+WARDENX_MODULES_31-40.zip
+WARDENX_MODULE_29_TASKS_T29.zip

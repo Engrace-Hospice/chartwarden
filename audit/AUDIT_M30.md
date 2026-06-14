@@ -1,7 +1,7 @@
 # WardenX Module Audit — Module 30: HQRP & Quality
 
 **Auditor:** Principal Architect / Medicare Hospice Compliance / HIPAA Security / Staff Engineer (combined role per AUDITOR_INSTRUCTIONS.md v1.0)
-**Spec audited:** `WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_4.md` (Spec status: "Locked v0.4 (Consolidated)", "Buildable")
+**Spec audited:** `WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md` (audited at "Locked v0.4 (Consolidated)"; renamed to v0.5 for the `m30.` event-naming convention review)
 **Authoritative sources:** `WARDENX_ARCHITECTURE_v0_11.md`, manifest, SD/SEC/AI/DR/OPS/INT criteria packs.
 **Verdict basis:** Architecture WINS over module spec. Module specs are proposals.
 

@@ -1,7 +1,7 @@
 # WardenX Module Audit — Module 26: Cap Management
 
 **Auditor role:** Principal Architect / Medicare Hospice Compliance (42 CFR Part 418) / HIPAA / Staff Eng / QA Director
-**Spec audited:** `WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_2.md` (Spec status: Locked v0.2)
+**Spec audited:** `WARDENX_MODULE_26_CAP_MANAGEMENT_SPEC_v0_3.md` (audited at Locked v0.2; spec later renamed to v0.3 for the `m26.` event-naming migration)
 **Authoritative sources:** `WARDENX_ARCHITECTURE_v0_11.md` (+ §25.15 fitness), `module-manifest.ts`, `WARDENX_SECURITY_HARDENING_v0_2.md`, `WARDENX_AI_GOVERNANCE_v0.2.md`, `WARDENX_SYSTEM_DESIGN_v0.3.md`, `WARDENX_DR_BCP_v0.1.md`, `WARDENX_OPS_RUNBOOK_v0.1.md`, `WARDENX_INTEGRATIONS_v0_1.md`, plus M2/M25/M36 locked specs for seam verification.
 
 ## GRADE: FAIL

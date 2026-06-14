@@ -2,7 +2,7 @@
 
 **Auditor protocol:** `audit/_criteria/AUDITOR_INSTRUCTIONS.md` v1.0
 **Criteria packs applied:** CRITERIA_ARCHITECTURE (ARCH-###), CRITERIA_SECURITY_AI (SD-/SEC-/AI-###), CRITERIA_OPS_DR_INTEGRATIONS (DR-/OPS-/INT-###)
-**Specs audited:** `WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_2.md` (Locked v0.2), `WARDENX_MODULE_36_MESSAGING_SPEC_v0_4.md` (Locked v0.4)
+**Specs audited:** `WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md` (audited at Locked v0.2; renamed to v0.3 for the `m19.` convention review), `WARDENX_MODULE_36_MESSAGING_SPEC_v0_4.md` (Locked v0.4)
 **Date:** 2026-06-10
 
 All BLOCKER findings were verified against the authoritative source documents directly (line citations included).

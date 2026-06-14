@@ -1,0 +1,132 @@
+{
+  "files": [],
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false
+  },
+  "references": [
+    {
+      "path": "./apps/admin"
+    },
+    {
+      "path": "./apps/backend"
+    },
+    {
+      "path": "./apps/portal"
+    },
+    {
+      "path": "./packages/ai-platform"
+    },
+    {
+      "path": "./packages/assessments"
+    },
+    {
+      "path": "./packages/audit"
+    },
+    {
+      "path": "./packages/auth"
+    },
+    {
+      "path": "./packages/billing"
+    },
+    {
+      "path": "./packages/cahps-vendors"
+    },
+    {
+      "path": "./packages/consent"
+    },
+    {
+      "path": "./packages/cost-report"
+    },
+    {
+      "path": "./packages/db"
+    },
+    {
+      "path": "./packages/domain"
+    },
+    {
+      "path": "./packages/dosespot"
+    },
+    {
+      "path": "./packages/evv-aggregators"
+    },
+    {
+      "path": "./packages/fhir"
+    },
+    {
+      "path": "./packages/forms"
+    },
+    {
+      "path": "./packages/gusto-client"
+    },
+    {
+      "path": "./packages/hearthnote"
+    },
+    {
+      "path": "./packages/hope"
+    },
+    {
+      "path": "./packages/inpatient"
+    },
+    {
+      "path": "./packages/intake-extraction"
+    },
+    {
+      "path": "./packages/iqies-client"
+    },
+    {
+      "path": "./packages/mdm"
+    },
+    {
+      "path": "./packages/medicaid-adapters"
+    },
+    {
+      "path": "./packages/messaging"
+    },
+    {
+      "path": "./packages/narrative-vocab"
+    },
+    {
+      "path": "./packages/quality"
+    },
+    {
+      "path": "./packages/routing-client"
+    },
+    {
+      "path": "./packages/saas"
+    },
+    {
+      "path": "./packages/shared"
+    },
+    {
+      "path": "./packages/subscription-billing"
+    },
+    {
+      "path": "./packages/telehealth-client"
+    },
+    {
+      "path": "./packages/tenancy"
+    },
+    {
+      "path": "./packages/terminology"
+    },
+    {
+      "path": "./packages/triage-vendors"
+    },
+    {
+      "path": "./packages/types"
+    },
+    {
+      "path": "./packages/ui"
+    },
+    {
+      "path": "./packages/x12-835-client"
+    },
+    {
+      "path": "./packages/x12-837-client"
+    },
+    {
+      "path": "./packages/xero-client"
+    }
+  ]
+}

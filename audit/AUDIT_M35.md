@@ -1,7 +1,7 @@
 # WardenX Module Audit — Module 35: Subscription Billing
 
 **Auditor:** WardenX Module Compliance Auditor (Principal Architect / HIPAA / Medicare hospice / Staff Eng / QA Director)
-**Spec under audit:** `WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_2.md` (Locked v0.2)
+**Spec under audit:** `WARDENX_MODULE_35_SUBSCRIPTION_BILLING_SPEC_v0_3.md` (audited at Locked v0.2; renamed to v0.3 for the `m35.` event-naming migration)
 **Date:** 2026-06-11
 **Authoritative sources consulted:** ARCHITECTURE v0.11, SYSTEM_DESIGN v0.3, SECURITY_HARDENING v0.2, AI_GOVERNANCE v0.2, DR_BCP v0.1, OPS_RUNBOOK v0.1, INTEGRATIONS v0.1, `module-manifest.ts`, and the locked specs of M2, M5, M34 (cross-checked).
 

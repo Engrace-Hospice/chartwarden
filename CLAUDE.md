@@ -1,0 +1,79 @@
+# WardenX — Repository Guide
+
+Multi-tenant hospice EHR SaaS. This repo is the **specification corpus + architecture-fitness
+kit + a buildable monorepo skeleton** (Phase 0 — structure + CI gates, no business logic yet).
+Use this guide to locate authoritative documents.
+
+> **Building/extending the code?** Start at [`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md)
+> (runbook + "how to add a module") and [`docs/PHASE_0_SCAFFOLD_PLAN.md`](./docs/PHASE_0_SCAFFOLD_PLAN.md).
+> One-time: `bun install && bun run build && bun run arch:fitness && bun run test` (all green).
+> The `apps/`+`packages/` tree is **generated from the manifest** via `bun run scaffold`; the
+> `arch:parity` gate keeps tree↔manifest 1:1. See [ADR-0027](./docs/adr/ADR-0027-phase-0-toolchain-and-scaffold.md).
+
+## Document map
+
+### Module specifications → `docs/modules/`
+
+**All 40 module specs live in [`docs/modules/`](./docs/modules/).** Start at the index:
+[`docs/modules/README.md`](./docs/modules/README.md) — every module, its version, and a link.
+The Module 29 forward-engineering sub-tasks are in
+[`docs/modules/module-29-tasks/`](./docs/modules/module-29-tasks/) — 12 files spanning
+T-29.01–T-29.13 (tasks 12 and 13 share one file, `WARDENX_T-29.12_13_FRONTEND.md`).
+
+> When you need a module spec, **resolve it under `docs/modules/`**, not the repo root.
+
+### UI screen specifications → `docs/ui/`
+
+The UI screen specs (core/app-shell, clinical, revenue, admin, portal, platform/ops) live under
+[`docs/ui/screens/`](./docs/ui/screens/), indexed by
+[`docs/ui/WARDENX_UI_COMPLETE_SCREEN_INDEX.md`](./docs/ui/WARDENX_UI_COMPLETE_SCREEN_INDEX.md).
+Every spec declares a named layout pattern (`Use <name>.`) defined in
+[`docs/ui/WARDENX_UI_LAYOUT_PATTERNS.md`](./docs/ui/WARDENX_UI_LAYOUT_PATTERNS.md) — the
+authoritative glossary of layout patterns, shared regions, and composition rules. Like module
+specs, **UI screen specs are implementation proposals** (architecture wins on conflict).
+Run `bun run docs:ui` (`scripts/check-ui-screens.ts`) to verify corpus consistency —
+index parity, layout-heading hygiene, and pattern resolution against the glossary.
+
+### Authoritative architecture documents → `docs/architecture/`
+
+These **win over module specs** in any conflict (module specs are implementation proposals).
+All live in [`docs/architecture/`](./docs/architecture/):
+
+- `WARDENX_ARCHITECTURE_v0_11.md` — system architecture (authoritative)
+- `WARDENX_SYSTEM_DESIGN_v0.3.md`
+- `WARDENX_SECURITY_HARDENING_v0_2.md`
+- `WARDENX_AI_GOVERNANCE_v0.2.md`
+- `WARDENX_DR_BCP_v0.1.md`, `WARDENX_OPS_RUNBOOK_v0.1.md`, `WARDENX_INTEGRATIONS_v0_1.md`
+- `ARCHITECTURE_25_15_FITNESS.md` — architecture-fitness rules
+
+> When you need an architecture document, **resolve it under `docs/architecture/`**, not the repo
+> root. (Older docs reference these by bare filename or version — same files, new location.)
+
+### Architecture-fitness kit (enforcement code under the repo-root `architecture/`)
+
+Note: the `architecture/` directory at the repo root holds the *enforcement code*, distinct from
+the prose docs in `docs/architecture/`.
+
+- `architecture/module-manifest.ts` (+ `.cjs`) — single source of truth for each module's
+  `codePaths`, `dependsOn`, and `ownedTables` (453 tables across 40 modules).
+- `architecture/.dependency-cruiser.cjs` — import-boundary rules.
+- `scripts/check-table-ownership.ts`, `check-tenancy.ts`, `check-ddl-legality.ts`,
+  `check-fitness-gaps.ts` (event-catalog `mN.` convention, seam-registry completeness, PHI
+  RLS/audit-trigger presence — armed-inert until app source lands), `check-ui-screens.ts` —
+  enforced via `package.json` scripts (`bun run arch:fitness`; UI-corpus check also standalone
+  as `bun run docs:ui`).
+- `scripts/audit-fitness.ts` — point-in-time enforcement audit (module matrix, table
+  ownership, dependency graph/cycles); writes `audit/FITNESS_ENFORCEMENT_AUDIT.md`.
+
+### Governance & history
+
+- `docs/adr/` — Architecture Decision Records (ADR-0001…).
+- `docs/reviews/` — audit/review prompt templates.
+- `docs/REMEDIATION_SUMMARY.md`, `audit/` — point-in-time audit reports. These reference module
+  specs **by filename**; resolve those filenames under `docs/modules/`.
+
+## Authority rule
+
+Architecture documents are authoritative. Module and UI screen specifications are
+implementation proposals.
+**If a module or screen spec conflicts with architecture, architecture wins.**

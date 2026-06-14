@@ -1,4 +1,4 @@
-# AUDIT — Module 22 Document Management (WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_4.md)
+# AUDIT — Module 22 Document Management (WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md; audited at v0.4, renamed v0.5 for the m22. event-naming migration)
 
 **Auditor protocol:** AUDITOR_INSTRUCTIONS.md v1.0; criteria packs CRITERIA_ARCHITECTURE.md, CRITERIA_SECURITY_AI.md, CRITERIA_OPS_DR_INTEGRATIONS.md; module-manifest.ts. Spec read in full (3,486 lines). BLOCKER findings verified directly against WARDENX_ARCHITECTURE_v0_11.md, WARDENX_SECURITY_HARDENING_v0_2.md, WARDENX_INTEGRATIONS_v0_1.md, WARDENX_SYSTEM_DESIGN_v0.3.md, boot.ts, module-manifest.ts.
 
