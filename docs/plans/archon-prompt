@@ -1,0 +1,32 @@
+Archon launch sequence
+
+Prerequisites (once):
+- Merge PR #1 so your base branch has the buildable scaffold + all plans.
+- From a normal terminal (not nested in Claude Code): cd /Users/fabrice/Apps/WardenX and git checkout main && git pull.
+- Each run creates an isolated worktree, loops the plan task-by-task gating on bun run build && bun run arch:fitness && bun run test, pauses at the approval node, then opens a PR. Merge each wave's PR before starting the next (later waves assume earlier seams exist). Watch with archon workflow status or archon serve.
+
+Phase 1 — in order:
+archon workflow run wardenx-piv --branch feat/m1-m2-slice
+archon workflow run wardenx-piv --branch feat/wave-a "Use the plan at docs/plans/WAVE_A_M3-M4_PLAN.md"
+archon workflow run wardenx-piv --branch feat/wave-b "Use the plan at docs/plans/WAVE_B_M36-M38-M40_PLAN.md"
+archon workflow run wardenx-piv --branch feat/wave-c "Use the plan at docs/plans/WAVE_C_M5-M39_PLAN.md"
+archon workflow run wardenx-piv --branch feat/wave-d "Use the plan at docs/plans/WAVE_D_M6-M7-M8_PLAN.md"
+archon workflow run wardenx-piv --branch feat/wave-e "Use the plan at docs/plans/WAVE_E_M9-M13_PLAN.md"
+archon workflow run wardenx-piv --branch feat/wave-f "Use the plan at docs/plans/WAVE_F_M14-M17-M18-M22_PLAN.md"
+# ⚠ apply ADR-0029 (manifest + scaffold) before Wave G
+archon workflow run wardenx-piv --branch feat/wave-g "Use the plan at docs/plans/WAVE_G_M23-M25-M26_PLAN.md"
+archon workflow run wardenx-piv --branch feat/wave-h "Use the plan at docs/plans/WAVE_H_M28-M29-M30-M32-M34_PLAN.md"
+
+Phase 2:
+archon workflow run wardenx-piv --branch feat/p2a-upgrades "Use the plan at docs/plans/PHASE_2A_UPGRADES_PLAN.md"
+archon workflow run wardenx-piv --branch feat/p2-1 "Use the plan at docs/plans/WAVE_P2-1_M15-M16-M21-M24_PLAN.md"
+archon workflow run wardenx-piv --branch feat/p2-2 "Use the plan at docs/plans/WAVE_P2-2_M19-M20_PLAN.md"
+archon workflow run wardenx-piv --branch feat/p2-3 "Use the plan at docs/plans/WAVE_P2-3_M27-M31-M33-M35_PLAN.md"
+
+Phase 3:
+archon workflow run wardenx-piv --branch feat/m37-ipu "Use the plan at docs/plans/WAVE_P3_M37_IPU_PLAN.md"
+archon workflow run wardenx-piv --branch feat/p3-upgrades "Use the plan at docs/plans/PHASE_3_UPGRADES_PLAN.md"
+
+Tips:
+- Finer / per-module PRs: append (Module N only) to the message and run a wave's modules in its stated order — e.g. … "Use the plan at docs/plans/WAVE_E_M9-M13_PLAN.md (Module 10 only)". Recommended for big waves (E, G, H) so review stays per-module.
+- Recover a failed run: archon workflow run
