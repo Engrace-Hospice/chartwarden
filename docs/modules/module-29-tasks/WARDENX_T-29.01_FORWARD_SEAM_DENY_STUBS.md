@@ -1,8 +1,21 @@
 # WardenX — T-29.01 Addendum: Forward-Seam Deny-Stubs for M29 Consumers
 
-**Document status:** lock-grade
+**Document status:** lock-grade — **§3 (Manifest Patch) SUPERSEDED by ADR-0005 (2026-06-12)**
 **Tracks against:** `WARDENX_MODULE_29_EXTERNAL_INTERFACES_SPEC_v0_4.md` §13.7
 **Date:** 2026-06-10
+
+> **⚠️ Superseded — do NOT apply §3's manifest diff.** ADR-0005 establishes that a
+> `dependsOn` edge is required **only** for a compile-time import of the producer's package
+> (D1). A forward-seam *deny-stub* throws `NotImplementedError` and imports no M29 code, so it
+> requires **no `dependsOn` edge and no `phase: 'forward-stub'` tag**. The manifest therefore
+> deliberately carries **zero `29` edges** on M30/M33/M34/M35/M37, and `phase` is not a manifest
+> field. §3.1's `+ ...29...` diff lines and the §1.1 "add `29` to `dependsOn` / declare
+> `phase: 'forward-stub'`" bullet are **withdrawn**. The cited M28 D14 precedent is likewise
+> no-edge under ADR-0005 (M28 carries no `29` edge either). The deny-stub *concept* (a
+> `NotImplementedError` consumer slot a module fills when it locks) remains valid as
+> implementation guidance — but it is **not** a manifest mutation and is not a coding
+> prerequisite gated on the manifest. This banner resolves the T-29.01-vs-ADR-0005 conflict
+> flagged in the 2026-06-14 architecture-readiness audit.
 
 This addendum delivers the pre-merge work the M29 spec flags as a prerequisite for the manifest patch: forward-seam deny-stubs in every module that will eventually consume M29-published seams but is not yet lock-grade. Without these stubs, the boot validator (§W-XI-15) would fail closed at startup because consuming modules reference seams whose names are published in `M29.publishedSeams` but whose consumer slots are empty.
 
@@ -48,7 +61,11 @@ Ten stubs total.
 
 ---
 
-## 3. Manifest Patch Addendum
+## 3. Manifest Patch Addendum — ⚠️ SUPERSEDED by ADR-0005 (do not apply)
+
+> **Withdrawn.** Per ADR-0005 D1, deny-stub seam consumers take **no `dependsOn` edge**. The
+> diff below is retained for historical context only; the live manifest correctly carries no
+> `29` edges and no `phase` field. See the superseded banner at the top of this document.
 
 This adds `29` to the `dependsOn` of M30, M33, M34, M35, M37 and tags each as `forward-stub` (so the boot validator knows to look for `NotImplementedError`-throwing stubs instead of real implementations).
 

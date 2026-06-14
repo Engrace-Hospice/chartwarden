@@ -6,9 +6,19 @@
  *   - codePaths:   the package(s) and backend route dir(s) that BELONG to the module
  *   - dependsOn:   the modules it MAY import from (verbatim from ARCHITECTURE §20 dep table)
  *   - ownedTables: the DB tables it owns. As of the M07-F02 manifest pass, ALL 40
- *                  modules are populated (451 tables) from their specs, so the ownership
+ *                  modules are populated (453 tables) from their specs, so the ownership
  *                  check enforces the full corpus — no longer "enforces only what is
  *                  declared." A new module's tables are added here when its spec lands.
+ *
+ * SCOPE OF ownedTables — SERVER POSTGRESQL ONLY:
+ *   ownedTables governs the central multi-tenant PostgreSQL schema only. It does NOT
+ *   enumerate on-device / client-side stores. In particular, the mobile offline drafts
+ *   in the @wardenx/mobile-offline package — M09 `assessment_draft` and M10
+ *   `hope_assessment_draft` (encrypted sqlcipher tables, device-derived keys, defined
+ *   in their specs as raw CREATE TABLE, evict-on-logout) — are deliberately OUT OF SCOPE
+ *   and are not manifest-owned. They carry no org_id/RLS server contract and are never
+ *   referenced by check-table-ownership.ts, which scans server source paths only. New
+ *   on-device tables follow the same rule: spec-documented, manifest-exempt.
  *
  * Read by:
  *   - .dependency-cruiser.cjs   (generates the import-boundary rules)
@@ -211,7 +221,7 @@ exports.MODULES = [
     { id: 29, name: "External Interfaces",
         codePaths: ["apps/backend/src/modules/29-external-interfaces"], dependsOn: [5, 11, 40], ownedTables: ["external_feed", "external_feed_credential", "external_feed_health", "hl7_inbound_proposal", "hl7_message_inbound", "hl7_message_outbound", "lab_observation", "lab_observation_inbound_link", "lab_observation_value", "nppes_provider", "nppes_sync_run"] },
     { id: 30, name: "HQRP & Quality",
-        codePaths: ["apps/backend/src/modules/30-quality"], dependsOn: [10, 23, 27, 36, 38], ownedTables: ["cahps_decedent_sample", "cahps_result_summary", "cahps_vendor_binding", "cop_compliance_status", "incident_report", "infection_outbreak_case", "infection_surveillance_event", "measure_recompute_queue", "mortality_review", "qapi_governance_minutes", "qapi_indicator", "qapi_pip", "qapi_program", "qapi_project", "quality_measure_value", "sra_cycle", "sra_finding", "sra_remediation"] },
+        codePaths: ["apps/backend/src/modules/30-quality", "packages/quality", "packages/cahps-vendors"], dependsOn: [10, 23, 27, 36, 38], ownedTables: ["cahps_decedent_sample", "cahps_result_summary", "cahps_vendor_binding", "cop_compliance_status", "incident_report", "infection_outbreak_case", "infection_surveillance_event", "measure_recompute_queue", "mortality_review", "qapi_governance_minutes", "qapi_indicator", "qapi_pip", "qapi_program", "qapi_project", "quality_measure_value", "sra_cycle", "sra_finding", "sra_remediation"] },
     { id: 31, name: "Patient/Family Portal & Telehealth",
         codePaths: ["packages/telehealth-client", "apps/portal", "apps/backend/src/modules/31-portal"],
         dependsOn: [5, 7, 8, 22, 36, 39],
@@ -227,9 +237,9 @@ exports.MODULES = [
     { id: 34, name: "SaaS Tenant Platform",
         codePaths: ["packages/saas", "apps/admin", "apps/backend/src/modules/34-saas"], dependsOn: [2, 3, 4, 36], ownedTables: ["dsar_export_job", "dsar_export_job_event", "onboarding_task", "onboarding_task_template", "platform_tenant_baa_record", "support_consent_grant", "support_session", "support_session_event", "tenant_account", "tenant_account_status_event", "tenant_export_job", "tenant_export_job_event", "tenant_invitation", "tenant_key_destruction_log", "tenant_key_ring", "tenant_signup_intent", "tenant_signup_token"] },
     { id: 35, name: "Subscription Billing",
-        codePaths: ["apps/backend/src/modules/35-subscription"], dependsOn: [], /* ADR-0025: M34<->M35 seam-based both ways (no edge); minimal edge set finalized in M35's ADR-0005 D5 pass */ ownedTables: ["dunning_state", "invoice", "invoice_line", "patient_active_period", "patient_pseudonym_key", "payment_method", "plan", "plan_meter", "platform_retained_invoice", "platform_retained_invoice_line", "promo_code", "promo_code_application", "refund", "revenue_recognition_snapshot", "stripe_api_call_audit", "stripe_webhook_event", "subscription", "subscription_state_history", "usage_event", "usage_period_aggregate", "user_active_period"] /* M35-F06: platform-retention tables replace in-place org_id rewrite (ARCH-186/085/251) */ },
+        codePaths: ["apps/backend/src/modules/35-subscription", "packages/subscription-billing"], dependsOn: [], /* ADR-0025: M34<->M35 seam-based both ways (no edge); minimal edge set finalized in M35's ADR-0005 D5 pass */ ownedTables: ["dunning_state", "invoice", "invoice_line", "patient_active_period", "patient_pseudonym_key", "payment_method", "plan", "plan_meter", "platform_retained_invoice", "platform_retained_invoice_line", "promo_code", "promo_code_application", "refund", "revenue_recognition_snapshot", "stripe_api_call_audit", "stripe_webhook_event", "subscription", "subscription_state_history", "usage_event", "usage_period_aggregate", "user_active_period"] /* M35-F06: platform-retention tables replace in-place org_id rewrite (ARCH-186/085/251) */ },
     { id: 37, name: "Inpatient Unit (IPU) Management",
-        codePaths: ["apps/backend/src/modules/37-ipu"], dependsOn: [6, 8, 11, 13, 17, 23], ownedTables: ["gip_admission_criteria", "gip_criteria_reassessment", "inpatient_unit", "ipu_admission", "ipu_admission_state_history", "ipu_admission_transition", "ipu_bed", "ipu_bed_assignment", "ipu_bed_cleaning_event", "ipu_body_release", "ipu_census_snapshot", "ipu_equipment", "ipu_equipment_inspection", "ipu_equipment_maintenance", "ipu_iv_safety_overlay", "ipu_meal_service", "ipu_remote_inpatient_episode", "ipu_restraint_event", "ipu_restraint_reassessment", "ipu_rn_coverage_window", "ipu_room", "ipu_shift", "ipu_staff_assignment", "ipu_visitor", "ipu_visitor_restriction", "irc_episode"] },
+        codePaths: ["apps/backend/src/modules/37-ipu", "packages/inpatient"], dependsOn: [6, 8, 11, 13, 17, 23], ownedTables: ["gip_admission_criteria", "gip_criteria_reassessment", "inpatient_unit", "ipu_admission", "ipu_admission_state_history", "ipu_admission_transition", "ipu_bed", "ipu_bed_assignment", "ipu_bed_cleaning_event", "ipu_body_release", "ipu_census_snapshot", "ipu_equipment", "ipu_equipment_inspection", "ipu_equipment_maintenance", "ipu_iv_safety_overlay", "ipu_meal_service", "ipu_remote_inpatient_episode", "ipu_restraint_event", "ipu_restraint_reassessment", "ipu_rn_coverage_window", "ipu_room", "ipu_shift", "ipu_staff_assignment", "ipu_visitor", "ipu_visitor_restriction", "irc_episode"] },
 ];
 /** Convenience maps */
 exports.MODULE_BY_ID = new Map(exports.MODULES.map((m) => [m.id, m]));
