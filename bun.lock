@@ -176,6 +176,14 @@
       "name": "@wardenx/ui",
       "version": "0.0.0",
     },
+    "packages/x12-835-client": {
+      "name": "@wardenx/x12-835-client",
+      "version": "0.0.0",
+    },
+    "packages/x12-837-client": {
+      "name": "@wardenx/x12-837-client",
+      "version": "0.0.0",
+    },
     "packages/xero-client": {
       "name": "@wardenx/xero-client",
       "version": "0.0.0",
@@ -458,6 +466,10 @@
     "@wardenx/types": ["@wardenx/types@workspace:packages/types"],
 
     "@wardenx/ui": ["@wardenx/ui@workspace:packages/ui"],
+
+    "@wardenx/x12-835-client": ["@wardenx/x12-835-client@workspace:packages/x12-835-client"],
+
+    "@wardenx/x12-837-client": ["@wardenx/x12-837-client@workspace:packages/x12-837-client"],
 
     "@wardenx/xero-client": ["@wardenx/xero-client@workspace:packages/xero-client"],
 

@@ -24,7 +24,9 @@ in `WARDENX_ARCHITECTURE_v0_11.md`.)
 
 `PHASE_1_PLAN.md` schedules Phase 1 into dependency-ordered waves; each wave is decomposed into
 **DoD-aligned, gate-bound tasks** an Archon workflow executes (see [`ARCHON_SETUP.md`](./ARCHON_SETUP.md)).
-Each task closes on a specific fitness gate; cross-module access is seam/outbox only.
+Each task closes on a specific fitness gate; cross-module access is seam/outbox only. To **run** them,
+follow [`plans/ARCHON_RUN_TRACKER.md`](./plans/ARCHON_RUN_TRACKER.md) — the ordered command list + a
+status checklist across all three phases.
 
 | Wave | Modules | Plan |
 |---|---|---|

@@ -22,9 +22,11 @@ Specs (all `docs/modules/`): `WARDENX_MODULE_23_BILLING_MEDICARE_SPEC_v0_2.md`,
 > agency-wide watch is Phase 3).
 >
 > **External INT — the X12 worker.** 837I generation + 999/277CA + 835 parsing run in the shared
-> **Python `x12-worker` sidecar** (architecture §12), invoked over internal HTTP via
-> `packages/x12-worker-client`. M23 owns its 837/999/277CA slice; M25 owns its 835/277CA slice. Both
-> declare the worker in their INT inventory; **MAC submission requires step-up** (M23).
+> **Python `x12-worker` sidecar** (architecture §12), invoked over internal HTTP via two single-owner
+> adapter packages (ADR-0029): **`packages/x12-837-client` (M23)** = 837I gen + 999 + 277CA parse;
+> **`packages/x12-835-client` (M25)** = 835 ERA parse only. 277CA is M23-owned — M25 seeds denials from
+> `m23.claim.rejected`, not by parsing 277CA. Both declare the worker in their INT inventory; **MAC
+> submission requires step-up** (M23).
 >
 > **Still deferred:** M24 Medicaid + commercial remittance (Phase 2); M28 FHIR `Claim`/`EOB`
 > projection (Wave H forward seam, M23 ships the contract); M27 Cost Report consumption of M26 (Phase 2).
@@ -46,7 +48,7 @@ ownedTables (17): claim, claim_acknowledgment, claim_line, claim_state_history, 
 - **M23-T04** Rate/calc engines: HIPPS (`hipps_calculation`), SIA (`sia_calculation`), sequestration (`sequestration_policy`), wage index (`wage_index_factor`).
 - **M23-T05** Consumed seams (§4.4): M5 `PatientReader`/`PatientPayerReader` (MBI decrypted only at submission), M6 `ElectionPeriodReader`/`CertificationReader`/`FaceToFaceReader`/`LevelOfCareReader`, M8 `BillableEncounterReader` (holds `awaiting_cosignature`), M18 `EvvComplianceReader` (ADR-0008), M38 `TerminologyProvider`, M40 `MdmEntityProvider`, M22 `DocumentRenderer`; **M26 `CapProjectionProvider` as a deny-stub** (warn-only, wired live at M26 lock).
 - **M23-T06** **§11.A Validation Rule Registry (§4.5)** — 30+ rules; overridable (`validation_override`, §7.2) vs **regulatory-required cannot be tenant-disabled** (§7.3); EVV rule per ADR-0008; cap-projection rule warn-only (§7.13). `validation_run`/`validation_result`.
-- **M23-T07** `packages/x12-worker-client` (M23 slice): 837I generation + 999/277CA parse via the Python sidecar (INT inventory); 277CA partial acceptance → TOB 817 (§7.12).
+- **M23-T07** `packages/x12-837-client` (ADR-0029): 837I generation + 999 + 277CA parse via the Python sidecar (INT inventory); 277CA partial acceptance → TOB 817 (§7.12).
 - **M23-T08** Eligibility (§7.14, `eligibility_check`, fresh 270/271 at submission); MAC submission + `mac_submitter_credential` + **step-up on submit**; `claim_submission`/`claim_acknowledgment`.
 - **M23-T09** NOE/NOTR windows (§7.4–7.6): `noe_record` on `m6.election.signed`, `notr_record` on `m6.discharge.created`; day-3 warning / day-5+1 breach blocks submission.
 - **M23-T10** Five published reader seams (§4.3: `ClaimReader`, `ClaimDayProjectionProvider` for M26, `ClaimMetricsProvider` for M33, …) into M1 registry. → `validateSeams`.
@@ -59,7 +61,7 @@ ownedTables (11): appeal_case, appeal_case_event, denial_case, denial_case_assig
 - **M25-T01** Enums + layout + domain (§2); types in `packages/types`. → `tsc -b`.
 - **M25-T02** Schema (11 tables, §3.3) + RLS + M4 audit + eraser (§3.7) + migration (§3.2). → `arch:tables/tenancy/ddl/gaps`.
 - **M25-T03** Remittance lifecycle (§2.2) + validation (§2.3); 835 posting (`remittance_advice`/`remittance_line`/`remittance_service_line`/`remittance_adjustment`/`remittance_remark`) + `patient_responsibility_ledger`.
-- **M25-T04** `packages/x12-worker-client` (M25 slice): parse 835 + 277CA via the sidecar; emit `m25.edi.835_received`.
+- **M25-T04** `packages/x12-835-client` (ADR-0029): parse **835 only** via the sidecar; emit `m25.edi.835_received`. (277CA-derived denials arrive via `m23.claim.rejected` — M25 does not parse 277CA.)
 - **M25-T05** Auto-match 835 → claim: consume M23 `ClaimReader.findByControlNumbers`; `m23.claim.rejected` (277CA) seeds the denial worklist (§7.3).
 - **M25-T06** Denial worklist (`denial_case`/`denial_case_assignment`/`denial_taxonomy_overlay`) + appeals (`appeal_case`/`appeal_case_event`, next-tier auto-spawn §7.10); CARC/RARC via M38; M40 `PayerCatalogReader`.
 - **M25-T07** Eight published reader seams (§4.3: `RemittanceReader`, `DenialMetricsProvider`, …) into M1; emit `m25.remittance.*` (→ **closes M23's inert consumer**: PAID/DENIED/PARTIAL); appeal packets via M22 `DocumentRenderer`. → `validateSeams`.

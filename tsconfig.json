@@ -120,6 +120,12 @@
       "path": "./packages/ui"
     },
     {
+      "path": "./packages/x12-835-client"
+    },
+    {
+      "path": "./packages/x12-837-client"
+    },
+    {
       "path": "./packages/xero-client"
     }
   ]
