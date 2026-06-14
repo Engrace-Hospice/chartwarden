@@ -204,7 +204,8 @@ foundation-edge convention consistent across the manifest.
   column). (c) **Validators** — §2.3 made canonical; fixed WF-08/WF-10 (V-11 PIP-close /
   V-12 SRA-close were swapped) and the STRIDE V-1/V-13 mis-citations. `arch:fitness` green.
 - **M26-F06 (BLOCKER) — DONE.** Cap-period/settlement state vocab + `cap_year` type were contradictory across schema/TypeBox/routes/ABAC/narrative. Schema made canonical: `cap_period.status` = open/active/in_settlement/settled/reopened; `cap_settlement.status` = proposed/reviewed/final; `cap_year` = CHAR(7) 'FY2026' string (was `Type.Integer` in the DTO). Aligned the TypeBox unions, ABAC predicate bodies, route table, and all workflow narrative; reworked the "voided-on-reopen" path to "final→proposed rollback" (no `voided` state in canon); added a §9 drift-guard test (migration enum ≡ TypeBox union). `arch:fitness` green.
-- Remaining Batch-5: M18-F09, M19-F06, M22-F16/F19.
+- **M19-F06 (BLOCKER) — DONE.** Pervasive contradictions reconciled to the §2-§4 canon (regenerated §6/§7/§8/§9/§13 to match): added the missing `documented_pending_encounter` state to the `triage_call_state` enum + ER diagram + state machine + the open-cases partial index; fixed the protocol count (≥25, not 12) everywhere; corrected wrong seam attributions (OutboxDispatcher is M1 not M38; CronScheduler is M1/platform not M40; AlertDispatcher→M36 `AlertEmitter`; dropped drifted reader names); single-sourced the 17 permission keys (§6 matrix relabeled to §4.6) and the ABAC predicate set (§4.7); fixed all non-enum disposition values; reconciled route paths + undefined columns/tiers/disciplines to §3.3/§4.1. `arch:fitness` green.
+- Remaining Batch-5: M18-F09, M22-F16/F19.
 
 ### Batch 2 — §20.B template sections (ADR-0021), wave 1 (2026-06-13) ✅ applied, `arch:fitness` green
 
