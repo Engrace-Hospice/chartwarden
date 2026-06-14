@@ -44,6 +44,7 @@ ADRs below are the normative rationale those changelogs point to.
 | [0023](ADR-0023-seam-pair-reconciliation.md) | Every consumer↔producer seam pair reconciled before "Locked"; M2 surface inflation adjudicated | X10, X12, M13/M14/M15/M19/M25 | Accepted |
 | [0024](ADR-0024-m14-notification-composition-ownership.md) | Notification composition & recipient resolution for cross-module events → M36, not M14 (SD-017) | M14-F04 | Accepted |
 | [0025](ADR-0025-m34-m35-dependency-direction.md) | M34↔M35 is a bidirectional seam relationship — no `dependsOn` edge either way | M35-F02 | Accepted |
+| [0026](ADR-0026-m19-vendor-operator-auth-via-better-auth.md) | External triage-vendor operators authenticate via Better Auth (new M2 session class), not a module-local SSO | M19-F03 | **Proposed** (needs Security-Owner sign-off) |
 
 *BB# = "Build Blocking Issues" item number in `audit/AUDIT_CONSOLIDATED_FINAL.md`.*
 

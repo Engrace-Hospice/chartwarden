@@ -63,7 +63,7 @@ After the re-audit, the remaining spec-editable BLOCKERs were fixed (each `arch:
 
 **Updated state: all spec-editable BLOCKERs from the June-13 set are now resolved.** What remains is **2 OUT-OF-BAND items only** (cannot be closed by editing a spec):
 - **M18-F01** — execute the EVV state-aggregator BAA/trading-partner agreement (catalogued per ADR-0020; INT-014 hard gate).
-- **M19-F03** — route vendor-operator identity through Better Auth via a new membership category — needs a **new ADR + Security-Owner sign-off** (SEC-006 App. A.3) before the spec change can land.
+- **M19-F03** — route vendor-operator identity through Better Auth via a new M2 session class. **ADR drafted: [ADR-0026](../docs/adr/ADR-0026-m19-vendor-operator-auth-via-better-auth.md) (Proposed)** — recommends a new M2 `external_triage_vendor` session class (org+vendor+shift scope, MFA), M19 keeping only the `external_triage_actor` predicate + D13 PHI-minimization. Awaiting **Security-Owner sign-off** (SEC-006 App. A.3) + the M2 spec change; Hybrid/Centralized stay feature-flagged OFF until then + BAA executed.
 
 Plus the standing non-spec items: the **CFR-citation SME sign-off**, the **manifest foundation-edge hygiene** pass, and the general **banner-vs-body** caution for any not-yet-re-verified module changelog claim.
 
