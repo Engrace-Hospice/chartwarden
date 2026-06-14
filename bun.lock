@@ -80,12 +80,20 @@
       "name": "@wardenx/dosespot",
       "version": "0.0.0",
     },
+    "packages/evv-aggregators": {
+      "name": "@wardenx/evv-aggregators",
+      "version": "0.0.0",
+    },
     "packages/fhir": {
       "name": "@wardenx/fhir",
       "version": "0.0.0",
     },
     "packages/forms": {
       "name": "@wardenx/forms",
+      "version": "0.0.0",
+    },
+    "packages/gusto-client": {
+      "name": "@wardenx/gusto-client",
       "version": "0.0.0",
     },
     "packages/hearthnote": {
@@ -102,6 +110,10 @@
     },
     "packages/intake-extraction": {
       "name": "@wardenx/intake-extraction",
+      "version": "0.0.0",
+    },
+    "packages/iqies-client": {
+      "name": "@wardenx/iqies-client",
       "version": "0.0.0",
     },
     "packages/mdm": {
@@ -152,12 +164,20 @@
       "name": "@wardenx/terminology",
       "version": "0.0.0",
     },
+    "packages/triage-vendors": {
+      "name": "@wardenx/triage-vendors",
+      "version": "0.0.0",
+    },
     "packages/types": {
       "name": "@wardenx/types",
       "version": "0.0.0",
     },
     "packages/ui": {
       "name": "@wardenx/ui",
+      "version": "0.0.0",
+    },
+    "packages/xero-client": {
+      "name": "@wardenx/xero-client",
       "version": "0.0.0",
     },
   },
@@ -389,9 +409,13 @@
 
     "@wardenx/dosespot": ["@wardenx/dosespot@workspace:packages/dosespot"],
 
+    "@wardenx/evv-aggregators": ["@wardenx/evv-aggregators@workspace:packages/evv-aggregators"],
+
     "@wardenx/fhir": ["@wardenx/fhir@workspace:packages/fhir"],
 
     "@wardenx/forms": ["@wardenx/forms@workspace:packages/forms"],
+
+    "@wardenx/gusto-client": ["@wardenx/gusto-client@workspace:packages/gusto-client"],
 
     "@wardenx/hearthnote": ["@wardenx/hearthnote@workspace:packages/hearthnote"],
 
@@ -400,6 +424,8 @@
     "@wardenx/inpatient": ["@wardenx/inpatient@workspace:packages/inpatient"],
 
     "@wardenx/intake-extraction": ["@wardenx/intake-extraction@workspace:packages/intake-extraction"],
+
+    "@wardenx/iqies-client": ["@wardenx/iqies-client@workspace:packages/iqies-client"],
 
     "@wardenx/mdm": ["@wardenx/mdm@workspace:packages/mdm"],
 
@@ -427,9 +453,13 @@
 
     "@wardenx/terminology": ["@wardenx/terminology@workspace:packages/terminology"],
 
+    "@wardenx/triage-vendors": ["@wardenx/triage-vendors@workspace:packages/triage-vendors"],
+
     "@wardenx/types": ["@wardenx/types@workspace:packages/types"],
 
     "@wardenx/ui": ["@wardenx/ui@workspace:packages/ui"],
+
+    "@wardenx/xero-client": ["@wardenx/xero-client@workspace:packages/xero-client"],
 
     "abstract-logging": ["abstract-logging@2.0.1", "", {}, "sha512-2BjRTZxTPvheOvGbBslFSYOUkr+SjPtOnrLP33f+VIWLzezQpZcqVg7ja3L4dBXmzzgwT+a029jRx5PCi3JuiA=="],
 

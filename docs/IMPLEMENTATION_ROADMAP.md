@@ -52,10 +52,12 @@ within a wave, the plan states the internal parallelism and which forward-seams/
 | P2-2 | M19, M20 | [`plans/WAVE_P2-2_M19-M20_PLAN.md`](./plans/WAVE_P2-2_M19-M20_PLAN.md) |
 | P2-3 | M27, M31, M33, M35 | [`plans/WAVE_P2-3_M27-M31-M33-M35_PLAN.md`](./plans/WAVE_P2-3_M27-M31-M33-M35_PLAN.md) |
 
-Phase 2 leaves only **M37 (Inpatient Unit)** for Phase 3, plus the Phase-3 flag activations. Adapter
-packages some Phase-2 specs reference (`xero-client`, `gusto-client`, `triage-vendors`, `evv-aggregators`)
-are **not in any manifest codePath** — each needs a deliberate codePath-addition ADR before it is
-fitness-governed (flagged in the relevant wave plans).
+Phase 2 leaves only **M37 (Inpatient Unit)** for Phase 3, plus the Phase-3 flag activations. The
+adapter packages those specs reference (`iqies-client`, `evv-aggregators`, `triage-vendors`,
+`xero-client`, `gusto-client`) are now in their owners' manifest `codePaths` and fitness-governed
+([ADR-0028](./adr/ADR-0028-adapter-package-codepaths.md), applied — 36 packages). `@wardenx/mobile-offline`
+stays intentionally exempt; `x12-worker-client` (split M23/M25 ownership) is the one open item, tracked
+for a follow-up ADR.
 
 ### Phase 3 wave plans
 

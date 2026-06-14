@@ -89,8 +89,10 @@ exports.VENDOR_ADAPTERS = {
     "twilio": "packages/messaging",
     "postmark": "packages/messaging",
     "@anthropic-ai/sdk": "packages/ai-platform",
-    // DoseSpot / Xero / Gusto clients are hand-rolled in their packages; if an SDK
-    // is added later, register it here so it cannot leak out of its adapter.
+    "xero-node": "packages/xero-client",          // ADR-0028
+    "@gusto/embedded-api": "packages/gusto-client", // ADR-0028
+    // DoseSpot client is hand-rolled in packages/dosespot. Xero/Gusto SDKs are registered
+    // above (ADR-0028); evv-aggregators and triage-vendors are hand-rolled HTTP but codePath-governed.
 };
 exports.MODULES = [
     {
@@ -175,7 +177,7 @@ exports.MODULES = [
         codePaths: ["packages/assessments", "apps/backend/src/modules/09-assessments"], dependsOn: [38],
         ownedTables: ["clinical_assessment", "assessment_cosignature", "significant_change_event", "scale_license", "scale_policy"] },
     { id: 10, name: "HOPE Engine",
-        codePaths: ["packages/hope", "apps/backend/src/modules/10-hope"], dependsOn: [9, 36, 38],
+        codePaths: ["packages/hope", "packages/iqies-client", "apps/backend/src/modules/10-hope"], dependsOn: [9, 36, 38], // +iqies-client ADR-0028
         ownedTables: ["hope_timepoint_schedule", "hope_assessment", "symptom_follow_up_visit", "hope_validation_finding", "hope_submission", "hope_submission_item"] },
     { id: 11, name: "Orders",
         codePaths: ["apps/backend/src/modules/11-orders"], dependsOn: [6, 36, 38, 40],
@@ -194,9 +196,9 @@ exports.MODULES = [
     { id: 17, name: "Scheduling & Route Optimization",
         codePaths: ["packages/routing-client", "apps/backend/src/modules/17-scheduling"], dependsOn: [5, 8, 40], ownedTables: ["clinician_availability", "recurring_visit", "route_segment", "time_off", "visit", "visit_proposal", "visit_state_history"] },
     { id: 18, name: "EVV",
-        codePaths: ["apps/backend/src/modules/18-evv"], dependsOn: [17], ownedTables: ["evv_aggregator_submission", "evv_device", "evv_event", "evv_geofence_evaluation", "evv_geofence_policy", "evv_missing_resolution"] },
+        codePaths: ["packages/evv-aggregators", "apps/backend/src/modules/18-evv"], dependsOn: [17], ownedTables: ["evv_aggregator_submission", "evv_device", "evv_event", "evv_geofence_evaluation", "evv_geofence_policy", "evv_missing_resolution"] },
     { id: 19, name: "On-Call Triage",
-        codePaths: ["apps/backend/src/modules/19-oncall"], dependsOn: [5, 17, 36], ownedTables: ["external_triage_vendor", "on_call_shift", "tenant_oncall_policy", "triage_call", "triage_call_answer", "triage_call_state_history", "triage_escalation", "triage_paper_reentry_worklist", "triage_protocol", "triage_protocol_question"] },
+        codePaths: ["packages/triage-vendors", "apps/backend/src/modules/19-oncall"], dependsOn: [5, 17, 36], ownedTables: ["external_triage_vendor", "on_call_shift", "tenant_oncall_policy", "triage_call", "triage_call_answer", "triage_call_state_history", "triage_escalation", "triage_paper_reentry_worklist", "triage_protocol", "triage_protocol_question"] },
     { id: 20, name: "Field Safety",
         codePaths: ["apps/backend/src/modules/20-field-safety"], dependsOn: [17, 36], ownedTables: ["safety_acknowledgment", "safety_check_in", "safety_check_in_schedule", "safety_emergency_contact_consent", "safety_high_risk_area", "safety_incident", "safety_incident_state_history", "safety_policy", "safety_policy_version", "safety_sos_alert", "safety_sos_alert_state_history", "safety_sos_location_stream", "safety_supervisor_subscription"] },
     { id: 21, name: "Supplies, DME & Comfort Kits",
@@ -215,7 +217,7 @@ exports.MODULES = [
     { id: 26, name: "Cap Management",
         codePaths: ["apps/backend/src/modules/26-cap"], dependsOn: [23, 36], ownedTables: ["cap_beneficiary_accrual", "cap_beneficiary_accrual_line", "cap_inpatient_accrual", "cap_inpatient_day_line", "cap_period", "cap_period_methodology_lock", "cap_period_platform_constant", "cap_projection_snapshot", "cap_psr_import", "cap_psr_reconciliation", "cap_settlement", "cap_threshold_event"] },
     { id: 27, name: "Cost Report",
-        codePaths: ["packages/cost-report", "apps/backend/src/modules/27-cost-report"], dependsOn: [23, 26, 38], ownedTables: ["bad_debt_record", "cost_center_mapping", "cost_report", "cost_report_compliance_window", "cost_report_snapshot", "cost_report_validation", "cost_report_validation_override", "cost_report_validation_result", "cost_report_validation_rule", "cost_report_worksheet", "ecr_submission", "statistic_data", "trial_balance_import", "wage_data_import"] },
+        codePaths: ["packages/cost-report", "packages/xero-client", "packages/gusto-client", "apps/backend/src/modules/27-cost-report"], dependsOn: [23, 26, 38], ownedTables: ["bad_debt_record", "cost_center_mapping", "cost_report", "cost_report_compliance_window", "cost_report_snapshot", "cost_report_validation", "cost_report_validation_override", "cost_report_validation_result", "cost_report_validation_rule", "cost_report_worksheet", "ecr_submission", "statistic_data", "trial_balance_import", "wage_data_import"] },
     { id: 28, name: "FHIR Gateway",
         codePaths: ["packages/fhir", "apps/backend/src/modules/28-fhir"], dependsOn: [5, 6, 7, 8, 11, 12, 13, 38, 40], ownedTables: ["fhir_bulk_export_artifact", "fhir_bulk_export_job", "fhir_capability_snapshot", "fhir_client", "fhir_client_credential", "fhir_client_session", "fhir_inbound_resource", "tenant_fhir_config"] },
     { id: 29, name: "External Interfaces",

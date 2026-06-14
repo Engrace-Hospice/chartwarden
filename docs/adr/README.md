@@ -46,6 +46,7 @@ ADRs below are the normative rationale those changelogs point to.
 | [0025](ADR-0025-m34-m35-dependency-direction.md) | M34↔M35 is a bidirectional seam relationship — no `dependsOn` edge either way | M35-F02 | Accepted |
 | [0026](ADR-0026-m19-vendor-operator-auth-via-better-auth.md) | External triage-vendor operators authenticate via Better Auth (new M2 session class), not a module-local SSO | M19-F03 | **Proposed** (needs Security-Owner sign-off) |
 | [0027](ADR-0027-phase-0-toolchain-and-scaffold.md) | Phase 0: ratifies toolchain (Bun workspaces + hoisted linker, TS project refs, TypeBox, Fastify/BullMQ/Better Auth, Vitest); manifest-driven scaffold + `arch:parity` gate; M1 bootstrap seam/eraser registry; fitness fixtures + CI | audit FAIL/PARTIAL (source tree, prerequisites, fitness boundaries gate) | Accepted |
+| [0028](ADR-0028-adapter-package-codepaths.md) | Add adapter packages to manifest codePaths so they're fitness-governed: iqies-client→M10, evv-aggregators→M18, triage-vendors→M19, xero-client+gusto-client→M27; mobile-offline stays exempt; x12-worker-client split deferred | Phase-2/3 plan manifest-note gap | Accepted (applied; 36 pkgs) |
 
 *BB# = "Build Blocking Issues" item number in `audit/AUDIT_CONSOLIDATED_FINAL.md`.*
 

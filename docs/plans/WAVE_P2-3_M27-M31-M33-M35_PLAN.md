@@ -22,11 +22,9 @@ Specs (all `docs/modules/`): `WARDENX_MODULE_27_COST_REPORT_SPEC_v0_2.md`,
 > | M31 portal readers + M13 caregiver-attested **portal write path** | the portal-variant deny-stubs across M5/M7/M8/M9/M10/M11/M12/M13/M15/M16/M17/M18/M19/M20/M21/M22; M13 (Wave E) caregiver portal write |
 > | M30 `HqrpMeasureProvider` consumed by M33 | the M33-side Phase-1 "Not yet available" HQRP tile |
 >
-> **⚠ Manifest note (M27):** `packages/xero-client` + `packages/gusto-client` (the §4.5 D6
-> XeroClientFactory/GustoClientFactory adapters M27 owns) are **not in any manifest codePath** — add
-> them to M27's `codePaths` via one ADR before they're fitness-governed, or keep them non-governed
-> (same posture as `triage-vendors`/`evv-aggregators`). The vendor SDKs must stay confined to these
-> adapters (architecture §25.14) regardless.
+> **Manifest note (RESOLVED — M27):** `packages/xero-client` + `packages/gusto-client` are now in
+> M27's `codePaths` and the Xero/Gusto SDKs are registered in `VENDOR_ADAPTERS` (ADR-0028, applied) —
+> fitness-governed, SDKs confined per §25.14. No action needed.
 >
 > **⚠ M33 has no package:** code lives in `apps/backend/src/modules/33-reporting`; its seams live in
 > `packages/types` and its tile cache uses the shared cache primitive — neither `packages/reporting`

@@ -48,10 +48,16 @@
       "path": "./packages/dosespot"
     },
     {
+      "path": "./packages/evv-aggregators"
+    },
+    {
       "path": "./packages/fhir"
     },
     {
       "path": "./packages/forms"
+    },
+    {
+      "path": "./packages/gusto-client"
     },
     {
       "path": "./packages/hearthnote"
@@ -64,6 +70,9 @@
     },
     {
       "path": "./packages/intake-extraction"
+    },
+    {
+      "path": "./packages/iqies-client"
     },
     {
       "path": "./packages/mdm"
@@ -102,10 +111,16 @@
       "path": "./packages/terminology"
     },
     {
+      "path": "./packages/triage-vendors"
+    },
+    {
       "path": "./packages/types"
     },
     {
       "path": "./packages/ui"
+    },
+    {
+      "path": "./packages/xero-client"
     }
   ]
 }

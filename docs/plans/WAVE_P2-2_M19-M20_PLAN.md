@@ -25,9 +25,8 @@ Specs: `docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md`,
 > **AI dependency (advisory only):** M19 `ProtocolSuggestionProvider`/`HospitalizationRiskProvider`
 > (M32) are advisory and need Part-A `ai.full`; ship deny-stub until then (AI Governance §2.1.1).
 >
-> **⚠ Manifest note:** `packages/triage-vendors` (M19 vendor adapters) is **not in any manifest
-> codePath** — add it to M19's `codePaths` via one ADR before it's fitness-governed, or keep it a
-> non-governed adapter package (same posture as `evv-aggregators`/`xero-client`). Decide explicitly.
+> **Manifest note (RESOLVED):** `packages/triage-vendors` is now in M19's `codePaths` and
+> `packages/evv-aggregators` in M18's (ADR-0028, applied) — both fitness-governed. No action needed.
 
 ## Module 19 — On-Call Triage (deps: 5,17,36 · apps/backend/src/modules/19-oncall) — 10 tables
 - **M19-T01** Enums + layout + domain (§2); `packages/triage-vendors` adapter scaffold (see manifest note); types in `packages/types`. → `tsc -b`.
