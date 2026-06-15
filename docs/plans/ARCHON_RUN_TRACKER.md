@@ -29,7 +29,7 @@ to follow each run. See [`../ARCHON_SETUP.md`](../ARCHON_SETUP.md) for install +
 
 | # | Wave | Modules | Command | Status | PR |
 |---|---|---|---|---|---|
-| 1 | Slice | M1, M2 | `archon workflow run wardenx-piv --branch feat/m1-m2-slice` | 👀 | [#3](https://github.com/fabwebdev/wardenx/pull/3) ‡ |
+| 1 | Slice | M1, M2 | `archon workflow run wardenx-piv --branch feat/m1-m2-slice` | ✅ | [#3](https://github.com/fabwebdev/wardenx/pull/3) ‡ |
 | 2 | A | M3, M4 | `archon workflow run wardenx-piv --branch feat/wave-a "Use the plan at docs/plans/WAVE_A_M3-M4_PLAN.md"` | ☐ | |
 | 3 | B | M36, M38, M40 | `archon workflow run wardenx-piv --branch feat/wave-b "Use the plan at docs/plans/WAVE_B_M36-M38-M40_PLAN.md"` | ☐ | |
 | 4 | C | M5, M39 | `archon workflow run wardenx-piv --branch feat/wave-c "Use the plan at docs/plans/WAVE_C_M5-M39_PLAN.md"` | ☐ | |
@@ -40,12 +40,14 @@ to follow each run. See [`../ARCHON_SETUP.md`](../ARCHON_SETUP.md) for install +
 | 8 | G | M23, M25, M26 | `archon workflow run wardenx-piv --branch feat/wave-g "Use the plan at docs/plans/WAVE_G_M23-M25-M26_PLAN.md"` | ☐ | |
 | 9 | H | M28, M29, M30, M32, M34 | `archon workflow run wardenx-piv --branch feat/wave-h "Use the plan at docs/plans/WAVE_H_M28-M29-M30-M32-M34_PLAN.md"` | ☐ | |
 
-‡ **Slice #1 (PR [#3](https://github.com/fabwebdev/wardenx/pull/3)) — in review, NOT yet merged.** The
-`wardenx-piv` run was killed at the approval node (nested-Claude hang, [Archon#1067](https://github.com/coleam00/Archon/issues/1067));
-PR opened manually. Two merge-blockers before this flips to ✅: (1) the RLS cross-tenant isolation test
-(§7.2/§9.3) is `describe.skip`'d — run it against live PG; (2) M2-T09 frontend is **deferred** pending
-the core-frontend-app decision ([ADR-0030](../adr/ADR-0030-core-frontend-app-ownership.md)). M3/M4
-dependencies are intentional deny-stubs. **Don't start Wave A until PR #3 merges** (it assumes M1/M2 seams).
+‡ **Slice #1 (PR [#3](https://github.com/fabwebdev/wardenx/pull/3)) — MERGED 2026-06-15.** The
+`wardenx-piv` run was killed at the approval node (nested-Claude hang, [Archon#1067](https://github.com/coleam00/Archon/issues/1067))
+and the PR opened manually. Both merge-blockers resolved before merge: (1) RLS cross-tenant isolation is
+now **proven on real Postgres** (`rls-isolation.live.test.ts` + CI `rls-live` job) — which also caught &
+fixed a write-breaking audit-trigger recursion through `audit_event`'s monthly partitions; (2) M2-T09
+frontend was **decided** — [ADR-0030](../adr/ADR-0030-core-frontend-app-ownership.md) (Accepted) carves a
+core `apps/web` (M1 shell + `apps/web/src/modules/02-identity` for M2), so the auth screens are a tracked
+**follow-up PR**, not missing slice work. Remaining: M3/M4 deny-stubs clear with **Wave A (next)**.
 
 **Phase 1 done when:** all 29 modules at DoD; the end-to-end scenario passes (admit → elect → care plan
 → encounter → assessment → HOPE → order → eMAR → IDG → schedule → EVV → bill → 835 → cap projection).
