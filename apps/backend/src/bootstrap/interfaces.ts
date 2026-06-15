@@ -3,6 +3,7 @@
 // (never in a packages/foundation); this file just re-exports them so the registry,
 // providers, and consumers share one import site.
 export type {
+  AuditorSessionMinter,
   CaseloadProvider,
   ConsentEvaluator,
   DataClass,
@@ -10,6 +11,10 @@ export type {
   DocumentRenderer,
   OrgScope,
   PatientReader,
+  RequiredSeam,
+  ResolvedActor,
   SeamContracts,
   SeamName,
+  SessionContextResolver,
+  SessionStepUpFields,
 } from "@wardenx/types";

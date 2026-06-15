@@ -38,3 +38,30 @@ jobs:
       - name: Lint (non-blocking advisory)
         run: bun run lint
         continue-on-error: true
+
+  rls-live:
+    name: RLS cross-tenant isolation (live Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wardenx_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+      - name: Install dependencies (frozen lockfile)
+        run: bun install --frozen-lockfile
+      - name: RLS cross-tenant isolation proof (real Postgres + real RLS)
+        run: bun run test:rls:live

@@ -23,6 +23,10 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   "messages",
   "consent",
   "telehealth_recording",
+  // M2-T10: identity credentials (two_factor/passkey + pending invitations). M2 registers
+  // the REAL eraser via the composition root's registerModuleErasers hook (it runs AFTER
+  // wireErasers(), standing over the Phase-0 deny-stub); see apps/backend/src/index.ts.
+  "identity",
 ];
 
 export function registerEraser(dataClass: DataClass, eraser: DataEraser): void {

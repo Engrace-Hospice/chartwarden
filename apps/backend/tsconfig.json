@@ -5,5 +5,10 @@
     "outDir": "dist"
   },
   "include": ["src"],
-  "references": [{ "path": "../../packages/types" }]
+  "references": [
+    { "path": "../../packages/types" },
+    { "path": "../../packages/shared" },
+    { "path": "../../packages/tenancy" },
+    { "path": "../../packages/audit" }
+  ]
 }
