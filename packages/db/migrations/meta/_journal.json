@@ -1,0 +1,62 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1781480497459,
+      "tag": "0000_foundation_initial",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1781480584901,
+      "tag": "0001_foundation_rls_roles_partitioning",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781480585134,
+      "tag": "0002_feature_flag_global_read",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1781480585369,
+      "tag": "0003_organization_settings_and_outbox_catalog",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1781481221547,
+      "tag": "0004_foundation_audit_triggers",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1781486817102,
+      "tag": "0005_identity_m2_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781486826630,
+      "tag": "0006_identity_m2_rls_audit_triggers",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1781487414637,
+      "tag": "0007_session_class_step_up_fields",
+      "breakpoints": true
+    }
+  ]
+}

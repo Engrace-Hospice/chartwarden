@@ -1,6 +1,9 @@
-// Boot smoke test (PHASE_0_SCAFFOLD_PLAN.md PR-0.4 exit criterion).
-// Asserts the seam + eraser boot gates FAIL CLOSED on a missing entry and pass once the
-// Phase-0 deny-stubs are wired, and that buildServer() serves /healthz after booting.
+// Boot smoke test (PHASE_0_SCAFFOLD_PLAN.md PR-0.4 exit criterion; promoted to the real
+// §3.18 seam-registry surface by M1-T09).
+// Asserts: (1) validateSeams() applies REQUIRED_SEAMS deny-stub defaults so an unregistered
+// cross-module seam boots FAIL-CLOSED (present, but throwing on call) rather than open;
+// (2) a module's real registration survives validateSeams() unchanged; (3) the eraser gate
+// FAILS CLOSED at boot when a PHI data class has no eraser; (4) buildServer() serves /healthz.
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { wireErasers } from "../../apps/backend/src/bootstrap/erasers/providers";
@@ -10,35 +13,57 @@ import {
   validateErasers,
 } from "../../apps/backend/src/bootstrap/erasers/registry";
 import { bootSeams, buildServer } from "../../apps/backend/src/bootstrap/index";
-import { wireSeams } from "../../apps/backend/src/bootstrap/seams/providers";
+import { NotImplementedError, wireSeams } from "../../apps/backend/src/bootstrap/seams/providers";
 import {
   REQUIRED_SEAMS,
-  SeamError,
   __resetSeamsForTest,
+  getSeam,
+  registerSeam,
   validateSeams,
 } from "../../apps/backend/src/bootstrap/seams/registry";
 
-describe("seam + eraser boot gate (fails closed)", () => {
+describe("seam + eraser boot gate (§3.18 fail-closed)", () => {
   beforeEach(() => {
     __resetSeamsForTest();
     __resetErasersForTest();
   });
 
-  it("validateSeams() throws when a required seam is unregistered", () => {
+  it("REQUIRED_SEAMS declares every required seam with an owner + deny-stub (§3.18.2)", () => {
     expect(REQUIRED_SEAMS.length).toBeGreaterThan(0);
-    expect(() => validateSeams()).toThrow(SeamError);
+    for (const r of REQUIRED_SEAMS) {
+      expect(typeof r.key).toBe("string");
+      expect(typeof r.ownerModule).toBe("number");
+      expect(r.denyStub).toBeDefined();
+    }
   });
 
-  it("validateSeams() passes once every stub is wired", () => {
+  it("validateSeams() applies deny-stub defaults so an unregistered seam boots fail-closed", () => {
+    // No module registered anything (Phase-0 baseline: wireSeams is a no-op hook).
     wireSeams();
     expect(() => validateSeams()).not.toThrow();
+    // The contract is present after validation — but denies LOUDLY on call.
+    const caseload = getSeam("CaseloadProvider");
+    expect(() => caseload.patientsForActor({ orgId: "org_1" }, "mem_1")).toThrow(
+      NotImplementedError,
+    );
   });
 
-  it("validateErasers() throws when a PHI data class has no eraser", () => {
+  it("validateSeams() keeps a module's real registration over the deny-stub", () => {
+    const realCaseload = {
+      async patientsForActor() {
+        return ["patient_1"] as const;
+      },
+    };
+    registerSeam("CaseloadProvider", realCaseload);
+    validateSeams();
+    expect(getSeam("CaseloadProvider")).toBe(realCaseload);
+  });
+
+  it("validateErasers() throws when a PHI data class has no eraser (no deny-stub default)", () => {
     expect(() => validateErasers()).toThrow(EraserError);
   });
 
-  it("validateErasers() passes once every stub is wired", () => {
+  it("validateErasers() passes once every eraser stub is wired", () => {
     wireErasers();
     expect(() => validateErasers()).not.toThrow();
   });

@@ -2,3 +2,6 @@
 // universally importable per ADR-0005 D4; cross-module table ACCESS is still blocked by
 // check-table-ownership.ts). Phase 0: schema barrel is empty (no tables yet).
 export * as schema from "./schema/index";
+// M1-T07 — Organization-Settings Registry pattern (§3.15): typed reader + collision-
+// guarded registry over `organization.settings`, plus the boot UPSERT projection.
+export * from "./organization-settings/index";

@@ -1,2 +1,5 @@
-// @wardenx/tenancy — Phase 0 placeholder (no business logic; see PHASE_0_SCAFFOLD_PLAN.md).
-export {};
+// @wardenx/tenancy — withOrgContext() + RLS policy generator (M1, manifest §package list).
+// M1-T05 (spec §3.13): RLS policy generator.
+// M1-T06 (spec §3.14): withOrgContext()/withPlatformContext() + request-context plumbing.
+export * from "./context";
+export * from "./rls";

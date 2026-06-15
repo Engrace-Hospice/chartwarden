@@ -8,6 +8,9 @@
   },
   "types": "./src/index.ts",
   "dependencies": {
+    "@wardenx/audit": "workspace:*",
+    "@wardenx/shared": "workspace:*",
+    "@wardenx/tenancy": "workspace:*",
     "@wardenx/types": "workspace:*",
     "fastify": "^5.2.0"
   }

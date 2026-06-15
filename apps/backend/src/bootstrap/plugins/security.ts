@@ -1,0 +1,114 @@
+// apps/backend/src/bootstrap/plugins/security.ts — M1 platform security baseline
+// (spec §4.6.1 / M01-F10 / SD-055 / SEC-063..065 / ARCH-025; M1-T10).
+//
+// M1 owns the base Fastify host, so it wires the ONE security chain every module inherits
+// (modules MUST NOT roll their own — SEC-064). This baseline is intentionally
+// dependency-light for the vertical slice: it sets the helmet-equivalent response headers,
+// the SD-055 rate-limit tiers, the explicit CORS allow-list, and (via buildServer) the
+// 10 MB body limit — with NO new npm dependency.
+//
+// FORWARD NOTE (tracked follow-up): the production wiring swaps these hand-rolled hooks for
+// `@fastify/helmet` (CSP/HSTS) and `@fastify/rate-limit` backed by the Valkey store (so the
+// limiter is shared across instances), and adds the CSRF double-submit plugin (token
+// mechanics are M2's, SEC-027). The header set + tier values below are the contract those
+// plugins must preserve. Default rate-limit store is in-memory + a fixed window — correct
+// for a single instance; Valkey replaces it for the cluster.
+import { RateLimitedError } from "@wardenx/types";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+
+/** SD-055 tiers: 30/min unauthenticated, 600/min authenticated. */
+export interface RateLimitTiers {
+  readonly unauthenticatedPerMinute: number;
+  readonly authenticatedPerMinute: number;
+}
+
+export const DEFAULT_RATE_LIMIT_TIERS: RateLimitTiers = {
+  unauthenticatedPerMinute: 30,
+  authenticatedPerMinute: 600,
+};
+
+export interface SecurityOptions {
+  /** Allowed CORS origins (explicit allow-list — ARCH-025). Empty = no cross-origin. */
+  readonly corsAllowOrigins?: readonly string[];
+  readonly rateLimitTiers?: RateLimitTiers;
+  /** Injectable clock (ms) so tests are deterministic; defaults to Date.now. */
+  readonly now?: () => number;
+  /** Set false to disable the limiter (e.g. a /ready probe storm in tests). */
+  readonly rateLimitEnabled?: boolean;
+}
+
+interface WindowCounter {
+  count: number;
+  windowStart: number;
+}
+
+const WINDOW_MS = 60_000;
+
+/** The helmet-equivalent response headers (SEC-063). */
+function setSecurityHeaders(reply: FastifyReply): void {
+  reply.header(
+    "Content-Security-Policy",
+    "default-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'",
+  );
+  reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+  reply.header("X-Content-Type-Options", "nosniff");
+  reply.header("Referrer-Policy", "no-referrer");
+  reply.header("X-Frame-Options", "DENY");
+  reply.header("X-DNS-Prefetch-Control", "off");
+}
+
+export function applySecurityBaseline(app: FastifyInstance, opts: SecurityOptions = {}): void {
+  const tiers = opts.rateLimitTiers ?? DEFAULT_RATE_LIMIT_TIERS;
+  const now = opts.now ?? Date.now;
+  const allowOrigins = new Set(opts.corsAllowOrigins ?? []);
+  const limiterEnabled = opts.rateLimitEnabled ?? true;
+  const counters = new Map<string, WindowCounter>();
+
+  // Helmet-equivalent headers on every response.
+  app.addHook("onSend", async (_request, reply, payload) => {
+    setSecurityHeaders(reply);
+    return payload;
+  });
+
+  // CORS allow-list (ARCH-025) + preflight short-circuit.
+  app.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {
+    const origin = request.headers.origin;
+    if (typeof origin === "string" && allowOrigins.has(origin)) {
+      reply.header("Access-Control-Allow-Origin", origin);
+      reply.header("Vary", "Origin");
+      reply.header("Access-Control-Allow-Credentials", "true");
+      reply.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+      reply.header(
+        "Access-Control-Allow-Headers",
+        "content-type,authorization,idempotency-key,x-correlation-id",
+      );
+    }
+    if (request.method === "OPTIONS") {
+      // Preflight — answer here, after CORS headers are set.
+      return reply.code(204).send();
+    }
+  });
+
+  // Rate-limit (SD-055): keyed by org when authenticated, else by client ip.
+  if (limiterEnabled) {
+    app.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {
+      const orgId = request.context?.organizationId;
+      const authenticated = typeof orgId === "string" && orgId.length > 0;
+      const limit = authenticated ? tiers.authenticatedPerMinute : tiers.unauthenticatedPerMinute;
+      const bucketKey = authenticated ? `org:${orgId}` : `ip:${request.ip}`;
+
+      const t = now();
+      const existing = counters.get(bucketKey);
+      if (!existing || t - existing.windowStart >= WINDOW_MS) {
+        counters.set(bucketKey, { count: 1, windowStart: t });
+        return;
+      }
+      existing.count += 1;
+      if (existing.count > limit) {
+        const retryAfter = Math.ceil((existing.windowStart + WINDOW_MS - t) / 1000);
+        reply.header("Retry-After", String(Math.max(retryAfter, 1)));
+        throw new RateLimitedError();
+      }
+    });
+  }
+}
