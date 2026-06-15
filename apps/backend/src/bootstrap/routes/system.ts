@@ -1,14 +1,16 @@
 // apps/backend/src/bootstrap/routes/system.ts — M1 system-status + feature-flag routes
 // (spec §4.1–4.2, §6; M1-T10).
 //
-// GET routes require a session (deny-stub guard — M3 owns real RBAC); the admin status
-// mutation is platform_ops-only. Data access goes through injected readers (the seam to
-// M1's own `system_status` / `feature_flag` tables) so the route file imports no Drizzle
-// schema directly; the boot default is an in-memory reader (the slice has no DB wired yet),
-// which production swaps for the org-scoped, withOrgContext-wrapped DB reader.
+// GET routes require a session; the admin status mutation is platform_ops-only. As of M3-T10
+// these guards are the REAL Authorization Contract (`requireSession`/`requireRole` from
+// @wardenx/auth, a foundation-helper package every module may consume) — the M1 deny-stub
+// forward-seam is retired. Data access goes through injected readers (the seam to M1's own
+// `system_status` / `feature_flag` tables) so the route file imports no Drizzle schema
+// directly; the boot default is an in-memory reader (the slice has no DB wired yet), which
+// production swaps for the org-scoped, withOrgContext-wrapped DB reader.
+import { requireRole, requireSession } from "@wardenx/auth";
 import { ValidationError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
-import { requireRole, requireSession } from "../plugins/guards";
 
 export type SystemStatusLevel = "operational" | "degraded" | "outage";
 
@@ -41,19 +43,19 @@ export function registerSystemRoutes(
   deps: { statusReader: SystemStatusReader; flagReader: FeatureFlagReader },
 ): void {
   app.get("/api/v1/system/status", async (request, reply) => {
-    requireSession(request);
+    await requireSession()(request);
     const components = await deps.statusReader.list(request.context.organizationId);
     return reply.send({ components });
   });
 
   app.get("/api/v1/system/feature-flags", async (request, reply) => {
-    requireSession(request);
+    await requireSession()(request);
     const flags = await deps.flagReader.forOrg(request.context.organizationId);
     return reply.send({ flags });
   });
 
   app.post("/api/v1/admin/system/status", async (request, reply) => {
-    requireRole(request, PLATFORM_OPS_ROLE);
+    await requireRole(PLATFORM_OPS_ROLE)(request);
     const component = parseStatusComponent(request.body);
     await deps.statusReader.upsert(request.context.organizationId, component);
     const components = await deps.statusReader.list(request.context.organizationId);

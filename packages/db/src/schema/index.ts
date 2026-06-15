@@ -38,3 +38,31 @@ export * from "./two-factor";
 export * from "./passkeys";
 export * from "./organization-invitations";
 export * from "./tenant-step-up-policy-overrides";
+// M3-T02 — Authorization roles & joins (M3 spec §3.3–3.4). `permission` is the read-only
+// platform-global mirror of the code catalog (NON_ORG_SCOPED). `role` carries a nullable
+// organization_id (NULL = platform template). `role_permission` + `membership_role` are the
+// grant joins; both get hand-reviewed RLS in M3-T04 (role_permission bespoke, membership_role
+// standard app.org_id).
+export * from "./permissions";
+export * from "./roles";
+export * from "./role-permissions";
+export * from "./membership-roles";
+// M3-T03 — Break-glass & auditor engagements (M3 spec §3.5). Both org-scoped on
+// organization_id (standard app.org_id RLS in M3-T04); neither is a PHI table (they carry
+// only target *references*), so the PE/location columns do not apply. break_glass_event is
+// the emergency-access record (§7.4); auditor_engagement is the time-bound, scoped read
+// window for external auditors (§7.5).
+export * from "./break-glass";
+export * from "./auditor-engagements";
+// M4-T04 — Audit lifecycle / integrity / catalog tables (M4 spec §3.5). legal_hold,
+// destruction_certificate, audit_export are org-scoped (standard app.org_id RLS lands in
+// M4-T05); audit_seal is the Phase-2 tamper-evidence chain (nullable org). state_retention_override,
+// audit_denylist_catalog, audit_action_catalog are platform-shared reference (NON_ORG_SCOPED per the
+// check-tenancy allowlist). None are PHI tables, so the PE/location columns do not apply.
+export * from "./legal-holds";
+export * from "./destruction-certificates";
+export * from "./state-retention-overrides";
+export * from "./audit-exports";
+export * from "./audit-seals";
+export * from "./audit-denylist-catalog";
+export * from "./audit-action-catalog";

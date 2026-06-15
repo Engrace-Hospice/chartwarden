@@ -57,6 +57,48 @@
       "when": 1781487414637,
       "tag": "0007_session_class_step_up_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1781501749928,
+      "tag": "0008_authorization_m3_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1781501759843,
+      "tag": "0009_authorization_m3_rls_audit_triggers",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1781501912958,
+      "tag": "0010_authorization_role_template_read",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1781509702461,
+      "tag": "0011_audit_m4_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1781509781429,
+      "tag": "0012_audit_m4_rls_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1781509782429,
+      "tag": "0013_audit_trigger_backfill",
+      "breakpoints": true
     }
   ]
 }

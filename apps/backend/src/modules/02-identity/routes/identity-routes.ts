@@ -18,16 +18,18 @@
 //   POST   /api/v1/collaborators/invite       mint a per-patient magic-link           §7.6
 //   POST   /api/v1/collaborators/consume      consume the link → scoped session       §7.6
 //
-// Every route sits BEHIND the M3 authorization deny-stubs (requirePermission / requireAbac /
-// requireRole — fail-closed forward-seams; M3 owns real RBAC/ABAC, tracked follow-up) and
-// every mutation is audited at `compliance` retention through the mandated audit() helper
-// (the field denylist runs there — the invitee email is redacted). Org binding is server-side
-// only: an admin route additionally asserts the session's bound org === the path org, so a
-// token replay with an altered org cannot act cross-tenant (§7.12).
+// Every route sits BEHIND the REAL Authorization Contract (as of M3-T10): admin routes gate on
+// the §4.7 permission keys via `requirePermission`, and the per-patient collaborator route on
+// the `caseload_membership` ABAC predicate via `requireAbac` (both from @wardenx/auth, a
+// foundation-helper package every module may consume). The M1 deny-stub forward-seam is retired.
+// Every mutation is audited at `compliance` retention through the mandated audit() helper (the
+// field denylist runs there — the invitee email is redacted). Org binding is server-side only:
+// an admin route additionally asserts the session's bound org === the path org, so a token
+// replay with an altered org cannot act cross-tenant (§7.12).
 import type { AuditContext, AuditExecutor } from "@wardenx/audit";
+import { requireAbac, requirePermission, requireSession } from "@wardenx/auth";
 import { UnauthorizedError, ValidationError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { requireAbac, requirePermission, requireSession } from "../../../bootstrap/index";
 import {
   auditCollaboratorInvited,
   auditCollaboratorSessionStarted,
@@ -165,7 +167,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
 
   // --- §7.1 Invite & onboard a clinician -------------------------------------------------
   app.post("/api/v1/orgs/:id/invitations", async (request, reply) => {
-    requirePermission(request, "m2.invitation.create", "org_admin");
+    await requirePermission("member.invite")(request);
     const orgId = (request.params as { id: string }).id;
     assertOrgMatch(request, orgId);
     const actor = await resolveActor(deps, request);
@@ -236,7 +238,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
   });
 
   app.delete("/api/v1/orgs/:id/invitations/:invId", async (request, reply) => {
-    requirePermission(request, "m2.invitation.rescind", "org_admin");
+    await requirePermission("member.invite")(request);
     const { id: orgId, invId } = request.params as { id: string; invId: string };
     assertOrgMatch(request, orgId);
     const actor = await resolveActor(deps, request);
@@ -254,7 +256,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
 
   // --- §7.5 Member lifecycle: list / suspend / revoke / deactivate -----------------------
   app.get("/api/v1/orgs/:id/members", async (request) => {
-    requirePermission(request, "m2.member.list", "org_admin");
+    await requirePermission("member.manage")(request);
     const orgId = (request.params as { id: string }).id;
     assertOrgMatch(request, orgId);
     const rows = await deps.memberships.listForOrg(orgId);
@@ -262,7 +264,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
   });
 
   app.patch("/api/v1/orgs/:id/members/:mId", async (request, reply) => {
-    requirePermission(request, "m2.member.update", "org_admin");
+    await requirePermission("member.manage")(request);
     const { id: orgId, mId } = request.params as { id: string; mId: string };
     assertOrgMatch(request, orgId);
     const actor = await resolveActor(deps, request);
@@ -305,7 +307,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
   });
 
   app.delete("/api/v1/orgs/:id/members/:mId", async (request, reply) => {
-    requirePermission(request, "m2.member.revoke", "org_admin");
+    await requirePermission("member.manage")(request);
     const { id: orgId, mId } = request.params as { id: string; mId: string };
     assertOrgMatch(request, orgId);
     const actor = await resolveActor(deps, request);
@@ -331,9 +333,9 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
   });
 
   app.post("/api/v1/users/:id/deactivate", async (request, reply) => {
-    // org_admin (own org) or platform_ops (any) — the deny-stub enforces org_admin coarsely;
-    // M3 layers the platform_ops cross-org grant (tracked follow-up).
-    requirePermission(request, "m2.user.deactivate", "org_admin");
+    // §4.7: org_admin (own org) or platform_ops (any) hold `user.deactivate`; the resolver
+    // grants it per the assigned role templates.
+    await requirePermission("user.deactivate")(request);
     const userId = (request.params as { id: string }).id;
     const actor = await resolveActor(deps, request);
     const reason = readString(request.body, "reason");
@@ -353,10 +355,16 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
 
   // --- §7.6 External collaborator: mint a per-patient link, then consume it ---------------
   app.post("/api/v1/collaborators/invite", async (request, reply) => {
-    // staff-class session; the patient must be on the actor's caseload (ABAC). The caseload
-    // predicate is M3-owned (M5/M17 CaseloadProvider seam) — deny-stubbed fail-closed here.
-    requireSession(request);
-    requireAbac(request, "caseload");
+    // staff-class session; the patient must be on the actor's caseload (§4.7 collaborator.invite,
+    // ABAC: caseload_membership). The predicate is M3-owned and resolves through the M5/M17
+    // CaseloadProvider seam (deny-by-default until that provider registers at boot).
+    await requireSession()(request);
+    await requireAbac("collaborator.invite", "caseload_membership", {
+      getTarget: (req) => {
+        const patientId = (req.body as { patientId?: unknown } | null)?.patientId;
+        return typeof patientId === "string" ? { patientId } : {};
+      },
+    })(request);
     const actor = await resolveActor(deps, request);
     if (!actor.organizationId || !actor.membershipId) {
       throw new WardenXError("FORBIDDEN", "an org-bound staff session is required", 403);

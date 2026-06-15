@@ -1,0 +1,36 @@
+// @wardenx/audit — Module 2 (Identity & Org) action catalog (M4-T10; M4 spec §4.6.1 `m2.ts`).
+//
+// The `m2.*` actions M2's identity/membership routes and the session step-up flow emit through
+// the mandated audit() surface (apps/backend/src/modules/02-identity/audit/*). All are security-
+// relevant identity events filed under `compliance` (7-yr); none carry PHI or are Part 2-eligible.
+import type { ModuleActionCatalog } from "./types";
+
+const compliance = (action: string, description: string) =>
+  ({
+    action,
+    moduleOwner: "m2",
+    defaultRetentionClass: "compliance",
+    description,
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  }) as const;
+
+/** `m2` Identity & Org actions (identity-audit.ts + step-up-audit.ts). */
+export const M2_ACTION_CATALOG: ModuleActionCatalog = [
+  compliance("m2.user.invited", "A user was invited to an organization."),
+  compliance("m2.invitation.rescinded", "A pending organization invitation was rescinded."),
+  compliance("m2.membership.accepted", "An invitee accepted a membership."),
+  compliance("m2.membership.suspended", "A membership was suspended."),
+  compliance("m2.membership.reinstated", "A suspended membership was reinstated."),
+  compliance("m2.membership.updated", "A membership's default scope was edited."),
+  compliance("m2.membership.revoked", "A membership was revoked."),
+  compliance("m2.user.deactivated", "A user was fully offboarded (credentials disabled)."),
+  compliance("m2.collaborator.invited", "A per-patient collaborator magic-link was issued."),
+  compliance("m2.collaborator.session_started", "A collaborator magic-link session began."),
+  compliance("m2.session.step_up.completed", "A step-up (re-auth) challenge was completed."),
+  compliance("m2.session.step_up.failed", "A step-up (re-auth) challenge failed."),
+  compliance(
+    "m2.session.terminated_step_up_lockout",
+    "A session was terminated after step-up lockout.",
+  ),
+];

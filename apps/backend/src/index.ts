@@ -4,6 +4,7 @@
 // via `wireModuleSeams` (M1's bootstrap cannot import a downstream module; the composition
 // root does, then hands the registration into the boot gate before validateSeams()).
 import { buildServer } from "./bootstrap/index";
+import { assertAuditActionCatalog, registerAuditErasers } from "./modules/04-audit/index";
 import { registerIdentityErasers, registerIdentitySeams } from "./modules/02-identity/index";
 
 export { buildServer };
@@ -29,12 +30,16 @@ export function wireModuleSeams(): void {
  */
 export function wireModuleErasers(): void {
   registerIdentityErasers(); // M2 — `identity` data class (two_factor/passkey + invitations)
-  // Phase-1 data-class owners append here as they land (M4 destruction-cert workflow).
+  registerAuditErasers(); // M4-T08 — `audit_event` data class (legal-hold + Part 2 lifetime aware)
+  // Phase-1 data-class owners append here as they land.
 }
 
 // Start only when run directly (not when imported by tests/tooling).
 // `import.meta.main` is a Bun runtime flag; cast keeps tsc happy without bun-types.
 if ((import.meta as { main?: boolean }).main) {
+  // M4-T10 — fail closed if the consolidated audit action catalog has a D9 namespace/uniqueness
+  // violation (§4.6.7) before the server serves a single request.
+  assertAuditActionCatalog();
   const app = buildServer({
     registerModuleSeams: wireModuleSeams,
     registerModuleErasers: wireModuleErasers,

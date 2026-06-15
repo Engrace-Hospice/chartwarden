@@ -5,9 +5,9 @@
 //   POST /api/v1/sessions/step-up           — verify it; on success write the session's
 //                                             lastStepUpAt/lastStepUpFactor (paired-write, D8)
 //
-// Both routes sit BEHIND the M1 context guard `requireSession` (the deny-stub forward-seam for
-// M3 — fails closed) and then resolve the concrete authenticated session via M2's injected
-// SessionResolver. SMS is refused at the route boundary (W-M2-11 / D9): `STEP_UP_POLICY`
+// Both routes sit BEHIND the Authorization Contract's `requireSession` guard (real as of
+// M3-T10 — @wardenx/auth, fails closed) and then resolve the concrete authenticated session
+// via M2's injected SessionResolver. SMS is refused at the route boundary (W-M2-11 / D9): `STEP_UP_POLICY`
 // declares only WebAuthn + TOTP qualify. Three consecutive failures inside the lockout window
 // terminate the session (423). Every state change is audited at `compliance` retention through
 // the mandated audit() helper (the field denylist runs there) — never a direct insert.
@@ -15,9 +15,9 @@
 // Step-up acts on SESSION metadata, not PHI, so the three-column / RLS / eraser PHI mandates
 // do not apply here; the org-scoped audit + the context guard are the controls.
 import type { AuditContext, AuditExecutor } from "@wardenx/audit";
+import { requireSession } from "@wardenx/auth";
 import { STEP_UP_POLICY, UnauthorizedError, ValidationError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { requireSession } from "../../../bootstrap/index";
 import {
   auditStepUpCompleted,
   auditStepUpFailed,
@@ -51,7 +51,7 @@ async function resolveSessionOrThrow(
   deps: StepUpRouteDeps,
   request: FastifyRequest,
 ): Promise<AuthenticatedSession> {
-  requireSession(request); // M1 context guard (deny-stub for M3) — fails closed
+  await requireSession()(request); // Authorization Contract session gate (M3-T10) — fails closed
   const session = await deps.sessions.resolve(request);
   if (!session) throw new UnauthorizedError();
   return session;

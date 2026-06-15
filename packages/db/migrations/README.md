@@ -20,3 +20,17 @@
 #                                               append-only GRANT model, write-audit triggers;
 #                                               two_factor/passkey follow the M1 user-owned,
 #                                               cross-org pattern (un-RLS'd, app-layer scoped)
+#   0007_session_class_step_up_fields        — session class + step-up columns (M2 follow-up)
+#
+# M3-T04 (Authorization RLS + migration, spec §3.6–3.7):
+#   0008_authorization_m3_tables             — permission, role, role_permission,
+#                                               membership_role, break_glass_event,
+#                                               auditor_engagement (+ enums) (Drizzle-generated)
+#   0009_authorization_m3_rls_audit_triggers — app.org_id RLS + GRANT model + baseline
+#                                               write-audit triggers on the five org-scoped
+#                                               M3 tables; permission is SELECT-only reference.
+#                                               M4-T10 normalizes the triggers to the canonical
+#                                               generator (denylist scrubbing).
+#   0010_authorization_role_template_read    — isolated org-NULL READ policy for the platform
+#                                               role templates (role / role_permission), the
+#                                               0002 feature_flag pattern (SELECT-only branch)
