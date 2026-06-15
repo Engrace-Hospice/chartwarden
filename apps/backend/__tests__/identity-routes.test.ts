@@ -3,10 +3,22 @@
 // boundary). Exercises the routes through the FULL M1 middleware chain (request-context +
 // error envelope + security) via Fastify `inject` with no live infra: buildServer() mounts
 // the foundation host, then registerIdentityRoutes() mounts the M2 routes with in-memory
-// adapters. A header-auth shim populates request.context so the M3 authorization deny-stubs
-// (requirePermission/requireRole/requireSession) resolve against the coarse session facts.
+// adapters. A header-auth shim populates request.context; the REAL Authorization Contract
+// (M3-T10) then gates every admin route — `registerEffectivePermissionResolver` seeds the
+// org_admin actor's §4.7 keys (member.invite / member.manage / user.deactivate / org.manage)
+// so `requirePermission` resolves them, and a fresh predicate registry binds
+// `caseload_membership` for the §7.6 collaborator route's `requireAbac`. This is the M2 routes
+// flipping from the M1 deny-stub to the live contract (M2-T08 / M3-T10), staying gate-green.
+import {
+  createInMemoryEffectivePermissionStore,
+  createPredicateRegistry,
+  registerAbacRegistry,
+  registerEffectivePermissionResolver,
+  resetAuthorizationContract,
+  resetRbacEngine,
+} from "@wardenx/auth";
 import type { FastifyRequest } from "fastify";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
   type Actor,
@@ -60,6 +72,27 @@ function makeServer(opts: { seed?: MembershipRecord[]; actors?: Actor | null | "
       ? createContextActorResolver()
       : createFixedActorResolver(opts.actors);
 
+  // The org_admin actor (ADMIN headers below) holds Module 2's §4.7 admin permission keys;
+  // the contract resolver grants them so the flipped `requirePermission` guards allow.
+  const grants = createInMemoryEffectivePermissionStore([
+    {
+      orgId: "org_a",
+      userId: "admin_1",
+      grants: [
+        {
+          roleKey: "org_admin",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: ["member.invite", "member.manage", "user.deactivate", "org.manage"],
+        },
+      ],
+    },
+  ]);
+  registerEffectivePermissionResolver(grants.store);
+  // The §7.6 collaborator route gates on `caseload_membership`; in production M5/M17 register
+  // the real CaseloadProvider-backed predicate — here a fresh registry binds it to "on caseload".
+  registerAbacRegistry(createPredicateRegistry({ caseload_membership: () => true }));
+
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   const deps: IdentityRouteDeps = {
     actors,
@@ -77,6 +110,17 @@ function makeServer(opts: { seed?: MembershipRecord[]; actors?: Actor | null | "
 const ADMIN = { "x-test-user": "admin_1", "x-test-org": "org_a", "x-test-roles": "org_admin" };
 
 describe("M2-T06 identity route inventory", () => {
+  // The Authorization Contract is global module state; reset to fail-closed defaults around
+  // every case so resolver/predicate registrations don't bleed across tests (mirrors authz-routes).
+  beforeEach(() => {
+    resetAuthorizationContract();
+    resetRbacEngine();
+  });
+  afterEach(() => {
+    resetAuthorizationContract();
+    resetRbacEngine();
+  });
+
   describe("§7.2 traveling nurse — memberships + one-time org binding", () => {
     const seed = [
       membership({ membershipId: "m_a", organizationId: "org_a", organizationName: "Engrace" }),
@@ -172,12 +216,12 @@ describe("M2-T06 identity route inventory", () => {
       await app.close();
     });
 
-    it("non-admin caller → 403 FORBIDDEN (deny-stub for M3 RBAC)", async () => {
+    it("non-admin caller → 403 FORBIDDEN (real RBAC: lacks member.invite)", async () => {
       const { app } = makeServer();
       const res = await app.inject({
         method: "POST",
         url: "/api/v1/orgs/org_a/invitations",
-        headers: { "x-test-user": "rn_1", "x-test-org": "org_a" }, // no org_admin role
+        headers: { "x-test-user": "rn_1", "x-test-org": "org_a" }, // no member.invite grant
         payload: { email: "x@example.com" },
       });
       expect(res.statusCode).toBe(403);

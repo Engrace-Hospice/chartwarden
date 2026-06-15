@@ -89,7 +89,14 @@ function buildRow(ctx: AuditContext, input: AuditEventInput): NewAuditEvent {
     before: redactSnapshot(input.before),
     after: redactSnapshot(input.after),
     context: redactSnapshot(input.context) ?? {},
-    retentionClass: resolveRetention(input.eventType, input.retentionClass),
+    // The resolved class can be `compliance_42cfr_part2` (a Part 2 / SUD event, M4 §6). The
+    // backing pg-enum value lands with its migration (M4-T05 / §3.7.1); the `$inferInsert` type
+    // still reflects the 3-value enum, so widen at this one boundary (the value is valid the
+    // moment the migration is applied; the in-memory sink stores it now).
+    retentionClass: resolveRetention(
+      input.eventType,
+      input.retentionClass,
+    ) as NewAuditEvent["retentionClass"],
   };
 }
 

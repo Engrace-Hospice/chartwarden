@@ -24,12 +24,7 @@ export const locationStatus = pgEnum("location_status", [
   "closed",
 ]);
 
-export const userStatus = pgEnum("user_status", [
-  "created",
-  "active",
-  "suspended",
-  "deactivated",
-]);
+export const userStatus = pgEnum("user_status", ["created", "active", "suspended", "deactivated"]);
 
 export const membershipStatus = pgEnum("membership_status", [
   "pending",
@@ -109,3 +104,96 @@ export const twoFactorMethod = pgEnum("two_factor_method", [
 ]);
 
 export const stepUpFactor = pgEnum("step_up_factor", ["webauthn", "totp", "sms"]);
+
+// --- Module 3 (Authorization) enums (M3-T01; M3 spec §3.2) ----------------------
+// Defined here (the single shared enum surface) per ADR-0022 D1.3 / check-ddl-legality.ts:
+// one pgEnum per name. These back the role/break-glass/engagement tables that land in
+// M3-T02/M3-T03; the catalog (code-owned, packages/auth/src/permissions) ships in M3-T01.
+//
+// `role_category` — the twelve role categories A–L (M3 spec §3.2, Appendix A).
+export const roleCategory = pgEnum("role_category", [
+  "clinical_staff", // A
+  "clinical_leadership", // B
+  "operations", // C
+  "admin_executive", // D
+  "billing_finance", // E
+  "compliance_quality", // F
+  "volunteer", // G
+  "patient_family", // H
+  "external_auditor", // I
+  "external_collaborator", // J
+  "platform_staff", // K
+  "temporary_special", // L
+]);
+
+// `scope_level` — how broadly a role grants (org-wide down to a single patient).
+export const scopeLevel = pgEnum("scope_level", [
+  "organization",
+  "provider_entity",
+  "location",
+  "patient",
+]);
+
+// `break_glass_status` — emergency-access lifecycle (M3 spec §2.3.2).
+export const breakGlassStatus = pgEnum("break_glass_status", [
+  "active",
+  "cosign_pending",
+  "expired",
+  "revoked",
+  "denied",
+]);
+
+// `engagement_status` — auditor-engagement lifecycle (M3 spec §2.3.3).
+export const engagementStatus = pgEnum("engagement_status", [
+  "scheduled",
+  "active",
+  "closed",
+  "cancelled",
+]);
+
+// `engagement_type` — the kind of external audit an engagement represents.
+export const engagementType = pgEnum("engagement_type", [
+  "cms_survey",
+  "state_survey",
+  "tpe_probe",
+  "upic_investigation",
+  "cost_report_field_audit",
+  "financial_audit",
+  "accreditation",
+  "other",
+]);
+
+// --- Module 4 (Audit & Compliance Log) enums (M4-T01; M4 spec §3.2) --------------
+// Defined here (the single shared enum surface) per ADR-0022 D1.3 / check-ddl-legality.ts:
+// one pgEnum per name. These back the lifecycle/integrity/catalog tables that land in
+// M4-T04 and the PHI-denylist categories the trigger generator consumes (M4-T02/§5).
+//
+// NOTE: `audit_retention_class` (above, M1) gains its fourth value `compliance_42cfr_part2`
+// via migration 0035 with the Part 2 eraser semantics (M4-T05/§3.7.1, M4-T08/§6) — it is
+// intentionally NOT widened here, where no migration backs the change yet.
+
+// `legal_hold_status` — legal-hold lifecycle (§2.4.3): a hold is active until released.
+export const legalHoldStatus = pgEnum("legal_hold_status", ["active", "released"]);
+
+// `destruction_status` — destruction-certificate state machine (§2.4.2). `partial_refused`
+// (M04-F08) is required by the §6 eraser / W-M4-09: Part 2 rows refuse erasure while the
+// patient is alive or within 6 years post-death.
+export const destructionStatus = pgEnum("destruction_status", [
+  "pending",
+  "approved",
+  "held",
+  "executed",
+  "partial_refused",
+]);
+
+// `audit_export_format` — compliance-export file formats (§3.5 audit_export).
+export const auditExportFormat = pgEnum("audit_export_format", ["csv", "ndjson", "pdf"]);
+
+// `phi_denylist_category` — the three named high-sensitivity column categories the write-audit
+// trigger generator scrubs to a change-marker (§2.3, §5; M4 D10). The trigger generator (M4-T02)
+// and the audit_denylist_catalog table (M4-T04) consume these.
+export const phiDenylistCategory = pgEnum("phi_denylist_category", [
+  "pii_high_sensitivity",
+  "sud_value",
+  "narrative_free_text",
+]);

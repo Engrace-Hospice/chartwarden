@@ -2,16 +2,28 @@
 //
 // Every audit event is filed under a retention class that decides how long its monthly
 // partition is kept before cold-archive + drop:
-//   - operational : 1 year      (ops telemetry — partition rotation, etc.)
-//   - compliance  : 7 years     (HIPAA floor 6 — §164.316(b)(2); standardized to 7)
-//   - legal_hold  : indefinite  (under a legal hold)
+//   - operational          : 1 year      (ops telemetry — partition rotation, etc.)
+//   - compliance           : 7 years     (HIPAA floor 6 — §164.316(b)(2); standardized to 7)
+//   - legal_hold           : indefinite  (under a legal hold)
+//   - compliance_42cfr_part2 : lifetime  (SUD records — indefinite during the patient's life,
+//                                          lifetime + 6 years after death; M4 §6, D8)
 //
 // `compliance` is the safe DEFAULT: an unclassified event is kept as long as a routine
 // compliance record needs, never accidentally short. The registry lets a module declare the
 // (small) set of event types that are merely operational so they age out after a year.
 
-/** The three audit retention classes (mirrors the `audit_retention_class` pg enum). */
-export type RetentionClass = "operational" | "compliance" | "legal_hold";
+/**
+ * The audit retention classes. `compliance_42cfr_part2` (M4 §6 / D8) is the SUD-record class
+ * the eraser, destruction, trigger-generator, and query DTO already carry — the canonical helper
+ * carries it too so the write path (`audit()`) can classify a Part 2 event (e.g. the §7.1
+ * accounting-request audit). The backing `audit_retention_class` pg-enum value lands with its
+ * migration (M4-T05 / §3.7.1); until then the in-memory audit sink stores the class directly.
+ */
+export type RetentionClass =
+  | "operational"
+  | "compliance"
+  | "legal_hold"
+  | "compliance_42cfr_part2";
 
 /** The fail-safe class for any event type not explicitly registered. */
 export const DEFAULT_RETENTION_CLASS: RetentionClass = "compliance";

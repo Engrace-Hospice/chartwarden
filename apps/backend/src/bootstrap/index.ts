@@ -124,7 +124,9 @@ export * from "./plugins/request-context";
 export * from "./plugins/error-handler";
 export * from "./plugins/security";
 export * from "./plugins/idempotency";
-export * from "./plugins/guards";
+// The M1 deny-stub guards (requireSession/requireRole/requirePermission/requireAbac) were a
+// forward-seam until M3 landed; M3-T10 flipped every route to the REAL @wardenx/auth contract,
+// so the deny-stub is retired (no `./plugins/guards` re-export).
 export * from "./routes/health";
 export * from "./routes/system";
 export type * from "./interfaces";

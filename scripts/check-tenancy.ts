@@ -33,12 +33,21 @@ const SCHEMA_DIR = "packages/db/src/schema";
 const CANONICAL_VAR = "app.org_id";
 // Any current_setting('app.*'|'wardenx.*') that is NOT the canonical var is a violation.
 const SESSION_VAR_RE = /current_setting\(\s*['"]((?:app|wardenx)\.[a-z_]+)['"]/g;
+// Audit *attribution* context vars (M04 §3.3): the write-audit trigger reads request context to
+// stamp WHO/WHICH-correlation/provider/location into the immutable audit_event row. These are NOT
+// RLS predicates — ADR-0010 D2 governs row *visibility*, which still keys ONLY on app.org_id; these
+// only populate audit columns. Permitted exclusively inside the audit-capture path (the audit()
+// helper / write-audit trigger generator, recognized by `audit_phi_write` / `INSERT INTO audit_event`).
+const AUDIT_CONTEXT_VARS = new Set<string>([
+  "app.user_id", "app.correlation_id", "app.provider_entity_id", "app.location_id",
+]);
 // Tables that are NOT tenant-scoped by org_id (user-owned cross-org, or pure platform reference).
 // A spec opts a table out by adding it here with a justification (reviewed change).
 const NON_ORG_SCOPED = new Set<string>([
   "user", "account", "verification", "session",        // user-owned, cross-org (M2 §3.x)
   "two_factor", "passkey",                              // user-owned credentials
   "audit_denylist_catalog", "audit_action_catalog",    // platform reference, read-all
+  "permission",                                         // M3 §3.6: platform-global read-only catalog mirror, no org column
   "outbox_event_catalog", "organization_settings_registry",
   "state_retention_override",                           // platform reference (writes via platform role)
   "organization", "provider_entity", "location",       // the tenancy spine itself
@@ -74,10 +83,12 @@ for (const base of allPaths) {
     const src = readFileSync(join(REPO_ROOT, file), "utf8");
 
     // Rule 2 — canonical session variable
+    const isAuditCapture = /audit_phi_write|INSERT\s+INTO\s+audit_event/i.test(src);
     let m: RegExpExecArray | null;
     SESSION_VAR_RE.lastIndex = 0;
     while ((m = SESSION_VAR_RE.exec(src))) {
       if (m[1] !== CANONICAL_VAR) {
+        if (AUDIT_CONTEXT_VARS.has(m[1]!) && isAuditCapture) continue;
         violations.push({ file, rule: "rls-session-variable",
           detail: `uses current_setting('${m[1]}') — the only allowed RLS variable is '${CANONICAL_VAR}' (ADR-0010 D2)` });
       }

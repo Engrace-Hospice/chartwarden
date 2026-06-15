@@ -143,6 +143,7 @@ function scanEvasions(): Violation[] {
     for (const file of mod.codePaths.flatMap((p) => listFiles(p))) {
       if (file.startsWith(SCHEMA_DIR)) continue;
       const src = readFileSync(join(REPO_ROOT, file), "utf8");
+      const isHelperPath = HELPER_PATHS.some((p) => file.startsWith(p));
 
       // (a) raw SQL / PL/pgSQL naming another module's owned table by sql name
       const inRawSql = /sql`|db\.execute\(|CREATE\s+(OR\s+REPLACE\s+)?FUNCTION|LANGUAGE\s+plpgsql/i.test(src);
@@ -150,6 +151,12 @@ function scanEvasions(): Violation[] {
         for (const [sqlName, ref] of sqlByName) {
           const owner = ownerOf(sqlName);
           if (!owner || owner.id === mod.id) continue;
+          // Helper-only tables (audit_event/outbox/idempotency) have a sanctioned helper home:
+          // the M4 audit() helper + write-audit trigger *generator* live in packages/audit and
+          // emit the raw `INSERT INTO audit_event` capture DDL by design (M04 §3.3). That is the
+          // canonical capture path, not an ownership evasion — mirror the helper-path exemption
+          // the Drizzle-ref (scan) and migration-write (check c) paths already grant.
+          if (sqlName in HELPER_ONLY_TABLES && isHelperPath) continue;
           if (new RegExp(`(FROM|JOIN|INTO|UPDATE)\\s+${sqlName}\\b`, "i").test(src))
             out.push({ module: mod, file, table: sqlName, owner });
         }
@@ -161,7 +168,6 @@ function scanEvasions(): Violation[] {
         out.push({ module: mod, file, table: "(PHI under withPlatformContext, no org predicate)", owner: undefined });
       }
       // (c) migration INSERT/UPDATE into a helper-only table outside helper paths
-      const isHelperPath = HELPER_PATHS.some((p) => file.startsWith(p));
       if (!isHelperPath) {
         for (const t of Object.keys(HELPER_ONLY_TABLES))
           if (new RegExp(`(INSERT\\s+INTO|UPDATE)\\s+${t}\\b`, "i").test(src))
