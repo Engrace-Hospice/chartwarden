@@ -79,11 +79,11 @@ location — repo-local workflows take precedence over Archon's bundled defaults
 
 | Archon concept               | WardenX artifact                                                                                                                             |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Workflow (YAML DAG)          | `.archon/workflows/wardenx-piv.yaml` (plan → implement-loop → **validate gate** → fix → approve → PR)                           |
+| Workflow (YAML DAG)          | `.archon/workflows/wardenx-piv.yaml` (plan → implement-loop → **validate gate** → fix → finalize → auto-PR; no interactive approve — [ADR-0031](adr/ADR-0031-wardenx-piv-no-interactive-approve.md)) |
 | AI `prompt:` node input    | `docs/plans/M01-M02_VERTICAL_SLICE_PLAN.md` (the task plan) + the cited `docs/modules/` spec sections                                    |
 | Deterministic `bash:` gate | `bun run build && bun run arch:fitness && bun run test` — a task is **done only when this is green**                                |
 | `until:` loop condition    | "all tasks in the plan complete" / "gate green"                                                                                              |
-| `interactive:` gate        | human review before the PR                                                                                                                   |
+| `finalize` + auto-PR       | review happens on the **GitHub PR** (no interactive pause — it hung under #1067; [ADR-0031](adr/ADR-0031-wardenx-piv-no-interactive-approve.md)) |
 | Knowledge grounding          | the spec corpus in `docs/` + the manifest (`architecture/module-manifest.ts`); the plan tells the agent exactly which §sections to read |
 
 ## 5. Run the first slice
@@ -109,11 +109,19 @@ archon workflow run wardenx-piv --branch feat/wave-a "Use the plan at docs/plans
 ```
 
 The loop implements one plan task at a time in a **fresh context**, runs the fitness gate after each,
-self-fixes on red, and **pauses at the `interactive` approval node** before opening the PR — so run it
-from a terminal where you can approve. Watch progress with `archon workflow status`.
+self-fixes on red, then **commits and opens the PR automatically — there is no interactive pause**
+(review happens on the GitHub PR). Watch progress with `archon workflow status`.
 
-> **Note on nesting.** Archon drives the `claude` CLI. Launch it from a **normal terminal**, not from
-> inside an existing Claude Code session, to avoid nested-agent conflicts.
+> **Why no pause (ADR-0031).** Earlier `wardenx-piv` ended at an `interactive: true` approve node. It
+> **hung** on both the slice and Wave A (Archon [#1067](https://github.com/coleam00/Archon/issues/1067),
+> the nested-Claude class issue), after building everything — forcing manual recovery. **v0.3.0** drops
+> the interactive node: `finalize` composes the commit message + PR body (with an explicit reviewer
+> call-out for any fitness-gate edits) and `pr` commits → pushes → opens the PR. See
+> [ADR-0031](adr/ADR-0031-wardenx-piv-no-interactive-approve.md).
+
+> **Note on nesting.** Archon drives the `claude` CLI. Still launch it from a **normal terminal**
+> (verify `echo "$CLAUDECODE"` prints blank), not inside a Claude Code / editor session — to avoid other
+> nested-execution issues even though the approve hang itself is now moot.
 
 (Bundled alternative: `archon workflow run archon-plan-to-pr` — a maintained plan→PR DAG; point its
 plan input at the same file and set its validate step to `bun run build && bun run arch:fitness && bun
