@@ -97,7 +97,7 @@ exports.VENDOR_ADAPTERS = {
 exports.MODULES = [
     {
         id: 1, name: "Foundation",
-        codePaths: ["packages/db", "packages/shared", "packages/types", "packages/tenancy", "apps/backend/src/bootstrap"],
+        codePaths: ["packages/db", "packages/shared", "packages/types", "packages/tenancy", "apps/backend/src/bootstrap", "apps/web/src/shell"],
         dependsOn: [],
         ownedTables: [
             "organization", "provider_entity", "location", "user", "membership",
@@ -109,7 +109,7 @@ exports.MODULES = [
     },
     {
         id: 2, name: "Identity & Org",
-        codePaths: ["packages/auth/src/identity", "apps/backend/src/modules/02-identity"],
+        codePaths: ["packages/auth/src/identity", "apps/backend/src/modules/02-identity", "apps/web/src/modules/02-identity"],
         dependsOn: [1],
         // M02-F04: tenant_step_up_policy_override added (M2's step-up subsystem table).
         ownedTables: ["two_factor", "passkey", "organization_invitation", "tenant_step_up_policy_override"],
