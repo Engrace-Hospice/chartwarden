@@ -88,8 +88,10 @@ location — repo-local workflows take precedence over Archon's bundled defaults
 
 ## 5. Run the first slice
 
-The CLI shape is `archon workflow run <name> [message]` (no `--plan` flag). `wardenx-piv`'s
-`inputs.plan` **defaults** to the M1+M2 slice, so just:
+The CLI shape is `archon workflow run <name> [message]` (no `--plan`/`--input` flag in v0.4.x). The
+plan is chosen by the **run message**: the `setup` node greps a `docs/plans/*.md` path out of the
+message and writes it to `.archon/run-plan.txt`, which every node reads. With **no message** it falls
+back to the M1+M2 slice default, so just:
 
 ```bash
 cd /Users/fabrice/Apps/WardenX
@@ -99,8 +101,8 @@ archon workflow run wardenx-piv --branch feat/m1-m2-slice
 archon workflow run wardenx-piv --no-worktree
 ```
 
-To target **Wave A (M3+M4)** instead, pass the plan path as the run message (the confirm/implement
-prompts read it) or change `inputs.plan.default` in `.archon/workflows/wardenx-piv.yaml`:
+To target **Wave A (M3+M4)** instead, name the plan path in the run message (the `setup` node resolves
+it to `.archon/run-plan.txt` for every node, incl. fresh-context loop iterations):
 
 ```bash
 archon workflow run wardenx-piv --branch feat/wave-a "Use the plan at docs/plans/WAVE_A_M3-M4_PLAN.md"
