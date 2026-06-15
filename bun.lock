@@ -39,6 +39,10 @@
       "name": "@wardenx/portal",
       "version": "0.0.0",
     },
+    "apps/web": {
+      "name": "@wardenx/web",
+      "version": "0.0.0",
+    },
     "packages/ai-platform": {
       "name": "@wardenx/ai-platform",
       "version": "0.0.0",
@@ -488,6 +492,8 @@
     "@wardenx/types": ["@wardenx/types@workspace:packages/types"],
 
     "@wardenx/ui": ["@wardenx/ui@workspace:packages/ui"],
+
+    "@wardenx/web": ["@wardenx/web@workspace:apps/web"],
 
     "@wardenx/x12-835-client": ["@wardenx/x12-835-client@workspace:packages/x12-835-client"],
 
