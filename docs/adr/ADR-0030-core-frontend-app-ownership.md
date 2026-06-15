@@ -1,6 +1,8 @@
 # ADR-0030 — Owning app + module for core (app-shell) front-end screens
 
-- **Status:** Proposed (stub — opened 2026-06-14; decision pending)
+- **Status:** Accepted — ratified 2026-06-14 (Option 1: a core `apps/web`, carved by sub-path like
+  `apps/backend`). Authorizes the manifest codePaths `apps/web/src/shell` → M1 and
+  `apps/web/src/modules/02-identity` → M2 (applied via the manifest + `bun run scaffold`).
 - **Date:** 2026-06-14
 - **Phase:** pre-build governance (blocks M2-T09; affects every module that ships core/app-shell UI)
 - **Resolves:** the plan↔manifest conflict surfaced by the `wardenx-piv` M1+M2 slice run — the M2-T09
@@ -41,30 +43,59 @@ Consequences.)
 
 ## Decision
 
-**PENDING.** Options to evaluate (not yet chosen):
+**Adopt Option 1, refined: a single core staff web app `apps/web`, carved by sub-path exactly as
+`apps/backend` already is.** (Drafted; awaiting ratification.)
 
-1. **New core staff app `apps/web` owned by M1 (Foundation).** Add `apps/web` to M1's `codePaths`;
-   M1-T11's shared UI mounts here; M2 (and later modules) contribute routed feature screens via a
-   per-module convention (mirroring `apps/backend/src/modules/NN-*`). Cleanest separation; expands M1.
-2. **New core app owned by a dedicated "app-shell" module.** Introduce a thin module that owns the
-   staff shell app + cross-module screen registry; M2+ contribute screens through it. More indirection;
-   avoids overloading M1.
-3. **Host core auth screens in an existing app.** e.g. fold the staff shell into `apps/admin` and
-   re-scope M34. Least new structure; conflates staff-core with tenant-operator UI (likely rejected).
-4. **Defer all core front-end to a later phase.** Phase 1 ships backend + API only; the staff SPA is a
-   named later milestone. Honest, but leaves auth flows unusable until then.
+### Why not the others
+- **Option 3 (fold into `apps/admin`/M34) — rejected.** It conflates the *staff clinical* surface with
+  the *SaaS tenant-operator* surface, and makes the foundational app shell owned by **M34**, a late-phase
+  module that `dependsOn: [2, 3, 4, 36]`. Core auth UI owned by a leaf-of-leaves is a dependency inversion.
+- **Option 2 (new "app-shell" module) — rejected.** It adds a 41st module to a fixed 40-module manifest
+  (renumbering + governance churn) to do a job **M1 (Foundation) already does** — M1 owns `packages/ui`
+  *and* `apps/backend/src/bootstrap`. Unnecessary indirection.
+- **Option 4 (defer all core FE) — not chosen.** Only justified if Phase 1 were explicitly API-first; but
+  the screens are specified and the M2 backend routes already exist. Deferring punts a question we can
+  answer now.
 
-Each option must specify: the new/edited `codePaths`, which module owns the app, the per-module screen
-convention, and how `docs:ui` / `arch:parity` enforce it.
+### The decision
+Reuse the **proven backend ownership pattern**. `apps/backend` is *not* single-owned —
+`apps/backend/src/bootstrap` is M1's, each `apps/backend/src/modules/NN-*` is a feature module's, all
+**disjoint** codePaths with `dependency-cruiser` boundaries between them. Apply the same carve to `apps/web`:
+
+- **M1 (Foundation)** gains codePath **`apps/web/src/shell`** — the app shell: routing host, layout, the
+  `packages/ui` mount, and a **screen registry** that lazily mounts each module's screens (the frontend
+  analogue of M1's seam registry, so the shell never imports a feature module directly → no inversion).
+- **M2 (Identity)** gains codePath **`apps/web/src/modules/02-identity`** — the core auth screens
+  (sign-in, MFA, org-select, passkey enroll, invite-accept, member-management), consuming the M2 backend
+  routes (M2-T05/T06) and `packages/ui` (M1-T11).
+- **Every later module N** that ships core/app-shell screens gains **`apps/web/src/modules/NN-<name>`**,
+  registered into M1's shell registry. This becomes the target for the reusable template's `N-T08` UI row
+  (replacing the bare "screens per `docs/ui`").
+
+### Boundaries & enforcement
+- One owner per codePath (ADR-0005) holds — the sub-paths are disjoint.
+- `dependency-cruiser`: a module's `apps/web/src/modules/NN-*` may import `packages/ui`, `packages/types`,
+  its own backend module's published surface, and `dependsOn` modules — **never** another module's screens
+  or the shell internals. The shell may import `packages/ui` + the registry contract in `packages/types`,
+  **never** a feature module.
+- `arch:parity` stays 1:1 (tree scaffolds from the manifest); `docs:ui` screen specs map to
+  `apps/web/src/shell` / `apps/web/src/modules/*`.
+
+### Surfaces & mobile
+`apps/portal` (M31, patient/family) and `apps/admin` (M34, SaaS tenant-operator) stay distinct from
+`apps/web` (staff core). The M2-T09 **Capacitor "mobile variants" wrap the `apps/web` build** (one app, a
+native shell) rather than a separate `apps/mobile` — no new app.
 
 ## Consequences
 
-- **M2-T09 stays BLOCKED** until this ADR is Accepted. It is **out of scope** for the M1+M2 backend
-  slice (slice acceptance is backend-only). The slice's M2 backend routes (T05/T06) and `packages/ui`
-  (M1-T11) are the seams a future core app will consume.
-- On acceptance: edit `architecture/module-manifest.ts` (+ `.cjs` mirror), `bun run scaffold`, update
-  M2-T09 (and the reusable template's `N-T08` UI row) to name the chosen app, confirm `arch:fitness`
-  green.
+- **M2-T09 is unblocked but out of scope for PR #3.** It stays out of the M1+M2 *backend* slice (slice
+  acceptance is backend-only). Once this ADR is ratified it is no longer "blocked" — it becomes a small
+  **follow-up PR**: add `apps/web/src/shell` (M1) + `apps/web/src/modules/02-identity` (M2) consuming the
+  M2 routes (T05/T06) + `packages/ui` (M1-T11).
+- **On ratification** (the manifest change this ADR authorizes): add `apps/web/src/shell` to M1's
+  `codePaths` and `apps/web/src/modules/02-identity` to M2's, in `architecture/module-manifest.ts` (+ the
+  `.cjs` mirror); `bun run scaffold`; update M2-T09 and the reusable template's `N-T08` UI row to name
+  `apps/web/src/modules/N-*`; confirm `arch:fitness` (parity + boundaries) green.
 - **Process guardrail (applied now, independent of the decision):** `docs/plans/**` is read-only to
   automated runs — `arch:plan-integrity` (in `arch:fitness`) fails if a run modifies a plan. Plans are
   authority *inputs*; an agent that rewrites them to fit its output breaks determinism. Intentional
