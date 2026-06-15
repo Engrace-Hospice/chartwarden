@@ -30,7 +30,7 @@ to follow each run. See [`../ARCHON_SETUP.md`](../ARCHON_SETUP.md) for install +
 | # | Wave | Modules | Command | Status | PR |
 |---|---|---|---|---|---|
 | 1 | Slice | M1, M2 | `archon workflow run wardenx-piv --branch feat/m1-m2-slice` | ✅ | [#3](https://github.com/fabwebdev/wardenx/pull/3) ‡ |
-| 2 | A | M3, M4 | `archon workflow run wardenx-piv --branch feat/wave-a "Use the plan at docs/plans/WAVE_A_M3-M4_PLAN.md"` | ☐ | |
+| 2 | A | M3, M4 | `archon workflow run wardenx-piv --branch feat/wave-a "Use the plan at docs/plans/WAVE_A_M3-M4_PLAN.md"` | 👀 | [#4](https://github.com/fabwebdev/wardenx/pull/4) † |
 | 3 | B | M36, M38, M40 | `archon workflow run wardenx-piv --branch feat/wave-b "Use the plan at docs/plans/WAVE_B_M36-M38-M40_PLAN.md"` | ☐ | |
 | 4 | C | M5, M39 | `archon workflow run wardenx-piv --branch feat/wave-c "Use the plan at docs/plans/WAVE_C_M5-M39_PLAN.md"` | ☐ | |
 | 5 | D | M6, M7, M8 | `archon workflow run wardenx-piv --branch feat/wave-d "Use the plan at docs/plans/WAVE_D_M6-M7-M8_PLAN.md"` | ☐ | |
@@ -48,6 +48,15 @@ fixed a write-breaking audit-trigger recursion through `audit_event`'s monthly p
 frontend was **decided** — [ADR-0030](../adr/ADR-0030-core-frontend-app-ownership.md) (Accepted) carves a
 core `apps/web` (M1 shell + `apps/web/src/modules/02-identity` for M2), so the auth screens are a tracked
 **follow-up PR**, not missing slice work. Remaining: M3/M4 deny-stubs clear with **Wave A (next)**.
+
+† **Wave A (PR [#4](https://github.com/fabwebdev/wardenx/pull/4)) — in review, NOT yet merged.** M3
+Authorization + M4 Audit **backend**. The run built the full backend then died at the approve node again
+(#1067) — recovered + PR'd manually; that hang (and a latent "nothing commits" bug) is **fixed in
+`wardenx-piv` v0.3.0** (no interactive approve → auto-commit + auto-PR), so later waves complete on their
+own. CI green incl. `rls-live` (the M4 per-table trigger redesign does **not** reintroduce the partition
+recursion). Closes the M1/M2 deny-stubs (route guards now real). **Reviewer item before merge:** ratify
+the narrow `check-table-ownership.ts` helper-path exemption (M4 trigger generator's `INSERT INTO
+audit_event`). Deferred: M3-T09 + M4 frontend → the ADR-0030 `apps/web` follow-up. Flips to ✅ on merge.
 
 **Phase 1 done when:** all 29 modules at DoD; the end-to-end scenario passes (admit → elect → care plan
 → encounter → assessment → HOPE → order → eMAR → IDG → schedule → EVV → bill → 835 → cap projection).
