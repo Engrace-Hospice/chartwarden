@@ -165,10 +165,27 @@ ownedTables (4): two_factor, passkey, organization_invitation, tenant_step_up_po
   predicates (register into M3 when M3 exists — deny-stub registry now).
 - accept: audit events present + denylist applied; gates green. (M3 registration tracked as follow-up.)
 
-### M2-T09 — Frontend screens
+### M2-T09 — Frontend screens  *(BLOCKED — unresolved plan↔manifest conflict; see ADR-0030)*
 - deps: M2-T05, M2-T06 · files: `apps/portal`/`apps/backend` UI per spec · spec §5.1–5.4
 - do: login, MFA, passkey enroll, invite, member-management screens; Capacitor mobile variants; WCAG 2.1 AA.
 - accept: `docs:ui` green; `tsc -b` green.
+
+> **STATUS — BLOCKED (recorded by maintainer 2026-06-14).** This task as written cannot be built
+> under M2. The manifest (law) scopes M2 to `packages/auth/src/identity` +
+> `apps/backend/src/modules/02-identity` — **M2 owns no frontend codePath**. The screens named here are
+> *core/app-shell* identity flows (authoritative spec: `docs/ui/screens/core/WARDENX_UI_AUTH.md`), **not**
+> portal screens — yet this task points them at `apps/portal` (manifest owner: **M31**, the patient/family
+> portal) and `apps/admin` (manifest owner: **M34**, the SaaS tenant platform). Neither M31 nor M34 is the
+> obvious home for *core staff* auth UI, and no core front-end app exists in the tree (`apps/` = `admin`,
+> `backend`, `portal` only).
+>
+> **This is an open architecture decision, not a deferral an implementer may self-authorize.**
+> The owning app + module for core auth UI must be chosen by a human/architect — tracked in
+> **[ADR-0030](../adr/ADR-0030-core-frontend-app-ownership.md)** (proposed). Until ADR-0030 lands, M2-T09
+> is **out of scope for the M1+M2 backend slice** (whose acceptance criteria, below, are backend-only).
+> Do **not** build these screens in `apps/portal` / `apps/admin` (would break `arch:parity`), and do **not**
+> edit this plan to manufacture a resolution — surface the conflict instead (`confirm-plan` says *STOP if
+> ambiguous*). Note for automated runs: `docs/plans/**` is read-only to the harness (`arch:plan-integrity`).
 
 ### M2-T10 — DR tier + INT inventory + eraser
 - deps: M2-T02 · files: module + bootstrap · spec §8, roadmap DoD
