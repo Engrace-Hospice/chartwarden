@@ -29,7 +29,7 @@ to follow each run. See [`../ARCHON_SETUP.md`](../ARCHON_SETUP.md) for install +
 
 | # | Wave | Modules | Command | Status | PR |
 |---|---|---|---|---|---|
-| 1 | Slice | M1, M2 | `archon workflow run wardenx-piv --branch feat/m1-m2-slice` | ☐ | |
+| 1 | Slice | M1, M2 | `archon workflow run wardenx-piv --branch feat/m1-m2-slice` | 👀 | [#3](https://github.com/fabwebdev/wardenx/pull/3) ‡ |
 | 2 | A | M3, M4 | `archon workflow run wardenx-piv --branch feat/wave-a "Use the plan at docs/plans/WAVE_A_M3-M4_PLAN.md"` | ☐ | |
 | 3 | B | M36, M38, M40 | `archon workflow run wardenx-piv --branch feat/wave-b "Use the plan at docs/plans/WAVE_B_M36-M38-M40_PLAN.md"` | ☐ | |
 | 4 | C | M5, M39 | `archon workflow run wardenx-piv --branch feat/wave-c "Use the plan at docs/plans/WAVE_C_M5-M39_PLAN.md"` | ☐ | |
@@ -39,6 +39,13 @@ to follow each run. See [`../ARCHON_SETUP.md`](../ARCHON_SETUP.md) for install +
 | — | ✅ gate | — | ADR-0029 applied (x12-837-client→M23, x12-835-client→M25; 38 pkgs) — no action | ✅ | — |
 | 8 | G | M23, M25, M26 | `archon workflow run wardenx-piv --branch feat/wave-g "Use the plan at docs/plans/WAVE_G_M23-M25-M26_PLAN.md"` | ☐ | |
 | 9 | H | M28, M29, M30, M32, M34 | `archon workflow run wardenx-piv --branch feat/wave-h "Use the plan at docs/plans/WAVE_H_M28-M29-M30-M32-M34_PLAN.md"` | ☐ | |
+
+‡ **Slice #1 (PR [#3](https://github.com/fabwebdev/wardenx/pull/3)) — in review, NOT yet merged.** The
+`wardenx-piv` run was killed at the approval node (nested-Claude hang, [Archon#1067](https://github.com/coleam00/Archon/issues/1067));
+PR opened manually. Two merge-blockers before this flips to ✅: (1) the RLS cross-tenant isolation test
+(§7.2/§9.3) is `describe.skip`'d — run it against live PG; (2) M2-T09 frontend is **deferred** pending
+the core-frontend-app decision ([ADR-0030](../adr/ADR-0030-core-frontend-app-ownership.md)). M3/M4
+dependencies are intentional deny-stubs. **Don't start Wave A until PR #3 merges** (it assumes M1/M2 seams).
 
 **Phase 1 done when:** all 29 modules at DoD; the end-to-end scenario passes (admit → elect → care plan
 → encounter → assessment → HOPE → order → eMAR → IDG → schedule → EVV → bill → 835 → cap projection).
