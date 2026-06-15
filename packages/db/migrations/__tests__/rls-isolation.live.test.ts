@@ -61,14 +61,22 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
   }
 
   async function applyMigrations() {
+    // The CI `rls-live` job runs pgvector/pgvector:pg16, so the REAL `CREATE EXTENSION vector`
+    // applies — M38 (Terminology) ships a pgvector `concept_embedding` table. For a local PG that
+    // lacks pgvector, set WARDENX_TEST_NO_PGVECTOR=1 to strip the extension line (valid only while
+    // no table uses the `vector` type; once one does, pgvector is required).
+    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
     const files = readdirSync(MIGRATIONS_DIR)
       .filter((f) => f.endsWith(".sql"))
       .sort();
     for (const f of files) {
-      const sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8").replace(
-        /^.*EXTENSION IF NOT EXISTS "vector".*$/m,
-        "-- (vector extension stripped for tests — irrelevant to tenancy; not every PG ships pgvector)",
-      );
+      let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
+      if (stripVector) {
+        sql = sql.replace(
+          /^.*EXTENSION IF NOT EXISTS "vector".*$/m,
+          "-- (vector extension stripped: WARDENX_TEST_NO_PGVECTOR set; local PG without pgvector)",
+        );
+      }
       await db.query(sql);
     }
   }
