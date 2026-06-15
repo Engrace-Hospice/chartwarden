@@ -113,13 +113,8 @@ describe("M2-T02 migration: identity RLS + audit triggers (static)", () => {
   });
 });
 
-// LIVE cross-tenant isolation — un-skipped by M1-T12 once the Testcontainers PG
-// harness lands. Documented here so the proof obligation is visible in the slice.
-describe.skip("M1-T04 RLS cross-tenant isolation (live PG — owned by M1-T12 §7.2)", () => {
-  it("denies SELECT of org A rows under org B context", async () => {
-    // withOrgContext(orgA, db => insert row); withOrgContext(orgB, db => expect 0 rows).
-  });
-  it("rejects a tenant-context write to a global (org-NULL) feature_flag", async () => {
-    // withOrgContext(orgB, db => insert feature_flag with organization_id NULL) → throws.
-  });
-});
+// LIVE cross-tenant isolation against a real Postgres is now implemented in
+// rls-isolation.live.test.ts (applies the migrations, exercises the policies as the
+// unprivileged wardenx_app role). It runs when WARDENX_TEST_DATABASE_URL is set
+// (CI `rls-live` job); the previous empty `describe.skip` placeholder is removed —
+// an empty skipped block reads as "covered" when it asserted nothing.

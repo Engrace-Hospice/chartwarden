@@ -19,6 +19,7 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "test": "vitest run",
+    "test:rls:live": "vitest run packages/db/migrations/__tests__/rls-isolation.live.test.ts",
     "scaffold": "bun run scripts/scaffold-from-manifest.ts",
     "scaffold:check": "bun run scripts/scaffold-from-manifest.ts --check",
     "arch:boundaries": "depcruise apps packages --config architecture/.dependency-cruiser.cjs",

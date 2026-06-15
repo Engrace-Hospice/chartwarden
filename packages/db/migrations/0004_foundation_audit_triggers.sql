@@ -29,9 +29,13 @@ BEGIN
   -- itself, and the high-churn transactional-mechanism tables (idempotency cache,
   -- outbox queue) would flood the trail. The trigger is still attached to them (the
   -- fitness gate asserts presence) but is a no-op for these names.
-  IF TG_TABLE_NAME = ANY (ARRAY[
-        'audit_event', 'audit_event_default', 'idempotency_key', 'outbox_event'
-     ]) THEN
+  -- NOTE: audit_event is RANGE-partitioned by month, so a write routes to a dated child
+  -- (e.g. audit_event_2026_06) and the trigger fires with TG_TABLE_NAME = that PARTITION.
+  -- The guard MUST match the partition prefix, not just the parent — else every audited
+  -- write recurses (audit insert -> partition trigger -> audit insert -> ...) and dies with
+  -- "stack depth limit exceeded". (Caught by the live-PG test; see rls-isolation.live.test.ts.)
+  IF TG_TABLE_NAME LIKE 'audit_event%'
+     OR TG_TABLE_NAME = ANY (ARRAY['idempotency_key', 'outbox_event']) THEN
     RETURN COALESCE(NEW, OLD);
   END IF;
 
