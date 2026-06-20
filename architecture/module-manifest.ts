@@ -192,7 +192,7 @@ export const MODULES: ModuleDef[] = [
   },
   {
     id: 40, name: "Master Data Management",
-    codePaths: ["packages/mdm", "apps/backend/src/modules/40-mdm"],
+    codePaths: ["packages/mdm", "apps/backend/src/modules/40-mdm", "apps/web/src/modules/40-mdm"],
     dependsOn: [1, 2, 3, 4],
     ownedTables: ["entity_relationship", "external_physician", "external_physician_tenant_overlay", "facility", "mdm_baa_record", "mdm_baa_required", "mdm_provisional", "merge_request", "nppes_sync_coordination", "nppes_sync_log", "payer"],
   },

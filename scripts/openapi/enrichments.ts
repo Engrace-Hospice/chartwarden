@@ -28,6 +28,22 @@ import {
   PatientListResponseSchema,
   PatientSummarySchema,
 } from "../../apps/backend/src/modules/05-patient/routes/patient-typebox";
+import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
+
+// M40 search returns MdmResolved<K>[] (canonical base + status). The route returns `{ results }`
+// untyped, so the common resolved-summary shape is declared here for the client (UI reads the base
+// fields; the server may send richer per-kind canonical fields).
+const MdmResolvedSummarySchema = Type.Object({
+  id: Type.String(),
+  status: Type.Union([Type.Literal("active"), Type.Literal("deactivated"), Type.Literal("provisional")]),
+  canonical: Type.Object({
+    id: Type.String(),
+    identifierType: Type.String(),
+    identifierValue: Type.Union([Type.String(), Type.Null()]),
+    displayName: Type.String(),
+  }),
+});
+const MdmSearchResponseSchema = Type.Object({ results: Type.Array(MdmResolvedSummarySchema) });
 
 // M2 Identity routes validate via a manual parse() (no route-level TypeBox file), so their request/
 // response schemas are declared here to type the client. Mirrors the wire shapes in
@@ -59,6 +75,12 @@ export interface RouteEnrichment {
 
 /** `METHOD /path` → enrichment. Keys MUST match a scanned route (openapi:check enforces). */
 export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
+  // M40 MDM (Track A — Master Data Management console)
+  "GET /api/v1/mdm/:kind/search": {
+    summary: "Search a kind's canonical master-data set (§4.2)",
+    query: MdmSearchQuerySchema,
+    response: MdmSearchResponseSchema,
+  },
   // M4 Audit (Track A — Audit Log Viewer)
   "GET /api/v1/audit/events": {
     summary: "Search audit events (cursor-paginated, §4.3)",
