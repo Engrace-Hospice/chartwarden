@@ -31,7 +31,7 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 | # | Module | Screen | Spec | Layout pattern | Layout cmp | Status |
 |---|--------|--------|------|----------------|-----------|--------|
 | 1 | M2 | Authentication & Session | `screens/core/WARDENX_UI_AUTH.md` | Auth Flow | ✓ `CenteredCardLayout` | in-progress¹ |
-| 2 | M1+M2+M3 | App Shell & Role Home | `screens/core/WARDENX_UI_APP_SHELL_HOME.md` | App Shell | ✓ shell (F0-T03) | deferred |
+| 2 | M1+M2+M3 | App Shell & Role Home | `screens/core/WARDENX_UI_APP_SHELL_HOME.md` | App Shell | ✓ shell (F0-T03) | done³ |
 | 3 | M1 | System / Utility Pages | `screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md` | System Page | ✓ `CenteredStatusLayout` | done |
 | 4 | M5 | Patient Chart | `screens/clinical/WARDENX_UI_PATIENT_CHART.md` | Patient Workspace | ✓ `PatientWorkspaceLayout` | done (frame) |
 | 5 | M5 | Patient List / Census | `screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md` | Work Queue | ✓ `WorkQueueLayout` | done² |
@@ -45,6 +45,12 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > Patient Chart (#4) is a hub: its M5 frame (banner + summary + module nav rail) is buildable now; the
 > per-module tabs (encounters, orders, eMAR, …) fill in as those modules land — build the frame in
 > Track A, graft tabs in Track B.
+
+> ³ **App Shell / Role Home — done at frame level.** The App Shell chrome is F0-T03; the Role Home now
+> renders at `/` (apps/web/src/shell/role-home.tsx): role-aware greeting + quick-access tiles for the
+> registered screens, grouped by nav group — it auto-populates as Track A/B add screens. Role-specific
+> data widgets (My Patients, AR snapshot, cosign queue…) and the richer Top Nav (org switcher, global
+> search, notifications bell, user menu) arrive with their modules (M36, Global Search, M2 auth backend).
 
 > ² **M5 Patient Census — built, and it required a backend route.** M5 had no list/search endpoint, so
 > a cursor-paginated `GET /api/v1/patients` (name/MRN search + status filter) was added to the M5 backend

@@ -15,7 +15,8 @@ import {
 } from "@wardenx/ui";
 import type { ApiClient, FeatureFlags, SystemStatusComponent } from "@wardenx/ui";
 import type { ScreenRegistry } from "@wardenx/types";
-import { AppLayout, HomeScreen } from "./layout";
+import { AppLayout } from "./layout";
+import { RoleHome } from "./role-home";
 import type { WebScreen } from "./screen-registry";
 import { SessionProvider } from "./session";
 import type { Session } from "./session";
@@ -54,7 +55,7 @@ export function AppShell({
         path: "/",
         element: <AppLayout screens={chromed} />,
         children: [
-          { index: true, element: <HomeScreen /> },
+          { index: true, element: <RoleHome screens={chromed} /> },
           ...chromed.map((s) => ({ path: s.path.replace(/^\//, ""), element: createElement(s.screen) })),
         ],
       },
