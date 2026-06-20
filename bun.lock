@@ -46,6 +46,7 @@
       "name": "@wardenx/web",
       "version": "0.0.0",
       "dependencies": {
+        "@wardenx/auth": "workspace:*",
         "@wardenx/types": "workspace:*",
         "@wardenx/ui": "workspace:*",
         "react": "^18.3.1",

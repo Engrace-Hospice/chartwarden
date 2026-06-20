@@ -5,11 +5,19 @@ import type { ComponentType } from "react";
 import type { ScreenRegistryModule } from "@wardenx/types";
 import { AcceptInvitation } from "./accept-invitation";
 import { OrganizationSelect } from "./organization-select";
+import { SignIn } from "./sign-in";
 
 export const identityScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 2,
   slug: "02-identity",
   screens: [
+    {
+      id: "identity.sign-in",
+      path: "/login",
+      title: "Sign in",
+      chrome: false, // Auth Flow — outside the app shell
+      screen: SignIn,
+    },
     {
       id: "identity.organization-select",
       path: "/login/organization",

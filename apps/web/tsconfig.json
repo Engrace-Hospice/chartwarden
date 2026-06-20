@@ -9,6 +9,7 @@
   "include": ["src"],
   "references": [
     { "path": "../../packages/types" },
-    { "path": "../../packages/ui" }
+    { "path": "../../packages/ui" },
+    { "path": "../../packages/auth" }
   ]
 }

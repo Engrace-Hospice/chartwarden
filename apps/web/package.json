@@ -13,6 +13,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@wardenx/auth": "workspace:*",
     "@wardenx/types": "workspace:*",
     "@wardenx/ui": "workspace:*",
     "react": "^18.3.1",
