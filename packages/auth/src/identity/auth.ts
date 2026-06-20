@@ -20,6 +20,8 @@
 import { schema } from "@wardenx/db";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { haveIBeenPwned } from "better-auth/plugins";
+import { argon2idHash, argon2idVerify } from "./password-hash";
 
 /**
  * The Drizzle database handle Better Auth reads/writes through. Typed as the adapter's
@@ -60,10 +62,20 @@ export function createIdentityAuth(db: IdentityAuthDb) {
       schema: m1Schema,
     }),
     emailAndPassword: {
-      // Email + password is enabled; NIST-aligned policy, Argon2id hashing and the HIBP
-      // k-anonymity breach check are configured by the password-policy task (M2 §3.1).
+      // M2 §3.1 (AUTH-T04): NIST 800-63B-aligned — length floor (no composition rules), Argon2id
+      // hashing, and the HIBP k-anonymity breach check (haveIBeenPwned plugin below). No upper-bound
+      // truncation surprises (max well above any real passphrase).
       enabled: true,
+      minPasswordLength: 12,
+      maxPasswordLength: 256,
+      password: {
+        hash: argon2idHash,
+        verify: ({ hash, password }) => argon2idVerify(hash, password),
+      },
     },
+    // HIBP k-anonymity breach check on sign-up / password change (M2 §3.1) — a breached password is
+    // rejected without the plaintext ever leaving the server (SHA-1 prefix range query).
+    plugins: [haveIBeenPwned()],
     account: {
       fields: {
         password: "passwordHash",

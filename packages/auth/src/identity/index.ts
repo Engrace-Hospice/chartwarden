@@ -16,6 +16,7 @@ export {
   getIdentitySession,
   type IdentitySessionSnapshot,
 } from "./session-snapshot";
+export { argon2idHash, argon2idVerify } from "./password-hash";
 export {
   type SessionContextRecord,
   type SessionContextStore,
