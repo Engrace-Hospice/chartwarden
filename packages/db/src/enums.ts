@@ -592,3 +592,154 @@ export const patientPhoneKind = pgEnum("patient_phone_kind", [
   "work",
   "facility",
 ]);
+
+// ── Module 39 (Consent & Authorization Management) §3.2 ───────────────────────────────────
+// M39-T01. One pgEnum per §3.2 CREATE TYPE; these back the 11 M39 tables (consent_record +
+// its per-recipient / per-DPOA-agent joins, revocation, reminders, renewal-cycle, delegated-
+// access projection, the catalog + tenant overlay, the consent_document_link, and the monthly-
+// partitioned consent_eval_audit) landing in M39-T02 (§3.3). They mirror the type-level unions
+// in packages/consent/src/interfaces/kinds.ts (M39-T01). The migration emitting the CREATE
+// TYPEs is M39-T03 (§3.4). Enum string values that begin with a digit (`42_cfr_part_2_release`,
+// the `N_days` reminder kinds) are legal Postgres labels and TS string-literal members.
+
+/** `consent_type_key` — the ten v1 platform-floor consent types + the post-mortem bereavement
+ *  type + the tenant-extensible `custom` slot (§3.2, D2). */
+export const consentTypeKey = pgEnum("consent_type_key", [
+  "portal_access",
+  "dpoa_healthcare",
+  "dpoa_financial",
+  "family_caregiver_access",
+  "42_cfr_part_2_release",
+  "media_release",
+  "research_participation",
+  "telehealth_consent",
+  "advance_directive_acknowledgment",
+  "hipaa_release",
+  "bereavement_outreach_consent",
+  "custom",
+]);
+
+/** `consent_scope_discriminator` — the typed scope shape a consent type carries (§3.2). */
+export const consentScopeDiscriminator = pgEnum("consent_scope_discriminator", [
+  "categorical",
+  "per_recipient",
+  "per_named_agent",
+  "per_encounter",
+]);
+
+/** `consent_status` — the consent_record lifecycle (§2.2, §3.2). Append-only: an "edit" is a
+ *  new row pointing at the prior via supersedes_consent_record_id. */
+export const consentStatus = pgEnum("consent_status", [
+  "draft",
+  "active",
+  "superseded",
+  "revoked",
+  "expired",
+]);
+
+/** `consent_grantor_kind` — the chain-of-authority grantor model (§3.2, D5). Non-self grantors
+ *  carry an acting_consent_id FK proving authority. */
+export const consentGrantorKind = pgEnum("consent_grantor_kind", [
+  "patient_self",
+  "dpoa_healthcare_agent",
+  "dpoa_financial_agent",
+  "court_guardian",
+  "parent_for_minor",
+  "healthcare_surrogate",
+  "bereaved_person_self",
+]);
+
+/** `consent_capture_method` — how the signature evidence was captured (§3.2, D4). */
+export const consentCaptureMethod = pgEnum("consent_capture_method", [
+  "electronic_portal_signature",
+  "typed_signature_in_app",
+  "uploaded_signed_pdf",
+  "witnessed_verbal_documented",
+  "notarized",
+]);
+
+/** `consent_recipient_kind` — the named-recipient classes on consent_record_recipient (§3.2, D6). */
+export const consentRecipientKind = pgEnum("consent_recipient_kind", [
+  "external_physician",
+  "facility",
+  "pharmacy",
+  "irb",
+  "family_member",
+  "attorney",
+  "employer",
+  "researcher",
+  "free_text",
+]);
+
+/** `consent_revocation_actor_kind` — who performed an explicit revocation (§3.2, D7). */
+export const consentRevocationActorKind = pgEnum("consent_revocation_actor_kind", [
+  "patient_self_via_portal",
+  "staff",
+  "dpoa_agent",
+  "court_order",
+  "platform_admin_break_glass",
+]);
+
+/** `consent_revocation_cascade_status` — typed revocation-cascade progress (§3.2, D7). */
+export const consentRevocationCascadeStatus = pgEnum("consent_revocation_cascade_status", [
+  "pending",
+  "in_progress",
+  "completed",
+  "partial_failed",
+]);
+
+/** `consent_reminder_kind` — the platform-floor 90/30/14/7/1-day reminder cadence (§3.2, D9). */
+export const consentReminderKind = pgEnum("consent_reminder_kind", [
+  "90_days",
+  "30_days",
+  "14_days",
+  "7_days",
+  "1_day",
+]);
+
+/** `consent_renewal_cycle_status` — the renewal-cycle lifecycle (§3.2, D8). */
+export const consentRenewalCycleStatus = pgEnum("consent_renewal_cycle_status", [
+  "open",
+  "renewed",
+  "closed_expired",
+  "closed_revoked",
+  "closed_no_longer_applicable",
+]);
+
+/** `consent_dpoa_agent_kind` — primary + alternate ordering on consent_record_dpoa_agent (§3.2, D5). */
+export const consentDpoaAgentKind = pgEnum("consent_dpoa_agent_kind", [
+  "primary",
+  "alternate_1",
+  "alternate_2",
+]);
+
+/** `consent_dpoa_activation_condition` — when DPOA authority becomes operative (§3.2, D5). */
+export const consentDpoaActivationCondition = pgEnum("consent_dpoa_activation_condition", [
+  "immediate",
+  "upon_incapacity_attested",
+  "upon_physician_determination",
+  "upon_incompetence_court_order",
+]);
+
+/** `consent_dpoa_scope_kind` — the per-agent authority scope (§3.2, D5). */
+export const consentDpoaScopeKind = pgEnum("consent_dpoa_scope_kind", [
+  "healthcare_full",
+  "healthcare_end_of_life_only",
+  "financial_narrow",
+  "financial_broad",
+]);
+
+/** `consent_dpoa_term_kind` — the per-agent term (§3.2, D5). */
+export const consentDpoaTermKind = pgEnum("consent_dpoa_term_kind", [
+  "indefinite",
+  "until_date",
+  "event_driven",
+]);
+
+/** `consent_delegated_access_scope` — the delegated_access projection scope tiers (§3.2, D10). */
+export const consentDelegatedAccessScope = pgEnum("consent_delegated_access_scope", [
+  "view_only_minimal",
+  "view_only_full",
+  "view_and_message",
+  "view_message_and_decisions",
+]);

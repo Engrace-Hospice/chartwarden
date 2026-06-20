@@ -12,6 +12,7 @@ import {
   CONTRIBUTED_PERMISSIONS,
   M36_CONTRIBUTED_PERMISSIONS,
   M38_CONTRIBUTED_PERMISSIONS,
+  M39_CONTRIBUTED_PERMISSIONS,
   M40_CONTRIBUTED_PERMISSIONS,
   M5_CONTRIBUTED_PERMISSIONS,
   M4_CONTRIBUTED_PERMISSIONS,
@@ -57,7 +58,7 @@ describe("M3-T10 catalog ↔ DB mirror — merged M3 + contributed", () => {
     expect(rows.map((r) => r.key).sort()).toEqual(Object.keys(CONTRIBUTED_PERMISSIONS).sort());
   });
 
-  it("the full mirror is M3's keys plus every contributed (M1/M2 + M4 + M38 + M36 + M40) key, single-owner", () => {
+  it("the full mirror is M3's keys plus every contributed (M1/M2 + M4 + M38 + M36 + M40 + M5 + M39) key, single-owner", () => {
     const rows = allPermissionMirrorRows();
     const keys = rows.map((r) => r.key);
     expect(keys.length).toBe(
@@ -67,8 +68,9 @@ describe("M3-T10 catalog ↔ DB mirror — merged M3 + contributed", () => {
         Object.keys(M38_CONTRIBUTED_PERMISSIONS).length +
         Object.keys(M36_CONTRIBUTED_PERMISSIONS).length +
         Object.keys(M40_CONTRIBUTED_PERMISSIONS).length +
-        Object.keys(M5_CONTRIBUTED_PERMISSIONS).length,
+        Object.keys(M5_CONTRIBUTED_PERMISSIONS).length +
+        Object.keys(M39_CONTRIBUTED_PERMISSIONS).length,
     );
-    expect(new Set(keys).size).toBe(keys.length); // no collision across the seven sets
+    expect(new Set(keys).size).toBe(keys.length); // no collision across the eight sets
   });
 });

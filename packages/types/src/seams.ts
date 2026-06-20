@@ -60,10 +60,12 @@ export interface DocumentRenderer {
   render(scope: OrgScope, templateKey: string, payload: unknown): Promise<{ documentId: string }>;
 }
 
-/** M39 — consent/redaction gate consulted on egress. */
-export interface ConsentEvaluator {
-  evaluateForDisclosure(scope: OrgScope, patientId: string, recipientId: string): Promise<boolean>;
-}
+// M39's `ConsentEvaluator` (§4.3) follows the SAME opaque rich-seam pattern as TerminologyProvider /
+// MdmEntityProvider: its rich interface (four typed query methods + the per-category redaction-flag
+// shape + ConsentDenyReason) lives in @wardenx/consent, which this leaf may not import
+// (`leaves-stay-leaves`). Every PHI-egress consumer already lists `39` in its manifest `dependsOn`, so
+// it imports the real `ConsentEvaluator` type from @wardenx/consent and resolves the impl through the
+// module-39 typed accessor; the M1 registry holds/validates the instance fail-closed (`unknown`).
 
 /**
  * The authenticated actor a `SessionContextResolver` resolves a request to (M2 spec §4.7).
@@ -118,7 +120,11 @@ export interface SeamContracts {
   PatientReader: PatientReader;
   PatientMutator: PatientMutator;
   DocumentRenderer: DocumentRenderer;
-  ConsentEvaluator: ConsentEvaluator;
+  // M39's `ConsentEvaluator` is OPAQUE (`unknown`) here — the rich §4.3 interface lives in
+  // @wardenx/consent (rich-seam pattern, see the note above the interface block). Consumers that
+  // list `39` in `dependsOn` import the real type from @wardenx/consent and resolve via the
+  // module-39 typed accessor; the M1 registry holds/validates the instance fail-closed.
+  ConsentEvaluator: unknown;
   SessionContextResolver: SessionContextResolver;
   AuditorSessionMinter: AuditorSessionMinter;
   // M38's `TerminologyProvider` is intentionally OPAQUE (`unknown`) here. Its rich interface

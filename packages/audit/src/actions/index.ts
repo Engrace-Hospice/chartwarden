@@ -9,6 +9,7 @@ export { M3_ACTION_CATALOG } from "./m3";
 export { M4_ACTION_CATALOG } from "./m4";
 export { M36_ACTION_CATALOG } from "./m36";
 export { M38_ACTION_CATALOG } from "./m38";
+export { M39_ACTION_CATALOG } from "./m39";
 export { M40_ACTION_CATALOG } from "./m40";
 export { M5_ACTION_CATALOG } from "./m5";
 export {

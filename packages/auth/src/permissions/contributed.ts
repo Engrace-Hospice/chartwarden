@@ -356,6 +356,38 @@ export const M40_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M40 contributed permission keys. */
 export type M40ContributedPermissionKey = keyof typeof M40_CONTRIBUTED_PERMISSIONS;
 
+/**
+ * The permission keys Module 39 (Consent & Authorization Management) registers into Module 3's
+ * catalog — the §4.7 binding handshake (M39-T07; M39 spec §4.7). Boot validation fails if any key is
+ * missing from M3's catalog at startup, so the route inventory (§4.1) can gate on them.
+ *
+ * Bare `consent.*` keys (resource="consent") — consent is a first-class platform resource, like M5's
+ * `patient.*`. The catalog `abac` is DEFAULT metadata; a patient-scoped route additionally applies an
+ * explicit `requireAbac(...)` (caseload / the eleven §4.8 predicates) and the sign/supersede/revoke/
+ * overlay/admin routes additionally `requireStepUp(...)` (the `consent_management` profile, §4.1).
+ * All `abac: 'none'` here — the route layer composes the real predicate chain (§4.11) per route.
+ */
+export const M39_CONTRIBUTED_PERMISSIONS = {
+  "consent.read_catalog": { resource: "consent", action: "read_catalog", category: "clinical", abac: "none" },
+  "consent.read": { resource: "consent", action: "read", category: "clinical", abac: "none" },
+  "consent.read_history": { resource: "consent", action: "read_history", category: "compliance", abac: "none" },
+  "consent.read_phi_content": { resource: "consent", action: "read_phi_content", category: "clinical", abac: "none" },
+  "consent.read_eval_audit": { resource: "consent", action: "read_eval_audit", category: "compliance", abac: "none" },
+  "consent.author": { resource: "consent", action: "author", category: "clinical", abac: "none" },
+  "consent.sign": { resource: "consent", action: "sign", category: "clinical", abac: "none" },
+  "consent.revoke": { resource: "consent", action: "revoke", category: "clinical", abac: "none" },
+  "consent.manage_overlay": { resource: "consent", action: "manage_overlay", category: "admin", abac: "none" },
+  "consent.admin_re_render": { resource: "consent", action: "admin_re_render", category: "admin", abac: "none" },
+  "consent.delegate_assignment": { resource: "consent", action: "delegate_assignment", category: "clinical", abac: "none" },
+  "consent.portal_self_service": { resource: "consent", action: "portal_self_service", category: "clinical", abac: "none" },
+  "consent.read_bereavement_outreach": { resource: "consent", action: "read_bereavement_outreach", category: "clinical", abac: "none" },
+  "consent.bereavement_outreach_author": { resource: "consent", action: "bereavement_outreach_author", category: "clinical", abac: "none" },
+  "consent.cascade_admin": { resource: "consent", action: "cascade_admin", category: "platform", abac: "none" },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M39 contributed permission keys. */
+export type M39ContributedPermissionKey = keyof typeof M39_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -398,6 +430,11 @@ export function m5ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M5_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M39 contributed keys into `permission`-table mirror rows (M39-T07). */
+export function m39ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M39_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -413,5 +450,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m36ContributedPermissionMirrorRows(),
     ...m40ContributedPermissionMirrorRows(),
     ...m5ContributedPermissionMirrorRows(),
+    ...m39ContributedPermissionMirrorRows(),
   ];
 }

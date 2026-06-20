@@ -644,4 +644,108 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       expect(r.rows[0].after.mrn).toBe("MRN-A"); // non-sensitive column passes through
     });
   });
+
+  describe("M39 Consent — dual-grant catalog, org-scoped records, audit scrub, eval immutability (§3.5–3.7)", () => {
+    const PAT_A = "cccc1111-1111-1111-1111-111111111111";
+    const REC_A = "dddd1111-1111-1111-1111-111111111111";
+    const REC_B = "dddd2222-2222-2222-2222-222222222222";
+    const CCOLS =
+      "(id,organization_id,patient_id,type_key,scope_descriptor,grantor_kind,effective_at,capture_method,capture_evidence_jsonb,internal_notes_cipher,created_by_id)";
+    const CVALS =
+      "'42_cfr_part_2_release','{\"recipients\":[]}'::jsonb,'patient_self',now(),'typed_signature_in_app','{}'::jsonb,'CIPHERTEXT',gen_random_uuid()";
+
+    beforeAll(async () => {
+      // Seed the platform-shared catalog floor + one consent_record per org as superuser (RLS
+      // bypassed) — the §3.5 fixture. The M4 write-audit trigger still fires on these inserts.
+      await db.query(
+        `INSERT INTO consent_type_catalog
+           (type_key, display_name_en, scope_discriminator, capture_method_floor, reminder_cadence_floor,
+            revocation_cascade_kind, is_per_recipient, is_per_named_agent, is_post_mortem_eligible,
+            requires_jurisdiction_code, cfr_42_part_2_compliant, hipaa_164_508_compliant,
+            body_text_template_key, m22_template_version)
+         VALUES ('42_cfr_part_2_release','42 CFR Part 2 Release','per_recipient',
+            ARRAY['typed_signature_in_app']::text[], ARRAY['30_days']::text[],
+            'sud_release', true, false, false, false, true, true, 'consent_record', 'v1')
+         ON CONFLICT (type_key) DO NOTHING`,
+      );
+      await db.query(
+        `INSERT INTO consent_record ${CCOLS} VALUES
+           ($1,$2,$3,${CVALS}),
+           ($4,$5,$3,${CVALS})`,
+        [REC_A, ORG_A, PAT_A, REC_B, ORG_B],
+      );
+    });
+
+    it("§3.5 consent_type_catalog is platform-shared — Org A and Org B read the same floor", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM consent_type_catalog"),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM consent_type_catalog"),
+      );
+      expect(a.rows[0].n).toBeGreaterThan(0);
+      expect(a.rows[0].n).toBe(b.rows[0].n);
+    });
+
+    it("§7.4 wardenx_app CANNOT write the platform consent-type floor (dual-grant: writer-role only)", async () => {
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            "INSERT INTO consent_type_catalog (type_key, display_name_en, scope_discriminator, capture_method_floor, reminder_cadence_floor, revocation_cascade_kind, is_per_recipient, is_per_named_agent, is_post_mortem_eligible, requires_jurisdiction_code, cfr_42_part_2_compliant, hipaa_164_508_compliant, body_text_template_key, m22_template_version) VALUES ('custom','x','categorical',ARRAY[]::text[],ARRAY[]::text[],'none',false,false,false,false,false,false,'x','v1')",
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§3.5 consent_record is org-scoped — Org A sees its record, Org B sees none of it", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM consent_record WHERE id=$1", [REC_A]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM consent_record WHERE id=$1", [REC_A]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§3.5 Org B cannot INSERT a consent_record into Org A (WITH CHECK blocks the cross-tenant write)", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO consent_record ${CCOLS} VALUES (gen_random_uuid(),$1,$2,${CVALS})`,
+            [ORG_A, PAT_A],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§3.7 the M4 write-audit trigger fired for the consent write and scrubbed the PHI denylist", async () => {
+      const r = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='consent_record' AND event_type='consent_record.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.internal_notes_cipher).toBe("<changed>"); // §3.7 ciphertext scrub
+      expect(r.rows[0].after.scope_descriptor).toBe("<changed>"); // §3.7 jsonb scope scrub
+      expect(r.rows[0].after.type_key).toBe("42_cfr_part_2_release"); // non-sensitive passes through
+    });
+
+    it("§3.6/D12 consent_eval_audit is INSERT-only — the immutability trigger denies UPDATE + DELETE", async () => {
+      const evalId = "eeee1111-1111-1111-1111-111111111111";
+      await withOrg(ORG_A, () =>
+        db.query(
+          "INSERT INTO consent_eval_audit (id, organization_id, patient_id, type_key, allowed, as_of, caller_module) VALUES ($1,$2,$3,'42_cfr_part_2_release',true,now(),'m28')",
+          [evalId, ORG_A, PAT_A],
+        ),
+      );
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query("UPDATE consent_eval_audit SET allowed=false WHERE id=$1", [evalId]),
+        ),
+      ).rejects.toThrow();
+      await expect(
+        withOrg(ORG_A, () => db.query("DELETE FROM consent_eval_audit WHERE id=$1", [evalId])),
+      ).rejects.toThrow();
+    });
+  });
 });
