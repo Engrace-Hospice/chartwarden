@@ -164,3 +164,22 @@ export * from "./patient/patient-privacy-flag-snapshots";
 export * from "./patient/patient-match-reviews";
 export * from "./patient/patient-merges";
 export * from "./patient/patient-amendment-requests";
+
+// ── Module 39 (Consent & Authorization Management) — the consent platform (§3.3) ─────────────
+// M39 owns 11 tables (M39-T02). consent_type_catalog is platform-shared (no organization_id;
+// dual-grant RLS, allow-listed in check-tenancy NON_ORG_SCOPED). The four patient-bearing tables
+// (consent_record, delegated_access, consent_eval_audit, consent_renewal_cycle) carry the three-
+// column tenancy rule; the rest are org-scoped children of consent_record. consent_eval_audit is
+// INSERT-only + monthly-partitioned (logical Drizzle def here; PARTITION BY in the T03 migration).
+// RLS + grants + M4 write-audit triggers + migration 0039 land in M39-T03 (§3.4–3.7).
+export * from "./consent/consent-type-catalog";
+export * from "./consent/tenant-consent-type-overlay";
+export * from "./consent/consent-record";
+export * from "./consent/consent-record-recipient";
+export * from "./consent/consent-record-dpoa-agent";
+export * from "./consent/consent-revocation";
+export * from "./consent/consent-expiration-reminder";
+export * from "./consent/delegated-access";
+export * from "./consent/consent-document-link";
+export * from "./consent/consent-eval-audit";
+export * from "./consent/consent-renewal-cycle";

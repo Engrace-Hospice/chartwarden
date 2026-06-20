@@ -80,6 +80,13 @@ const NON_ORG_SCOPED = new Set<string>([
   "external_physician", "facility", "payer",
   "entity_relationship", "merge_request",
   "nppes_sync_log", "nppes_sync_coordination",
+  // M39 Consent (§3.3, §3.5): consent_type_catalog is platform-shared reference (the ten v1
+  // consent types + bereavement + custom slot) with NO organization_id BY DESIGN — dual-grant RLS
+  // (M40 §3.6 pattern): PLATFORM-scope writes only, read-all within any tenant. Same posture as
+  // M38's code_system. The other ten M39 tables carry organization_id and get standard app.org_id
+  // RLS in M39-T03; the four patient-bearing ones (consent_record / delegated_access /
+  // consent_eval_audit / consent_renewal_cycle) additionally carry the three-column rule.
+  "consent_type_catalog",
 ]);
 // PHI signal: a table referencing a patient is PHI-bearing and MUST be fully org-scoped.
 const PHI_SIGNAL_RE = /\b(patient_id|patientId|mrn|deceased_date|clinical|encounter_id|observation)\b/i;
