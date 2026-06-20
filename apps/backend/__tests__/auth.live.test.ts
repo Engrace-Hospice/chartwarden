@@ -5,6 +5,7 @@
 // 2FA + passkey ENROLLMENT are out of scope here (deferred to the Option-C / passkey follow-ups).
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { isSealed } from "@wardenx/auth";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -66,5 +67,21 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
     expect(a.rowCount).toBeGreaterThanOrEqual(1);
     const s = await admin.query("SELECT id FROM session WHERE user_id = $1", [u.rows[0].id]);
     expect(s.rowCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("2FA enrollment stores the TOTP secret ENCRYPTED at rest (ADR-0034)", async () => {
+    const email = `tf${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
+    const password = `Wx9$${Math.random().toString(36).slice(2)}${Date.now()}Qz!`;
+    // sign up (autoSignIn) → grab the session cookie from the response
+    const signUp = (await auth.api.signUpEmail({ body: { email, password, name: "TF User" }, asResponse: true })) as Response;
+    const cookie = (signUp.headers.get("set-cookie") ?? "").split(";")[0];
+    // enrol TOTP (the twoFactor plugin writes the secret via the encrypting adapter decorator)
+    await auth.api.enableTwoFactor({ body: { password }, headers: { cookie } });
+
+    const u = await admin.query('SELECT id FROM "user" WHERE email = $1', [email]);
+    const tf = await admin.query("SELECT secret_encrypted FROM two_factor WHERE user_id = $1", [u.rows[0].id]);
+    expect(tf.rowCount).toBeGreaterThanOrEqual(1);
+    const stored = String(tf.rows[0].secret_encrypted);
+    expect(isSealed(stored)).toBe(true); // our AES-256-GCM token — NOT the plaintext base32 TOTP secret
   });
 });
