@@ -44,11 +44,22 @@ export function AppShell({
 }: AppShellProps): JSX.Element {
   const router = useMemo(() => {
     const screens = registry.screens();
-    const children: RouteObject[] = [
-      { index: true, element: <HomeScreen /> },
-      ...screens.map((s) => ({ path: s.path.replace(/^\//, ""), element: createElement(s.screen) })),
+    // Chromeless screens (Auth Flow, System Page — ADR-0030) are standalone top-level routes;
+    // chromed screens render inside the AppLayout shell and appear in its nav.
+    const chromeless = screens.filter((s) => s.chrome === false);
+    const chromed = screens.filter((s) => s.chrome !== false);
+    const routes: RouteObject[] = [
+      ...chromeless.map((s) => ({ path: s.path, element: createElement(s.screen) })),
+      {
+        path: "/",
+        element: <AppLayout screens={chromed} />,
+        children: [
+          { index: true, element: <HomeScreen /> },
+          ...chromed.map((s) => ({ path: s.path.replace(/^\//, ""), element: createElement(s.screen) })),
+        ],
+      },
     ];
-    return createBrowserRouter([{ path: "/", element: <AppLayout screens={screens} />, children }]);
+    return createBrowserRouter(routes);
   }, [registry]);
 
   return (

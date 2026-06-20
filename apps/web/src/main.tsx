@@ -4,14 +4,14 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createApiClient } from "@wardenx/ui";
+import { identityScreens } from "./modules/02-identity";
 import { AppShell, createScreenRegistry } from "./shell";
 
 const registry = createScreenRegistry();
 const client = createApiClient();
 
-// Module web-slices register here as they land (Track A/B), e.g.:
-//   import { patientScreens } from "./modules/05-patient";
-//   registry.register(patientScreens);
+// Module web-slices register here as they land (Track A/B).
+registry.register(identityScreens); // M2 Identity (Track A)
 
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error('Root element "#root" not found');

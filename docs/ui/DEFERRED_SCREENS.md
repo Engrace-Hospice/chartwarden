@@ -30,7 +30,7 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 
 | # | Module | Screen | Spec | Layout pattern | Layout cmp | Status |
 |---|--------|--------|------|----------------|-----------|--------|
-| 1 | M2 | Authentication & Session | `screens/core/WARDENX_UI_AUTH.md` | Auth Flow | ✓ `CenteredCardLayout` | deferred |
+| 1 | M2 | Authentication & Session | `screens/core/WARDENX_UI_AUTH.md` | Auth Flow | ✓ `CenteredCardLayout` | in-progress¹ |
 | 2 | M1+M2+M3 | App Shell & Role Home | `screens/core/WARDENX_UI_APP_SHELL_HOME.md` | App Shell | ✓ shell (F0-T03) | deferred |
 | 3 | cross-cutting | System / Utility Pages | `screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md` | System Page | ✓ `CenteredStatusLayout` | deferred |
 | 4 | M5 | Patient Chart | `screens/clinical/WARDENX_UI_PATIENT_CHART.md` | Patient Workspace | ✓ `PatientWorkspaceLayout` | deferred |
@@ -45,6 +45,14 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > Patient Chart (#4) is a hub: its M5 frame (banner + summary + module nav rail) is buildable now; the
 > per-module tabs (encounters, orders, eMAR, …) fill in as those modules land — build the frame in
 > Track A, graft tabs in Track B.
+
+> ¹ **M2 Auth — partially built (first Track A screen).** The flows backed by real M2 routes are done in
+> `apps/web/src/modules/02-identity` and registered in the shell: **Organization Select**
+> (`/login/organization`) and **Accept Invitation** token-consume (`/invite/:token`). The remaining
+> spec flows — **Sign in, MFA challenge, password reset, screen-lock** — are **blocked on the identity
+> credential backend (better-auth), which is not yet mounted** in `apps/backend`. Mounting better-auth
+> (and wiring those routes into the OpenAPI contract) is a **backend follow-up**; the screens then plug
+> into the same shell + client. The M2 routes were enriched into the contract (`scripts/openapi/enrichments.ts`).
 
 ### Partial — primary owner merged, but key sections need unbuilt modules
 
