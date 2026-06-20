@@ -10,12 +10,13 @@ import { auditScreens } from "./modules/04-audit";
 import { patientScreens } from "./modules/05-patient";
 import { terminologyScreens } from "./modules/38-terminology";
 import { mdmScreens } from "./modules/40-mdm";
-import { AppShell, createScreenRegistry } from "./shell";
+import { AppShell, createScreenRegistry, systemScreens } from "./shell";
 
 const registry = createScreenRegistry();
 const client = createApiClient();
 
 // Module web-slices register here as they land (Track A/B).
+registry.register(systemScreens); // M1 system/utility pages (403/404/500/offline/… — Track A)
 registry.register(identityScreens); // M2 Identity (Track A)
 registry.register(authorizationScreens); // M3 Authorization (Track A)
 registry.register(auditScreens); // M4 Audit (Track A)
