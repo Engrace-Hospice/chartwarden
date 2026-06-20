@@ -12,6 +12,7 @@ import {
   registerTerminologySeams,
 } from "./modules/38-terminology/index";
 import { registerMdmErasers, registerMdmSeams } from "./modules/40-mdm/index";
+import { registerPatientErasers, registerPatientSeams } from "./modules/05-patient/index";
 
 export { buildServer };
 export * from "./bootstrap/index";
@@ -26,8 +27,8 @@ export function wireModuleSeams(): void {
   registerTerminologySeams(); // M38 — TerminologyProvider (§4.5)
   registerMessagingSeams(); // M36 — AlertEmitter (§4.6); MessagingProvider stays deny-stub until T07/T08
   registerMdmSeams(); // M40 — MdmEntityProvider (§4.5) + BaaStatusProvider (§4.6 §7.7 as-of gate)
-  // Phase-1 producers append here as they land: M5 CaseloadProvider/PatientReader, M22
-  // DocumentRenderer, M39 ConsentEvaluator, …
+  registerPatientSeams(); // M5 — CaseloadProvider (§4.1, + caseload_membership predicate); PatientReader/Mutator land T08
+  // Phase-1 producers append here as they land: M22 DocumentRenderer, M39 ConsentEvaluator, …
 }
 
 /**
@@ -43,6 +44,7 @@ export function wireModuleErasers(): void {
   registerTerminologyErasers(); // M38-T10 — `terminology_tenant_extensions` (D8 tenant offboarding)
   registerMessagingErasers(); // M36-T10 — `messages` (D9 tenant offboarding; DEK crypto-erase §7.8)
   registerMdmErasers(); // M40-T10 — `mdm_tenant_overlays` (D7 tenant offboarding; canonical untouched)
+  registerPatientErasers(); // M5-T12 — `clinical_record` (patient-subtree destruction-cert callback; D7/D8)
   // Phase-1 data-class owners append here as they land.
 }
 

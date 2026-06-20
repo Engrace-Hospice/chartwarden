@@ -590,4 +590,58 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       expect(r.rows[0].after.contract_terms).toBe("<changed>"); // §3.7 denylist scrub
     });
   });
+
+  // ── M5 Patient & Demographics — org-scoped RLS, no-DELETE spine, audit scrub (§3.6–3.7 / §9.4) ─
+  // 0020/0021 (M5) applied above. Proves on REAL Postgres: cross-tenant patient reads are blocked
+  // by RLS even with app authorization stubbed open (§9.4 layer-independence); the patient spine has
+  // no DELETE grant (§3.6); the M4 write-audit trigger scrubs the name denylist (§3.7).
+  describe("M5 Patient — cross-tenant isolation, no-DELETE spine, audit scrub (§3.6–3.7 / §9.4)", () => {
+    const PATIENT_A = "aaaa1111-1111-1111-1111-111111111111";
+    const PATIENT_B = "bbbb2222-2222-2222-2222-222222222222";
+    const PCOLS =
+      "(id,organization_id,mrn,legal_first_name,legal_last_name,dob,sex_assigned_at_birth)";
+
+    beforeAll(async () => {
+      // Seed one patient per org as superuser (RLS bypassed) — the §9.4 fixture.
+      await db.query(
+        `INSERT INTO patient ${PCOLS} VALUES
+           ($1,$2,'MRN-A','Ada','Lovelace','1990-01-01','F'),
+           ($3,$4,'MRN-B','Bob','Brown','1985-05-05','M')`,
+        [PATIENT_A, ORG_A, PATIENT_B, ORG_B],
+      );
+    });
+
+    it("§9.4 Org A sees ONLY its own patient (RLS blocks cross-tenant reads, auth stubbed open)", async () => {
+      const rows = await withOrg(ORG_A, () => db.query("SELECT id FROM patient"));
+      expect(rows.rows).toHaveLength(1);
+      expect(rows.rows[0].id).toBe(PATIENT_A);
+    });
+
+    it("§3.6 Org B cannot INSERT a patient into Org A (WITH CHECK blocks the cross-tenant write)", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO patient ${PCOLS} VALUES (gen_random_uuid(),$1,'MRN-X','E','V','2000-01-01','U')`,
+            [ORG_A],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§3.6 the patient spine has NO DELETE grant (deaths/merges are state changes, not deletes)", async () => {
+      await expect(
+        withOrg(ORG_A, () => db.query("DELETE FROM patient WHERE id=$1", [PATIENT_A])),
+      ).rejects.toThrow();
+    });
+
+    it("§3.7 the M4 write-audit trigger fired for the patient write and scrubbed the name denylist", async () => {
+      const r = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='patient' AND event_type='patient.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.legal_first_name).toBe("<changed>"); // §3.7 name denylist scrub
+      expect(r.rows[0].after.mrn).toBe("MRN-A"); // non-sensitive column passes through
+    });
+  });
 });

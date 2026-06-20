@@ -199,7 +199,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: 5, name: "Patient & Demographics",
     codePaths: ["apps/backend/src/modules/05-patient"],
-    dependsOn: [2, 3, 4, 36, 38, 40],
+    dependsOn: [1, 2, 3, 4, 36, 38, 40], // +1: M5 closes M1 boot-gate seams via the M1-owned bootstrap registry (M5-T07)
     ownedTables: ["patient", "patient_identifier", "patient_name_alias", "patient_address", "patient_phone", "patient_email", "patient_payer", "caregiver", "patient_caregiver", "emergency_contact", "patient_assignment", "patient_communication_preference", "patient_privacy_flag_snapshot", "patient_amendment_request", "patient_match_review", "patient_merge"], // M07-F02 analogue
   },
   {

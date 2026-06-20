@@ -260,6 +260,42 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
 export type M36ContributedPermissionKey = keyof typeof M36_CONTRIBUTED_PERMISSIONS;
 
 /**
+ * The permission keys Module 5 (Patient & Demographics) registers into Module 3's catalog — the
+ * §4.7 binding cross-module handshake (M5-T09; M5 spec §4.7). M3 must include these before M5's
+ * routes can be authorized; the route inventory (M5-T09) gates on them. `patient.read` is the
+ * most-used permission in the system.
+ *
+ * The default ABAC predicate per key follows §4.7: clinical reads/edits narrow by
+ * `caseload_or_scope` (the actor's caseload OR a location/PE scope), `patient.create` by
+ * `location_scope`, and the compliance/portal keys are pure RBAC (`none`). The catalog `abac` is the
+ * DEFAULT predicate metadata; a route may additionally `requireAbac`/`requireStepUp` (merge / death /
+ * bypass / SSN-write step-up). Bare `resource.action` keys (not namespaced) — patient is a
+ * first-class platform resource. Kept in a dedicated const for §3.3 attributability.
+ */
+export const M5_CONTRIBUTED_PERMISSIONS = {
+  "patient.read": { resource: "patient", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  "patient.create": { resource: "patient", action: "create", category: "clinical", abac: "location_scope" },
+  "patient.create_bypass_match": { resource: "patient", action: "create_bypass_match", category: "clinical", abac: "none" },
+  "patient.edit": { resource: "patient", action: "edit", category: "clinical", abac: "caseload_or_scope" },
+  "patient.edit_identifiers": { resource: "patient", action: "edit_identifiers", category: "clinical", abac: "caseload_or_scope" },
+  "patient.edit_payers": { resource: "patient", action: "edit_payers", category: "clinical", abac: "caseload_or_scope" },
+  "patient.assign": { resource: "patient", action: "assign", category: "clinical", abac: "caseload_or_scope" },
+  "patient.transition_status": { resource: "patient", action: "transition_status", category: "clinical", abac: "caseload_or_scope" },
+  "patient.record_death": { resource: "patient", action: "record_death", category: "clinical", abac: "caseload_or_scope" },
+  "patient.match_review": { resource: "patient", action: "match_review", category: "compliance", abac: "none" },
+  "patient.merge": { resource: "patient", action: "merge", category: "compliance", abac: "caseload_or_scope" },
+  "patient.amend_request_submit": { resource: "patient", action: "amend_request_submit", category: "clinical", abac: "none" },
+  "patient.amend_request_record": { resource: "patient", action: "amend_request_record", category: "clinical", abac: "caseload_or_scope" },
+  "patient.amend_review": { resource: "patient", action: "amend_review", category: "compliance", abac: "none" },
+  "phi.read_ssn": { resource: "phi", action: "read_ssn", category: "clinical", abac: "caseload_or_scope" },
+  "phi.write_ssn": { resource: "phi", action: "write_ssn", category: "clinical", abac: "caseload_or_scope" },
+  "privacy.admin": { resource: "privacy", action: "admin", category: "compliance", abac: "none" },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M5 contributed permission keys. */
+export type M5ContributedPermissionKey = keyof typeof M5_CONTRIBUTED_PERMISSIONS;
+
+/**
  * The permission keys Module 40 (Master Data Management) registers into Module 3's catalog —
  * the §4.4 binding cross-module handshake (M40-T07; M40 spec §4.4). M3 must include these before
  * M40's routes can be authorized; the route inventory (M40-T07) gates on them.
@@ -357,6 +393,11 @@ export function m40ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M40_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M5 contributed keys into `permission`-table mirror rows (M5-T09). */
+export function m5ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M5_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -371,5 +412,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m38ContributedPermissionMirrorRows(),
     ...m36ContributedPermissionMirrorRows(),
     ...m40ContributedPermissionMirrorRows(),
+    ...m5ContributedPermissionMirrorRows(),
   ];
 }

@@ -15,6 +15,7 @@ import type {
   CaseloadProvider,
   ConsentEvaluator,
   DocumentRenderer,
+  PatientMutator,
   PatientReader,
   SeamName,
   SessionContextResolver,
@@ -28,14 +29,38 @@ export class NotImplementedError extends Error {
 }
 
 export const caseloadDenyStub: CaseloadProvider = {
-  patientsForActor() {
+  isInCaseload() {
+    throw new NotImplementedError("CaseloadProvider");
+  },
+  caseloadPatientIds() {
     throw new NotImplementedError("CaseloadProvider");
   },
 };
 
 export const patientReaderDenyStub: PatientReader = {
-  exists() {
+  findByMrn() {
     throw new NotImplementedError("PatientReader");
+  },
+  findByExternalMrn() {
+    throw new NotImplementedError("PatientReader");
+  },
+  findBySsnLast4AndDob() {
+    throw new NotImplementedError("PatientReader");
+  },
+  findByNameDobSex() {
+    throw new NotImplementedError("PatientReader");
+  },
+  findByLooseName() {
+    throw new NotImplementedError("PatientReader");
+  },
+  findById() {
+    throw new NotImplementedError("PatientReader");
+  },
+};
+
+export const patientMutatorDenyStub: PatientMutator = {
+  apply() {
+    throw new NotImplementedError("PatientMutator");
   },
 };
 

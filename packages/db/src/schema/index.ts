@@ -139,3 +139,28 @@ export * from "./mdm/nppes-sync-coordination";
 export * from "./mdm/mdm-provisional";
 export * from "./mdm/mdm-baa-records";
 export * from "./mdm/mdm-baa-required";
+
+// ── Module 5 (Patient & Demographics) — the patient spine + demographics (§3.3–3.5) ──────────
+// PHI-bearing tables: every one carries the three-column tenancy rule (organization_id NOT NULL +
+// nullable provider_entity_id/location_id, populated at admission — M05-F04). M5-T02 ships the six
+// core tables (patient + identifier/name-alias/address/phone/email); T03 adds coverage/caregiver/
+// contact; T04 adds caseload/privacy/match/merge/amendment; RLS + M4 write-audit triggers (sensitive
+// columns on the denylist) + the migration land in M5-T05 (§3.6–3.7).
+export * from "./patient/patients";
+export * from "./patient/patient-identifiers";
+export * from "./patient/patient-name-aliases";
+export * from "./patient/patient-addresses";
+export * from "./patient/patient-phones";
+export * from "./patient/patient-emails";
+// T03 — coverage / caregiver / contact (§3.4).
+export * from "./patient/patient-payers";
+export * from "./patient/caregivers";
+export * from "./patient/patient-caregivers";
+export * from "./patient/emergency-contacts";
+export * from "./patient/patient-communication-preferences";
+// T04 — caseload / privacy / match / merge / amendment (§3.5).
+export * from "./patient/patient-assignments";
+export * from "./patient/patient-privacy-flag-snapshots";
+export * from "./patient/patient-match-reviews";
+export * from "./patient/patient-merges";
+export * from "./patient/patient-amendment-requests";

@@ -7,6 +7,7 @@
 export * from "./seams";
 export * from "./outbox";
 export * from "./alert-payloads";
+export * from "./patient";
 export * from "./errors";
 export * from "./http-context";
 export * from "./policy/session-policy";
