@@ -7,6 +7,7 @@ import { createApiClient } from "@wardenx/ui";
 import { identityScreens } from "./modules/02-identity";
 import { auditScreens } from "./modules/04-audit";
 import { patientScreens } from "./modules/05-patient";
+import { mdmScreens } from "./modules/40-mdm";
 import { AppShell, createScreenRegistry } from "./shell";
 
 const registry = createScreenRegistry();
@@ -16,6 +17,7 @@ const client = createApiClient();
 registry.register(identityScreens); // M2 Identity (Track A)
 registry.register(auditScreens); // M4 Audit (Track A)
 registry.register(patientScreens); // M5 Patient (Track A)
+registry.register(mdmScreens); // M40 MDM (Track A)
 
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error('Root element "#root" not found');

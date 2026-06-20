@@ -1391,6 +1391,7 @@
         "tags": [
           "40-mdm"
         ],
+        "summary": "Search a kind's canonical master-data set (§4.2)",
         "parameters": [
           {
             "name": "kind",
@@ -1399,11 +1400,114 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 120,
+              "type": "string"
+            }
+          },
+          {
+            "name": "identifier",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25,
+              "type": "integer"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "results"
+                  ],
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "status",
+                          "canonical"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "active",
+                                "type": "string"
+                              },
+                              {
+                                "const": "deactivated",
+                                "type": "string"
+                              },
+                              {
+                                "const": "provisional",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "canonical": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "identifierType",
+                              "identifierValue",
+                              "displayName"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "identifierType": {
+                                "type": "string"
+                              },
+                              "identifierValue": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "displayName": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"

@@ -608,6 +608,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Search a kind's canonical master-data set (§4.2) */
         get: operations["getApiV1MdmByKindSearch"];
         put?: never;
         post?: never;
@@ -2311,7 +2312,11 @@ export interface operations {
     };
     getApiV1MdmByKindSearch: {
         parameters: {
-            query?: never;
+            query?: {
+                q?: string;
+                identifier?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 kind: string;
@@ -2325,7 +2330,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        results: {
+                            id: string;
+                            status: "active" | "deactivated" | "provisional";
+                            canonical: {
+                                id: string;
+                                identifierType: string;
+                                identifierValue: string | null;
+                                displayName: string;
+                            };
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
