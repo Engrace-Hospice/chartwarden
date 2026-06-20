@@ -92,6 +92,41 @@ export interface RouteEnrichment {
 
 /** `METHOD /path` → enrichment. Keys MUST match a scanned route (openapi:check enforces). */
 export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
+  // M3 Authorization (Track A — Roles & Permissions). No route-level TypeBox; shapes from
+  // apps/backend/src/modules/03-authorization/authz-ports.ts (RoleView) + the M3 permission mirror.
+  "GET /api/v1/roles": {
+    summary: "List role catalog for the org (templates + customized, §6)",
+    response: Type.Object({
+      roles: Type.Array(
+        Type.Object({
+          roleId: Type.String(),
+          organizationId: Type.Union([Type.String(), Type.Null()]),
+          key: Type.String(),
+          name: Type.String(),
+          category: Type.String(),
+          scopeLevel: Type.String(),
+          systemDefault: Type.Boolean(),
+          systemLocked: Type.Boolean(),
+          enabled: Type.Boolean(),
+          customized: Type.Boolean(),
+          permissionKeys: Type.Array(Type.String()),
+        }),
+      ),
+    }),
+  },
+  "GET /api/v1/permissions": {
+    summary: "The permission catalog (mirror rows, §6)",
+    response: Type.Object({
+      permissions: Type.Array(
+        Type.Object({
+          key: Type.String(),
+          resource: Type.String(),
+          action: Type.String(),
+          category: Type.String(),
+        }),
+      ),
+    }),
+  },
   // M38 Terminology (Track A — Terminology Admin)
   "GET /api/v1/terminology/:system/search": {
     summary: "Search concepts within a code system (§4.2)",

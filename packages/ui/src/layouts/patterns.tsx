@@ -134,6 +134,30 @@ export function PatientWorkspaceLayout({ banner, contextHeader, children }: Pati
   );
 }
 
+/** Admin Split Layout — a selectable subject List | a Matrix (subject × capability) | right detail. */
+export interface AdminSplitLayoutProps {
+  header: ReactNode;
+  list: ReactNode;
+  children: ReactNode;
+  detail?: ReactNode;
+}
+export function AdminSplitLayout({ header, list, children, detail }: AdminSplitLayoutProps): JSX.Element {
+  return (
+    <div className="wx-admin-split" style={fillColumn}>
+      {header}
+      <div style={splitRow}>
+        <div className="wx-admin-list" style={{ width: "18rem", flexShrink: 0, borderRight: "1px solid #e5e7eb", overflow: "auto" }}>
+          {list}
+        </div>
+        <div className="wx-admin-matrix" style={{ flex: 1, overflow: "auto", padding: "1.5rem" }}>
+          {children}
+        </div>
+        {detail}
+      </div>
+    </div>
+  );
+}
+
 /** Detail Page — a context header over a primary reading/editing surface + optional right aside. */
 export interface DetailPageLayoutProps {
   header: ReactNode;

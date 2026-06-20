@@ -1062,6 +1062,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The permission catalog (mirror rows, §6) */
         get: operations["getApiV1Permissions"];
         put?: never;
         post?: never;
@@ -1078,6 +1079,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List role catalog for the org (templates + customized, §6) */
         get: operations["getApiV1Roles"];
         put?: never;
         post: operations["postApiV1Roles"];
@@ -3180,7 +3182,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        permissions: {
+                            key: string;
+                            resource: string;
+                            action: string;
+                            category: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -3200,7 +3211,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        roles: {
+                            roleId: string;
+                            organizationId: string | null;
+                            key: string;
+                            name: string;
+                            category: string;
+                            scopeLevel: string;
+                            systemDefault: boolean;
+                            systemLocked: boolean;
+                            enabled: boolean;
+                            customized: boolean;
+                            permissionKeys: string[];
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

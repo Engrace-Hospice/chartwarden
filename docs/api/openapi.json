@@ -2786,10 +2786,49 @@
         "tags": [
           "03-authorization"
         ],
+        "summary": "The permission catalog (mirror rows, §6)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "permissions"
+                  ],
+                  "properties": {
+                    "permissions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "resource",
+                          "action",
+                          "category"
+                        ],
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "resource": {
+                            "type": "string"
+                          },
+                          "action": {
+                            "type": "string"
+                          },
+                          "category": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -2806,10 +2845,87 @@
         "tags": [
           "03-authorization"
         ],
+        "summary": "List role catalog for the org (templates + customized, §6)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "roles"
+                  ],
+                  "properties": {
+                    "roles": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "roleId",
+                          "organizationId",
+                          "key",
+                          "name",
+                          "category",
+                          "scopeLevel",
+                          "systemDefault",
+                          "systemLocked",
+                          "enabled",
+                          "customized",
+                          "permissionKeys"
+                        ],
+                        "properties": {
+                          "roleId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "key": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "category": {
+                            "type": "string"
+                          },
+                          "scopeLevel": {
+                            "type": "string"
+                          },
+                          "systemDefault": {
+                            "type": "boolean"
+                          },
+                          "systemLocked": {
+                            "type": "boolean"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "customized": {
+                            "type": "boolean"
+                          },
+                          "permissionKeys": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"

@@ -5,6 +5,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createApiClient } from "@wardenx/ui";
 import { identityScreens } from "./modules/02-identity";
+import { authorizationScreens } from "./modules/03-authorization";
 import { auditScreens } from "./modules/04-audit";
 import { patientScreens } from "./modules/05-patient";
 import { terminologyScreens } from "./modules/38-terminology";
@@ -16,6 +17,7 @@ const client = createApiClient();
 
 // Module web-slices register here as they land (Track A/B).
 registry.register(identityScreens); // M2 Identity (Track A)
+registry.register(authorizationScreens); // M3 Authorization (Track A)
 registry.register(auditScreens); // M4 Audit (Track A)
 registry.register(patientScreens); // M5 Patient (Track A)
 registry.register(terminologyScreens); // M38 Terminology (Track A)

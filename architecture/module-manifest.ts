@@ -164,7 +164,7 @@ export const MODULES: ModuleDef[] = [
     id: 3, name: "Authorization",
     codePaths: ["packages/auth/src/rbac", "packages/auth/src/abac", "packages/auth/src/permissions",
                 "packages/auth/src/roles", "packages/auth/src/breakglass", "packages/auth/src/engagements",
-                "apps/backend/src/modules/03-authorization"],
+                "apps/backend/src/modules/03-authorization", "apps/web/src/modules/03-authorization"],
     dependsOn: [2],
     ownedTables: ["role", "permission", "role_permission", "membership_role",
                   "break_glass_event", "auditor_engagement"],
