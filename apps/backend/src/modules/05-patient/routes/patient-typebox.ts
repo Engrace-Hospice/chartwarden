@@ -63,6 +63,29 @@ export const AmendmentBodySchema = Type.Object({
 // POST /api/v1/amendments/:id/deny
 export const DenyBodySchema = Type.Object({ denialReason: Type.String({ minLength: 1, maxLength: 500 }) });
 
+// GET /api/v1/patients (§4.2 census/list — cursor-paginated). A patient summary row.
+export const PatientSummarySchema = Type.Object({
+  id: Type.String(),
+  organizationId: Type.String(),
+  mrn: Type.String(),
+  lastName: Type.String(),
+  firstName: Type.String(),
+  dob: Type.String(),
+  status: Type.String(),
+});
+
+export const PatientListQuerySchema = Type.Object({
+  q: Type.Optional(Type.String({ maxLength: 120 })), // name or MRN substring
+  status: Type.Optional(Type.String({ maxLength: 32 })),
+  cursor: Type.Optional(Type.String({ maxLength: 64 })),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+});
+
+export const PatientListResponseSchema = Type.Object({
+  items: Type.Array(PatientSummarySchema),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+});
+
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   const converted = Value.Convert(schema, raw ?? {});
   if (!Value.Check(schema, converted)) {

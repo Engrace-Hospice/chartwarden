@@ -976,7 +976,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Patient census / list (cursor-paginated, §4.2) */
+        get: operations["getApiV1Patients"];
         put?: never;
         /** Admit a patient (§7.1 duplicate-check) */
         post: operations["postApiV1Patients"];
@@ -2926,6 +2927,44 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Patients: {
+        parameters: {
+            query?: {
+                q?: string;
+                status?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            organizationId: string;
+                            mrn: string;
+                            lastName: string;
+                            firstName: string;
+                            dob: string;
+                            status: string;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

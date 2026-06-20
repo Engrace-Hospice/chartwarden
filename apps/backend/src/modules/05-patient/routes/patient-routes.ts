@@ -18,6 +18,7 @@ import {
   AmendmentBodySchema,
   DenyBodySchema,
   LooseIdParamsSchema,
+  PatientListQuerySchema,
   parse,
 } from "./patient-typebox";
 
@@ -43,6 +44,13 @@ const notFound = (what: string) => new WardenXError("NOT_FOUND", `${what} not fo
 
 export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDeps): void {
   const { service } = deps;
+
+  // --- §4.2 census / list (cursor-paginated; org-scoped server-side) ---------------------------
+  app.get("/api/v1/patients", { preHandler: [READ] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    const query = parse(PatientListQuerySchema, request.query);
+    return service.list(organizationId, query);
+  });
 
   // --- §4.2 resolve one ------------------------------------------------------------------------
   app.get("/api/v1/patients/:id", { preHandler: [READ] }, async (request) => {

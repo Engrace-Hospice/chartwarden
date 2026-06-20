@@ -34,7 +34,7 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 | 2 | M1+M2+M3 | App Shell & Role Home | `screens/core/WARDENX_UI_APP_SHELL_HOME.md` | App Shell | ✓ shell (F0-T03) | deferred |
 | 3 | cross-cutting | System / Utility Pages | `screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md` | System Page | ✓ `CenteredStatusLayout` | deferred |
 | 4 | M5 | Patient Chart | `screens/clinical/WARDENX_UI_PATIENT_CHART.md` | Patient Workspace | ✓ `PatientWorkspaceLayout` | deferred |
-| 5 | M5 | Patient List / Census | `screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md` | Work Queue | ✓ `WorkQueueLayout` | deferred |
+| 5 | M5 | Patient List / Census | `screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md` | Work Queue | ✓ `WorkQueueLayout` | done² |
 | 6 | M3 | Roles & Permissions | `screens/admin/WARDENX_UI_ROLES_PERMISSIONS.md` | Admin Split Layout | — | deferred |
 | 7 | M4 | Audit Log Viewer | `screens/admin/WARDENX_UI_AUDIT_LOG_VIEWER.md` | Work Queue | ✓ `WorkQueueLayout` | done |
 | 8 | M36 | Internal Staff Secure Messaging | `screens/core/WARDENX_UI_STAFF_MESSAGING.md` | Conversation View | — | deferred |
@@ -45,6 +45,12 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > Patient Chart (#4) is a hub: its M5 frame (banner + summary + module nav rail) is buildable now; the
 > per-module tabs (encounters, orders, eMAR, …) fill in as those modules land — build the frame in
 > Track A, graft tabs in Track B.
+
+> ² **M5 Patient Census — built, and it required a backend route.** M5 had no list/search endpoint, so
+> a cursor-paginated `GET /api/v1/patients` (name/MRN search + status filter) was added to the M5 backend
+> first, then the `PatientListCensus` screen (`/patients`) built against it. Row → `/patients/:id` (the
+> Patient Chart, #4, not built yet). The "M5 patient search ready" note above referred to a server-side
+> seam, not HTTP — now there is a real list route.
 
 > ¹ **M2 Auth — partially built (first Track A screen).** The flows backed by real M2 routes are done in
 > `apps/web/src/modules/02-identity` and registered in the shell: **Organization Select**

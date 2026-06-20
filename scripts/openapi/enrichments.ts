@@ -24,6 +24,8 @@ import {
   AdmitBodySchema,
   AmendmentBodySchema,
   DenyBodySchema,
+  PatientListQuerySchema,
+  PatientListResponseSchema,
 } from "../../apps/backend/src/modules/05-patient/routes/patient-typebox";
 
 // M2 Identity routes validate via a manual parse() (no route-level TypeBox file), so their request/
@@ -76,6 +78,11 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     body: Type.Object({ token: Type.String({ minLength: 1 }) }),
   },
   // M5 Patient
+  "GET /api/v1/patients": {
+    summary: "Patient census / list (cursor-paginated, §4.2)",
+    query: PatientListQuerySchema,
+    response: PatientListResponseSchema,
+  },
   "GET /api/v1/patients/:id": { summary: "Fetch a patient by id (merge-redirect aware, §4.8)" },
   "POST /api/v1/patients": { body: AdmitBodySchema, summary: "Admit a patient (§7.1 duplicate-check)" },
   "POST /api/v1/patients/:id/addresses": {
