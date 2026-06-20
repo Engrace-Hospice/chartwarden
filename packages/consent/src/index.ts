@@ -13,3 +13,6 @@ export * from "./interfaces/kinds";
 // ── M39-T04 — lifecycle state machines (§2.2/§2.4) + validation rules (§2.3) ───────────────
 export * from "./lifecycle";
 export * from "./validation";
+
+// ── M39-T05 — the published ConsentEvaluator seam (§4.3) + its injectable store port ───────
+export * from "./seams/consent-evaluator";

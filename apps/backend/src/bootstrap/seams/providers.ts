@@ -13,7 +13,6 @@
 import type {
   AuditorSessionMinter,
   CaseloadProvider,
-  ConsentEvaluator,
   DocumentRenderer,
   PatientMutator,
   PatientReader,
@@ -70,12 +69,6 @@ export const documentRendererDenyStub: DocumentRenderer = {
   },
 };
 
-export const consentEvaluatorDenyStub: ConsentEvaluator = {
-  evaluateForDisclosure() {
-    throw new NotImplementedError("ConsentEvaluator");
-  },
-};
-
 export const sessionContextResolverDenyStub: SessionContextResolver = {
   resolveActor() {
     throw new NotImplementedError("SessionContextResolver");
@@ -128,6 +121,10 @@ export const mdmEntityProviderDenyStub: unknown = denyingSeamProxy("MdmEntityPro
 /** M40 — focused §7.7 BAA disclosure gate (as-of). Denies until M40 registers the real provider
  *  (M40-T06). M22/M28/M29 consume this before any PHI leaves the perimeter. */
 export const baaStatusProviderDenyStub: unknown = denyingSeamProxy("BaaStatusProvider");
+
+/** M39 — the §4.3 disclosure/redaction gate. Rich-seam pattern (interface in @wardenx/consent).
+ *  Denies until M39 registers the real evaluator (M39-T05). Every PHI-egress module consumes it. */
+export const consentEvaluatorDenyStub: unknown = denyingSeamProxy("ConsentEvaluator");
 
 /**
  * Boot hook for Phase-1 seam registration. Each producer module registers its REAL seam

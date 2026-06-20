@@ -13,6 +13,7 @@ import {
 } from "./modules/38-terminology/index";
 import { registerMdmErasers, registerMdmSeams } from "./modules/40-mdm/index";
 import { registerPatientErasers, registerPatientSeams } from "./modules/05-patient/index";
+import { registerConsentSeams } from "./modules/39-consent/index";
 
 export { buildServer };
 export * from "./bootstrap/index";
@@ -28,7 +29,8 @@ export function wireModuleSeams(): void {
   registerMessagingSeams(); // M36 — AlertEmitter (§4.6); MessagingProvider stays deny-stub until T07/T08
   registerMdmSeams(); // M40 — MdmEntityProvider (§4.5) + BaaStatusProvider (§4.6 §7.7 as-of gate)
   registerPatientSeams(); // M5 — CaseloadProvider (§4.1, + caseload_membership predicate); PatientReader/Mutator land T08
-  // Phase-1 producers append here as they land: M22 DocumentRenderer, M39 ConsentEvaluator, …
+  registerConsentSeams(); // M39 — ConsentEvaluator (§4.3, the disclosure/redaction gate); slice store until T07/T09
+  // Phase-1 producers append here as they land: M22 DocumentRenderer, …
 }
 
 /**
