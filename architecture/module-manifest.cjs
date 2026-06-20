@@ -133,7 +133,7 @@ exports.MODULES = [
     },
     {
         id: 36, name: "Secure Messaging & Alerts",
-        codePaths: ["packages/messaging", "apps/backend/src/modules/36-messaging"],
+        codePaths: ["packages/messaging", "apps/backend/src/modules/36-messaging", "apps/web/src/modules/36-messaging"],
         dependsOn: [1, 2, 3, 4],
         ownedTables: ["alert", "alert_payload_catalog", "alert_rule", "channel", "channel_member", "delivery_endpoint", "message", "message_attachment", "message_receipt", "notification_delivery", "presence", "tenant_alert_routing_override", "user_notification_preferences", "notification_template", "tenant_notification_template_overlay"], // filled from M36 spec; +notification_template +overlay per ADR-0024 (moved from M14)
     },

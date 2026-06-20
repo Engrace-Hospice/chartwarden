@@ -134,6 +134,28 @@ export function PatientWorkspaceLayout({ banner, contextHeader, children }: Pati
   );
 }
 
+/** Conversation View — a conversation List | the active Message Thread (+ composer) | right detail. */
+export interface ConversationViewProps {
+  list: ReactNode;
+  children: ReactNode;
+  detail?: ReactNode;
+}
+export function ConversationView({ list, children, detail }: ConversationViewProps): JSX.Element {
+  return (
+    <div className="wx-conversation" style={fillColumn}>
+      <div style={splitRow}>
+        <div className="wx-conversation-list" style={{ width: "18rem", flexShrink: 0, borderRight: "1px solid #e5e7eb", overflow: "auto" }}>
+          {list}
+        </div>
+        <div className="wx-conversation-thread" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+          {children}
+        </div>
+        {detail}
+      </div>
+    </div>
+  );
+}
+
 /** Admin Split Layout — a selectable subject List | a Matrix (subject × capability) | right detail. */
 export interface AdminSplitLayoutProps {
   header: ReactNode;
