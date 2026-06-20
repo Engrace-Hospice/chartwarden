@@ -3,6 +3,7 @@
 // the server, runs the seam/eraser boot gate, and registers each Phase-1 module's real seams
 // via `wireModuleSeams` (M1's bootstrap cannot import a downstream module; the composition
 // root does, then hands the registration into the boot gate before validateSeams()).
+import { createDbClient } from "@wardenx/db";
 import { buildServer } from "./bootstrap/index";
 import { assertAuditActionCatalog, registerAuditErasers } from "./modules/04-audit/index";
 import { registerIdentityErasers, registerIdentitySeams } from "./modules/02-identity/index";
@@ -62,10 +63,20 @@ if ((import.meta as { main?: boolean }).main) {
   // M4-T10 — fail closed if the consolidated audit action catalog has a D9 namespace/uniqueness
   // violation (§4.6.7) before the server serves a single request.
   assertAuditActionCatalog();
+  // AUTH-T01 (ADR-0033): build the production DB client when configured, and inject it. Consumed by
+  // the Better Auth mount (AUTH-T02) + repositories. Absent DATABASE_URL → the host still boots
+  // (the auth handler is mounted only when a DB client is present).
+  const dbHandle = process.env.DATABASE_URL
+    ? createDbClient({ connectionString: process.env.DATABASE_URL })
+    : undefined;
   const app = buildServer({
+    db: dbHandle?.db,
     registerModuleSeams: wireModuleSeams,
     registerModuleErasers: wireModuleErasers,
   });
+  if (dbHandle) {
+    app.addHook("onClose", () => dbHandle.close());
+  }
   const port = Number(process.env.PORT ?? 3000);
   app.listen({ port, host: "0.0.0.0" }).catch((err) => {
     app.log.error(err);

@@ -9,6 +9,7 @@
     { "path": "../../packages/types" },
     { "path": "../../packages/shared" },
     { "path": "../../packages/tenancy" },
-    { "path": "../../packages/audit" }
+    { "path": "../../packages/audit" },
+    { "path": "../../packages/db" }
   ]
 }
