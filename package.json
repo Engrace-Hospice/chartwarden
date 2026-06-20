@@ -33,13 +33,16 @@
     "arch:fitness": "bun run arch:parity && bun run arch:boundaries && bun run arch:tables && bun run arch:tenancy && bun run arch:ddl && bun run arch:gaps && bun run arch:plan-integrity && bun run docs:ui && bun run openapi:check",
     "docs:ui": "bun run scripts/check-ui-screens.ts",
     "openapi:emit": "bun run scripts/openapi/emit.ts",
-    "openapi:check": "bun run scripts/openapi/emit.ts --check"
+    "openapi:check": "bun run scripts/openapi/emit.ts --check",
+    "client:gen": "openapi-typescript docs/api/openapi.json -o packages/ui/src/api/schema.ts",
+    "client:check": "openapi-typescript docs/api/openapi.json -o /tmp/wardenx-client-schema.ts && diff -q packages/ui/src/api/schema.ts /tmp/wardenx-client-schema.ts || (echo '✗ packages/ui/src/api/schema.ts is out of date. Run: bun run client:gen' && exit 1)"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@types/node": "^22.10.0",
     "dependency-cruiser": "^16.0.0",
     "drizzle-kit": "^0.30.0",
+    "openapi-typescript": "^7.4.0",
     "typescript": "^5.7.0",
     "vitest": "^2.1.0"
   },

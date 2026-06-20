@@ -8,6 +8,7 @@
   },
   "types": "./src/index.ts",
   "dependencies": {
+    "openapi-fetch": "^0.13.0",
     "react": "^18.3.1"
   },
   "devDependencies": {
