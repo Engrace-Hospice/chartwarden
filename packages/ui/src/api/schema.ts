@@ -268,6 +268,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the caller's memberships (pre-org-bind, §7.2) */
         get: operations["getApiV1AuthMemberships"];
         put?: never;
         post?: never;
@@ -286,6 +287,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Bind the session to one organization (one-time, §7.2) */
         post: operations["postApiV1AuthSelectorganization"];
         delete?: never;
         options?: never;
@@ -526,6 +528,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Accept an invitation token → membership (§7.1) */
         post: operations["postApiV1InvitationsAccept"];
         delete?: never;
         options?: never;
@@ -1788,7 +1791,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        memberships: {
+                            membershipId: string;
+                            organizationId: string;
+                            organizationName: string;
+                            status: "pending" | "active" | "suspended" | "revoked";
+                            isAdmin: boolean;
+                            defaultLocationIds: string[];
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -1801,7 +1815,13 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    organizationId: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -2137,7 +2157,13 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {

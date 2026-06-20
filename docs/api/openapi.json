@@ -434,10 +434,77 @@
         "tags": [
           "02-identity"
         ],
+        "summary": "List the caller's memberships (pre-org-bind, §7.2)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "memberships"
+                  ],
+                  "properties": {
+                    "memberships": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "membershipId",
+                          "organizationId",
+                          "organizationName",
+                          "status",
+                          "isAdmin",
+                          "defaultLocationIds"
+                        ],
+                        "properties": {
+                          "membershipId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "organizationName": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "active",
+                                "type": "string"
+                              },
+                              {
+                                "const": "suspended",
+                                "type": "string"
+                              },
+                              {
+                                "const": "revoked",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "isAdmin": {
+                            "type": "boolean"
+                          },
+                          "defaultLocationIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -454,6 +521,7 @@
         "tags": [
           "02-identity"
         ],
+        "summary": "Bind the session to one organization (one-time, §7.2)",
         "parameters": [],
         "responses": {
           "200": {
@@ -464,6 +532,25 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "organizationId"
+                ],
+                "properties": {
+                  "organizationId": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -844,6 +931,7 @@
         "tags": [
           "02-identity"
         ],
+        "summary": "Accept an invitation token → membership (§7.1)",
         "parameters": [],
         "responses": {
           "200": {
@@ -854,6 +942,25 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "token"
+                ],
+                "properties": {
+                  "token": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }

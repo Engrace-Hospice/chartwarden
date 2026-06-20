@@ -18,6 +18,12 @@ export interface ScreenDescriptor<TScreen = unknown> {
   navGroup?: string;
   /** Permission key gating nav visibility. The server remains the authoritative enforcer. */
   requiredPermission?: string;
+  /**
+   * Render inside the app-shell chrome (Top Nav + nav rail)? Default true. Set false for
+   * pre-application surfaces shown standalone — Auth Flow, System Page (ADR-0030: "outside the App
+   * Shell"). Chromeless screens are top-level routes and are omitted from the shell nav.
+   */
+  chrome?: boolean;
   /** The thing to render. apps/web binds TScreen = React.ComponentType. */
   screen: TScreen;
 }
