@@ -16,6 +16,8 @@ export const users = pgTable(
     status: userStatus("status").notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    // AUTH-T06 (ADR-0033): Better Auth twoFactor plugin flag (whether the user has 2FA enrolled).
+    twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
   },
   (t) => ({
     emailUniqueIdx: uniqueIndex("user_email_idx").on(t.email),

@@ -11,6 +11,8 @@ export const verifications = pgTable(
     value: text("value").notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // AUTH-T06 (ADR-0033): Better Auth verification-model column.
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     identifierIdx: index("verification_identifier_idx").on(t.identifier),
