@@ -1,2 +1,3 @@
-// @wardenx/web — Phase 0 placeholder (no business logic; see PHASE_0_SCAFFOLD_PLAN.md).
-export {};
+// @wardenx/web — core staff web app (M1 shell + per-module screens, ADR-0030).
+// The runnable entry is src/main.tsx (Vite); this barrel re-exports the shell surface.
+export * from "./shell";
