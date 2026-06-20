@@ -3026,7 +3026,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        mrn: string;
+                        lastName: string;
+                        firstName: string;
+                        dob: string;
+                        status: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

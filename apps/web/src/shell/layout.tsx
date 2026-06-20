@@ -23,11 +23,14 @@ export function AppLayout({ screens }: AppLayoutProps): JSX.Element {
       <div className="wx-body">
         <nav className="wx-nav" aria-label="Primary">
           <Link to="/">Home</Link>
-          {screens.map((s) => (
-            <Link key={s.id} to={s.path}>
-              {s.title}
-            </Link>
-          ))}
+          {/* Detail screens (param paths like /patients/:id) are reached programmatically, not via nav. */}
+          {screens
+            .filter((s) => !s.path.includes(":"))
+            .map((s) => (
+              <Link key={s.id} to={s.path}>
+                {s.title}
+              </Link>
+            ))}
         </nav>
         <main className="wx-main">
           <Outlet />
