@@ -50,3 +50,9 @@ export {
   M5_CONTRIBUTED_PERMISSIONS,
   m5ContributedPermissionMirrorRows,
 } from "./contributed";
+// M39-T07 — Module 39's permission keys registered into M3's catalog (§4.7 handshake).
+export {
+  type M39ContributedPermissionKey,
+  M39_CONTRIBUTED_PERMISSIONS,
+  m39ContributedPermissionMirrorRows,
+} from "./contributed";

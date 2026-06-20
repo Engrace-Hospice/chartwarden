@@ -16,3 +16,6 @@ export * from "./validation";
 
 // ── M39-T05 — the published ConsentEvaluator seam (§4.3) + its injectable store port ───────
 export * from "./seams/consent-evaluator";
+
+// ── M39-T07 — the ConsentRouteService backend (§4.1 routes; cursor pagination §4.12) ───────
+export * from "./routes/service";
