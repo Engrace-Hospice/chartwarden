@@ -17,6 +17,7 @@ export type {
   RightDetailPanelProps,
 } from "./regions";
 export {
+  AdminSplitLayout,
   CenteredCardLayout,
   CenteredStatusLayout,
   DashboardLayout,
@@ -26,6 +27,7 @@ export {
   WorkQueueLayout,
 } from "./patterns";
 export type {
+  AdminSplitLayoutProps,
   CenteredCardLayoutProps,
   CenteredStatusLayoutProps,
   DashboardLayoutProps,
