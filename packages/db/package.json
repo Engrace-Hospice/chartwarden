@@ -7,8 +7,11 @@
     ".": "./src/index.ts"
   },
   "types": "./src/index.ts",
-  "devDependencies": {
-    "@types/pg": "^8.11.10",
+  "dependencies": {
+    "drizzle-orm": "^0.38.0",
     "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.10"
   }
 }

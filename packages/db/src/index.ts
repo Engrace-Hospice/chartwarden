@@ -5,3 +5,5 @@ export * as schema from "./schema/index";
 // M1-T07 — Organization-Settings Registry pattern (§3.15): typed reader + collision-
 // guarded registry over `organization.settings`, plus the boot UPSERT projection.
 export * from "./organization-settings/index";
+// AUTH-T01 (ADR-0033) — the production pooled pg + Drizzle client factory (M1 infra; injected at boot).
+export * from "./client";

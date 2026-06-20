@@ -9,6 +9,7 @@
 // health/ready/version + system-status + feature-flag routes (§4.1–4.2). Every external
 // dependency (DB/Valkey readers, the auth hook) is INJECTED with a safe slice default, so
 // the host boots and is testable with no live infra; production supplies the real adapters.
+import type { DbClient } from "@wardenx/db";
 import type { IdempotencyStore } from "@wardenx/shared";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { wireErasers } from "./erasers/providers";
@@ -41,6 +42,12 @@ export interface ServerDeps {
   security?: SecurityOptions;
   /** Request body size cap (SEC-065); default 10 MB. */
   bodyLimit?: number;
+  /**
+   * The production DB client (AUTH-T01, ADR-0033). The composition root builds it from DATABASE_URL
+   * and injects it here; it is consumed by the Better Auth mount (AUTH-T02) + repositories. Absent in
+   * the slice/tests, so the host still boots infra-free (the unit suite never opens a connection).
+   */
+  db?: DbClient;
   /**
    * Composition-root hook to register every Phase-1 module's REAL seams before
    * validateSeams() (§3.18). M1 cannot import a downstream module, so the composition root

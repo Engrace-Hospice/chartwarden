@@ -9,6 +9,7 @@
   "types": "./src/index.ts",
   "dependencies": {
     "@wardenx/audit": "workspace:*",
+    "@wardenx/db": "workspace:*",
     "@wardenx/shared": "workspace:*",
     "@wardenx/tenancy": "workspace:*",
     "@wardenx/types": "workspace:*",

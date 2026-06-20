@@ -30,6 +30,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@wardenx/audit": "workspace:*",
+        "@wardenx/db": "workspace:*",
         "@wardenx/shared": "workspace:*",
         "@wardenx/tenancy": "workspace:*",
         "@wardenx/types": "workspace:*",
@@ -96,9 +97,12 @@
     "packages/db": {
       "name": "@wardenx/db",
       "version": "0.0.0",
+      "dependencies": {
+        "drizzle-orm": "^0.38.0",
+        "pg": "^8.13.1",
+      },
       "devDependencies": {
         "@types/pg": "^8.11.10",
-        "pg": "^8.13.1",
       },
     },
     "packages/domain": {
