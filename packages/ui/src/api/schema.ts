@@ -204,6 +204,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Search audit events (cursor-paginated, §4.3) */
         get: operations["getApiV1AuditEvents"];
         put?: never;
         post?: never;
@@ -1693,7 +1694,18 @@ export interface operations {
     };
     getApiV1AuditEvents: {
         parameters: {
-            query?: never;
+            query?: {
+                actorUserId?: string;
+                patientId?: string;
+                resourceKind?: string;
+                eventType?: string;
+                outcome?: string;
+                severity?: string;
+                from?: string;
+                to?: string;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1705,7 +1717,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                            organizationId: string | null;
+                            actorUserId: string | null;
+                            actorKind: string;
+                            actorRole: string | null;
+                            eventType: string;
+                            resourceKind: string;
+                            resourceId: string | null;
+                            outcome: "success" | "failure" | "denied";
+                            severity: "info" | "warn" | "critical";
+                            before: {
+                                [key: string]: unknown;
+                            } | null;
+                            after: {
+                                [key: string]: unknown;
+                            } | null;
+                            context: {
+                                [key: string]: unknown;
+                            };
+                            retentionClass: "operational" | "compliance" | "legal_hold" | "compliance_42cfr_part2";
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

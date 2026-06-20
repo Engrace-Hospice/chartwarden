@@ -16,6 +16,10 @@
  */
 import { type TSchema, Type } from "@sinclair/typebox";
 import {
+  AuditEventsQuerySchema,
+  AuditEventsResponseSchema,
+} from "../../apps/backend/src/modules/04-audit/routes/audit-typebox";
+import {
   AddressBodySchema,
   AdmitBodySchema,
   AmendmentBodySchema,
@@ -42,6 +46,8 @@ const MembershipViewSchema = Type.Object({
 export interface RouteEnrichment {
   /** JSON request body schema (a TypeBox schema reused from the route's validator). */
   body?: TSchema;
+  /** Query-string schema (a TypeBox object; each property → one `in: query` parameter). */
+  query?: TSchema;
   /** Typed 2xx response body schema, when known. */
   response?: TSchema;
   /** Human summary for the operation. */
@@ -50,6 +56,12 @@ export interface RouteEnrichment {
 
 /** `METHOD /path` → enrichment. Keys MUST match a scanned route (openapi:check enforces). */
 export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
+  // M4 Audit (Track A — Audit Log Viewer)
+  "GET /api/v1/audit/events": {
+    summary: "Search audit events (cursor-paginated, §4.3)",
+    query: AuditEventsQuerySchema,
+    response: AuditEventsResponseSchema,
+  },
   // M2 Identity (Track A — Auth screens)
   "GET /api/v1/auth/memberships": {
     summary: "List the caller's memberships (pre-org-bind, §7.2)",
