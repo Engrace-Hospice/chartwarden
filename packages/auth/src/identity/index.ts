@@ -13,6 +13,10 @@ export {
   type RegisterIdentityAuthOptions,
 } from "./mount";
 export {
+  getIdentitySession,
+  type IdentitySessionSnapshot,
+} from "./session-snapshot";
+export {
   type SessionContextRecord,
   type SessionContextStore,
   createSessionContextResolver,

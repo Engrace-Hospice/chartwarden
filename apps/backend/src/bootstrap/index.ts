@@ -136,4 +136,5 @@ export * from "./plugins/idempotency";
 // so the deny-stub is retired (no `./plugins/guards` re-export).
 export * from "./routes/health";
 export * from "./routes/system";
+export * from "./plugins/authenticate";
 export type * from "./interfaces";
