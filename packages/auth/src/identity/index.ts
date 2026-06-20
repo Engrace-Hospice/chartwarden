@@ -8,6 +8,11 @@ export {
   type IdentityAuthDb,
 } from "./auth";
 export {
+  registerIdentityAuth,
+  type MountableAuth,
+  type RegisterIdentityAuthOptions,
+} from "./mount";
+export {
   type SessionContextRecord,
   type SessionContextStore,
   createSessionContextResolver,
