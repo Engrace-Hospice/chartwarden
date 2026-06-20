@@ -30,8 +30,10 @@
     "arch:gaps": "bun run scripts/check-fitness-gaps.ts",
     "arch:parity": "bun run scripts/scaffold-from-manifest.ts --check",
     "arch:plan-integrity": "bun run scripts/check-plan-integrity.ts",
-    "arch:fitness": "bun run arch:parity && bun run arch:boundaries && bun run arch:tables && bun run arch:tenancy && bun run arch:ddl && bun run arch:gaps && bun run arch:plan-integrity && bun run docs:ui",
-    "docs:ui": "bun run scripts/check-ui-screens.ts"
+    "arch:fitness": "bun run arch:parity && bun run arch:boundaries && bun run arch:tables && bun run arch:tenancy && bun run arch:ddl && bun run arch:gaps && bun run arch:plan-integrity && bun run docs:ui && bun run openapi:check",
+    "docs:ui": "bun run scripts/check-ui-screens.ts",
+    "openapi:emit": "bun run scripts/openapi/emit.ts",
+    "openapi:check": "bun run scripts/openapi/emit.ts --check"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
