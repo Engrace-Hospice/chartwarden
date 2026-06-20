@@ -1,7 +1,8 @@
 # ADR-0034 — 2FA secret at-rest encryption (Better Auth twoFactor over M1's encrypted columns)
 
-- **Status:** **Proposed** (requires **Security-Owner sign-off** — this defines at-rest protection for a
-  security credential). Drafted for ratification, not self-accepted.
+- **Status:** **Accepted** — ratified 2026-06-20 (Security-Owner sign-off). Authorizes the 4
+  implementation tasks below; the pure cipher layer lands first (unit-testable), the adapter decorator +
+  live-lane assertions follow on a PG-capable runner.
 - **Date:** 2026-06-20
 - **Phase:** auth wave follow-up (AUTH-T05/T06 deferred this; it gates 2FA enrollment + the MFA screens).
 - **Extends:** [ADR-0033](ADR-0033-better-auth-mount-and-prod-db-client.md) (Better Auth mount; §the 2FA
