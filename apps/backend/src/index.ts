@@ -13,7 +13,11 @@ import {
 } from "./modules/38-terminology/index";
 import { registerMdmErasers, registerMdmSeams } from "./modules/40-mdm/index";
 import { registerPatientErasers, registerPatientSeams } from "./modules/05-patient/index";
-import { registerConsentAbacPredicates, registerConsentSeams } from "./modules/39-consent/index";
+import {
+  registerConsentAbacPredicates,
+  registerConsentErasers,
+  registerConsentSeams,
+} from "./modules/39-consent/index";
 
 export { buildServer };
 export * from "./bootstrap/index";
@@ -48,6 +52,7 @@ export function wireModuleErasers(): void {
   registerMessagingErasers(); // M36-T10 — `messages` (D9 tenant offboarding; DEK crypto-erase §7.8)
   registerMdmErasers(); // M40-T10 — `mdm_tenant_overlays` (D7 tenant offboarding; canonical untouched)
   registerPatientErasers(); // M5-T12 — `clinical_record` (patient-subtree destruction-cert callback; D7/D8)
+  registerConsentErasers(); // M39-T10 — `consent` (subtree erase; legal-hold + 42 CFR Part 2 lifetime refusal)
   // Phase-1 data-class owners append here as they land.
 }
 

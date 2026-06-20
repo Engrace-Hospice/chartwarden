@@ -35,3 +35,7 @@ export {
   decideDeceasedConsentExpiry,
   decidePatientMergeRepoint,
 } from "./consumers";
+// M39-T10 — the REAL `consent` DataEraser (§3.8 right-to-erasure / destruction-cert): deletes the
+// patient's consent subtree EXCEPT rows under a legal hold or a 42 CFR Part 2 release retained for
+// the patient's lifetime; consent_eval_audit destruction is M4's certified audit-retention path.
+export { type ConsentEraserDeps, registerConsentErasers } from "./erasers/consent-eraser";

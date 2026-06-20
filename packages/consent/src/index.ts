@@ -25,3 +25,6 @@ export * from "./jobs";
 
 // ── M39-T09 — the tenant-overlay tighten-only validator (§7.6) ─────────────────────────────
 export * from "./overlay";
+
+// ── M39-T10 — the consent-subtree destruction engine (§3.8; Part 2 lifetime + legal-hold refusal) ─
+export * from "./destruction";
