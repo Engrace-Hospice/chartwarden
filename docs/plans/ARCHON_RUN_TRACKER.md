@@ -32,7 +32,7 @@ to follow each run. See [`../ARCHON_SETUP.md`](../ARCHON_SETUP.md) for install +
 | 1 | Slice | M1, M2 | `archon workflow run wardenx-piv --branch feat/m1-m2-slice` | ✅ | [#3](https://github.com/fabwebdev/wardenx/pull/3) ‡ |
 | 2 | A | M3, M4 | `archon workflow run wardenx-piv --branch feat/wave-a "Use the plan at docs/plans/WAVE_A_M3-M4_PLAN.md"` | ✅ | [#4](https://github.com/fabwebdev/wardenx/pull/4) † |
 | 3 | B | M36, M38, M40 | `archon workflow run wardenx-piv --branch feat/wave-b "Use the plan at docs/plans/WAVE_B_M36-M38-M40_PLAN.md"` | ✅ | [#5](https://github.com/fabwebdev/wardenx/pull/5) § |
-| 4 | C | M5, M39 | `archon workflow run wardenx-piv --branch feat/wave-c "Use the plan at docs/plans/WAVE_C_M5-M39_PLAN.md"` | ▶ | M5 [#6](https://github.com/fabwebdev/wardenx/pull/6) ✦ |
+| 4 | C | M5, M39 | `archon workflow run wardenx-piv --branch feat/wave-c "Use the plan at docs/plans/WAVE_C_M5-M39_PLAN.md"` | ✅ | M5 [#6](https://github.com/fabwebdev/wardenx/pull/6) · M39 [#7](https://github.com/fabwebdev/wardenx/pull/7) ✦ |
 | 5 | D | M6, M7, M8 | `archon workflow run wardenx-piv --branch feat/wave-d "Use the plan at docs/plans/WAVE_D_M6-M7-M8_PLAN.md"` | ☐ | |
 | 6 | E | M9, M10, M11, M12, M13 | `archon workflow run wardenx-piv --branch feat/wave-e "Use the plan at docs/plans/WAVE_E_M9-M13_PLAN.md"` | ☐ | |
 | 7 | F | M14, M17, M18, M22 | `archon workflow run wardenx-piv --branch feat/wave-f "Use the plan at docs/plans/WAVE_F_M14-M17-M18-M22_PLAN.md"` | ☐ | |
@@ -78,7 +78,22 @@ seams now real (`CaseloadProvider` + `caseload_membership`, `PatientReader` merg
 `rls-live` (caught & fixed a `gin_trgm_ops` opclass syntax error only real PG surfaces). M5
 `dependsOn += 1` (it closes M1 boot-gate seams via the M1 bootstrap registry). Deferred: screens
 (no `apps/web` codePath → ADR-0030). M29 proposal + M39 consent consumers are forward-seam deny-stubs.
-**Next: M39 Consent** (deps M1–M5; M5's `PatientReader` is now real) → then Wave C ✅.
+
+**M39 Consent & Authorization Management (PR [#7](https://github.com/fabwebdev/wardenx/pull/7)) —
+MERGED 2026-06-20.** Built backend (all 11 M39 tasks, 1019 tests) — the 11-table consent platform
+(append-only `consent_record` with supersession chains, per-recipient/per-DPOA-agent joins, the
+monthly-partitioned INSERT-only `consent_eval_audit`) and the published **`ConsentEvaluator` seam**
+(§4.3, the disclosure/redaction gate every PHI-egress module consults; fail-closed redaction §4.3.1 —
+SUD decided in M39, HIV/MH/genetic delegated to M5). Migrations 0022/0023 (11 tables + RLS + dual-grant
+catalog via the new `consent_catalog_writer` role + M4 audit triggers + the eval-audit partition +
+immutability trigger). 15 perm keys + 11 ABAC predicate resolvers into M3; 14 `m39.consent.*` outbox
+events drive M5's `patient_privacy_flag_snapshot` recompute end-to-end (the first SUD / 42 CFR Part 2
+chain). CI green incl `rls-live` (cross-tenant isolation on real PG: dual-grant catalog lockdown, org
+isolation, WITH CHECK, audit scrub, eval-audit immutability). The `consent` eraser refuses to destroy a
+Part 2 release during the patient's lifetime (§3.8). Non-circular: M39→M22 via forward-seam deny-stub
+(no 22→39 edge). Deferred: screens (no `apps/web` codePath → ADR-0030); W-CON-04/10/11 + M22/M28/M31
+forward-seam consumers (Wave F / Phase 2). **WAVE C COMPLETE → Wave D (M6 Admission, M7 Care Plan,
+M8 Encounters) unblocked.**
 
 **Phase 1 done when:** all 29 modules at DoD; the end-to-end scenario passes (admit → elect → care plan
 → encounter → assessment → HOPE → order → eMAR → IDG → schedule → EVV → bill → 835 → cap projection).
