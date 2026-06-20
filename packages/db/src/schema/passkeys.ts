@@ -32,6 +32,9 @@ export const passkey = pgTable(
     transports: jsonb("transports").notNull().default([]), // ["internal","hybrid",...]
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    // AUTH-T06 (ADR-0033): Better Auth passkey-model column (authenticator AAGUID). Full passkey
+    // field reconciliation + enrollment is a follow-up alongside the 2FA-encryption (Option C) work.
+    aaguid: text("aaguid"),
   },
   (t) => ({
     credUnique: uniqueIndex("passkey_credential_id_idx").on(t.credentialId),

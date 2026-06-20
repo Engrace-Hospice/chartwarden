@@ -16,6 +16,12 @@ export const accounts = pgTable(
     passwordHash: text("password_hash"),
     accessTokenEncrypted: text("access_token_encrypted"),
     refreshTokenEncrypted: text("refresh_token_encrypted"),
+    // AUTH-T06 (ADR-0033): Better Auth account-model columns (used by OAuth providers; null for the
+    // credential provider, but the adapter model includes them).
+    idToken: text("id_token"),
+    scope: text("scope"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

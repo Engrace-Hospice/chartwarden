@@ -74,3 +74,34 @@ jobs:
         run: bun install --frozen-lockfile
       - name: RLS cross-tenant isolation proof (real Postgres + real RLS)
         run: bun run test:rls:live
+
+  auth-live:
+    name: Better Auth live (Postgres) — schema reconciliation + sign-in (AUTH-T06)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Same pgvector image as rls-live (the auth live test applies the full migration set, which
+        # includes M38's pgvector `concept_embedding` table).
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wardenx_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
+      BETTER_AUTH_SECRET: ci-test-secret-at-least-32-characters-long
+      BETTER_AUTH_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+      - name: Install dependencies (frozen lockfile)
+        run: bun install --frozen-lockfile
+      - name: Better Auth sign-up/sign-in over the reconciled schema (real Postgres)
+        run: bun run test:auth:live
