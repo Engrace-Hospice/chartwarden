@@ -30,6 +30,44 @@ import {
 } from "../../apps/backend/src/modules/05-patient/routes/patient-typebox";
 import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
 import { SearchQuerySchema as TerminologySearchQuerySchema } from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
+import {
+  ListMessagesQuerySchema,
+  SendMessageBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/messaging-typebox";
+
+// M36 service view shapes (packages/messaging/src/interfaces/route-service.ts + provider.ts). The
+// routes return TS service results (not TypeBox), so the response shapes are declared here for the client.
+const ChannelSummarySchema = Type.Object({
+  channelId: Type.String(),
+  kind: Type.String(),
+  title: Type.Union([Type.String(), Type.Null()]),
+  subjectId: Type.Union([Type.String(), Type.Null()]),
+  archivedAt: Type.Union([Type.String(), Type.Null()]),
+  unreadCount: Type.Integer(),
+});
+const ResolvedMessageSchema = Type.Object({
+  messageId: Type.String(),
+  channelId: Type.String(),
+  authorUserId: Type.Union([Type.String(), Type.Null()]),
+  body: Type.String(),
+  bodyKind: Type.String(),
+  createdAt: Type.String(),
+  parentMessageId: Type.Union([Type.String(), Type.Null()]),
+});
+const AlertInboxItemSchema = Type.Object({
+  alertId: Type.String(),
+  eventType: Type.String(),
+  category: Type.String(),
+  severity: Type.String(),
+  summary: Type.String(),
+  createdAt: Type.String(),
+  deliveryStatus: Type.Union([
+    Type.Literal("delivered"),
+    Type.Literal("partial"),
+    Type.Literal("failed"),
+    Type.Literal("pending"),
+  ]),
+});
 
 // M38 search returns { results: ResolvedConcept[], mode, asOf }. The concept summary (the fields the
 // admin table needs) is declared here; `properties` (a per-system union) is omitted from the client type.
@@ -92,6 +130,27 @@ export interface RouteEnrichment {
 
 /** `METHOD /path` → enrichment. Keys MUST match a scanned route (openapi:check enforces). */
 export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
+  // M36 Messaging (Track A — Staff Messaging + Notifications)
+  "GET /api/v1/messaging/channels": {
+    summary: "List the caller's channels (§4.6)",
+    response: Type.Object({ channels: Type.Array(ChannelSummarySchema) }),
+  },
+  "GET /api/v1/messaging/channels/:id/messages": {
+    summary: "List a channel's messages (cursor-paginated, §4.6)",
+    query: ListMessagesQuerySchema,
+    response: Type.Object({
+      messages: Type.Array(ResolvedMessageSchema),
+      nextCursor: Type.Optional(Type.String()),
+    }),
+  },
+  "POST /api/v1/messaging/channels/:id/messages": {
+    summary: "Post a message to a channel (§4.6)",
+    body: SendMessageBodySchema,
+  },
+  "GET /api/v1/alerts/inbox": {
+    summary: "The caller's alert inbox (§4.7)",
+    response: Type.Object({ alerts: Type.Array(AlertInboxItemSchema) }),
+  },
   // M3 Authorization (Track A — Roles & Permissions). No route-level TypeBox; shapes from
   // apps/backend/src/modules/03-authorization/authz-ports.ts (RoleView) + the M3 permission mirror.
   "GET /api/v1/roles": {

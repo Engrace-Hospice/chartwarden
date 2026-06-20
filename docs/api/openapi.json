@@ -228,10 +228,78 @@
         "tags": [
           "36-messaging"
         ],
+        "summary": "The caller's alert inbox (§4.7)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "alerts"
+                  ],
+                  "properties": {
+                    "alerts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "alertId",
+                          "eventType",
+                          "category",
+                          "severity",
+                          "summary",
+                          "createdAt",
+                          "deliveryStatus"
+                        ],
+                        "properties": {
+                          "alertId": {
+                            "type": "string"
+                          },
+                          "eventType": {
+                            "type": "string"
+                          },
+                          "category": {
+                            "type": "string"
+                          },
+                          "severity": {
+                            "type": "string"
+                          },
+                          "summary": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "deliveryStatus": {
+                            "anyOf": [
+                              {
+                                "const": "delivered",
+                                "type": "string"
+                              },
+                              {
+                                "const": "partial",
+                                "type": "string"
+                              },
+                              {
+                                "const": "failed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -1715,10 +1783,78 @@
         "tags": [
           "36-messaging"
         ],
+        "summary": "List the caller's channels (§4.6)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "channels"
+                  ],
+                  "properties": {
+                    "channels": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "channelId",
+                          "kind",
+                          "title",
+                          "subjectId",
+                          "archivedAt",
+                          "unreadCount"
+                        ],
+                        "properties": {
+                          "channelId": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "subjectId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "archivedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "unreadCount": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -1830,6 +1966,7 @@
         "tags": [
           "36-messaging"
         ],
+        "summary": "List a channel's messages (cursor-paginated, §4.6)",
         "parameters": [
           {
             "name": "id",
@@ -1838,11 +1975,96 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "messages"
+                  ],
+                  "properties": {
+                    "messages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "messageId",
+                          "channelId",
+                          "authorUserId",
+                          "body",
+                          "bodyKind",
+                          "createdAt",
+                          "parentMessageId"
+                        ],
+                        "properties": {
+                          "messageId": {
+                            "type": "string"
+                          },
+                          "channelId": {
+                            "type": "string"
+                          },
+                          "authorUserId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "body": {
+                            "type": "string"
+                          },
+                          "bodyKind": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "parentMessageId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -1857,6 +2079,7 @@
         "tags": [
           "36-messaging"
         ],
+        "summary": "Post a message to a channel (§4.6)",
         "parameters": [
           {
             "name": "id",
@@ -1876,6 +2099,81 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "body"
+                ],
+                "properties": {
+                  "body": {
+                    "minLength": 1,
+                    "maxLength": 8000,
+                    "type": "string"
+                  },
+                  "bodyKind": {
+                    "anyOf": [
+                      {
+                        "const": "plain",
+                        "type": "string"
+                      },
+                      {
+                        "const": "markdown",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "parentMessageId": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "quotedMessageId": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "attachments": {
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "storageKey",
+                        "fileName",
+                        "contentType",
+                        "byteSize"
+                      ],
+                      "properties": {
+                        "storageKey": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "fileName": {
+                          "minLength": 1,
+                          "maxLength": 255,
+                          "type": "string"
+                        },
+                        "contentType": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "byteSize": {
+                          "minimum": 0,
+                          "maximum": 25000000,
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

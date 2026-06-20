@@ -155,6 +155,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The caller's alert inbox (§4.7) */
         get: operations["getApiV1AlertsInbox"];
         put?: never;
         post?: never;
@@ -721,6 +722,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the caller's channels (§4.6) */
         get: operations["getApiV1MessagingChannels"];
         put?: never;
         post?: never;
@@ -785,8 +787,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List a channel's messages (cursor-paginated, §4.6) */
         get: operations["getApiV1MessagingChannelsByIdMessages"];
         put?: never;
+        /** Post a message to a channel (§4.6) */
         post: operations["postApiV1MessagingChannelsByIdMessages"];
         delete?: never;
         options?: never;
@@ -1641,7 +1645,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        alerts: {
+                            alertId: string;
+                            eventType: string;
+                            category: string;
+                            severity: string;
+                            summary: string;
+                            createdAt: string;
+                            deliveryStatus: "delivered" | "partial" | "failed" | "pending";
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -2533,7 +2549,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        channels: {
+                            channelId: string;
+                            kind: string;
+                            title: string | null;
+                            subjectId: string | null;
+                            archivedAt: string | null;
+                            unreadCount: number;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -2608,7 +2635,10 @@ export interface operations {
     };
     getApiV1MessagingChannelsByIdMessages: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 id: string;
@@ -2622,7 +2652,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        messages: {
+                            messageId: string;
+                            channelId: string;
+                            authorUserId: string | null;
+                            body: string;
+                            bodyKind: string;
+                            createdAt: string;
+                            parentMessageId: string | null;
+                        }[];
+                        nextCursor?: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -2637,7 +2680,22 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    body: string;
+                    bodyKind?: "plain" | "markdown";
+                    parentMessageId?: string;
+                    quotedMessageId?: string;
+                    attachments?: {
+                        storageKey: string;
+                        fileName: string;
+                        contentType: string;
+                        byteSize: number;
+                    }[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
