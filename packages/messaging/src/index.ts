@@ -1,2 +1,280 @@
-// @wardenx/messaging — Phase 0 placeholder (no business logic; see PHASE_0_SCAFFOLD_PLAN.md).
-export {};
+// @wardenx/messaging — Secure Messaging & Alerts (Module 36).
+//
+// Public surface of the package. M36-T01 ships the `channel_kind` discriminator (§2.3) and
+// the type-level mirror of the §3.2 enum surface — the shared kind/enum types every later
+// task builds on. M36-T04 adds the pure resolution & fan-out engine (§2.1; re-exported below).
+// The Drizzle schema (M36-T02) and RLS/audit triggers (M36-T03) landed; M36-T05 adds the
+// alert-payload catalog + Foundation Registry (§3.11–3.12) and the platform-default alert-rule
+// seed (§3.10). The MessagingProvider/AlertEmitter seams + PHI sanitization wrapper (M36-T06),
+// routes (M36-T07), realtime/jobs/webhook/cache (M36-T08), cross-module composition (M36-T09),
+// and screens/eraser (M36-T10) land in their own tasks.
+
+export { CHANNEL_KINDS, CHANNEL_KIND_DESCRIPTORS } from "./interfaces/kinds";
+
+// ── M36-T08 realtime event & room CONTRACT (§4.3) — pure room-set + sanitized event payloads ──
+export {
+  // room grammar + connect-time room-set computation
+  userRoom,
+  careTeamRoom,
+  disciplineRoom,
+  locationRoom,
+  onCallRoom,
+  fieldSafetyRoom,
+  orgRoom,
+  billingRoom,
+  idgRoom,
+  computeRoomSet,
+  // event name catalogs
+  MESSAGING_SERVER_EVENTS,
+  MESSAGING_CLIENT_EVENTS,
+} from "./realtime";
+export type {
+  ConnectChannelMembership,
+  RoomSetInput,
+  ServerEventEnvelope,
+  MessageNewEvent,
+  MessageEditedEvent,
+  MessageDeletedEvent,
+  MessageReadEvent,
+  ChannelMemberEvent,
+  ChannelArchivedEvent,
+  PresenceUserActiveEvent,
+  AlertNewEvent,
+  AlertDeliveredEvent,
+} from "./realtime";
+
+// ── M36-T08 jobs (§4.4 / §4.4.1) — queue catalog + parameters + pure processors ───────────────
+export {
+  MESSAGING_QUEUES,
+  MESSAGING_QUEUE_PARAMETERS,
+  MESSAGING_JOB_SCHEDULES,
+  runHashVerify,
+  planRetentionDestruction,
+  buildDlqAuditRecord,
+  createInMemoryHashVerifyPorts,
+} from "./jobs";
+export type {
+  QueueBackoff,
+  QueueParameters,
+  MessagingQueueName,
+  HashVerifySampleRow,
+  HashMismatchEvent,
+  HashVerifyPorts,
+  HashVerifyRunResult,
+  RetentionCandidate,
+  RetentionScanPlan,
+  DlqLanding,
+  DlqAuditRecord,
+} from "./jobs";
+
+// ── M36-T08 webhook security (§4.9 / SD-056 / INT-016) — replay window + signature verifiers ──
+export {
+  WebhookError,
+  REPLAY_WINDOW_SECONDS,
+  assertReplayWindow,
+  computeTwilioSignature,
+  verifyTwilioSignature,
+  verifyPostmarkWebhook,
+} from "./webhooks";
+export type { TwilioVerifyRequest, PostmarkVerifyRequest } from "./webhooks";
+
+// ── M36-T10 D9 tenant-offboarding destruction (§7.8) — DEK crypto-erase + structural delete ──
+export {
+  eraseTenantMessaging,
+  createInMemoryMessagingEraseStore,
+  DekDestroyedError,
+} from "./destruction";
+export type {
+  MessagingEraseStore,
+  MessagingEraseResult,
+  MessagingEraseSeed,
+  SeedMessage,
+  SeedStructuralRow,
+  SeedCrossTenantRow,
+  InMemoryMessagingEraseStore,
+} from "./destruction";
+
+// ── M36-T08 cache & invalidation (§4.8) — key grammar + TTLs + in-memory cache ────────────────
+export {
+  MESSAGING_CACHE_TTL_SECONDS,
+  roomMembershipKey,
+  recipientResolverKey,
+  recipientResolverPrefix,
+  unreadCountKey,
+  hashResolverArgs,
+  createInMemoryMessagingCache,
+} from "./cache";
+export type { MessagingCache } from "./cache";
+
+// ── M36-T06 published seam CONTRACTS (§4.6) — the surfaces every consumer imports ─────────
+export type {
+  MessagingProvider,
+  AttachmentInput,
+  ResolvedMessage,
+} from "./interfaces/provider";
+export type { AlertEmitter, RecipientResolver } from "./interfaces/alert-emitter";
+
+// ── M36-T07 route-facing application service (§4.1–4.2) — the surface the REST inventory uses ─
+export type {
+  MessagingRouteService,
+  ChannelSummary,
+  ChannelDetail,
+  ChannelMemberView,
+  AlertRuleView,
+  AlertRulePatch,
+  NotificationPreferencesView,
+  NotificationPreferencesInput,
+  DeliveryEndpointView,
+  DeliveryEndpointInput,
+  AlertInboxItem,
+} from "./interfaces/route-service";
+export {
+  createInMemoryMessagingService,
+} from "./store/in-memory-service";
+export type {
+  InMemoryMessagingSeed,
+  InMemoryMessagingServiceOptions,
+} from "./store/in-memory-service";
+
+// ── M36-T06 `AlertEmitter` seam IMPLEMENTATION (§4.6) — T04 engine wired over injected ports ─
+export { createAlertEmitter, createInMemoryAlertEmitter } from "./seams";
+export type {
+  AlertEmitterPorts,
+  EmitAlertRule,
+  PersistedAlert,
+  RecordedAlert,
+  InMemoryAlertEmitterOptions,
+} from "./seams";
+
+// ── M36-T06 PHI sanitization wrapper (§4.7) — the only path to out-of-band channels ───────
+export { sanitizeForOutOfBand } from "./notification";
+export type {
+  Alert,
+  Message,
+  SanitizedNotification,
+  OutOfBandChannel,
+} from "./notification";
+
+// ── M36-T05 alert-payload catalog (Foundation Registry + boot gate) — §3.11–3.12 ──────────
+export {
+  AlertPayloadCollisionError,
+  buildAlertPayloadCatalog,
+  validateAlertPayloadCatalog,
+  assertAlertPayloadCatalogValid,
+  isRegisteredPayloadType,
+  alertPayloadCatalogRows,
+  createAlertPayloadRegistry,
+} from "./alert-payloads";
+export type { AlertPayloadCatalogViolation, AlertPayloadRegistry } from "./alert-payloads";
+
+// ── M36-T09 cross-module notification composition (§4.11, §3.13, ADR-0024) ─────────────────
+// Composition + recipient resolution for the referral / critical-results / transmission-failure
+// families moved from M14 to M36 (SD-017): load the `notification_template`, render from the
+// source event payload, resolve recipients via the ADR-0024 resolvers, dispatch catalog-validated.
+export {
+  // template resolution + render (floor + tighten-only tenant overlay)
+  resolveTemplate,
+  renderTemplate,
+  TemplateOverlayMismatchError,
+  MissingTemplateVariableError,
+  // ADR-0024 recipient resolvers (register onto M36's open registry without changing its core)
+  COMPOSITION_RESOLVER_ROLE_KEYS,
+  COMPOSITION_RESOLVER_NAMES,
+  registerCompositionResolvers,
+  // the composer + its in-memory boot/test seam
+  composeAndDispatch,
+  createInMemoryCrossModuleComposer,
+  UnknownNotificationTemplateError,
+  UnregisteredComposedPayloadError,
+} from "./compose";
+export type {
+  NotificationTemplateRow,
+  TenantTemplateOverlayRow,
+  EffectiveNotificationTemplate,
+  RenderedTemplate,
+  CompositionResolverPorts,
+  CrossModuleCompositionInput,
+  ComposedDispatchRequest,
+  CrossModuleCompositionResult,
+  CrossModuleComposerPorts,
+  RecordedComposedDispatch,
+  InMemoryComposerOptions,
+} from "./compose";
+
+// ── M36-T05 platform-default alert-rule seed (§3.10) + §7.4 system_locked invariants ──────
+export {
+  PLATFORM_DEFAULT_ALERT_RULES,
+  SYSTEM_LOCKED_EVENT_TYPES,
+  toNewAlertRuleRows,
+  validateAlertRuleSeed,
+  assertAlertRuleSeedValid,
+  // M36-T09 platform-floor notification template seed (§3.13.1 Phase C, ADR-0024)
+  PLATFORM_NOTIFICATION_TEMPLATES,
+  toNewNotificationTemplateRows,
+  validateNotificationTemplateSeed,
+  assertNotificationTemplateSeedValid,
+} from "./seed";
+export type {
+  PlatformAlertRuleSeed,
+  PlatformAlertRuleRow,
+  AlertRuleSeedViolation,
+  PlatformNotificationTemplateRow,
+  NotificationTemplateSeedViolation,
+} from "./seed";
+
+// ── M36-T04 resolution & fan-out (§2.1) — the pure core dispatch path ─────────────────────
+export {
+  // recipient resolution (dynamic at emit time, §2.1.3)
+  createRecipientResolverRegistry,
+  resolveRecipients,
+  UnknownRecipientResolverError,
+  // per-recipient channel selection (§3.6)
+  FLOOR_CHANNEL,
+  severityAtLeast,
+  preferredOutOfBandChannels,
+  isVacationActive,
+  localWallClock,
+  isWithinQuietHours,
+  suppressedByQuietHours,
+  // fan-out planner + outcome roll-up (§2.4.3, §2.4.4)
+  planFanOut,
+  computeOutcome,
+} from "./resolution";
+
+export type {
+  ResolverArgs,
+  RecipientResolverFn,
+  RecipientSourcePorts,
+  RoutingMap,
+  QuietHoursRange,
+  QuietHoursConfig,
+  RecipientPreferences,
+  AlertContext,
+  PlannedDelivery,
+  FanOutInput,
+  DeliverySettlement,
+} from "./resolution";
+
+export type {
+  ChannelKind,
+  ChannelKindDescriptor,
+  ChannelRetentionClass,
+  ChannelMembershipSource,
+  ChannelSubjectRequirement,
+  ChannelMemberRole,
+  ChannelMemberSource,
+  MessageAuthorKind,
+  MessageBodyKind,
+  MessageStatus,
+  MessageReceiptStatus,
+  PresenceStatus,
+  AlertCategory,
+  AlertSeverity,
+  AlertRecipientResolver,
+  AlertOutcome,
+  NotificationChannel,
+  NotificationStatus,
+  DeliveryEndpointChannel,
+  DeliveryEndpointVerification,
+  AlertPayloadSeverity,
+} from "./interfaces/kinds";

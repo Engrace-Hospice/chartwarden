@@ -6,6 +6,7 @@
 // the SESSION_POLICY / STEP_UP_POLICY platform-floor constants here (ADR-0005 D3 / M02-F03).
 export * from "./seams";
 export * from "./outbox";
+export * from "./alert-payloads";
 export * from "./errors";
 export * from "./http-context";
 export * from "./policy/session-policy";

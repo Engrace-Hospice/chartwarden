@@ -6,6 +6,12 @@
 import { buildServer } from "./bootstrap/index";
 import { assertAuditActionCatalog, registerAuditErasers } from "./modules/04-audit/index";
 import { registerIdentityErasers, registerIdentitySeams } from "./modules/02-identity/index";
+import { registerMessagingErasers, registerMessagingSeams } from "./modules/36-messaging/index";
+import {
+  registerTerminologyErasers,
+  registerTerminologySeams,
+} from "./modules/38-terminology/index";
+import { registerMdmErasers, registerMdmSeams } from "./modules/40-mdm/index";
 
 export { buildServer };
 export * from "./bootstrap/index";
@@ -17,6 +23,9 @@ export * from "./bootstrap/index";
  */
 export function wireModuleSeams(): void {
   registerIdentitySeams(); // M2 — SessionContextResolver + AuditorSessionMinter (§4.7)
+  registerTerminologySeams(); // M38 — TerminologyProvider (§4.5)
+  registerMessagingSeams(); // M36 — AlertEmitter (§4.6); MessagingProvider stays deny-stub until T07/T08
+  registerMdmSeams(); // M40 — MdmEntityProvider (§4.5) + BaaStatusProvider (§4.6 §7.7 as-of gate)
   // Phase-1 producers append here as they land: M5 CaseloadProvider/PatientReader, M22
   // DocumentRenderer, M39 ConsentEvaluator, …
 }
@@ -31,6 +40,9 @@ export function wireModuleSeams(): void {
 export function wireModuleErasers(): void {
   registerIdentityErasers(); // M2 — `identity` data class (two_factor/passkey + invitations)
   registerAuditErasers(); // M4-T08 — `audit_event` data class (legal-hold + Part 2 lifetime aware)
+  registerTerminologyErasers(); // M38-T10 — `terminology_tenant_extensions` (D8 tenant offboarding)
+  registerMessagingErasers(); // M36-T10 — `messages` (D9 tenant offboarding; DEK crypto-erase §7.8)
+  registerMdmErasers(); // M40-T10 — `mdm_tenant_overlays` (D7 tenant offboarding; canonical untouched)
   // Phase-1 data-class owners append here as they land.
 }
 

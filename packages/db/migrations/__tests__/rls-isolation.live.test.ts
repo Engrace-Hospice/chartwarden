@@ -26,7 +26,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer", "mdm_canonical_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 
@@ -160,5 +160,434 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
   it("audit_event is append-only to the app role (UPDATE + DELETE both denied)", async () => {
     await expect(withOrg(ORG_A, () => db.query("UPDATE audit_event SET created_at = now()"))).rejects.toThrow();
     await expect(withOrg(ORG_A, () => db.query("DELETE FROM audit_event"))).rejects.toThrow();
+  });
+
+  // ── M38 Terminology — platform-shared RLS + canonical lockdown (§9.2 / §9.4) ─────────────
+  // The migrations applied above already include 0014/0015 (M38). This proves on REAL Postgres
+  // the two halves of the M38 access model that the pure unit suites cannot reach:
+  //   • the 12 platform tables are public-read (USING (true)) but locked to wardenx_app for
+  //     writes — only `terminology_loader` writes canonical (§7.4) — and return identical rows
+  //     under any tenant context (§9.4 public-read positive test);
+  //   • value_set_tenant_extension is the one org-scoped table — standard app.org_id RLS, an
+  //     M4 write-audit trigger fires on the tenant write (§3.8), and Org A's row is invisible to
+  //     Org B (§9.4);
+  //   • two versions of a code coexist; the as-of filter resolves the active row at the old
+  //     service date and the retired row today, with the deprecation successor populated (§9.2).
+  describe("M38 Terminology — platform RLS, canonical lockdown, as-of coexistence (§9.2/§9.4)", () => {
+    let v1: string; // 2023 code_system_version
+    let v2: string; // 2024 code_system_version
+    let platformCodeSystems: number; // baseline count seeded as superuser
+
+    beforeAll(async () => {
+      // Seed canonical terminology as superuser (RLS + table grants bypassed). This stands in for
+      // the `terminology_loader` SECURITY DEFINER load path; wardenx_app must never reach it.
+      await db.query(
+        "INSERT INTO code_system (id,name,license_source) VALUES ('icd10cm','ICD-10-CM','CMS/NCHS public domain')",
+      );
+      const ins = async (version: string, from: string, to: string | null) =>
+        (
+          await db.query(
+            `INSERT INTO code_system_version (code_system_id,version,released_on,effective_from,effective_to,source_file_ref,checksum,status)
+             VALUES ('icd10cm',$1,$2,$2,$3,'ref','sum','active') RETURNING id`,
+            [version, from, to],
+          )
+        ).rows[0].id as string;
+      v1 = await ins("FY2023", "2022-10-01", "2023-09-30");
+      v2 = await ins("FY2024", "2023-10-01", null);
+
+      // X-RETIRED: active in FY2023 (ends 2023-09-30), then retired in FY2024 — two coexisting rows.
+      await db.query(
+        `INSERT INTO concept_icd10cm (code,display,status,effective_date,end_date,version_id) VALUES
+           ('X-RETIRED','Active until 2023','active','2022-10-01','2023-09-30',$1),
+           ('X-RETIRED','Retired in 2024','retired','2023-10-01','2024-09-30',$2),
+           ('A00','Cholera','active','2015-10-01',NULL,$2)`,
+        [v1, v2],
+      );
+      await db.query(
+        `INSERT INTO deprecation_mapping (system_id,deprecated_code,deprecation_effective,successor_codes,mapping_kind,created_in_version_id)
+         VALUES ('icd10cm','X-RETIRED','2024-10-01',ARRAY['X-NEW'],'equivalent',$1)`,
+        [v2],
+      );
+      await db.query("INSERT INTO value_set (id,name,scope) VALUES ('hospice_terminal_dx','Hospice terminal dx','platform')");
+      await db.query(
+        "INSERT INTO value_set_member (value_set_id,system_id,code,member_effective) VALUES ('hospice_terminal_dx','icd10cm','A00','2015-10-01')",
+      );
+      platformCodeSystems = (await db.query("SELECT count(*)::int AS n FROM code_system")).rows[0].n;
+
+      // Org A adds a tenant extension AS the app role — exercises the org-scoped WITH CHECK policy
+      // and fires the M4 write-audit trigger (§3.8).
+      await withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO value_set_tenant_extension (value_set_id,organization_id,system_id,code,reason)
+           VALUES ('hospice_terminal_dx',$1,'icd10cm','A00','Org-A local terminal-dx addition for test')`,
+          [ORG_A],
+        ),
+      );
+    }, 60_000);
+
+    it("§7.4 wardenx_app CANNOT write canonical terminology (code_system + concept table)", async () => {
+      await expect(
+        withOrg(ORG_A, () => db.query("INSERT INTO code_system (id,name,license_source) VALUES ('snomed','x','y')")),
+      ).rejects.toThrow();
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            "INSERT INTO concept_icd10cm (code,display,status,effective_date,version_id) VALUES ('B00','x','active','2024-01-01',$1)",
+            [v2],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§9.4 platform tables are public-read — identical rows under either tenant context", async () => {
+      const a = await withOrg(ORG_A, () => db.query("SELECT count(*)::int AS n FROM code_system"));
+      const b = await withOrg(ORG_B, () => db.query("SELECT count(*)::int AS n FROM code_system"));
+      expect(a.rows[0].n).toBe(platformCodeSystems);
+      expect(b.rows[0].n).toBe(platformCodeSystems);
+      // and value_set members read identically across tenants
+      const ma = await withOrg(ORG_A, () => db.query("SELECT count(*)::int AS n FROM value_set_member"));
+      const mb = await withOrg(ORG_B, () => db.query("SELECT count(*)::int AS n FROM value_set_member"));
+      expect(ma.rows[0].n).toBe(mb.rows[0].n);
+    });
+
+    it("§9.2 two versions coexist — as-of resolves active at the old date, retired today", async () => {
+      const at = (asOf: string) =>
+        withOrg(ORG_A, () =>
+          db.query(
+            `SELECT display,status FROM concept_icd10cm
+             WHERE code='X-RETIRED' AND effective_date <= $1 AND (end_date IS NULL OR end_date >= $1)`,
+            [asOf],
+          ),
+        );
+      const old = await at("2023-06-15");
+      expect(old.rows).toHaveLength(1);
+      expect(old.rows[0].status).toBe("active");
+      const now = await at("2024-06-15");
+      expect(now.rows).toHaveLength(1);
+      expect(now.rows[0].status).toBe("retired");
+      // the deprecation successor is populated for the retired code
+      const dep = await withOrg(ORG_A, () =>
+        db.query("SELECT successor_codes FROM deprecation_mapping WHERE deprecated_code='X-RETIRED'"),
+      );
+      expect(dep.rows[0].successor_codes).toEqual(["X-NEW"]);
+    });
+
+    it("§9.4 value_set_tenant_extension is org-scoped — Org A sees its row, Org B sees none", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM value_set_tenant_extension WHERE organization_id=$1", [ORG_A]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM value_set_tenant_extension"),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0); // Org B's context sees none of Org A's extensions
+    });
+
+    it("§9.4 Org B cannot write an Org-A tenant extension (WITH CHECK)", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO value_set_tenant_extension (value_set_id,organization_id,system_id,code,reason)
+             VALUES ('hospice_terminal_dx',$1,'icd10cm','A00','cross-tenant write attempt — must fail')`,
+            [ORG_A],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§3.8 the M4 write-audit trigger fired for the tenant extension write", async () => {
+      const r = await db.query(
+        "SELECT count(*)::int AS n FROM audit_event WHERE resource_kind='term_value_set_extension' AND organization_id=$1",
+        [ORG_A],
+      );
+      expect(r.rows[0].n).toBeGreaterThan(0);
+    });
+  });
+
+  // ── M36 Secure Messaging & Alerts — RLS, parent-join children, user-scoped, audit (§3.7–3.9) ─
+  // The migrations applied above include 0016/0017 (M36). This proves on REAL Postgres the M36
+  // access model the pure unit suites cannot reach:
+  //   • org-scoped tables (channel/message) isolate Org A from Org B and reject cross-tenant writes;
+  //   • the children with NO organization_id (message_attachment, notification_delivery) are
+  //     org-isolated THROUGH the parent join, not a direct org column (§3.7);
+  //   • alert_rule platform-default rows (organization_id IS NULL) are read by every tenant, and a
+  //     system_locked rule cannot be updated by a tenant (§7.4 system_locked);
+  //   • alert_payload_catalog is platform-floor public-read (§3.12);
+  //   • the M4 write-audit trigger fires on the channel/message writes and scrubs message.body_cipher
+  //     to the `<changed>` marker (§3.9 denylist).
+  describe("M36 Messaging — org isolation, parent-join children, audit scrub (§3.7–3.9)", () => {
+    const U_A = "11111111-1111-1111-1111-1111111111aa";
+    const U_B = "11111111-1111-1111-1111-1111111111bb";
+    const SUBJECT = "22222222-2222-2222-2222-222222222222";
+    let channelId: string;
+    let messageId: string;
+    let alertId: string;
+
+    /** Run `fn` as wardenx_app with both app.org_id and app.user_id set (user-scoped policies). */
+    async function withOrgUser<T>(org: string, user: string, fn: () => Promise<T>): Promise<T> {
+      await db.query("SET ROLE wardenx_app");
+      await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
+      await db.query("SELECT set_config('app.user_id', $1, false)", [user]);
+      try {
+        return await fn();
+      } finally {
+        await db.query("RESET ROLE");
+      }
+    }
+
+    beforeAll(async () => {
+      // Users + active memberships (superuser; RLS bypassed) so presence co-worker visibility and
+      // channel_member FKs resolve.
+      await db.query(
+        "INSERT INTO \"user\" (id,email) VALUES ($1,'a@x.test'),($2,'b@x.test')",
+        [U_A, U_B],
+      );
+      await db.query(
+        `INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$3,'active'),($2,$4,'active')`,
+        [U_A, U_B, ORG_A, ORG_B],
+      );
+      // Platform-floor payload catalog + a platform-default + a system_locked alert_rule (superuser).
+      await db.query(
+        `INSERT INTO alert_payload_catalog (payload_type,module_owner,severity,default_channels,default_recipient_resolver,payload_schema,description)
+         VALUES ('m36.test.ping','m36','INFO',ARRAY['in_app'],'broadcast','{}'::jsonb,'test payload')`,
+      );
+      await db.query(
+        `INSERT INTO alert_rule (organization_id,event_type,category,severity_floor,recipient_resolver,system_locked)
+         VALUES (NULL,'m36.test.ping','system','info','broadcast',true)`,
+      );
+
+      // Org A creates a care-team channel + member + message AS the app role (exercises WITH CHECK).
+      channelId = await withOrgUser(ORG_A, U_A, async () => {
+        const c = await db.query(
+          `INSERT INTO channel (organization_id,channel_kind,subject_id,title,retention_class)
+           VALUES ($1,'care_team',$2,'Care team','care_related') RETURNING id`,
+          [ORG_A, SUBJECT],
+        );
+        const cid = c.rows[0].id as string;
+        await db.query(
+          `INSERT INTO channel_member (organization_id,channel_id,user_id,source) VALUES ($1,$2,$3,'manual')`,
+          [ORG_A, cid, U_A],
+        );
+        const m = await db.query(
+          `INSERT INTO message (channel_id,organization_id,author_user_id,author_kind,body_cipher,body_sha256)
+           VALUES ($1,$2,$3,'user',decode('00','hex'),repeat('a',64)) RETURNING id`,
+          [cid, ORG_A, U_A],
+        );
+        messageId = m.rows[0].id as string;
+        await db.query(
+          `INSERT INTO message_attachment (message_id,document_ref,mime_type,byte_size,filename)
+           VALUES ($1,$2,'application/pdf',10,'f.pdf')`,
+          [messageId, SUBJECT],
+        );
+        // presence + delivery_endpoint are user-scoped
+        await db.query(
+          "INSERT INTO presence (user_id,status) VALUES ($1,'online')",
+          [U_A],
+        );
+        await db.query(
+          `INSERT INTO delivery_endpoint (user_id,channel,endpoint_value) VALUES ($1,'email','a@x.test')`,
+          [U_A],
+        );
+        // an alert + a child notification_delivery (in_app — voice is SOS-gated)
+        const al = await db.query(
+          `INSERT INTO alert (organization_id,event_type,severity,payload,correlation_id)
+           VALUES ($1,'m36.test.ping','info','{"k":"v"}'::jsonb,'corr-1') RETURNING id`,
+          [ORG_A],
+        );
+        alertId = al.rows[0].id as string;
+        await db.query(
+          `INSERT INTO notification_delivery (alert_id,recipient_user_id,alert_category,alert_severity,channel)
+           VALUES ($1,$2,'system','info','in_app')`,
+          [alertId, U_A],
+        );
+        return cid;
+      });
+    }, 60_000);
+
+    it("§3.7 Org B sees NONE of Org A's channels or messages", async () => {
+      const ch = await withOrg(ORG_B, () => db.query("SELECT count(*)::int AS n FROM channel WHERE id=$1", [channelId]));
+      const ms = await withOrg(ORG_B, () => db.query("SELECT count(*)::int AS n FROM message WHERE id=$1", [messageId]));
+      expect(ch.rows[0].n).toBe(0);
+      expect(ms.rows[0].n).toBe(0);
+    });
+
+    it("§3.7 Org A still reads its own channel + message (isolation is not deny-all)", async () => {
+      const ch = await withOrg(ORG_A, () => db.query("SELECT count(*)::int AS n FROM channel WHERE id=$1", [channelId]));
+      expect(ch.rows[0].n).toBe(1);
+    });
+
+    it("§3.7 cross-tenant write rejected — Org B cannot insert an Org-A channel (WITH CHECK)", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO channel (organization_id,channel_kind,subject_id,title,retention_class)
+             VALUES ($1,'care_team',$2,'x','care_related')`,
+            [ORG_A, SUBJECT],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§3.7 children with no org column are org-isolated through the parent join", async () => {
+      const att = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM message_attachment WHERE message_id=$1", [messageId]),
+      );
+      const nd = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM notification_delivery WHERE alert_id=$1", [alertId]),
+      );
+      expect(att.rows[0].n).toBe(0);
+      expect(nd.rows[0].n).toBe(0);
+      // Org A still sees them through its own parent rows
+      const attA = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM message_attachment WHERE message_id=$1", [messageId]),
+      );
+      expect(attA.rows[0].n).toBe(1);
+    });
+
+    it("§3.7 alert_rule platform-default (NULL org) is read by every tenant", async () => {
+      const a = await withOrg(ORG_A, () => db.query("SELECT count(*)::int AS n FROM alert_rule WHERE organization_id IS NULL"));
+      const b = await withOrg(ORG_B, () => db.query("SELECT count(*)::int AS n FROM alert_rule WHERE organization_id IS NULL"));
+      expect(a.rows[0].n).toBeGreaterThan(0);
+      expect(b.rows[0].n).toBe(a.rows[0].n);
+    });
+
+    it("§7.4 a system_locked alert_rule cannot be updated or deleted by a tenant", async () => {
+      // The platform-default rule has NULL org → not own-org, so UPDATE/DELETE match no row (0 rows),
+      // never the locked row. Assert the row survives.
+      await withOrg(ORG_A, () => db.query("UPDATE alert_rule SET enabled=false WHERE event_type='m36.test.ping'"));
+      const r = await db.query("SELECT enabled FROM alert_rule WHERE event_type='m36.test.ping' AND organization_id IS NULL");
+      expect(r.rows[0].enabled).toBe(true);
+    });
+
+    it("§3.12 alert_payload_catalog is platform-floor public-read across tenants", async () => {
+      const a = await withOrg(ORG_A, () => db.query("SELECT count(*)::int AS n FROM alert_payload_catalog"));
+      const b = await withOrg(ORG_B, () => db.query("SELECT count(*)::int AS n FROM alert_payload_catalog"));
+      expect(a.rows[0].n).toBeGreaterThan(0);
+      expect(a.rows[0].n).toBe(b.rows[0].n);
+    });
+
+    it("§3.7 presence: a co-worker in the same tenant context can read it; an outsider cannot", async () => {
+      const coworker = await withOrgUser(ORG_A, U_B, () =>
+        db.query("SELECT count(*)::int AS n FROM presence WHERE user_id=$1", [U_A]),
+      );
+      const outsider = await withOrgUser(ORG_B, U_B, () =>
+        db.query("SELECT count(*)::int AS n FROM presence WHERE user_id=$1", [U_A]),
+      );
+      expect(coworker.rows[0].n).toBe(1); // U_B is an active Org-A member in Org-A context
+      expect(outsider.rows[0].n).toBe(0); // Org-B context: U_A is not a co-worker there
+    });
+
+    it("§3.9 the M4 write-audit trigger fired for channel + message and scrubbed body_cipher", async () => {
+      const ch = await db.query("SELECT count(*)::int AS n FROM audit_event WHERE resource_kind='channel' AND organization_id=$1", [ORG_A]);
+      expect(ch.rows[0].n).toBeGreaterThan(0);
+      const msg = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='message' AND event_type='message.insert' ORDER BY created_at DESC LIMIT 1",
+      );
+      expect(msg.rows[0].after.body_cipher).toBe("<changed>"); // §3.9 denylist scrub
+    });
+  });
+
+  // ── M40 Master Data Management — two-table canonical/overlay RLS, audit (§3.6–3.7 / §7.3–7.4) ─
+  // The migrations applied above include 0018/0019 (M40). This proves on REAL Postgres the M40
+  // access model the pure unit suites cannot reach:
+  //   • canonical (external_physician/facility/payer) is org-less platform master data — public-read
+  //     to every tenant, and wardenx_app can NEVER write it (§7.4: only mdm_canonical_writer can);
+  //   • external_physician_tenant_overlay is org-scoped — Org A sees its overlay, Org B sees none,
+  //     and Org B cannot write an Org-A overlay row (§7.3 two-tenant overlay isolation, WITH CHECK);
+  //   • merge_request is the platform-ops surface — no wardenx_app grant at all;
+  //   • the M4 write-audit trigger fires on the overlay write and scrubs `contract_terms` (§3.7).
+  describe("M40 MDM — canonical lockdown, overlay isolation, audit (§3.6–3.7 / §7.3–7.4)", () => {
+    let physicianId: string;
+    let canonicalFacilities: number; // baseline count seeded as superuser
+
+    beforeAll(async () => {
+      // Seed canonical MDM as superuser (RLS + table grants bypassed). This stands in for the
+      // mdm_canonical_writer SECURITY DEFINER load path (NPPES sync / admin merge); wardenx_app
+      // must never reach it (§7.4).
+      const phy = await db.query(
+        `INSERT INTO external_physician (npi,first_name,last_name,status)
+         VALUES ('1234567890','Ada','Lovelace','active') RETURNING id`,
+      );
+      physicianId = phy.rows[0].id as string;
+      await db.query(
+        `INSERT INTO facility (ccn,kind,name,status) VALUES ('123456','hospital','Mercy General','active')`,
+      );
+      await db.query(`INSERT INTO payer (kind,name,status) VALUES ('medicare','Medicare','active')`);
+      canonicalFacilities = (await db.query("SELECT count(*)::int AS n FROM facility")).rows[0].n;
+
+      // Org A writes its overlay for the canonical physician AS the app role — exercises the
+      // org-scoped WITH CHECK policy and fires the M4 write-audit trigger (§3.7).
+      await withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO external_physician_tenant_overlay
+             (external_physician_id,organization_id,do_not_refer,relationship_notes,contract_terms)
+           VALUES ($1,$2,true,'Org-A prefers this physician','{"rate":"confidential"}'::jsonb)`,
+          [physicianId, ORG_A],
+        ),
+      );
+    }, 60_000);
+
+    it("§7.4 wardenx_app CANNOT write canonical MDM (external_physician + facility + payer)", async () => {
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            "INSERT INTO external_physician (npi,first_name,last_name) VALUES ('9999999999','x','y')",
+          ),
+        ),
+      ).rejects.toThrow();
+      await expect(
+        withOrg(ORG_A, () => db.query("INSERT INTO facility (kind,name) VALUES ('clinic','x')")),
+      ).rejects.toThrow();
+      await expect(
+        withOrg(ORG_A, () => db.query("INSERT INTO payer (kind,name) VALUES ('commercial','x')")),
+      ).rejects.toThrow();
+    });
+
+    it("§3.6 canonical is public-read — identical rows under either tenant context", async () => {
+      const a = await withOrg(ORG_A, () => db.query("SELECT count(*)::int AS n FROM facility"));
+      const b = await withOrg(ORG_B, () => db.query("SELECT count(*)::int AS n FROM facility"));
+      expect(a.rows[0].n).toBe(canonicalFacilities);
+      expect(b.rows[0].n).toBe(canonicalFacilities);
+      const pa = await withOrg(ORG_A, () => db.query("SELECT count(*)::int AS n FROM external_physician WHERE id=$1", [physicianId]));
+      expect(pa.rows[0].n).toBe(1); // canonical is the same answer for every tenant (§2.3)
+    });
+
+    it("§7.3 external_physician_tenant_overlay is org-scoped — Org A sees its row, Org B sees none", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM external_physician_tenant_overlay WHERE organization_id=$1", [ORG_A]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM external_physician_tenant_overlay"),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0); // Org B's context sees none of Org A's overlays
+    });
+
+    it("§7.3 Org B cannot write an Org-A overlay row (WITH CHECK)", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO external_physician_tenant_overlay (external_physician_id,organization_id,do_not_refer)
+             VALUES ($1,$2,true)`,
+            [physicianId, ORG_A],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§3.6 merge_request is platform-ops only — wardenx_app has no grant", async () => {
+      await expect(
+        withOrg(ORG_A, () => db.query("SELECT count(*) FROM merge_request")),
+      ).rejects.toThrow();
+    });
+
+    it("§3.7 the M4 write-audit trigger fired for the overlay write and scrubbed contract_terms", async () => {
+      const r = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='physician_overlay' AND event_type='physician_overlay.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.contract_terms).toBe("<changed>"); // §3.7 denylist scrub
+    });
   });
 });

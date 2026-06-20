@@ -7,6 +7,9 @@ import { M1_ACTION_CATALOG } from "./m1";
 import { M2_ACTION_CATALOG } from "./m2";
 import { M3_ACTION_CATALOG } from "./m3";
 import { M4_ACTION_CATALOG } from "./m4";
+import { M36_ACTION_CATALOG } from "./m36";
+import { M38_ACTION_CATALOG } from "./m38";
+import { M40_ACTION_CATALOG } from "./m40";
 import { SYSTEM_ACTION_CATALOG } from "./system";
 import type { ActionCatalogEntry, ModuleActionCatalog } from "./types";
 
@@ -21,6 +24,9 @@ export const ACTION_CATALOG: ModuleActionCatalog = [
   ...M2_ACTION_CATALOG,
   ...M3_ACTION_CATALOG,
   ...M4_ACTION_CATALOG,
+  ...M36_ACTION_CATALOG,
+  ...M38_ACTION_CATALOG,
+  ...M40_ACTION_CATALOG,
 ];
 
 /** A single namespacing/uniqueness violation surfaced by `validateActionCatalog()` (§4.6.7). */

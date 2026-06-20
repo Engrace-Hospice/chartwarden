@@ -142,6 +142,9 @@
     "packages/messaging": {
       "name": "@wardenx/messaging",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
     },
     "packages/narrative-vocab": {
       "name": "@wardenx/narrative-vocab",

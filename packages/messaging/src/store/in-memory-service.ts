@@ -1,0 +1,625 @@
+// @wardenx/messaging — the in-memory MessagingRouteService slice (M36-T07, spec §4.1–4.2).
+//
+// The DB-free implementation of the §4.1 route inventory's application service, so the backend
+// route module is integration-testable with no live Postgres/Valkey (mirrors M38's
+// `createInMemoryTerminologyStore`). Production swaps a Drizzle/Valkey impl that runs each
+// mutation inside `withOrgContext` (RLS on `app.org_id`) and encrypts message bodies under the
+// tenant DEK; this slice keeps everything in memory and treats bodies as plaintext (the seam
+// boundary is plaintext by contract — §3.4). State is per-instance, so a fresh service per test
+// gives isolation. The clock is injectable (`now`) and ids are a deterministic counter so route
+// tests are reproducible.
+
+import type {
+  AlertCategory,
+  AlertRecipientResolver,
+  AlertSeverity,
+  ChannelKind,
+  ChannelMemberRole,
+  ChannelMemberSource,
+  DeliveryEndpointChannel,
+  MessageBodyKind,
+  NotificationChannel,
+} from "../interfaces/kinds";
+import type { AttachmentInput, ResolvedMessage } from "../interfaces/provider";
+import type {
+  AlertInboxItem,
+  AlertRulePatch,
+  AlertRuleView,
+  ChannelDetail,
+  ChannelSummary,
+  DeliveryEndpointInput,
+  DeliveryEndpointView,
+  MessagingRouteService,
+  NotificationPreferencesInput,
+  NotificationPreferencesView,
+} from "../interfaces/route-service";
+import type { QuietHoursConfig, RoutingMap } from "../resolution";
+import { PLATFORM_DEFAULT_ALERT_RULES, SYSTEM_LOCKED_EVENT_TYPES } from "../seed";
+import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
+
+// ── value-level mirrors of the §3.2 enum unions (for routing-map validation) ────────────────
+const ALERT_CATEGORIES: readonly AlertCategory[] = [
+  "clinical_urgent",
+  "clinical_routine",
+  "operational",
+  "field_safety",
+  "administrative",
+  "system",
+];
+const ALERT_SEVERITIES: readonly AlertSeverity[] = ["info", "warn", "critical"];
+const NOTIFICATION_CHANNELS: readonly NotificationChannel[] = [
+  "in_app",
+  "push",
+  "sms",
+  "email",
+  "voice",
+];
+const RECIPIENT_RESOLVERS: readonly AlertRecipientResolver[] = [
+  "care_team",
+  "on_call",
+  "discipline",
+  "role_set",
+  "tenant_admins",
+  "user_list",
+  "broadcast",
+];
+const SYSTEM_LOCKED_EVENTS = new Set<string>(SYSTEM_LOCKED_EVENT_TYPES);
+
+interface ChannelRow {
+  channelId: string;
+  orgId: string;
+  kind: ChannelKind;
+  title: string | null;
+  subjectId: string | null;
+  archivedAt: string | null;
+  members: Map<string, { role: ChannelMemberRole; source: ChannelMemberSource }>;
+}
+
+interface MessageRow {
+  messageId: string;
+  channelId: string;
+  orgId: string;
+  authorUserId: string | null;
+  body: string;
+  bodyKind: MessageBodyKind;
+  createdAt: string;
+  editedAt: string | null;
+  deletedAt: string | null;
+  parentMessageId: string | null;
+}
+
+interface EndpointRow {
+  endpointId: string;
+  orgId: string;
+  userId: string;
+  channel: DeliveryEndpointChannel;
+  target: string;
+  verificationStatus: "verified" | "pending" | "expired";
+  token: string | null;
+}
+
+interface PreferencesRow {
+  id: string;
+  orgId: string;
+  userId: string;
+  routingMap: RoutingMap;
+  quietHours: QuietHoursConfig;
+  vacationForwardToUserId: string | null;
+  vacationUntil: string | null;
+  updatedAt: string;
+}
+
+interface AlertRuleOverrideRow {
+  ruleId: string;
+  orgId: string;
+  eventType: string;
+  category: AlertCategory;
+  severityFloor: AlertSeverity;
+  recipientResolver: AlertRecipientResolver;
+  systemLocked: boolean;
+  enabled: boolean;
+}
+
+/** Seed shapes — the integration test injects channels/members/messages/alerts up front. */
+export interface InMemoryMessagingSeed {
+  readonly channels?: readonly {
+    channelId: string;
+    orgId: string;
+    kind: ChannelKind;
+    title?: string | null;
+    subjectId?: string | null;
+    archivedAt?: string | null;
+    members?: readonly { userId: string; role?: ChannelMemberRole; source?: ChannelMemberSource }[];
+  }[];
+  readonly alerts?: readonly { orgId: string; userId: string; item: AlertInboxItem }[];
+}
+
+export interface InMemoryMessagingServiceOptions {
+  /** Injectable clock for deterministic timestamps (default: wall clock). */
+  readonly now?: () => Date;
+  readonly seed?: InMemoryMessagingSeed;
+}
+
+const DEFAULT_QUIET_HOURS: QuietHoursConfig = { tz: "UTC", ranges: [], severityOverride: "critical" };
+
+/** Build the in-memory MessagingRouteService slice that backs the M36 route inventory. */
+export function createInMemoryMessagingService(
+  options: InMemoryMessagingServiceOptions = {},
+): MessagingRouteService {
+  const now = options.now ?? (() => new Date());
+  let seq = 0;
+  const id = (prefix: string): string => `${prefix}_${(++seq).toString(36).padStart(6, "0")}`;
+  const iso = (): string => now().toISOString();
+
+  const channels = new Map<string, ChannelRow>();
+  const messages = new Map<string, MessageRow>();
+  const endpoints = new Map<string, EndpointRow>();
+  const preferences = new Map<string, PreferencesRow>(); // key: `${orgId}:${userId}`
+  const overrides = new Map<string, AlertRuleOverrideRow>(); // key: `${orgId}:${eventType}`
+  const readPointers = new Map<string, string>(); // `${orgId}:${userId}:${channelId}` -> createdAt
+  const inbox = new Map<string, AlertInboxItem[]>(); // `${orgId}:${userId}` -> items
+
+  for (const c of options.seed?.channels ?? []) {
+    const members = new Map<string, { role: ChannelMemberRole; source: ChannelMemberSource }>();
+    for (const m of c.members ?? []) {
+      members.set(m.userId, { role: m.role ?? "member", source: m.source ?? "manual" });
+    }
+    channels.set(c.channelId, {
+      channelId: c.channelId,
+      orgId: c.orgId,
+      kind: c.kind,
+      title: c.title ?? null,
+      subjectId: c.subjectId ?? null,
+      archivedAt: c.archivedAt ?? null,
+      members,
+    });
+  }
+  for (const a of options.seed?.alerts ?? []) {
+    const key = `${a.orgId}:${a.userId}`;
+    (inbox.get(key) ?? inbox.set(key, []).get(key)!).push(a.item);
+  }
+
+  const channelOr404 = (orgId: string, channelId: string): ChannelRow => {
+    const ch = channels.get(channelId);
+    if (!ch || ch.orgId !== orgId) throw new NotFoundError("channel", channelId);
+    return ch;
+  };
+
+  const toSummary = (orgId: string, userId: string, ch: ChannelRow): ChannelSummary => {
+    const pointer = readPointers.get(`${orgId}:${userId}:${ch.channelId}`) ?? "";
+    let unread = 0;
+    for (const m of messages.values()) {
+      if (m.channelId !== ch.channelId || m.deletedAt) continue;
+      if (m.authorUserId === userId) continue;
+      if (m.createdAt > pointer) unread++;
+    }
+    return {
+      channelId: ch.channelId,
+      kind: ch.kind,
+      title: ch.title,
+      subjectId: ch.subjectId,
+      archivedAt: ch.archivedAt,
+      unreadCount: unread,
+    };
+  };
+
+  return {
+    async listChannels(orgId, userId) {
+      const out: ChannelSummary[] = [];
+      for (const ch of channels.values()) {
+        if (ch.orgId === orgId && ch.members.has(userId)) out.push(toSummary(orgId, userId, ch));
+      }
+      return out;
+    },
+
+    async getChannel(orgId, userId, channelId) {
+      const ch = channelOr404(orgId, channelId);
+      const detail: ChannelDetail = {
+        ...toSummary(orgId, userId, ch),
+        members: [...ch.members.entries()].map(([uid, m]) => ({
+          userId: uid,
+          role: m.role,
+          source: m.source,
+        })),
+      };
+      return detail;
+    },
+
+    async listMessages(orgId, input) {
+      channelOr404(orgId, input.channelId);
+      const limit = input.limit ?? 50;
+      const rows = [...messages.values()]
+        .filter((m) => m.channelId === input.channelId && m.orgId === orgId)
+        .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
+      const page = rows.slice(0, limit).map<ResolvedMessage>((m) => ({
+        messageId: m.messageId,
+        channelId: m.channelId,
+        authorUserId: m.authorUserId,
+        body: m.deletedAt ? "" : m.body,
+        bodyKind: m.bodyKind,
+        createdAt: m.createdAt,
+        parentMessageId: m.parentMessageId,
+      }));
+      return { messages: page, nextCursor: rows.length > limit ? rows[limit]!.messageId : undefined };
+    },
+
+    async sendMessage(orgId, input) {
+      const ch = channelOr404(orgId, input.channelId);
+      if (ch.archivedAt) {
+        throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+      }
+      const messageId = id("msg");
+      const createdAt = iso();
+      messages.set(messageId, {
+        messageId,
+        channelId: input.channelId,
+        orgId,
+        authorUserId: input.authorUserId,
+        body: input.body,
+        bodyKind: input.bodyKind ?? "plain",
+        createdAt,
+        editedAt: null,
+        deletedAt: null,
+        parentMessageId: input.parentMessageId ?? null,
+      });
+      return { messageId, channelId: input.channelId, createdAt };
+    },
+
+    async editMessage(orgId, input) {
+      const m = messages.get(input.messageId);
+      if (!m || m.orgId !== orgId || m.deletedAt) throw new NotFoundError("message", input.messageId);
+      if (m.authorUserId !== input.userId) {
+        throw new ForbiddenError("only the author may edit a message");
+      }
+      m.body = input.body;
+      m.editedAt = iso();
+      return { messageId: m.messageId, editedAt: m.editedAt };
+    },
+
+    async deleteMessage(orgId, input) {
+      const m = messages.get(input.messageId);
+      if (!m || m.orgId !== orgId || m.deletedAt) throw new NotFoundError("message", input.messageId);
+      if (m.authorUserId !== input.userId) {
+        throw new ForbiddenError("only the author may delete a message");
+      }
+      m.deletedAt = iso();
+    },
+
+    async markRead(orgId, input) {
+      const m = messages.get(input.messageId);
+      if (!m || m.orgId !== orgId) throw new NotFoundError("message", input.messageId);
+      // Single → pointer to this message; upTo → same (all earlier are already ≤ this createdAt).
+      readPointers.set(`${orgId}:${input.userId}:${m.channelId}`, m.createdAt);
+    },
+
+    async openDm(orgId, userId, peerUserId) {
+      if (peerUserId === userId) {
+        throw new ConflictError("cannot open a DM with yourself");
+      }
+      for (const ch of channels.values()) {
+        if (
+          ch.orgId === orgId &&
+          ch.kind === "dm" &&
+          ch.members.size === 2 &&
+          ch.members.has(userId) &&
+          ch.members.has(peerUserId)
+        ) {
+          return { channelId: ch.channelId, created: false };
+        }
+      }
+      const channelId = id("ch");
+      const members = new Map<string, { role: ChannelMemberRole; source: ChannelMemberSource }>();
+      members.set(userId, { role: "owner", source: "manual" });
+      members.set(peerUserId, { role: "member", source: "manual" });
+      channels.set(channelId, {
+        channelId,
+        orgId,
+        kind: "dm",
+        title: null,
+        subjectId: null,
+        archivedAt: null,
+        members,
+      });
+      return { channelId, created: true };
+    },
+
+    async addMember(orgId, input) {
+      const ch = channelOr404(orgId, input.channelId);
+      ch.members.set(input.userId, { role: input.role ?? "member", source: "manual" });
+    },
+
+    async removeMember(orgId, input) {
+      const ch = channelOr404(orgId, input.channelId);
+      if (!ch.members.delete(input.userId)) {
+        throw new NotFoundError("channel member", input.userId);
+      }
+    },
+
+    async announce(orgId, input) {
+      let channel: ChannelRow | undefined;
+      for (const ch of channels.values()) {
+        if (ch.orgId === orgId && ch.kind === "announcement") {
+          channel = ch;
+          break;
+        }
+      }
+      if (!channel) {
+        const channelId = id("ch");
+        channel = {
+          channelId,
+          orgId,
+          kind: "announcement",
+          title: "Announcements",
+          subjectId: null,
+          archivedAt: null,
+          members: new Map(),
+        };
+        channels.set(channelId, channel);
+      }
+      const messageId = id("msg");
+      const createdAt = iso();
+      messages.set(messageId, {
+        messageId,
+        channelId: channel.channelId,
+        orgId,
+        authorUserId: input.authorUserId,
+        body: input.body,
+        bodyKind: "plain",
+        createdAt,
+        editedAt: null,
+        deletedAt: null,
+        parentMessageId: null,
+      });
+      return { messageId, channelId: channel.channelId, createdAt };
+    },
+
+    async canViewChannel(orgId, userId, channelId) {
+      const ch = channels.get(channelId);
+      if (!ch || ch.orgId !== orgId) return false;
+      // §4.5: the slice resolves visibility by the channel-member check (the "otherwise" branch);
+      // production injects the caseload/bereavement provider seams for care_team / bereavement.
+      // announcement is org-wide broadcast — every authenticated org member may read it.
+      if (ch.kind === "announcement") return true;
+      return ch.members.has(userId);
+    },
+
+    async getPreferences(orgId, userId) {
+      const key = `${orgId}:${userId}`;
+      let row = preferences.get(key);
+      if (!row) {
+        row = {
+          id: id("pref"),
+          orgId,
+          userId,
+          routingMap: {},
+          quietHours: DEFAULT_QUIET_HOURS,
+          vacationForwardToUserId: null,
+          vacationUntil: null,
+          updatedAt: iso(),
+        };
+        preferences.set(key, row);
+      }
+      return toPreferencesView(row);
+    },
+
+    async putPreferences(orgId, userId, input) {
+      validateRoutingMap(input.routingMap);
+      if (input.vacationForwardToUserId && input.vacationForwardToUserId === userId) {
+        throw new WardenXError("VACATION_FORWARD_SELF", "cannot forward to yourself", 409);
+      }
+      if (input.vacationForwardToUserId) {
+        const target = preferences.get(`${orgId}:${input.vacationForwardToUserId}`);
+        if (target?.vacationForwardToUserId === userId) {
+          throw new WardenXError(
+            "VACATION_FORWARD_CYCLE",
+            "the forward target also forwards to you",
+            409,
+          );
+        }
+      }
+      const key = `${orgId}:${userId}`;
+      const existing = preferences.get(key);
+      const row: PreferencesRow = {
+        id: existing?.id ?? id("pref"),
+        orgId,
+        userId,
+        routingMap: input.routingMap,
+        quietHours: input.quietHours,
+        vacationForwardToUserId: input.vacationForwardToUserId ?? null,
+        vacationUntil: input.vacationUntil ?? null,
+        updatedAt: iso(),
+      };
+      preferences.set(key, row);
+      return { id: row.id, updatedAt: row.updatedAt };
+    },
+
+    async registerEndpoint(orgId, userId, input: DeliveryEndpointInput) {
+      const endpointId = id("ep");
+      // push is browser-issued → immediately verified; sms/email need a verification token.
+      const verified = input.channel === "push";
+      const row: EndpointRow = {
+        endpointId,
+        orgId,
+        userId,
+        channel: input.channel,
+        target: input.target,
+        verificationStatus: verified ? "verified" : "pending",
+        token: verified ? null : "000000", // deterministic slice token; prod sends a real code
+      };
+      endpoints.set(endpointId, row);
+      return { endpointId, channel: row.channel, verificationStatus: row.verificationStatus };
+    },
+
+    async verifyEndpoint(orgId, userId, endpointId, token) {
+      const row = endpoints.get(endpointId);
+      if (!row || row.orgId !== orgId || row.userId !== userId) {
+        throw new NotFoundError("delivery endpoint", endpointId);
+      }
+      if (row.verificationStatus === "verified") {
+        return { endpointId, channel: row.channel, verificationStatus: row.verificationStatus };
+      }
+      if (token !== row.token) {
+        throw new WardenXError("INVALID_TOKEN", "verification token does not match", 422);
+      }
+      row.verificationStatus = "verified";
+      row.token = null;
+      return { endpointId, channel: row.channel, verificationStatus: row.verificationStatus };
+    },
+
+    async removeEndpoint(orgId, userId, endpointId) {
+      const row = endpoints.get(endpointId);
+      if (!row || row.orgId !== orgId || row.userId !== userId) {
+        throw new NotFoundError("delivery endpoint", endpointId);
+      }
+      endpoints.delete(endpointId);
+    },
+
+    async alertInbox(orgId, userId) {
+      return [...(inbox.get(`${orgId}:${userId}`) ?? [])];
+    },
+
+    async listAlertRules(orgId) {
+      return PLATFORM_DEFAULT_ALERT_RULES.map<AlertRuleView>((seed) => {
+        const override = overrides.get(`${orgId}:${seed.eventType}`);
+        if (override) {
+          return {
+            ruleId: override.ruleId,
+            organizationId: override.orgId,
+            eventType: override.eventType,
+            category: override.category,
+            severityFloor: override.severityFloor,
+            recipientResolver: override.recipientResolver,
+            systemLocked: override.systemLocked,
+            enabled: override.enabled,
+          };
+        }
+        return {
+          ruleId: `platform:${seed.eventType}`,
+          organizationId: null,
+          eventType: seed.eventType,
+          category: seed.category,
+          severityFloor: seed.severityFloor,
+          recipientResolver: seed.recipientResolver,
+          systemLocked: seed.systemLocked,
+          enabled: seed.enabled,
+        };
+      });
+    },
+
+    async patchAlertRule(orgId, input) {
+      const base = resolveRuleBase(orgId, input.ruleId, overrides);
+      if (!base) throw new NotFoundError("alert rule", input.ruleId);
+
+      // §7.4: a system_locked rule can never be disabled (even by alert.rules.manage).
+      if (base.systemLocked && input.patch.enabled === false) {
+        throw new WardenXError("SYSTEM_LOCKED", "system_locked rules cannot be disabled", 403);
+      }
+      if (
+        input.patch.recipientResolver !== undefined &&
+        !RECIPIENT_RESOLVERS.includes(input.patch.recipientResolver)
+      ) {
+        throw new WardenXError("INVALID_RESOLVER", "unknown recipient resolver", 422);
+      }
+
+      const key = `${orgId}:${base.eventType}`;
+      const existing = overrides.get(key);
+      const row: AlertRuleOverrideRow = {
+        ruleId: existing?.ruleId ?? id("rule"), // clone a platform default into an org-scoped row
+        orgId,
+        eventType: base.eventType,
+        category: base.category,
+        severityFloor: input.patch.severityFloor ?? base.severityFloor,
+        recipientResolver: input.patch.recipientResolver ?? base.recipientResolver,
+        systemLocked: base.systemLocked,
+        enabled: input.patch.enabled ?? base.enabled,
+      };
+      overrides.set(key, row);
+      return {
+        ruleId: row.ruleId,
+        organizationId: row.orgId,
+        eventType: row.eventType,
+        category: row.category,
+        severityFloor: row.severityFloor,
+        recipientResolver: row.recipientResolver,
+        systemLocked: row.systemLocked,
+        enabled: row.enabled,
+      };
+    },
+  };
+}
+
+function toPreferencesView(row: PreferencesRow): NotificationPreferencesView {
+  return {
+    id: row.id,
+    userId: row.userId,
+    routingMap: row.routingMap,
+    quietHours: row.quietHours,
+    vacationForwardToUserId: row.vacationForwardToUserId,
+    vacationUntil: row.vacationUntil,
+    updatedAt: row.updatedAt,
+  };
+}
+
+/** §4.2 INVALID_ROUTING_MAP: every category / severity / channel in the map must be known. */
+function validateRoutingMap(map: RoutingMap): void {
+  for (const [category, bySeverity] of Object.entries(map)) {
+    if (!ALERT_CATEGORIES.includes(category as AlertCategory)) {
+      throw new WardenXError("INVALID_ROUTING_MAP", `unknown alert category '${category}'`, 422);
+    }
+    for (const [severity, channelsList] of Object.entries(bySeverity ?? {})) {
+      if (!ALERT_SEVERITIES.includes(severity as AlertSeverity)) {
+        throw new WardenXError("INVALID_ROUTING_MAP", `unknown severity '${severity}'`, 422);
+      }
+      for (const channel of channelsList ?? []) {
+        if (!NOTIFICATION_CHANNELS.includes(channel)) {
+          throw new WardenXError("INVALID_ROUTING_MAP", `unknown channel '${channel}'`, 422);
+        }
+      }
+    }
+  }
+}
+
+/** Resolve the rule a patch targets — a platform default (`platform:<event>`) or an org override
+ *  (by its stored id) — into the base fields the patch is applied over. */
+function resolveRuleBase(
+  orgId: string,
+  ruleId: string,
+  overrides: Map<string, AlertRuleOverrideRow>,
+):
+  | {
+      eventType: string;
+      category: AlertCategory;
+      severityFloor: AlertSeverity;
+      recipientResolver: AlertRecipientResolver;
+      systemLocked: boolean;
+      enabled: boolean;
+    }
+  | null {
+  if (ruleId.startsWith("platform:")) {
+    const eventType = ruleId.slice("platform:".length);
+    const seed = PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === eventType);
+    return seed
+      ? {
+          eventType: seed.eventType,
+          category: seed.category,
+          severityFloor: seed.severityFloor,
+          recipientResolver: seed.recipientResolver,
+          systemLocked: seed.systemLocked || SYSTEM_LOCKED_EVENTS.has(seed.eventType),
+          enabled: seed.enabled,
+        }
+      : null;
+  }
+  for (const row of overrides.values()) {
+    if (row.orgId === orgId && row.ruleId === ruleId) {
+      return {
+        eventType: row.eventType,
+        category: row.category,
+        severityFloor: row.severityFloor,
+        recipientResolver: row.recipientResolver,
+        systemLocked: row.systemLocked,
+        enabled: row.enabled,
+      };
+    }
+  }
+  return null;
+}

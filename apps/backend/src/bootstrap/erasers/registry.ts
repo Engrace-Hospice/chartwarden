@@ -20,6 +20,10 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   "audit_event",
   "clinical_record",
   "documents",
+  // M36-T10: message bodies (D9 tenant offboarding). M36 registers the REAL eraser via the
+  // composition-root hook over this deny-stub — tenant-offboarding cryptographically erases every
+  // `message.body_cipher` by destroying the tenant DEK (§7.8), then deletes structural +
+  // sole-tenant cross-tenant rows. Bodies are unreadable the instant the DEK is gone.
   "messages",
   "consent",
   "telehealth_recording",
@@ -27,6 +31,14 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // the REAL eraser via the composition root's registerModuleErasers hook (it runs AFTER
   // wireErasers(), standing over the Phase-0 deny-stub); see apps/backend/src/index.ts.
   "identity",
+  // M38-T10: a tenant's `value_set_tenant_extension` rows (D8 offboarding). M38 registers the
+  // REAL eraser via the same composition-root hook over this deny-stub; platform terminology
+  // tables are reference data and stay untouched.
+  "terminology_tenant_extensions",
+  // M40-T10: a tenant's MDM overlay/provisional/baa rows (D7 offboarding). M40 registers the REAL
+  // eraser via the composition-root hook over this deny-stub; the org-less CANONICAL entities
+  // (physician/facility/payer) are shared reference data and stay untouched (§7.8).
+  "mdm_tenant_overlays",
 ];
 
 export function registerEraser(dataClass: DataClass, eraser: DataEraser): void {

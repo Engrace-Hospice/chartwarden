@@ -23,7 +23,12 @@ export type SeamName =
   | "DocumentRenderer" // M22 — render a typed payload to a stored document
   | "ConsentEvaluator" // M39 — disclosure/redaction gate
   | "SessionContextResolver" // M2 — authenticated, org-scoped request context (actor + step-up state)
-  | "AuditorSessionMinter"; // M2 — mint a time-boxed auditor magic-link session (M3 calls it)
+  | "AuditorSessionMinter" // M2 — mint a time-boxed auditor magic-link session (M3 calls it)
+  | "TerminologyProvider" // M38 — version-aware code/value-set resolution (every clinical/billing module)
+  | "AlertEmitter" // M36 — emit an event; M36 resolves rules + recipients + fan-out (every module)
+  | "MessagingProvider" // M36 — channel/message surface (DEK-encrypted bodies; PHI read surface)
+  | "MdmEntityProvider" // M40 — master-data read surface (physician/facility/payer; merge-aware)
+  | "BaaStatusProvider"; // M40 — focused §7.7 BAA disclosure gate (as-of; M22/M28/M29 import this)
 
 /** M5/M17 — resolves an actor's caseload (the patient ids they may access). */
 export interface CaseloadProvider {
@@ -100,6 +105,31 @@ export interface SeamContracts {
   ConsentEvaluator: ConsentEvaluator;
   SessionContextResolver: SessionContextResolver;
   AuditorSessionMinter: AuditorSessionMinter;
+  // M38's `TerminologyProvider` is intentionally OPAQUE (`unknown`) here. Its rich interface
+  // (per-system generics, FHIR projections) lives in the feature package @wardenx/terminology,
+  // which this leaf may not import (`leaves-stay-leaves`, ARCHITECTURE §25.15). Unlike the
+  // edge-avoiding seams above, every M38 consumer already lists `38` in its manifest
+  // `dependsOn`, so it imports the real `TerminologyProvider` type from @wardenx/terminology
+  // and resolves the impl through the module-38 typed accessor — the M1 registry only needs to
+  // hold/validate the instance fail-closed, which `unknown` is sufficient for.
+  TerminologyProvider: unknown;
+  // M36's `AlertEmitter` + `MessagingProvider` follow the SAME opaque rich-seam pattern: their
+  // interfaces live in @wardenx/messaging (per-system payloads, DEK-encrypted message bodies),
+  // which this leaf may not import (`leaves-stay-leaves`). Consumers that list `36` in their
+  // manifest `dependsOn` import the real types from @wardenx/messaging and resolve the impl via
+  // the module-36 typed accessor; the M1 registry holds/validates the instance fail-closed.
+  AlertEmitter: unknown;
+  MessagingProvider: unknown;
+  // M40's `MdmEntityProvider` follows the SAME opaque rich-seam pattern: its interface lives in
+  // @wardenx/mdm (per-kind `CanonicalFields<K>`/`OverlayFields<K>` generics + the merge-redirect
+  // shape), which this leaf may not import (`leaves-stay-leaves`). Consumers that list `40` in
+  // their manifest `dependsOn` import the real type from @wardenx/mdm and resolve the impl via the
+  // module-40 typed accessor; the M1 registry holds/validates the instance fail-closed.
+  MdmEntityProvider: unknown;
+  // M40's `BaaStatusProvider` is the focused §7.7 disclosure gate, registered separately from the
+  // omnibus above (different contract: as-of time-travel + sending-facility resolution). Same
+  // opaque rich-seam pattern — interface in @wardenx/mdm; M22/M28/M29 import the real type.
+  BaaStatusProvider: unknown;
 }
 
 /**
@@ -138,4 +168,18 @@ export type DataClass =
   // `passkey` enrollments (user-owned) and any pending `organization_invitation`
   // addressed to them. Erased by M2's registered eraser (M2-T10) so a right-to-erasure
   // request never silently no-ops the identity credential surface.
-  | "identity";
+  | "identity"
+  // M38 (Clinical Terminology) tenant data: a tenant's `value_set_tenant_extension` rows
+  // (its add-only customizations of platform value sets) + cached expansion overrides. On
+  // tenant offboarding (D8) M38's eraser deletes these; the platform terminology tables are
+  // NEVER touched — they are shared reference data, not tenant data, so they survive the
+  // tenant (M38 §11 D8; same "erase the tenant's view-of-the-world, not the world" pattern
+  // as M40 canonical/overlay). The `subjectId` here is the org being offboarded.
+  | "terminology_tenant_extensions"
+  // M40 (Master Data Management) tenant data: a tenant's overlay rows
+  // (`external_physician_tenant_overlay` + the other per-kind overlays as they land), all
+  // `mdm_provisional` rows, and all `mdm_baa_record` rows. On tenant offboarding (D7) M40's
+  // eraser deletes these; the org-less CANONICAL entities (physician/facility/payer) are NEVER
+  // touched — they are shared registry-sourced reference data that survives the tenant (M40 §7.8;
+  // same "erase the tenant's view-of-the-world, not the world" pattern). `subjectId` is the org.
+  | "mdm_tenant_overlays";

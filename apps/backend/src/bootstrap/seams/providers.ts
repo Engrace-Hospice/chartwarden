@@ -16,6 +16,7 @@ import type {
   ConsentEvaluator,
   DocumentRenderer,
   PatientReader,
+  SeamName,
   SessionContextResolver,
 } from "../interfaces";
 
@@ -64,6 +65,44 @@ export const auditorSessionMinterDenyStub: AuditorSessionMinter = {
     throw new NotImplementedError("AuditorSessionMinter");
   },
 };
+
+/**
+ * Generic fail-closed deny-stub for a seam whose interface is too rich to live in the leaf
+ * @wardenx/types (so M1 cannot name it here). Every property access yields a function that
+ * throws NotImplementedError, so an unregistered such seam denies LOUDLY on its first call
+ * rather than failing open. M38's `TerminologyProvider` is the first of these (M40's
+ * MdmEntityProvider/BaaStatusProvider and M36's AlertEmitter follow the same shape).
+ */
+function denyingSeamProxy(seam: SeamName): unknown {
+  return new Proxy(
+    {},
+    {
+      get() {
+        return () => {
+          throw new NotImplementedError(seam);
+        };
+      },
+    },
+  );
+}
+
+/** M38 — version-aware terminology resolution. Denies until M38 registers the real provider. */
+export const terminologyProviderDenyStub: unknown = denyingSeamProxy("TerminologyProvider");
+
+/** M36 — event → rules/recipients/fan-out. Denies until M36 registers the real emitter (T06). */
+export const alertEmitterDenyStub: unknown = denyingSeamProxy("AlertEmitter");
+
+/** M36 — channel/message surface (DEK-encrypted bodies). Denies until M36 registers the real
+ *  provider (its DB-backed impl lands with the routes/realtime tasks, M36-T07/T08). */
+export const messagingProviderDenyStub: unknown = denyingSeamProxy("MessagingProvider");
+
+/** M40 — master-data read surface (physician/facility/payer; merge-aware). Denies until M40
+ *  registers the real provider (M40-T05). */
+export const mdmEntityProviderDenyStub: unknown = denyingSeamProxy("MdmEntityProvider");
+
+/** M40 — focused §7.7 BAA disclosure gate (as-of). Denies until M40 registers the real provider
+ *  (M40-T06). M22/M28/M29 consume this before any PHI leaves the perimeter. */
+export const baaStatusProviderDenyStub: unknown = denyingSeamProxy("BaaStatusProvider");
 
 /**
  * Boot hook for Phase-1 seam registration. Each producer module registers its REAL seam
