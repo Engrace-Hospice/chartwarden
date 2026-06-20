@@ -8,7 +8,9 @@
 //     `m39.consent.repointed` (the only consent event a merge produces).
 //   • m5.patient.deceased — D13: active non-survives-death consents transition to `expired`.
 //   • m22.document.rendered — stamp `consent_document_link` from the M22 back-ref (D15).
-import { type ConsentTypeKey, CONSENT_TYPE_STRUCTURE } from "@wardenx/consent";
+import { type ConsentTypeKey } from "@wardenx/consent";
+// The D13 post-death termination decision is pure domain — it lives in @wardenx/consent (T09).
+export { decideDeceasedConsentExpiry } from "@wardenx/consent";
 
 /** The privacy categories M5's snapshot recompute keys on (mirror of M5's `PrivacyFlag`, kept local
  *  so M39 stays edge-free — the test asserts the shapes line up). */
@@ -61,23 +63,6 @@ export function decidePatientMergeRepoint(event: {
   mergedIntoId: string;
 }): { repointTo: string; emit: "m39.consent.repointed" } {
   return { repointTo: event.mergedIntoId, emit: "m39.consent.repointed" };
-}
-
-/** m5.patient.deceased (D13) → which of the patient's active consents must transition to `expired`.
- *  A consent survives death only when its type is survives-death-eligible AND `survives_death=true`,
- *  or it is the post-mortem bereavement consent. Returns the ids to expire. */
-export function decideDeceasedConsentExpiry(
-  consents: readonly { id: string; typeKey: ConsentTypeKey; status: string; survivesDeath: boolean }[],
-): string[] {
-  return consents
-    .filter((c) => c.status === "active")
-    .filter((c) => {
-      const s = CONSENT_TYPE_STRUCTURE[c.typeKey];
-      if (s.isPostMortemEligible) return false; // bereavement consent survives
-      if (s.survivesDeathEligible && c.survivesDeath) return false; // explicitly survives
-      return true; // terminates on death
-    })
-    .map((c) => c.id);
 }
 
 /** m22.document.rendered (consent_record template) → the consent_document_link stamp (D15). */

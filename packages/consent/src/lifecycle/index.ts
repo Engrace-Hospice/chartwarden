@@ -4,3 +4,4 @@ export * from "./status-machine";
 export * from "./recipient-machine";
 export * from "./cascade-machine";
 export * from "./renewal-machine";
+export * from "./death";

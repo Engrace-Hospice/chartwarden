@@ -22,3 +22,6 @@ export * from "./routes/service";
 
 // ── M39-T08 — the BullMQ queue catalog + pure reminder/expiration engines (§4.9) ───────────
 export * from "./jobs";
+
+// ── M39-T09 — the tenant-overlay tighten-only validator (§7.6) ─────────────────────────────
+export * from "./overlay";

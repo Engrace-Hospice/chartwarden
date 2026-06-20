@@ -18,6 +18,8 @@ export type DecisionCode =
   | "cascade_invalid_transition"
   // renewal machine (§2.4)
   | "renewal_cycle_not_open"
+  // tenant overlay (§7.6)
+  | "overlay_loosens_platform_floor"
   // validation rules (§2.3)
   | "grantor_self_reference"
   | "grantor_authority_missing"
