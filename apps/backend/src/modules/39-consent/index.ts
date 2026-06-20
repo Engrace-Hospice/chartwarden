@@ -22,3 +22,16 @@ export {
 // registers into M3's named-predicate registry (resolved through the ConsentEvaluator seam).
 export { type ConsentRouteDeps, registerConsentRoutes } from "./routes/consent-routes";
 export { M39_ABAC_PREDICATES, registerConsentAbacPredicates } from "./abac-predicates";
+// M39-T08 — outbox catalog (§4.5), M36 alert payloads (§4.10), the §4.6 consumer bridges. The
+// events/alerts are published/registered now; consumer wiring (BullMQ/Valkey) lands with M1 infra.
+export { M39_OUTBOX_EVENTS } from "./events-by-m39";
+export { M39_ALERT_PAYLOADS } from "./alerts-by-m39";
+export {
+  type ConsentChangedForPrivacy,
+  type ConsentPrivacyFlag,
+  type ConsentPrivacySignal,
+  consentChangeToPrivacyPayload,
+  decideConsentDocumentLink,
+  decideDeceasedConsentExpiry,
+  decidePatientMergeRepoint,
+} from "./consumers";

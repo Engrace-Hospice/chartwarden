@@ -1,0 +1,209 @@
+// apps/backend/src/modules/39-consent/events-by-m39.ts — Module 39's outbox-event contributions
+// (M39-T08, spec §4.5). The fourteen `m39.consent.*` events keyed on M39's own tables, under the
+// `m39.` namespace (M01 D8 / M03 D9). check-fitness-gaps.ts scans this file for naming
+// (`mN.<resource>.<verb>`), ownership (moduleOwner='m39'), and valid declared consumers (real module
+// ids). M39-F08: these are emitted from the SERVICE layer via the M1 outbox helper in the same
+// transaction as the write — NEVER from a DB trigger. The named cross-module consumers subscribe when
+// they land; the events are published now. `m39.consent.signed`/`revoked` drive M5's
+// privacy_flag_snapshot recompute (M5 D10); `expiring_soon` drives the M36 reminder alert (§4.10).
+import { Type } from "@sinclair/typebox";
+import type { ModuleEventContribution } from "@wardenx/types";
+
+/** Shared minimal payload core — every consent event carries the patient + org id. */
+const core = {
+  patientId: Type.String({ minLength: 1 }),
+  organizationId: Type.String({ minLength: 1 }),
+};
+const typeKey = Type.String({ minLength: 1 });
+
+export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
+  {
+    eventName: "m39.consent.created",
+    moduleOwner: "m39",
+    description: "A consent draft was created (route 6). Internal — drafts carry no regulatory force.",
+    payloadSchema: Type.Object({ ...core, consentRecordId: Type.String(), typeKey }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m39.consent.signed",
+    moduleOwner: "m39",
+    description:
+      "A consent was signed (route 8). Drives the M22 PDF render (D15), M5 privacy_flag_snapshot recompute when SUD (D10), and the M16 post-mortem grant when bereavement.",
+    payloadSchema: Type.Object({
+      ...core,
+      consentRecordId: Type.String(),
+      typeKey,
+      signedAt: Type.String(),
+      signedBy: Type.String(),
+      captureMethod: Type.String(),
+      expiresAt: Type.Optional(Type.String()),
+    }),
+    declaredConsumers: ["m22", "m5", "m16", "m30", "m33"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m39.consent.supersedes",
+    moduleOwner: "m39",
+    description: "A new consent superseded a prior one (route 9). Re-render + snapshot + cache rebind.",
+    payloadSchema: Type.Object({
+      ...core,
+      newConsentRecordId: Type.String(),
+      supersededConsentRecordId: Type.String(),
+      typeKey,
+      supersededAt: Type.String(),
+    }),
+    declaredConsumers: ["m22", "m5", "m3", "m28"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m39.consent.revoked",
+    moduleOwner: "m39",
+    description: "A consent was revoked (route 10/27). Fans out the typed §2.4 per-type cascade.",
+    payloadSchema: Type.Object({
+      ...core,
+      consentRecordId: Type.String(),
+      revocationId: Type.String(),
+      typeKey,
+      revokedAt: Type.String(),
+      revokedByKind: Type.String(),
+      cascadeKind: Type.String(),
+    }),
+    declaredConsumers: ["m5", "m22", "m28", "m16", "m2"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m39.consent.expired",
+    moduleOwner: "m39",
+    description: "A consent passed its expires_at and ticked to expired (consent-expiration cron).",
+    payloadSchema: Type.Object({ ...core, consentRecordId: Type.String(), typeKey, expiredAt: Type.String() }),
+    declaredConsumers: ["m5", "m22", "m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m39.consent.expiring_soon",
+    moduleOwner: "m39",
+    description: "A consent entered the 90/30/14/7/1-day reminder window (expiration-reminder cron). Drives the M36 alert.",
+    payloadSchema: Type.Object({
+      ...core,
+      consentRecordId: Type.String(),
+      typeKey,
+      expiresAt: Type.String(),
+      reminderKind: Type.String(),
+    }),
+    declaredConsumers: ["m36", "m14"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m39.consent.renewal_cycle_opened",
+    moduleOwner: "m39",
+    description: "A renewal cycle opened on the first 30-day reminder with no open cycle (D8).",
+    payloadSchema: Type.Object({
+      ...core,
+      cycleId: Type.String(),
+      sourceConsentRecordId: Type.String(),
+      typeKey,
+      nextActionDueAt: Type.Optional(Type.String()),
+    }),
+    declaredConsumers: ["m36", "m33"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m39.consent.renewed",
+    moduleOwner: "m39",
+    description: "A consent was renewed (route 20) — a new record pointing at the expired/revoked prior (D13).",
+    payloadSchema: Type.Object({
+      ...core,
+      newConsentRecordId: Type.String(),
+      renewedFromConsentRecordId: Type.String(),
+      typeKey,
+      signedAt: Type.String(),
+    }),
+    declaredConsumers: ["m22", "m5", "m16", "m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m39.consent.recipient_added",
+    moduleOwner: "m39",
+    description: "A recipient was added to a per-recipient consent (route 12; D6 — no supersession).",
+    payloadSchema: Type.Object({
+      ...core,
+      consentRecordId: Type.String(),
+      recipientId: Type.String(),
+      recipientKind: Type.String(),
+      recipientEntityId: Type.Optional(Type.String()),
+    }),
+    declaredConsumers: ["m22", "m28"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m39.consent.recipient_removed",
+    moduleOwner: "m39",
+    description: "A recipient was removed (route 13) — disclosure-subsetter caches go stale.",
+    payloadSchema: Type.Object({
+      ...core,
+      consentRecordId: Type.String(),
+      recipientId: Type.String(),
+      removedAt: Type.String(),
+    }),
+    declaredConsumers: ["m22", "m28", "m5"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m39.consent.dpoa.agent_appointed",
+    moduleOwner: "m39",
+    description: "A DPOA agent was appointed (route 15). Banner + signing-authority attribution refresh.",
+    payloadSchema: Type.Object({
+      ...core,
+      consentRecordId: Type.String(),
+      dpoaAgentId: Type.String(),
+      agentKind: Type.String(),
+      agentName: Type.String(),
+    }),
+    declaredConsumers: ["m7", "m11", "m14"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m39.consent.dpoa.agent_removed",
+    moduleOwner: "m39",
+    description: "A DPOA agent was removed (route 16). Re-routes signing authority to patient/alternate.",
+    payloadSchema: Type.Object({
+      ...core,
+      consentRecordId: Type.String(),
+      dpoaAgentId: Type.String(),
+      agentKind: Type.String(),
+    }),
+    declaredConsumers: ["m7", "m11", "m14"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m39.consent.delegated_access.granted",
+    moduleOwner: "m39",
+    description: "A delegated_access projection row was granted (family_caregiver_access sign/supersede, D10).",
+    payloadSchema: Type.Object({
+      ...core,
+      delegatedAccessId: Type.String(),
+      consentRecordId: Type.String(),
+      delegateCaregiverId: Type.String(),
+      scopeKind: Type.String(),
+      effectiveFrom: Type.String(),
+      effectiveUntil: Type.Optional(Type.String()),
+    }),
+    declaredConsumers: ["m31", "m17", "m18", "m19"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m39.consent.delegated_access.revoked",
+    moduleOwner: "m39",
+    description: "A delegated_access projection row was revoked — portal scope removal cascade.",
+    payloadSchema: Type.Object({
+      ...core,
+      delegatedAccessId: Type.String(),
+      consentRecordId: Type.String(),
+      delegateCaregiverId: Type.String(),
+      revokedAt: Type.String(),
+    }),
+    declaredConsumers: ["m31", "m17", "m18", "m19", "m36"],
+    isOutboxOnly: true,
+  },
+];

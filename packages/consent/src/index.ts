@@ -19,3 +19,6 @@ export * from "./seams/consent-evaluator";
 
 // ── M39-T07 — the ConsentRouteService backend (§4.1 routes; cursor pagination §4.12) ───────
 export * from "./routes/service";
+
+// ── M39-T08 — the BullMQ queue catalog + pure reminder/expiration engines (§4.9) ───────────
+export * from "./jobs";
