@@ -30,6 +30,12 @@ jobs:
         run: bun run build
 
       - name: Architecture fitness (parity + 6 gates)
+        # docs/plans/** is read-only to AUTOMATED runs (ADR-0030 / check-plan-integrity).
+        # A human-authored PR that intentionally adds or edits a plan opts in by applying the
+        # `allow-plan-edits` label, which sets ALLOW_PLAN_EDITS for THIS step only. Automated
+        # (archon) PRs without the label stay blocked, so the guardrail keeps its teeth.
+        env:
+          ALLOW_PLAN_EDITS: ${{ contains(github.event.pull_request.labels.*.name, 'allow-plan-edits') && '1' || '' }}
         run: bun run arch:fitness
 
       - name: Fitness-gate self-test + boot smoke test
