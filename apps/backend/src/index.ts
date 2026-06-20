@@ -3,6 +3,7 @@
 // the server, runs the seam/eraser boot gate, and registers each Phase-1 module's real seams
 // via `wireModuleSeams` (M1's bootstrap cannot import a downstream module; the composition
 // root does, then hands the registration into the boot gate before validateSeams()).
+import { createIdentityAuth, registerIdentityAuth } from "@wardenx/auth";
 import { createDbClient } from "@wardenx/db";
 import { buildServer } from "./bootstrap/index";
 import { assertAuditActionCatalog, registerAuditErasers } from "./modules/04-audit/index";
@@ -75,6 +76,11 @@ if ((import.meta as { main?: boolean }).main) {
     registerModuleErasers: wireModuleErasers,
   });
   if (dbHandle) {
+    // AUTH-T02 (ADR-0033): mount Better Auth on /api/auth/* when a DB client is present. Requires
+    // BETTER_AUTH_SECRET / BETTER_AUTH_URL in production. The AUTH-T03 authenticate hook resolves
+    // these sessions into request.context via the SessionContextResolver seam.
+    const auth = createIdentityAuth(dbHandle.db as Parameters<typeof createIdentityAuth>[0]);
+    registerIdentityAuth(app, auth);
     app.addHook("onClose", () => dbHandle.close());
   }
   const port = Number(process.env.PORT ?? 3000);
