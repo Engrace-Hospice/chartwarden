@@ -62,7 +62,9 @@ export const patients = pgTable(
     mrnUnique: uniqueIndex("patient_mrn_org_unique").on(t.organizationId, t.mrn),
     nameSearchIdx: index("patient_name_search_idx").using(
       "gin",
-      sql`(lower(${t.legalLastName} || ' ' || ${t.legalFirstName}) gin_trgm_ops)`,
+      // The `gin_trgm_ops` opclass goes OUTSIDE the expression parens — `(expr) gin_trgm_ops`, not
+      // `(expr gin_trgm_ops)` (the latter is a Postgres syntax error; mirrors the M40 schema form).
+      sql`(lower(${t.legalLastName} || ' ' || ${t.legalFirstName})) gin_trgm_ops`,
     ),
     dobIdx: index("patient_dob_idx").on(t.organizationId, t.dob),
     statusIdx: index("patient_status_idx").on(t.organizationId, t.status),

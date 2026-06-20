@@ -435,7 +435,7 @@ CREATE INDEX "patient_org_loc_mrn_idx" ON "patient" USING btree ("organization_i
 --> statement-breakpoint
 CREATE UNIQUE INDEX "patient_mrn_org_unique" ON "patient" USING btree ("organization_id","mrn");
 --> statement-breakpoint
-CREATE INDEX "patient_name_search_idx" ON "patient" USING gin ((lower("legal_last_name" || ' ' || "legal_first_name") gin_trgm_ops));
+CREATE INDEX "patient_name_search_idx" ON "patient" USING gin ((lower("legal_last_name" || ' ' || "legal_first_name")) gin_trgm_ops);
 --> statement-breakpoint
 CREATE INDEX "patient_dob_idx" ON "patient" USING btree ("organization_id","dob");
 --> statement-breakpoint
