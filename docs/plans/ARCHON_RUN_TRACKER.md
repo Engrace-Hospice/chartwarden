@@ -31,7 +31,7 @@ to follow each run. See [`../ARCHON_SETUP.md`](../ARCHON_SETUP.md) for install +
 |---|---|---|---|---|---|
 | 1 | Slice | M1, M2 | `archon workflow run wardenx-piv --branch feat/m1-m2-slice` | ✅ | [#3](https://github.com/fabwebdev/wardenx/pull/3) ‡ |
 | 2 | A | M3, M4 | `archon workflow run wardenx-piv --branch feat/wave-a "Use the plan at docs/plans/WAVE_A_M3-M4_PLAN.md"` | ✅ | [#4](https://github.com/fabwebdev/wardenx/pull/4) † |
-| 3 | B | M36, M38, M40 | `archon workflow run wardenx-piv --branch feat/wave-b "Use the plan at docs/plans/WAVE_B_M36-M38-M40_PLAN.md"` | ☐ | |
+| 3 | B | M36, M38, M40 | `archon workflow run wardenx-piv --branch feat/wave-b "Use the plan at docs/plans/WAVE_B_M36-M38-M40_PLAN.md"` | ✅ | [#5](https://github.com/fabwebdev/wardenx/pull/5) § |
 | 4 | C | M5, M39 | `archon workflow run wardenx-piv --branch feat/wave-c "Use the plan at docs/plans/WAVE_C_M5-M39_PLAN.md"` | ☐ | |
 | 5 | D | M6, M7, M8 | `archon workflow run wardenx-piv --branch feat/wave-d "Use the plan at docs/plans/WAVE_D_M6-M7-M8_PLAN.md"` | ☐ | |
 | 6 | E | M9, M10, M11, M12, M13 | `archon workflow run wardenx-piv --branch feat/wave-e "Use the plan at docs/plans/WAVE_E_M9-M13_PLAN.md"` | ☐ | |
@@ -58,6 +58,17 @@ per-table trigger redesign does **not** reintroduce the partition recursion). Cl
 (route guards now real). Ratified the narrow `check-table-ownership.ts` helper-path exemption (M4 trigger
 generator's `INSERT INTO audit_event`). Deferred: M3-T09 + M4 frontend → the ADR-0030 `apps/web`
 follow-up. **Next: Wave B (M36/M38/M40)** — runs autonomously now (v0.3.0).
+
+§ **Wave B (PR [#5](https://github.com/fabwebdev/wardenx/pull/5)) — MERGED 2026-06-20.** M36 Secure
+Messaging + M38 Clinical Terminology + M40 Master Data Management **backend** — all 11 tasks each,
+gate-green (build + arch:fitness + test, 872 passed). Migrations 0014–0019 add the 39 Wave-B tables
+with RLS + M4 audit triggers; manifest/owned-tables unchanged. CI green incl. `rls-live` (cross-tenant
+isolation proven on real Postgres for all three: platform reference-data lockdown §7.4 + two-tenant
+overlay isolation §7.3). Consumer seams live + boot-validated: `TerminologyProvider`, `AlertEmitter`,
+`MdmEntityProvider`, `BaaStatusProvider`. Phase-1 flag discipline holds (M38 semantic search behind
+`ai.full` off; M40 M29 NPPES-sync consumers deny-stubbed with the nightly job as the Phase-1 path).
+Deferred: all frontend screens (no `apps/web` codePath in the Wave-B manifests) → the ADR-0030 UI
+follow-up. **Next: Wave C (M5/M39).**
 
 **Phase 1 done when:** all 29 modules at DoD; the end-to-end scenario passes (admit → elect → care plan
 → encounter → assessment → HOPE → order → eMAR → IDG → schedule → EVV → bill → 835 → cap projection).
