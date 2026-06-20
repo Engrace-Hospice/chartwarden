@@ -18,6 +18,7 @@ export {
 } from "./session-snapshot";
 export { argon2idHash, argon2idVerify } from "./password-hash";
 export { loadTwoFactorKey, seal, open, isSealed } from "./two-factor-crypto";
+export { withTwoFactorEncryption, type EncryptableAdapter } from "./two-factor-adapter";
 export {
   createDbSessionContextStore,
   toSessionContextRecord,
