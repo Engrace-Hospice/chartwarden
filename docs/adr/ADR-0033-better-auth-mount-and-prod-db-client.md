@@ -1,7 +1,8 @@
 # ADR-0033 — Mount Better Auth + stand up the production DB client
 
-- **Status:** **Proposed** (requires **Security-Owner sign-off** — this wires the security-critical
-  authentication boot path). Drafted for ratification, not self-accepted.
+- **Status:** **Accepted** — ratified 2026-06-20 (Security-Owner sign-off). Authorizes the Better Auth
+  mount wave (`docs/plans/WAVE_AUTH_BETTER_AUTH_PLAN.md`): prod DB client → mount → authenticate →
+  policy/plugins/session-classes → live-PG tests → M2 sign-in screens.
 - **Date:** 2026-06-20
 - **Phase:** pre-build governance (blocks the Better Auth wave; unblocks the M2 sign-in/MFA/passkey
   screens, which are deferred in `docs/ui/DEFERRED_SCREENS.md`).
