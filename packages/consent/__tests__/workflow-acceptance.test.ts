@@ -145,6 +145,20 @@ describe("W-CON-07 — post-death consent termination (§7.7 / D13)", () => {
   });
 });
 
+describe("W-CON-12 — revocation by patient-self via portal (§7.12; no step-up, reason floor relaxed)", () => {
+  it("a portal self-revoke needs no reason text (the staff ≥40-char floor does not apply)", () => {
+    const { service } = createInMemoryConsentRouteService();
+    const now = new Date().toISOString();
+    const d = service.createDraft(ORG, { patientId: PAT, typeKey: "portal_access", grantorKind: "patient_self", captureMethod: "electronic_portal_signature", scopeDescriptor: {}, createdById: "patient" });
+    service.signConsent(ORG, d.id, "patient", now);
+    // patient_self_via_portal: actorIsStaff=false → empty reason is accepted (W-CON-12 / §7.12).
+    const revoked = service.revokeConsent(ORG, d.id, { actorIsStaff: false, revokedByKind: "patient_self_via_portal", reasonText: "", evidenceDocumentId: null, revokedById: "patient" }, now);
+    expect(revoked.status).toBe("revoked");
+    // The portal session-termination side is deferred to M31 (forward-seam deny-stub); the M2
+    // session-terminate + the M39 revoked event are operative now.
+  });
+});
+
 describe("W-CON-08 — DPOA chain-of-authority validation (§7.8 / D5)", () => {
   it("accepts a valid acting DPOA chain and refuses the self-reference cycle", () => {
     expect(
