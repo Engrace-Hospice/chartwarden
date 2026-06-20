@@ -18,9 +18,21 @@ export type { ErrorBoundaryProps } from "./components/error-boundary";
 export { LoadingSpinner } from "./components/loading-spinner";
 export type { LoadingSpinnerProps } from "./components/loading-spinner";
 
+// Layout kit — Tier-1 regions + foundational pattern layouts (ADR-0030, WARDENX_UI_LAYOUT_PATTERNS.md)
+export * from "./layouts";
+
+// API client (typed, generated from docs/api/openapi.json — ADR-0032)
+export { ApiClientProvider, createApiClient, useApiClient } from "./api";
+export type {
+  ApiClient,
+  ApiClientOptions,
+  ApiClientProviderProps,
+  components,
+  operations,
+  paths,
+} from "./api";
+
 // Providers
-export { createApiProvider } from "./providers/trpc-provider";
-export type { ApiProvider } from "./providers/trpc-provider";
 export { FeatureFlagProvider, useFeatureFlagContext } from "./providers/feature-flag-provider";
 export type {
   FeatureFlagContextValue,
