@@ -50,9 +50,21 @@ export interface AmendmentView {
 }
 
 /** The route service surface (§4.2). */
+/** A query for the §4.2 census/list. Org binding is server-side, never in the query. */
+export interface PatientListQuery {
+  readonly q?: string; // name or MRN substring
+  readonly status?: string;
+  readonly cursor?: string;
+  readonly limit?: number;
+}
+
 export interface PatientRouteService {
   admit(organizationId: string, input: AdmitInput, actorUserId: string): Promise<AdmitResult>;
   getPatient(organizationId: string, id: string): Promise<PatientView | null>;
+  list(
+    organizationId: string,
+    query: PatientListQuery,
+  ): Promise<{ items: PatientView[]; nextCursor: string | null }>;
   addAddress(
     organizationId: string,
     patientId: string,
@@ -140,6 +152,25 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
       return p && p.organizationId === organizationId
         ? { id: p.id, organizationId: p.organizationId, mrn: p.mrn, lastName: p.lastName, firstName: p.firstName, dob: p.dob, status: p.status }
         : null;
+    },
+
+    async list(organizationId, query) {
+      // §7.5: org-scoped (prod relies on RLS; the slice filters by organizationId).
+      const rows: PatientView[] = [...patients.values()]
+        .filter((p) => p.organizationId === organizationId)
+        .map((p) => ({ id: p.id, organizationId: p.organizationId, mrn: p.mrn, lastName: p.lastName, firstName: p.firstName, dob: p.dob, status: p.status }));
+      const q = query.q?.trim().toLowerCase();
+      const filtered = rows.filter((p) => {
+        if (query.status && p.status !== query.status) return false;
+        if (q && !(`${p.lastName} ${p.firstName}`.toLowerCase().includes(q) || p.mrn.toLowerCase().includes(q))) return false;
+        return true;
+      });
+      filtered.sort((a, b) => (a.lastName === b.lastName ? a.firstName.localeCompare(b.firstName) : a.lastName.localeCompare(b.lastName)));
+      const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
+      const offset = query.cursor ? Number.parseInt(query.cursor, 10) || 0 : 0;
+      const page = filtered.slice(offset, offset + limit);
+      const nextOffset = offset + page.length;
+      return { items: page, nextCursor: nextOffset < filtered.length ? String(nextOffset) : null };
     },
 
     async addAddress(_organizationId, patientId, _address, _actorUserId) {

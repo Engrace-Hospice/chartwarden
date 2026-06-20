@@ -150,6 +150,28 @@ describe("M5-T09 — patient routes (§4.2, §4.7 gating, §7.1/§7.4/§7.7)", (
     await app.close();
   });
 
+  it("§4.2 lists patients in the actor's org (cursor-paginated)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({ method: "GET", url: "/api/v1/patients?limit=10", headers: EDIT });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(Array.isArray(body.items)).toBe(true);
+    expect(body.items.some((p: { id: string }) => p.id === EXISTING)).toBe(true);
+    expect(body).toHaveProperty("nextCursor");
+    await app.close();
+  });
+
+  it("§4.2 list q-filter matches by name/MRN (and denies without patient.read)", async () => {
+    const { app } = makeServer();
+    const hit = await app.inject({ method: "GET", url: "/api/v1/patients?q=lovelace", headers: EDIT });
+    expect(hit.json().items.map((p: { id: string }) => p.id)).toContain(EXISTING);
+    const miss = await app.inject({ method: "GET", url: "/api/v1/patients?q=zzzznomatch", headers: EDIT });
+    expect(miss.json().items).toHaveLength(0);
+    const denied = await app.inject({ method: "GET", url: "/api/v1/patients", headers: NOPERM });
+    expect(denied.statusCode).toBe(403);
+    await app.close();
+  });
+
   it("§7.5 GET a patient the actor's org doesn't have → 404 (no leak)", async () => {
     const { app } = makeServer();
     const res = await app.inject({ method: "GET", url: "/api/v1/patients/pat-nonexistent", headers: EDIT });
