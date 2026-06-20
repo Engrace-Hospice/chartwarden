@@ -9,3 +9,7 @@
 
 // ── M39-T01 — kinds & structural descriptor (§2.3, §3.2) ──────────────────────────────────
 export * from "./interfaces/kinds";
+
+// ── M39-T04 — lifecycle state machines (§2.2/§2.4) + validation rules (§2.3) ───────────────
+export * from "./lifecycle";
+export * from "./validation";
