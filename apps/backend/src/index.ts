@@ -3,9 +3,9 @@
 // the server, runs the seam/eraser boot gate, and registers each Phase-1 module's real seams
 // via `wireModuleSeams` (M1's bootstrap cannot import a downstream module; the composition
 // root does, then hands the registration into the boot gate before validateSeams()).
-import { createIdentityAuth, registerIdentityAuth } from "@wardenx/auth";
+import { createIdentityAuth, getIdentitySession, registerIdentityAuth } from "@wardenx/auth";
 import { createDbClient } from "@wardenx/db";
-import { buildServer } from "./bootstrap/index";
+import { buildServer, createSessionAuthenticate, getSeam } from "./bootstrap/index";
 import { assertAuditActionCatalog, registerAuditErasers } from "./modules/04-audit/index";
 import { registerIdentityErasers, registerIdentitySeams } from "./modules/02-identity/index";
 import { registerMessagingErasers, registerMessagingSeams } from "./modules/36-messaging/index";
@@ -70,17 +70,26 @@ if ((import.meta as { main?: boolean }).main) {
   const dbHandle = process.env.DATABASE_URL
     ? createDbClient({ connectionString: process.env.DATABASE_URL })
     : undefined;
+  // AUTH-T02/T03: when a DB client is present, build the Better Auth instance + the authenticate hook
+  // (getIdentitySession → SessionContextResolver seam → request.context). The seam is resolved lazily
+  // at request time, after bootSeams() has registered it.
+  const auth = dbHandle
+    ? createIdentityAuth(dbHandle.db as Parameters<typeof createIdentityAuth>[0])
+    : undefined;
+  const authenticate = auth
+    ? createSessionAuthenticate({
+        getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
+        getResolver: () => getSeam("SessionContextResolver"),
+      })
+    : undefined;
   const app = buildServer({
     db: dbHandle?.db,
+    authenticate,
     registerModuleSeams: wireModuleSeams,
     registerModuleErasers: wireModuleErasers,
   });
-  if (dbHandle) {
-    // AUTH-T02 (ADR-0033): mount Better Auth on /api/auth/* when a DB client is present. Requires
-    // BETTER_AUTH_SECRET / BETTER_AUTH_URL in production. The AUTH-T03 authenticate hook resolves
-    // these sessions into request.context via the SessionContextResolver seam.
-    const auth = createIdentityAuth(dbHandle.db as Parameters<typeof createIdentityAuth>[0]);
-    registerIdentityAuth(app, auth);
+  if (dbHandle && auth) {
+    registerIdentityAuth(app, auth); // AUTH-T02: mount /api/auth/* (needs BETTER_AUTH_SECRET/URL in prod)
     app.addHook("onClose", () => dbHandle.close());
   }
   const port = Number(process.env.PORT ?? 3000);
