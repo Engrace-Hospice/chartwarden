@@ -171,7 +171,7 @@ export const MODULES: ModuleDef[] = [
   },
   {
     id: 4, name: "Audit & Compliance Log",
-    codePaths: ["packages/audit", "apps/backend/src/modules/04-audit"],
+    codePaths: ["packages/audit", "apps/backend/src/modules/04-audit", "apps/web/src/modules/04-audit"],
     dependsOn: [1, 2, 3],
     // M04-F02: audit_denylist_catalog + audit_action_catalog added (platform-shared reference tables
     // the M4 spec creates). The audit_event table itself stays M1-owned + helper-only.

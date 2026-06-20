@@ -64,6 +64,19 @@ function pathParameters(path: string): unknown[] {
   return params.map((name) => ({ name, in: "path", required: true, schema: { type: "string" } }));
 }
 
+/** OpenAPI query parameters from a TypeBox object schema (each property → one `in: query` param). */
+function queryParameters(schema: TSchema | undefined): unknown[] {
+  if (!schema) return [];
+  const json = toJsonSchema(schema) as { properties?: Record<string, unknown>; required?: string[] };
+  const required = new Set(json.required ?? []);
+  return Object.entries(json.properties ?? {}).map(([name, propSchema]) => ({
+    name,
+    in: "query",
+    required: required.has(name),
+    schema: propSchema,
+  }));
+}
+
 interface BuildResult {
   doc: Record<string, unknown>;
   errors: string[];
@@ -77,6 +90,7 @@ function build(routes: ScannedRoute[]): BuildResult {
   for (const [key, enrich] of Object.entries(ROUTE_ENRICHMENTS)) {
     if (!routeKeys.has(key)) errors.push(`enrichment targets unknown route: "${key}"`);
     if (enrich.body !== undefined && !isTypeBoxSchema(enrich.body)) errors.push(`enrichment "${key}": body is not a TypeBox schema`);
+    if (enrich.query !== undefined && !isTypeBoxSchema(enrich.query)) errors.push(`enrichment "${key}": query is not a TypeBox schema`);
     if (enrich.response !== undefined && !isTypeBoxSchema(enrich.response)) errors.push(`enrichment "${key}": response is not a TypeBox schema`);
   }
 
@@ -94,7 +108,7 @@ function build(routes: ScannedRoute[]): BuildResult {
       operationId: opId,
       tags: [route.module],
       ...(enrich?.summary ? { summary: enrich.summary } : {}),
-      parameters: pathParameters(route.path),
+      parameters: [...pathParameters(route.path), ...queryParameters(enrich?.query)],
       responses: {
         "200": enrich?.response
           ? { description: "OK", content: { "application/json": { schema: toJsonSchema(enrich.response) } } }

@@ -125,7 +125,7 @@ exports.MODULES = [
     },
     {
         id: 4, name: "Audit & Compliance Log",
-        codePaths: ["packages/audit", "apps/backend/src/modules/04-audit"],
+        codePaths: ["packages/audit", "apps/backend/src/modules/04-audit", "apps/web/src/modules/04-audit"],
         dependsOn: [1, 2, 3],
         // M04-F02: audit_denylist_catalog + audit_action_catalog added (platform-shared reference).
         ownedTables: ["legal_hold", "destruction_certificate", "state_retention_override",
