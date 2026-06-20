@@ -491,3 +491,104 @@ export const payerKind = pgEnum("payer_kind", [
   "commercial",
   "other",
 ]);
+
+// ── Module 5 (Patient & Demographics) §3.2 ────────────────────────────────────────────────
+// race/ethnicity/language/gender are stored as text codes against USCDI value-sets (M38), not
+// enums — the value-sets are too large and update annually (§3.2).
+
+/** `patient_status` — the patient lifecycle (§3.2). `merged` rows redirect via `merged_into_id`. */
+export const patientStatus = pgEnum("patient_status", [
+  "prospective",
+  "active",
+  "on_hold",
+  "discharged",
+  "deceased",
+  "merged",
+]);
+
+/** `patient_address_kind` — append-only address classification (§3.2, M5 D5). */
+export const patientAddressKind = pgEnum("patient_address_kind", [
+  "home",
+  "facility",
+  "mailing",
+  "temporary",
+  "prior",
+]);
+
+/** `patient_identifier_kind` — the §2.2 identifier strategy. `partner_mrn` added additively (§3.8). */
+export const patientIdentifierKind = pgEnum("patient_identifier_kind", [
+  "mrn",
+  "mbi",
+  "ssn",
+  "state_id",
+  "prior_mrn",
+  "hospice_external",
+  "partner_mrn",
+]);
+
+/** `patient_payer_coverage_kind` — coverage classification on `patient_payer` (§3.2). */
+export const patientPayerCoverageKind = pgEnum("patient_payer_coverage_kind", [
+  "medicare_ffs",
+  "medicare_advantage",
+  "medicaid",
+  "commercial",
+  "hospice_carve_out",
+  "self_pay",
+]);
+
+/** `patient_caregiver_relationship` — caregiver relationship to the patient (§3.2). */
+export const patientCaregiverRelationship = pgEnum("patient_caregiver_relationship", [
+  "spouse",
+  "child",
+  "parent",
+  "sibling",
+  "other_family",
+  "friend",
+  "guardian",
+  "paid_caregiver",
+]);
+
+/** `patient_caregiver_lr_authority` — legal-representative authority a caregiver holds (§3.2). */
+export const patientCaregiverLrAuthority = pgEnum("patient_caregiver_lr_authority", [
+  "dpoa_healthcare",
+  "guardian",
+  "next_of_kin",
+  "none",
+]);
+
+/** `patient_assignment_role` — the care-team role on `patient_assignment` (§3.2). */
+export const patientAssignmentRole = pgEnum("patient_assignment_role", [
+  "primary_rn",
+  "attending_clinician",
+  "case_manager_msw",
+  "chaplain",
+  "aide",
+  "np",
+  "md",
+  "volunteer",
+  "bereavement",
+]);
+
+/** `patient_match_review_status` — soft-duplicate review queue state (§3.2, §7.3). */
+export const patientMatchReviewStatus = pgEnum("patient_match_review_status", [
+  "open",
+  "merged",
+  "not_a_match",
+  "cancelled",
+]);
+
+/** `patient_amendment_status` — §164.526 right-to-amend request state (§3.2, §7.7). */
+export const patientAmendmentStatus = pgEnum("patient_amendment_status", [
+  "pending",
+  "accepted",
+  "denied",
+  "withdrawn",
+]);
+
+/** `patient_phone_kind` — phone classification on `patient_phone` (§3.2). */
+export const patientPhoneKind = pgEnum("patient_phone_kind", [
+  "mobile",
+  "home",
+  "work",
+  "facility",
+]);

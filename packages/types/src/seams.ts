@@ -7,6 +7,7 @@
 // each producer module's published seam contract; Phase 0 ships the minimal shape the
 // bootstrap registry needs to compile and self-validate.
 import type { StepUpFactor } from "./policy/step-up-policy";
+import type { PatientMutator, PatientReader } from "./patient";
 
 /** Opaque tenant scope every seam call carries (resolved by withOrgContext). */
 export interface OrgScope {
@@ -19,7 +20,8 @@ export interface OrgScope {
  */
 export type SeamName =
   | "CaseloadProvider" // M5/M17 — which patients an actor may see
-  | "PatientReader" // M5 — patient identity/demographics reads
+  | "PatientReader" // M5 — patient identity/demographics reads (§4.8; M29 cascade)
+  | "PatientMutator" // M5 — apply an M29-proposal/amendment field diff (§4.9; D12 strip)
   | "DocumentRenderer" // M22 — render a typed payload to a stored document
   | "ConsentEvaluator" // M39 — disclosure/redaction gate
   | "SessionContextResolver" // M2 — authenticated, org-scoped request context (actor + step-up state)
@@ -30,15 +32,28 @@ export type SeamName =
   | "MdmEntityProvider" // M40 — master-data read surface (physician/facility/payer; merge-aware)
   | "BaaStatusProvider"; // M40 — focused §7.7 BAA disclosure gate (as-of; M22/M28/M29 import this)
 
-/** M5/M17 — resolves an actor's caseload (the patient ids they may access). */
+/**
+ * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
+ * the M3 `caseload_membership` ABAC predicate (M5 spec §4.1). M3 declared this seam and boot-
+ * validates it; M5 registers the real resolver over `patient_assignment` (open rows), additively
+ * unioned with M17's active-shift visit assignments (M5-T07). Leaf-safe (ids only).
+ */
 export interface CaseloadProvider {
-  patientsForActor(scope: OrgScope, membershipId: string): Promise<readonly string[]>;
+  /** Is `userId` on `patientId`'s care team right now? (drives `caseload_membership`). */
+  isInCaseload(input: {
+    organizationId: string;
+    userId: string;
+    patientId: string;
+  }): Promise<boolean>;
+  /** Every patient id on `userId`'s caseload right now (for §7.5 list-narrowing). */
+  caseloadPatientIds(input: {
+    organizationId: string;
+    userId: string;
+  }): Promise<readonly string[]>;
 }
 
-/** M5 — minimal patient identity reader other modules consume by seam. */
-export interface PatientReader {
-  exists(scope: OrgScope, patientId: string): Promise<boolean>;
-}
+// M5's `PatientReader` (§4.8) + `PatientMutator` (§4.9) interfaces live in ./patient (alongside
+// PatientIdentity) and are imported above for the SeamContracts map.
 
 /** M22 — render a typed payload to a stored document (forward-seam for M39 etc.). */
 export interface DocumentRenderer {
@@ -101,6 +116,7 @@ export interface AuditorSessionMinter {
 export interface SeamContracts {
   CaseloadProvider: CaseloadProvider;
   PatientReader: PatientReader;
+  PatientMutator: PatientMutator;
   DocumentRenderer: DocumentRenderer;
   ConsentEvaluator: ConsentEvaluator;
   SessionContextResolver: SessionContextResolver;

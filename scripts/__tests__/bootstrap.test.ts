@@ -43,14 +43,17 @@ describe("seam + eraser boot gate (§3.18 fail-closed)", () => {
     expect(() => validateSeams()).not.toThrow();
     // The contract is present after validation — but denies LOUDLY on call.
     const caseload = getSeam("CaseloadProvider");
-    expect(() => caseload.patientsForActor({ orgId: "org_1" }, "mem_1")).toThrow(
-      NotImplementedError,
-    );
+    expect(() =>
+      caseload.isInCaseload({ organizationId: "org_1", userId: "u_1", patientId: "p_1" }),
+    ).toThrow(NotImplementedError);
   });
 
   it("validateSeams() keeps a module's real registration over the deny-stub", () => {
     const realCaseload = {
-      async patientsForActor() {
+      async isInCaseload() {
+        return true;
+      },
+      async caseloadPatientIds() {
         return ["patient_1"] as const;
       },
     };

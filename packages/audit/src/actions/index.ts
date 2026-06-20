@@ -10,6 +10,7 @@ export { M4_ACTION_CATALOG } from "./m4";
 export { M36_ACTION_CATALOG } from "./m36";
 export { M38_ACTION_CATALOG } from "./m38";
 export { M40_ACTION_CATALOG } from "./m40";
+export { M5_ACTION_CATALOG } from "./m5";
 export {
   type ActionCatalogViolation,
   type AuditActionCatalogRow,

@@ -10,6 +10,7 @@ export type {
   DataEraser,
   DocumentRenderer,
   OrgScope,
+  PatientMutator,
   PatientReader,
   RequiredSeam,
   ResolvedActor,

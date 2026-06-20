@@ -1,0 +1,175 @@
+// apps/backend/src/modules/05-patient/routes/service.ts — the PatientRouteService + an in-memory
+// slice (M5-T09, §4.2). The routes compose over this; production injects the Drizzle-backed service
+// (writes under withOrgContext so RLS scopes by app.org_id). The slice runs the REAL T06 matcher so
+// the §7.1 admit-no-dup workflow is exercised end-to-end. Pure-ish: no clock except an injected
+// `now()` so the §7.7 60-day SLA is deterministic in tests.
+import {
+  type MatchCandidate,
+  type RawSubject,
+  normalizeSubject,
+  runMatch,
+} from "../matching/index";
+
+/** The admit payload (§4.2 capture contract — the demographics a create carries). */
+export interface AdmitInput {
+  readonly lastName: string;
+  readonly firstName: string;
+  readonly dob: string;
+  readonly administrativeSex: string;
+  readonly mbi?: string | null;
+  readonly ssn?: string | null;
+  readonly primaryAddress?: { line1: string; city: string; postalCode: string } | null;
+  readonly phone?: string | null;
+  readonly email?: string | null;
+  readonly bypassMatchReview?: boolean;
+}
+
+/** The admit outcome (§7.1). hard_block → 409; soft_review/created → 201. */
+export type AdmitResult =
+  | { readonly outcome: "created"; readonly patientId: string }
+  | { readonly outcome: "soft_review"; readonly patientId: string; readonly matchReviewIds: readonly string[] }
+  | { readonly outcome: "hard_block"; readonly existingPatientId: string; readonly matchedOn: string };
+
+/** A minimal patient view a read returns. */
+export interface PatientView {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly mrn: string;
+  readonly lastName: string;
+  readonly firstName: string;
+  readonly dob: string;
+  readonly status: string;
+}
+
+/** An amendment record view (§7.7). */
+export interface AmendmentView {
+  readonly id: string;
+  readonly patientId: string;
+  readonly status: "pending" | "accepted" | "denied" | "withdrawn";
+  readonly slaDueAt: string; // ISO; received + 60 days
+}
+
+/** The route service surface (§4.2). */
+export interface PatientRouteService {
+  admit(organizationId: string, input: AdmitInput, actorUserId: string): Promise<AdmitResult>;
+  getPatient(organizationId: string, id: string): Promise<PatientView | null>;
+  addAddress(
+    organizationId: string,
+    patientId: string,
+    address: { line1: string; city: string; state?: string; postalCode: string },
+    actorUserId: string,
+  ): Promise<{ addressId: string; cascadeEmitted: "m5.patient.address_changed" }>;
+  submitAmendment(
+    organizationId: string,
+    patientId: string,
+    input: { scope: string; rationale: string },
+    actorUserId: string,
+  ): Promise<AmendmentView>;
+  decideAmendment(
+    organizationId: string,
+    amendmentId: string,
+    decision: { accept: boolean; denialReason?: string },
+    actorUserId: string,
+  ): Promise<AmendmentView>;
+}
+
+const SIXTY_DAYS_MS = 60 * 24 * 3600 * 1000;
+
+/** Seed for the in-memory service (existing patients the matcher runs against). */
+export interface InMemoryPatientSeed {
+  readonly patients?: readonly (PatientView & MatchCandidate)[];
+  /** Injected clock for the §7.7 SLA (defaults to a fixed instant if omitted). */
+  readonly now?: () => Date;
+}
+
+/** An in-memory {@link PatientRouteService} for the slice/tests. Runs the real T06 matcher. */
+export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}): {
+  service: PatientRouteService;
+  events: string[];
+} {
+  const events: string[] = [];
+  const patients = new Map<string, PatientView & Partial<MatchCandidate>>();
+  const candidates: (PatientView & MatchCandidate)[] = [...(seed.patients ?? [])];
+  for (const p of candidates) patients.set(p.id, p);
+  const amendments = new Map<string, AmendmentView>();
+  const now = seed.now ?? (() => new Date("2026-06-20T00:00:00Z"));
+  let seq = 0;
+  const nextId = (p: string) => `${p}_${(seq += 1)}`;
+
+  function toCandidate(raw: RawSubject): MatchCandidate[] {
+    void raw;
+    return candidates;
+  }
+
+  const service: PatientRouteService = {
+    async admit(organizationId, input, _actorUserId) {
+      const incoming = normalizeSubject(input);
+      // §7.1: run the matcher against existing patients (unless an explicit, permissioned bypass).
+      if (!input.bypassMatchReview) {
+        const result = runMatch(incoming, toCandidate(input));
+        if (result.outcome === "hard_block") {
+          events.push("m5.patient.duplicate_block");
+          return { outcome: "hard_block", existingPatientId: result.existingPatientId, matchedOn: String(result.matchedOn) };
+        }
+        const id = nextId("pat");
+        const view: PatientView & MatchCandidate = {
+          ...incoming, // MatchSubject: lastName/firstName/dob/mbi/ssn/primaryAddress/phoneLast7/email
+          id,
+          organizationId,
+          mrn: `MRN-${id}`,
+          status: "prospective",
+        };
+        patients.set(id, view);
+        candidates.push(view);
+        events.push("m5.patient.created");
+        if (result.outcome === "soft_review") {
+          const reviewIds = result.reviewCandidates.map((c) => nextId("rev"));
+          return { outcome: "soft_review", patientId: id, matchReviewIds: reviewIds };
+        }
+        return { outcome: "created", patientId: id };
+      }
+      // bypass path
+      const id = nextId("pat");
+      patients.set(id, { id, organizationId, mrn: `MRN-${id}`, lastName: incoming.lastName, firstName: incoming.firstName, dob: incoming.dob, status: "prospective" });
+      events.push("m5.patient.created");
+      return { outcome: "created", patientId: id };
+    },
+
+    async getPatient(organizationId, id) {
+      const p = patients.get(id);
+      return p && p.organizationId === organizationId
+        ? { id: p.id, organizationId: p.organizationId, mrn: p.mrn, lastName: p.lastName, firstName: p.firstName, dob: p.dob, status: p.status }
+        : null;
+    },
+
+    async addAddress(_organizationId, patientId, _address, _actorUserId) {
+      // §7.4: append-only address + the address-change cascade event.
+      events.push("m5.patient.address_changed");
+      return { addressId: nextId("addr"), cascadeEmitted: "m5.patient.address_changed" };
+    },
+
+    async submitAmendment(_organizationId, patientId, _input, _actorUserId) {
+      // §7.7: SLA due = received + 60 days.
+      const id = nextId("amd");
+      const slaDueAt = new Date(now().getTime() + SIXTY_DAYS_MS).toISOString();
+      const view: AmendmentView = { id, patientId, status: "pending", slaDueAt };
+      amendments.set(id, view);
+      events.push("m5.patient.amendment_request_received");
+      return view;
+    },
+
+    async decideAmendment(_organizationId, amendmentId, decision, _actorUserId) {
+      const a = amendments.get(amendmentId);
+      if (!a) throw new Error(`amendment ${amendmentId} not found`);
+      if (!decision.accept && !decision.denialReason) {
+        throw new Error("denial requires a reason");
+      }
+      const next: AmendmentView = { ...a, status: decision.accept ? "accepted" : "denied" };
+      amendments.set(amendmentId, next);
+      events.push("m5.patient.amendment_decided");
+      return next;
+    },
+  };
+
+  return { service, events };
+}

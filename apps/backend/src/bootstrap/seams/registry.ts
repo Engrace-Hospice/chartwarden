@@ -23,6 +23,7 @@ import {
   documentRendererDenyStub,
   mdmEntityProviderDenyStub,
   messagingProviderDenyStub,
+  patientMutatorDenyStub,
   patientReaderDenyStub,
   sessionContextResolverDenyStub,
   terminologyProviderDenyStub,
@@ -47,6 +48,9 @@ const registry = new Map<SeamName, unknown>();
 export const REQUIRED_SEAMS = [
   { key: "CaseloadProvider", ownerModule: 5, phi: true, denyStub: caseloadDenyStub },
   { key: "PatientReader", ownerModule: 5, phi: true, denyStub: patientReaderDenyStub },
+  // M5 (§4.9) — applies an M29-proposal/amendment field diff (D12 strip). PHI write surface;
+  // boot-validated and fail-closed until M5 registers the real mutator (M5-T08).
+  { key: "PatientMutator", ownerModule: 5, phi: true, denyStub: patientMutatorDenyStub },
   { key: "DocumentRenderer", ownerModule: 22, phi: true, denyStub: documentRendererDenyStub },
   { key: "ConsentEvaluator", ownerModule: 39, phi: true, denyStub: consentEvaluatorDenyStub },
   // M2 published seams (§4.7): authenticated request context + auditor session minter. Not PHI
