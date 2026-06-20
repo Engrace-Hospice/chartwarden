@@ -44,9 +44,11 @@ export const delegatedAccess = pgTable(
     patientCaregiverIdx: index("ix_da_patient_caregiver")
       .on(t.patientId, t.delegateCaregiverId)
       .where(sql`revoked_at IS NULL`),
+    // Partial index predicate must be IMMUTABLE — `now()` is STABLE and Postgres rejects it here.
+    // The index covers the not-revoked rows; the effective_until window is filtered at query time.
     activeByPatientIdx: index("ix_da_active_by_patient")
       .on(t.organizationId, t.patientId)
-      .where(sql`revoked_at IS NULL AND (effective_until IS NULL OR effective_until > now())`),
+      .where(sql`revoked_at IS NULL`),
   }),
 );
 
