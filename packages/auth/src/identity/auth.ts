@@ -61,6 +61,11 @@ export function createIdentityAuth(db: IdentityAuthDb) {
     appName: "WardenX",
     secret: process.env.BETTER_AUTH_SECRET,
     baseURL: process.env.BETTER_AUTH_URL,
+    // M1's identity PKs are `uuid` (defaultRandom) — Better Auth's default id generator emits non-UUID
+    // strings, which fail to insert into a uuid column (AUTH-T06 live finding). Generate UUIDs instead;
+    // a UUID string is valid for the uuid PKs (user/session/account/passkey) AND for verification's
+    // text id. (ADR-0033.)
+    advanced: { database: { generateId: () => crypto.randomUUID() } },
     database: drizzleAdapter(db, {
       provider: "pg",
       schema: m1Schema,
