@@ -186,7 +186,7 @@ export const MODULES: ModuleDef[] = [
   },
   {
     id: 38, name: "Clinical Terminology Service",
-    codePaths: ["packages/terminology", "apps/backend/src/modules/38-terminology"],
+    codePaths: ["packages/terminology", "apps/backend/src/modules/38-terminology", "apps/web/src/modules/38-terminology"],
     dependsOn: [1, 2, 3, 4],
     ownedTables: ["code_system", "code_system_version", "concept_embedding", "concept_icd10cm", "concept_loinc", "concept_rxnorm", "concept_snomed", "deprecation_mapping", "terminology_update_log", "value_set", "value_set_expansion", "value_set_member", "value_set_tenant_extension"],
   },

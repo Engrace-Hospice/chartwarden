@@ -1206,6 +1206,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Search concepts within a code system (§4.2) */
         get: operations["getApiV1TerminologyBySystemSearch"];
         put?: never;
         post?: never;
@@ -3397,7 +3398,14 @@ export interface operations {
     };
     getApiV1TerminologyBySystemSearch: {
         parameters: {
-            query?: never;
+            query: {
+                q: string;
+                mode?: "exact" | "fuzzy" | "semantic";
+                asOf?: string;
+                limit?: number;
+                billableOnly?: boolean;
+                inValueSet?: string;
+            };
             header?: never;
             path: {
                 system: string;
@@ -3411,7 +3419,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        results: {
+                            systemId: string;
+                            code: string;
+                            display: string;
+                            status: "active" | "deprecated" | "retired";
+                            effectiveDate: string;
+                            endDate: string | null;
+                        }[];
+                        mode: string;
+                        asOf: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

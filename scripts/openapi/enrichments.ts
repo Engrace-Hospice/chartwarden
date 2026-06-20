@@ -29,6 +29,23 @@ import {
   PatientSummarySchema,
 } from "../../apps/backend/src/modules/05-patient/routes/patient-typebox";
 import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
+import { SearchQuerySchema as TerminologySearchQuerySchema } from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
+
+// M38 search returns { results: ResolvedConcept[], mode, asOf }. The concept summary (the fields the
+// admin table needs) is declared here; `properties` (a per-system union) is omitted from the client type.
+const ConceptSummarySchema = Type.Object({
+  systemId: Type.String(),
+  code: Type.String(),
+  display: Type.String(),
+  status: Type.Union([Type.Literal("active"), Type.Literal("deprecated"), Type.Literal("retired")]),
+  effectiveDate: Type.String(),
+  endDate: Type.Union([Type.String(), Type.Null()]),
+});
+const TerminologySearchResponseSchema = Type.Object({
+  results: Type.Array(ConceptSummarySchema),
+  mode: Type.String(),
+  asOf: Type.Union([Type.String(), Type.Null()]),
+});
 
 // M40 search returns MdmResolved<K>[] (canonical base + status). The route returns `{ results }`
 // untyped, so the common resolved-summary shape is declared here for the client (UI reads the base
@@ -75,6 +92,12 @@ export interface RouteEnrichment {
 
 /** `METHOD /path` → enrichment. Keys MUST match a scanned route (openapi:check enforces). */
 export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
+  // M38 Terminology (Track A — Terminology Admin)
+  "GET /api/v1/terminology/:system/search": {
+    summary: "Search concepts within a code system (§4.2)",
+    query: TerminologySearchQuerySchema,
+    response: TerminologySearchResponseSchema,
+  },
   // M40 MDM (Track A — Master Data Management console)
   "GET /api/v1/mdm/:kind/search": {
     summary: "Search a kind's canonical master-data set (§4.2)",
