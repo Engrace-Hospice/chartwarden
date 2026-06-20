@@ -3,7 +3,13 @@
 // the server, runs the seam/eraser boot gate, and registers each Phase-1 module's real seams
 // via `wireModuleSeams` (M1's bootstrap cannot import a downstream module; the composition
 // root does, then hands the registration into the boot gate before validateSeams()).
-import { createIdentityAuth, getIdentitySession, registerIdentityAuth } from "@wardenx/auth";
+import {
+  createDbSessionContextStore,
+  createIdentityAuth,
+  getIdentitySession,
+  registerIdentityAuth,
+} from "@wardenx/auth";
+import type { SessionContextStore } from "@wardenx/auth";
 import { createDbClient } from "@wardenx/db";
 import { buildServer, createSessionAuthenticate, getSeam } from "./bootstrap/index";
 import { assertAuditActionCatalog, registerAuditErasers } from "./modules/04-audit/index";
@@ -29,8 +35,10 @@ export * from "./bootstrap/index";
  * buildServer() as `registerModuleSeams`, it runs inside bootSeams() after M1's wireSeams()
  * and before validateSeams(), so the real seams stand over the deny-stubs (§3.18).
  */
-export function wireModuleSeams(): void {
-  registerIdentitySeams(); // M2 — SessionContextResolver + AuditorSessionMinter (§4.7)
+export function wireModuleSeams(deps: { sessionContextStore?: SessionContextStore } = {}): void {
+  // AUTH-T05b: pass the DB-backed SessionContextStore in production (composition root supplies it when
+  // a DB client is present); the slice/tests fall back to M2's in-memory store.
+  registerIdentitySeams({ sessions: deps.sessionContextStore }); // M2 — SessionContextResolver + AuditorSessionMinter (§4.7)
   registerTerminologySeams(); // M38 — TerminologyProvider (§4.5)
   registerMessagingSeams(); // M36 — AlertEmitter (§4.6); MessagingProvider stays deny-stub until T07/T08
   registerMdmSeams(); // M40 — MdmEntityProvider (§4.5) + BaaStatusProvider (§4.6 §7.7 as-of gate)
@@ -85,7 +93,10 @@ if ((import.meta as { main?: boolean }).main) {
   const app = buildServer({
     db: dbHandle?.db,
     authenticate,
-    registerModuleSeams: wireModuleSeams,
+    registerModuleSeams: () =>
+      wireModuleSeams({
+        sessionContextStore: dbHandle ? createDbSessionContextStore(dbHandle.db) : undefined,
+      }),
     registerModuleErasers: wireModuleErasers,
   });
   if (dbHandle && auth) {
