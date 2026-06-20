@@ -47,6 +47,29 @@ available**. The real choice:
 **Recommendation: C** (preserve the at-rest posture M1 deliberately chose), accepting the extra hook work.
 **This is the gate** — the migration's `two_factor` shape + the field maps depend on it.
 
+### C feasibility (investigated 2026-06-20) — C is a focused crypto SUB-PROJECT, not a one-line hook
+- **`databaseHooks` cover only the core models** (user/session/account/verification), **not the
+  `twoFactor` plugin model** — so the secret write cannot be intercepted via the standard hook. C needs a
+  custom storage-adapter wrap or a forked plugin to intercept twoFactor writes.
+- **No existing user-level encryption helper.** The `*_encrypted` columns were never wired (2FA wasn't
+  functional); the only envelope helper in the tree is org-scoped/PHI, not user-level. C therefore means
+  **new user-level key management + encrypt/decrypt**, built from scratch — security-critical and
+  unverifiable without Postgres.
+
+→ **C should be its own ADR + task** (build the user-level 2FA-secret encryption + write-interception +
+PG verification). It is **not** bundled into the additive reconciliation.
+
+## Revised execution (given C's scope)
+1. **Now (safe, additive, unblocks email+password sign-in):** migration for `user.two_factor_enabled`,
+   `account` +4 OAuth columns, `verification.updated_at`, `passkey.aaguid` + passkey field-maps; a
+   **password** sign-in `auth.live.test` + a CI `auth-live` job (Postgres) to verify on real PG. The M1
+   `two_factor.*_encrypted` columns are left untouched, reserved for C. (The `twoFactor` plugin stays
+   enabled but 2FA *enrollment* is non-functional until C lands — password sign-in for non-2FA users is
+   unaffected.)
+2. **Follow-up (C, its own ADR):** user-level 2FA-secret encryption + twoFactor write-interception +
+   enrollment flow, PG-verified.
+3. **AUTH-T07:** M2 sign-in/MFA/passkey screens (Better Auth client) once the live lane is green.
+
 ## Execution order (after the decision, on a PG-capable runner)
 1. `@better-auth/cli generate` → authoritative required schema; diff vs M1.
 2. New migration in `packages/db/migrations` for: `user.two_factor_enabled`, the 4 `account` OAuth
