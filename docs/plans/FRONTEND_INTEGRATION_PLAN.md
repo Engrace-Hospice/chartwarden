@@ -126,15 +126,19 @@ frontend-foundation files, it cannot disturb any backend fitness gate. Land as o
 - accept: `bun run build` + `arch:fitness` + `test` green; `docs:ui` still green (no spec change);
   Vite bundles. Specialized patterns tracked to their module screens.
 
-### F0-T05 — Backlog ledger
-- files: `docs/ui/DEFERRED_SCREENS.md` · source: `docs/ui/WARDENX_UI_COMPLETE_SCREEN_INDEX.md`
-- do: derive a screen→module table of every screen whose backend module is **already merged** but whose
-  screen was deferred (M3, M4, M5, M36, M38, M39, M40). One row per screen: module, spec path, layout
-  pattern, status (`deferred` | `in-progress` | `done`). This is the **single coordination point** for
-  both tracks.
-- accept: ledger parity with the screen index for merged modules; doc-only, gate unaffected.
+### F0-T05 — Backlog ledger ✅ done
+- files: `docs/ui/DEFERRED_SCREENS.md` · source: `docs/ui/WARDENX_UI_COMPLETE_SCREEN_INDEX.md` + each
+  spec's `Module:` line
+- do: derived the screen→module map for all 69 specs and built the ledger — a **Track A worklist** of
+  the 11 screens whose primary owner is a merged module (M2/M3/M4/M5/M36/M38/M40), a **partial** set
+  whose owner is merged but which need unbuilt modules, a note that M39 has no standalone screen, and
+  the **blocked** remainder (Track B, ship with their wave). Each ready row cross-references its F0-T04
+  layout component. Status legend `deferred | in-progress | done` = the single coordination point.
+- accept: `docs:ui` green (ledger sits at `docs/ui/` root, not under `screens/`, so not a screen entry);
+  full gate green; doc-only.
 
-> After F0, both tracks below are **purely additive** per screen.
+> **F0 complete.** Foundation is in place: contract generator + typed client + app shell/screen
+> registry + layout kit + backlog ledger. Both tracks below are now **purely additive** per screen.
 
 ---
 
