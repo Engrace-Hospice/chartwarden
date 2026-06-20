@@ -111,6 +111,215 @@ export const M4_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M4 contributed permission keys. */
 export type M4ContributedPermissionKey = keyof typeof M4_CONTRIBUTED_PERMISSIONS;
 
+/**
+ * The permission keys Module 38 (Clinical Terminology Service) registers into Module 3's
+ * catalog — the §4.4 binding cross-module handshake (M38-T06; M38 spec §4.4). M3 must include
+ * these before M38's routes can be authorized; the read/value-set/extension routes (M38-T06)
+ * gate on them. The set is deliberately small: read-side terminology is a foundational utility
+ * (`terminology.read` is everyone's by default, like reading a dictionary). The protective keys
+ * sit at the two boundaries where meaning can change — tenant value-set extension (per-tenant)
+ * and platform code-system load (global) — plus the per-tenant deprecation remediation report
+ * and the platform-ops admin read. Kept in a dedicated const (not folded into the M1/M2 or M4
+ * sets) so each module's contribution stays attributable (§3.3 ownership).
+ *
+ * All five are pure RBAC (`abac: 'none'`): platform terminology tables are non-tenant reference
+ * data (RLS `USING(true)`), and `value_set_tenant_extension` is org-scoped by RLS — neither
+ * needs an ABAC predicate. The `admin.*` keys are additionally platform-only (assigned to
+ * `platform_ops` templates), and `admin.load` step-up re-auths at the route (§4.2).
+ *
+ * Unlike M3's own keys (and the M1/M2/M4 contributed sets), M38's keys carry a `terminology.`
+ * NAMESPACE prefix on top of the `resource.action` decomposition (the §4.4 "Key" vs
+ * "Resource.action" columns are distinct) — so `key` is the full dotted permission string used
+ * at `requirePermission(...)`, while `resource`/`action` carry the spec's decomposition.
+ */
+export const M38_CONTRIBUTED_PERMISSIONS = {
+  // --- read-side terminology utility (§4.4; the everyone-can-read default) ---
+  "terminology.read": {
+    resource: "terminology",
+    action: "read",
+    category: "clinical",
+    abac: "none",
+  },
+  // --- tenant value-set extension (add-only, never weakens platform; §4.4, §7.6) ---
+  "terminology.value_set.extend": {
+    resource: "value_set",
+    action: "extend",
+    category: "admin",
+    abac: "none",
+  },
+  // --- per-tenant deprecation remediation report (§4.4, §7.3) ---
+  "terminology.deprecation_report": {
+    resource: "deprecation_report",
+    action: "read",
+    category: "compliance",
+    abac: "none",
+  },
+  // --- platform-ops admin (§4.4; admin.load step-up re-auths at the route, §4.2) ---
+  "terminology.admin.read": {
+    resource: "admin",
+    action: "read",
+    category: "platform",
+    abac: "none",
+  },
+  "terminology.admin.load": {
+    resource: "admin",
+    action: "load",
+    category: "platform",
+    abac: "none",
+  },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M38 contributed permission keys. */
+export type M38ContributedPermissionKey = keyof typeof M38_CONTRIBUTED_PERMISSIONS;
+
+/**
+ * The permission keys Module 36 (Secure Messaging & Alerts) registers into Module 3's catalog —
+ * the §4.5 binding cross-module handshake (M36-T07; M36 spec §4.5). M3 must include these before
+ * M36's routes can be authorized; the route inventory (M36-T07) gates on them.
+ *
+ * Read and DM are deliberately BROAD — the system is a chat system, so "can't read or DM a
+ * coworker" is not a meaningful default; every authenticated role gets them (subject to the
+ * `channel_visibility` ABAC predicate M36 registers, which branches per channel kind: caseload
+ * membership for `care_team`, bereavement membership for `bereavement`, a channel-member check
+ * otherwise). The GATED keys are `announce` and `manage_members` (the auto-channel admin
+ * override), the alert-rule edits, and the platform-only `messaging.admin.read`. The two
+ * `notifications.*` keys are SELF-only (the user themself; §4.5 note) — even org_admin cannot
+ * edit another human's private preferences without break-glass.
+ *
+ * Like M38's set, M36's keys carry a NAMESPACE prefix (`messaging.` / `notifications.` /
+ * `alert.`) on top of the `resource.action` decomposition (the §4.5 "Key" vs "Resource.action"
+ * columns are distinct) — so `key` is the full dotted permission string passed to
+ * `requirePermission(...)`, while `resource`/`action` carry the spec's decomposition. Kept in a
+ * dedicated const (not folded into the other contributed sets) so each module's contribution
+ * stays attributable (§3.3 ownership).
+ */
+export const M36_CONTRIBUTED_PERMISSIONS = {
+  // --- read / send / DM — broad chat defaults, ABAC-scoped per channel kind (§4.5) ---
+  "messaging.read": {
+    resource: "messaging",
+    action: "read",
+    category: "clinical",
+    abac: "channel_visibility",
+  },
+  "messaging.send": {
+    resource: "messaging",
+    action: "send",
+    category: "clinical",
+    abac: "channel_visibility",
+  },
+  "messaging.dm": { resource: "messaging", action: "dm", category: "clinical", abac: "none" },
+  // --- auto-channel admin override + tenant announcements (§4.5) ---
+  "messaging.manage_members": {
+    resource: "messaging",
+    action: "manage_members",
+    category: "admin",
+    abac: "channel_visibility",
+  },
+  "messaging.announce": {
+    resource: "messaging",
+    action: "announce",
+    category: "admin",
+    abac: "none",
+  },
+  // --- self-only notification preferences + delivery endpoints (§4.5; SELF, no other actor) ---
+  "notifications.preferences.manage": {
+    resource: "preferences",
+    action: "manage",
+    category: "clinical",
+    abac: "none",
+  },
+  "notifications.endpoint.manage": {
+    resource: "endpoint",
+    action: "manage",
+    category: "clinical",
+    abac: "none",
+  },
+  // --- alert-rule read / edit (§4.5; system_locked rows can't be disabled even by manage) ---
+  "alert.rules.read": {
+    resource: "alert_rules",
+    action: "read",
+    category: "admin",
+    abac: "none",
+  },
+  "alert.rules.manage": {
+    resource: "alert_rules",
+    action: "manage",
+    category: "admin",
+    abac: "none",
+  },
+  // --- platform-ops admin (§4.5; platform-only — failures + delivery audit drill) ---
+  "messaging.admin.read": {
+    resource: "admin",
+    action: "read",
+    category: "platform",
+    abac: "none",
+  },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M36 contributed permission keys. */
+export type M36ContributedPermissionKey = keyof typeof M36_CONTRIBUTED_PERMISSIONS;
+
+/**
+ * The permission keys Module 40 (Master Data Management) registers into Module 3's catalog —
+ * the §4.4 binding cross-module handshake (M40-T07; M40 spec §4.4). M3 must include these before
+ * M40's routes can be authorized; the route inventory (M40-T07) gates on them.
+ *
+ * THREE keys per entity kind (read/propose/overlay) by design (§4.4): they are different blast
+ * radii — read is broad, propose creates a provisional that becomes GLOBAL canonical state, overlay
+ * edits only this-tenant's-opinion. Collapsing them would make "anyone who can read can propose",
+ * the dedup-spam vector this module exists to prevent. The platform-only keys (`mdm.canonical.write`
+ * / `mdm.merge.read` / `mdm.merge.approve`) are assigned to `platform_ops` ONLY and never to a
+ * tenant role — the §7.4 canonical-write lockdown in depth (DB grant + route omission + this key);
+ * `mdm.merge.approve` additionally step-up re-auths at the route (§4.1, §7.6).
+ *
+ * Like M38/M36's sets, M40's keys carry a `mdm.` NAMESPACE prefix on top of the `resource.action`
+ * decomposition (the §4.4 "Key" vs "Resource.action" columns are distinct). Kept in a dedicated
+ * const so each module's contribution stays attributable (§3.3 ownership). All pure RBAC
+ * (`abac: 'none'`): canonical is public reference data (RLS `USING(true)`) and overlay is org-scoped
+ * by RLS, so neither needs an ABAC predicate.
+ */
+export const M40_CONTRIBUTED_PERMISSIONS = {
+  // --- physician (read / propose / overlay) ---
+  "mdm.physician.read": { resource: "physician", action: "read", category: "clinical", abac: "none" },
+  "mdm.physician.propose": { resource: "physician", action: "propose", category: "clinical", abac: "none" },
+  "mdm.physician.overlay": { resource: "physician", action: "overlay", category: "admin", abac: "none" },
+  // --- facility ---
+  "mdm.facility.read": { resource: "facility", action: "read", category: "clinical", abac: "none" },
+  "mdm.facility.propose": { resource: "facility", action: "propose", category: "clinical", abac: "none" },
+  "mdm.facility.overlay": { resource: "facility", action: "overlay", category: "admin", abac: "none" },
+  // --- pharmacy ---
+  "mdm.pharmacy.read": { resource: "pharmacy", action: "read", category: "clinical", abac: "none" },
+  "mdm.pharmacy.propose": { resource: "pharmacy", action: "propose", category: "clinical", abac: "none" },
+  "mdm.pharmacy.overlay": { resource: "pharmacy", action: "overlay", category: "admin", abac: "none" },
+  // --- referral_source ---
+  "mdm.referral_source.read": { resource: "referral_source", action: "read", category: "clinical", abac: "none" },
+  "mdm.referral_source.propose": { resource: "referral_source", action: "propose", category: "clinical", abac: "none" },
+  "mdm.referral_source.overlay": { resource: "referral_source", action: "overlay", category: "admin", abac: "none" },
+  // --- payer ---
+  "mdm.payer.read": { resource: "payer", action: "read", category: "clinical", abac: "none" },
+  "mdm.payer.propose": { resource: "payer", action: "propose", category: "clinical", abac: "none" },
+  "mdm.payer.overlay": { resource: "payer", action: "overlay", category: "admin", abac: "none" },
+  // --- dme_vendor ---
+  "mdm.dme_vendor.read": { resource: "dme_vendor", action: "read", category: "clinical", abac: "none" },
+  "mdm.dme_vendor.propose": { resource: "dme_vendor", action: "propose", category: "clinical", abac: "none" },
+  "mdm.dme_vendor.overlay": { resource: "dme_vendor", action: "overlay", category: "admin", abac: "none" },
+  // --- funeral_home ---
+  "mdm.funeral_home.read": { resource: "funeral_home", action: "read", category: "clinical", abac: "none" },
+  "mdm.funeral_home.propose": { resource: "funeral_home", action: "propose", category: "clinical", abac: "none" },
+  "mdm.funeral_home.overlay": { resource: "funeral_home", action: "overlay", category: "admin", abac: "none" },
+  // --- BAA register (Compliance/Privacy) + manual license entry (§4.1) ---
+  "mdm.baa.read": { resource: "baa", action: "read", category: "compliance", abac: "none" },
+  "mdm.baa.manage": { resource: "baa", action: "manage", category: "compliance", abac: "none" },
+  "mdm.license.manage": { resource: "license", action: "manage", category: "admin", abac: "none" },
+  // --- platform-ops ONLY: canonical write + merge governance (§4.4; never granted to tenant roles) ---
+  "mdm.canonical.write": { resource: "canonical", action: "write", category: "platform", abac: "none" },
+  "mdm.merge.read": { resource: "merge", action: "read", category: "platform", abac: "none" },
+  "mdm.merge.approve": { resource: "merge", action: "approve", category: "platform", abac: "none" },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M40 contributed permission keys. */
+export type M40ContributedPermissionKey = keyof typeof M40_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -133,9 +342,24 @@ export function m4ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M4_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M38 contributed keys into `permission`-table mirror rows (M38-T06). */
+export function m38ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M38_CONTRIBUTED_PERMISSIONS);
+}
+
+/** Project the M36 contributed keys into `permission`-table mirror rows (M36-T07). */
+export function m36ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M36_CONTRIBUTED_PERMISSIONS);
+}
+
+/** Project the M40 contributed keys into `permission`-table mirror rows (M40-T07). */
+export function m40ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M40_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
- * (M1/M2 + M4) key. This is the row set the deploy-time sync writes to the read-only
+ * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
  * `permission` table once the catalog goes real. Keys are single-owner across all sets — a
  * collision would be a registration bug, so the deploy sync (and the unit test) asserts uniqueness.
  */
@@ -144,5 +368,8 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...permissionMirrorRows(),
     ...contributedPermissionMirrorRows(),
     ...m4ContributedPermissionMirrorRows(),
+    ...m38ContributedPermissionMirrorRows(),
+    ...m36ContributedPermissionMirrorRows(),
+    ...m40ContributedPermissionMirrorRows(),
   ];
 }

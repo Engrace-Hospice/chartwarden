@@ -15,12 +15,17 @@
 
 import type { RequiredSeam, SeamContracts, SeamName } from "../interfaces";
 import {
+  alertEmitterDenyStub,
   auditorSessionMinterDenyStub,
+  baaStatusProviderDenyStub,
   caseloadDenyStub,
   consentEvaluatorDenyStub,
   documentRendererDenyStub,
+  mdmEntityProviderDenyStub,
+  messagingProviderDenyStub,
   patientReaderDenyStub,
   sessionContextResolverDenyStub,
+  terminologyProviderDenyStub,
 } from "./providers";
 
 export class SeamError extends Error {
@@ -57,6 +62,51 @@ export const REQUIRED_SEAMS = [
     ownerModule: 2,
     phi: false,
     denyStub: auditorSessionMinterDenyStub,
+  },
+  // M38 (Terminology) — the version-aware code/value-set resolution surface every clinical and
+  // billing module imports (§4.5). Reference data, not a patient record → not PHI; still
+  // boot-validated and fail-closed (denies on call) until M38 registers the real provider.
+  {
+    key: "TerminologyProvider",
+    ownerModule: 38,
+    phi: false,
+    denyStub: terminologyProviderDenyStub,
+  },
+  // M36 (Messaging) — the alert routing surface every clinical/billing module emits through
+  // (§4.6). Not a PHI READ surface (events route in; PHI never leaves out-of-band by rule, §4.7);
+  // boot-validated and fail-closed until M36 registers the real emitter (T06).
+  {
+    key: "AlertEmitter",
+    ownerModule: 36,
+    phi: false,
+    denyStub: alertEmitterDenyStub,
+  },
+  // M36 (Messaging) — the channel/message surface; `listMessages` decrypts bodies for entitled
+  // readers, so this DOES guard a PHI read surface. Declared fail-closed here; its DB-backed
+  // implementation registers over the deny-stub with the routes/realtime tasks (M36-T07/T08).
+  {
+    key: "MessagingProvider",
+    ownerModule: 36,
+    phi: true,
+    denyStub: messagingProviderDenyStub,
+  },
+  // M40 (MDM) — the master-data read surface (physician/facility/payer; merge-aware, §4.5) every
+  // clinical/billing/interop module consumes. Canonical reference data + this-tenant overlay, not a
+  // patient record → not PHI; boot-validated and fail-closed until M40 registers the real provider.
+  {
+    key: "MdmEntityProvider",
+    ownerModule: 40,
+    phi: false,
+    denyStub: mdmEntityProviderDenyStub,
+  },
+  // M40 (MDM) — the focused §7.7 BAA disclosure gate (as-of time-travel + sending-facility
+  // resolution), registered separately from the omnibus above. M22/M28/M29 consult it before any
+  // PHI leaves the perimeter. BAA status metadata, not a patient record → not PHI; fail-closed.
+  {
+    key: "BaaStatusProvider",
+    ownerModule: 40,
+    phi: false,
+    denyStub: baaStatusProviderDenyStub,
   },
 ] satisfies readonly RequiredSeam[];
 

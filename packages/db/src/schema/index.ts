@@ -66,3 +66,76 @@ export * from "./audit-exports";
 export * from "./audit-seals";
 export * from "./audit-denylist-catalog";
 export * from "./audit-action-catalog";
+// M38-T02 — Clinical Terminology Service schema (M38 spec §3.3–3.6). M38 owns 13 tables.
+// Twelve are platform-shared canonical reference (NON_ORG_SCOPED, read-all `USING(true)`,
+// written only via the `terminology_loader` role per §3.7) — the catalog (code_system /
+// code_system_version), the four Phase-1 per-system concept tables (icd10cm/snomed/loinc/
+// rxnorm — §2.3 one-table-per-system, NOT one polymorphic concept table), value sets +
+// members + the materialized expansion, deprecation_mapping, the pgvector concept_embedding
+// (semantic search behind the `ai.full` flag, table-only in Phase 1), and the append-only
+// terminology_update_log. The thirteenth, value_set_tenant_extension, is the only org-scoped
+// table (app.org_id RLS + audit trigger land in M38-T03). RLS/grants/triggers/migration +
+// the pg_trgm/vector extensions are M38-T03; this task is schema only.
+export * from "./terminology/code-systems";
+export * from "./terminology/code-system-versions";
+export * from "./terminology/concept-icd10cm";
+export * from "./terminology/concept-snomed";
+export * from "./terminology/concept-loinc";
+export * from "./terminology/concept-rxnorm";
+export * from "./terminology/value-sets";
+export * from "./terminology/value-set-members";
+export * from "./terminology/value-set-expansion";
+export * from "./terminology/value-set-tenant-extension";
+export * from "./terminology/deprecation-mapping";
+export * from "./terminology/concept-embedding";
+export * from "./terminology/terminology-update-log";
+// M36-T02 — Secure Messaging & Alerts schema (M36 spec §3.3–3.6, §3.11, §3.13). M36 owns 15
+// tables. Most are org-scoped (channel, channel_member, message, message_receipt, alert,
+// alert_rule, user_notification_preferences, tenant_alert_routing_override, notification_template,
+// tenant_notification_template_overlay — standard app.org_id RLS lands in M36-T03). Five carry
+// no organization_id by design and sit on the check-tenancy NON_ORG_SCOPED allowlist: presence
+// + delivery_endpoint (user-owned, cross-org — like session), message_attachment +
+// notification_delivery (pure children of message/alert, tenancy via the parent FK), and
+// alert_payload_catalog (platform-floor reference, populated at boot from the §3.12 Foundation
+// Registry). No PHI table carries the three-column PE/location rule — bodies are encrypted
+// (message.body_cipher) and subjects are FK-less pointers. RLS/grants/audit triggers/migration
+// are M36-T03; this task is schema only.
+export * from "./messaging/channels";
+export * from "./messaging/channel-members";
+export * from "./messaging/messages";
+export * from "./messaging/message-attachments";
+export * from "./messaging/message-receipts";
+export * from "./messaging/presence";
+export * from "./messaging/delivery-endpoints";
+export * from "./messaging/alert-rules";
+export * from "./messaging/alerts";
+export * from "./messaging/notification-deliveries";
+export * from "./messaging/user-notification-preferences";
+export * from "./messaging/alert-payload-catalog";
+export * from "./messaging/tenant-alert-routing-override";
+export * from "./messaging/notification-template";
+export * from "./messaging/tenant-notification-template-overlay";
+// M40-T02 — Master Data Management schema (M40 spec §3.3–3.5). M40 owns 11 tables. The §2.3
+// canonical-vs-overlay dividing line decides org-scoping: the three CANONICAL tables
+// (external_physician, facility, payer) are org-less platform master data — registry-sourced,
+// the same answer for every tenant — and so are the cross-cutting workflow tables that operate
+// over them (entity_relationship, merge_request) and the platform-operational NPPES sync state
+// (nppes_sync_log, nppes_sync_coordination); all seven sit on the check-tenancy NON_ORG_SCOPED
+// allowlist. The four ORG-SCOPED tables carry organization_id and get standard app.org_id RLS:
+// external_physician_tenant_overlay (this-tenant opinion about a physician — the only Phase-1
+// overlay), mdm_provisional (tenant-staged entity, §2.4.3), and the BAA pair mdm_baa_record +
+// mdm_baa_required (§7.7). No table carries the three-column PE/location rule — none reference a
+// patient (provider/facility/payer master data). RLS/grants (the locked two-table canonical/
+// overlay pattern), the M4 write-audit triggers, and the migration are M40-T03; this task is
+// schema only.
+export * from "./mdm/external-physicians";
+export * from "./mdm/external-physicians-overlay";
+export * from "./mdm/facilities";
+export * from "./mdm/payers";
+export * from "./mdm/entity-relationships";
+export * from "./mdm/merge-requests";
+export * from "./mdm/nppes-sync-log";
+export * from "./mdm/nppes-sync-coordination";
+export * from "./mdm/mdm-provisional";
+export * from "./mdm/mdm-baa-records";
+export * from "./mdm/mdm-baa-required";

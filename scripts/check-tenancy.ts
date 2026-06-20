@@ -52,6 +52,34 @@ const NON_ORG_SCOPED = new Set<string>([
   "state_retention_override",                           // platform reference (writes via platform role)
   "organization", "provider_entity", "location",       // the tenancy spine itself
   "system_status", "feature_flag",                      // platform/global (own RLS, ADR-0010 D3 read policy)
+  // M38 Terminology (§3.7): platform-shared canonical reference. Read-all `USING(true)`;
+  // writes only via the `terminology_loader` role (no org column by design). The one
+  // org-scoped M38 table, value_set_tenant_extension, is intentionally NOT listed here —
+  // it carries organization_id and gets standard app.org_id RLS in M38-T03.
+  "code_system", "code_system_version",
+  "concept_icd10cm", "concept_snomed", "concept_loinc", "concept_rxnorm",
+  "value_set", "value_set_member", "value_set_expansion",
+  "deprecation_mapping", "concept_embedding", "terminology_update_log",
+  // M36 Secure Messaging (§3.4–3.6, §3.11): five tables carry no organization_id BY DESIGN.
+  // `presence` + `delivery_endpoint` are user-owned and cross-org (the human, not the tenant —
+  // same posture as `session`). `message_attachment` + `notification_delivery` are pure children
+  // of `message`/`alert` (ON DELETE cascade) and inherit tenancy via the parent FK; RLS is
+  // applied through the parent-join in M36-T03. `alert_payload_catalog` is platform-floor
+  // reference, read-all, populated at boot from the §3.12 Foundation Registry. The ten remaining
+  // M36 tables carry organization_id and get standard app.org_id RLS in M36-T03.
+  "presence", "delivery_endpoint", "message_attachment", "notification_delivery",
+  "alert_payload_catalog",
+  // M40 Master Data Management (§2.3, §3.3–3.5): seven tables carry no organization_id BY DESIGN.
+  // The §2.3 canonical-vs-overlay dividing line makes canonical master data org-less — one row
+  // per real-world entity, registry-sourced, the same answer for every tenant. `external_physician`
+  // / `facility` / `payer` are the canonical entities; `entity_relationship` + `merge_request` are
+  // the cross-cutting workflow tables that operate over them; `nppes_sync_log` +
+  // `nppes_sync_coordination` are platform-operational NPPES sync state. The four remaining M40
+  // tables (external_physician_tenant_overlay, mdm_provisional, mdm_baa_record, mdm_baa_required)
+  // carry organization_id and get standard app.org_id RLS in M40-T03.
+  "external_physician", "facility", "payer",
+  "entity_relationship", "merge_request",
+  "nppes_sync_log", "nppes_sync_coordination",
 ]);
 // PHI signal: a table referencing a patient is PHI-bearing and MUST be fully org-scoped.
 const PHI_SIGNAL_RE = /\b(patient_id|patientId|mrn|deceased_date|clinical|encounter_id|observation)\b/i;

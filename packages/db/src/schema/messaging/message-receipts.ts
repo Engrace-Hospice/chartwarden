@@ -1,0 +1,41 @@
+// @wardenx/db — `message_receipt` (M36 Secure Messaging §3.4). Per-recipient delivery/read/ack
+// state for a message. M36-F04 / ADR-0010: organization_id is carried DIRECTLY (canonical
+// app.org_id RLS + the SD-028 composite index); co-partitioned with `message` in M36-T03. The
+// unread-inbox query path is served by the partial index on (user_id, status) WHERE
+// status = 'delivered'. RLS + the M4 write-audit trigger land in M36-T03.
+import { sql } from "drizzle-orm";
+import { index, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { messageReceiptStatus } from "../../enums";
+import { organizations } from "../organizations";
+import { users } from "../users";
+import { messages } from "./messages";
+
+export const messageReceipts = pgTable(
+  "message_receipt",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    status: messageReceiptStatus("status").notNull().default("delivered"),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }).notNull().defaultNow(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    ackedAt: timestamp("acked_at", { withTimezone: true }),
+  },
+  (t) => ({
+    uniquePerMessageUser: uniqueIndex("message_receipt_unique").on(t.messageId, t.userId),
+    byUserReadIdx: index("message_receipt_user_read_idx")
+      .on(t.userId, t.status)
+      .where(sql`status = 'delivered'`), // unread inbox query path
+    byMessage: index("message_receipt_message_idx").on(t.messageId),
+  }),
+);
+
+export type MessageReceipt = typeof messageReceipts.$inferSelect;
+export type NewMessageReceipt = typeof messageReceipts.$inferInsert;
