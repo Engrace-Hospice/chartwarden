@@ -11,48 +11,64 @@ field-mapping options, the one **security decision** (2FA at-rest encryption), a
 > by **[ADR-0033](../adr/ADR-0033-better-auth-mount-and-prod-db-client.md)** (§5: auth is verified in the
 > live-PG lane).
 
-## Authoritative diff first (do this before writing migrations)
-Better Auth ships a schema generator that emits the **exact** tables/columns the configured instance +
-plugins require:
+## Authoritative diff — DONE (generator run 2026-06-20)
+`bunx @better-auth/cli generate` against `createIdentityAuth` emitted the exact required schema, captured
+at **`docs/api/better-auth-required-schema.generated.ts`** (reference artifact; regenerate after any
+plugin/field-map change). It already reflects the `account.fields` mappings. Findings below are now
+**authoritative**, not pre-analysis.
 
-```
-bunx @better-auth/cli generate --config <path to a module exposing createIdentityAuth(db)>
-```
+## Findings (authoritative — from the generator)
 
-Run it (where the auth config loads), diff its output against `packages/db/src/schema/*`, and let that
-drive the migration. The findings below are a **static pre-analysis** to scope the work; the generator is
-the source of truth.
-
-## Findings (static comparison)
-
-| Table | M1 today | Better Auth needs | Gap / action |
+| Table | Required (generator) | M1 today | Action |
 |---|---|---|---|
-| **user** | id, email, email_verified, name, image, status, created_at, updated_at | + `twoFactorEnabled` (twoFactor plugin) | **add `two_factor_enabled boolean not null default false`** |
-| **session** | id, user_id, token, expires_at, ip_address, user_agent, created_at, updated_at + activeOrganizationId/sessionClass/scope/engagement*/screenLockedAt/lastStepUp* | id, userId, token, expiresAt, ipAddress, userAgent + additionalFields | **compatible** ✓ (additionalFields already declared in createIdentityAuth) |
-| **account** | id, user_id, provider_id, account_id, password_hash, access_token_encrypted, refresh_token_encrypted, created_at, updated_at | + `id_token`, `scope`, `access_token_expires_at`, `refresh_token_expires_at` | **add the 4 OAuth columns** (nullable; unused by the credential provider but the adapter model includes them — confirm via generate) |
-| **two_factor** | id, user_id, method, secret_encrypted, backup_codes_encrypted, verified, created_at, last_used_at | id, userId, `secret`, `backupCodes` | **field mismatch + encryption tension — see Decision** |
-| **passkey** | id, user_id, name, credential_id, public_key, counter, device_type, backed_up, transports, created_at, last_used_at | id, userId, name, publicKey, credentialID, counter, deviceType, backedUp, transports, (aaguid?) | **field-map** (credential_id→credentialID, public_key→publicKey, device_type→deviceType, backed_up→backedUp) + confirm `aaguid` need via generate |
+| **user** | + `two_factor_enabled boolean default false` | absent | **migration: add column** |
+| **session** | id, expires_at, token, ip/ua + activeOrganizationId/sessionClass/scope/engagement*/screenLockedAt/lastStepUp* | all present | **compatible** ✓ |
+| **account** | + `id_token`, `scope`, `access_token_expires_at`, `refresh_token_expires_at` | absent | **migration: add 4 columns** (nullable) |
+| **verification** | + `updated_at` | absent | **migration: add column** |
+| **two_factor** | `secret`, `backup_codes` (plaintext) | `secret_encrypted`, `backup_codes_encrypted` | **DECISION — see below** |
+| **passkey** | + `aaguid`; fields publicKey/credentialID/deviceType/backedUp | columns present (snake_case) but **no `aaguid`** | **migration: add `aaguid`** + confirm drizzle JS-binding names match (else field-map) |
 
-`account` already field-maps `password→password_hash`, `accessToken→access_token_encrypted`,
-`refreshToken→refresh_token_encrypted` in `createIdentityAuth`. Extend the same pattern to twoFactor +
-passkey field names, and add the missing columns by migration.
+(PK type: the generator emits `text` ids by default; M1 uses `uuid` — that is fine, Better Auth is
+PK-type-agnostic; the live user/session already work with uuid. No action.)
 
-## Decision required — 2FA secret at-rest encryption (Security-Owner)
-M1 deliberately stores `secret_encrypted` / `backup_codes_encrypted` (TOTP secret + backup codes
-**encrypted at rest**). Better Auth's `twoFactor` plugin manages `secret` / `backupCodes` as **plaintext**
-columns. Reconcile by choosing one:
+## Decision required — 2FA secret at-rest encryption (Security-Owner) — **NO FREE OPTION**
+Confirmed: **Better Auth's twoFactor plugin and core expose NO secret-encryption option** (no `encrypt`
+hook). M1 stores `secret_encrypted` / `backup_codes_encrypted` (encrypted at rest); the plugin writes
+plaintext `secret` / `backup_codes`. So the earlier "Option A (native encrypt-at-rest)" is **not
+available**. The real choice:
 
-- **A — Encrypt-at-rest, mapped (preferred if supported):** map the plugin fields to M1's `*_encrypted`
-  columns and wrap reads/writes so the stored value is ciphertext (Better Auth field/database hooks, or
-  the M1 envelope-encryption helper). Keeps the M1 security posture; needs verifying the plugin exposes a
-  field-transform hook.
-- **B — Plaintext columns + DB-layer encryption:** add `secret` / `backup_codes` columns and rely on
-  disk/pgcrypto at-rest encryption instead of column-level. Simpler; **weakens** the column-level posture
-  M1 chose — needs explicit Security-Owner acceptance.
-- **C — Custom 2FA storage:** keep M1's encrypted columns and don't use the plugin's storage. Largest.
+- **B — Accept plaintext columns:** add `secret` / `backup_codes` (matching the generator) and rely on
+  disk / pgcrypto at-rest encryption. Simplest; **weakens** M1's column-level posture → explicit
+  Security-Owner acceptance (and likely a short ADR).
+- **C — Custom encryption hook:** keep M1's `*_encrypted` columns, map the plugin fields to them, and
+  encrypt/decrypt via a Better Auth `databaseHooks` (or the M1 envelope helper) on twoFactor write/read.
+  Preserves posture; more work; needs verifying the hook fires for the twoFactor model.
 
-**Recommendation:** A if Better Auth supports per-field transforms; otherwise escalate B vs C to the
-Security-Owner. This decision likely warrants its own short ADR.
+**Recommendation: C** (preserve the at-rest posture M1 deliberately chose), accepting the extra hook work.
+**This is the gate** — the migration's `two_factor` shape + the field maps depend on it.
+
+### C feasibility (investigated 2026-06-20) — C is a focused crypto SUB-PROJECT, not a one-line hook
+- **`databaseHooks` cover only the core models** (user/session/account/verification), **not the
+  `twoFactor` plugin model** — so the secret write cannot be intercepted via the standard hook. C needs a
+  custom storage-adapter wrap or a forked plugin to intercept twoFactor writes.
+- **No existing user-level encryption helper.** The `*_encrypted` columns were never wired (2FA wasn't
+  functional); the only envelope helper in the tree is org-scoped/PHI, not user-level. C therefore means
+  **new user-level key management + encrypt/decrypt**, built from scratch — security-critical and
+  unverifiable without Postgres.
+
+→ **C should be its own ADR + task** (build the user-level 2FA-secret encryption + write-interception +
+PG verification). It is **not** bundled into the additive reconciliation.
+
+## Revised execution (given C's scope)
+1. **Now (safe, additive, unblocks email+password sign-in):** migration for `user.two_factor_enabled`,
+   `account` +4 OAuth columns, `verification.updated_at`, `passkey.aaguid` + passkey field-maps; a
+   **password** sign-in `auth.live.test` + a CI `auth-live` job (Postgres) to verify on real PG. The M1
+   `two_factor.*_encrypted` columns are left untouched, reserved for C. (The `twoFactor` plugin stays
+   enabled but 2FA *enrollment* is non-functional until C lands — password sign-in for non-2FA users is
+   unaffected.)
+2. **Follow-up (C, its own ADR):** user-level 2FA-secret encryption + twoFactor write-interception +
+   enrollment flow, PG-verified.
+3. **AUTH-T07:** M2 sign-in/MFA/passkey screens (Better Auth client) once the live lane is green.
 
 ## Execution order (after the decision, on a PG-capable runner)
 1. `@better-auth/cli generate` → authoritative required schema; diff vs M1.
