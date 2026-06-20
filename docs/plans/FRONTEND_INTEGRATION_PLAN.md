@@ -110,11 +110,21 @@ frontend-foundation files, it cannot disturb any backend fitness gate. Land as o
 - accept: `arch:parity` + `arch:boundaries` green (shell imports only `packages/ui` + the registry
   contract, never a module); shell renders an empty authenticated layout; `bun run build`.
 
-### F0-T04 — Layout patterns as reusable components
-- files: `packages/ui/src/layouts` · spec: `WARDENX_UI_LAYOUT_PATTERNS.md` (authoritative glossary)
-- do: implement each named layout pattern (`Use <name>.`) the screen specs reference as a `packages/ui`
-  component, so every screen composes a pattern rather than reinventing layout.
-- accept: every pattern in the glossary has a component; `bun run docs:ui` still green.
+### F0-T04 — Layout patterns as reusable components ✅ done
+- files: `packages/ui/src/layouts/` (`regions.tsx`, `patterns.tsx`, `index.ts`) · spec:
+  `WARDENX_UI_LAYOUT_PATTERNS.md` (authoritative glossary)
+- **Scope (deliberate):** the glossary has ~24 base patterns, many domain/surface-specific (MAR Grid,
+  Bed Board, Scheduling Calendar, Admin/Portal variants, Assistant, …). Building all now — with zero
+  consuming screens — would be speculative. F0-T04 ships the **Tier-1 region primitives** (every
+  pattern is defined in terms of them) + the **foundational pattern layouts with near-term consumers**;
+  each remaining specialized pattern ships with its first screen (Track A/B).
+- do: Tier-1 regions — `PageHeader`, `KpiStrip`/`KpiCard`, `FilterBar`, `LeftNavRail`,
+  `RightDetailPanel`, `StickyFooterActions`, `PatientBanner`. Foundational patterns —
+  `CenteredCardLayout` (Auth Flow → M2), `CenteredStatusLayout` (System Page), `WorkQueueLayout`,
+  `DashboardLayout`, `StepperWorkflowLayout`, `PatientWorkspaceLayout` (→ M5), `DetailPageLayout`.
+  Slot-based, presentational, no business logic; exported from the `@wardenx/ui` barrel.
+- accept: `bun run build` + `arch:fitness` + `test` green; `docs:ui` still green (no spec change);
+  Vite bundles. Specialized patterns tracked to their module screens.
 
 ### F0-T05 — Backlog ledger
 - files: `docs/ui/DEFERRED_SCREENS.md` · source: `docs/ui/WARDENX_UI_COMPLETE_SCREEN_INDEX.md`
