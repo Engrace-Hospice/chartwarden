@@ -32,7 +32,7 @@ to follow each run. See [`../ARCHON_SETUP.md`](../ARCHON_SETUP.md) for install +
 | 1 | Slice | M1, M2 | `archon workflow run wardenx-piv --branch feat/m1-m2-slice` | ✅ | [#3](https://github.com/fabwebdev/wardenx/pull/3) ‡ |
 | 2 | A | M3, M4 | `archon workflow run wardenx-piv --branch feat/wave-a "Use the plan at docs/plans/WAVE_A_M3-M4_PLAN.md"` | ✅ | [#4](https://github.com/fabwebdev/wardenx/pull/4) † |
 | 3 | B | M36, M38, M40 | `archon workflow run wardenx-piv --branch feat/wave-b "Use the plan at docs/plans/WAVE_B_M36-M38-M40_PLAN.md"` | ✅ | [#5](https://github.com/fabwebdev/wardenx/pull/5) § |
-| 4 | C | M5, M39 | `archon workflow run wardenx-piv --branch feat/wave-c "Use the plan at docs/plans/WAVE_C_M5-M39_PLAN.md"` | ☐ | |
+| 4 | C | M5, M39 | `archon workflow run wardenx-piv --branch feat/wave-c "Use the plan at docs/plans/WAVE_C_M5-M39_PLAN.md"` | ▶ | M5 [#6](https://github.com/fabwebdev/wardenx/pull/6) ✦ |
 | 5 | D | M6, M7, M8 | `archon workflow run wardenx-piv --branch feat/wave-d "Use the plan at docs/plans/WAVE_D_M6-M7-M8_PLAN.md"` | ☐ | |
 | 6 | E | M9, M10, M11, M12, M13 | `archon workflow run wardenx-piv --branch feat/wave-e "Use the plan at docs/plans/WAVE_E_M9-M13_PLAN.md"` | ☐ | |
 | 7 | F | M14, M17, M18, M22 | `archon workflow run wardenx-piv --branch feat/wave-f "Use the plan at docs/plans/WAVE_F_M14-M17-M18-M22_PLAN.md"` | ☐ | |
@@ -69,6 +69,16 @@ overlay isolation §7.3). Consumer seams live + boot-validated: `TerminologyProv
 `ai.full` off; M40 M29 NPPES-sync consumers deny-stubbed with the nightly job as the Phase-1 path).
 Deferred: all frontend screens (no `apps/web` codePath in the Wave-B manifests) → the ADR-0030 UI
 follow-up. **Next: Wave C (M5/M39).**
+
+✦ **Wave C is per-module (M5 → M39).** **M5 Patient & Demographics (PR
+[#6](https://github.com/fabwebdev/wardenx/pull/6)) — MERGED 2026-06-20.** Built backend (all 12 M5
+tasks, 924 tests) — the 16-table patient spine, the §2.3 match pipeline, and the three M3 boot-gate
+seams now real (`CaseloadProvider` + `caseload_membership`, `PatientReader` merge-redirect,
+`PatientMutator` D12 strip). Migrations 0020/0021 (16 tables + RLS + M4 audit triggers). CI green incl
+`rls-live` (caught & fixed a `gin_trgm_ops` opclass syntax error only real PG surfaces). M5
+`dependsOn += 1` (it closes M1 boot-gate seams via the M1 bootstrap registry). Deferred: screens
+(no `apps/web` codePath → ADR-0030). M29 proposal + M39 consent consumers are forward-seam deny-stubs.
+**Next: M39 Consent** (deps M1–M5; M5's `PatientReader` is now real) → then Wave C ✅.
 
 **Phase 1 done when:** all 29 modules at DoD; the end-to-end scenario passes (admit → elect → care plan
 → encounter → assessment → HOPE → order → eMAR → IDG → schedule → EVV → bill → 835 → cap projection).
