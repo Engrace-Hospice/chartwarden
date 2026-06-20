@@ -7,3 +7,13 @@
 // the eraser (T10) build on this. The §5 screens DEFER — the M39 manifest has no frontend codePath
 // (the Wave-A deferral rule: a screen needs a manifest UI codePath to land).
 export { type ConsentSeamDeps, registerConsentSeams, getConsentEvaluator } from "./seams";
+// M39-T06 (./consumed-seams) — the seams M39 CONSUMES (spec §4.4): M5 PatientReader (real, identity
+// resolution) + M22 DocumentRenderer (deny-stub forward seam, D15 signed-PDF). Resolved through the
+// M1 registry so there is NO 22→39 import edge (ADR-0006).
+export {
+  type ConsentRecordRenderPayload,
+  getConsentPatientReader,
+  getConsentDocumentRenderer,
+  resolvePatientForConsent,
+  renderConsentRecordDocument,
+} from "./consumed-seams";
