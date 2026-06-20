@@ -20,7 +20,8 @@
 import { schema } from "@wardenx/db";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { haveIBeenPwned } from "better-auth/plugins";
+import { passkey } from "@better-auth/passkey";
+import { haveIBeenPwned, magicLink, twoFactor } from "better-auth/plugins";
 import { argon2idHash, argon2idVerify } from "./password-hash";
 
 /**
@@ -41,6 +42,9 @@ const m1Schema = {
   session: schema.sessions,
   account: schema.accounts,
   verification: schema.verifications,
+  // M2-T05 plugin models (M1-owned tables): TOTP/backup-code secrets + WebAuthn credentials.
+  twoFactor: schema.twoFactor,
+  passkey: schema.passkey,
 };
 
 /**
@@ -73,9 +77,25 @@ export function createIdentityAuth(db: IdentityAuthDb) {
         verify: ({ hash, password }) => argon2idVerify(hash, password),
       },
     },
-    // HIBP k-anonymity breach check on sign-up / password change (M2 §3.1) — a breached password is
-    // rejected without the plaintext ever leaving the server (SHA-1 prefix range query).
-    plugins: [haveIBeenPwned()],
+    // M2 plugins (M2-T05). The `organization` plugin is deliberately NOT used: WardenX owns its org /
+    // membership / invitation model (M1/M2 tables + RLS + select-organization), which Better Auth's
+    // org plugin would duplicate/conflict with; the session's `activeOrganizationId` additionalField
+    // carries the binding instead. Magic-link delivery is wired to M36 in a follow-up. Runtime + any
+    // schema reconciliation are exercised in the AUTH-T06 live-PG lane.
+    plugins: [
+      haveIBeenPwned(), // HIBP k-anonymity breach check (M2 §3.1)
+      twoFactor({ issuer: "WardenX" }), // TOTP + backup codes (M2 §3.1; SMS fallback never qualifies as step-up)
+      passkey({
+        rpName: "WardenX",
+        rpID: process.env.PASSKEY_RP_ID ?? "localhost",
+        origin: process.env.BETTER_AUTH_URL ?? "http://localhost:5173",
+      }),
+      magicLink({
+        // Auditor / external-collaborator / funeral-home magic-link classes. Token is generated
+        // server-side; delivery via M36 messaging is a follow-up (TODO).
+        sendMagicLink: async () => {},
+      }),
+    ],
     account: {
       fields: {
         password: "passwordHash",

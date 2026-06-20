@@ -8,6 +8,7 @@
   },
   "types": "./src/index.ts",
   "dependencies": {
+    "@better-auth/passkey": "^1.6.20",
     "hash-wasm": "^4.12.0"
   }
 }
