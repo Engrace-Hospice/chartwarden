@@ -30,19 +30,29 @@ Specs: `docs/modules/WARDENX_MODULE_06_ADMISSION_ELECTION_CERTIFICATION_SPEC_v0_
 >    as a deny-stub. No Phase-1 route depends on the flag being on.
 > 4. **First multi-module clinical scenario:** an integration test should stitch **M5 admit → M6 elect
 >    Medicare + CTI + F2F → M7 care plan → M8 signed encounter** on one patient.
+> 5. **Track B screens (ADR-0030) — built in-task, not deferred.** Each module owns
+>    `apps/web/src/modules/NN-*`: its **T01** adds that web codePath to the manifest and runs
+>    `bun run scaffold` (empty placeholder slice, keeping `arch:parity` 1:1); its **terminal screen
+>    task** (M6-T12 / M7-T09 / M8-T12) builds the §5 screens against the module's generated client
+>    (`packages/ui/src/api`) and registers them into the M1 shell screen registry, flipping the
+>    matching `docs/ui/DEFERRED_SCREENS.md` row → `done`. Backend-first is preserved — the screen task
+>    still `deps: all MN`, so routes/seams land before UI. No new authz on the frontend; the server
+>    stays the only enforcement point.
 
 ---
 
-## Module 6 — Admission, Election & Certification (deps: 5,38,40,39 · codePaths: apps/backend/src/modules/06-admission)
+## Module 6 — Admission, Election & Certification (deps: 5,38,40,39 · codePaths: apps/backend/src/modules/06-admission, apps/web/src/modules/06-admission)
 
 ownedTables (12): admission, election_period, election_statement, certification_of_terminal_illness,
 face_to_face_encounter, level_of_care_period, revocation_event, discharge_event, transfer_event,
 referral, notice_of_rights_acknowledgment, compliance_window.
 
 ### M6-T01 — Enums, layout, per-entity fields/constraints
-- deps: Wave C done · files: `apps/backend/src/modules/06-admission`, `packages/types` · spec §3.1, §3.2, §2.2
+- deps: Wave C done · files: `apps/backend/src/modules/06-admission`, `apps/web/src/modules/06-admission`, `packages/types`, `architecture/module-manifest.ts` · spec §3.1, §3.2, §2.2
 - do: enums; per-entity fields/constraints/indexes (§2.2); seam/outbox types in `packages/types`.
-- accept: `tsc -b` green.
+  **Track B (ADR-0030):** add `apps/web/src/modules/06-admission` to M6's manifest `codePaths` and run
+  `bun run scaffold` so the empty web slice dir exists (screens land in M6-T12).
+- accept: `tsc -b` + `arch:parity` green.
 
 ### M6-T02 — Tables (all 12)
 - deps: M6-T01 · files: `packages/db/src/schema` · spec §3.3
@@ -103,21 +113,27 @@ referral, notice_of_rights_acknowledgment, compliance_window.
 - accept: applier unit tests; deny-stub present; gates green.
 
 ### M6-T12 — Screens, permissions, eraser, DR/INT, tests
-- deps: all M6 · files: UI per spec, module · spec §5, §6, §7
-- do: screens (§5); permissions matrix (§6) incl. cross-tenant denial (§6.6); eraser; DR tier + INT
+- deps: all M6 · files: `apps/web/src/modules/06-admission`, module · spec §5, §6, §7
+- do: **Track B screens (ADR-0030) — build, do not defer:** implement the §5 screens under
+  `apps/web/src/modules/06-admission` against M6's generated client methods (`packages/ui/src/api`),
+  registered into the M1 shell screen registry; flip the matching `docs/ui/DEFERRED_SCREENS.md`
+  row(s) → `done`. Permissions matrix (§6) incl. cross-tenant denial (§6.6); eraser; DR tier + INT
   inventory; full workflow tests (§7).
-- accept: `docs:ui` green; `validateErasers()` passes; `bun run test` + full `arch:fitness` green.
+- accept: `docs:ui` + `arch:parity` + `arch:boundaries` green; `validateErasers()` passes; `bun run
+  test` + full `arch:fitness` green.
 
 ---
 
-## Module 7 — Care Plan (IPOC) (deps: 6,38,39 · codePaths: apps/backend/src/modules/07-care-plan)
+## Module 7 — Care Plan (IPOC) (deps: 6,38,39 · codePaths: apps/backend/src/modules/07-care-plan, apps/web/src/modules/07-care-plan)
 
 ownedTables (6): care_plan, care_plan_version, care_plan_signature, problem, goal, intervention.
 
 ### M7-T01 — Enums + package layout
-- deps: M6 done · files: `apps/backend/src/modules/07-care-plan`, `packages/types` · spec §3.1, §3.2
+- deps: M6 done · files: `apps/backend/src/modules/07-care-plan`, `apps/web/src/modules/07-care-plan`, `packages/types`, `architecture/module-manifest.ts` · spec §3.1, §3.2
 - do: enums; layout; seam/outbox types in `packages/types`.
-- accept: `tsc -b` green.
+  **Track B (ADR-0030):** add `apps/web/src/modules/07-care-plan` to M7's manifest `codePaths` and run
+  `bun run scaffold` so the empty web slice dir exists (screens land in M7-T09).
+- accept: `tsc -b` + `arch:parity` green.
 
 ### M7-T02 — Schema, RLS, audit triggers, migration
 - deps: M7-T01 · files: `packages/db/src/schema`, `packages/db/migrations` · spec §3.3–3.6
@@ -162,22 +178,29 @@ ownedTables (6): care_plan, care_plan_version, care_plan_signature, problem, goa
 - accept: consumer wired-but-inert; gates green.
 
 ### M7-T09 — Screens, STRIDE, DR, eraser, tests
-- deps: all M7 · files: UI per spec, module · spec §5, §4.7, §4.8, §8
-- do: screens (§5); STRIDE (§4.7); DR tier + degraded mode (§4.8); eraser; audit events (§8.1); tests (§7).
-- accept: `docs:ui` green; `validateErasers()` passes; `bun run test` + full `arch:fitness` green.
+- deps: all M7 · files: `apps/web/src/modules/07-care-plan`, module · spec §5, §4.7, §4.8, §8
+- do: **Track B screens (ADR-0030) — build, do not defer:** implement the §5 screens under
+  `apps/web/src/modules/07-care-plan` against M7's generated client methods (`packages/ui/src/api`),
+  registered into the M1 shell screen registry; flip the matching `docs/ui/DEFERRED_SCREENS.md`
+  row(s) → `done`. STRIDE (§4.7); DR tier + degraded mode (§4.8); eraser; audit events (§8.1);
+  tests (§7).
+- accept: `docs:ui` + `arch:parity` + `arch:boundaries` green; `validateErasers()` passes; `bun run
+  test` + full `arch:fitness` green.
 
 ---
 
-## Module 8 — Encounters & Visit Notes (deps: 6,7,36,38 · codePaths: apps/backend/src/modules/08-encounters, packages/hearthnote, packages/narrative-vocab)
+## Module 8 — Encounters & Visit Notes (deps: 6,7,36,38 · codePaths: apps/backend/src/modules/08-encounters, packages/hearthnote, packages/narrative-vocab, apps/web/src/modules/08-encounters)
 
 ownedTables (10): encounter, encounter_signature, encounter_addendum, encounter_care_plan_link,
 cosignature_request, vitals, mileage, hearthnote_selection, hearthnote_assembled_output,
 hearthnote_llm_modification.
 
 ### M8-T01 — Enums, owned-tables overview, encounter types/disciplines
-- deps: M7 done · files: `packages/hearthnote`, `packages/narrative-vocab`, module, `packages/types` · spec §3.1, §3.2, §2.2
+- deps: M7 done · files: `packages/hearthnote`, `packages/narrative-vocab`, `apps/web/src/modules/08-encounters`, module, `packages/types`, `architecture/module-manifest.ts` · spec §3.1, §3.2, §2.2
 - do: enums; the 10 owned tables overview (§3.1); encounter types + disciplines (§2.2).
-- accept: `tsc -b` green.
+  **Track B (ADR-0030):** add `apps/web/src/modules/08-encounters` to M8's manifest `codePaths` and run
+  `bun run scaffold` so the empty web slice dir exists (screens land in M8-T12).
+- accept: `tsc -b` + `arch:parity` green.
 
 ### M8-T02 — Schema, migration, indexes, eraseFn
 - deps: M8-T01 · files: `packages/db/src/schema`, `packages/db/migrations` · spec §3.3–3.6
@@ -240,23 +263,32 @@ hearthnote_llm_modification.
 - accept: `arch:gaps` event-catalog (m8. naming) green; deny-stubs present.
 
 ### M8-T12 — Screens, realtime, eraser, DR/INT, tests
-- deps: all M8 · files: UI per spec, module · spec §5, §4.3, §7
-- do: screens (§5: authoring, finalize/Layer-2 review, sign, cosign queue); Socket.IO surface via M36
-  (§4.3); eraser (§3.6); DR tier + INT inventory; tests (§7).
-- accept: `docs:ui` green; `validateErasers()` passes; `bun run test` + full `arch:fitness` green.
+- deps: all M8 · files: `apps/web/src/modules/08-encounters`, module · spec §5, §4.3, §7
+- do: **Track B screens (ADR-0030) — build, do not defer:** implement the §5 screens (authoring,
+  finalize/Layer-2 review, sign, cosign queue) under `apps/web/src/modules/08-encounters` against M8's
+  generated client methods (`packages/ui/src/api`), registered into the M1 shell screen registry; flip
+  the matching `docs/ui/DEFERRED_SCREENS.md` row(s) → `done`. Socket.IO surface via M36 (§4.3); eraser
+  (§3.6); DR tier + INT inventory; tests (§7).
+- accept: `docs:ui` + `arch:parity` + `arch:boundaries` green; `validateErasers()` passes; `bun run
+  test` + full `arch:fitness` green.
 
 ---
 
 ## Wave D acceptance (the workflow's final gate)
-1. M6 (12) + M7 (6) + M8 (10) ownedTables exist with RLS + migrations; manifest unchanged.
+1. M6 (12) + M7 (6) + M8 (10) ownedTables exist with RLS + migrations; the **only** manifest change is
+   the Track B `apps/web/src/modules/{06-admission,07-care-plan,08-encounters}` codePath additions
+   (ADR-0030), each scaffolded so `arch:parity` stays 1:1.
 2. `validateSeams()` passes with M6's reader seams, M7's `CarePlanReader`, and M8's
    `SignedEncountersReader`/`BillableEncounterReader`/`MileagePayrollReader`/`EncounterCreator`.
 3. The first **multi-module clinical scenario** passes in integration: M5 admit → M6 elect Medicare +
    CTI + F2F → M7 care plan (5-day + 15-day clocks) → M8 signed encounter (cosignature where required).
 4. **Phase-1 discipline holds:** `hearthnote.layer2` OFF (Layer 1 only); M6 M29 consumer, M7 M14
    consumer, and M8 M17/M18 seams are deny-stubbed/inert (Wave F/H).
-5. `bun run build && bun run arch:fitness && bun run test` green; fixtures still red.
-6. **Wave D complete → Wave E (M9 Assessments, M10 HOPE, M11 Orders, M12 DoseSpot, M13 eMAR)
+5. **Track B screens shipped (ADR-0030):** each module's §5 screens are built under
+   `apps/web/src/modules/NN-*`, registered into the M1 shell, and the matching
+   `docs/ui/DEFERRED_SCREENS.md` rows are `done` — not deferred.
+6. `bun run build && bun run arch:fitness && bun run test` green; fixtures still red.
+7. **Wave D complete → Wave E (M9 Assessments, M10 HOPE, M11 Orders, M12 DoseSpot, M13 eMAR)
    unblocked** — clinical depth from assessments through medication administration.
 
 > Run per module via Archon, e.g.:
