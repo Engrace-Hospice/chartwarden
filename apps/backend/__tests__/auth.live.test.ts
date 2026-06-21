@@ -266,7 +266,9 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
     const { createDbClient: mkDb5 } = await import("@wardenx/db");
     const { createDbRoleStore } = await import("../src/modules/03-authorization/role-store");
     const handle5 = mkDb5({ connectionString: DB_URL as string });
-    const store = createDbRoleStore(handle5.db as never);
+    // Under the RLS-enforced wardenx_app role: this exercises the 0025 policy fix (templates org_id
+    // NULL must stay readable) AND real org-scoping of the catalog — not the superuser bypass.
+    const store = createDbRoleStore(asTenantRole(handle5.db) as never);
 
     const org = (await admin.query(
       "INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'RS','RS') RETURNING id",
@@ -286,7 +288,8 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
 
     const roles = await store.listForOrg(org);
     const byId = new Map(roles.map((r) => [r.roleId, r]));
-    // Template visible in every org scope; org row visible + flagged customized; keys attached.
+    // Template (org_id NULL) visible under wardenx_app thanks to 0025; org row visible + customized.
+    expect(byId.has(tmpl)).toBe(true); // would be FALSE under the pre-0025 org-only read policy
     expect(byId.get(tmpl)?.systemDefault).toBe(true);
     expect(byId.get(tmpl)?.customized).toBe(false);
     expect(byId.get(own)?.customized).toBe(true);
