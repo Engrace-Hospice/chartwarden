@@ -489,4 +489,33 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
 
     await handle9.close();
   });
+
+  it("M5 admission: admit inserts a patient (appears in census) and §7.1 MBI dedup hard-blocks (wardenx_app)", async () => {
+    const { createDbClient: mkDb10 } = await import("@wardenx/db");
+    const { createDbPatientRouteService } = await import("../src/modules/05-patient/index");
+    const handle10 = mkDb10({ connectionString: DB_URL as string });
+    const svc = createDbPatientRouteService(asTenantRole(handle10.db) as never);
+    const org = (await admin.query("INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'AD','AD') RETURNING id", [`ad-${Date.now()}`])).rows[0].id as string;
+
+    // admit → created; the new patient shows up in the real census.
+    const a = await svc.admit(org, { lastName: "Nguyen", firstName: "Mai", dob: "1985-03-04", administrativeSex: "F", mbi: "1EG4TE5MK73" }, "u");
+    expect(a.outcome).toBe("created");
+    const census = await svc.list(org, {});
+    expect(census.items.map((p) => p.lastName)).toContain("Nguyen");
+
+    // §7.1: a second admit with the SAME MBI hard-blocks on the deterministic mbi rule (→ 409).
+    const dup = await svc.admit(org, { lastName: "Different", firstName: "Name", dob: "1990-09-09", administrativeSex: "M", mbi: "1EG4TE5MK73" }, "u");
+    expect(dup.outcome).toBe("hard_block");
+    if (dup.outcome === "hard_block") {
+      expect(dup.matchedOn).toBe("mbi");
+      expect(dup.existingPatientId).toBe((a as { patientId: string }).patientId);
+    }
+
+    // bypassMatchReview skips the matcher → always creates.
+    const b = await svc.admit(org, { lastName: "Solo", firstName: "Han", dob: "1977-07-07", administrativeSex: "M", bypassMatchReview: true }, "u");
+    expect(b.outcome).toBe("created");
+    expect((await svc.list(org, {})).items.map((p) => p.lastName).sort()).toEqual(["Nguyen", "Solo"]);
+
+    await handle10.close();
+  });
 });
