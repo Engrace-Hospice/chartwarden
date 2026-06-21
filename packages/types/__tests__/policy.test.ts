@@ -40,6 +40,12 @@ describe("SESSION_POLICY (§2.2.4 / D1)", () => {
     expect(SESSION_POLICY.screenLockSec).toBe(5 * MIN);
   });
 
+  it("screen-lock applies to staff + auditor only (not the magic-link classes)", () => {
+    expect([...SESSION_POLICY.screenLockClasses].sort()).toEqual(["auditor", "staff"]);
+    expect(SESSION_POLICY.screenLockClasses).not.toContain<SessionClassName>("external_collaborator");
+    expect(SESSION_POLICY.screenLockClasses).not.toContain<SessionClassName>("funeral_home");
+  });
+
   it("staff: 15-min idle, 8-hr work / 24-hr hard absolute", () => {
     expect(SESSION_POLICY.byClass.staff.idleSec).toBe(15 * MIN);
     expect(SESSION_POLICY.byClass.staff.absoluteSec).toBe(8 * HR);

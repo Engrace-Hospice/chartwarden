@@ -73,10 +73,10 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > like passkey), and the **idle screen-lock** (an overlay, not a route: the composition root mounts it
 > inside the app shell via the new `AppShell chromeOverlay` seam — M1 stays module-free; after
 > `SESSION_POLICY.screenLockSec` = 5 min idle it covers the authenticated frame and soft-re-auths the
-> same user by password, session stays alive per M2 §2.2.4 active→screen_locked→active). **No M2 auth
-> screens remain deferred.** Backend follow-ups only: WebAuthn step-up ceremony, magic-link M36
-> delivery, session-class in the browser context (to gate screen-lock to staff/auditor per
-> `screenLockApplies`).
+> same user by password, session stays alive per M2 §2.2.4 active→screen_locked→active; gated to the
+> `SESSION_POLICY.screenLockClasses` floor = staff/auditor, an unknown class failing safe). **No M2 auth
+> screens remain deferred.** Backend follow-ups only: WebAuthn step-up ceremony, magic-link M36 delivery,
+> actor role/membership enrichment (the M2↔M3 seam).
 
 ### Partial — primary owner merged, but key sections need unbuilt modules
 
