@@ -30,7 +30,11 @@ import {
   registerTerminologySeams,
 } from "./modules/38-terminology/index";
 import { registerMdmErasers, registerMdmSeams } from "./modules/40-mdm/index";
-import { registerPatientErasers, registerPatientSeams } from "./modules/05-patient/index";
+import {
+  mountPatientRoutes,
+  registerPatientErasers,
+  registerPatientSeams,
+} from "./modules/05-patient/index";
 import {
   registerConsentAbacPredicates,
   registerConsentErasers,
@@ -124,6 +128,7 @@ if ((import.meta as { main?: boolean }).main) {
           // M2 — member roster on the real MembershipRepository; isAdmin via the M3 admin reader.
           mountIdentityRoutes(app, dbHandle.db, createDbAdminMembershipReader(dbHandle.db));
           mountAuditRoutes(app, dbHandle.db); // M4 — audit-log search on the real Drizzle AuditQuery
+          mountPatientRoutes(app, dbHandle.db); // M5 — patient census/chart READS on the real patient table
         }
       : undefined,
     registerModuleSeams: () =>
