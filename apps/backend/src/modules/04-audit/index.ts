@@ -58,3 +58,23 @@ export {
   registerAuditWorkers,
   scheduleAuditJobs,
 } from "./jobs/audit-jobs";
+
+import { createDbAuditQuery } from "@wardenx/audit";
+import type { DbClient } from "@wardenx/db";
+import type { FastifyInstance } from "fastify";
+import { createInMemoryAuditExecutor } from "../02-identity/index";
+import { registerAuditRoutes as _registerAuditRoutes } from "./routes/audit-routes";
+
+/**
+ * Mount the M4 audit-log REST routes (GET /audit/events, /audit/events/:id, the per-patient
+ * access history) on the real Drizzle AuditQuery over `audit_event` (RLS-scoped). The composition
+ * root calls this when a DB client is present. The §164.528 accounting route (registerPatientAccounting
+ * Route) is NOT mounted here yet. The `audit.elevated_access` meta-event sink is in-memory for now (the
+ * audit WRITE path runs through the wardenx_audit_writer role — a separate wiring follow-up).
+ */
+export function mountAuditRoutes(app: FastifyInstance, db: DbClient): void {
+  _registerAuditRoutes(app, {
+    query: createDbAuditQuery(db),
+    audit: createInMemoryAuditExecutor().executor,
+  });
+}

@@ -403,4 +403,48 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
 
     await handle7.close();
   });
+
+  it("M4 Audit: the live AuditQuery searches/filters the org's audit_event log, RLS-scoped (wardenx_app)", async () => {
+    const { createDbClient: mkDb8 } = await import("@wardenx/db");
+    const { createDbAuditQuery } = await import("@wardenx/audit");
+    const handle8 = mkDb8({ connectionString: DB_URL as string });
+    const query = createDbAuditQuery(asTenantRole(handle8.db) as never);
+
+    const org = (await admin.query("INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'AU','AU') RETURNING id", [`au-${Date.now()}`])).rows[0].id as string;
+    const otherOrg = (await admin.query("INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'AU2','AU2') RETURNING id", [`au2-${Date.now()}`])).rows[0].id as string;
+    const patientId = crypto.randomUUID();
+    const ins = (orgId: string, eventType: string, resourceKind: string, resourceId: string | null, context: object) =>
+      admin.query(
+        "INSERT INTO audit_event (organization_id,actor_kind,event_type,resource_kind,resource_id,correlation_id,outcome,context) VALUES ($1,'user',$2,$3,$4,$5,'success',$6::jsonb)",
+        [orgId, eventType, resourceKind, resourceId, `c-${Math.random().toString(36).slice(2)}`, JSON.stringify(context)],
+      );
+    await ins(org, "patient.viewed", "patient", patientId, { patientId, fields: ["name"] }); // access + touch
+    await ins(org, "role.updated", "role", null, {}); // neither access nor patient-touch
+    await ins(org, "patient.viewed", "patient", crypto.randomUUID(), {}); // access, other patient
+    await ins(otherOrg, "patient.viewed", "patient", patientId, { patientId }); // different org — must NOT leak
+
+    // searchEvents: the org's events (RLS hides otherOrg's), newest-first. The org-creation audit
+    // trigger also writes a row for this org, so assert containment + org-scoping, not an exact count.
+    const all = await query.searchEvents(org, {});
+    expect(all.items.length).toBeGreaterThanOrEqual(3);
+    expect(all.items.every((e) => e.organizationId === org)).toBe(true);
+    const types = all.items.map((e) => e.eventType);
+    expect(types).toContain("role.updated");
+    expect(types.filter((t) => t === "patient.viewed")).toHaveLength(2);
+
+    // patientId filter → only events touching that patient.
+    const touching = await query.searchEvents(org, { patientId });
+    expect(touching.items.map((e) => e.eventType)).toEqual(["patient.viewed"]);
+
+    // patientAccess → access events touching the patient (the role.updated is excluded).
+    const access = await query.patientAccess(org, patientId, {});
+    expect(access.items).toHaveLength(1);
+    expect(access.items[0]?.fields).toEqual(["name"]);
+
+    // RLS: another org sees none of this org's events.
+    expect((await query.searchEvents(otherOrg, {})).items.every((e) => e.organizationId === otherOrg)).toBe(true);
+    expect((await query.searchEvents(otherOrg, { patientId })).items).toHaveLength(1); // its own row only
+
+    await handle8.close();
+  });
 });

@@ -17,7 +17,7 @@ import {
 import type { SessionContextStore } from "@wardenx/auth";
 import { type DbClient, createDbClient } from "@wardenx/db";
 import { buildServer, createSessionAuthenticate, getSeam } from "./bootstrap/index";
-import { assertAuditActionCatalog, registerAuditErasers } from "./modules/04-audit/index";
+import { assertAuditActionCatalog, mountAuditRoutes, registerAuditErasers } from "./modules/04-audit/index";
 import {
   mountIdentityRoutes,
   registerIdentityErasers,
@@ -120,9 +120,10 @@ if ((import.meta as { main?: boolean }).main) {
     // stores land. The slice/tests boot without this (foundation routes only).
     registerModuleRoutes: dbHandle
       ? (app) => {
-          mountAuthorizationRoutes(app, dbHandle.db); // M3 — role catalog on the real RoleStore
+          mountAuthorizationRoutes(app, dbHandle.db); // M3 — role catalog + grants on real stores
           // M2 — member roster on the real MembershipRepository; isAdmin via the M3 admin reader.
           mountIdentityRoutes(app, dbHandle.db, createDbAdminMembershipReader(dbHandle.db));
+          mountAuditRoutes(app, dbHandle.db); // M4 — audit-log search on the real Drizzle AuditQuery
         }
       : undefined,
     registerModuleSeams: () =>
