@@ -85,6 +85,61 @@ export interface PatientPayerView {
   readonly effectiveTo: string | null;
 }
 
+/**
+ * One §3.5 `patient_assignment` row for the Care Team & Assignments tab. Links a clinician (an M2
+ * `user`) to the patient in a care-team `role`, open while `unassignedAt IS NULL` (`current`). The
+ * clinician's DISPLAY NAME is NOT resolved here — that crosses into M2, so the row carries only
+ * `clinicianUserId` and the client resolves the name through the M2 roster (mirrors the §3.4 payer →
+ * M40 client-edge resolution). At most one current `primary_rn` per patient (a partial unique index).
+ */
+export interface AssignmentView {
+  readonly id: string;
+  readonly clinicianUserId: string;
+  readonly role: string;
+  readonly assignedAt: string;
+  readonly unassignedAt: string | null;
+  readonly current: boolean; // unassignedAt IS NULL
+}
+
+/**
+ * One §3.4 caregiver involvement (a `patient_caregiver` row joined to its `caregiver` person). Carries
+ * the relationship, the primary-caregiver flag, and the legal-representative authority (DPOA / guardian
+ * / NOK). `current` (involvementTo IS NULL) marks a live involvement; at most one current primary.
+ */
+export interface CaregiverView {
+  readonly id: string; // patient_caregiver.id
+  readonly caregiverId: string;
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly relationship: string;
+  readonly isPrimary: boolean;
+  readonly isLegalRepresentative: boolean;
+  readonly lrAuthority: string;
+  readonly phone: string | null;
+  readonly email: string | null;
+  readonly current: boolean; // involvementTo IS NULL
+}
+
+/** One §3.4 `emergency_contact` row (priority 1 = first to call). */
+export interface EmergencyContactView {
+  readonly id: string;
+  readonly name: string;
+  readonly relationship: string;
+  readonly phone: string;
+  readonly email: string | null;
+  readonly priority: number;
+}
+
+/**
+ * The Care Team & Assignments tab payload (§3.4/§3.5): the clinical assignment roster + the caregiver
+ * involvements + the emergency contacts. All three are M5-owned reads scoped by RLS to app.org_id.
+ */
+export interface CareTeamView {
+  readonly assignments: readonly AssignmentView[];
+  readonly caregivers: readonly CaregiverView[];
+  readonly emergencyContacts: readonly EmergencyContactView[];
+}
+
 /** The add-address capture contract (§7.4). `isPrimary` triggers atomic primary rotation. */
 export interface AddAddressInput {
   readonly line1: string;
@@ -173,6 +228,7 @@ export interface PatientRouteService {
   ): Promise<{ items: PatientView[]; nextCursor: string | null }>;
   listAddresses(organizationId: string, patientId: string): Promise<AddressView[] | null>;
   listPayers(organizationId: string, patientId: string): Promise<PatientPayerView[] | null>;
+  getCareTeam(organizationId: string, patientId: string): Promise<CareTeamView | null>;
   addAddress(
     organizationId: string,
     patientId: string,
@@ -339,6 +395,13 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
       return [...(payers.get(patientId) ?? [])].sort(
         (a, b) => Number(b.current) - Number(a.current) || a.rank - b.rank,
       );
+    },
+
+    async getCareTeam(organizationId, patientId) {
+      const p = patients.get(patientId);
+      if (!p || p.organizationId !== organizationId) return null; // §7.5 no-leak
+      // The slice carries no care-team seed; production reads the M5 tables under RLS.
+      return { assignments: [], caregivers: [], emergencyContacts: [] };
     },
 
     async addAddress(_organizationId, patientId, address, _actorUserId) {

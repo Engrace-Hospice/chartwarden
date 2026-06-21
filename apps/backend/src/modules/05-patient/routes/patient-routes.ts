@@ -88,6 +88,15 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
     return { payers: rows };
   });
 
+  // --- §3.4/§3.5 care team & assignments tab (assignment roster + caregivers + emergency contacts) -
+  app.get("/api/v1/patients/:id/care-team", { preHandler: [READ] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    const { id } = parse(LooseIdParamsSchema, request.params);
+    const team = await service.getCareTeam(organizationId, id);
+    if (team === null) throw notFound("patient"); // §7.5 non-leak
+    return team;
+  });
+
   // --- §4.2 admit (runs the §7.1 match pipeline; hard dup → 409) --------------------------------
   app.post("/api/v1/patients", { preHandler: [CREATE] }, async (request, reply) => {
     const { organizationId, userId } = actorOf(request);

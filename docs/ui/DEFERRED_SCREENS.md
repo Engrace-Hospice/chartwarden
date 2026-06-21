@@ -33,7 +33,7 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 | 1 | M2 | Authentication & Session | `screens/core/WARDENX_UI_AUTH.md` | Auth Flow | ✓ `CenteredCardLayout` | done¹ |
 | 2 | M1+M2+M3 | App Shell & Role Home | `screens/core/WARDENX_UI_APP_SHELL_HOME.md` | App Shell | ✓ shell (F0-T03) | done³ |
 | 3 | M1 | System / Utility Pages | `screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md` | System Page | ✓ `CenteredStatusLayout` | done |
-| 4 | M5 | Patient Chart | `screens/clinical/WARDENX_UI_PATIENT_CHART.md` | Patient Workspace | ✓ `PatientWorkspaceLayout` | done (frame + Demographics + Addresses + Coverage tabs)⁴ ⁹ ¹⁰ |
+| 4 | M5 | Patient Chart | `screens/clinical/WARDENX_UI_PATIENT_CHART.md` | Patient Workspace | ✓ `PatientWorkspaceLayout` | done (frame + Demographics + Addresses + Coverage + Care Team tabs)⁴ ⁹ ¹⁰ ¹¹ |
 | 5 | M5 | Patient List / Census | `screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md` | Work Queue | ✓ `WorkQueueLayout` | done² |
 | 6 | M3 | Roles & Permissions | `screens/admin/WARDENX_UI_ROLES_PERMISSIONS.md` | Admin Split Layout | ✓ `AdminSplitLayout` | done |
 | 7 | M4 | Audit Log Viewer | `screens/admin/WARDENX_UI_AUDIT_LOG_VIEWER.md` | Work Queue | ✓ `WorkQueueLayout` | done |
@@ -77,6 +77,18 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > there is **no cross-module backend coupling** (no new `dependsOn` edge, no `packages/db/src/schema/mdm`
 > import). A payer the viewer can't resolve (e.g. lacking `mdm.payer.read`) falls back to its raw id,
 > never fabricated. Primary (rank 1) is badged; closed coverages render as history.
+
+> ¹¹ **Patient Chart — Care Team & Assignments tab now LIVE (FB-T09).** The M5-owned tab renders three
+> §3.4/§3.5 M5-owned lists via a new gated `GET /api/v1/patients/:id/care-team`
+> (`requirePermission("patient.read")`, RLS-scoped, 404-no-leak), backed by the Drizzle
+> `PatientRouteService.getCareTeam`: the clinical `patient_assignment` roster (active first by
+> `unassigned_at IS NULL`), the `patient_caregiver` ⨝ `caregiver` involvements (relationship + primary +
+> legal-representative authority), and the priority-ordered `emergency_contact` rows. An assignment's
+> clinician is returned as a bare `clinician_user_id` — the staff **display name** crosses into M2, and
+> the M2 roster does not yet expose user names (Staff Management enrichment FB-T12 / M34), so the row
+> shows its care-team role + the short clinician id honestly rather than a fabricated name. **No
+> cross-module backend coupling** (no new `dependsOn` edge, no M2 schema import). Closed assignments /
+> ended involvements render under "Past involvement".
 
 > ⁶ **M38 Terminology — now LIVE end-to-end (FB-T01).** The terminology routes are mounted in the
 > composition root (`registerTerminologyRoutes` in `apps/backend/src/index.ts`), and the published

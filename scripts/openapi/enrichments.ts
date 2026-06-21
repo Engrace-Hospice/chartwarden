@@ -25,6 +25,7 @@ import {
   AmendmentBodySchema,
   DenyBodySchema,
   PatientAddressesResponseSchema,
+  PatientCareTeamResponseSchema,
   PatientDemographicsSchema,
   PatientIdentifiersResponseSchema,
   PatientListQuerySchema,
@@ -307,6 +308,10 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/patients/:id/payers": {
     summary: "Patient coverage / payers — ranked coverages; payer name resolved via M40 (§3.4)",
     response: PatientPayersResponseSchema,
+  },
+  "GET /api/v1/patients/:id/care-team": {
+    summary: "Patient care team — assignment roster + caregivers + emergency contacts (§3.4/§3.5)",
+    response: PatientCareTeamResponseSchema,
   },
   "POST /api/v1/patients/:id/amendments": {
     body: AmendmentBodySchema,

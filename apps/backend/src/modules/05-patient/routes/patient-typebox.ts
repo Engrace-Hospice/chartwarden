@@ -180,6 +180,47 @@ export const PatientPayersResponseSchema = Type.Object({
   payers: Type.Array(PatientPayerSchema),
 });
 
+// GET /api/v1/patients/:id/care-team (§3.4/§3.5) — assignment roster + caregivers + emergency contacts.
+// `clinicianUserId` names an M2 user whose display name is resolved client-side via the M2 roster
+// (no cross-module schema import); `current` rows render above closed ones.
+const PatientAssignmentSchema = Type.Object({
+  id: Type.String(),
+  clinicianUserId: Type.String(),
+  role: Type.String(),
+  assignedAt: Type.String(),
+  unassignedAt: Type.Union([Type.String(), Type.Null()]),
+  current: Type.Boolean(),
+});
+
+const PatientCaregiverSchema = Type.Object({
+  id: Type.String(),
+  caregiverId: Type.String(),
+  firstName: Type.String(),
+  lastName: Type.String(),
+  relationship: Type.String(),
+  isPrimary: Type.Boolean(),
+  isLegalRepresentative: Type.Boolean(),
+  lrAuthority: Type.String(),
+  phone: Type.Union([Type.String(), Type.Null()]),
+  email: Type.Union([Type.String(), Type.Null()]),
+  current: Type.Boolean(),
+});
+
+const PatientEmergencyContactSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  relationship: Type.String(),
+  phone: Type.String(),
+  email: Type.Union([Type.String(), Type.Null()]),
+  priority: Type.Integer(),
+});
+
+export const PatientCareTeamResponseSchema = Type.Object({
+  assignments: Type.Array(PatientAssignmentSchema),
+  caregivers: Type.Array(PatientCaregiverSchema),
+  emergencyContacts: Type.Array(PatientEmergencyContactSchema),
+});
+
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   const converted = Value.Convert(schema, raw ?? {});
   if (!Value.Check(schema, converted)) {

@@ -1048,6 +1048,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{id}/care-team": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Patient care team — assignment roster + caregivers + emergency contacts (§3.4/§3.5) */
+        get: operations["getApiV1PatientsByIdCareteam"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{id}/demographics": {
         parameters: {
             query?: never;
@@ -3319,6 +3336,60 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PatientsByIdCareteam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        assignments: {
+                            id: string;
+                            clinicianUserId: string;
+                            role: string;
+                            assignedAt: string;
+                            unassignedAt: string | null;
+                            current: boolean;
+                        }[];
+                        caregivers: {
+                            id: string;
+                            caregiverId: string;
+                            firstName: string;
+                            lastName: string;
+                            relationship: string;
+                            isPrimary: boolean;
+                            isLegalRepresentative: boolean;
+                            lrAuthority: string;
+                            phone: string | null;
+                            email: string | null;
+                            current: boolean;
+                        }[];
+                        emergencyContacts: {
+                            id: string;
+                            name: string;
+                            relationship: string;
+                            phone: string;
+                            email: string | null;
+                            priority: number;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

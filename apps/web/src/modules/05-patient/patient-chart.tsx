@@ -33,7 +33,7 @@ const NAV_SECTIONS: { label: string; ready: boolean }[] = [
   { label: "Demographics & Identifiers", ready: true },
   { label: "Addresses", ready: true },
   { label: "Coverage / Payers", ready: true },
-  { label: "Care Team & Assignments", ready: false },
+  { label: "Care Team & Assignments", ready: true },
   { label: "Care Plan", ready: false },
   { label: "Encounters / Visits", ready: false },
   { label: "Assessments", ready: false },
@@ -117,6 +117,8 @@ export function PatientChart(): JSX.Element {
             <AddressesTab patientId={p.id} />
           ) : section === "Coverage / Payers" ? (
             <CoverageTab patientId={p.id} />
+          ) : section === "Care Team & Assignments" ? (
+            <CareTeamTab patientId={p.id} />
           ) : (
             <SummaryTab patient={p} />
           )}
@@ -592,6 +594,192 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
       ) : null}
       <p style={{ color: "#9ca3af", fontSize: "0.78rem", margin: "0.6rem 0 0" }}>
         Payer names resolve from M40 master data; an unresolved row shows its raw payer id.
+      </p>
+    </>
+  );
+}
+
+// §3.4/§3.5 Care Team & Assignments. The M5 route returns three M5-owned lists: the clinical
+// `assignments` (a clinician user id + care-team role), the `caregivers` (relationship + primary /
+// legal-representative authority), and the `emergencyContacts` (priority-ordered). A clinician's
+// DISPLAY NAME crosses into M2 — the M2 roster does not yet expose user names (FB-T12 / M34), so an
+// assignment shows its role + the short user id honestly rather than a fabricated name. `current`
+// (open) rows render above closed ones.
+interface Assignment {
+  id: string;
+  clinicianUserId: string;
+  role: string;
+  assignedAt: string;
+  unassignedAt: string | null;
+  current: boolean;
+}
+
+interface CaregiverLink {
+  id: string;
+  caregiverId: string;
+  firstName: string;
+  lastName: string;
+  relationship: string;
+  isPrimary: boolean;
+  isLegalRepresentative: boolean;
+  lrAuthority: string;
+  phone: string | null;
+  email: string | null;
+  current: boolean;
+}
+
+interface EmergencyContact {
+  id: string;
+  name: string;
+  relationship: string;
+  phone: string;
+  email: string | null;
+  priority: number;
+}
+
+interface CareTeam {
+  assignments: Assignment[];
+  caregivers: CaregiverLink[];
+  emergencyContacts: EmergencyContact[];
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  primary_rn: "Primary RN",
+  attending_clinician: "Attending clinician",
+  case_manager_msw: "Case manager (MSW)",
+  chaplain: "Chaplain",
+  aide: "Aide",
+  np: "NP",
+  md: "MD",
+  volunteer: "Volunteer",
+  bereavement: "Bereavement",
+};
+const roleLabel = (r: string) => ROLE_LABELS[r] ?? r;
+const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
+  const client = useApiClient();
+  const [team, setTeam] = useState<CareTeam | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      setStatus("loading");
+      const res = await client.GET("/api/v1/patients/{id}/care-team", { params: { path: { id: patientId } } });
+      if (!active) return;
+      if (res.error || !res.data) return setStatus("error");
+      setTeam(res.data as CareTeam);
+      setStatus("ready");
+    })();
+    return () => {
+      active = false;
+    };
+  }, [client, patientId]);
+
+  if (status === "loading") return <LoadingSpinner />;
+  if (status === "error" || team === null) {
+    return <p style={{ color: "#b91c1c", fontSize: "0.9rem" }}>Care team could not be loaded.</p>;
+  }
+
+  const assignments = [...team.assignments].sort((a, b) => Number(b.current) - Number(a.current));
+  const activeAssignments = assignments.filter((a) => a.current);
+  const pastAssignments = assignments.filter((a) => !a.current);
+  const caregivers = team.caregivers.filter((c) => c.current);
+  const pastCaregivers = team.caregivers.filter((c) => !c.current);
+
+  return (
+    <>
+      <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>Care Team &amp; Assignments</h2>
+
+      <h3 style={h3}>Clinical assignments</h3>
+      {activeAssignments.length === 0 ? (
+        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>No active assignments on file.</p>
+      ) : (
+        <ul style={{ listStyle: "none", margin: "0.25rem 0 0", padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          {activeAssignments.map((a) => (
+            <li key={a.id} style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", padding: "0.6rem 0.75rem", fontSize: "0.88rem" }}>
+              <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", marginBottom: "0.2rem" }}>
+                <span style={{ fontWeight: 600 }}>{roleLabel(a.role)}</span>
+                {a.role === "primary_rn" ? <span style={badge("#eef2ff", "#4338ca")}>primary RN</span> : null}
+              </div>
+              <div style={{ color: "#374151" }} title={`M2 user ${a.clinicianUserId}`}>
+                Clinician <code style={{ fontSize: "0.82rem" }}>{a.clinicianUserId.slice(0, 8)}…</code>
+              </div>
+              <div style={{ color: "#9ca3af", fontSize: "0.78rem", marginTop: "0.2rem" }}>assigned {a.assignedAt}</div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <h3 style={h3}>Caregivers</h3>
+      {caregivers.length === 0 ? (
+        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>No caregivers on file.</p>
+      ) : (
+        <ul style={{ listStyle: "none", margin: "0.25rem 0 0", padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          {caregivers.map((c) => (
+            <li key={c.id} style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", padding: "0.6rem 0.75rem", fontSize: "0.88rem" }}>
+              <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", marginBottom: "0.2rem" }}>
+                <span style={{ fontWeight: 600 }}>{c.lastName}, {c.firstName}</span>
+                <span style={badge("#ecfdf5", "#047857")}>{titleCase(c.relationship)}</span>
+                {c.isPrimary ? <span style={badge("#eef2ff", "#4338ca")}>primary</span> : null}
+                {c.isLegalRepresentative ? (
+                  <span style={badge("#fef3c7", "#92400e")} title={`Legal-representative authority: ${titleCase(c.lrAuthority)}`}>
+                    legal rep · {titleCase(c.lrAuthority)}
+                  </span>
+                ) : null}
+              </div>
+              {c.phone || c.email ? (
+                <div style={{ color: "#374151" }}>{[c.phone, c.email].filter(Boolean).join(" · ")}</div>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <h3 style={h3}>Emergency contacts</h3>
+      {team.emergencyContacts.length === 0 ? (
+        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>No emergency contacts on file.</p>
+      ) : (
+        <table style={{ borderCollapse: "collapse", fontSize: "0.85rem", width: "100%", maxWidth: 640 }}>
+          <thead>
+            <tr style={{ textAlign: "left", color: "#6b7280" }}>
+              <th style={th}>#</th>
+              <th style={th}>Name</th>
+              <th style={th}>Relationship</th>
+              <th style={th}>Contact</th>
+            </tr>
+          </thead>
+          <tbody>
+            {team.emergencyContacts.map((c) => (
+              <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+                <td style={td}>{c.priority}</td>
+                <td style={td}>{c.name}</td>
+                <td style={td}>{c.relationship}</td>
+                <td style={td}>{[c.phone, c.email].filter(Boolean).join(" · ")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {(pastAssignments.length > 0 || pastCaregivers.length > 0) ? (
+        <>
+          <h3 style={h3}>Past involvement</h3>
+          <ul style={{ margin: "0.25rem 0 0", paddingLeft: "1.1rem", color: "#6b7280", fontSize: "0.82rem" }}>
+            {pastAssignments.map((a) => (
+              <li key={a.id}>{roleLabel(a.role)} · clinician {a.clinicianUserId.slice(0, 8)}… · {a.assignedAt} → {a.unassignedAt ?? "—"}</li>
+            ))}
+            {pastCaregivers.map((c) => (
+              <li key={c.id}>{c.lastName}, {c.firstName} · {titleCase(c.relationship)} (ended)</li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+
+      <p style={{ color: "#9ca3af", fontSize: "0.78rem", margin: "0.6rem 0 0" }}>
+        Staff display names resolve from the M2 roster once it exposes them (Staff Management enrichment / M34);
+        until then an assignment shows its care-team role and the clinician id.
       </p>
     </>
   );

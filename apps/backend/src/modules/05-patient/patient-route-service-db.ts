@@ -18,6 +18,7 @@ import type {
   AddressView,
   AdmitInput,
   AdmitResult,
+  CareTeamView,
   DemographicsView,
   IdentifierView,
   PatientPayerView,
@@ -30,6 +31,10 @@ const ADDR = schema.patientAddresses;
 const PAYER = schema.patientPayers;
 const ALIAS = schema.patientNameAliases;
 const COMM = schema.patientCommunicationPreferences;
+const ASSIGN = schema.patientAssignments;
+const PCG = schema.patientCaregivers;
+const CG = schema.caregivers;
+const EC = schema.emergencyContacts;
 const SENSITIVE_KINDS = new Set(["ssn", "state_id"]);
 
 const P = schema.patients;
@@ -337,6 +342,96 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
       }));
     });
 
+  // §3.4/§3.5 Care Team & Assignments tab: the clinical assignment roster (`patient_assignment`) +
+  // the caregiver involvements (`patient_caregiver` ⨝ `caregiver`) + the emergency contacts. Each is
+  // an M5-owned read under RLS (app.org_id). The assignment's clinician is returned as a bare
+  // `clinicianUserId` — the staff NAME crosses into M2, so the client resolves it through the M2
+  // roster (no cross-module schema import here), mirroring the §3.4 payer → M40 client-edge resolution.
+  // 404 (null) when the patient is absent / out of org (§7.5 no-leak), like listAddresses/listPayers.
+  const getCareTeam = async (organizationId: string, patientId: string): Promise<CareTeamView | null> =>
+    withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      const exists = await tx.select({ id: P.id }).from(P).where(eq(P.id, patientId)).limit(1);
+      if (!exists[0]) return null;
+
+      const assignmentRows = await tx
+        .select({
+          id: ASSIGN.id,
+          clinicianUserId: ASSIGN.clinicianUserId,
+          role: ASSIGN.role,
+          assignedAt: ASSIGN.assignedAt,
+          unassignedAt: ASSIGN.unassignedAt,
+        })
+        .from(ASSIGN)
+        .where(eq(ASSIGN.patientId, patientId))
+        // active first (unassigned_at NULLS FIRST via the boolean), then newest assignment.
+        .orderBy(asc(ASSIGN.unassignedAt), desc(ASSIGN.assignedAt));
+
+      const caregiverRows = await tx
+        .select({
+          id: PCG.id,
+          caregiverId: PCG.caregiverId,
+          firstName: CG.firstName,
+          lastName: CG.lastName,
+          phone: CG.phone,
+          email: CG.email,
+          relationship: PCG.relationship,
+          isPrimary: PCG.isPrimary,
+          isLegalRepresentative: PCG.isLegalRepresentative,
+          lrAuthority: PCG.lrAuthority,
+          involvementTo: PCG.involvementTo,
+        })
+        .from(PCG)
+        .innerJoin(CG, eq(CG.id, PCG.caregiverId))
+        .where(eq(PCG.patientId, patientId))
+        // current first (involvement_to NULLS FIRST), then primary, then by relationship.
+        .orderBy(asc(PCG.involvementTo), desc(PCG.isPrimary), asc(PCG.relationship));
+
+      const contactRows = await tx
+        .select({
+          id: EC.id,
+          name: EC.name,
+          relationship: EC.relationship,
+          phone: EC.phone,
+          email: EC.email,
+          priority: EC.priority,
+        })
+        .from(EC)
+        .where(eq(EC.patientId, patientId))
+        .orderBy(asc(EC.priority));
+
+      return {
+        assignments: assignmentRows.map((r) => ({
+          id: r.id,
+          clinicianUserId: r.clinicianUserId,
+          role: r.role,
+          assignedAt: r.assignedAt,
+          unassignedAt: r.unassignedAt ?? null,
+          current: r.unassignedAt === null,
+        })),
+        caregivers: caregiverRows.map((r) => ({
+          id: r.id,
+          caregiverId: r.caregiverId,
+          firstName: r.firstName,
+          lastName: r.lastName,
+          relationship: r.relationship,
+          isPrimary: r.isPrimary,
+          isLegalRepresentative: r.isLegalRepresentative,
+          lrAuthority: r.lrAuthority,
+          phone: r.phone ?? null,
+          email: r.email ?? null,
+          current: r.involvementTo === null,
+        })),
+        emergencyContacts: contactRows.map((r) => ({
+          id: r.id,
+          name: r.name,
+          relationship: r.relationship,
+          phone: r.phone,
+          email: r.email ?? null,
+          priority: r.priority,
+        })),
+      };
+    });
+
   // §7.4 / D5: append a patient address (US addresses require a state — patient_address CHECK) + report
   // the address-change cascade event. An `isPrimary` add performs ATOMIC primary rotation in one tx:
   // close the prior current primary (set effective_to so the partial unique index frees up), then
@@ -425,5 +520,5 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
 
   // `writes` (in-memory) is no longer needed — all writes are real now.
 
-  return { list, getPatient, getDemographics, getIdentifiers, listAddresses, listPayers, admit, addAddress, submitAmendment, decideAmendment };
+  return { list, getPatient, getDemographics, getIdentifiers, listAddresses, listPayers, getCareTeam, admit, addAddress, submitAmendment, decideAmendment };
 }
