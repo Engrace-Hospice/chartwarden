@@ -1,0 +1,120 @@
+// apps/backend/__tests__/encounter-workflow-acceptance.test.ts — M8-T12 the §7 workflow-acceptance
+// suite. One scenario per §7 user story, exercised end-to-end over the in-memory EncounterRouteService
+// (the same backend the routes compose over). Deterministic: no infra, injected clock. The route-auth
+// handshake (§4.5/§4.6) + the §7.7 412 wire behaviour live in encounter-routes.test.ts; the pure SLA /
+// late-entry / cosignature machines have their own suites — this asserts the WORKFLOW outcomes (state
+// transitions, cosignature routing/escalation/release, late-entry tiers, addenda, concurrency).
+import { describe, expect, it } from "vitest";
+import { createInMemoryEncounterBackend } from "../src/modules/08-encounters/index";
+
+const ORG = "org_a";
+const ORG_B = "org_b";
+const PATIENT = "11111111-1111-4111-8111-111111111111";
+const ADMISSION = "33333333-3333-4333-8333-333333333333";
+const PAST = "2020-01-01"; // a non-future service date (createDraft rejects future dates)
+
+/** Create a draft routine_visit for the given discipline and return the backend + the new encounter id. */
+async function draft(discipline: "rn" | "lpn") {
+  const backend = createInMemoryEncounterBackend();
+  const created = await backend.service.createDraft(ORG, `${discipline}_1`, {
+    patientId: PATIENT,
+    admissionId: ADMISSION,
+    encounterType: "routine_visit",
+    discipline,
+    serviceDate: PAST,
+  });
+  return { backend, svc: backend.service, id: created.id };
+}
+
+describe("M8-T12 §7 workflow acceptance", () => {
+  it("§7.1 — RN routine visit happy path: draft → finalize → sign → signed (no cosignature)", async () => {
+    const { svc, id } = await draft("rn");
+    const fin = await svc.finalize(ORG, id, PAST);
+    expect(fin.status).toBe("finalized");
+    const signed = await svc.sign(ORG, id, { stepUpFresh: true, at: PAST });
+    expect(signed.status).toBe("signed");
+    expect(signed.cosignatureRequestId).toBeNull();
+    expect((await svc.getEncounter(ORG, id)).status).toBe("signed");
+  });
+
+  it("§7.2 — LPN routine visit routes a cosignature: sign → cosign_pending → ack → RN signs → cosigned", async () => {
+    const { svc, id } = await draft("lpn");
+    await svc.finalize(ORG, id, PAST);
+    const signed = await svc.sign(ORG, id, { stepUpFresh: true, at: PAST });
+    expect(signed.status).toBe("cosign_pending");
+    expect((await svc.getCosignature(ORG, id)).status).toBe("routed");
+    expect((await svc.cosignAcknowledge(ORG, id, PAST)).status).toBe("acknowledged");
+    const cos = await svc.cosignSign(ORG, id, { isQualifiedRn: true, at: PAST });
+    expect(cos.status).toBe("cosigned");
+    expect(cos.cosignedAt).not.toBeNull();
+  });
+
+  it("§7.3 — 48h hard cap locks cosignature until a supervisor releases, then an RN signs", async () => {
+    // Seed a cosign-pending encounter already at the 48h hard cap (the SLA-clock escalation has its own suite).
+    const backend = createInMemoryEncounterBackend({
+      encounters: [
+        { id: "e0000000-0000-4000-8000-0000000000aa", organizationId: ORG, patientId: PATIENT, discipline: "lpn", status: "cosign_pending", authoredByUserId: "lpn_1", cosignature: "hard_cap_reached" },
+      ],
+    });
+    const id = "e0000000-0000-4000-8000-0000000000aa";
+    // A cosigner cannot sign while hard-capped — the encounter is locked.
+    await expect(backend.service.cosignSign(ORG, id, { isQualifiedRn: true, at: PAST })).rejects.toThrow();
+    const released = await backend.service.supervisorRelease(ORG, id, {
+      isSupervisor: true,
+      reason: "Primary cosigner on leave; covering supervisor reviewed and released per policy.",
+      at: PAST,
+    });
+    expect(released.status).toBe("supervisor_released");
+    const cos = await backend.service.cosignSign(ORG, id, { isQualifiedRn: true, at: PAST });
+    expect(cos.status).toBe("cosigned");
+  });
+
+  it("§7.5 — significant late entry (3–14d) override stamps the significant_late_entry tier", async () => {
+    const { svc, id } = await draft("rn");
+    const r = await svc.lateEntryOverride(ORG, id);
+    expect(r.status).toBeDefined();
+    expect((await svc.getEncounter(ORG, id)).lateEntryTier).toBe("significant_late_entry");
+  });
+
+  it("§7.6 — administrative (>14d) override stamps the administrative_override tier", async () => {
+    const { svc, id } = await draft("rn");
+    await svc.administrativeOverride(ORG, id);
+    expect((await svc.getEncounter(ORG, id)).lateEntryTier).toBe("administrative_override");
+  });
+
+  it("§7.9 — an addendum can be created on a signed encounter and signed independently", async () => {
+    const { svc, id } = await draft("rn");
+    await svc.finalize(ORG, id, PAST);
+    await svc.sign(ORG, id, { stepUpFresh: true, at: PAST });
+    const add = await svc.createAddendum(ORG, id);
+    expect(add.status).toBe("draft");
+    await svc.updateAddendumSelections(ORG, id, add.id);
+    await svc.finalizeAddendum(ORG, id, add.id);
+    const sa = await svc.signAddendum(ORG, id, add.id, { stepUpFresh: true, at: PAST });
+    expect(sa.status).toBe("signed");
+    // The parent encounter status is unchanged by the addendum (append-only, §3.6).
+    expect((await svc.getEncounter(ORG, id)).status).toBe("signed");
+  });
+
+  it("§7.14 — concurrency: an edit against a stale version is rejected (optimistic concurrency)", async () => {
+    const { svc, id } = await draft("rn");
+    await svc.updateSelections(ORG, id, 0); // version 0 → 1
+    await expect(svc.updateSelections(ORG, id, 0)).rejects.toThrow(); // stale If-Match
+    await expect(svc.updateSelections(ORG, id, 1)).resolves.toBeDefined(); // current version succeeds
+  });
+
+  it("cross-tenant isolation: an encounter is invisible to another org (non-leaking 404)", async () => {
+    const { svc, id } = await draft("rn");
+    await expect(svc.getEncounter(ORG_B, id)).rejects.toThrow();
+  });
+
+  it("the cosignature queue + my-drafts surfaces are org-scoped over the backend", async () => {
+    const { backend, svc, id } = await draft("lpn");
+    await svc.finalize(ORG, id, PAST);
+    await svc.sign(ORG, id, { stepUpFresh: true, at: PAST }); // → cosign_pending
+    const queue = await svc.cosignatureQueue(ORG);
+    expect(queue.encounters.some((e) => e.id === id)).toBe(true);
+    expect((await svc.cosignatureQueue(ORG_B)).encounters).toEqual([]);
+    void backend;
+  });
+});

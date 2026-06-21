@@ -44,6 +44,17 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // this deny-stub — under an M4 destruction certificate it deletes the admission satellites and
   // tombstones the `admission` row for FK integrity (D8); the `subjectId` is the patient.
   "admission_record",
+  // M7-T09: a patient's care-plan record (care_plan_version/signature/problem/goal/intervention).
+  // M7 registers the REAL eraser via the composition-root hook over this deny-stub — under an M4
+  // destruction certificate it deletes the care-plan satellites and tombstones the `care_plan` root
+  // for FK integrity (D8); the `subjectId` is the patient.
+  "care_plan_record",
+  // M8-T12: a patient's encounter record (encounter_signature/addendum/care_plan_link/cosignature_request/
+  // vitals/mileage/hearthnote_selection/assembled_output/llm_modification). M8 registers the REAL eraser
+  // via the composition-root hook over this deny-stub — under an M4 destruction certificate it crypto-erases
+  // the HearthNote ciphertext (tenant DEK, §3.6), deletes the encounter satellites, and tombstones the
+  // `encounter` root for FK integrity (D8); the `subjectId` is the patient.
+  "encounter_record",
 ];
 
 export function registerEraser(dataClass: DataClass, eraser: DataEraser): void {

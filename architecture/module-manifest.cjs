@@ -169,11 +169,11 @@ exports.MODULES = [
         codePaths: ["apps/backend/src/modules/06-admission", "apps/web/src/modules/06-admission"], dependsOn: [1, 5, 38, 40, 39], // +1: M6 registers its §4.7 reader seams via the M1-owned bootstrap registry (M6-T05)
         ownedTables: ["admission", "election_period", "election_statement", "certification_of_terminal_illness", "face_to_face_encounter", "level_of_care_period", "revocation_event", "discharge_event", "transfer_event", "referral", "notice_of_rights_acknowledgment", "compliance_window"] },
     { id: 7, name: "Care Plan (IPOC)",
-        codePaths: ["apps/backend/src/modules/07-care-plan"], dependsOn: [6, 38, 39],
+        codePaths: ["apps/backend/src/modules/07-care-plan", "apps/web/src/modules/07-care-plan"], dependsOn: [1, 6, 38, 39], // +1: M7 registers its §7.8 CarePlanReader seam via the M1-owned bootstrap registry (M7-T04); +web: Track B in-task screens (ADR-0030), land in M7-T09
         ownedTables: ["care_plan", "care_plan_version", "care_plan_signature", "problem", "goal", "intervention"] }, // M07-F02
     { id: 8, name: "Encounters & Visit Notes",
-        codePaths: ["apps/backend/src/modules/08-encounters", "packages/hearthnote", "packages/narrative-vocab"],
-        dependsOn: [6, 7, 36, 38],
+        codePaths: ["apps/backend/src/modules/08-encounters", "packages/hearthnote", "packages/narrative-vocab", "apps/web/src/modules/08-encounters"], // +web: Track B in-task screens (ADR-0030), land in M8-T12
+        dependsOn: [1, 6, 7, 36, 38], // +1: M8 registers its §4.7 owned seams (+ consumes M7's CarePlanReader) via the M1-owned bootstrap registry (M8-T08)
         ownedTables: ["encounter", "encounter_signature", "encounter_addendum", "encounter_care_plan_link", "cosignature_request", "vitals", "mileage", "hearthnote_selection", "hearthnote_assembled_output", "hearthnote_llm_modification"] },
     { id: 9, name: "Clinical Assessments Suite",
         codePaths: ["packages/assessments", "apps/backend/src/modules/09-assessments"], dependsOn: [38],

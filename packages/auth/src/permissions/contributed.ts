@@ -468,6 +468,67 @@ export const M6_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M6 contributed permission keys. */
 export type M6ContributedPermissionKey = keyof typeof M6_CONTRIBUTED_PERMISSIONS;
 
+/**
+ * The permission keys Module 7 (Care Plan / IPOC) registers into Module 3's catalog — the §4.5
+ * binding cross-module handshake (M7-T06; M7 spec §4.5). The seven keys gate the §4.1 route
+ * inventory: reads (`care_plan.read`/`care_plan.read_summary`), the system/admin bootstrap of the
+ * plan row on admission activation (`care_plan.bootstrap`), authoring of problems/goals/interventions
+ * and version drafting (`care_plan.author`), the `draft → in_review` finalize (`care_plan.finalize`),
+ * signing a version against the Required Signer Set (`care_plan.sign`), and the outbox-driven IDG
+ * revision apply (`care_plan.idg_revise`). The `abac` field carries each key's DEFAULT predicate name:
+ * `caseload_or_scope` (the actor's caseload OR a location/PE scope), `signer_role_match` on sign (the
+ * §2.3 / D5 rule the route enforces in addition to RBAC), `collaborator_or_caseload` on the summary
+ * surface (Portal/Collaborator session class), and `none` for the system idg-revise path. The
+ * per-route ABAC composition (∧ `discipline_scope` / ∧ `sud_disclosure_allowed`) lands with the
+ * authoring work (M7-T06); here the keys + their defaults are the M3 catalog contribution.
+ */
+export const M7_CONTRIBUTED_PERMISSIONS = {
+  "care_plan.read": { resource: "care_plan", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  "care_plan.bootstrap": { resource: "care_plan", action: "bootstrap", category: "clinical", abac: "caseload_or_scope" },
+  "care_plan.author": { resource: "care_plan", action: "author", category: "clinical", abac: "caseload_or_scope" },
+  "care_plan.finalize": { resource: "care_plan", action: "finalize", category: "clinical", abac: "caseload_or_scope" },
+  "care_plan.sign": { resource: "care_plan", action: "sign", category: "clinical", abac: "signer_role_match" },
+  "care_plan.read_summary": { resource: "care_plan", action: "read_summary", category: "clinical", abac: "collaborator_or_caseload" },
+  "care_plan.idg_revise": { resource: "care_plan", action: "idg_revise", category: "clinical", abac: "none" },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M7 contributed permission keys. */
+export type M7ContributedPermissionKey = keyof typeof M7_CONTRIBUTED_PERMISSIONS;
+
+/**
+ * The permission keys Module 8 (Encounters & Visit Notes) registers into Module 3's catalog — the
+ * §4.5 binding cross-module handshake (M8-T09; M8 spec §4.5). M3 must include these before M8's
+ * routes can be authorized; the route inventory (M8-T09) gates on them.
+ *
+ * Bare `resource.action` keys (encounter/vitals/mileage are first-class clinical resources, like
+ * M5's `patient.*`). The catalog `abac` field is the DEFAULT predicate per key (the §4.1 Auth
+ * column); the route layer additionally composes the explicit chain (`caseload_membership` ∧
+ * `discipline_scope`, the `is_author*` ownership predicates, `step_up_fresh` on signing, and the new
+ * `cosigner_role_match` predicate M8 owns and registers — see abac-predicates.ts). `encounter.cosign`
+ * carries `cosigner_role_match` (RN ∧ not-self-author); `encounter.read_internal` is the system-
+ * principal seam key (never on a human role template), kept pure RBAC. Kept in a dedicated const for
+ * §3.3 attributability.
+ */
+export const M8_CONTRIBUTED_PERMISSIONS = {
+  "encounter.read": { resource: "encounter", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  "encounter.author": { resource: "encounter", action: "author", category: "clinical", abac: "caseload_membership" },
+  "encounter.finalize": { resource: "encounter", action: "finalize", category: "clinical", abac: "is_author" },
+  "encounter.sign": { resource: "encounter", action: "sign", category: "clinical", abac: "is_author" },
+  "encounter.cosign": { resource: "encounter", action: "cosign", category: "clinical", abac: "cosigner_role_match" },
+  "encounter.cosign_supervisor_release": { resource: "encounter", action: "cosign_supervisor_release", category: "clinical", abac: "none" },
+  "encounter.addendum_author": { resource: "encounter", action: "addendum_author", category: "clinical", abac: "caseload_or_scope" },
+  "encounter.addendum_sign": { resource: "encounter", action: "addendum_sign", category: "clinical", abac: "is_addendum_author" },
+  "encounter.late_entry_override": { resource: "encounter", action: "late_entry_override", category: "compliance", abac: "none" },
+  "encounter.administrative_override": { resource: "encounter", action: "administrative_override", category: "compliance", abac: "none" },
+  "encounter.read_internal": { resource: "encounter", action: "read_internal", category: "platform", abac: "none" },
+  "hearthnote.layer2_disable": { resource: "hearthnote", action: "layer2_disable", category: "clinical", abac: "none" },
+  "vitals.author": { resource: "vitals", action: "author", category: "clinical", abac: "is_author_or_supervisor" },
+  "mileage.author": { resource: "mileage", action: "author", category: "clinical", abac: "is_author_or_supervisor" },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M8 contributed permission keys. */
+export type M8ContributedPermissionKey = keyof typeof M8_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -520,6 +581,16 @@ export function m6ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M6_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M7 contributed keys into `permission`-table mirror rows (M7-T05). */
+export function m7ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M7_CONTRIBUTED_PERMISSIONS);
+}
+
+/** Project the M8 contributed keys into `permission`-table mirror rows (M8-T09). */
+export function m8ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M8_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -537,5 +608,7 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m5ContributedPermissionMirrorRows(),
     ...m39ContributedPermissionMirrorRows(),
     ...m6ContributedPermissionMirrorRows(),
+    ...m7ContributedPermissionMirrorRows(),
+    ...m8ContributedPermissionMirrorRows(),
   ];
 }

@@ -1894,6 +1894,745 @@
         }
       }
     },
+    "/api/v1/care-plans/{planId}/goals": {
+      "post": {
+        "operationId": "postApiV1CareplansByPlanIdGoals",
+        "tags": [
+          "07-care-plan"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/care-plans/{planId}/goals/{elementId}": {
+      "patch": {
+        "operationId": "patchApiV1CareplansByPlanIdGoalsByElementId",
+        "tags": [
+          "07-care-plan"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "elementId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/care-plans/{planId}/interventions": {
+      "post": {
+        "operationId": "postApiV1CareplansByPlanIdInterventions",
+        "tags": [
+          "07-care-plan"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/care-plans/{planId}/interventions/{elementId}": {
+      "patch": {
+        "operationId": "patchApiV1CareplansByPlanIdInterventionsByElementId",
+        "tags": [
+          "07-care-plan"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "elementId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/care-plans/{planId}/interventions/{elementId}/discontinue": {
+      "post": {
+        "operationId": "postApiV1CareplansByPlanIdInterventionsByElementIdDiscontinue",
+        "tags": [
+          "07-care-plan"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "elementId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/care-plans/{planId}/overdue-status": {
+      "get": {
+        "operationId": "getApiV1CareplansByPlanIdOverduestatus",
+        "tags": [
+          "07-care-plan"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/care-plans/{planId}/problems": {
+      "post": {
+        "operationId": "postApiV1CareplansByPlanIdProblems",
+        "tags": [
+          "07-care-plan"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/care-plans/{planId}/problems/{elementId}": {
+      "patch": {
+        "operationId": "patchApiV1CareplansByPlanIdProblemsByElementId",
+        "tags": [
+          "07-care-plan"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "elementId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/care-plans/{planId}/problems/{elementId}/resolve": {
+      "post": {
+        "operationId": "postApiV1CareplansByPlanIdProblemsByElementIdResolve",
+        "tags": [
+          "07-care-plan"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "elementId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/care-plans/{planId}/summary": {
+      "get": {
+        "operationId": "getApiV1CareplansByPlanIdSummary",
+        "tags": [
+          "07-care-plan"
+        ],
+        "summary": "Patient/family-friendly care-plan summary; SUD content excluded unless consent matches (§5.2)",
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "planId",
+                    "versionId",
+                    "activeProblems",
+                    "patientStatedGoals",
+                    "activeInterventions",
+                    "redacted"
+                  ],
+                  "properties": {
+                    "planId": {
+                      "type": "string"
+                    },
+                    "versionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activeProblems": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "description",
+                          "kind"
+                        ],
+                        "properties": {
+                          "description": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "patientStatedGoals": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "text",
+                          "measurableOutcome"
+                        ],
+                        "properties": {
+                          "text": {
+                            "type": "string"
+                          },
+                          "measurableOutcome": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "activeInterventions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "layText",
+                          "discipline",
+                          "frequencyText"
+                        ],
+                        "properties": {
+                          "layText": {
+                            "type": "string"
+                          },
+                          "discipline": {
+                            "type": "string"
+                          },
+                          "frequencyText": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "redacted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/care-plans/{planId}/versions": {
+      "get": {
+        "operationId": "getApiV1CareplansByPlanIdVersions",
+        "tags": [
+          "07-care-plan"
+        ],
+        "summary": "Care-plan version history — every version with status, signers, and signed-at (§5.1)",
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "planId",
+                          "sequence",
+                          "kind",
+                          "status",
+                          "idgMeetingId",
+                          "requiredSignerSet",
+                          "signatures",
+                          "signedAt",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "planId": {
+                            "type": "string"
+                          },
+                          "sequence": {
+                            "type": "integer"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "idgMeetingId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "requiredSignerSet": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "signatures": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "signerRole",
+                                "signedAt"
+                              ],
+                              "properties": {
+                                "signerRole": {
+                                  "type": "string"
+                                },
+                                "signedAt": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "signedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1CareplansByPlanIdVersions",
+        "tags": [
+          "07-care-plan"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/care-plans/{planId}/versions/{versionId}": {
+      "get": {
+        "operationId": "getApiV1CareplansByPlanIdVersionsByVersionId",
+        "tags": [
+          "07-care-plan"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/care-plans/{planId}/versions/{versionId}/finalize": {
+      "post": {
+        "operationId": "postApiV1CareplansByPlanIdVersionsByVersionIdFinalize",
+        "tags": [
+          "07-care-plan"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/care-plans/{planId}/versions/{versionId}/return-to-draft": {
+      "post": {
+        "operationId": "postApiV1CareplansByPlanIdVersionsByVersionIdReturntodraft",
+        "tags": [
+          "07-care-plan"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/care-plans/{planId}/versions/{versionId}/signatures": {
+      "post": {
+        "operationId": "postApiV1CareplansByPlanIdVersionsByVersionIdSignatures",
+        "tags": [
+          "07-care-plan"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/collaborators/consume": {
       "post": {
         "operationId": "postApiV1CollaboratorsConsume",
@@ -2529,6 +3268,1150 @@
         }
       }
     },
+    "/api/v1/encounters": {
+      "get": {
+        "operationId": "getApiV1Encounters",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Encounters",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}": {
+      "get": {
+        "operationId": "getApiV1EncountersByEncounterId",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Read one encounter (selections + signatures + addenda; §7.6 SUD-redacted per caller, §5.2)",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "patientId",
+                    "admissionId",
+                    "visitId",
+                    "encounterType",
+                    "discipline",
+                    "serviceDate",
+                    "status",
+                    "lateEntryTier",
+                    "version",
+                    "authoredByUserId",
+                    "isF2f",
+                    "signedAt",
+                    "cosignedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "visitId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "encounterType": {
+                      "type": "string"
+                    },
+                    "discipline": {
+                      "type": "string"
+                    },
+                    "serviceDate": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "lateEntryTier": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "authoredByUserId": {
+                      "type": "string"
+                    },
+                    "isF2f": {
+                      "type": "boolean"
+                    },
+                    "signedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cosignedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/addenda": {
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdAddenda",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/finalize": {
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdAddendaByAddendumIdFinalize",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "addendumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/selections": {
+      "patch": {
+        "operationId": "patchApiV1EncountersByEncounterIdAddendaByAddendumIdSelections",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "addendumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/addenda/{addendumId}/sign": {
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdAddendaByAddendumIdSign",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "addendumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/administrative-override": {
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdAdministrativeoverride",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/care-plan-links": {
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdCareplanlinks",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/care-plan-links/{linkId}": {
+      "delete": {
+        "operationId": "deleteApiV1EncountersByEncounterIdCareplanlinksByLinkId",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "linkId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/cosignature": {
+      "get": {
+        "operationId": "getApiV1EncountersByEncounterIdCosignature",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Read an encounter's cosignature-request state (§5.5)",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/cosignature/acknowledge": {
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdCosignatureAcknowledge",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/cosignature/sign": {
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdCosignatureSign",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/cosignature/supervisor-release": {
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdCosignatureSupervisorrelease",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/evv-reconcile": {
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdEvvreconcile",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/finalize": {
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdFinalize",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/hearthnote/enhance": {
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdHearthnoteEnhance",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/hearthnote/modifications/{modId}/decisions": {
+      "patch": {
+        "operationId": "patchApiV1EncountersByEncounterIdHearthnoteModificationsByModIdDecisions",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "modId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/late-entry-override": {
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdLateentryoverride",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/mileage": {
+      "patch": {
+        "operationId": "patchApiV1EncountersByEncounterIdMileage",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdMileage",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/selections": {
+      "patch": {
+        "operationId": "patchApiV1EncountersByEncounterIdSelections",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/sign": {
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdSign",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/vitals": {
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdVitals",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/vitals/{vitalId}": {
+      "patch": {
+        "operationId": "patchApiV1EncountersByEncounterIdVitalsByVitalId",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "vitalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/void": {
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdVoid",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/cosignature-queue": {
+      "get": {
+        "operationId": "getApiV1EncountersCosignaturequeue",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "RN/Supervisor cosignature work queue with SLA chips (§5.5)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "encounters"
+                  ],
+                  "properties": {
+                    "encounters": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "organizationId",
+                          "patientId",
+                          "admissionId",
+                          "visitId",
+                          "encounterType",
+                          "discipline",
+                          "serviceDate",
+                          "status",
+                          "lateEntryTier",
+                          "version",
+                          "authoredByUserId",
+                          "isF2f",
+                          "signedAt",
+                          "cosignedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "type": "string"
+                          },
+                          "visitId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "encounterType": {
+                            "type": "string"
+                          },
+                          "discipline": {
+                            "type": "string"
+                          },
+                          "serviceDate": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "lateEntryTier": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "authoredByUserId": {
+                            "type": "string"
+                          },
+                          "isF2f": {
+                            "type": "boolean"
+                          },
+                          "signedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cosignedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/my-drafts": {
+      "get": {
+        "operationId": "getApiV1EncountersMydrafts",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "The author's open encounter drafts (§5.1 My Drafts)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "encounters"
+                  ],
+                  "properties": {
+                    "encounters": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "organizationId",
+                          "patientId",
+                          "admissionId",
+                          "visitId",
+                          "encounterType",
+                          "discipline",
+                          "serviceDate",
+                          "status",
+                          "lateEntryTier",
+                          "version",
+                          "authoredByUserId",
+                          "isF2f",
+                          "signedAt",
+                          "cosignedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "type": "string"
+                          },
+                          "visitId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "encounterType": {
+                            "type": "string"
+                          },
+                          "discipline": {
+                            "type": "string"
+                          },
+                          "serviceDate": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "lateEntryTier": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "authoredByUserId": {
+                            "type": "string"
+                          },
+                          "isF2f": {
+                            "type": "boolean"
+                          },
+                          "signedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cosignedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/engagements": {
       "post": {
         "operationId": "postApiV1Engagements",
@@ -2739,6 +4622,95 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/internal/care-plan/relevant-elements": {
+      "get": {
+        "operationId": "getApiV1InternalCareplanRelevantelements",
+        "tags": [
+          "07-care-plan"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/internal/encounters/{encounterId}/render-payload": {
+      "get": {
+        "operationId": "getApiV1InternalEncountersByEncounterIdRenderpayload",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/internal/encounters/billable": {
+      "get": {
+        "operationId": "getApiV1InternalEncountersBillable",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/internal/encounters/signed-since": {
+      "get": {
+        "operationId": "getApiV1InternalEncountersSignedsince",
+        "tags": [
+          "08-encounters"
+        ],
+        "parameters": [],
         "responses": {
           "200": {
             "description": "OK"
@@ -5740,6 +7712,380 @@
                 }
               }
             }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{patientId}/care-plan": {
+      "get": {
+        "operationId": "getApiV1PatientsByPatientIdCareplan",
+        "tags": [
+          "07-care-plan"
+        ],
+        "summary": "A patient's care plan — problems/goals/interventions + versions; §7.6 SUD-redacted per caller (§5.2)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "activeVersionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "versions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "planId",
+                          "sequence",
+                          "kind",
+                          "status",
+                          "idgMeetingId",
+                          "requiredSignerSet",
+                          "signatures",
+                          "signedAt",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "planId": {
+                            "type": "string"
+                          },
+                          "sequence": {
+                            "type": "integer"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "idgMeetingId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "requiredSignerSet": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "signatures": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "signerRole",
+                                "signedAt"
+                              ],
+                              "properties": {
+                                "signerRole": {
+                                  "type": "string"
+                                },
+                                "signedAt": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "signedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "problems": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "description",
+                          "kind",
+                          "source",
+                          "sudRelated",
+                          "status",
+                          "icd10Code",
+                          "snomedCode",
+                          "resolutionNote",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "string"
+                          },
+                          "sudRelated": {
+                            "type": "boolean"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "icd10Code": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "snomedCode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "resolutionNote": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "goals": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "problemId",
+                          "originalText",
+                          "revisedText",
+                          "source",
+                          "actingConsentId",
+                          "measurableOutcome",
+                          "status",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "problemId": {
+                            "type": "string"
+                          },
+                          "originalText": {
+                            "type": "string"
+                          },
+                          "revisedText": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "source": {
+                            "type": "string"
+                          },
+                          "actingConsentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "measurableOutcome": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "interventions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "problemId",
+                          "goalRefs",
+                          "scopeText",
+                          "frequencyText",
+                          "frequencyValue",
+                          "discipline",
+                          "responsibleRole",
+                          "status",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "problemId": {
+                            "type": "string"
+                          },
+                          "goalRefs": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "scopeText": {
+                            "type": "string"
+                          },
+                          "frequencyText": {
+                            "type": "string"
+                          },
+                          "frequencyValue": {
+                            "type": "string"
+                          },
+                          "discipline": {
+                            "type": "string"
+                          },
+                          "responsibleRole": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "redacted": {
+                      "type": "boolean"
+                    },
+                    "carePlan": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1PatientsByPatientIdCareplan",
+        "tags": [
+          "07-care-plan"
+        ],
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
           },
           "4XX": {
             "$ref": "#/components/responses/Error"

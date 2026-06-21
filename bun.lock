@@ -138,6 +138,10 @@
     "packages/hearthnote": {
       "name": "@wardenx/hearthnote",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/narrative-vocab": "workspace:*",
+        "@wardenx/types": "workspace:*",
+      },
     },
     "packages/hope": {
       "name": "@wardenx/hope",
@@ -173,6 +177,9 @@
     "packages/narrative-vocab": {
       "name": "@wardenx/narrative-vocab",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
     },
     "packages/quality": {
       "name": "@wardenx/quality",

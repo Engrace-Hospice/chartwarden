@@ -205,3 +205,43 @@ export * from "./admission/transfer-events";
 export * from "./admission/discharge-events";
 export * from "./admission/notice-of-rights-acknowledgments";
 export * from "./admission/compliance-windows";
+
+// ── Module 7 (Care Plan / IPOC) — the interdisciplinary plan of care (§3.3) ──────────────────
+// M7 owns 6 tables (M7-T02): the care_plan root + the immutable care_plan_version snapshot ledger +
+// care_plan_signature (the D5 quorum) + the problem/goal/intervention authoring spine. All six are
+// patient/admission-scoped clinical records → the three-column tenancy rule (organization_id +
+// provider_entity_id + location_id all NOT NULL, denormalized from the admission at bootstrap so
+// IDG/overdue reporting runs location-/PE-scoped without joining M5/M6). Cross-module refs (M5 patient,
+// M6 admission, M14 idg_meeting, M39 consent, M11 order) are plain uuid app-validated, NOT cross-module
+// FKs; actor refs go to M1 `membership`. RLS + grants + M4 write-audit triggers + migration 0029 land
+// in M7-T02 (§3.4–3.6).
+export * from "./care-plan/care-plans";
+export * from "./care-plan/care-plan-versions";
+export * from "./care-plan/care-plan-signatures";
+export * from "./care-plan/problems";
+export * from "./care-plan/goals";
+export * from "./care-plan/interventions";
+
+// ── Module 8 (Encounters & Visit Notes) — the documentation spine (§3.3) ─────────────────────
+// M8 owns 10 tables (M8-T02): the encounter root + encounter_signature (D13 step-up signatures) +
+// encounter_addendum (post-sign corrections) + encounter_care_plan_link (M7 element references) +
+// cosignature_request (the D3 cosign workflow) + vitals + mileage + the HearthNote pipeline trio
+// (hearthnote_selection / hearthnote_assembled_output / hearthnote_llm_modification). All ten are
+// patient-level, location-anchored clinical events → the three-column tenancy rule (organization_id +
+// provider_entity_id + location_id all NOT NULL, denormalized from the M17 visit / M6 admission context
+// so location-scoped ABAC, M33 multi-CCN reporting, and the M23 Q-code derivation run without joining
+// M5/M6). Cross-module refs (M5 patient, M6 admission/face_to_face, M17 visit, M18 evv_event,
+// M38 code_system_version, M16 bereavement_plan, M22 document, M7 problem/goal/intervention) are plain
+// uuid app-validated, NOT cross-module FKs; actor refs go to M1 `membership`. Destruction (§3.6, M4 D9)
+// crypto-erases the `*_cipher` columns and structurally redacts via the existing `clinical_record`
+// eraser (wired in M8-T12). RLS + grants + M4 write-audit triggers + migration 0031 land in M8-T03.
+export * from "./encounter/encounters";
+export * from "./encounter/encounter-addenda";
+export * from "./encounter/encounter-signatures";
+export * from "./encounter/encounter-care-plan-links";
+export * from "./encounter/cosignature-requests";
+export * from "./encounter/vitals";
+export * from "./encounter/mileage";
+export * from "./encounter/hearthnote-selections";
+export * from "./encounter/hearthnote-assembled-outputs";
+export * from "./encounter/hearthnote-llm-modifications";

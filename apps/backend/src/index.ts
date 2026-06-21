@@ -48,6 +48,8 @@ import {
   registerPatientSeams,
 } from "./modules/05-patient/index";
 import { registerAdmissionErasers, registerAdmissionSeams } from "./modules/06-admission/index";
+import { registerCarePlanErasers, registerCarePlanSeams } from "./modules/07-care-plan/index";
+import { registerEncounterErasers, registerEncounterSeams } from "./modules/08-encounters/index";
 import {
   createDbConsentStore,
   mountConsentRoutes,
@@ -88,6 +90,14 @@ export function wireModuleSeams(
   // M6 — the six §4.7 admission reader seams (election/CTI/F2F/LOC/status/census). Slice/tests keep the
   // in-memory store; the Drizzle-backed store lands with M6's routes/repos (M6-T06+).
   registerAdmissionSeams();
+  // M7 — the §7.8 CarePlanReader (encounter-relevance picker + the 5-/15-day overdue sign-gate M8
+  // consumes). Slice/tests keep the in-memory store + real clock; the Drizzle-backed store lands with
+  // M7's routes/repos (M7-T05+).
+  registerCarePlanSeams();
+  // M8 — the four §4.7 owned seams (billable/signed/mileage/creator). M8 also CONSUMES M7's CarePlanReader
+  // (registered just above) for the encounter authoring picker + the overdue sign-gate. Slice/tests keep
+  // the in-memory store; the Drizzle-backed store lands with M8's routes/repos (M8-T09+).
+  registerEncounterSeams();
   // M39 — ConsentEvaluator (§4.3, the disclosure/redaction gate). Production backs it with the Drizzle
   // store over the real M39 consent tables (FB-T03); slice/tests keep the in-memory default.
   registerConsentSeams(deps.db ? { store: createDbConsentStore(deps.db) } : {});
@@ -111,6 +121,8 @@ export function wireModuleErasers(): void {
   registerPatientErasers(); // M5-T12 — `clinical_record` (patient-subtree destruction-cert callback; D7/D8)
   registerConsentErasers(); // M39-T10 — `consent` (subtree erase; legal-hold + 42 CFR Part 2 lifetime refusal)
   registerAdmissionErasers(); // M6-T12 — `admission_record` (admission-subtree destruction-cert callback; D7/D8)
+  registerCarePlanErasers(); // M7-T09 — `care_plan_record` (care-plan-subtree destruction-cert callback; D7/D8)
+  registerEncounterErasers(); // M8-T12 — `encounter_record` (encounter-subtree destruction-cert callback; DEK crypto-erase §3.6; D7/D8)
   // Phase-1 data-class owners append here as they land.
 }
 

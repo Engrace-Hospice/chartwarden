@@ -262,6 +262,8 @@ contract), so `openapi.json`/the client are unchanged.
 | Module | Screens built | Spec | Status |
 |---|---|---|---|
 | M6 | Referral Inbox (§5.2.1), Admission Census (§5.2.12), Admission Detail + activation gate (§5.2.4/§5.2.5), Compliance Dashboard (§5.2.11) | `screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md`, `WARDENX_UI_ELECTION_CERTIFICATION.md` | done (M6-T12)¹³ |
+| M7 | Care Plan View (§5.2), Version History (§5.1), Care Plan Summary (§5.2) | `screens/clinical/WARDENX_UI_CARE_PLAN.md` | done (M7-T09)¹⁴ |
+| M8 | Encounter Read (§5.2), Cosignature Queue (§5.5), My Drafts (§5.1) | `screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md` | done (M8-T12)¹⁵ |
 
 > ¹³ **Admissions/Intake (M6) now LIVE (Track B, M6-T12, ADR-0030).** Built under
 > `apps/web/src/modules/06-admission` against M6's generated client methods (the M6 read routes are
@@ -271,6 +273,27 @@ contract), so `openapi.json`/the client are unchanged.
 > UI and server can never diverge. Nav visibility is gated by `referral.read` / `admission.read` /
 > `compliance.read`; the SERVER stays the only enforcement point. Detail/editor/wizard sub-screens
 > (§5.2.3/§5.2.6–5.2.10/§5.2.13–18) fill in as their write surfaces harden.
+
+> ¹⁴ **Care Plan / IPOC (M7) now LIVE (Track B, M7-T09, ADR-0030).** Built under
+> `apps/web/src/modules/07-care-plan` against M7's generated client methods (the M7 read routes are
+> enriched in `scripts/openapi/enrichments.ts`, so `packages/ui/src/core/api` types them), registered
+> into the M1 shell via `carePlanScreens` (`main.tsx`). The Care Plan View renders problems
+> (terminal→related→unrelated) | the selected problem's goals/interventions | a signers + next-review
+> aside; §7.6 SUD redaction is SERVER-side (the response carries `redacted: true`), never a frontend
+> hide. Nav visibility is gated by `care_plan.read` / `care_plan.read_summary`; the SERVER stays the
+> only enforcement point. The draft editor / signing modal / IDG-review screens fill in as their write
+> surfaces harden.
+
+> ¹⁵ **Encounters & Visit Notes (M8) now LIVE (Track B, M8-T12, ADR-0030).** Built under
+> `apps/web/src/modules/08-encounters` against M8's generated client methods (the M8 read routes are
+> enriched in `scripts/openapi/enrichments.ts`, so `packages/ui/src/core/api` types them), registered
+> into the M1 shell via `encounterScreens` (`main.tsx`). The Encounter Read view renders the assembled,
+> §7.6 SUD-redacted encounter + its cosignature state; the Cosignature Queue shows SLA chips derived from
+> hours-since-primary-sign (green ≤12h → red >48h, §5.5); My Drafts lists the author's open drafts. Nav
+> visibility is gated by `encounter.read` / `encounter.cosign` / `encounter.author`; the SERVER stays the
+> only enforcement point. The authoring (§5.2), finalize/Layer-2 review (§5.3), and sign (§5.4) write
+> surfaces — and the Socket.IO real-time preview channel (via M36, §4.3) — fill in as their write paths
+> harden.
 
 ---
 

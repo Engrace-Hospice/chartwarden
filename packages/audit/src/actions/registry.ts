@@ -8,6 +8,8 @@ import { M2_ACTION_CATALOG } from "./m2";
 import { M3_ACTION_CATALOG } from "./m3";
 import { M4_ACTION_CATALOG } from "./m4";
 import { M6_ACTION_CATALOG } from "./m6";
+import { M7_ACTION_CATALOG } from "./m7";
+import { M8_ACTION_CATALOG } from "./m8";
 import { M36_ACTION_CATALOG } from "./m36";
 import { M38_ACTION_CATALOG } from "./m38";
 import { M39_ACTION_CATALOG } from "./m39";
@@ -28,6 +30,8 @@ export const ACTION_CATALOG: ModuleActionCatalog = [
   ...M3_ACTION_CATALOG,
   ...M4_ACTION_CATALOG,
   ...M6_ACTION_CATALOG,
+  ...M7_ACTION_CATALOG,
+  ...M8_ACTION_CATALOG,
   ...M36_ACTION_CATALOG,
   ...M38_ACTION_CATALOG,
   ...M39_ACTION_CATALOG,

@@ -183,6 +183,34 @@
       "when": 1782031442160,
       "tag": "0027_admission_m6_rls_audit_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1782031442161,
+      "tag": "0028_care_plan_m7_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1782031442162,
+      "tag": "0029_care_plan_m7_rls_audit_triggers",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1782045272700,
+      "tag": "0030_encounters_m8_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1782045272701,
+      "tag": "0031_encounters_m8_rls_audit_triggers",
+      "breakpoints": true
     }
   ]
 }
