@@ -369,4 +369,38 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
 
     await handle6.close();
   });
+
+  it("M3 MembershipRoleStore: assign/list/revoke role grants, RLS-scoped (wardenx_app)", async () => {
+    const { createDbClient: mkDb7 } = await import("@wardenx/db");
+    const { createDbMembershipRoleStore } = await import("../src/modules/03-authorization/membership-role-store");
+    const { runWithRequestContext } = await import("@wardenx/tenancy");
+    const handle7 = mkDb7({ connectionString: DB_URL as string });
+    const store = createDbMembershipRoleStore(asTenantRole(handle7.db) as never);
+
+    const email = `gr${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
+    await auth.api.signUpEmail({ body: { email, password: `Wx9$${Math.random().toString(36).slice(2)}${Date.now()}Qz!`, name: "Grantee" } });
+    const userId = (await admin.query('SELECT id FROM "user" WHERE email=$1', [email])).rows[0].id as string;
+    const org = (await admin.query("INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'GR','GR') RETURNING id", [`gr-${Date.now()}`])).rows[0].id as string;
+    const otherOrg = (await admin.query("INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'GR2','GR2') RETURNING id", [`gr2-${Date.now()}`])).rows[0].id as string;
+    const membership = (await admin.query("INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'active') RETURNING id", [userId, org])).rows[0].id as string;
+    const role = (await admin.query("INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,'gr-rn','RN','clinical_staff',true) RETURNING id", [org])).rows[0].id as string;
+
+    const inOrg = <T>(fn: () => Promise<T>) => runWithRequestContext({ organizationId: org, userId } as never, fn);
+    const inOther = <T>(fn: () => Promise<T>) => runWithRequestContext({ organizationId: otherOrg, userId } as never, fn);
+
+    // assign carries the org explicitly; the grant reads back under the org's ambient context.
+    const grant = await store.assign({ organizationId: org, membershipId: membership, roleId: role, roleKey: "gr-rn", grantedByUserId: userId });
+    expect(grant.roleKey).toBe("gr-rn");
+    expect((await inOrg(() => store.listForMembership(membership))).map((g) => g.roleId)).toEqual([role]);
+
+    // RLS: the grant is NOT visible under a different org's ambient context.
+    expect(await inOther(() => store.listForMembership(membership))).toEqual([]);
+
+    // revoke removes it (and reports whether it existed).
+    expect(await inOrg(() => store.revoke(membership, role))).toBe(true);
+    expect(await inOrg(() => store.listForMembership(membership))).toEqual([]);
+    expect(await inOrg(() => store.revoke(membership, role))).toBe(false); // already gone
+
+    await handle7.close();
+  });
 });

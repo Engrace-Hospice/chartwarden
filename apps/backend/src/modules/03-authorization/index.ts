@@ -57,6 +57,7 @@ export {
 } from "./contract";
 export { registerAuthorizationRoutes } from "./routes/authz-routes";
 export { createDbRoleStore } from "./role-store";
+export { createDbMembershipRoleStore } from "./membership-role-store";
 
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
@@ -67,8 +68,8 @@ import {
   createInMemoryBreakGlassStore as _breakGlass,
   createInMemoryComplianceNotifier as _notifier,
   createInMemoryEngagementStore as _engagements,
-  createInMemoryMembershipRoleStore as _membershipRoles,
 } from "./authz-ports";
+import { createDbMembershipRoleStore as _dbMembershipRoles } from "./membership-role-store";
 import { createDbRoleStore as _dbRoleStore } from "./role-store";
 import { registerAuthorizationRoutes as _registerAuthzRoutes } from "./routes/authz-routes";
 import { createInMemoryAuditExecutor } from "../02-identity/index";
@@ -76,15 +77,15 @@ import { createInMemoryAuditExecutor } from "../02-identity/index";
 /**
  * Mount the M3 authorization REST routes on a server (composition root, via buildServer's
  * registerModuleRoutes hook, when a DB client is present). The role catalog runs on the REAL Drizzle
- * RoleStore (createDbRoleStore); the remaining route deps (membership-role grants, break-glass,
- * engagements, auditor sessions, compliance notifier, anti-escalation resolver, audit sink) are still
- * in-memory and are replaced by their Drizzle stores in follow-up PRs — progressive wiring of the
- * backend surface. requirePermission is the live RBAC resolver (registerDbEffectivePermissionResolver).
+ * RoleStore + MembershipRoleStore (real Drizzle); the remaining route deps (break-glass, engagements,
+ * auditor sessions, compliance notifier, anti-escalation resolver, audit sink) are still in-memory and
+ * are replaced by their Drizzle stores in follow-up PRs — progressive wiring of the backend surface.
+ * requirePermission is the live RBAC resolver (registerDbEffectivePermissionResolver).
  */
 export function mountAuthorizationRoutes(app: FastifyInstance, db: DbClient): void {
   const deps: AuthzRouteDeps = {
     roles: _dbRoleStore(db),
-    membershipRoles: _membershipRoles().store,
+    membershipRoles: _dbMembershipRoles(db),
     breakGlass: _breakGlass().store,
     engagements: _engagements().store,
     auditorSessions: _auditorMinter().minter,
