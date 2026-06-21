@@ -37,8 +37,8 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 | 5 | M5 | Patient List / Census | `screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md` | Work Queue | ✓ `WorkQueueLayout` | done² |
 | 6 | M3 | Roles & Permissions | `screens/admin/WARDENX_UI_ROLES_PERMISSIONS.md` | Admin Split Layout | ✓ `AdminSplitLayout` | done |
 | 7 | M4 | Audit Log Viewer | `screens/admin/WARDENX_UI_AUDIT_LOG_VIEWER.md` | Work Queue | ✓ `WorkQueueLayout` | done |
-| 8 | M36 | Internal Staff Secure Messaging | `screens/core/WARDENX_UI_STAFF_MESSAGING.md` | Conversation View | ✓ `ConversationView` | done (reads live)⁸ |
-| 9 | M36 | Notifications & Tasks / Worklist | `screens/core/WARDENX_UI_NOTIFICATIONS_TASKS.md` | Work Queue | ✓ `WorkQueueLayout` | done (reads live)⁸ |
+| 8 | M36 | Internal Staff Secure Messaging | `screens/core/WARDENX_UI_STAFF_MESSAGING.md` | Conversation View | ✓ `ConversationView` | done (live)⁸ |
+| 9 | M36 | Notifications & Tasks / Worklist | `screens/core/WARDENX_UI_NOTIFICATIONS_TASKS.md` | Work Queue | ✓ `WorkQueueLayout` | done (live)⁸ |
 | 10 | M38 | Terminology / Reference Data | `screens/admin/WARDENX_UI_TERMINOLOGY_ADMIN.md` | Work Queue | ✓ `WorkQueueLayout` | done (live)⁶ |
 | 11 | M40 | Master Data Management | `screens/admin/WARDENX_UI_MASTER_DATA_MDM.md` | Work Queue | ✓ `WorkQueueLayout` | done (live)⁷ |
 
@@ -74,23 +74,27 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > unchanged. RLS isolation for the org-scoped overlay/BAA/provisional tables is covered by
 > `rls-isolation.live.test.ts`.
 
-> ⁸ **M36 Secure Messaging — READ paths now LIVE end-to-end (FB-T04).** The messaging routes are
-> mounted in the composition root (`mountMessagingRoutes` in `apps/backend/src/index.ts`), backed by a
-> real Drizzle `MessagingRouteService` (`apps/backend/src/modules/36-messaging/messaging-route-service-db.ts`)
-> over the M36 tables, and the `channel_visibility` ABAC predicate is registered against it. The READ
-> surface the staff-messaging + notifications-inbox screens consume is live under `withOrgContext`/RLS:
-> the channel sidebar (`GET /api/v1/messaging/channels`, with delivered-but-unread receipt counts),
-> channel detail + members, the paginated thread envelope, the per-actor alert inbox
-> (`GET /api/v1/alerts/inbox`, `alert` ⋈ `notification_delivery`), the SELF notification preferences,
-> and the tenant + inherited platform `alert_rule` list (the §7.4 `alert_rule_read` policy serves both
-> in one read). **Message BODIES show a clear "decryption arrives in FB-T05" placeholder** — the
-> envelope-encrypted `body_cipher` needs the per-tenant DEK helper that lands with the write path. The
-> §4.2 **WRITE** surface (send / edit / delete / read-receipts / DM / member admin / announce /
-> preference + endpoint mutation / alert-rule override) fail-clears with **501** rather than corrupt the
-> append-only/encrypted invariants — it lands in **FB-T05** (the real `MessagingProvider`). No new routes
-> (already in the contract), so `openapi.json`/the client are unchanged. RLS isolation for the org-scoped
-> messaging tables is covered by `rls-isolation.live.test.ts` (M36-T03); two-tenant channel isolation for
-> the write path is extended in FB-T05.
+> ⁸ **M36 Secure Messaging — READ + WRITE paths now LIVE end-to-end (FB-T04 reads, FB-T05 writes).**
+> The messaging routes are mounted in the composition root (`mountMessagingRoutes` in
+> `apps/backend/src/index.ts`), backed by a real Drizzle `MessagingRouteService`
+> (`apps/backend/src/modules/36-messaging/messaging-route-service-db.ts`) over the M36 tables, and the
+> `channel_visibility` ABAC predicate is registered against it. The READ surface is live under
+> `withOrgContext`/RLS: the channel sidebar (`GET /api/v1/messaging/channels`, with delivered-but-unread
+> receipt counts), channel detail + members, the paginated thread envelope, the per-actor alert inbox
+> (`GET /api/v1/alerts/inbox`, `alert` ⋈ `notification_delivery`), the SELF notification preferences, and
+> the tenant + inherited platform `alert_rule` list (the §7.4 `alert_rule_read` policy serves both in one
+> read). **FB-T05 makes the §4.2 WRITE surface live**: message bodies are **envelope-encrypted under the
+> per-tenant DEK** (`message.body_cipher` bytea) at write time and **decrypted for entitled readers** on
+> the thread read (the shared `messaging-write-core.ts` cipher loads the master KEK
+> `MESSAGING_ENCRYPTION_KEY` lazily — a read-only deploy without it still boots). Send / edit / delete
+> (tombstone, cipher retained) / read-receipts (delivered-receipt fan-out → markRead) / DM / member admin
+> / announce / preference + endpoint mutation / alert-rule override all run live. The cross-module
+> `MessagingProvider` seam (`messaging-provider-db.ts`) is registered over the deny-stub when a DB is
+> present, so `validateSeams()` sees it **real**; its `sync*` auto-channel hooks remain forward-seam
+> deferrals (driven by M5/M16/M17/M19 outbox events not wired in Phase 1). No new routes (already in the
+> contract), so `openapi.json`/the client are unchanged. RLS isolation for the org-scoped messaging
+> tables — including the FB-T05 message-receipt fan-out and a cross-tenant-write `WITH CHECK` rejection —
+> is covered by `rls-isolation.live.test.ts` (CI `rls-live`).
 
 > ³ **App Shell / Role Home — done at frame level.** The App Shell chrome is F0-T03; the Role Home now
 > renders at `/` (apps/web/src/shell/role-home.tsx): role-aware greeting + quick-access tiles for the

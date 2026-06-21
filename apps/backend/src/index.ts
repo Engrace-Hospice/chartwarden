@@ -25,6 +25,7 @@ import {
 } from "./modules/02-identity/index";
 import { mountAuthorizationRoutes } from "./modules/03-authorization/index";
 import {
+  createDbMessagingProvider,
   mountMessagingRoutes,
   registerMessagingErasers,
   registerMessagingSeams,
@@ -75,7 +76,9 @@ export function wireModuleSeams(
   // M38 — TerminologyProvider (§4.5). Production backs it with the Drizzle store over the real M38
   // tables (FB-T01); slice/tests keep the in-memory default.
   registerTerminologySeams(deps.db ? { store: createDbTerminologyStore(deps.db) } : {});
-  registerMessagingSeams(); // M36 — AlertEmitter (§4.6); MessagingProvider stays deny-stub until T07/T08
+  // M36 — AlertEmitter (§4.6) always; the DB-backed MessagingProvider (§4.6 channel/message CRUD with
+  // per-tenant DEK encryption) registers over the deny-stub when a DB client is present (FB-T05).
+  registerMessagingSeams(deps.db ? { provider: createDbMessagingProvider(deps.db) } : {});
   // M40 — MdmEntityProvider (§4.5) + BaaStatusProvider (§4.6 §7.7 as-of gate). Production backs both
   // seams with Drizzle stores over the real M40 tables (FB-T02); slice/tests keep the in-memory default.
   registerMdmSeams(

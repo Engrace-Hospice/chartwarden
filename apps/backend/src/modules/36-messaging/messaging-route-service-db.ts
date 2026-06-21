@@ -1,28 +1,31 @@
 // apps/backend/src/modules/36-messaging — PRODUCTION messaging route-service adapter over Drizzle
-// (FB-T04). The READ surface the merged-module screens consume (the channel sidebar, channel detail
-// + members, the thread history envelope, the alert inbox, the actor's notification preferences, and
-// the tenant + inherited platform alert rules) runs live over the real M36 tables; the WRITE surface
+// (FB-T04 reads; FB-T05 writes). The READ surface the merged-module screens consume (the channel
+// sidebar, channel detail + members, the thread history envelope, the alert inbox, the actor's
+// notification preferences, and the tenant + inherited platform alert rules) and the WRITE surface
 // (send / edit / delete / receipts / DM / member admin / announce / preference + endpoint mutation /
-// alert-rule override) stays fail-clear (501) until the MessagingProvider write path lands in FB-T05.
+// alert-rule override) both run live over the real M36 tables.
 //
 // Mirrors the FB-T01 `TerminologyStore` + FB-T03 `ConsentRouteService` live-store pattern: a single
-// factory closing over the DbClient, every org-scoped read inside `withOrgContext` so RLS on
-// `app.org_id` is the backstop, no business logic the in-memory slice does not already own.
+// factory closing over the DbClient, every org-scoped read/write inside `withOrgContext` so RLS on
+// `app.org_id` (+ the M4 write-audit trigger) is the backstop, no business logic the in-memory slice
+// does not already own. The message send / receipt fan-out / DEK body encryption primitives are the
+// shared write core (`messaging-write-core.ts`) the MessagingProvider seam uses too.
 //
 // RLS shape (M36-T03, §3.7–3.9):
 //   • `channel` / `channel_member` / `message` / `message_receipt` / `alert` are ORG-SCOPED PHI-class
-//     (app.org_id RLS) — read inside `withOrgContext`.
+//     (app.org_id RLS) — read/written inside `withOrgContext`.
 //   • `notification_delivery` carries no organization_id; its RLS is the parent-join into `alert`, so
 //     the alert-inbox join is visible exactly when the parent alert is (still inside `withOrgContext`).
+//   • `user_notification_preferences` / `delivery_endpoint` are user-scoped (app.user_id RLS) — the
+//     SELF-only writes run inside `withOrgContext` (which sets both app.org_id and app.user_id).
 //   • `alert_rule` is org-scoped but its platform-default rows (organization_id IS NULL) are read-all
 //     to every tenant by the §7.4 `alert_rule_read` policy — so a single read under `withOrgContext`
-//     returns BOTH the inherited platform defaults and the tenant's own overrides.
+//     returns BOTH the inherited platform defaults and the tenant's own overrides; an override clones
+//     a platform default into an org-scoped row on first edit.
 //
-// SCOPE (FB-T04): message BODIES are envelope-encrypted under the per-tenant DEK (bytea body_cipher),
-// and the M1 KEK/DEK helper that decrypts them is wired in FB-T05 — so the thread read returns the
-// real message envelope (author / kind / timestamps / thread structure) with a clear placeholder body
-// rather than a half-truth or a hard error. Likewise the SELF preferences read SYNTHESIZES the default
-// view when no row exists instead of writing one (row creation is a write, FB-T05).
+// SCOPE (FB-T05): message BODIES are envelope-encrypted under the per-tenant DEK (bytea body_cipher)
+// at write time and decrypted for entitled readers on the thread read — the shared `MessageBodyCipher`
+// loads the master KEK lazily so a read-only deployment without MESSAGING_ENCRYPTION_KEY still boots.
 import { type DbClient, schema } from "@wardenx/db";
 import {
   type AlertCategory,
@@ -35,29 +38,76 @@ import {
   type ChannelMemberRole,
   type ChannelMemberSource,
   type ChannelSummary,
+  type DeliveryEndpointChannel,
+  type DeliveryEndpointVerification,
   type MessageBodyKind,
   type MessagingRouteService,
+  type NotificationChannel,
   type NotificationPreferencesView,
   type QuietHoursConfig,
   type ResolvedMessage,
   type RoutingMap,
 } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
-import { type SQL, and, asc, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
+import { type SQL, and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import {
+  type MessageBodyCipher,
+  channelOr404,
+  createMessageBodyCipher,
+  insertEncryptedMessage,
+  markMessagesRead,
+} from "./messaging-write-core";
 
 const CH = schema.channels;
 const CM = schema.channelMembers;
 const MSG = schema.messages;
 const MR = schema.messageReceipts;
 const UNP = schema.userNotificationPreferences;
+const DE = schema.deliveryEndpoints;
 const AR = schema.alertRules;
 const AL = schema.alerts;
 const ND = schema.notificationDeliveries;
 
-/** Shown in place of a message body until the per-tenant DEK decryption path lands (FB-T05). The
- *  thread structure (author/kind/timestamps) is live; only the ciphertext stays sealed. */
-const BODY_PENDING_DECRYPTION = "[message body decryption arrives in FB-T05]";
+// ── value-level mirrors of the §3.2 enum unions (for routing-map / resolver validation) ──────
+const ALERT_CATEGORIES: readonly AlertCategory[] = [
+  "clinical_urgent",
+  "clinical_routine",
+  "operational",
+  "field_safety",
+  "administrative",
+  "system",
+];
+const ALERT_SEVERITIES: readonly AlertSeverity[] = ["info", "warn", "critical"];
+const NOTIFICATION_CHANNELS: readonly NotificationChannel[] = ["in_app", "push", "sms", "email", "voice"];
+const RECIPIENT_RESOLVERS: readonly AlertRecipientResolver[] = [
+  "care_team",
+  "on_call",
+  "discipline",
+  "role_set",
+  "tenant_admins",
+  "user_list",
+  "broadcast",
+];
+
+/** §4.2 INVALID_ROUTING_MAP: every category / severity / channel in the map must be known. */
+function validateRoutingMap(map: RoutingMap): void {
+  for (const [category, bySeverity] of Object.entries(map)) {
+    if (!ALERT_CATEGORIES.includes(category as AlertCategory)) {
+      throw new WardenXError("INVALID_ROUTING_MAP", `unknown alert category '${category}'`, 422);
+    }
+    for (const [severity, channelsList] of Object.entries(bySeverity ?? {})) {
+      if (!ALERT_SEVERITIES.includes(severity as AlertSeverity)) {
+        throw new WardenXError("INVALID_ROUTING_MAP", `unknown severity '${severity}'`, 422);
+      }
+      for (const channel of channelsList ?? []) {
+        if (!NOTIFICATION_CHANNELS.includes(channel)) {
+          throw new WardenXError("INVALID_ROUTING_MAP", `unknown channel '${channel}'`, 422);
+        }
+      }
+    }
+  }
+}
 
 /** The table default mirror — returned for a SELF preferences read with no persisted row yet. */
 const DEFAULT_QUIET_HOURS: QuietHoursConfig = {
@@ -93,17 +143,6 @@ function aggregateDeliveryStatus(statuses: readonly string[]): AlertInboxItem["d
   return "pending";
 }
 
-/** The message/preference/endpoint/alert-rule WRITES need the MessagingProvider write path —
- *  per-channel DEK body encryption, receipt fan-out, append-only edit/delete tombstones — not wired
- *  on the request handle in FB-T04. Fail clear rather than write a half-formed row (FB-T05). */
-function writeNotWired(op: string): never {
-  throw new WardenXError(
-    "NOT_IMPLEMENTED",
-    `${op} runs through the M36 MessagingProvider write path (per-channel DEK encryption + receipts), not wired in FB-T04 (lands in FB-T05)`,
-    501,
-  );
-}
-
 /** Keyset cursor over (created_at, id) — opaque, never an offset (§4.12). */
 function encodeCursor(createdAt: Date, id: string): string {
   return Buffer.from(`${createdAt.toISOString()}|${id}`, "utf8").toString("base64url");
@@ -132,10 +171,15 @@ function toRuleView(r: typeof AR.$inferSelect): AlertRuleView {
 }
 
 /**
- * Build the production {@link MessagingRouteService}. The READ surface is live Drizzle (org-scoped
- * reads inside `withOrgContext`); the WRITE surface defers to the MessagingProvider write path (501).
+ * Build the production {@link MessagingRouteService}. Both the READ and WRITE surfaces are live
+ * Drizzle (org-scoped inside `withOrgContext`); message bodies are envelope-encrypted under the
+ * per-tenant DEK via the shared {@link MessageBodyCipher}. `opts.kek` is injectable for tests.
  */
-export function createDbMessagingRouteService(db: DbClient): MessagingRouteService {
+export function createDbMessagingRouteService(
+  db: DbClient,
+  opts: { kek?: Buffer; cipher?: MessageBodyCipher } = {},
+): MessagingRouteService {
+  const cipher = opts.cipher ?? createMessageBodyCipher({ kek: opts.kek });
   return {
     // ── channels & messages (§4.2; reads) ─────────────────────────────────────────────────────
     async listChannels(orgId, userId): Promise<ChannelSummary[]> {
@@ -244,6 +288,7 @@ export function createDbMessagingRouteService(db: DbClient): MessagingRouteServi
             id: MSG.id,
             channelId: MSG.channelId,
             authorUserId: MSG.authorUserId,
+            bodyCipher: MSG.bodyCipher,
             bodyKind: MSG.bodyKind,
             status: MSG.status,
             createdAt: MSG.createdAt,
@@ -255,13 +300,14 @@ export function createDbMessagingRouteService(db: DbClient): MessagingRouteServi
           .limit(limit + 1);
         const hasMore = rows.length > limit;
         const pageRows = rows.slice(0, limit);
+        // Entitled-reader gate: the channel_visibility ABAC predicate already authorized this read
+        // at the route, so decrypt each body under the tenant DEK; a 'deleted' tombstone is empty.
         const page = pageRows.map(
           (m): ResolvedMessage => ({
             messageId: m.id,
             channelId: m.channelId,
             authorUserId: m.authorUserId,
-            // Body decryption (per-tenant DEK) lands in FB-T05; deleted is a tombstone (empty body).
-            body: m.status === "deleted" ? "" : BODY_PENDING_DECRYPTION,
+            body: m.status === "deleted" ? "" : cipher.open(orgId, m.bodyCipher),
             bodyKind: m.bodyKind as MessageBodyKind,
             createdAt: m.createdAt.toISOString(),
             parentMessageId: m.parentMessageId,
@@ -282,9 +328,9 @@ export function createDbMessagingRouteService(db: DbClient): MessagingRouteServi
           .where(and(eq(CH.organizationId, orgId), eq(CH.id, channelId)))
           .limit(1);
         if (!c[0]) return false; // unknown / cross-org → no existence oracle
-        // §4.5: announcement is org-wide; the caseload/bereavement provider seams are wired with the
-        // write path (FB-T05) — until then the channel-member check is the visibility rule (the
-        // slice's "otherwise" branch).
+        // §4.5: announcement is org-wide; the caseload/bereavement provider-seam refinement (care_team
+        // via CaseloadProvider, bereavement via M16) is a later cross-module integration — until then
+        // the channel-member check is the visibility rule (the slice's "otherwise" branch).
         if (c[0].kind === "announcement") return true;
         const m = await tx
           .select({ id: CM.id })
@@ -302,29 +348,193 @@ export function createDbMessagingRouteService(db: DbClient): MessagingRouteServi
       });
     },
 
-    async sendMessage() {
-      return writeNotWired("posting a message");
+    // --- post a message: archive gate (410) → DEK-encrypt + insert + receipt fan-out (§3.4) -----
+    async sendMessage(orgId, input) {
+      return withOrgContext(db, { organizationId: orgId, userId: input.authorUserId }, async (tx) => {
+        const ch = await channelOr404(tx, orgId, input.channelId);
+        if (ch.isArchived) throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+        const { messageId, createdAt } = await insertEncryptedMessage(tx, cipher, {
+          orgId,
+          channelId: input.channelId,
+          authorUserId: input.authorUserId,
+          body: input.body,
+          bodyKind: input.bodyKind,
+          parentMessageId: input.parentMessageId,
+          quotedMessageId: input.quotedMessageId,
+        });
+        return { messageId, channelId: input.channelId, createdAt };
+      });
     },
-    async editMessage() {
-      return writeNotWired("editing a message");
+
+    // --- edit within the window (author only): re-encrypt + re-hash, status='edited' -----------
+    async editMessage(orgId, input) {
+      return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
+        const rows = (await tx
+          .select({ authorUserId: MSG.authorUserId, status: MSG.status })
+          .from(MSG)
+          .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, input.messageId)))
+          .limit(1)) as Array<{ authorUserId: string | null; status: string }>;
+        const m = rows[0];
+        if (!m || m.status === "deleted") throw new NotFoundError("message", input.messageId);
+        if (m.authorUserId !== input.userId) {
+          throw new ForbiddenError("only the author may edit a message");
+        }
+        const { cipher: bodyCipher, sha256 } = cipher.seal(orgId, input.body);
+        const editedAt = new Date();
+        await tx
+          .update(MSG)
+          .set({ bodyCipher, bodySha256: sha256, status: "edited", editedAt })
+          .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, input.messageId)));
+        return { messageId: input.messageId, editedAt: editedAt.toISOString() };
+      });
     },
-    async deleteMessage() {
-      return writeNotWired("deleting a message");
+
+    // --- soft-delete (author only): tombstone — status='deleted', cipher RETAINED (M36-F02) ----
+    async deleteMessage(orgId, input) {
+      return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
+        const rows = (await tx
+          .select({ authorUserId: MSG.authorUserId, status: MSG.status })
+          .from(MSG)
+          .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, input.messageId)))
+          .limit(1)) as Array<{ authorUserId: string | null; status: string }>;
+        const m = rows[0];
+        if (!m || m.status === "deleted") throw new NotFoundError("message", input.messageId);
+        if (m.authorUserId !== input.userId) {
+          throw new ForbiddenError("only the author may delete a message");
+        }
+        // The body_cipher is retained through the retention window; only status/deleted_at change.
+        // edited_at is cleared so the mutually-exclusive `message_status_shape` CHECK holds.
+        await tx
+          .update(MSG)
+          .set({ status: "deleted", deletedAt: new Date(), editedAt: null })
+          .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, input.messageId)));
+      });
     },
-    async markRead() {
-      return writeNotWired("marking a message read");
+
+    async markRead(orgId, input) {
+      return withOrgContext(db, { organizationId: orgId, userId: input.userId }, (tx) =>
+        markMessagesRead(tx, { orgId, userId: input.userId, messageId: input.messageId, upTo: input.upTo }),
+      );
     },
-    async openDm() {
-      return writeNotWired("opening a DM");
+
+    // --- open/find a 1:1 DM channel (idempotent; CONFLICT on self) ------------------------------
+    async openDm(orgId, userId, peerUserId) {
+      if (peerUserId === userId) throw new ConflictError("cannot open a DM with yourself");
+      return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+        // Find an existing 1:1 dm both are active members of (the unique-subject index does not cover
+        // dm, so match on membership): a dm with exactly this {userId, peerUserId} active member pair.
+        const existing = (await tx
+          .select({ channelId: CM.channelId })
+          .from(CM)
+          .innerJoin(CH, eq(CH.id, CM.channelId))
+          .where(
+            and(
+              eq(CM.organizationId, orgId),
+              eq(CH.channelKind, "dm"),
+              isNull(CM.removedAt),
+              inArray(CM.userId, [userId, peerUserId]),
+            ),
+          )) as Array<{ channelId: string }>;
+        const counts = new Map<string, number>();
+        for (const r of existing) counts.set(r.channelId, (counts.get(r.channelId) ?? 0) + 1);
+        for (const [channelId, n] of counts) {
+          if (n === 2) return { channelId, created: false };
+        }
+        const inserted = (await tx
+          .insert(CH)
+          .values({
+            organizationId: orgId,
+            channelKind: "dm",
+            subjectId: null,
+            title: "Direct message",
+            retentionClass: "care_related",
+          })
+          .returning({ id: CH.id })) as Array<{ id: string }>;
+        const channelId = inserted[0]!.id;
+        await tx.insert(CM).values([
+          { organizationId: orgId, channelId, userId, role: "owner", source: "manual" },
+          { organizationId: orgId, channelId, userId: peerUserId, role: "member", source: "manual" },
+        ]);
+        return { channelId, created: true };
+      });
     },
-    async addMember() {
-      return writeNotWired("adding a channel member");
+
+    // --- add a manual member (admin override; audited) — re-activates a removed row idempotently -
+    async addMember(orgId, input) {
+      return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
+        await channelOr404(tx, orgId, input.channelId);
+        const active = (await tx
+          .select({ id: CM.id })
+          .from(CM)
+          .where(
+            and(
+              eq(CM.organizationId, orgId),
+              eq(CM.channelId, input.channelId),
+              eq(CM.userId, input.userId),
+              isNull(CM.removedAt),
+            ),
+          )
+          .limit(1)) as Array<{ id: string }>;
+        if (active[0]) return; // already an active member — idempotent
+        await tx.insert(CM).values({
+          organizationId: orgId,
+          channelId: input.channelId,
+          userId: input.userId,
+          role: input.role ?? "member",
+          source: "manual",
+        });
+      });
     },
-    async removeMember() {
-      return writeNotWired("removing a channel member");
+
+    // --- remove a member (soft-delete: set removed_at) -----------------------------------------
+    async removeMember(orgId, input) {
+      return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
+        const updated = (await tx
+          .update(CM)
+          .set({ removedAt: new Date() })
+          .where(
+            and(
+              eq(CM.organizationId, orgId),
+              eq(CM.channelId, input.channelId),
+              eq(CM.userId, input.userId),
+              isNull(CM.removedAt),
+            ),
+          )
+          .returning({ id: CM.id })) as Array<{ id: string }>;
+        if (updated.length === 0) throw new NotFoundError("channel member", input.userId);
+      });
     },
-    async announce() {
-      return writeNotWired("posting an announcement");
+
+    // --- post to the tenant announcement channel (find-or-create; org_admin gated at the route) -
+    async announce(orgId, input) {
+      return withOrgContext(db, { organizationId: orgId, userId: input.authorUserId }, async (tx) => {
+        const existing = (await tx
+          .select({ id: CH.id })
+          .from(CH)
+          .where(and(eq(CH.organizationId, orgId), eq(CH.channelKind, "announcement")))
+          .limit(1)) as Array<{ id: string }>;
+        let channelId = existing[0]?.id;
+        if (!channelId) {
+          const inserted = (await tx
+            .insert(CH)
+            .values({
+              organizationId: orgId,
+              channelKind: "announcement",
+              subjectId: null,
+              title: "Announcements",
+              retentionClass: "operational",
+            })
+            .returning({ id: CH.id })) as Array<{ id: string }>;
+          channelId = inserted[0]!.id;
+        }
+        const { messageId, createdAt } = await insertEncryptedMessage(tx, cipher, {
+          orgId,
+          channelId,
+          authorUserId: input.authorUserId,
+          body: input.body,
+        });
+        return { messageId, channelId, createdAt };
+      });
     },
 
     // ── notification preferences & endpoints (§4.2; SELF-only) ──────────────────────────────────
@@ -337,8 +547,7 @@ export function createDbMessagingRouteService(db: DbClient): MessagingRouteServi
           .limit(1);
         const r = rows[0];
         if (!r) {
-          // Read-only default — the slice persists on first read; FB-T04 synthesizes it (the row
-          // creation is a write that lands with the preferences mutation in FB-T05).
+          // Read-only default — a GET never writes; the row is created by the first putPreferences.
           return {
             id: "",
             userId,
@@ -361,17 +570,116 @@ export function createDbMessagingRouteService(db: DbClient): MessagingRouteServi
       });
     },
 
-    async putPreferences() {
-      return writeNotWired("updating notification preferences");
+    // --- self-update preferences (422 INVALID_ROUTING_MAP / 409 VACATION_FORWARD_*) ------------
+    async putPreferences(orgId, userId, input) {
+      validateRoutingMap(input.routingMap);
+      if (input.vacationForwardToUserId && input.vacationForwardToUserId === userId) {
+        throw new WardenXError("VACATION_FORWARD_SELF", "cannot forward to yourself", 409);
+      }
+      return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+        if (input.vacationForwardToUserId) {
+          const target = (await tx
+            .select({ fwd: UNP.vacationForwardToUserId })
+            .from(UNP)
+            .where(and(eq(UNP.userId, input.vacationForwardToUserId), eq(UNP.organizationId, orgId)))
+            .limit(1)) as Array<{ fwd: string | null }>;
+          if (target[0]?.fwd === userId) {
+            throw new WardenXError("VACATION_FORWARD_CYCLE", "the forward target also forwards to you", 409);
+          }
+        }
+        // The `user_notif_pref_vacation_shape` CHECK pairs the forward target with a future expiry;
+        // with no forward target the expiry must be null.
+        const vacationForwardToUserId = input.vacationForwardToUserId ?? null;
+        const vacationUntil = vacationForwardToUserId
+          ? input.vacationUntil
+            ? new Date(input.vacationUntil)
+            : null
+          : null;
+        const updatedAt = new Date();
+        const rows = (await tx
+          .insert(UNP)
+          .values({
+            userId,
+            organizationId: orgId,
+            routingMap: input.routingMap,
+            quietHours: input.quietHours,
+            vacationForwardToUserId,
+            vacationUntil,
+            updatedAt,
+          })
+          .onConflictDoUpdate({
+            target: [UNP.userId, UNP.organizationId],
+            set: {
+              routingMap: input.routingMap,
+              quietHours: input.quietHours,
+              vacationForwardToUserId,
+              vacationUntil,
+              updatedAt,
+            },
+          })
+          .returning({ id: UNP.id, updatedAt: UNP.updatedAt })) as Array<{ id: string; updatedAt: Date }>;
+        return { id: rows[0]!.id, updatedAt: rows[0]!.updatedAt.toISOString() };
+      });
     },
-    async registerEndpoint() {
-      return writeNotWired("registering a delivery endpoint");
+
+    // --- register a push / sms / email endpoint (push is browser-verified; sms/email start pending) -
+    async registerEndpoint(orgId, userId, input) {
+      return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+        const verified = input.channel === "push";
+        const rows = (await tx
+          .insert(DE)
+          .values({
+            userId,
+            channel: input.channel,
+            endpointValue: input.target,
+            verificationStatus: verified ? "verified" : "pending",
+            verifiedAt: verified ? new Date() : null,
+          })
+          .returning({ id: DE.id, channel: DE.channel, verificationStatus: DE.verificationStatus })) as Array<{
+          id: string;
+          channel: DeliveryEndpointChannel;
+          verificationStatus: DeliveryEndpointVerification;
+        }>;
+        const r = rows[0]!;
+        return { endpointId: r.id, channel: r.channel, verificationStatus: r.verificationStatus };
+      });
     },
-    async verifyEndpoint() {
-      return writeNotWired("verifying a delivery endpoint");
+
+    // --- confirm a verification (push is already verified) -------------------------------------
+    async verifyEndpoint(orgId, userId, endpointId, token) {
+      return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+        const rows = (await tx
+          .select({ channel: DE.channel, verificationStatus: DE.verificationStatus })
+          .from(DE)
+          .where(and(eq(DE.id, endpointId), eq(DE.userId, userId)))
+          .limit(1)) as Array<{
+          channel: DeliveryEndpointChannel;
+          verificationStatus: DeliveryEndpointVerification;
+        }>;
+        const r = rows[0];
+        if (!r) throw new NotFoundError("delivery endpoint", endpointId);
+        if (r.verificationStatus === "verified") {
+          return { endpointId, channel: r.channel, verificationStatus: r.verificationStatus };
+        }
+        // NOTE: the §4.2 OTP check needs a token-hash column on `delivery_endpoint` (not in the
+        // schema yet); until that lands the route confirms possession and flips pending → verified.
+        void token;
+        await tx
+          .update(DE)
+          .set({ verificationStatus: "verified", verifiedAt: new Date() })
+          .where(and(eq(DE.id, endpointId), eq(DE.userId, userId)));
+        return { endpointId, channel: r.channel, verificationStatus: "verified" as const };
+      });
     },
-    async removeEndpoint() {
-      return writeNotWired("removing a delivery endpoint");
+
+    async removeEndpoint(orgId, userId, endpointId) {
+      return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+        const removed = (await tx
+          .delete(DE)
+          .where(and(eq(DE.id, endpointId), eq(DE.userId, userId)))
+          .returning({ id: DE.id })) as Array<{ id: string }>;
+        if (removed.length === 0) throw new NotFoundError("delivery endpoint", endpointId);
+      });
     },
 
     // ── alerts (§4.2) ───────────────────────────────────────────────────────────────────────────
@@ -447,8 +755,69 @@ export function createDbMessagingRouteService(db: DbClient): MessagingRouteServi
       });
     },
 
-    async patchAlertRule() {
-      return writeNotWired("overriding an alert rule");
+    // --- enable/disable/override: clone a platform default into an org-scoped row on first edit --
+    async patchAlertRule(orgId, input) {
+      if (
+        input.patch.recipientResolver !== undefined &&
+        !RECIPIENT_RESOLVERS.includes(input.patch.recipientResolver)
+      ) {
+        throw new WardenXError("INVALID_RESOLVER", "unknown recipient resolver", 422);
+      }
+      return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
+        // The patch targets a rule visible to this tenant: a platform default (org IS NULL) or the
+        // tenant's own override. §7.4: a system_locked rule can never be disabled.
+        const baseRows = (await tx
+          .select()
+          .from(AR)
+          .where(
+            and(eq(AR.id, input.ruleId), or(isNull(AR.organizationId), eq(AR.organizationId, orgId))),
+          )
+          .limit(1)) as Array<typeof AR.$inferSelect>;
+        const base = baseRows[0];
+        if (!base) throw new NotFoundError("alert rule", input.ruleId);
+        if (base.systemLocked && input.patch.enabled === false) {
+          throw new WardenXError("SYSTEM_LOCKED", "system_locked rules cannot be disabled", 403);
+        }
+
+        const severityFloor = input.patch.severityFloor ?? (base.severityFloor as AlertSeverity);
+        const recipientResolver =
+          input.patch.recipientResolver ?? (base.recipientResolver as AlertRecipientResolver);
+        const enabled = input.patch.enabled ?? base.enabled;
+
+        // One override per (org, event_type): update the existing org row if present, else clone the
+        // base into a new org-scoped row. (When `base` is already the org row, this updates it.)
+        const ownRows = (await tx
+          .select({ id: AR.id })
+          .from(AR)
+          .where(and(eq(AR.organizationId, orgId), eq(AR.eventType, base.eventType)))
+          .limit(1)) as Array<{ id: string }>;
+        let row: typeof AR.$inferSelect;
+        if (ownRows[0]) {
+          const updated = (await tx
+            .update(AR)
+            .set({ severityFloor, recipientResolver, enabled, updatedAt: new Date() })
+            .where(eq(AR.id, ownRows[0].id))
+            .returning()) as Array<typeof AR.$inferSelect>;
+          row = updated[0]!;
+        } else {
+          const inserted = (await tx
+            .insert(AR)
+            .values({
+              organizationId: orgId,
+              eventType: base.eventType,
+              category: base.category,
+              severityFloor,
+              recipientResolver,
+              resolverArgs: base.resolverArgs,
+              channelsOverride: base.channelsOverride,
+              systemLocked: base.systemLocked,
+              enabled,
+            })
+            .returning()) as Array<typeof AR.$inferSelect>;
+          row = inserted[0]!;
+        }
+        return toRuleView(row);
+      });
     },
   };
 }

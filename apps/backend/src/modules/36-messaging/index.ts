@@ -61,12 +61,15 @@ export {
   registerMessagingWebhookRoutes,
 } from "./routes/webhook-routes";
 
-// FB-T04 — the production Drizzle route-service adapter (over the M36 tables) + the composition-root
-// route mount. `createDbMessagingRouteService` backs the §4.1–4.2 READ surface (channel list / detail
-// / thread envelope / alert inbox / preferences / alert rules) live; the WRITE surface fail-clears
-// (501) until the MessagingProvider write path lands in FB-T05. The staff-messaging +
-// notifications-inbox screens (apps/web/src/modules/36-messaging) read live through these.
+// FB-T04/FB-T05 — the production Drizzle route-service adapter (over the M36 tables) + the
+// composition-root route mount. `createDbMessagingRouteService` backs the §4.1–4.2 READ + WRITE
+// surface live (channel list / detail / thread envelope decrypt / alert inbox / preferences / alert
+// rules + send / edit / delete / receipts / DM / member admin / announce / preference + endpoint /
+// alert-rule override). The staff-messaging + notifications-inbox screens read/write live through these.
 export { createDbMessagingRouteService } from "./messaging-route-service-db";
+// FB-T05 — the production Drizzle `MessagingProvider` seam (§4.6): the cross-module channel/message
+// CRUD surface, registered into the M1 registry over the deny-stub so `validateSeams()` sees it real.
+export { createDbMessagingProvider } from "./messaging-provider-db";
 
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";

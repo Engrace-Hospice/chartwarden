@@ -379,6 +379,12 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
            VALUES ($1,$2,'application/pdf',10,'f.pdf')`,
           [messageId, SUBJECT],
         );
+        // FB-T05 write path: the send → read-receipt fan-out writes a per-recipient message_receipt
+        // (org-scoped). Seed one so the two-tenant isolation of the receipt surface is exercised.
+        await db.query(
+          `INSERT INTO message_receipt (organization_id,message_id,user_id,status) VALUES ($1,$2,$3,'delivered')`,
+          [ORG_A, messageId, U_A],
+        );
         // presence + delivery_endpoint are user-scoped
         await db.query(
           "INSERT INTO presence (user_id,status) VALUES ($1,'online')",
@@ -442,6 +448,28 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
         db.query("SELECT count(*)::int AS n FROM message_attachment WHERE message_id=$1", [messageId]),
       );
       expect(attA.rows[0].n).toBe(1);
+    });
+
+    it("§3.7 FB-T05 write path: Org B sees NONE of Org A's message_receipt fan-out rows", async () => {
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM message_receipt WHERE message_id=$1", [messageId]),
+      );
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM message_receipt WHERE message_id=$1", [messageId]),
+      );
+      expect(b.rows[0].n).toBe(0);
+      expect(a.rows[0].n).toBe(1); // Org A still reads its own receipt
+    });
+
+    it("§3.7 FB-T05 write path: a cross-tenant message_receipt write is rejected (WITH CHECK)", async () => {
+      await expect(
+        withOrgUser(ORG_B, U_B, () =>
+          db.query(
+            `INSERT INTO message_receipt (organization_id,message_id,user_id,status) VALUES ($1,$2,$3,'delivered')`,
+            [ORG_A, messageId, U_B],
+          ),
+        ),
+      ).rejects.toThrow();
     });
 
     it("§3.7 alert_rule platform-default (NULL org) is read by every tenant", async () => {
