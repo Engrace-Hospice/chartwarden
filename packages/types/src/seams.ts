@@ -98,6 +98,16 @@ export interface ActorEnrichmentReader {
 }
 
 /**
+ * Reports which of an org's memberships hold the `org_admin` role (M2 spec §6 last-admin lockout). A
+ * membership's admin status is an M3 fact (`membership_role ⋈ role.key='org_admin'`); M2's member
+ * roster/repository can't read M3's tables, so it derives `isAdmin` + `activeAdminCount` through this
+ * M3-owned reader. Returns the set of admin `membership.id`s for the org (active grants only).
+ */
+export interface AdminMembershipReader {
+  adminMembershipIds(orgId: string): Promise<ReadonlySet<string>> | ReadonlySet<string>;
+}
+
+/**
  * A session's step-up recency state (M2 spec §4.7). Module 3's `step_up_recent` predicate
  * reads these via the published seam — a typed contract, NOT a direct read of the M1-owned
  * `session` table — so the freshness/factor math has one home and cannot drift.

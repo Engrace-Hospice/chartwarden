@@ -16,7 +16,12 @@
 import { schema } from "@wardenx/db";
 import type { DbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import type { ActorEnrichment, ActorEnrichmentReader, OrgScope } from "@wardenx/types";
+import type {
+  ActorEnrichment,
+  ActorEnrichmentReader,
+  AdminMembershipReader,
+  OrgScope,
+} from "@wardenx/types";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   type EffectivePermissionStore,
@@ -142,6 +147,38 @@ export function createDbActorEnrichmentReader(db: DbClient): ActorEnrichmentRead
           ),
         ];
         return { membershipId: membership.id, roles };
+      });
+    },
+  };
+}
+
+/** The role key that confers org-admin (last-admin lockout guard, M2 §6). */
+const ORG_ADMIN_ROLE_KEY = "org_admin";
+
+/**
+ * Build the `AdminMembershipReader` (M2 §6, M3-owned path). Returns the org's membership ids that hold
+ * an ACTIVE `org_admin` grant (enabled role, non-expired grant), under `withOrgContext` so RLS scopes by
+ * `app.org_id`. M2's member roster derives `isAdmin` / `activeAdminCount` from this without reading M3's
+ * `membership_role`/`role` tables.
+ */
+export function createDbAdminMembershipReader(db: DbClient): AdminMembershipReader {
+  return {
+    async adminMembershipIds(orgId: string): Promise<ReadonlySet<string>> {
+      return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
+        const rows = await tx
+          .select({
+            membershipId: schema.membershipRoles.membershipId,
+            expiresAt: schema.membershipRoles.expiresAt,
+          })
+          .from(schema.membershipRoles)
+          .innerJoin(schema.roles, eq(schema.roles.id, schema.membershipRoles.roleId))
+          .where(and(eq(schema.roles.key, ORG_ADMIN_ROLE_KEY), eq(schema.roles.enabled, true)));
+        const now = Date.now();
+        const ids = new Set<string>();
+        for (const r of rows) {
+          if (r.expiresAt === null || r.expiresAt.getTime() > now) ids.add(r.membershipId);
+        }
+        return ids;
       });
     },
   };

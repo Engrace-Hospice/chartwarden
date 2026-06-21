@@ -6,6 +6,7 @@
 import {
   createConsoleEmailTransport,
   createDbActorEnrichmentReader,
+  createDbAdminMembershipReader,
   createDbSessionContextStore,
   createIdentityAuth,
   createNoopEmailTransport,
@@ -17,7 +18,11 @@ import type { SessionContextStore } from "@wardenx/auth";
 import { type DbClient, createDbClient } from "@wardenx/db";
 import { buildServer, createSessionAuthenticate, getSeam } from "./bootstrap/index";
 import { assertAuditActionCatalog, registerAuditErasers } from "./modules/04-audit/index";
-import { registerIdentityErasers, registerIdentitySeams } from "./modules/02-identity/index";
+import {
+  mountIdentityRoutes,
+  registerIdentityErasers,
+  registerIdentitySeams,
+} from "./modules/02-identity/index";
 import { mountAuthorizationRoutes } from "./modules/03-authorization/index";
 import { registerMessagingErasers, registerMessagingSeams } from "./modules/36-messaging/index";
 import {
@@ -114,7 +119,11 @@ if ((import.meta as { main?: boolean }).main) {
     // the role catalog runs on the real Drizzle RoleStore; other module routes append here as their
     // stores land. The slice/tests boot without this (foundation routes only).
     registerModuleRoutes: dbHandle
-      ? (app) => mountAuthorizationRoutes(app, dbHandle.db)
+      ? (app) => {
+          mountAuthorizationRoutes(app, dbHandle.db); // M3 — role catalog on the real RoleStore
+          // M2 — member roster on the real MembershipRepository; isAdmin via the M3 admin reader.
+          mountIdentityRoutes(app, dbHandle.db, createDbAdminMembershipReader(dbHandle.db));
+        }
       : undefined,
     registerModuleSeams: () =>
       wireModuleSeams({

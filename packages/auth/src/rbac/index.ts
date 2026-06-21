@@ -38,6 +38,7 @@ export {
 } from "./resolve";
 export {
   createDbActorEnrichmentReader,
+  createDbAdminMembershipReader,
   createDbEffectivePermissionStore,
   registerDbEffectivePermissionResolver,
 } from "./drizzle-store";
