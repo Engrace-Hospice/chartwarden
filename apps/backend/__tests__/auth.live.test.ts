@@ -496,15 +496,20 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
     const handle10 = mkDb10({ connectionString: DB_URL as string });
     const svc = createDbPatientRouteService(asTenantRole(handle10.db) as never);
     const org = (await admin.query("INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'AD','AD') RETURNING id", [`ad-${Date.now()}`])).rows[0].id as string;
+    // The patient audit trigger attributes app.user_id (set from the admit actor) — must be a real
+    // user uuid (audit_event.actor_user_id FKs users.id), as the authenticated route would pass.
+    const actorEmail = `adm${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
+    await auth.api.signUpEmail({ body: { email: actorEmail, password: `Wx9$${Math.random().toString(36).slice(2)}${Date.now()}Qz!`, name: "Admitter" } });
+    const actor = (await admin.query('SELECT id FROM "user" WHERE email=$1', [actorEmail])).rows[0].id as string;
 
     // admit → created; the new patient shows up in the real census.
-    const a = await svc.admit(org, { lastName: "Nguyen", firstName: "Mai", dob: "1985-03-04", administrativeSex: "F", mbi: "1EG4TE5MK73" }, "u");
+    const a = await svc.admit(org, { lastName: "Nguyen", firstName: "Mai", dob: "1985-03-04", administrativeSex: "F", mbi: "1EG4TE5MK73" }, actor);
     expect(a.outcome).toBe("created");
     const census = await svc.list(org, {});
     expect(census.items.map((p) => p.lastName)).toContain("Nguyen");
 
     // §7.1: a second admit with the SAME MBI hard-blocks on the deterministic mbi rule (→ 409).
-    const dup = await svc.admit(org, { lastName: "Different", firstName: "Name", dob: "1990-09-09", administrativeSex: "M", mbi: "1EG4TE5MK73" }, "u");
+    const dup = await svc.admit(org, { lastName: "Different", firstName: "Name", dob: "1990-09-09", administrativeSex: "M", mbi: "1EG4TE5MK73" }, actor);
     expect(dup.outcome).toBe("hard_block");
     if (dup.outcome === "hard_block") {
       expect(dup.matchedOn).toBe("mbi");
@@ -512,7 +517,7 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
     }
 
     // bypassMatchReview skips the matcher → always creates.
-    const b = await svc.admit(org, { lastName: "Solo", firstName: "Han", dob: "1977-07-07", administrativeSex: "M", bypassMatchReview: true }, "u");
+    const b = await svc.admit(org, { lastName: "Solo", firstName: "Han", dob: "1977-07-07", administrativeSex: "M", bypassMatchReview: true }, actor);
     expect(b.outcome).toBe("created");
     expect((await svc.list(org, {})).items.map((p) => p.lastName).sort()).toEqual(["Nguyen", "Solo"]);
 
