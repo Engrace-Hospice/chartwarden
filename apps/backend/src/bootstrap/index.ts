@@ -62,6 +62,13 @@ export interface ServerDeps {
    * downstream module, so the composition root (apps/backend/src/index.ts) supplies this.
    */
   registerModuleErasers?: () => void;
+  /**
+   * Composition-root hook to MOUNT every module's REST routes (M2..M40 `registerNRoutes(app, deps)`).
+   * M1's bootstrap cannot import a downstream module, so the composition root supplies this; it runs
+   * after the M1 foundation routes, inside the same authenticate/security/error chain. When omitted
+   * (slice/tests that don't exercise HTTP), only the foundation routes are served.
+   */
+  registerModuleRoutes?: (app: FastifyInstance) => void;
 }
 
 const TEN_MB = 10 * 1024 * 1024;
@@ -119,6 +126,8 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
     statusReader: deps.systemStatusReader ?? createInMemorySystemStatusReader(),
     flagReader: deps.featureFlagReader ?? createDefaultFeatureFlagReader(),
   });
+  // Module REST routes (M2..M40) — mounted by the composition root behind the same auth/security chain.
+  deps.registerModuleRoutes?.(app);
 
   return app;
 }

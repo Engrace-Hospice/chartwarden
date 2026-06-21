@@ -56,3 +56,41 @@ export {
   registerBreakGlassContract,
 } from "./contract";
 export { registerAuthorizationRoutes } from "./routes/authz-routes";
+export { createDbRoleStore } from "./role-store";
+
+import type { DbClient } from "@wardenx/db";
+import type { FastifyInstance } from "fastify";
+import {
+  type AuthzRouteDeps,
+  createFixedPermissionResolver as _fixedPerms,
+  createInMemoryAuditorSessionMinter as _auditorMinter,
+  createInMemoryBreakGlassStore as _breakGlass,
+  createInMemoryComplianceNotifier as _notifier,
+  createInMemoryEngagementStore as _engagements,
+  createInMemoryMembershipRoleStore as _membershipRoles,
+} from "./authz-ports";
+import { createDbRoleStore as _dbRoleStore } from "./role-store";
+import { registerAuthorizationRoutes as _registerAuthzRoutes } from "./routes/authz-routes";
+import { createInMemoryAuditExecutor } from "../02-identity/index";
+
+/**
+ * Mount the M3 authorization REST routes on a server (composition root, via buildServer's
+ * registerModuleRoutes hook, when a DB client is present). The role catalog runs on the REAL Drizzle
+ * RoleStore (createDbRoleStore); the remaining route deps (membership-role grants, break-glass,
+ * engagements, auditor sessions, compliance notifier, anti-escalation resolver, audit sink) are still
+ * in-memory and are replaced by their Drizzle stores in follow-up PRs — progressive wiring of the
+ * backend surface. requirePermission is the live RBAC resolver (registerDbEffectivePermissionResolver).
+ */
+export function mountAuthorizationRoutes(app: FastifyInstance, db: DbClient): void {
+  const deps: AuthzRouteDeps = {
+    roles: _dbRoleStore(db),
+    membershipRoles: _membershipRoles().store,
+    breakGlass: _breakGlass().store,
+    engagements: _engagements().store,
+    auditorSessions: _auditorMinter().minter,
+    notifier: _notifier().notifier,
+    effectivePermissions: _fixedPerms([]).resolver,
+    audit: createInMemoryAuditExecutor().executor,
+  };
+  _registerAuthzRoutes(app, deps);
+}

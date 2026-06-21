@@ -235,4 +235,46 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
 
     await handle4.close();
   });
+
+  it("M3 RBAC: the live RoleStore lists the org's catalog (templates + own roles) with permission keys", async () => {
+    const { createDbClient: mkDb5 } = await import("@wardenx/db");
+    const { createDbRoleStore } = await import("../src/modules/03-authorization/role-store");
+    const handle5 = mkDb5({ connectionString: DB_URL as string });
+    const store = createDbRoleStore(handle5.db as never);
+
+    const org = (await admin.query(
+      "INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'RS','RS') RETURNING id",
+      [`rs-${Date.now()}`],
+    )).rows[0].id as string;
+    await admin.query("INSERT INTO permission (key,resource,action,category) VALUES ('role.read','role','read','admin') ON CONFLICT (key) DO NOTHING");
+    // A platform template (org_id NULL, system_default) and this org's own custom role.
+    const tmpl = (await admin.query(
+      "INSERT INTO role (organization_id,key,name,category,system_default,enabled) VALUES (NULL,$1,'Nurse Template','clinical_staff',true,true) RETURNING id",
+      [`rs-tmpl-${Date.now()}`],
+    )).rows[0].id as string;
+    const own = (await admin.query(
+      "INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,'rs-custom','Custom RN','clinical_staff',true) RETURNING id",
+      [org],
+    )).rows[0].id as string;
+    await admin.query("INSERT INTO role_permission (organization_id,role_id,permission_key) VALUES ($1,$2,'role.read')", [org, own]);
+
+    const roles = await store.listForOrg(org);
+    const byId = new Map(roles.map((r) => [r.roleId, r]));
+    // Template visible in every org scope; org row visible + flagged customized; keys attached.
+    expect(byId.get(tmpl)?.systemDefault).toBe(true);
+    expect(byId.get(tmpl)?.customized).toBe(false);
+    expect(byId.get(own)?.customized).toBe(true);
+    expect(byId.get(own)?.permissionKeys).toContain("role.read");
+
+    // A different org sees the template but NOT this org's custom role (RLS + the org predicate).
+    const other = (await admin.query(
+      "INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'RS2','RS2') RETURNING id",
+      [`rs2-${Date.now()}`],
+    )).rows[0].id as string;
+    const otherRoleIds = (await store.listForOrg(other)).map((r) => r.roleId);
+    expect(otherRoleIds).toContain(tmpl);
+    expect(otherRoleIds).not.toContain(own);
+
+    await handle5.close();
+  });
 });
