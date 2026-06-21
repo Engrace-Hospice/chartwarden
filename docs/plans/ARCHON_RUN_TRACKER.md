@@ -98,6 +98,22 @@ M8 Encounters) unblocked.**
 **Phase 1 done when:** all 29 modules at DoD; the end-to-end scenario passes (admit → elect → care plan
 → encounter → assessment → HOPE → order → eMAR → IDG → schedule → EVV → bill → 835 → cap projection).
 
+## Frontend backlog (Track A — runs alongside the backend waves)
+
+Makes the merged-module screens real end-to-end (mount routes + Drizzle-back the seams), fills the M5
+Patient Chart's M5-owned tabs, ships the unblockable partials, and clears the M2 auth follow-ups. Not a
+new module wave — see [`FRONTEND_INTEGRATION_PLAN.md`](./FRONTEND_INTEGRATION_PLAN.md) (Track A) and the
+status ledger [`../ui/DEFERRED_SCREENS.md`](../ui/DEFERRED_SCREENS.md). Can run anytime after Wave C
+(all its target modules — M2/M3/M4/M5/M36/M38/M39/M40 — are on `main`).
+
+| # | Wave | Scope | Command | Status | PR |
+|---|---|---|---|---|---|
+| A | Track A | M36/M38/M39/M40 live-wire + M5 chart tabs + partials + auth follow-ups | `archon workflow run wardenx-piv --branch feat/frontend-backlog "Use the plan at docs/plans/WAVE_FRONTEND_BACKLOG_PLAN.md"` | ☐ | |
+
+> Per-group PRs recommended (the wave has 4 groups, FB-T01…T15): append e.g. `(Group 1 only)` /
+> `(FB-T01 only)` to scope a run, like the big-wave per-module tip below. Group 1 (live-wiring) is the
+> highest-value first slice.
+
 ## Phase 2 (10 new + 5 upgrades)
 
 | # | Wave | Modules / upgrades | Command | Status | PR |
