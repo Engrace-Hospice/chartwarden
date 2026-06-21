@@ -122,6 +122,17 @@ const MembershipViewSchema = Type.Object({
   ]),
   isAdmin: Type.Boolean(),
   defaultLocationIds: Type.Array(Type.String()),
+  // Wrapped-user identity joined in by the live repo (FB-T12). Account status drives the "locked" KPI.
+  displayName: Type.Union([Type.String(), Type.Null()]),
+  email: Type.Union([Type.String(), Type.Null()]),
+  lastLoginAt: Type.Union([Type.String(), Type.Null()]),
+  accountStatus: Type.Union([
+    Type.Literal("created"),
+    Type.Literal("active"),
+    Type.Literal("suspended"),
+    Type.Literal("deactivated"),
+    Type.Null(),
+  ]),
 });
 
 // Step-up qualifying factors (W-M2-11 / D9): only webauthn + totp; SMS is excluded by design.
@@ -233,7 +244,11 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     query: Type.Object({
       q: Type.Optional(Type.String({ description: "Narrow the roster by the wrapped user's identity" })),
     }),
-    response: Type.Object({ members: Type.Array(MembershipViewSchema) }),
+    response: Type.Object({
+      members: Type.Array(MembershipViewSchema),
+      // Org-wide count of still-pending invitations — the "pending invites" KPI (FB-T12).
+      pendingInvitations: Type.Integer(),
+    }),
   },
   "POST /api/v1/orgs/:id/invitations": {
     summary: "Invite a member by email — token emailed, never returned (§7.1)",

@@ -29,6 +29,9 @@ import type { FastifyRequest } from "fastify";
 /** Membership lifecycle status mirrored from the M1-owned `membership` enum (spec §2.2.2). */
 export type MembershipStatus = "active" | "suspended" | "revoked";
 
+/** Account-level status mirrored from the M1-owned `user.status` enum (drives the "locked" KPI). */
+export type AccountStatus = "created" | "active" | "suspended" | "deactivated";
+
 /** A membership row as the routes see it (M1-owned table; read via M1's repo in production). */
 export interface MembershipRecord {
   readonly membershipId: string;
@@ -39,18 +42,33 @@ export interface MembershipRecord {
   /** True if this membership carries an `org_admin` role (for the last-admin lockout guard). */
   isAdmin: boolean;
   defaultLocationIds: string[];
+  // --- Wrapped-user identity, joined in by the live repo (FB-T12). M2 reads these from the
+  // M1-owned `user`/`session` tables (dependsOn 1) — they are org-scoped identity, not PHI. ---
+  /** The user's display name (M1 `user.name`); null when unset. */
+  displayName?: string | null;
+  /** The user's email (M1 `user.email`); null only in slice seeds that omit it. */
+  email?: string | null;
+  /** ISO timestamp of the user's most recent session start (M1 `session`), or null if never seen. */
+  lastLoginAt?: string | null;
+  /** The user's account-level status (M1 `user.status`) — drives the "locked accounts" KPI. */
+  accountStatus?: AccountStatus;
 }
 
 /** The membership view returned to clients (no internal-only fields beyond the lifecycle). */
 export interface MembershipView {
   readonly membershipId: string;
-  /** The user this membership wraps — the staff facet's identity key (richer name/email arrives FB-T12). */
+  /** The user this membership wraps — the staff facet's identity key. */
   readonly userId: string;
   readonly organizationId: string;
   readonly organizationName: string;
   readonly status: MembershipStatus;
   readonly isAdmin: boolean;
   readonly defaultLocationIds: readonly string[];
+  /** The wrapped user's display name, email, last-login and account status (FB-T12). */
+  readonly displayName: string | null;
+  readonly email: string | null;
+  readonly lastLoginAt: string | null;
+  readonly accountStatus: AccountStatus | null;
 }
 
 /**
@@ -138,6 +156,8 @@ export interface InvitationDetail {
 /** Mint / consume / rescind org invitations (M2-owned table; token never leaves the store). */
 export interface InvitationStore {
   pendingExists(organizationId: string, email: string): Promise<boolean> | boolean;
+  /** Count of an org's still-pending invitations (the Staff Management "pending invites" KPI, FB-T12). */
+  pendingCount(organizationId: string): Promise<number> | number;
   create(input: {
     organizationId: string;
     organizationName: string;
@@ -243,11 +263,12 @@ export function createInMemoryMembershipRepository(seed: MembershipRecord[] = []
       ) ?? null,
     listForOrg: (organizationId, q) => {
       const needle = q?.trim().toLowerCase();
-      return [...rows.values()].filter(
-        (r) =>
-          r.organizationId === organizationId &&
-          (!needle || r.userId.toLowerCase().includes(needle)),
-      );
+      const matches = (r: MembershipRecord) =>
+        !needle ||
+        r.userId.toLowerCase().includes(needle) ||
+        (r.displayName?.toLowerCase().includes(needle) ?? false) ||
+        (r.email?.toLowerCase().includes(needle) ?? false);
+      return [...rows.values()].filter((r) => r.organizationId === organizationId && matches(r));
     },
     get: (membershipId) => rows.get(membershipId) ?? null,
     setStatus: (membershipId, status) => {
@@ -341,6 +362,8 @@ export function createInMemoryInvitationStore(
       [...pending.values()].some(
         (p) => p.organizationId === organizationId && p.email === email && !p.consumed,
       ),
+    pendingCount: (organizationId) =>
+      [...pending.values()].filter((p) => p.organizationId === organizationId && !p.consumed).length,
     create(input) {
       const invitationId = crypto.randomUUID();
       const token = crypto.randomUUID();

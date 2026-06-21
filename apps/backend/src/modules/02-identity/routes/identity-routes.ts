@@ -108,6 +108,10 @@ const toView = (r: MembershipRecord): MembershipView => ({
   status: r.status,
   isAdmin: r.isAdmin,
   defaultLocationIds: r.defaultLocationIds,
+  displayName: r.displayName ?? null,
+  email: r.email ?? null,
+  lastLoginAt: r.lastLoginAt ?? null,
+  accountStatus: r.accountStatus ?? null,
 });
 
 /** Read a required string field from a request body (flat VALIDATION_FAILED on miss). */
@@ -265,7 +269,10 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     const rawQ = (request.query as { q?: unknown } | null)?.q;
     const q = typeof rawQ === "string" && rawQ.trim() ? rawQ.trim() : undefined;
     const rows = await deps.memberships.listForOrg(orgId, q);
-    return { members: rows.map(toView) };
+    // `pendingInvitations` backs the Staff Management "pending invites" KPI (FB-T12). It reflects
+    // the whole org regardless of the `q` roster narrowing, so the KPI stays stable while filtering.
+    const pendingInvitations = await deps.invitations.pendingCount(orgId);
+    return { members: rows.map(toView), pendingInvitations };
   });
 
   app.patch("/api/v1/orgs/:id/members/:mId", async (request, reply) => {

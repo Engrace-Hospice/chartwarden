@@ -192,24 +192,29 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 |-----------|--------|------|-----------|--------|
 | M5 + M2/M3 | Global Search Results | `screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md` | later facets (documents/orders/visits/commands) need unbuilt modules | done (partial — M5+M2 facets)⁶ |
 | M2 + M36 + M17 | User Profile & Preferences | `screens/core/WARDENX_UI_USER_PROFILE_PREFERENCES.md` | M17 (scheduling prefs) | deferred (partial) |
-| M2 / M34 | Staff Management | `screens/admin/WARDENX_UI_STAFF_MANAGEMENT.md` | owner = M2 (memberships); Name/email, Discipline, Credentials, Last-login, Pending-invite/Locked KPIs need richer member data / M34 | done (M2 roster)⁵ |
+| M2 / M34 | Staff Management | `screens/admin/WARDENX_UI_STAFF_MANAGEMENT.md` | owner = M2 (memberships); enriched (FB-T12) with name/email, last-login, Pending-invite + Locked-account KPIs; Discipline/Credentials still need M34 | done (M2 roster — enriched)⁵ |
 
-> ⁵ **Staff Management — built at the M2 roster level** (`apps/web/src/modules/02-identity/staff-management.tsx`,
+> ⁵ **Staff Management — built at the M2 roster level, enriched (FB-T12)** (`apps/web/src/modules/02-identity/staff-management.tsx`,
 > `/admin/staff`, Work Queue). Invite by email, change member status (active/suspended), and revoke a
 > membership — over the M2 member routes via the generated client; active org from the session. Owner
-> question resolved: **M2** (memberships). Deferred to richer member data / M34: Name/email, Discipline,
-> Credentials, Last-login columns and the Pending-invite / Locked-account KPIs. Like every Track A screen,
-> this is built against the typed contract; the M2 member routes are coded + unit-tested (Fastify `inject`)
-> but **not yet mounted in the running server**, and the membership store is in-memory — a backend
-> mount + DB-store follow-up shared across all modules.
+> question resolved: **M2** (memberships). **FB-T12** enriched the roster with what the M2 surface carries
+> today: a **Name / email** column (the live `MembershipRepository` joins the M1-owned `user` table), a
+> **Last-login** column (`max(session.created_at)` from the M1-owned `session` table), and two KPIs —
+> **Pending invites** (`pendingInvitations` from the members route, counting still-pending
+> `organization_invitation` rows) and **Locked accounts** (members whose `user.status` is
+> suspended/deactivated, badged inline). All additive read-layer over M1-owned tables (M2 dependsOn 1; no
+> new edge, no schema import). Still deferred to **M34**: Discipline / credentials (no fabrication — the
+> screen omits them). Like every Track A screen this is built against the typed contract; the member
+> roster reads run on the live Drizzle repo, while the remaining M2 lifecycle deps (invitations /
+> sessions / user directory) stay in-memory pending a shared backend mount + DB-store follow-up.
 
 > ⁶ **Global Search Results — built (partial — M5 + M2 facets, FB-T11).** The Global Search frame
 > (`apps/web/src/modules/05-patient/global-search.tsx`, `/search`, Work Queue: facets + grouped results
 > + result preview) ships with its two **live** facets: the M5 **patient** facet over
 > `GET /api/v1/patients?q=` (RLS/caseload-scoped server-side; the list carries no SSN/MBI, so the spec's
 > redaction holds by construction) and the M2 **staff** facet over `GET /api/v1/orgs/:id/members?q=`
-> (server-side `q` added in FB-T11 — narrows by the wrapped user identity; richer name/email search
-> arrives with the FB-T12 roster enrichment). The staff facet stays behind `member.manage`; a 403 / no
+> (server-side `q` added in FB-T11 — narrows by the wrapped user identity; FB-T12 extended `q` to also
+> match the joined `user.name` / `user.email`). The staff facet stays behind `member.manage`; a 403 / no
 > org-bound session degrades to a clear note, never a hard error. It is reachable from the new shell
 > **top-nav search** box (M1 layout, module-free — it only navigates to `/search?q=`). Later facets
 > (**documents / orders / visits / navigation-commands**) render as labeled "available when *module*

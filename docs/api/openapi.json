@@ -806,7 +806,11 @@
                           "organizationName",
                           "status",
                           "isAdmin",
-                          "defaultLocationIds"
+                          "defaultLocationIds",
+                          "displayName",
+                          "email",
+                          "lastLoginAt",
+                          "accountStatus"
                         ],
                         "properties": {
                           "membershipId": {
@@ -849,6 +853,59 @@
                             "items": {
                               "type": "string"
                             }
+                          },
+                          "displayName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "email": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastLoginAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "accountStatus": {
+                            "anyOf": [
+                              {
+                                "const": "created",
+                                "type": "string"
+                              },
+                              {
+                                "const": "active",
+                                "type": "string"
+                              },
+                              {
+                                "const": "suspended",
+                                "type": "string"
+                              },
+                              {
+                                "const": "deactivated",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       }
@@ -2535,7 +2592,8 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "members"
+                    "members",
+                    "pendingInvitations"
                   ],
                   "properties": {
                     "members": {
@@ -2549,7 +2607,11 @@
                           "organizationName",
                           "status",
                           "isAdmin",
-                          "defaultLocationIds"
+                          "defaultLocationIds",
+                          "displayName",
+                          "email",
+                          "lastLoginAt",
+                          "accountStatus"
                         ],
                         "properties": {
                           "membershipId": {
@@ -2592,9 +2654,65 @@
                             "items": {
                               "type": "string"
                             }
+                          },
+                          "displayName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "email": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastLoginAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "accountStatus": {
+                            "anyOf": [
+                              {
+                                "const": "created",
+                                "type": "string"
+                              },
+                              {
+                                "const": "active",
+                                "type": "string"
+                              },
+                              {
+                                "const": "suspended",
+                                "type": "string"
+                              },
+                              {
+                                "const": "deactivated",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       }
+                    },
+                    "pendingInvitations": {
+                      "type": "integer"
                     }
                   }
                 }
@@ -2700,7 +2818,11 @@
                     "organizationName",
                     "status",
                     "isAdmin",
-                    "defaultLocationIds"
+                    "defaultLocationIds",
+                    "displayName",
+                    "email",
+                    "lastLoginAt",
+                    "accountStatus"
                   ],
                   "properties": {
                     "membershipId": {
@@ -2743,6 +2865,59 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "displayName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "email": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastLoginAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "accountStatus": {
+                      "anyOf": [
+                        {
+                          "const": "created",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "suspended",
+                          "type": "string"
+                        },
+                        {
+                          "const": "deactivated",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }

@@ -1955,6 +1955,10 @@ export interface operations {
                             status: "pending" | "active" | "suspended" | "revoked";
                             isAdmin: boolean;
                             defaultLocationIds: string[];
+                            displayName: string | null;
+                            email: string | null;
+                            lastLoginAt: string | null;
+                            accountStatus: "created" | "active" | "suspended" | "deactivated" | null;
                         }[];
                     };
                 };
@@ -3073,7 +3077,12 @@ export interface operations {
                             status: "pending" | "active" | "suspended" | "revoked";
                             isAdmin: boolean;
                             defaultLocationIds: string[];
+                            displayName: string | null;
+                            email: string | null;
+                            lastLoginAt: string | null;
+                            accountStatus: "created" | "active" | "suspended" | "deactivated" | null;
                         }[];
+                        pendingInvitations: number;
                     };
                 };
             };
@@ -3141,6 +3150,10 @@ export interface operations {
                         status: "pending" | "active" | "suspended" | "revoked";
                         isAdmin: boolean;
                         defaultLocationIds: string[];
+                        displayName: string | null;
+                        email: string | null;
+                        lastLoginAt: string | null;
+                        accountStatus: "created" | "active" | "suspended" | "deactivated" | null;
                     };
                 };
             };
