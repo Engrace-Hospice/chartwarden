@@ -151,6 +151,63 @@ describe("M2-T06 identity route inventory", () => {
       await app.close();
     });
 
+    it("FB-T15 GET /auth/context returns the org-bound actor's roles, membership + effective permissions", async () => {
+      const { app } = makeServer({
+        seed: [membership({ membershipId: "adm_1", userId: "admin_1", isAdmin: true })],
+      });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/auth/context",
+        headers: ADMIN, // org_a / admin_1 / org_admin — granted member.invite etc. in makeServer
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        userId: string;
+        organizationId: string;
+        membershipId: string;
+        roles: string[];
+        isAdmin: boolean;
+        permissions: string[];
+      };
+      expect(body.userId).toBe("admin_1");
+      expect(body.organizationId).toBe("org_a");
+      expect(body.membershipId).toBe("adm_1");
+      expect(body.roles).toContain("org_admin");
+      expect(body.isAdmin).toBe(true);
+      // Permissions are the M3-resolved effective set (the SAME resolver requirePermission gates on).
+      expect(body.permissions).toContain("member.invite");
+      await app.close();
+    });
+
+    it("FB-T15 GET /auth/context for a pre-org session has no org/membership/roles/permissions", async () => {
+      const { app } = makeServer({ seed });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/auth/context",
+        headers: { "x-test-user": "user_rn" }, // authenticated, not yet org-bound
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        organizationId: string | null;
+        membershipId: string | null;
+        roles: string[];
+        permissions: string[];
+      };
+      expect(body.organizationId).toBeNull();
+      expect(body.membershipId).toBeNull();
+      expect(body.roles).toEqual([]);
+      expect(body.permissions).toEqual([]);
+      await app.close();
+    });
+
+    it("FB-T15 GET /auth/context unauthenticated → 401 envelope", async () => {
+      const { app } = makeServer({ seed });
+      const res = await app.inject({ method: "GET", url: "/api/v1/auth/context" });
+      expect(res.statusCode).toBe(401);
+      expect(res.json().error.code).toBe("UNAUTHORIZED");
+      await app.close();
+    });
+
     it("select-organization binds the chosen org (200)", async () => {
       const { app } = makeServer({ seed });
       const res = await app.inject({

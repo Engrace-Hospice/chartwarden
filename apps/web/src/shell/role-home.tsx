@@ -5,13 +5,18 @@
 // data widgets (My Patients, AR snapshot, cosign queue…) populate as their modules land.
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { canSeeScreen } from "./actor-session";
 import type { WebScreenDescriptor } from "./screen-registry";
 import { useSession } from "./session";
 
 export function RoleHome({ screens }: { screens: WebScreenDescriptor[] }): JSX.Element {
   const session = useSession();
-  // Tiles = registered nav screens (exclude detail/param + wildcard routes), grouped by nav group.
-  const tiles = screens.filter((s) => !s.path.includes(":") && !s.path.includes("*"));
+  // Tiles = registered nav screens (exclude detail/param + wildcard routes), gated to the actor's
+  // effective permissions (FB-T15 — role-scoped Home; the server stays the enforcer), then grouped.
+  const tiles = screens
+    .filter((s) => !s.path.includes(":") && !s.path.includes("*"))
+    .filter((s) => canSeeScreen(s, session));
+  const roles = session?.roles ?? [];
   const groups = new Map<string, WebScreenDescriptor[]>();
   for (const s of tiles) {
     const g = s.navGroup ?? "General";
@@ -25,7 +30,9 @@ export function RoleHome({ screens }: { screens: WebScreenDescriptor[] }): JSX.E
         {session ? `Welcome, ${session.displayName ?? session.userId}` : "Welcome to WardenX"}
       </h1>
       <p style={{ marginTop: 0, color: "#6b7280" }}>
-        Your home adapts to your role. Role-specific widgets appear as their modules ship.
+        {roles.length > 0
+          ? `Signed in as ${roles.join(", ")}${session?.organizationName ? ` · ${session.organizationName}` : ""}. Your home is scoped to your role; more widgets appear as their modules ship.`
+          : "Your home adapts to your role. Role-specific widgets appear as their modules ship."}
       </p>
 
       {ordered.length === 0 ? (

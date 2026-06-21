@@ -154,11 +154,16 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > tables — including the FB-T05 message-receipt fan-out and a cross-tenant-write `WITH CHECK` rejection —
 > is covered by `rls-isolation.live.test.ts` (CI `rls-live`).
 
-> ³ **App Shell / Role Home — done at frame level.** The App Shell chrome is F0-T03; the Role Home now
-> renders at `/` (apps/web/src/shell/role-home.tsx): role-aware greeting + quick-access tiles for the
-> registered screens, grouped by nav group — it auto-populates as Track A/B add screens. Role-specific
-> data widgets (My Patients, AR snapshot, cosign queue…) and the richer Top Nav (org switcher, global
-> search, notifications bell, user menu) arrive with their modules (M36, Global Search, M2 auth backend).
+> ³ **App Shell / Role Home — frame done + role-scoped (FB-T15).** The App Shell chrome is F0-T03; the
+> Role Home renders at `/` (apps/web/src/shell/role-home.tsx): role-aware greeting + quick-access tiles
+> for the registered screens, grouped by nav group. As of FB-T15 the shell **self-loads the actor's
+> role/membership context** from the live `GET /api/v1/auth/context` (the M2↔M3 enrichment seam: M3-resolved
+> roles + effective permissions over the actor's active membership) via the typed client
+> (`apps/web/src/shell/session.tsx` `ActorSessionProvider`), so the greeting reflects the real role/org and
+> the nav + Home tiles are **gated to the actor's effective permissions** (`canSeeScreen`, the same keys the
+> server enforces — the server stays the sole enforcer, no new client authz). Role-specific data widgets
+> (My Patients, AR snapshot, cosign queue…) and the richer Top Nav (org switcher, notifications bell, user
+> menu) still arrive with their modules.
 
 > ² **M5 Patient Census — built, and it required a backend route.** M5 had no list/search endpoint, so
 > a cursor-paginated `GET /api/v1/patients` (name/MRN search + status filter) was added to the M5 backend
@@ -189,8 +194,10 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > screens remain deferred.** Magic-link / password-reset **email delivery is now wired to M36's
 > transactional email transport** (`@wardenx/messaging` `selectTransactionalEmailTransport`, bound to the
 > auth `EmailTransport` seam at the composition root; DR/INT #14, Postmark = M36; FB-T14) — the real
-> Postmark/SES provider plugs into M36's `provider` slot when M1 infra wires credentials. Remaining
-> backend follow-up: actor role/membership enrichment (the M2↔M3 seam, FB-T15).
+> Postmark/SES provider plugs into M36's `provider` slot when M1 infra wires credentials. The actor
+> role/membership enrichment (the M2↔M3 seam) now ships too: `GET /api/v1/auth/context` exposes the
+> actor's M3-resolved roles + effective permissions over their active membership, and the shell self-loads
+> it for the role-scoped Role Home / nav (FB-T15, see ³). **No M2 auth backend follow-ups remain.**
 
 ### Partial — primary owner merged, but key sections need unbuilt modules
 

@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { FormEvent, JSX, ReactNode } from "react";
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import { DegradedBanner, EmptyState } from "@wardenx/ui";
+import { canSeeScreen } from "./actor-session";
 import type { WebScreenDescriptor } from "./screen-registry";
 import { useSession } from "./session";
 
@@ -29,9 +30,11 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
       <div className="wx-body">
         <nav className="wx-nav" aria-label="Primary">
           <Link to="/">Home</Link>
-          {/* Detail screens (param paths like /patients/:id) are reached programmatically, not via nav. */}
+          {/* Detail screens (param paths like /patients/:id) are reached programmatically, not via nav.
+              Gated screens show only when the actor holds the key (FB-T15 — server still enforces). */}
           {screens
             .filter((s) => !s.path.includes(":"))
+            .filter((s) => canSeeScreen(s, session))
             .map((s) => (
               <Link key={s.id} to={s.path}>
                 {s.title}

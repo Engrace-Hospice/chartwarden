@@ -135,6 +135,20 @@ const MembershipViewSchema = Type.Object({
   ]),
 });
 
+// The authenticated actor's role/membership context (FB-T15, M2↔M3 enrichment). Mirrors the
+// `GET /api/v1/auth/context` wire shape in identity-routes.ts — the shell reflects these
+// server-resolved roles/permissions for Role-Home + nav gating (the server stays the enforcer).
+const ActorContextSchema = Type.Object({
+  userId: Type.String(),
+  organizationId: Type.Union([Type.String(), Type.Null()]),
+  organizationName: Type.Union([Type.String(), Type.Null()]),
+  membershipId: Type.Union([Type.String(), Type.Null()]),
+  displayName: Type.Union([Type.String(), Type.Null()]),
+  roles: Type.Array(Type.String()),
+  isAdmin: Type.Boolean(),
+  permissions: Type.Array(Type.String()),
+});
+
 // Step-up qualifying factors (W-M2-11 / D9): only webauthn + totp; SMS is excluded by design.
 const StepUpFactorSchema = Type.Union([Type.Literal("webauthn"), Type.Literal("totp")]);
 
@@ -229,6 +243,10 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/auth/memberships": {
     summary: "List the caller's memberships (pre-org-bind, §7.2)",
     response: Type.Object({ memberships: Type.Array(MembershipViewSchema) }),
+  },
+  "GET /api/v1/auth/context": {
+    summary: "The authenticated actor's roles/membership context (M2↔M3 enrichment, FB-T15)",
+    response: ActorContextSchema,
   },
   "POST /api/v1/auth/select-organization": {
     summary: "Bind the session to one organization (one-time, §7.2)",
