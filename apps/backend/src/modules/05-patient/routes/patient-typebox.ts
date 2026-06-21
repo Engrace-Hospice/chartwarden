@@ -161,6 +161,25 @@ export const PatientAddressesResponseSchema = Type.Object({
   addresses: Type.Array(PatientAddressSchema),
 });
 
+// GET /api/v1/patients/:id/payers (§3.4) — ranked coverages; `payerId` resolves an M40 canonical
+// Payer whose display name is fetched client-side via the MDM client (no cross-module schema import).
+const PatientPayerSchema = Type.Object({
+  id: Type.String(),
+  payerId: Type.String(),
+  rank: Type.Integer(),
+  coverageKind: Type.String(),
+  subscriberId: Type.String(),
+  groupNumber: Type.Union([Type.String(), Type.Null()]),
+  binPcn: Type.Union([Type.String(), Type.Null()]),
+  current: Type.Boolean(),
+  effectiveFrom: Type.String(),
+  effectiveTo: Type.Union([Type.String(), Type.Null()]),
+});
+
+export const PatientPayersResponseSchema = Type.Object({
+  payers: Type.Array(PatientPayerSchema),
+});
+
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   const converted = Value.Convert(schema, raw ?? {});
   if (!Value.Check(schema, converted)) {

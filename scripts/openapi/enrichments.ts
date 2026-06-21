@@ -29,6 +29,7 @@ import {
   PatientIdentifiersResponseSchema,
   PatientListQuerySchema,
   PatientListResponseSchema,
+  PatientPayersResponseSchema,
   PatientSummarySchema,
 } from "../../apps/backend/src/modules/05-patient/routes/patient-typebox";
 import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
@@ -302,6 +303,10 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "POST /api/v1/patients/:id/addresses": {
     body: AddressBodySchema,
     summary: "Append a patient address (§7.4 cascade; isPrimary rotates the current primary)",
+  },
+  "GET /api/v1/patients/:id/payers": {
+    summary: "Patient coverage / payers — ranked coverages; payer name resolved via M40 (§3.4)",
+    response: PatientPayersResponseSchema,
   },
   "POST /api/v1/patients/:id/amendments": {
     body: AmendmentBodySchema,

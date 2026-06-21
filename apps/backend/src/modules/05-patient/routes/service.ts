@@ -65,6 +65,26 @@ export interface AddressView {
   readonly geocodeLng: string | null;
 }
 
+/**
+ * One row of the §3.4 `patient_payer` coverage list (Coverage / Payers tab). `payerId` resolves an
+ * M40 canonical Payer — the DISPLAY NAME is resolved on the client via the MDM seam/client (no
+ * cross-module schema import here). `rank` 1 = primary; `current` (effectiveTo IS NULL) marks the
+ * live coverage. `subscriberId` is the member id (MBI for medicare_ffs) — plaintext, like the
+ * identifiers tab's mbi.
+ */
+export interface PatientPayerView {
+  readonly id: string;
+  readonly payerId: string;
+  readonly rank: number;
+  readonly coverageKind: string;
+  readonly subscriberId: string;
+  readonly groupNumber: string | null;
+  readonly binPcn: string | null;
+  readonly current: boolean; // effectiveTo IS NULL
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string | null;
+}
+
 /** The add-address capture contract (§7.4). `isPrimary` triggers atomic primary rotation. */
 export interface AddAddressInput {
   readonly line1: string;
@@ -152,6 +172,7 @@ export interface PatientRouteService {
     query: PatientListQuery,
   ): Promise<{ items: PatientView[]; nextCursor: string | null }>;
   listAddresses(organizationId: string, patientId: string): Promise<AddressView[] | null>;
+  listPayers(organizationId: string, patientId: string): Promise<PatientPayerView[] | null>;
   addAddress(
     organizationId: string,
     patientId: string,
@@ -192,6 +213,7 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
   for (const p of candidates) patients.set(p.id, p);
   const amendments = new Map<string, AmendmentView>();
   const addresses = new Map<string, AddressView[]>(); // patientId → append-only address history
+  const payers = new Map<string, PatientPayerView[]>(); // patientId → §3.4 coverage rows
   const now = seed.now ?? (() => new Date("2026-06-20T00:00:00Z"));
   let seq = 0;
   const nextId = (p: string) => `${p}_${(seq += 1)}`;
@@ -307,6 +329,15 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
           Number(b.current) - Number(a.current) ||
           Number(b.isPrimary) - Number(a.isPrimary) ||
           b.effectiveFrom.localeCompare(a.effectiveFrom),
+      );
+    },
+
+    async listPayers(organizationId, patientId) {
+      const p = patients.get(patientId);
+      if (!p || p.organizationId !== organizationId) return null; // §7.5 no-leak
+      // The slice carries no coverage seed; production reads `patient_payer` under RLS. Primary first.
+      return [...(payers.get(patientId) ?? [])].sort(
+        (a, b) => Number(b.current) - Number(a.current) || a.rank - b.rank,
       );
     },
 

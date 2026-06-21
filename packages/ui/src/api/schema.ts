@@ -1082,6 +1082,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{id}/payers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Patient coverage / payers — ranked coverages; payer name resolved via M40 (§3.4) */
+        get: operations["getApiV1PatientsByIdPayers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{patientId}/consents": {
         parameters: {
             query?: never;
@@ -3380,6 +3397,43 @@ export interface operations {
                             last4: string | null;
                             sensitive: boolean;
                             issuer: string | null;
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PatientsByIdPayers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        payers: {
+                            id: string;
+                            payerId: string;
+                            rank: number;
+                            coverageKind: string;
+                            subscriberId: string;
+                            groupNumber: string | null;
+                            binPcn: string | null;
+                            current: boolean;
                             effectiveFrom: string;
                             effectiveTo: string | null;
                         }[];

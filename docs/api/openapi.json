@@ -3733,6 +3733,119 @@
         }
       }
     },
+    "/api/v1/patients/{id}/payers": {
+      "get": {
+        "operationId": "getApiV1PatientsByIdPayers",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Patient coverage / payers — ranked coverages; payer name resolved via M40 (§3.4)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "payers"
+                  ],
+                  "properties": {
+                    "payers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "payerId",
+                          "rank",
+                          "coverageKind",
+                          "subscriberId",
+                          "groupNumber",
+                          "binPcn",
+                          "current",
+                          "effectiveFrom",
+                          "effectiveTo"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "payerId": {
+                            "type": "string"
+                          },
+                          "rank": {
+                            "type": "integer"
+                          },
+                          "coverageKind": {
+                            "type": "string"
+                          },
+                          "subscriberId": {
+                            "type": "string"
+                          },
+                          "groupNumber": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "binPcn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "current": {
+                            "type": "boolean"
+                          },
+                          "effectiveFrom": {
+                            "type": "string"
+                          },
+                          "effectiveTo": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/patients/{patientId}/consents": {
       "get": {
         "operationId": "getApiV1PatientsByPatientIdConsents",

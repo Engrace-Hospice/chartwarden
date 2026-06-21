@@ -32,7 +32,7 @@ const NAV_SECTIONS: { label: string; ready: boolean }[] = [
   { label: "Summary", ready: true },
   { label: "Demographics & Identifiers", ready: true },
   { label: "Addresses", ready: true },
-  { label: "Coverage / Payers", ready: false },
+  { label: "Coverage / Payers", ready: true },
   { label: "Care Team & Assignments", ready: false },
   { label: "Care Plan", ready: false },
   { label: "Encounters / Visits", ready: false },
@@ -115,6 +115,8 @@ export function PatientChart(): JSX.Element {
             <DemographicsTab patientId={p.id} />
           ) : section === "Addresses" ? (
             <AddressesTab patientId={p.id} />
+          ) : section === "Coverage / Payers" ? (
+            <CoverageTab patientId={p.id} />
           ) : (
             <SummaryTab patient={p} />
           )}
@@ -469,6 +471,127 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
       ) : null}
       <p style={{ color: "#9ca3af", fontSize: "0.78rem", margin: "0.6rem 0 0" }}>
         Addresses are append-only (D5): a change keeps the prior row as history rather than overwriting it.
+      </p>
+    </>
+  );
+}
+
+// §3.4 Coverage / Payers. The M5 route returns `patient_payer` rows (ranked coverages); `payerId`
+// names an M40 canonical Payer whose DISPLAY NAME is resolved here via the M40 MDM client
+// (GET /api/v1/mdm/payer/:id) — cross-module read stays at the client edge, no backend coupling. A
+// payer that can't be resolved (e.g. the viewer lacks mdm.payer.read) falls back to its raw id, never
+// fabricated. `rank` 1 = primary; `current` (effectiveTo null) coverages render above closed ones.
+interface PatientPayer {
+  id: string;
+  payerId: string;
+  rank: number;
+  coverageKind: string;
+  subscriberId: string;
+  groupNumber: string | null;
+  binPcn: string | null;
+  current: boolean;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
+  const client = useApiClient();
+  const [payers, setPayers] = useState<PatientPayer[] | null>(null);
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      setStatus("loading");
+      const res = await client.GET("/api/v1/patients/{id}/payers", { params: { path: { id: patientId } } });
+      if (!active) return;
+      if (res.error || !res.data) return setStatus("error");
+      const rows = (res.data as { payers: PatientPayer[] }).payers;
+      setPayers(rows);
+      setStatus("ready");
+      // Resolve each distinct M40 payer's display name through the MDM client (best-effort).
+      const ids = [...new Set(rows.map((r) => r.payerId))];
+      const resolved = await Promise.all(
+        ids.map(async (pid) => {
+          const r = await client.GET("/api/v1/mdm/{kind}/{id}", { params: { path: { kind: "payer", id: pid } } });
+          const name = (r.data as { canonical?: { displayName?: string } } | undefined)?.canonical?.displayName;
+          return [pid, name ?? ""] as const;
+        }),
+      );
+      if (!active) return;
+      setNames(Object.fromEntries(resolved.filter(([, n]) => n)));
+    })();
+    return () => {
+      active = false;
+    };
+  }, [client, patientId]);
+
+  if (status === "loading") return <LoadingSpinner />;
+  if (status === "error" || payers === null) {
+    return <p style={{ color: "#b91c1c", fontSize: "0.9rem" }}>Coverage could not be loaded.</p>;
+  }
+
+  const current = payers.filter((p) => p.current);
+  const history = payers.filter((p) => !p.current);
+  const payerName = (p: PatientPayer) => names[p.payerId] ?? <span style={{ color: "#9ca3af" }} title={`M40 payer ${p.payerId}`}>{p.payerId.slice(0, 8)}…</span>;
+
+  return (
+    <>
+      <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>Coverage / Payers</h2>
+
+      <h3 style={h3}>Active coverage</h3>
+      {current.length === 0 ? (
+        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>No active coverage on file.</p>
+      ) : (
+        <ul style={{ listStyle: "none", margin: "0.25rem 0 0", padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          {current.map((p) => (
+            <li key={p.id} style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", padding: "0.6rem 0.75rem", fontSize: "0.88rem" }}>
+              <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", marginBottom: "0.2rem" }}>
+                <span style={{ fontWeight: 600 }}>{payerName(p)}</span>
+                {p.rank === 1 ? <span style={badge("#eef2ff", "#4338ca")}>primary</span> : <span style={badge("#f3f4f6", "#6b7280")}>rank {p.rank}</span>}
+                <span style={badge("#ecfdf5", "#047857")}>{p.coverageKind}</span>
+              </div>
+              <div style={{ color: "#374151" }}>
+                Member ID {p.subscriberId}
+                {p.groupNumber ? ` · Group ${p.groupNumber}` : ""}
+                {p.binPcn ? ` · BIN/PCN ${p.binPcn}` : ""}
+              </div>
+              <div style={{ color: "#9ca3af", fontSize: "0.78rem", marginTop: "0.2rem" }}>since {p.effectiveFrom}</div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {history.length > 0 ? (
+        <>
+          <h3 style={h3}>History</h3>
+          <table style={{ borderCollapse: "collapse", fontSize: "0.82rem", width: "100%", maxWidth: 640 }}>
+            <thead>
+              <tr style={{ textAlign: "left", color: "#6b7280" }}>
+                <th style={th}>Payer</th>
+                <th style={th}>Kind</th>
+                <th style={th}>Member ID</th>
+                <th style={th}>From</th>
+                <th style={th}>To</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((p) => (
+                <tr key={p.id} style={{ borderTop: "1px solid #f3f4f6", color: "#6b7280" }}>
+                  <td style={td}>{payerName(p)}</td>
+                  <td style={td}>{p.coverageKind}</td>
+                  <td style={td}>{p.subscriberId}</td>
+                  <td style={td}>{p.effectiveFrom}</td>
+                  <td style={td}>{p.effectiveTo ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ) : null}
+      <p style={{ color: "#9ca3af", fontSize: "0.78rem", margin: "0.6rem 0 0" }}>
+        Payer names resolve from M40 master data; an unresolved row shows its raw payer id.
       </p>
     </>
   );

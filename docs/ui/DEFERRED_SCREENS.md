@@ -33,7 +33,7 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 | 1 | M2 | Authentication & Session | `screens/core/WARDENX_UI_AUTH.md` | Auth Flow | ✓ `CenteredCardLayout` | done¹ |
 | 2 | M1+M2+M3 | App Shell & Role Home | `screens/core/WARDENX_UI_APP_SHELL_HOME.md` | App Shell | ✓ shell (F0-T03) | done³ |
 | 3 | M1 | System / Utility Pages | `screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md` | System Page | ✓ `CenteredStatusLayout` | done |
-| 4 | M5 | Patient Chart | `screens/clinical/WARDENX_UI_PATIENT_CHART.md` | Patient Workspace | ✓ `PatientWorkspaceLayout` | done (frame + Demographics + Addresses tabs)⁴ ⁹ |
+| 4 | M5 | Patient Chart | `screens/clinical/WARDENX_UI_PATIENT_CHART.md` | Patient Workspace | ✓ `PatientWorkspaceLayout` | done (frame + Demographics + Addresses + Coverage tabs)⁴ ⁹ ¹⁰ |
 | 5 | M5 | Patient List / Census | `screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md` | Work Queue | ✓ `WorkQueueLayout` | done² |
 | 6 | M3 | Roles & Permissions | `screens/admin/WARDENX_UI_ROLES_PERMISSIONS.md` | Admin Split Layout | ✓ `AdminSplitLayout` | done |
 | 7 | M4 | Audit Log Viewer | `screens/admin/WARDENX_UI_AUDIT_LOG_VIEWER.md` | Work Queue | ✓ `WorkQueueLayout` | done |
@@ -67,6 +67,16 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > overwrite. A **geocode badge** reflects whether the async M5 geocode job has filled lat/lng yet
 > (`geocoded` vs `geocoding…`). Verified end-to-end (list/add/rotate) by route tests; the live-PG path
 > (which alone exercises the partial-unique-index interaction) is covered in `auth.live.test.ts`.
+>
+> ¹⁰ **Patient Chart — Coverage / Payers tab now LIVE (FB-T08).** The M5-owned tab renders the §3.4
+> `patient_payer` coverages via a new gated `GET /api/v1/patients/:id/payers`
+> (`requirePermission("patient.read")`, RLS-scoped, 404-no-leak), backed by the Drizzle
+> `PatientRouteService.listPayers` (active coverages first by `effective_to IS NULL`, then by `rank`).
+> Each row's `payer_id` names an **M40 canonical Payer**; the display **name** is resolved at the client
+> edge through the generated M40 MDM client (`GET /api/v1/mdm/payer/:id` → `canonical.displayName`) — so
+> there is **no cross-module backend coupling** (no new `dependsOn` edge, no `packages/db/src/schema/mdm`
+> import). A payer the viewer can't resolve (e.g. lacking `mdm.payer.read`) falls back to its raw id,
+> never fabricated. Primary (rank 1) is badged; closed coverages render as history.
 
 > ⁶ **M38 Terminology — now LIVE end-to-end (FB-T01).** The terminology routes are mounted in the
 > composition root (`registerTerminologyRoutes` in `apps/backend/src/index.ts`), and the published

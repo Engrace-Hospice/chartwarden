@@ -79,6 +79,15 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
     return { identifiers: rows };
   });
 
+  // --- §3.4 coverage / payers tab (ranked coverages; payer NAME resolved client-side via M40) -----
+  app.get("/api/v1/patients/:id/payers", { preHandler: [READ] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    const { id } = parse(LooseIdParamsSchema, request.params);
+    const rows = await service.listPayers(organizationId, id);
+    if (rows === null) throw notFound("patient"); // §7.5 non-leak
+    return { payers: rows };
+  });
+
   // --- §4.2 admit (runs the §7.1 match pipeline; hard dup → 409) --------------------------------
   app.post("/api/v1/patients", { preHandler: [CREATE] }, async (request, reply) => {
     const { organizationId, userId } = actorOf(request);

@@ -20,12 +20,14 @@ import type {
   AdmitResult,
   DemographicsView,
   IdentifierView,
+  PatientPayerView,
   PatientRouteService,
   PatientView,
 } from "./routes/service";
 
 const ID = schema.patientIdentifiers;
 const ADDR = schema.patientAddresses;
+const PAYER = schema.patientPayers;
 const ALIAS = schema.patientNameAliases;
 const COMM = schema.patientCommunicationPreferences;
 const SENSITIVE_KINDS = new Set(["ssn", "state_id"]);
@@ -297,6 +299,44 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
       }));
     });
 
+  // §3.4 Coverage / Payers tab: the patient's insurance coverages, ranked (1 = primary). `payer_id`
+  // names an M40 canonical Payer — the display NAME is resolved on the client via the MDM client/seam
+  // (no cross-module schema import here). RLS scopes by app.org_id; 404 (null) when the patient is
+  // absent / out of org (§7.5 no-leak), mirroring listAddresses. Active coverages first, then by rank.
+  const listPayers = async (organizationId: string, patientId: string): Promise<PatientPayerView[] | null> =>
+    withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      const exists = await tx.select({ id: P.id }).from(P).where(eq(P.id, patientId)).limit(1);
+      if (!exists[0]) return null;
+      const rows = await tx
+        .select({
+          id: PAYER.id,
+          payerId: PAYER.payerId,
+          rank: PAYER.rank,
+          coverageKind: PAYER.coverageKind,
+          subscriberId: PAYER.subscriberId,
+          groupNumber: PAYER.groupNumber,
+          binPcn: PAYER.binPcn,
+          effectiveFrom: PAYER.effectiveFrom,
+          effectiveTo: PAYER.effectiveTo,
+        })
+        .from(PAYER)
+        .where(eq(PAYER.patientId, patientId))
+        // active first (effective_to NULLS FIRST via the boolean), then by rank ascending.
+        .orderBy(asc(PAYER.effectiveTo), asc(PAYER.rank));
+      return rows.map((r) => ({
+        id: r.id,
+        payerId: r.payerId,
+        rank: r.rank,
+        coverageKind: r.coverageKind,
+        subscriberId: r.subscriberId,
+        groupNumber: r.groupNumber ?? null,
+        binPcn: r.binPcn ?? null,
+        current: r.effectiveTo === null,
+        effectiveFrom: r.effectiveFrom,
+        effectiveTo: r.effectiveTo ?? null,
+      }));
+    });
+
   // §7.4 / D5: append a patient address (US addresses require a state — patient_address CHECK) + report
   // the address-change cascade event. An `isPrimary` add performs ATOMIC primary rotation in one tx:
   // close the prior current primary (set effective_to so the partial unique index frees up), then
@@ -385,5 +425,5 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
 
   // `writes` (in-memory) is no longer needed — all writes are real now.
 
-  return { list, getPatient, getDemographics, getIdentifiers, listAddresses, admit, addAddress, submitAmendment, decideAmendment };
+  return { list, getPatient, getDemographics, getIdentifiers, listAddresses, listPayers, admit, addAddress, submitAmendment, decideAmendment };
 }
