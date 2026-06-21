@@ -23,6 +23,10 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { passkey } from "@better-auth/passkey";
 import { haveIBeenPwned, magicLink, twoFactor } from "better-auth/plugins";
 import { argon2idHash, argon2idVerify } from "./password-hash";
+import {
+  type EmailTransport,
+  createNoopEmailTransport,
+} from "./email-transport";
 import { type EncryptableAdapter, withTwoFactorEncryption } from "./two-factor-adapter";
 import { loadTwoFactorKey } from "./two-factor-crypto";
 
@@ -48,7 +52,17 @@ export type ResetPasswordSender = (data: {
 
 /** Optional injected behavior for the identity auth instance (delivery seams). */
 export interface IdentityAuthOptions {
+  /**
+   * Token-capturing override for the password-reset link (the auth-live lane uses this to drive the
+   * full reset). When omitted, the reset link is delivered through `emailTransport`.
+   */
   readonly sendResetPassword?: ResetPasswordSender;
+  /**
+   * The transactional email transport reset + magic-link links are delivered through. Defaults to a
+   * no-op (links are minted but not delivered — the prior behavior); the composition root injects a
+   * console transport in dev and a provider adapter when credentials are present.
+   */
+  readonly emailTransport?: EmailTransport;
 }
 
 /**
@@ -76,6 +90,8 @@ const m1Schema = {
  * `active_organization_id` so Better Auth round-trips the org binding for a session.
  */
 export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOptions = {}) {
+  // The delivery transport for reset + magic-link links (no-op unless the host injects one).
+  const emailTransport = options.emailTransport ?? createNoopEmailTransport();
   return betterAuth({
     appName: "WardenX",
     secret: process.env.BETTER_AUTH_SECRET,
@@ -108,14 +124,20 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
         verify: ({ hash, password }) => argon2idVerify(hash, password),
       },
       // M2 §3.1 (AUTH polish): self-service password reset. Better Auth mints a single-use,
-      // time-boxed token and calls this with the reset URL (token in the query of `redirectTo`,
-      // set by the client's requestPasswordReset). Delivery is via M36 messaging — a follow-up,
-      // so this is a stub like `magicLink.sendMagicLink`; the token-issuance + resetPassword
-      // verification flow is live now and exercised in the AUTH-T06 live-PG lane. The new hash
-      // re-runs Argon2id (the `password` config above), so reset credentials are stored identically.
-      // Wrap so Better Auth always receives an async () => Promise<void> while the seam stays ergonomic.
+      // time-boxed token and calls this with the reset URL (token in the query of `redirectTo`).
+      // A token-capturing override (auth-live lane) takes precedence; otherwise the link is delivered
+      // through the injected email transport. The new hash re-runs Argon2id (the `password` config
+      // above), so reset credentials are stored identically.
       sendResetPassword: async (data: { user: { email: string }; url: string; token: string }) => {
-        await options.sendResetPassword?.(data);
+        if (options.sendResetPassword) {
+          await options.sendResetPassword(data);
+          return;
+        }
+        await emailTransport.send({
+          to: data.user.email,
+          subject: "Reset your WardenX password",
+          text: `Reset your WardenX password using this link (it expires shortly):\n\n${data.url}\n\nIf you didn't request this, you can ignore this email.`,
+        });
       },
     },
     // M2 plugins (M2-T05). The `organization` plugin is deliberately NOT used: WardenX owns its org /
@@ -142,8 +164,15 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
       }),
       magicLink({
         // Auditor / external-collaborator / funeral-home magic-link classes. Token is generated
-        // server-side; delivery via M36 messaging is a follow-up (TODO).
-        sendMagicLink: async () => {},
+        // server-side; the link is delivered through the injected email transport (no-op until the
+        // host wires a provider). Stamping the session CLASS on consume is the §3 issuance follow-up.
+        sendMagicLink: async ({ email, url }: { email: string; url: string }) => {
+          await emailTransport.send({
+            to: email,
+            subject: "Your WardenX sign-in link",
+            text: `Sign in to WardenX using this link (it expires shortly):\n\n${url}\n\nIf you didn't request this, you can ignore this email.`,
+          });
+        },
       }),
     ],
     account: {

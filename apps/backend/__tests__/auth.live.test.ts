@@ -72,14 +72,17 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
   });
 
   it("password reset issues a token, sets a new password, and rotates the credential (AUTH polish)", async () => {
-    // A dedicated instance whose sendResetPassword captures the minted token (the M36 delivery seam).
-    let captured: { url: string; token: string } | null = null;
+    // Capture the reset email through the REAL delivery path (the injected email transport) — proving
+    // the link reaches the transport — then pull the single-use token out of the link's query.
+    let sent: { to: string; text: string } | null = null;
     const { createDbClient: mkDb2 } = await import("@wardenx/db");
     const { createIdentityAuth: mk2 } = await import("@wardenx/auth");
     const handle2 = mkDb2({ connectionString: DB_URL as string });
     const authR = mk2(handle2.db as never, {
-      sendResetPassword: ({ url, token }) => {
-        captured = { url, token };
+      emailTransport: {
+        async send(message) {
+          sent = { to: message.to, text: message.text };
+        },
       },
     });
 
@@ -88,10 +91,12 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
     const newPw = `Zr7#${Math.random().toString(36).slice(2)}${Date.now()}Lp!`;
     await authR.api.signUpEmail({ body: { email, password: oldPw, name: "PR User" } });
 
-    // Step 1 — request the reset; the callback captures the single-use token.
+    // Step 1 — request the reset; the email transport receives the link, token in its query.
     await authR.api.requestPasswordReset({ body: { email, redirectTo: "http://localhost:3000/reset-password" } });
-    expect(captured).not.toBeNull();
-    const token = (captured as unknown as { token: string }).token;
+    expect(sent).not.toBeNull();
+    const delivered = sent as unknown as { to: string; text: string };
+    expect(delivered.to).toBe(email);
+    const token = new URL(delivered.text.split("\n").find((l) => l.startsWith("http")) ?? "").searchParams.get("token") ?? "";
     expect(token.length).toBeGreaterThan(0);
 
     // Step 2 — consume the token to set the new password.

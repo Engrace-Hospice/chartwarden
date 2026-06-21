@@ -4,9 +4,11 @@
 // via `wireModuleSeams` (M1's bootstrap cannot import a downstream module; the composition
 // root does, then hands the registration into the boot gate before validateSeams()).
 import {
+  createConsoleEmailTransport,
   createDbActorEnrichmentReader,
   createDbSessionContextStore,
   createIdentityAuth,
+  createNoopEmailTransport,
   getIdentitySession,
   registerDbEffectivePermissionResolver,
   registerIdentityAuth,
@@ -88,8 +90,15 @@ if ((import.meta as { main?: boolean }).main) {
   // AUTH-T02/T03: when a DB client is present, build the Better Auth instance + the authenticate hook
   // (getIdentitySession → SessionContextResolver seam → request.context). The seam is resolved lazily
   // at request time, after bootSeams() has registered it.
+  // Transactional email transport for reset + magic-link links. A real provider (SMTP/Postmark) plugs
+  // in here when credentials exist; until then dev logs the link (console) and production drops it
+  // (no-op — a link in prod logs is a credential in logs). #4/#3 light up once a provider is wired.
+  const emailTransport =
+    process.env.NODE_ENV === "production"
+      ? createNoopEmailTransport()
+      : createConsoleEmailTransport();
   const auth = dbHandle
-    ? createIdentityAuth(dbHandle.db as Parameters<typeof createIdentityAuth>[0])
+    ? createIdentityAuth(dbHandle.db as Parameters<typeof createIdentityAuth>[0], { emailTransport })
     : undefined;
   const authenticate = auth
     ? createSessionAuthenticate({
