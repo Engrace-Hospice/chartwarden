@@ -179,4 +179,47 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
 
     await handle3.close();
   });
+
+  it("M2/M3 actor enrichment: the live reader returns membershipId + current role keys", async () => {
+    const { createDbClient: mkDb4 } = await import("@wardenx/db");
+    const { createDbActorEnrichmentReader } = await import("@wardenx/auth");
+    const handle4 = mkDb4({ connectionString: DB_URL as string });
+    const reader = createDbActorEnrichmentReader(handle4.db as never);
+
+    const email = `en${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
+    const password = `Wx9$${Math.random().toString(36).slice(2)}${Date.now()}Qz!`;
+    await auth.api.signUpEmail({ body: { email, password, name: "Enrich User" } });
+    const userId = (await admin.query('SELECT id FROM "user" WHERE email = $1', [email])).rows[0].id as string;
+    const org = (await admin.query(
+      "INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'EN','EN') RETURNING id",
+      [`en-${Date.now()}`],
+    )).rows[0].id as string;
+    const membership = (await admin.query(
+      "INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'active') RETURNING id",
+      [userId, org],
+    )).rows[0].id as string;
+    const liveRole = (await admin.query(
+      "INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,'en-rn','RN','clinical_staff',true) RETURNING id",
+      [org],
+    )).rows[0].id as string;
+    const staleRole = (await admin.query(
+      "INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,'en-temp','Temp','clinical_staff',true) RETURNING id",
+      [org],
+    )).rows[0].id as string;
+    await admin.query("INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)", [org, membership, liveRole]);
+    await admin.query(
+      "INSERT INTO membership_role (organization_id,membership_id,role_id,expires_at) VALUES ($1,$2,$3, now() - interval '1 hour')",
+      [org, membership, staleRole],
+    );
+
+    const enrichment = await reader.read({ orgId: org }, userId);
+    expect(enrichment?.membershipId).toBe(membership);
+    // Only the current (non-expired) role is reported; the closed window is dropped (§7.2).
+    expect(enrichment?.roles).toEqual(["en-rn"]);
+
+    // A user with no active membership in the org → null (no actor context).
+    expect(await reader.read({ orgId: org }, crypto.randomUUID())).toBeNull();
+
+    await handle4.close();
+  });
 });

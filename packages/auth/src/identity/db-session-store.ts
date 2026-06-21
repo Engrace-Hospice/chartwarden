@@ -4,10 +4,10 @@
 // activeOrganizationId, lastStepUpAt/Factor) so the SessionContextResolver resolves REAL sessions in
 // production. Ownership-safe: it touches only the `session` table (the same M1 table the Better Auth
 // drizzle adapter already reads/writes from this package) — it does NOT read M3's role/membership_role
-// tables. So `membershipId`/`roles` are left empty here; M3's effective-permission resolver performs
-// authorization independently (keyed by userId + orgId). Enriching the actor with membership/roles is a
-// follow-up that must go through an M3-owned path (no cross-module table access).
-import type { StepUpFactor } from "@wardenx/types";
+// tables. `membershipId`/`roles` are enriched through an injected `ActorEnrichmentReader` (the M3-owned
+// path: membership_role ⋈ role under RLS) when one is supplied; absent it (slice/tests), they stay empty
+// and M3's effective-permission resolver still performs authorization independently (keyed userId+orgId).
+import type { ActorEnrichment, ActorEnrichmentReader, OrgScope, StepUpFactor } from "@wardenx/types";
 import { schema } from "@wardenx/db";
 import type { DbClient } from "@wardenx/db";
 import { eq } from "drizzle-orm";
@@ -21,24 +21,36 @@ export interface SessionRow {
   readonly lastStepUpFactor: string | null;
 }
 
-/** Pure: map a `session` row to a context record. Pre-org sessions map organizationId to "" so the
- *  resolver's org guard (`organizationId === scope.orgId`) yields null for them. */
-export function toSessionContextRecord(row: SessionRow, sessionId: string): SessionContextRecord {
+/** Pure: map a `session` row to a context record, merging optional M3 actor enrichment. Pre-org
+ *  sessions map organizationId to "" so the resolver's org guard (`organizationId === scope.orgId`)
+ *  yields null for them. Enrichment is applied only for the session's active org. */
+export function toSessionContextRecord(
+  row: SessionRow,
+  sessionId: string,
+  enrichment?: ActorEnrichment | null,
+): SessionContextRecord {
   return {
     sessionId,
     userId: row.userId,
-    membershipId: null, // enriched via M3 (membership_role/role are M3-owned — not read here)
+    membershipId: enrichment?.membershipId ?? null, // M3-owned path (membership_role/role) via the reader
     organizationId: row.activeOrganizationId ?? "",
-    roles: [], // authz runs through M3's effective-permission resolver (userId + orgId)
+    roles: enrichment?.roles ?? [], // authz still runs through M3's effective-permission resolver
     lastStepUpAt: row.lastStepUpAt ?? null,
     lastStepUpFactor: (row.lastStepUpFactor as StepUpFactor | null) ?? null,
   };
 }
 
-/** Build a SessionContextStore over the live M1 `session` table. */
-export function createDbSessionContextStore(db: DbClient): SessionContextStore {
+/**
+ * Build a SessionContextStore over the live M1 `session` table. When an `ActorEnrichmentReader` is
+ * supplied (production, the M3 Drizzle reader), the resolved actor's `membershipId`/`roles` are filled
+ * for the request's org scope; without it the record keeps the empty defaults (slice/tests).
+ */
+export function createDbSessionContextStore(
+  db: DbClient,
+  enrich?: ActorEnrichmentReader,
+): SessionContextStore {
   return {
-    async read(_scope, sessionId): Promise<SessionContextRecord | null> {
+    async read(scope: OrgScope, sessionId): Promise<SessionContextRecord | null> {
       const rows = await db
         .select({
           userId: schema.sessions.userId,
@@ -50,7 +62,14 @@ export function createDbSessionContextStore(db: DbClient): SessionContextStore {
         .where(eq(schema.sessions.id, sessionId))
         .limit(1);
       const row = rows[0];
-      return row ? toSessionContextRecord(row, sessionId) : null;
+      if (!row) return null;
+      // Enrich only when the session is bound to the requested org (the resolver's guard rejects a
+      // mismatch anyway; this avoids an off-scope membership lookup).
+      const enrichment =
+        enrich && row.activeOrganizationId === scope.orgId
+          ? await enrich.read(scope, row.userId)
+          : null;
+      return toSessionContextRecord(row, sessionId, enrichment);
     },
   };
 }
