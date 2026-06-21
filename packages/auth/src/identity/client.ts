@@ -9,6 +9,7 @@
 // A narrow, nameable interface is declared for the methods screens use — Better Auth's full client type
 // is not portably nameable across the composite project boundary (TS2742), and the frontend only needs
 // this slice. Extend it as screens grow (signUp, forgetPassword, passkey.*).
+import { passkeyClient } from "@better-auth/passkey/client";
 import { twoFactorClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 
@@ -21,12 +22,27 @@ export interface SignInResult extends AuthResult {
   readonly data?: { readonly twoFactorRedirect?: boolean } | null;
 }
 
+export interface PasskeyInfo {
+  readonly id: string;
+  readonly name?: string | null;
+  readonly createdAt?: string;
+  readonly deviceType?: string | null;
+}
+
 export interface WardenxAuthClient {
-  signIn: { email(input: { email: string; password: string }): Promise<SignInResult> };
+  signIn: {
+    email(input: { email: string; password: string }): Promise<SignInResult>;
+    passkey(): Promise<AuthResult>;
+  };
   signOut(): Promise<AuthResult>;
   twoFactor: {
     verifyTotp(input: { code: string }): Promise<AuthResult>;
     verifyBackupCode(input: { code: string }): Promise<AuthResult>;
+  };
+  passkey: {
+    addPasskey(input?: { name?: string }): Promise<AuthResult>;
+    listUserPasskeys(): Promise<{ data?: PasskeyInfo[] | null; error: { message?: string } | null }>;
+    deletePasskey(input: { id: string }): Promise<AuthResult>;
   };
 }
 
@@ -38,6 +54,6 @@ export interface WardenxAuthClient {
 export function createWardenxAuthClient(baseURL?: string): WardenxAuthClient {
   return createAuthClient({
     ...(baseURL ? { baseURL } : {}),
-    plugins: [twoFactorClient()],
+    plugins: [twoFactorClient(), passkeyClient()],
   }) as unknown as WardenxAuthClient;
 }

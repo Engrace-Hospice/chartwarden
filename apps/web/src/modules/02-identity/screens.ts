@@ -6,6 +6,7 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 import { AcceptInvitation } from "./accept-invitation";
 import { MfaChallenge } from "./mfa-challenge";
 import { OrganizationSelect } from "./organization-select";
+import { SecurityPasskeys } from "./security-passkeys";
 import { SignIn } from "./sign-in";
 
 export const identityScreens: ScreenRegistryModule<ComponentType> = {
@@ -39,6 +40,14 @@ export const identityScreens: ScreenRegistryModule<ComponentType> = {
       title: "Accept invitation",
       chrome: false,
       screen: AcceptInvitation,
+    },
+    {
+      // Authenticated settings screen — register/manage WebAuthn passkeys.
+      id: "identity.security-passkeys",
+      path: "/security/passkeys",
+      title: "Passkeys",
+      navGroup: "General",
+      screen: SecurityPasskeys,
     },
   ],
 };
