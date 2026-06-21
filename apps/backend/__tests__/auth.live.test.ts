@@ -72,17 +72,15 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
   });
 
   it("password reset issues a token, sets a new password, and rotates the credential (AUTH polish)", async () => {
-    // Capture the reset email through the REAL delivery path (the injected email transport) — proving
-    // the link reaches the transport — then pull the single-use token out of the link's query.
-    let sent: { to: string; text: string } | null = null;
+    // The token-capturing override gives the single-use token directly (Better Auth puts it in the
+    // reset-URL path, not a ?token= query — so the callback arg, not URL parsing, is the reliable source).
+    let captured: { token: string } | null = null;
     const { createDbClient: mkDb2 } = await import("@wardenx/db");
     const { createIdentityAuth: mk2 } = await import("@wardenx/auth");
     const handle2 = mkDb2({ connectionString: DB_URL as string });
     const authR = mk2(handle2.db as never, {
-      emailTransport: {
-        async send(message) {
-          sent = { to: message.to, text: message.text };
-        },
+      sendResetPassword: ({ token }) => {
+        captured = { token };
       },
     });
 
@@ -91,12 +89,10 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
     const newPw = `Zr7#${Math.random().toString(36).slice(2)}${Date.now()}Lp!`;
     await authR.api.signUpEmail({ body: { email, password: oldPw, name: "PR User" } });
 
-    // Step 1 — request the reset; the email transport receives the link, token in its query.
+    // Step 1 — request the reset; the override captures the single-use token.
     await authR.api.requestPasswordReset({ body: { email, redirectTo: "http://localhost:3000/reset-password" } });
-    expect(sent).not.toBeNull();
-    const delivered = sent as unknown as { to: string; text: string };
-    expect(delivered.to).toBe(email);
-    const token = new URL(delivered.text.split("\n").find((l) => l.startsWith("http")) ?? "").searchParams.get("token") ?? "";
+    expect(captured).not.toBeNull();
+    const token = (captured as unknown as { token: string }).token;
     expect(token.length).toBeGreaterThan(0);
 
     // Step 2 — consume the token to set the new password.
@@ -106,6 +102,18 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
     const ok = await authR.api.signInEmail({ body: { email, password: newPw }, asResponse: true });
     expect((ok as Response).status).toBe(200);
     await expect(authR.api.signInEmail({ body: { email, password: oldPw } })).rejects.toThrow();
+
+    // Delivery path: with an email transport (no override), the reset link reaches the transport.
+    let deliveredTo: string | null = null;
+    const authT = mk2(handle2.db as never, {
+      emailTransport: {
+        async send(message) {
+          deliveredTo = message.to;
+        },
+      },
+    });
+    await authT.api.requestPasswordReset({ body: { email, redirectTo: "http://localhost:3000/reset-password" } });
+    expect(deliveredTo).toBe(email);
 
     await handle2.close();
   });
