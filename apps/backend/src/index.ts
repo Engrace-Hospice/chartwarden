@@ -44,6 +44,8 @@ import {
   registerPatientSeams,
 } from "./modules/05-patient/index";
 import {
+  createDbConsentStore,
+  mountConsentRoutes,
   registerConsentAbacPredicates,
   registerConsentErasers,
   registerConsentSeams,
@@ -76,7 +78,9 @@ export function wireModuleSeams(
     deps.db ? { store: createDbMdmStore(deps.db), baaStore: createDbBaaStore(deps.db) } : {},
   );
   registerPatientSeams(); // M5 — CaseloadProvider (§4.1, + caseload_membership predicate); PatientReader/Mutator land T08
-  registerConsentSeams(); // M39 — ConsentEvaluator (§4.3, the disclosure/redaction gate); slice store until T07/T09
+  // M39 — ConsentEvaluator (§4.3, the disclosure/redaction gate). Production backs it with the Drizzle
+  // store over the real M39 consent tables (FB-T03); slice/tests keep the in-memory default.
+  registerConsentSeams(deps.db ? { store: createDbConsentStore(deps.db) } : {});
   registerConsentAbacPredicates(); // M39 — the 11 §4.8 ABAC predicate resolvers (resolve via the seam)
   // Phase-1 producers append here as they land: M22 DocumentRenderer, …
 }
@@ -145,6 +149,7 @@ if ((import.meta as { main?: boolean }).main) {
           mountPatientRoutes(app, dbHandle.db); // M5 — patient census/chart READS on the real patient table
           mountTerminologyRoutes(app, dbHandle.db); // M38 — terminology read surface + tenant value-set extensions (FB-T01)
           mountMdmRoutes(app, dbHandle.db); // M40 — MDM entity directory + overlay/BAA + platform-ops (FB-T02)
+          mountConsentRoutes(app, dbHandle.db); // M39 — consent catalog/records/decision-audit reads (FB-T03)
         }
       : undefined,
     registerModuleSeams: () =>

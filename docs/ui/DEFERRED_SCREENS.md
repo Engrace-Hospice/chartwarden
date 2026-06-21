@@ -123,10 +123,24 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > but **not yet mounted in the running server**, and the membership store is in-memory — a backend
 > mount + DB-store follow-up shared across all modules.
 
-### M39 Consent — no standalone staff screen
+### M39 Consent — no standalone staff screen (backend now LIVE, FB-T03)
 
 M39 has no dedicated screen in the index; consent surfaces inside **Patient Chart** (a tab, #4) and the
 patient-facing **Portal Documents/Consents** (M31, blocked). No separate Track A row — covered by #4.
+
+**M39 backend now LIVE end-to-end (FB-T03).** The consent routes are mounted in the composition root
+(`mountConsentRoutes` in `apps/backend/src/index.ts`), and the published `ConsentEvaluator` seam (§4.3,
+the disclosure/redaction gate) is backed by a real Drizzle `ConsentStore`
+(`apps/backend/src/modules/39-consent/consent-store-db.ts`) over the M39 tables. The consent **read**
+surface the Patient Chart consent tab (FB-T10) consumes is live: the platform-shared `consent_type_catalog`
+serves on the pooled handle; the patient's active consents (`GET /api/v1/patients/:id/consents`), a single
+record, and the cursor-paginated decision audit run under `withOrgContext`/RLS. The consent-**lifecycle**
+writes (create-draft / sign / revoke) stay deferred — they need the §2.2.1 capture/step-up-evidence +
+append-only supersession + per-tenant DEK machinery (M39-T09 consent-flow surface), so they fail-clear with
+501 rather than write a half-formed append-only record. The `consent` eraser still refuses §3.8 (legal-hold
+/ 42 CFR Part 2 lifetime). `isPatientDeceased` (D13 post-death scope) returns false until the
+`m5.patient.deceased` outbox consumer + its M1 infra wire (M39-T08). No new routes (already in the
+contract), so `openapi.json`/the client are unchanged.
 
 ---
 

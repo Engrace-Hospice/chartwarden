@@ -64,21 +64,21 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   // 1. GET /api/v1/consent-types — catalog + applicable tenant overlay (every role).
   app.get("/api/v1/consent-types", { preHandler: [READ_CATALOG] }, async (request) => {
     const { organizationId } = actorOf(request);
-    return { data: service.readCatalog(organizationId) };
+    return { data: await service.readCatalog(organizationId) };
   });
 
   // 3. GET /api/v1/patients/:patientId/consents — active consents (consent.read + caseload §4.11).
   app.get("/api/v1/patients/:patientId/consents", { preHandler: [READ] }, async (request) => {
     const { organizationId } = actorOf(request);
     const { patientId } = parse(PatientIdParamsSchema, request.params);
-    return { data: service.listConsentsForPatient(organizationId, patientId) };
+    return { data: await service.listConsentsForPatient(organizationId, patientId) };
   });
 
   // 4. GET /api/v1/consents/:consentId — full record (consent.read).
   app.get("/api/v1/consents/:consentId", { preHandler: [READ] }, async (request) => {
     const { organizationId } = actorOf(request);
     const { consentId } = parse(ConsentIdParamsSchema, request.params);
-    const record = service.getConsent(organizationId, consentId);
+    const record = await service.getConsent(organizationId, consentId);
     if (!record) throw new WardenXError("NOT_FOUND", "consent not found", 404);
     return { data: record };
   });
@@ -88,7 +88,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
     const { organizationId, userId } = actorOf(request);
     const { patientId } = parse(PatientIdParamsSchema, request.params);
     const body = parse(CreateDraftBodySchema, request.body);
-    const draft = service.createDraft(organizationId, {
+    const draft = await service.createDraft(organizationId, {
       patientId,
       typeKey: body.typeKey,
       // The TypeBox union validated these at runtime; the cast re-applies the literal types.
@@ -106,7 +106,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
     const { organizationId, userId } = actorOf(request);
     const { consentId } = parse(ConsentIdParamsSchema, request.params);
     try {
-      return { data: service.signConsent(organizationId, consentId, userId, new Date().toISOString()) };
+      return { data: await service.signConsent(organizationId, consentId, userId, new Date().toISOString()) };
     } catch (e) {
       mapError(e);
     }
@@ -119,7 +119,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
     const body = parse(RevokeBodySchema, request.body);
     try {
       return {
-        data: service.revokeConsent(
+        data: await service.revokeConsent(
           organizationId,
           consentId,
           {
@@ -142,7 +142,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   app.get("/api/v1/consents/eval-audit/by-patient", { preHandler: [READ_EVAL_AUDIT] }, async (request) => {
     const { organizationId } = actorOf(request);
     const q = parse(EvalAuditQuerySchema, request.query);
-    const page = service.listEvalAudit(
+    const page = await service.listEvalAudit(
       organizationId,
       { patientId: q.patientId },
       { cursor: q.cursor, pageSize: q.pageSize ?? 50 },
