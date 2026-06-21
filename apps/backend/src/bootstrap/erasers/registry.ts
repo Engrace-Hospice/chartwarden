@@ -39,6 +39,11 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // eraser via the composition-root hook over this deny-stub; the org-less CANONICAL entities
   // (physician/facility/payer) are shared reference data and stay untouched (§7.8).
   "mdm_tenant_overlays",
+  // M6-T12: a patient's admission record (election/CTI/F2F/LOC/revocation/discharge/transfer/NOR/
+  // compliance windows + referrals). M6 registers the REAL eraser via the composition-root hook over
+  // this deny-stub — under an M4 destruction certificate it deletes the admission satellites and
+  // tombstones the `admission` row for FK integrity (D8); the `subjectId` is the patient.
+  "admission_record",
 ];
 
 export function registerEraser(dataClass: DataClass, eraser: DataEraser): void {

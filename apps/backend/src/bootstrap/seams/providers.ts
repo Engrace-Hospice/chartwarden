@@ -11,9 +11,15 @@
 // wireSeams() is where boot invokes those Phase-1 registrations.
 
 import type {
+  AdmissionCensusReader,
+  AdmissionStatusReader,
   AuditorSessionMinter,
   CaseloadProvider,
+  CertificationReader,
   DocumentRenderer,
+  ElectionPeriodReader,
+  FaceToFaceReader,
+  LevelOfCareReader,
   PatientMutator,
   PatientReader,
   SeamName,
@@ -125,6 +131,64 @@ export const baaStatusProviderDenyStub: unknown = denyingSeamProxy("BaaStatusPro
 /** M39 — the §4.3 disclosure/redaction gate. Rich-seam pattern (interface in @wardenx/consent).
  *  Denies until M39 registers the real evaluator (M39-T05). Every PHI-egress module consumes it. */
 export const consentEvaluatorDenyStub: unknown = denyingSeamProxy("ConsentEvaluator");
+
+// M6 (Admission) reader seams (§4.7). These are LEAF-TYPED (interfaces in @wardenx/types), so —
+// unlike the opaque rich-seams above — they get concrete typed deny-stubs (like CaseloadProvider /
+// PatientReader). Each denies LOUDLY until M6 registers the real Drizzle-backed reader (M6-T05).
+
+/** M6 — election-period reads (M23 NOE/NOTR window math). Denies until M6 registers the real reader. */
+export const electionPeriodReaderDenyStub: ElectionPeriodReader = {
+  findActivePeriodForPatient() {
+    throw new NotImplementedError("ElectionPeriodReader");
+  },
+  listPeriodsForAdmission() {
+    throw new NotImplementedError("ElectionPeriodReader");
+  },
+};
+
+/** M6 — CTI recert-gating reads. Denies until M6 registers the real reader. */
+export const certificationReaderDenyStub: CertificationReader = {
+  getActiveCertification() {
+    throw new NotImplementedError("CertificationReader");
+  },
+  isCertificationSignedForPeriod() {
+    throw new NotImplementedError("CertificationReader");
+  },
+};
+
+/** M6 — F2F recert-gating reads. Denies until M6 registers the real reader. */
+export const faceToFaceReaderDenyStub: FaceToFaceReader = {
+  getAttestedF2fForPeriod() {
+    throw new NotImplementedError("FaceToFaceReader");
+  },
+  isF2fAttestedForPeriod() {
+    throw new NotImplementedError("FaceToFaceReader");
+  },
+};
+
+/** M6 — level-of-care reads (current LOC + LOC-days, M26 cap). Denies until M6 registers the reader. */
+export const levelOfCareReaderDenyStub: LevelOfCareReader = {
+  getCurrentLevelOfCare() {
+    throw new NotImplementedError("LevelOfCareReader");
+  },
+  getLevelOfCareDays() {
+    throw new NotImplementedError("LevelOfCareReader");
+  },
+};
+
+/** M6 — admission-status projection (M14/M30 queues). Denies until M6 registers the real reader. */
+export const admissionStatusReaderDenyStub: AdmissionStatusReader = {
+  getAdmissionSummary() {
+    throw new NotImplementedError("AdmissionStatusReader");
+  },
+};
+
+/** M6 — active-admission census/list. Denies until M6 registers the real reader. */
+export const admissionCensusReaderDenyStub: AdmissionCensusReader = {
+  listActiveAdmissions() {
+    throw new NotImplementedError("AdmissionCensusReader");
+  },
+};
 
 /**
  * Boot hook for Phase-1 seam registration. Each producer module registers its REAL seam

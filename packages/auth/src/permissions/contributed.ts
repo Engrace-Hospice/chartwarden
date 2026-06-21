@@ -388,6 +388,86 @@ export const M39_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M39 contributed permission keys. */
 export type M39ContributedPermissionKey = keyof typeof M39_CONTRIBUTED_PERMISSIONS;
 
+/**
+ * The permission keys Module 6 (Admission, Election & Certification) registers into Module 3's
+ * catalog — the §4.5 binding handshake (M6-T06; M6 spec §4.5). M3 must include these before M6's
+ * routes can be authorized; the route inventory (M6-T06) gates on them.
+ *
+ * Bare `resource.action` keys (referral/admission/election/cti/f2f/loc/revocation/transfer/
+ * discharge/nor/compliance are first-class admission resources, like M5's `patient.*`). The catalog
+ * `abac` field is the DEFAULT predicate per route (§4.6); the route layer additionally applies an
+ * explicit `requireAbac(...)` for the role-only signer/override predicates M6 owns
+ * (`f2f.is_hospice_md_or_np`, `f2f.window_override`, `discharge.is_medical_director`,
+ * `compliance.window_override`). `patient.scope` (route 8) is M5's re-used predicate; M6 does not
+ * own it.
+ *
+ * Route 39 (`POST …/discharge`) derives its key from `reason` server-side (§6.3): the five
+ * `discharge.<reason>` keys below are the derivation targets, gated dynamically at the route so a
+ * client cannot bypass the per-reason policy by changing the path. `discharge.create` is the
+ * umbrella capability key (§4.5); `discharge.record_death` is the M29-accept step-up gate
+ * (D14 precondition (e)), not a client route. Kept in a dedicated const for §3.3 attributability.
+ */
+export const M6_CONTRIBUTED_PERMISSIONS = {
+  // --- Referral (routes 1–7) ---
+  "referral.create": { resource: "referral", action: "create", category: "clinical", abac: "none" },
+  "referral.read": { resource: "referral", action: "read", category: "clinical", abac: "referral.scope" },
+  "referral.update": { resource: "referral", action: "update", category: "clinical", abac: "referral.scope" },
+  "referral.triage": { resource: "referral", action: "triage", category: "clinical", abac: "referral.scope" },
+  "referral.accept": { resource: "referral", action: "accept", category: "clinical", abac: "referral.scope" },
+  "referral.decline": { resource: "referral", action: "decline", category: "clinical", abac: "referral.scope" },
+  // --- Admission lifecycle (routes 8–14) ---
+  "admission.create": { resource: "admission", action: "create", category: "clinical", abac: "patient.scope" },
+  "admission.read": { resource: "admission", action: "read", category: "clinical", abac: "admission.scope" },
+  "admission.update": { resource: "admission", action: "update", category: "clinical", abac: "admission.scope" },
+  "admission.hold": { resource: "admission", action: "hold", category: "clinical", abac: "admission.scope" },
+  "admission.activate": { resource: "admission", action: "activate", category: "clinical", abac: "admission.scope" },
+  // --- Election statement & period (routes 15–21) ---
+  "election.draft": { resource: "election", action: "draft", category: "clinical", abac: "admission.scope" },
+  "election.read": { resource: "election", action: "read", category: "clinical", abac: "admission.scope" },
+  "election.sign": { resource: "election", action: "sign", category: "clinical", abac: "admission.scope" },
+  "election.void": { resource: "election", action: "void", category: "compliance", abac: "admission.scope" },
+  // --- CTI (routes 22–27) ---
+  "cti.draft": { resource: "cti", action: "draft", category: "clinical", abac: "admission.scope" },
+  "cti.read": { resource: "cti", action: "read", category: "clinical", abac: "admission.scope" },
+  "cti.sign_hospice_md": { resource: "cti", action: "sign_hospice_md", category: "clinical", abac: "cti.is_hospice_md" },
+  "cti.sign_attending": { resource: "cti", action: "sign_attending", category: "clinical", abac: "cti.is_attending" },
+  "cti.void": { resource: "cti", action: "void", category: "compliance", abac: "admission.scope" },
+  "cti.mark_late": { resource: "cti", action: "mark_late", category: "clinical", abac: "admission.scope" },
+  // --- F2F (routes 28–32) ---
+  "f2f.schedule": { resource: "f2f", action: "schedule", category: "clinical", abac: "admission.scope" },
+  "f2f.read": { resource: "f2f", action: "read", category: "clinical", abac: "admission.scope" },
+  "f2f.complete": { resource: "f2f", action: "complete", category: "clinical", abac: "f2f.is_hospice_clinician" },
+  "f2f.attest": { resource: "f2f", action: "attest", category: "clinical", abac: "f2f.is_hospice_md_or_np" },
+  "f2f.window_override": { resource: "f2f", action: "window_override", category: "compliance", abac: "f2f.window_override" },
+  // --- Level of care (routes 33–35) ---
+  "loc.read": { resource: "loc", action: "read", category: "clinical", abac: "admission.scope" },
+  "loc.change": { resource: "loc", action: "change", category: "clinical", abac: "admission.scope" },
+  // --- Revocation / transfer / discharge (routes 36–40) ---
+  "revocation.create": { resource: "revocation", action: "create", category: "clinical", abac: "admission.scope" },
+  "transfer.out": { resource: "transfer", action: "out", category: "clinical", abac: "admission.scope" },
+  "transfer.in": { resource: "transfer", action: "in", category: "clinical", abac: "admission.scope" },
+  "discharge.create": { resource: "discharge", action: "create", category: "clinical", abac: "admission.scope" },
+  "discharge.cosign_for_cause": { resource: "discharge", action: "cosign_for_cause", category: "clinical", abac: "discharge.is_medical_director" },
+  "discharge.record_death": { resource: "discharge", action: "record_death", category: "clinical", abac: "none" },
+  // §6.3 reason-derived keys for route 39 (gated dynamically server-side).
+  "discharge.death": { resource: "discharge", action: "death", category: "clinical", abac: "admission.scope" },
+  "discharge.moved": { resource: "discharge", action: "moved", category: "clinical", abac: "admission.scope" },
+  "discharge.no_longer_terminal": { resource: "discharge", action: "no_longer_terminal", category: "clinical", abac: "admission.scope" },
+  "discharge.for_cause": { resource: "discharge", action: "for_cause", category: "clinical", abac: "admission.scope" },
+  "discharge.other": { resource: "discharge", action: "other", category: "clinical", abac: "admission.scope" },
+  // --- NOR (routes 41–42) ---
+  "nor.acknowledge": { resource: "nor", action: "acknowledge", category: "clinical", abac: "admission.scope" },
+  "nor.read": { resource: "nor", action: "read", category: "clinical", abac: "admission.scope" },
+  // --- Compliance windows (routes 43–46) ---
+  "compliance.read": { resource: "compliance", action: "read", category: "compliance", abac: "compliance.scope" },
+  "compliance.close": { resource: "compliance", action: "close", category: "compliance", abac: "admission.scope" },
+  "compliance.override": { resource: "compliance", action: "override", category: "compliance", abac: "compliance.window_override" },
+  "compliance.window_override": { resource: "compliance", action: "window_override", category: "compliance", abac: "none" },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M6 contributed permission keys. */
+export type M6ContributedPermissionKey = keyof typeof M6_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -435,6 +515,11 @@ export function m39ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M39_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M6 contributed keys into `permission`-table mirror rows (M6-T06). */
+export function m6ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M6_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -451,5 +536,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m40ContributedPermissionMirrorRows(),
     ...m5ContributedPermissionMirrorRows(),
     ...m39ContributedPermissionMirrorRows(),
+    ...m6ContributedPermissionMirrorRows(),
   ];
 }

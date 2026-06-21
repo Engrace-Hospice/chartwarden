@@ -257,12 +257,29 @@ contract), so `openapi.json`/the client are unchanged.
 
 ---
 
+## Track B — shipped in-wave (done)
+
+| Module | Screens built | Spec | Status |
+|---|---|---|---|
+| M6 | Referral Inbox (§5.2.1), Admission Census (§5.2.12), Admission Detail + activation gate (§5.2.4/§5.2.5), Compliance Dashboard (§5.2.11) | `screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md`, `WARDENX_UI_ELECTION_CERTIFICATION.md` | done (M6-T12)¹³ |
+
+> ¹³ **Admissions/Intake (M6) now LIVE (Track B, M6-T12, ADR-0030).** Built under
+> `apps/web/src/modules/06-admission` against M6's generated client methods (the M6 read routes are
+> enriched in `scripts/openapi/enrichments.ts`, so `packages/ui/src/core/api` types them), registered
+> into the M1 shell via `admissionScreens` (`main.tsx`). The §5.2.5 activation-gate checklist renders
+> the server's `activationGate.missing[]` verbatim — route 10 and route 14 share one gate helper, so
+> UI and server can never diverge. Nav visibility is gated by `referral.read` / `admission.read` /
+> `compliance.read`; the SERVER stays the only enforcement point. Detail/editor/wizard sub-screens
+> (§5.2.3/§5.2.6–5.2.10/§5.2.13–18) fill in as their write surfaces harden.
+
+---
+
 ## Blocked on later waves (out of Track A scope until their module lands)
 
 The remaining ~50 screens (clinical suite, revenue, portal, platform/ops) are owned by modules not yet
-built (M6–M35, M37). They are **Track B**: each ships with its module's wave (include the
+built (M7–M35, M37). They are **Track B**: each ships with its module's wave (include the
 `apps/web/src/modules/NN-*` codePath from T01; the terminal screen task builds it). Examples:
-Admissions/Intake (M6), Care Plan (M7+M15), Encounters (M8), Assessments (M9), HOPE (M10), Orders (M11),
+Care Plan (M7+M15), Encounters (M8), Assessments (M9), HOPE (M10), Orders (M11),
 eMAR (M12+M13), IDG (M14), Scheduling (M17), EVV (M18), Claims (M23+M24), Cap (M26), Cost Report (M27),
 FHIR (M28), HQRP (M30), Portal/Telehealth (M31), Copilot (M32), Reporting (M33), Onboarding (M34),
 Subscription (M35), IPU Bed Board (M37). See each spec's `Module:` line for the authoritative owner.

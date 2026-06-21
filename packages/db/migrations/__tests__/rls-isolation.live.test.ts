@@ -776,4 +776,57 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       ).rejects.toThrow();
     });
   });
+
+  // ── M6 Admission, Election & Certification — org-scoped RLS, no-DELETE, audit scrub (§3.6–3.7 / §9.3) ─
+  // 0026/0027 (M6) applied above. Proves on REAL Postgres: every M6 row is tenant-isolated on
+  // app.org_id even with app authorization stubbed open (§9.3 layer-independence); wardenx_app has
+  // NO DELETE on any M6 table (§3.6 supersession-via-status); the M4 write-audit trigger scrubs the
+  // §3.7 intake-PII denylist (referral.patient_name_at_receipt) while non-sensitive columns pass through.
+  describe("M6 Admission — cross-tenant isolation, no-DELETE, audit scrub (§3.6–3.7 / §9.3)", () => {
+    const REF_A = "f6a11111-1111-1111-1111-111111111111";
+    const REF_B = "f6b22222-2222-2222-2222-222222222222";
+    const RCOLS = "(id,organization_id,patient_name_at_receipt,source_channel)";
+
+    beforeAll(async () => {
+      // Seed one referral per org as superuser (RLS bypassed) — the §9.3 fixture. The M4 write-audit
+      // trigger still fires on these inserts (proven below).
+      await db.query(
+        `INSERT INTO referral ${RCOLS} VALUES
+           ($1,$2,'Carol Carer','phone'),
+           ($3,$4,'Dan Dueller','fax')`,
+        [REF_A, ORG_A, REF_B, ORG_B],
+      );
+    });
+
+    it("§9.3 Org A sees ONLY its own referral (RLS blocks cross-tenant reads, auth stubbed open)", async () => {
+      const a = await withOrg(ORG_A, () => db.query("SELECT count(*)::int AS n FROM referral WHERE id=$1", [REF_A]));
+      const b = await withOrg(ORG_B, () => db.query("SELECT count(*)::int AS n FROM referral WHERE id=$1", [REF_A]));
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§3.6 Org B cannot INSERT a referral into Org A (WITH CHECK blocks the cross-tenant write)", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(`INSERT INTO referral ${RCOLS} VALUES (gen_random_uuid(),$1,'X','portal')`, [ORG_A]),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§3.6 no M6 table has a DELETE grant for wardenx_app (supersession via status, not deletes)", async () => {
+      await expect(
+        withOrg(ORG_A, () => db.query("DELETE FROM referral WHERE id=$1", [REF_A])),
+      ).rejects.toThrow();
+    });
+
+    it("§3.7 the M4 write-audit trigger fired for the referral write and scrubbed the intake-PII denylist", async () => {
+      const r = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='referral' AND event_type='referral.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.patient_name_at_receipt).toBe("<changed>"); // §3.7 intake-PII scrub
+      expect(r.rows[0].after.source_channel).toBe("phone"); // non-sensitive column passes through
+    });
+  });
 });

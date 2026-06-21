@@ -166,7 +166,7 @@ exports.MODULES = [
         ownedTables: ["consent_document_link", "consent_eval_audit", "consent_expiration_reminder", "consent_record", "consent_record_dpoa_agent", "consent_record_recipient", "consent_renewal_cycle", "consent_revocation", "consent_type_catalog", "delegated_access", "tenant_consent_type_overlay"],
     },
     { id: 6, name: "Admission, Election & Certification",
-        codePaths: ["apps/backend/src/modules/06-admission"], dependsOn: [5, 38, 40, 39],
+        codePaths: ["apps/backend/src/modules/06-admission", "apps/web/src/modules/06-admission"], dependsOn: [1, 5, 38, 40, 39], // +1: M6 registers its §4.7 reader seams via the M1-owned bootstrap registry (M6-T05)
         ownedTables: ["admission", "election_period", "election_statement", "certification_of_terminal_illness", "face_to_face_encounter", "level_of_care_period", "revocation_event", "discharge_event", "transfer_event", "referral", "notice_of_rights_acknowledgment", "compliance_window"] },
     { id: 7, name: "Care Plan (IPOC)",
         codePaths: ["apps/backend/src/modules/07-care-plan"], dependsOn: [6, 38, 39],

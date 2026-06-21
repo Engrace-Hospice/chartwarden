@@ -8,6 +8,14 @@
 // bootstrap registry needs to compile and self-validate.
 import type { StepUpFactor } from "./policy/step-up-policy";
 import type { PatientMutator, PatientReader } from "./patient";
+import type {
+  AdmissionCensusReader,
+  AdmissionStatusReader,
+  CertificationReader,
+  ElectionPeriodReader,
+  FaceToFaceReader,
+  LevelOfCareReader,
+} from "./admission";
 
 /** Opaque tenant scope every seam call carries (resolved by withOrgContext). */
 export interface OrgScope {
@@ -30,7 +38,16 @@ export type SeamName =
   | "AlertEmitter" // M36 — emit an event; M36 resolves rules + recipients + fan-out (every module)
   | "MessagingProvider" // M36 — channel/message surface (DEK-encrypted bodies; PHI read surface)
   | "MdmEntityProvider" // M40 — master-data read surface (physician/facility/payer; merge-aware)
-  | "BaaStatusProvider"; // M40 — focused §7.7 BAA disclosure gate (as-of; M22/M28/M29 import this)
+  | "BaaStatusProvider" // M40 — focused §7.7 BAA disclosure gate (as-of; M22/M28/M29 import this)
+  // M6 (Admission, Election & Certification) reader seams (§4.7) — leaf-typed read-only DTO surfaces
+  // every downstream clinical/billing module consumes instead of importing M6's schema. Interfaces
+  // live in ./admission (this leaf), so — unlike the opaque rich-seams above — they are typed here.
+  | "ElectionPeriodReader" // M6 — M23 binds a NOE/NOTR claim to the correct benefit period/sequence
+  | "CertificationReader" // M6 — recert gating: the active CTI for a period + whether it is signed
+  | "FaceToFaceReader" // M6 — recert gating: the attested F2F for a period + whether one exists
+  | "LevelOfCareReader" // M6 — current LOC + LOC-days by level over a range (M26 aggregate cap)
+  | "AdmissionStatusReader" // M6 — admission state projection (M14 queues, M30 dashboard)
+  | "AdmissionCensusReader"; // M6 — active-admission census/list (M30 dashboards, M22 form prep)
 
 /**
  * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
@@ -181,6 +198,16 @@ export interface SeamContracts {
   // omnibus above (different contract: as-of time-travel + sending-facility resolution). Same
   // opaque rich-seam pattern — interface in @wardenx/mdm; M22/M28/M29 import the real type.
   BaaStatusProvider: unknown;
+  // M6's reader seams (§4.7) are LEAF-TYPED — their interfaces live in ./admission (this package),
+  // so the registry is statically typed against the real contract (no `unknown` opacity needed). M6
+  // registers the real Drizzle-backed readers over the deny-stub; consumers that list `6` in their
+  // manifest `dependsOn` resolve them through the typed accessors with no schema import edge.
+  ElectionPeriodReader: ElectionPeriodReader;
+  CertificationReader: CertificationReader;
+  FaceToFaceReader: FaceToFaceReader;
+  LevelOfCareReader: LevelOfCareReader;
+  AdmissionStatusReader: AdmissionStatusReader;
+  AdmissionCensusReader: AdmissionCensusReader;
 }
 
 /**
@@ -233,4 +260,13 @@ export type DataClass =
   // eraser deletes these; the org-less CANONICAL entities (physician/facility/payer) are NEVER
   // touched — they are shared registry-sourced reference data that survives the tenant (M40 §7.8;
   // same "erase the tenant's view-of-the-world, not the world" pattern). `subjectId` is the org.
-  | "mdm_tenant_overlays";
+  | "mdm_tenant_overlays"
+  // M6 (Admission, Election & Certification) per-patient admission record: the admission subtree
+  // (election_period / election_statement / certification_of_terminal_illness / face_to_face_encounter
+  // / level_of_care_period / revocation_event / discharge_event / transfer_event /
+  // notice_of_rights_acknowledgment / compliance_window) plus the `referral` rows for the subject.
+  // Erased by M6's registered eraser (M6-T12) under an M4 destruction certificate; the `admission`
+  // row is left a tombstone for FK referential integrity (D8 resolver pattern, same as M5's
+  // `clinical_record`). `subjectId` is the patient being destroyed — M6 owns its own clinical
+  // satellites, distinct from M5's patient-spine `clinical_record` class.
+  | "admission_record";

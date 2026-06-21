@@ -8,6 +8,7 @@ export * from "./seams";
 export * from "./outbox";
 export * from "./alert-payloads";
 export * from "./patient";
+export * from "./admission";
 export * from "./screen-registry";
 export * from "./errors";
 export * from "./http-context";

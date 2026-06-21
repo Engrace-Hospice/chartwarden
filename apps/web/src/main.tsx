@@ -8,6 +8,7 @@ import { ScreenLock, identityScreens } from "./modules/02-identity";
 import { authorizationScreens } from "./modules/03-authorization";
 import { auditScreens } from "./modules/04-audit";
 import { patientScreens } from "./modules/05-patient";
+import { admissionScreens } from "./modules/06-admission";
 import { messagingScreens } from "./modules/36-messaging";
 import { terminologyScreens } from "./modules/38-terminology";
 import { mdmScreens } from "./modules/40-mdm";
@@ -22,6 +23,7 @@ registry.register(identityScreens); // M2 Identity (Track A)
 registry.register(authorizationScreens); // M3 Authorization (Track A)
 registry.register(auditScreens); // M4 Audit (Track A)
 registry.register(patientScreens); // M5 Patient (Track A)
+registry.register(admissionScreens); // M6 Admission/Election/Certification (Track B, M6-T12)
 registry.register(messagingScreens); // M36 Messaging (Track A)
 registry.register(terminologyScreens); // M38 Terminology (Track A)
 registry.register(mdmScreens); // M40 MDM (Track A)

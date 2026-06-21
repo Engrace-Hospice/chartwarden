@@ -15,12 +15,18 @@
 
 import type { RequiredSeam, SeamContracts, SeamName } from "../interfaces";
 import {
+  admissionCensusReaderDenyStub,
+  admissionStatusReaderDenyStub,
   alertEmitterDenyStub,
   auditorSessionMinterDenyStub,
   baaStatusProviderDenyStub,
   caseloadDenyStub,
+  certificationReaderDenyStub,
   consentEvaluatorDenyStub,
   documentRendererDenyStub,
+  electionPeriodReaderDenyStub,
+  faceToFaceReaderDenyStub,
+  levelOfCareReaderDenyStub,
   mdmEntityProviderDenyStub,
   messagingProviderDenyStub,
   patientMutatorDenyStub,
@@ -111,6 +117,46 @@ export const REQUIRED_SEAMS = [
     ownerModule: 40,
     phi: false,
     denyStub: baaStatusProviderDenyStub,
+  },
+  // M6 (Admission, Election & Certification) reader seams (§4.7). Each is a read-only DTO surface over
+  // M6's PHI tables (admission/election/CTI/F2F/LOC status), consumed by M14/M22/M23/M26/M30 in later
+  // waves instead of importing M6's schema. PHI read surfaces (patient-linked clinical status) → phi:
+  // true; boot-validated and fail-closed until M6 registers the real Drizzle-backed readers (M6-T05).
+  {
+    key: "ElectionPeriodReader",
+    ownerModule: 6,
+    phi: true,
+    denyStub: electionPeriodReaderDenyStub,
+  },
+  {
+    key: "CertificationReader",
+    ownerModule: 6,
+    phi: true,
+    denyStub: certificationReaderDenyStub,
+  },
+  {
+    key: "FaceToFaceReader",
+    ownerModule: 6,
+    phi: true,
+    denyStub: faceToFaceReaderDenyStub,
+  },
+  {
+    key: "LevelOfCareReader",
+    ownerModule: 6,
+    phi: true,
+    denyStub: levelOfCareReaderDenyStub,
+  },
+  {
+    key: "AdmissionStatusReader",
+    ownerModule: 6,
+    phi: true,
+    denyStub: admissionStatusReaderDenyStub,
+  },
+  {
+    key: "AdmissionCensusReader",
+    ownerModule: 6,
+    phi: true,
+    denyStub: admissionCensusReaderDenyStub,
   },
 ] satisfies readonly RequiredSeam[];
 

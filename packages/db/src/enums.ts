@@ -743,3 +743,167 @@ export const consentDelegatedAccessScope = pgEnum("consent_delegated_access_scop
   "view_and_message",
   "view_message_and_decisions",
 ]);
+
+// ── Module 6 (Admission, Election & Certification) §3.2 ───────────────────────────────────────
+// The three `compliance_window_kind` external-signal values + `severity='info'` + `referral_status`
+// `withdrawn` back the AdmissionEventApplier (M29 HL7 path, M6-T11); they are additive but declared
+// here in full so the §3.3 tables (M6-T02) compile against the final enum (ADR-0022 D1.3: one
+// pgEnum definition site, no later ALTER-then-redeclare).
+
+/** `referral_status` — the §3.2 referral lifecycle; `withdrawn` backs the cancel-admit path (D16). */
+export const referralStatus = pgEnum("referral_status", [
+  "received",
+  "evaluated",
+  "accepted",
+  "rejected",
+  "withdrawn",
+  "admitted",
+]);
+
+/** `referral_source_channel` — how a referral arrived (§3.2). */
+export const referralSourceChannel = pgEnum("referral_source_channel", [
+  "phone",
+  "fax",
+  "portal",
+  "walk_in",
+  "self_referral",
+  "physician_office",
+  "hospital_discharge_planner",
+]);
+
+/** `admission_status` — the §3.2 admission lifecycle (§2.3.1 state machine). */
+export const admissionStatus = pgEnum("admission_status", [
+  "referred",
+  "pending",
+  "notice_of_rights_acknowledged",
+  "active",
+  "on_hold",
+  "discharged",
+  "bereavement",
+  "closed",
+]);
+
+/** `election_period_kind` — CMS benefit-period length (90/90/60/60/… §2.2). */
+export const electionPeriodKind = pgEnum("election_period_kind", ["ninety_day", "sixty_day"]);
+
+/** `election_period_status` — the §3.2 election-period lifecycle (§2.3.2). */
+export const electionPeriodStatus = pgEnum("election_period_status", [
+  "pending",
+  "signed",
+  "active",
+  "completed",
+]);
+
+/** `election_period_completion_cause` — why a period ended (§3.2). */
+export const electionPeriodCompletionCause = pgEnum("election_period_completion_cause", [
+  "next_period",
+  "revocation",
+  "transfer",
+  "discharge",
+]);
+
+/** `election_signer_kind` — who signed the election statement (§3.2). */
+export const electionSignerKind = pgEnum("election_signer_kind", ["patient", "representative"]);
+
+/** `election_signature_method` — how the election signature was captured (§3.2). */
+export const electionSignatureMethod = pgEnum("election_signature_method", [
+  "wet_ink_scanned",
+  "electronic_witnessed",
+]);
+
+/** `cti_status` — the §3.2 certification-of-terminal-illness lifecycle (§2.3.3). */
+export const ctiStatus = pgEnum("cti_status", [
+  "drafted",
+  "awaiting_hospice_md",
+  "awaiting_attending",
+  "signed",
+  "voided",
+  "superseded",
+]);
+
+/** `f2f_encounter_status` — the §3.2 face-to-face lifecycle (§2.3.4). */
+export const f2fEncounterStatus = pgEnum("f2f_encounter_status", [
+  "scheduled",
+  "completed",
+  "attested",
+]);
+
+/** `f2f_performer_role` — who may attest a recert F2F (§3.2). */
+export const f2fPerformerRole = pgEnum("f2f_performer_role", ["hospice_md", "hospice_np"]);
+
+/** `f2f_encounter_location` — where the F2F took place (§3.2). */
+export const f2fEncounterLocation = pgEnum("f2f_encounter_location", [
+  "patient_home",
+  "alf",
+  "snf",
+  "ipu",
+  "hospital",
+  "telehealth",
+]);
+
+/** `level_of_care` — the four CMS hospice levels of care (§3.2; §2.3.5). */
+export const levelOfCare = pgEnum("level_of_care", [
+  "routine_home_care",
+  "continuous_home_care",
+  "inpatient_respite_care",
+  "general_inpatient_care",
+]);
+
+/** `revocation_reason` — why a beneficiary revoked the election (§3.2). */
+export const revocationReason = pgEnum("revocation_reason", [
+  "seek_curative_treatment",
+  "dissatisfaction",
+  "transferred_out",
+  "other",
+]);
+
+/** `transfer_direction` — inbound vs outbound hospice transfer (§3.2). */
+export const transferDirection = pgEnum("transfer_direction", ["in", "out"]);
+
+/** `discharge_type` — the §3.2 discharge reasons (drives §6.3 reason-specific permissions). */
+export const dischargeType = pgEnum("discharge_type", [
+  "death",
+  "revocation",
+  "transfer",
+  "no_longer_terminal",
+  "moved_out_of_service_area",
+  "for_cause",
+]);
+
+/** `nor_acknowledgment_method` — how the Notice of Rights was acknowledged (§3.2). */
+export const norAcknowledgmentMethod = pgEnum("nor_acknowledgment_method", [
+  "wet_ink_scanned",
+  "electronic_witnessed",
+  "verbal_with_witness",
+]);
+
+/** `compliance_window_kind` — every tracked compliance window (§3.2). The last three values back the
+ * external-signal windows the `AdmissionEventApplier` opens (§2.2 note; D15). */
+export const complianceWindowKind = pgEnum("compliance_window_kind", [
+  "initial_assessment_48h",
+  "comprehensive_assessment_5d",
+  "care_plan_5d",
+  "f2f_recert_30d_prior",
+  "recert_due_14d",
+  "recert_due_7d",
+  "cti_signature_lookahead_14d",
+  "notice_of_rights",
+  "concurrent_hospital_admission",
+  "external_discharge_notice",
+  "hl7_admission_cancellation",
+]);
+
+/** `compliance_window_status` — the §3.2 window lifecycle (open→closing_soon→overdue→closed). */
+export const complianceWindowStatus = pgEnum("compliance_window_status", [
+  "open",
+  "closing_soon",
+  "overdue",
+  "closed",
+]);
+
+/** `compliance_window_severity` — `info` backs the external-signal windows (D15). */
+export const complianceWindowSeverity = pgEnum("compliance_window_severity", [
+  "warning",
+  "alert",
+  "info",
+]);

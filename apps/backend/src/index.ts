@@ -47,6 +47,7 @@ import {
   registerPatientErasers,
   registerPatientSeams,
 } from "./modules/05-patient/index";
+import { registerAdmissionErasers, registerAdmissionSeams } from "./modules/06-admission/index";
 import {
   createDbConsentStore,
   mountConsentRoutes,
@@ -84,6 +85,9 @@ export function wireModuleSeams(
     deps.db ? { store: createDbMdmStore(deps.db), baaStore: createDbBaaStore(deps.db) } : {},
   );
   registerPatientSeams(); // M5 — CaseloadProvider (§4.1, + caseload_membership predicate); PatientReader/Mutator land T08
+  // M6 — the six §4.7 admission reader seams (election/CTI/F2F/LOC/status/census). Slice/tests keep the
+  // in-memory store; the Drizzle-backed store lands with M6's routes/repos (M6-T06+).
+  registerAdmissionSeams();
   // M39 — ConsentEvaluator (§4.3, the disclosure/redaction gate). Production backs it with the Drizzle
   // store over the real M39 consent tables (FB-T03); slice/tests keep the in-memory default.
   registerConsentSeams(deps.db ? { store: createDbConsentStore(deps.db) } : {});
@@ -106,6 +110,7 @@ export function wireModuleErasers(): void {
   registerMdmErasers(); // M40-T10 — `mdm_tenant_overlays` (D7 tenant offboarding; canonical untouched)
   registerPatientErasers(); // M5-T12 — `clinical_record` (patient-subtree destruction-cert callback; D7/D8)
   registerConsentErasers(); // M39-T10 — `consent` (subtree erase; legal-hold + 42 CFR Part 2 lifetime refusal)
+  registerAdmissionErasers(); // M6-T12 — `admission_record` (admission-subtree destruction-cert callback; D7/D8)
   // Phase-1 data-class owners append here as they land.
 }
 

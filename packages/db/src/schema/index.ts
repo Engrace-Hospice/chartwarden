@@ -183,3 +183,25 @@ export * from "./consent/delegated-access";
 export * from "./consent/consent-document-link";
 export * from "./consent/consent-eval-audit";
 export * from "./consent/consent-renewal-cycle";
+// M6-T02 — Admission, Election & Certification tables (M6 spec §3.3). M6 owns 12 tables: the
+// admission episode root + referral intake + the benefit-period ledger (election_period /
+// election_statement / certification_of_terminal_illness / face_to_face_encounter) +
+// level_of_care_period + the terminal events (revocation_event / transfer_event / discharge_event) +
+// notice_of_rights_acknowledgment + compliance_window. The five patient/encounter-bearing tables
+// (referral / admission / election_statement / face_to_face_encounter /
+// notice_of_rights_acknowledgment) carry the three-column tenancy rule; the rest are org-scoped via
+// their admission/election_period FK. Cross-module refs (M5 patient/caregiver, M40 physician/facility/
+// referral-source, M39 consent, M22 document) are plain uuid app-validated, not cross-module FKs. RLS
+// + grants + M4 write-audit triggers + migration land in M6-T03 (§3.6–3.7).
+export * from "./admission/referrals";
+export * from "./admission/admissions";
+export * from "./admission/election-periods";
+export * from "./admission/election-statements";
+export * from "./admission/certifications";
+export * from "./admission/face-to-face-encounters";
+export * from "./admission/level-of-care-periods";
+export * from "./admission/revocation-events";
+export * from "./admission/transfer-events";
+export * from "./admission/discharge-events";
+export * from "./admission/notice-of-rights-acknowledgments";
+export * from "./admission/compliance-windows";

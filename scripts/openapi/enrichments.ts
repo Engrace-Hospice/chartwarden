@@ -152,6 +152,45 @@ const ActorContextSchema = Type.Object({
 // Step-up qualifying factors (W-M2-11 / D9): only webauthn + totp; SMS is excluded by design.
 const StepUpFactorSchema = Type.Union([Type.Literal("webauthn"), Type.Literal("totp")]);
 
+// M6 Admission routes validate via a manual parse() (the route-level TypeBox covers request bodies,
+// not the wire response shapes), so the read responses are declared here to type the Track B screens
+// (M6-T12). Mirrors AdmissionRouteService's SummaryRow / AdmissionDetail / Page<T>
+// (apps/backend/src/modules/06-admission/routes/service.ts).
+const AdmissionSummaryRowSchema = Type.Object({
+  id: Type.String(),
+  state: Type.String(),
+  version: Type.Integer(),
+});
+const AdmissionListQuerySchema = Type.Object({
+  state: Type.Optional(Type.String()),
+  cursor: Type.Optional(Type.String()),
+  limit: Type.Optional(Type.Integer()),
+});
+const ComplianceListQuerySchema = Type.Object({
+  state: Type.Optional(Type.String()),
+  cursor: Type.Optional(Type.String()),
+  limit: Type.Optional(Type.Integer()),
+});
+const ReferralListQuerySchema = Type.Object({
+  cursor: Type.Optional(Type.String()),
+  limit: Type.Optional(Type.Integer()),
+});
+const AdmissionPageResponseSchema = Type.Object({
+  items: Type.Array(AdmissionSummaryRowSchema),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+});
+const AdmissionListResponseSchema = Type.Object({ items: Type.Array(AdmissionSummaryRowSchema) });
+const AdmissionDetailResponseSchema = Type.Object({
+  id: Type.String(),
+  state: Type.String(),
+  version: Type.Integer(),
+  // R-AC-01 activation gate (§5.2.5 checklist source of truth — the same gate route 14 enforces).
+  activationGate: Type.Object({
+    ready: Type.Boolean(),
+    missing: Type.Array(Type.String()),
+  }),
+});
+
 export interface RouteEnrichment {
   /** JSON request body schema (a TypeBox schema reused from the route's validator). */
   body?: TSchema;
@@ -165,6 +204,36 @@ export interface RouteEnrichment {
 
 /** `METHOD /path` → enrichment. Keys MUST match a scanned route (openapi:check enforces). */
 export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
+  // M6 Admission, Election & Certification (Track B — Referral Inbox / Admission Detail /
+  // Compliance Dashboard / Admission Census, M6-T12). Read responses only; the write routes keep
+  // their route-level TypeBox request bodies (already in the contract).
+  "GET /api/v1/referrals": {
+    summary: "Referral inbox queue (cursor-paginated, §4.1)",
+    query: ReferralListQuerySchema,
+    response: AdmissionPageResponseSchema,
+  },
+  "GET /api/v1/admissions": {
+    summary: "Admission census (cursor-paginated; optional state filter, §4.1)",
+    query: AdmissionListQuerySchema,
+    response: AdmissionPageResponseSchema,
+  },
+  "GET /api/v1/admissions/:id": {
+    summary: "Admission aggregate + the R-AC-01 activation gate (route 10, §5.2.4/§5.2.5)",
+    response: AdmissionDetailResponseSchema,
+  },
+  "GET /api/v1/admissions/:id/election-periods": {
+    summary: "An admission's election periods (§5.2.4 Elections tab)",
+    response: AdmissionListResponseSchema,
+  },
+  "GET /api/v1/admissions/:id/compliance-windows": {
+    summary: "An admission's compliance windows (§5.2.4 Compliance tab)",
+    response: AdmissionListResponseSchema,
+  },
+  "GET /api/v1/compliance-windows": {
+    summary: "Org-wide compliance window dashboard (cursor-paginated; optional state filter, §5.2.11)",
+    query: ComplianceListQuerySchema,
+    response: AdmissionPageResponseSchema,
+  },
   // M36 Messaging (Track A — Staff Messaging + Notifications)
   "GET /api/v1/messaging/channels": {
     summary: "List the caller's channels (§4.6)",
