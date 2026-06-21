@@ -1,8 +1,8 @@
 // @wardenx/ui — degraded-mode banner (spec §5.2). Renders whenever any subscribed system
 // status component is non-operational; hidden when everything is operational.
 import type { JSX } from "react";
-import { useSystemStatus } from "../providers/system-status-provider";
-import { statusColors } from "../theme/colors";
+import { useSystemStatus } from "../../core/providers/system-status-provider";
+import { statusColors } from "../../core/theme/colors";
 
 export function DegradedBanner(): JSX.Element | null {
   const { components } = useSystemStatus();

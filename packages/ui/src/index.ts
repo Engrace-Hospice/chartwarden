@@ -1,57 +1,14 @@
-// @wardenx/ui — shared UI components delivered by M1 (Foundation spec §5.1–5.2; M1-T11).
-// Module 1 has no screens of its own; it provides the cross-module UI surface every other
-// module consumes: presentational components, the degraded-mode banner, context providers,
-// hooks, and theme tokens. Leaf package (depends only on react) — see .dependency-cruiser
-// `leaves-stay-leaves`.
-
-// Types (view-layer mirror of M1's system-status / feature-flag wire contracts)
-export type { FeatureFlags, SystemStatusComponent, SystemStatusLevel } from "./types";
-
-// Components
-export { CorrelationIdBadge } from "./components/correlation-id-badge";
-export type { CorrelationIdBadgeProps } from "./components/correlation-id-badge";
-export { DegradedBanner } from "./components/degraded-banner";
-export { EmptyState } from "./components/empty-state";
-export type { EmptyStateProps } from "./components/empty-state";
-export { ErrorBoundary } from "./components/error-boundary";
-export type { ErrorBoundaryProps } from "./components/error-boundary";
-export { LoadingSpinner } from "./components/loading-spinner";
-export type { LoadingSpinnerProps } from "./components/loading-spinner";
-
-// Layout kit — Tier-1 regions + foundational pattern layouts (ADR-0030, WARDENX_UI_LAYOUT_PATTERNS.md)
-export * from "./layouts";
-
-// API client (typed, generated from docs/api/openapi.json — ADR-0032)
-export { ApiClientProvider, createApiClient, useApiClient } from "./api";
-export type {
-  ApiClient,
-  ApiClientOptions,
-  ApiClientProviderProps,
-  components,
-  operations,
-  paths,
-} from "./api";
-
-// Providers
-export { FeatureFlagProvider, useFeatureFlagContext } from "./providers/feature-flag-provider";
-export type {
-  FeatureFlagContextValue,
-  FeatureFlagProviderProps,
-} from "./providers/feature-flag-provider";
-export { SocketProvider, useSocket } from "./providers/socket-provider";
-export type { SocketLike, SocketProviderProps } from "./providers/socket-provider";
-export { SystemStatusProvider, useSystemStatus } from "./providers/system-status-provider";
-export type {
-  SystemStatusContextValue,
-  SystemStatusProviderProps,
-} from "./providers/system-status-provider";
-
-// Hooks
-export { CorrelationIdProvider, useCorrelationId } from "./hooks/use-correlation-id";
-export { useFeatureFlag } from "./hooks/use-feature-flag";
-export { useIsDegraded } from "./hooks/use-system-status";
-
-// Theme
-export { brandColors, colors, statusColors } from "./theme/colors";
-export { sharedTailwindConfig } from "./theme/tailwind.config";
-export type { SharedTailwindConfig } from "./theme/tailwind.config";
+// @wardenx/ui — shared UI surface delivered by M1 (Foundation §5.1–5.2; M1-T11). Module 1 has
+// no screens of its own; it provides the cross-module UI surface every other module consumes.
+//
+// ADR-0035 carves this leaf into two internal layers, kept apart by dependency-cruiser
+// (`ui-core-renderer-free`):
+//   ./core — react-dom-free: typed API client, context providers, hooks, theme tokens, and the
+//            native-capability ports. Usable by the web build, the Capacitor native build, and a
+//            future React Native consumer.
+//   ./web  — the React DOM rendering layer: presentational components + the layout kit.
+//
+// Consumers import from "@wardenx/ui" (this barrel) and need not know the split. `core` and
+// `web` export disjoint names, so a flat re-export is unambiguous.
+export * from "./core";
+export * from "./web";

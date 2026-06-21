@@ -2,7 +2,7 @@
 // frontend app spreads this into its own tailwind.config to inherit WardenX brand tokens.
 // Typed locally (not against `tailwindcss`) so the leaf adds no build-time dependency; the
 // shape is the subset every app extends.
-import { brandColors } from "./colors";
+import { brandColors } from "../../core/theme/colors";
 
 export interface SharedTailwindConfig {
   theme: {
