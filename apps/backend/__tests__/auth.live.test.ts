@@ -423,10 +423,14 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
     await ins(org, "patient.viewed", "patient", crypto.randomUUID(), {}); // access, other patient
     await ins(otherOrg, "patient.viewed", "patient", patientId, { patientId }); // different org — must NOT leak
 
-    // searchEvents: the org's events (RLS hides otherOrg's), newest-first.
+    // searchEvents: the org's events (RLS hides otherOrg's), newest-first. The org-creation audit
+    // trigger also writes a row for this org, so assert containment + org-scoping, not an exact count.
     const all = await query.searchEvents(org, {});
-    expect(all.items).toHaveLength(3);
+    expect(all.items.length).toBeGreaterThanOrEqual(3);
     expect(all.items.every((e) => e.organizationId === org)).toBe(true);
+    const types = all.items.map((e) => e.eventType);
+    expect(types).toContain("role.updated");
+    expect(types.filter((t) => t === "patient.viewed")).toHaveLength(2);
 
     // patientId filter → only events touching that patient.
     const touching = await query.searchEvents(org, { patientId });
