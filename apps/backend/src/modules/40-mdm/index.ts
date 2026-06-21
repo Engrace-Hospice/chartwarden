@@ -31,3 +31,30 @@ export {
 // the follow-up that adds one. Cache grammar (§4.8) + audit catalog (§8.1, `m40.*` in @wardenx/audit)
 // ship with this task; DR Tier 4 (directory-style reference data; NPPES is the sole external feed).
 export { type MdmEraserDeps, registerMdmErasers } from "./erasers/mdm-eraser";
+
+// FB-T02 — the production Drizzle MDM adapters (over the M40 tables) + the composition-root route
+// mount. `createDbMdmStore`/`createDbBaaStore` back the published `MdmEntityProvider` /
+// `BaaStatusProvider` seams (injected in `registerMdmSeams`); `createDbMdmRouteService` backs the
+// write/admin route surface. The entity-directory read surface (apps/web/src/modules/40-mdm) reads
+// live through these.
+export { createDbBaaStore, createDbMdmRouteService, createDbMdmStore } from "./mdm-store-db";
+
+import type { DbClient } from "@wardenx/db";
+import { createMdmEntityProvider } from "@wardenx/mdm";
+import type { FastifyInstance } from "fastify";
+import { registerMdmRoutes as _registerMdmRoutes } from "./routes/mdm-routes";
+import {
+  createDbMdmRouteService as _createDbMdmRouteService,
+  createDbMdmStore as _createDbMdmStore,
+} from "./mdm-store-db";
+
+/**
+ * Mount the M40 MDM REST routes (faceted search / resolve / overlay / BAA register / platform-ops
+ * merge + NPPES) on a server — invoked by the composition root when a DB client is present. Reads run
+ * over the real Drizzle-backed `MdmEntityProvider`; the org-scoped overlay/BAA writes run under RLS.
+ * Backs the MDM console (FB-T02).
+ */
+export function mountMdmRoutes(app: FastifyInstance, db: DbClient): void {
+  const provider = createMdmEntityProvider(_createDbMdmStore(db));
+  _registerMdmRoutes(app, { provider, service: _createDbMdmRouteService(db) });
+}

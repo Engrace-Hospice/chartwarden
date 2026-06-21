@@ -40,7 +40,7 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 | 8 | M36 | Internal Staff Secure Messaging | `screens/core/WARDENX_UI_STAFF_MESSAGING.md` | Conversation View | ✓ `ConversationView` | done |
 | 9 | M36 | Notifications & Tasks / Worklist | `screens/core/WARDENX_UI_NOTIFICATIONS_TASKS.md` | Work Queue | ✓ `WorkQueueLayout` | done |
 | 10 | M38 | Terminology / Reference Data | `screens/admin/WARDENX_UI_TERMINOLOGY_ADMIN.md` | Work Queue | ✓ `WorkQueueLayout` | done (live)⁶ |
-| 11 | M40 | Master Data Management | `screens/admin/WARDENX_UI_MASTER_DATA_MDM.md` | Work Queue | ✓ `WorkQueueLayout` | done |
+| 11 | M40 | Master Data Management | `screens/admin/WARDENX_UI_MASTER_DATA_MDM.md` | Work Queue | ✓ `WorkQueueLayout` | done (live)⁷ |
 
 > Patient Chart (#4) is a hub: its M5 frame (banner + summary + module nav rail) is buildable now; the
 > per-module tabs (encounters, orders, eMAR, …) fill in as those modules land — build the frame in
@@ -57,6 +57,22 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > screen (`/admin/terminology`) now hits live endpoints instead of 404s. No new routes (already in the
 > contract), so `openapi.json`/the client are unchanged. RLS isolation for the one org-scoped table is
 > covered by `rls-isolation.live.test.ts` (§7.4 lockdown + §9.4 org-scoping).
+
+> ⁷ **M40 Master Data Management — now LIVE end-to-end (FB-T02).** The MDM routes are mounted in the
+> composition root (`mountMdmRoutes` in `apps/backend/src/index.ts`), and BOTH published seams —
+> `MdmEntityProvider` (§4.5) and `BaaStatusProvider` (§4.6/§7.7 as-of gate) — are backed by real
+> Drizzle stores (`apps/backend/src/modules/40-mdm/mdm-store-db.ts`) over the M40 tables. The
+> entity-directory **read** surface the console consumes (`GET /api/v1/mdm/{kind}/search`, resolve,
+> relationships) is live: canonical reads (physician/facility/payer) serve via the `USING (true)`
+> policy on the pooled handle; the org-scoped physician overlay + the tenant BAA register read/write
+> under `withOrgContext`/RLS; `mdm_provisional` proposals insert under RLS. The MDM console
+> (`/admin/mdm`) now hits live endpoints instead of 404s. The §7.6 platform-ops governance **writes**
+> (merge approve/reject, provisional promote) stay deferred — they need the `mdm_canonical_writer`
+> SECURITY DEFINER functions (a deeper M40 surface), so they fail-clear with 501 rather than corrupt
+> the redirect graph; the merge-queue / NPPES-sync-log / on-demand-NPI **reads** are wired (wardenx_admin
+> break-glass surface). No new routes (already in the contract), so `openapi.json`/the client are
+> unchanged. RLS isolation for the org-scoped overlay/BAA/provisional tables is covered by
+> `rls-isolation.live.test.ts`.
 
 > ³ **App Shell / Role Home — done at frame level.** The App Shell chrome is F0-T03; the Role Home now
 > renders at `/` (apps/web/src/shell/role-home.tsx): role-aware greeting + quick-access tiles for the

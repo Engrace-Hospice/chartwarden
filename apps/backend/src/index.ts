@@ -31,7 +31,13 @@ import {
   registerTerminologyErasers,
   registerTerminologySeams,
 } from "./modules/38-terminology/index";
-import { registerMdmErasers, registerMdmSeams } from "./modules/40-mdm/index";
+import {
+  createDbBaaStore,
+  createDbMdmStore,
+  mountMdmRoutes,
+  registerMdmErasers,
+  registerMdmSeams,
+} from "./modules/40-mdm/index";
 import {
   mountPatientRoutes,
   registerPatientErasers,
@@ -64,7 +70,11 @@ export function wireModuleSeams(
   // tables (FB-T01); slice/tests keep the in-memory default.
   registerTerminologySeams(deps.db ? { store: createDbTerminologyStore(deps.db) } : {});
   registerMessagingSeams(); // M36 — AlertEmitter (§4.6); MessagingProvider stays deny-stub until T07/T08
-  registerMdmSeams(); // M40 — MdmEntityProvider (§4.5) + BaaStatusProvider (§4.6 §7.7 as-of gate)
+  // M40 — MdmEntityProvider (§4.5) + BaaStatusProvider (§4.6 §7.7 as-of gate). Production backs both
+  // seams with Drizzle stores over the real M40 tables (FB-T02); slice/tests keep the in-memory default.
+  registerMdmSeams(
+    deps.db ? { store: createDbMdmStore(deps.db), baaStore: createDbBaaStore(deps.db) } : {},
+  );
   registerPatientSeams(); // M5 — CaseloadProvider (§4.1, + caseload_membership predicate); PatientReader/Mutator land T08
   registerConsentSeams(); // M39 — ConsentEvaluator (§4.3, the disclosure/redaction gate); slice store until T07/T09
   registerConsentAbacPredicates(); // M39 — the 11 §4.8 ABAC predicate resolvers (resolve via the seam)
@@ -134,6 +144,7 @@ if ((import.meta as { main?: boolean }).main) {
           mountAuditRoutes(app, dbHandle.db); // M4 — audit-log search on the real Drizzle AuditQuery
           mountPatientRoutes(app, dbHandle.db); // M5 — patient census/chart READS on the real patient table
           mountTerminologyRoutes(app, dbHandle.db); // M38 — terminology read surface + tenant value-set extensions (FB-T01)
+          mountMdmRoutes(app, dbHandle.db); // M40 — MDM entity directory + overlay/BAA + platform-ops (FB-T02)
         }
       : undefined,
     registerModuleSeams: () =>
