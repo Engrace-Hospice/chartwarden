@@ -29,12 +29,20 @@ export interface PasskeyInfo {
   readonly deviceType?: string | null;
 }
 
+/** The current session's user, as the client reports it (the subset screens need). */
+export interface SessionUser {
+  readonly email: string;
+  readonly name?: string | null;
+}
+
 export interface WardenxAuthClient {
   signIn: {
     email(input: { email: string; password: string }): Promise<SignInResult>;
     passkey(): Promise<AuthResult>;
   };
   signOut(): Promise<AuthResult>;
+  /** Read the current session's user (null when unauthenticated) — used to soft re-auth on screen-lock. */
+  getSession(): Promise<{ data?: { user: SessionUser } | null; error: { message?: string } | null }>;
   /** Forgot-password step 1: email a single-use reset link (token lands on `redirectTo`). */
   requestPasswordReset(input: { email: string; redirectTo: string }): Promise<AuthResult>;
   /** Forgot-password step 2: set a new password using the token from the reset link. */

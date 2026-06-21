@@ -5,6 +5,7 @@ export { MfaChallenge } from "./mfa-challenge";
 export { ForgotPassword } from "./forgot-password";
 export { ResetPassword } from "./reset-password";
 export { StepUp } from "./step-up";
+export { ScreenLock } from "./screen-lock";
 export { SecurityPasskeys } from "./security-passkeys";
 export { OrganizationSelect } from "./organization-select";
 export { AcceptInvitation } from "./accept-invitation";

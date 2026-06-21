@@ -3,7 +3,7 @@
 // react-router router built from the screen registry. The shell reads the registry but never
 // imports a feature module — modules register their screens at composition (apps/web/src/main.tsx).
 import { createElement, useMemo } from "react";
-import type { JSX } from "react";
+import type { JSX, ReactNode } from "react";
 import { RouterProvider, createBrowserRouter } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
 import {
@@ -28,6 +28,12 @@ export interface AppShellProps {
   flags?: FeatureFlags;
   systemStatus?: SystemStatusComponent[];
   correlationId?: string;
+  /**
+   * An overlay rendered inside the authenticated app frame (the AppLayout) — e.g. M2's idle
+   * screen-lock. Injected by the composition root so the shell stays free of feature-module imports
+   * (ADR-0030). Only mounts over chromed screens; the chromeless auth flow is never overlaid.
+   */
+  chromeOverlay?: ReactNode;
 }
 
 function newCorrelationId(): string {
@@ -42,6 +48,7 @@ export function AppShell({
   flags = {},
   systemStatus = [],
   correlationId = newCorrelationId(),
+  chromeOverlay,
 }: AppShellProps): JSX.Element {
   const router = useMemo(() => {
     const screens = registry.screens();
@@ -53,7 +60,7 @@ export function AppShell({
       ...chromeless.map((s) => ({ path: s.path, element: createElement(s.screen) })),
       {
         path: "/",
-        element: <AppLayout screens={chromed} />,
+        element: <AppLayout screens={chromed} overlay={chromeOverlay} />,
         children: [
           { index: true, element: <RoleHome screens={chromed} /> },
           ...chromed.map((s) => ({ path: s.path.replace(/^\//, ""), element: createElement(s.screen) })),
@@ -61,7 +68,7 @@ export function AppShell({
       },
     ];
     return createBrowserRouter(routes);
-  }, [registry]);
+  }, [registry, chromeOverlay]);
 
   return (
     <ErrorBoundary correlationId={correlationId}>

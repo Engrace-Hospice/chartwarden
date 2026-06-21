@@ -1,7 +1,7 @@
 // apps/web/src/shell — app-shell chrome (M1, ADR-0030). Renders the primary nav (built from the
 // registered screens), the degraded-mode banner, a header with the session identity, and the routed
 // <Outlet/>. Imports only @wardenx/ui (leaf) + react-router — never a feature module.
-import type { JSX } from "react";
+import type { JSX, ReactNode } from "react";
 import { Link, Outlet } from "react-router-dom";
 import { DegradedBanner, EmptyState } from "@wardenx/ui";
 import type { WebScreenDescriptor } from "./screen-registry";
@@ -9,9 +9,11 @@ import { useSession } from "./session";
 
 export interface AppLayoutProps {
   screens: WebScreenDescriptor[];
+  /** Optional overlay (e.g. the idle screen-lock) injected by the composition root — see AppShell. */
+  overlay?: ReactNode;
 }
 
-export function AppLayout({ screens }: AppLayoutProps): JSX.Element {
+export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   const session = useSession();
   return (
     <div className="wx-shell">
@@ -36,6 +38,7 @@ export function AppLayout({ screens }: AppLayoutProps): JSX.Element {
           <Outlet />
         </main>
       </div>
+      {overlay}
     </div>
   );
 }
