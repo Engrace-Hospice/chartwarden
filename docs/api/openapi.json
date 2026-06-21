@@ -3314,16 +3314,82 @@
         "tags": [
           "02-identity"
         ],
+        "summary": "Verify a step-up challenge → paired-write the session freshness (§4.4, D8)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "lastStepUpAt",
+                    "lastStepUpFactor"
+                  ],
+                  "properties": {
+                    "lastStepUpAt": {
+                      "type": "string"
+                    },
+                    "lastStepUpFactor": {
+                      "anyOf": [
+                        {
+                          "const": "webauthn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "totp",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "factor",
+                  "challengeId"
+                ],
+                "properties": {
+                  "factor": {
+                    "anyOf": [
+                      {
+                        "const": "webauthn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "totp",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "challengeId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "totpCode": {
+                    "pattern": "^[0-9]{6}$",
+                    "type": "string"
+                  },
+                  "assertion": {}
+                }
+              }
+            }
           }
         }
       }
@@ -3334,16 +3400,87 @@
         "tags": [
           "02-identity"
         ],
+        "summary": "Begin a step-up challenge (webauthn | totp, §4.4)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "challengeId",
+                    "factor"
+                  ],
+                  "properties": {
+                    "challengeId": {
+                      "type": "string"
+                    },
+                    "factor": {
+                      "anyOf": [
+                        {
+                          "const": "webauthn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "totp",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "webauthnChallenge": {
+                      "type": "object",
+                      "required": [
+                        "challenge",
+                        "rpId"
+                      ],
+                      "properties": {
+                        "challenge": {
+                          "type": "string"
+                        },
+                        "rpId": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "factor"
+                ],
+                "properties": {
+                  "factor": {
+                    "anyOf": [
+                      {
+                        "const": "webauthn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "totp",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }

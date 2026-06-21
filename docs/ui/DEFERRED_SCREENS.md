@@ -66,8 +66,11 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > via the `passkey` client plugin — the ceremony is browser-only, so build-/e2e-verified, not CI),
 > **Organization Select** (`/login/organization`), **Accept Invitation** (`/invite/:token`),
 > **Password reset** (`/forgot` → `/reset-password?token=…`, via Better Auth `requestPasswordReset` /
-> `resetPassword` — email delivery wired to M36 in a follow-up, like magic-link). **Still
-> deferred:** screen-lock, step-up.
+> `resetPassword` — email delivery wired to M36 in a follow-up, like magic-link), **Step-up**
+> (`/step-up?returnTo=…` — fresh re-verification of the current session via the generated REST client
+> over `POST /api/v1/sessions/step-up{/initiate}`; paired-writes `lastStepUpAt`/`lastStepUpFactor` that
+> M3's `step_up_recent` gates on. TOTP is wired; the WebAuthn step-up ceremony is a browser follow-up
+> like passkey). **Still deferred:** screen-lock.
 
 ### Partial — primary owner merged, but key sections need unbuilt modules
 

@@ -1118,6 +1118,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Verify a step-up challenge → paired-write the session freshness (§4.4, D8) */
         post: operations["postApiV1SessionsStepup"];
         delete?: never;
         options?: never;
@@ -1134,6 +1135,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Begin a step-up challenge (webauthn | totp, §4.4) */
         post: operations["postApiV1SessionsStepupInitiate"];
         delete?: never;
         options?: never;
@@ -3362,14 +3364,28 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    factor: "webauthn" | "totp";
+                    challengeId: string;
+                    totpCode?: string;
+                    assertion?: unknown;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        lastStepUpAt: string;
+                        lastStepUpFactor: "webauthn" | "totp";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -3382,14 +3398,29 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    factor: "webauthn" | "totp";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        challengeId: string;
+                        factor: "webauthn" | "totp";
+                        webauthnChallenge?: {
+                            challenge: string;
+                            rpId: string;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

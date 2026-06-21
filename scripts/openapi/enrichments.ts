@@ -117,6 +117,9 @@ const MembershipViewSchema = Type.Object({
   defaultLocationIds: Type.Array(Type.String()),
 });
 
+// Step-up qualifying factors (W-M2-11 / D9): only webauthn + totp; SMS is excluded by design.
+const StepUpFactorSchema = Type.Union([Type.Literal("webauthn"), Type.Literal("totp")]);
+
 export interface RouteEnrichment {
   /** JSON request body schema (a TypeBox schema reused from the route's validator). */
   body?: TSchema;
@@ -216,6 +219,34 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "POST /api/v1/invitations/accept": {
     summary: "Accept an invitation token → membership (§7.1)",
     body: Type.Object({ token: Type.String({ minLength: 1 }) }),
+  },
+  // M2 Identity — session step-up (§4.4). Manual parse() in routes/session-step-up.ts; the wire shapes
+  // are mirrored here for the client. SMS is intentionally absent (D9 — only webauthn + totp qualify).
+  "POST /api/v1/sessions/step-up/initiate": {
+    summary: "Begin a step-up challenge (webauthn | totp, §4.4)",
+    body: Type.Object({ factor: StepUpFactorSchema }),
+    response: Type.Object({
+      challengeId: Type.String(),
+      factor: StepUpFactorSchema,
+      // present only for webauthn (the browser uses it to drive the assertion ceremony)
+      webauthnChallenge: Type.Optional(
+        Type.Object({ challenge: Type.String(), rpId: Type.String() }),
+      ),
+    }),
+  },
+  "POST /api/v1/sessions/step-up": {
+    summary: "Verify a step-up challenge → paired-write the session freshness (§4.4, D8)",
+    body: Type.Object({
+      factor: StepUpFactorSchema,
+      challengeId: Type.String({ minLength: 1 }),
+      // factor-specific (one is supplied): a 6-digit TOTP code or a WebAuthn assertion.
+      totpCode: Type.Optional(Type.String({ pattern: "^[0-9]{6}$" })),
+      assertion: Type.Optional(Type.Unknown()),
+    }),
+    response: Type.Object({
+      lastStepUpAt: Type.String(),
+      lastStepUpFactor: StepUpFactorSchema,
+    }),
   },
   // M5 Patient
   "GET /api/v1/patients": {
