@@ -58,12 +58,12 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > Patient Chart, #4, not built yet). The "M5 patient search ready" note above referred to a server-side
 > seam, not HTTP — now there is a real list route.
 
-> ¹ **M2 Auth — mostly built.** Better Auth is now mounted + live-verified (AUTH wave, ADR-0033), so the
-> front door works: **Sign in** (`/login`, email+password via `@wardenx/auth/client` — AUTH-T07),
-> **Organization Select** (`/login/organization`), **Accept Invitation** (`/invite/:token`), all in
-> `apps/web/src/modules/02-identity` + registered in the shell. **Still deferred:** MFA challenge,
-> passkey enrollment, password reset, screen-lock, step-up — these need the **2FA Option-C encryption**
-> + **passkey enrollment** backend follow-ups (`docs/plans/AUTH_T06_SCHEMA_RECONCILE.md`).
+> ¹ **M2 Auth — mostly built + live-verified.** Better Auth is mounted, and email+password sign-in **and
+> 2FA-at-rest encryption are verified against real Postgres** (AUTH wave + ADR-0033/0034). Built screens
+> in `apps/web/src/modules/02-identity` (registered in the shell): **Sign in** (`/login`), **MFA
+> challenge** (`/login/2fa`, TOTP + backup code via `@wardenx/auth/client`'s `twoFactor` plugin),
+> **Organization Select** (`/login/organization`), **Accept Invitation** (`/invite/:token`). **Still
+> deferred:** passkey enrollment (separate field reconciliation), password reset, screen-lock, step-up.
 
 ### Partial — primary owner merged, but key sections need unbuilt modules
 
