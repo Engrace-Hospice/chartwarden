@@ -165,7 +165,9 @@ export const MODULES: ModuleDef[] = [
     codePaths: ["packages/auth/src/rbac", "packages/auth/src/abac", "packages/auth/src/permissions",
                 "packages/auth/src/roles", "packages/auth/src/breakglass", "packages/auth/src/engagements",
                 "apps/backend/src/modules/03-authorization", "apps/web/src/modules/03-authorization"],
-    dependsOn: [2],
+    dependsOn: [1, 2], // +1: M3's production RBAC data layer (effective-permission Drizzle store) needs
+                       // M1's Drizzle client (@wardenx/db), like M2's db-session-store; its §2.2 join also
+                       // reads the M1-owned `membership` table.
     ownedTables: ["role", "permission", "role_permission", "membership_role",
                   "break_glass_event", "auditor_engagement"],
   },
