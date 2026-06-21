@@ -23,6 +23,8 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { passkey } from "@better-auth/passkey";
 import { haveIBeenPwned, magicLink, twoFactor } from "better-auth/plugins";
 import { argon2idHash, argon2idVerify } from "./password-hash";
+import { type EncryptableAdapter, withTwoFactorEncryption } from "./two-factor-adapter";
+import { loadTwoFactorKey } from "./two-factor-crypto";
 
 /**
  * The Drizzle database handle Better Auth reads/writes through. Typed as the adapter's
@@ -66,10 +68,17 @@ export function createIdentityAuth(db: IdentityAuthDb) {
     // a UUID string is valid for the uuid PKs (user/session/account/passkey) AND for verification's
     // text id. (ADR-0033.)
     advanced: { database: { generateId: () => crypto.randomUUID() } },
-    database: drizzleAdapter(db, {
-      provider: "pg",
-      schema: m1Schema,
-    }),
+    // ADR-0034: wrap the Drizzle adapter so the twoFactor secret + backup codes are AES-256-GCM-encrypted
+    // at rest (Better Auth's plugin stores them plaintext). The key loads lazily (only on a 2FA op), so
+    // construction never requires TWO_FACTOR_ENCRYPTION_KEY. `database` accepts an adapter factory
+    // (options) => Adapter; the wrapper decorates the inner Drizzle adapter per request.
+    database: ((options: unknown) =>
+      withTwoFactorEncryption(
+        (drizzleAdapter(db, { provider: "pg", schema: m1Schema }) as unknown as (o: unknown) => EncryptableAdapter)(
+          options,
+        ),
+        () => loadTwoFactorKey(),
+      )) as never,
     emailAndPassword: {
       // M2 §3.1 (AUTH-T04): NIST 800-63B-aligned — length floor (no composition rules), Argon2id
       // hashing, and the HIBP k-anonymity breach check (haveIBeenPwned plugin below). No upper-bound
@@ -89,7 +98,12 @@ export function createIdentityAuth(db: IdentityAuthDb) {
     // schema reconciliation are exercised in the AUTH-T06 live-PG lane.
     plugins: [
       haveIBeenPwned(), // HIBP k-anonymity breach check (M2 §3.1)
-      twoFactor({ issuer: "WardenX" }), // TOTP + backup codes (M2 §3.1; SMS fallback never qualifies as step-up)
+      // TOTP + backup codes (M2 §3.1). Field-map to M1's at-rest-encrypted columns (the decorator
+      // above seals/opens the values); ADR-0034. SMS fallback never qualifies as step-up.
+      twoFactor({
+        issuer: "WardenX",
+        schema: { twoFactor: { fields: { secret: "secretEncrypted", backupCodes: "backupCodesEncrypted" } } },
+      }),
       passkey({
         rpName: "WardenX",
         rpID: process.env.PASSKEY_RP_ID ?? "localhost",

@@ -41,31 +41,40 @@ function decryptFields<T extends Record<string, unknown> | null>(row: T, key: Bu
   return row;
 }
 
-/** Decorate an adapter so the `twoFactor` secret + backup codes are encrypted at rest. */
-export function withTwoFactorEncryption<A extends EncryptableAdapter>(inner: A, key: Buffer): A {
+/**
+ * Decorate an adapter so the `twoFactor` secret + backup codes are encrypted at rest. `getKey` is called
+ * LAZILY (memoized) on the first twoFactor operation — so creating the auth instance never requires the
+ * key (the config test / password sign-in don't touch 2FA); fail-closed happens at 2FA-enrollment time.
+ */
+export function withTwoFactorEncryption<A extends EncryptableAdapter>(inner: A, getKey: () => Buffer): A {
+  let cached: Buffer | undefined;
+  const key = (): Buffer => {
+    cached ??= getKey();
+    return cached;
+  };
   return {
     ...inner,
     async create(data) {
       if (data.model !== MODEL) return inner.create(data);
-      const r = await inner.create({ ...data, data: encryptFields(data.data, key) });
-      return decryptFields(r, key);
+      const r = await inner.create({ ...data, data: encryptFields(data.data, key()) });
+      return decryptFields(r, key());
     },
     async update(data) {
       if (data.model !== MODEL) return inner.update(data);
-      const r = await inner.update({ ...data, update: encryptFields(data.update, key) });
-      return decryptFields(r, key);
+      const r = await inner.update({ ...data, update: encryptFields(data.update, key()) });
+      return decryptFields(r, key());
     },
     async updateMany(data) {
       if (data.model !== MODEL) return inner.updateMany(data);
-      return inner.updateMany({ ...data, update: encryptFields(data.update, key) });
+      return inner.updateMany({ ...data, update: encryptFields(data.update, key()) });
     },
     async findOne(data) {
       const r = await inner.findOne(data);
-      return data.model === MODEL ? decryptFields(r, key) : r;
+      return data.model === MODEL ? decryptFields(r, key()) : r;
     },
     async findMany(data) {
       const rs = await inner.findMany(data);
-      if (data.model === MODEL) for (const r of rs) decryptFields(r, key);
+      if (data.model === MODEL) for (const r of rs) decryptFields(r, key());
       return rs;
     },
   } as A;

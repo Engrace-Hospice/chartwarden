@@ -95,6 +95,8 @@ jobs:
       WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
       BETTER_AUTH_SECRET: ci-test-secret-at-least-32-characters-long
       BETTER_AUTH_URL: http://localhost:3000
+      # 32-byte base64 test key for the 2FA at-rest encryption (ADR-0034). Decodes to 32 bytes.
+      TWO_FACTOR_ENCRYPTION_KEY: Y2ktMmZhLXRlc3Qta2V5LTAxMjM0NTY3ODlhYmNkZWY=
     steps:
       - uses: actions/checkout@v4
       - name: Install Bun
