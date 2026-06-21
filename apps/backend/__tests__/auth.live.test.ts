@@ -277,4 +277,47 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
 
     await handle5.close();
   });
+
+  it("M2 members: the live repository lists the roster with isAdmin from the M3 org_admin reader", async () => {
+    const { createDbClient: mkDb6 } = await import("@wardenx/db");
+    const { createDbAdminMembershipReader } = await import("@wardenx/auth");
+    const { createDbMembershipRepository } = await import("../src/modules/02-identity/membership-repository");
+    const handle6 = mkDb6({ connectionString: DB_URL as string });
+    const repo = createDbMembershipRepository(handle6.db as never, createDbAdminMembershipReader(handle6.db as never));
+
+    const adminEmail = `ma${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
+    const rnEmail = `mr${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
+    const pw = `Wx9$${Math.random().toString(36).slice(2)}${Date.now()}Qz!`;
+    await auth.api.signUpEmail({ body: { email: adminEmail, password: pw, name: "Admin" } });
+    await auth.api.signUpEmail({ body: { email: rnEmail, password: pw, name: "Nurse" } });
+    const adminUser = (await admin.query('SELECT id FROM "user" WHERE email=$1', [adminEmail])).rows[0].id as string;
+    const rnUser = (await admin.query('SELECT id FROM "user" WHERE email=$1', [rnEmail])).rows[0].id as string;
+
+    const org = (await admin.query(
+      "INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'MM','Maple Org') RETURNING id",
+      [`mm-${Date.now()}`],
+    )).rows[0].id as string;
+    const adminMem = (await admin.query("INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'active') RETURNING id", [adminUser, org])).rows[0].id as string;
+    await admin.query("INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'active')", [rnUser, org]);
+    // Grant the org_admin role to the first membership → it must read back as isAdmin.
+    const adminRole = (await admin.query(
+      "INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,'org_admin','Org Admin','admin_executive',true) RETURNING id",
+      [org],
+    )).rows[0].id as string;
+    await admin.query("INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)", [org, adminMem, adminRole]);
+
+    const roster = await repo.listForOrg(org);
+    expect(roster).toHaveLength(2);
+    expect(roster.every((m) => m.organizationName === "Maple Org")).toBe(true);
+    expect(roster.find((m) => m.membershipId === adminMem)?.isAdmin).toBe(true);
+    expect(roster.find((m) => m.userId === rnUser)?.isAdmin).toBe(false);
+    expect(await repo.activeAdminCount(org)).toBe(1);
+
+    // A status change persists and the roster reflects it.
+    await repo.setStatus(adminMem, "suspended");
+    expect((await repo.get(adminMem))?.status).toBe("suspended");
+    expect(await repo.activeAdminCount(org)).toBe(0); // suspended admin no longer counts
+
+    await handle6.close();
+  });
 });

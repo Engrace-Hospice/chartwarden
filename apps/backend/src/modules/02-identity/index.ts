@@ -88,6 +88,47 @@ export {
   auditUserInvited,
 } from "./audit/identity-audit";
 export { registerIdentityRoutes } from "./routes/identity-routes";
+export { createDbMembershipRepository } from "./membership-repository";
+
+import type { DbClient } from "@wardenx/db";
+import type { AdminMembershipReader } from "@wardenx/types";
+import type { FastifyInstance } from "fastify";
+import {
+  type IdentityRouteDeps,
+  createContextActorResolver as _ctxActor,
+  createInMemoryCollaboratorLinkStore as _collabStore,
+  createInMemoryInvitationStore as _inviteStore,
+  createInMemorySessionWriter as _sessionWriter,
+  createInMemoryUserDirectory as _userDir,
+} from "./identity-ports";
+import { createInMemoryAuditExecutor as _inMemAudit } from "./step-up-ports";
+import { createDbMembershipRepository as _dbMemberships } from "./membership-repository";
+import { registerIdentityRoutes as _registerIdentityRoutes } from "./routes/identity-routes";
+
+/**
+ * Mount the M2 identity REST routes on a server (composition root, via buildServer's
+ * registerModuleRoutes hook, when a DB client is present). The member roster + lifecycle run on the
+ * REAL Drizzle MembershipRepository (isAdmin via the injected M3 admin reader); the actor resolves from
+ * the authenticated request.context. The remaining deps (sessions / invitations / collaborators / user
+ * directory / audit sink) are still in-memory and are replaced by Drizzle stores in follow-ups —
+ * progressive wiring of the backend surface.
+ */
+export function mountIdentityRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  admin: AdminMembershipReader,
+): void {
+  const deps: IdentityRouteDeps = {
+    actors: _ctxActor(),
+    memberships: _dbMemberships(db, admin),
+    sessions: _sessionWriter().writer,
+    invitations: _inviteStore().store,
+    collaborators: _collabStore().store,
+    users: _userDir().directory,
+    audit: _inMemAudit().executor,
+  };
+  _registerIdentityRoutes(app, deps);
+}
 // M2-T10 — the `identity` data eraser (two_factor/passkey + pending invitations) + its ports.
 export {
   type IdentityEraserDeps,
