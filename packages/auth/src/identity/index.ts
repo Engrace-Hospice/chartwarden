@@ -16,6 +16,14 @@ export {
   createNoopEmailTransport,
 } from "./email-transport";
 export {
+  type PasskeyCredentialStore,
+  type StoredPasskey,
+  type WebauthnVerifier,
+  type WebauthnVerifyInput,
+  createWebauthnAssertionVerifier,
+  createDbPasskeyCredentialStore,
+} from "./webauthn-verifier";
+export {
   registerIdentityAuth,
   type MountableAuth,
   type RegisterIdentityAuthOptions,
