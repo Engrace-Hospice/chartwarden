@@ -3223,6 +3223,337 @@
         }
       }
     },
+    "/api/v1/patients/{id}/demographics": {
+      "get": {
+        "operationId": "getApiV1PatientsByIdDemographics",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Patient demographics tab — name parts + SOGI/race/ethnicity codes + language (§3.3)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "mrn",
+                    "legalFirstName",
+                    "legalMiddleName",
+                    "legalLastName",
+                    "legalNameSuffix",
+                    "dob",
+                    "status",
+                    "sexAssignedAtBirth",
+                    "genderIdentityCode",
+                    "sexualOrientationCode",
+                    "pronounsCode",
+                    "maritalStatusCode",
+                    "raceCodes",
+                    "ethnicityCodes",
+                    "preferredLanguageCode",
+                    "aliases"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "mrn": {
+                      "type": "string"
+                    },
+                    "legalFirstName": {
+                      "type": "string"
+                    },
+                    "legalMiddleName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "legalLastName": {
+                      "type": "string"
+                    },
+                    "legalNameSuffix": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dob": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "sexAssignedAtBirth": {
+                      "type": "string"
+                    },
+                    "genderIdentityCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sexualOrientationCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "pronounsCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "maritalStatusCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "raceCodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "ethnicityCodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "preferredLanguageCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "aliases": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "fullName",
+                          "firstName",
+                          "middleName",
+                          "lastName"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "fullName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "firstName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "middleName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{id}/identifiers": {
+      "get": {
+        "operationId": "getApiV1PatientsByIdIdentifiers",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Patient identifiers — ssn/state_id masked to last4 (§3.3/§2.2)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "identifiers"
+                  ],
+                  "properties": {
+                    "identifiers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "kind",
+                          "value",
+                          "last4",
+                          "sensitive",
+                          "issuer",
+                          "effectiveFrom",
+                          "effectiveTo"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "last4": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "sensitive": {
+                            "type": "boolean"
+                          },
+                          "issuer": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "effectiveFrom": {
+                            "type": "string"
+                          },
+                          "effectiveTo": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/patients/{patientId}/consents": {
       "get": {
         "operationId": "getApiV1PatientsByPatientIdConsents",

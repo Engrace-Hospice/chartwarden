@@ -86,6 +86,53 @@ export const PatientListResponseSchema = Type.Object({
   nextCursor: Type.Union([Type.String(), Type.Null()]),
 });
 
+// GET /api/v1/patients/:id/demographics (§3.3) — name parts + USCDI SOGI/race/ethnicity codes +
+// preferred language + aliases. No encrypted fields (ssn/state_id live on /identifiers, masked).
+const NameAliasSchema = Type.Object({
+  kind: Type.String(),
+  fullName: Type.Union([Type.String(), Type.Null()]),
+  firstName: Type.Union([Type.String(), Type.Null()]),
+  middleName: Type.Union([Type.String(), Type.Null()]),
+  lastName: Type.Union([Type.String(), Type.Null()]),
+});
+
+export const PatientDemographicsSchema = Type.Object({
+  id: Type.String(),
+  mrn: Type.String(),
+  legalFirstName: Type.String(),
+  legalMiddleName: Type.Union([Type.String(), Type.Null()]),
+  legalLastName: Type.String(),
+  legalNameSuffix: Type.Union([Type.String(), Type.Null()]),
+  dob: Type.String(),
+  status: Type.String(),
+  sexAssignedAtBirth: Type.String(),
+  genderIdentityCode: Type.Union([Type.String(), Type.Null()]),
+  sexualOrientationCode: Type.Union([Type.String(), Type.Null()]),
+  pronounsCode: Type.Union([Type.String(), Type.Null()]),
+  maritalStatusCode: Type.Union([Type.String(), Type.Null()]),
+  raceCodes: Type.Array(Type.String()),
+  ethnicityCodes: Type.Array(Type.String()),
+  preferredLanguageCode: Type.Union([Type.String(), Type.Null()]),
+  aliases: Type.Array(NameAliasSchema),
+});
+
+// GET /api/v1/patients/:id/identifiers (§3.3/§2.2) — ssn/state_id are `sensitive`: `value` is null,
+// only `last4` is returned (the ciphertext is never serialized).
+const PatientIdentifierSchema = Type.Object({
+  id: Type.String(),
+  kind: Type.String(),
+  value: Type.Union([Type.String(), Type.Null()]),
+  last4: Type.Union([Type.String(), Type.Null()]),
+  sensitive: Type.Boolean(),
+  issuer: Type.Union([Type.String(), Type.Null()]),
+  effectiveFrom: Type.String(),
+  effectiveTo: Type.Union([Type.String(), Type.Null()]),
+});
+
+export const PatientIdentifiersResponseSchema = Type.Object({
+  identifiers: Type.Array(PatientIdentifierSchema),
+});
+
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   const converted = Value.Convert(schema, raw ?? {});
   if (!Value.Check(schema, converted)) {

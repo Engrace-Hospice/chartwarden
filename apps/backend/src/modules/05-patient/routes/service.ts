@@ -49,6 +49,55 @@ export interface AmendmentView {
   readonly slaDueAt: string; // ISO; received + 60 days
 }
 
+/**
+ * One identifier row for the Demographics & Identifiers tab (§3.3, §2.2). NEVER carries ciphertext:
+ * `ssn`/`state_id` are `sensitive` → `value` is null and only `last4` (the `xxx-xx-####` tail) is
+ * returned. Full reveal is a separate, `phi.read_ssn`-gated read (M5 SSN decryption follow-up).
+ */
+export interface IdentifierView {
+  readonly id: string;
+  readonly kind: string;
+  readonly value: string | null; // plaintext for mrn/mbi/prior_mrn/…; null for ssn/state_id
+  readonly last4: string | null; // display tail for the sensitive kinds (masked)
+  readonly sensitive: boolean; // ssn | state_id
+  readonly issuer: string | null;
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string | null;
+}
+
+/** A preferred/maiden/aka name (§3.3 `patient_name_alias`). */
+export interface NameAliasView {
+  readonly kind: string; // 'preferred' | 'maiden' | 'aka'
+  readonly fullName: string | null;
+  readonly firstName: string | null;
+  readonly middleName: string | null;
+  readonly lastName: string | null;
+}
+
+/**
+ * The Demographics tab payload (§3.3): legal name parts + DOB + the USCDI SOGI/race/ethnicity/marital
+ * codes (resolved to labels via M38 value-sets on the client) + preferred language. All non-encrypted.
+ */
+export interface DemographicsView {
+  readonly id: string;
+  readonly mrn: string;
+  readonly legalFirstName: string;
+  readonly legalMiddleName: string | null;
+  readonly legalLastName: string;
+  readonly legalNameSuffix: string | null;
+  readonly dob: string;
+  readonly status: string;
+  readonly sexAssignedAtBirth: string;
+  readonly genderIdentityCode: string | null;
+  readonly sexualOrientationCode: string | null;
+  readonly pronounsCode: string | null;
+  readonly maritalStatusCode: string | null;
+  readonly raceCodes: readonly string[];
+  readonly ethnicityCodes: readonly string[];
+  readonly preferredLanguageCode: string | null;
+  readonly aliases: readonly NameAliasView[];
+}
+
 /** The route service surface (§4.2). */
 /** A query for the §4.2 census/list. Org binding is server-side, never in the query. */
 export interface PatientListQuery {
@@ -61,6 +110,8 @@ export interface PatientListQuery {
 export interface PatientRouteService {
   admit(organizationId: string, input: AdmitInput, actorUserId: string): Promise<AdmitResult>;
   getPatient(organizationId: string, id: string): Promise<PatientView | null>;
+  getDemographics(organizationId: string, id: string): Promise<DemographicsView | null>;
+  getIdentifiers(organizationId: string, id: string): Promise<IdentifierView[] | null>;
   list(
     organizationId: string,
     query: PatientListQuery,
@@ -152,6 +203,43 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
       return p && p.organizationId === organizationId
         ? { id: p.id, organizationId: p.organizationId, mrn: p.mrn, lastName: p.lastName, firstName: p.firstName, dob: p.dob, status: p.status }
         : null;
+    },
+
+    async getDemographics(organizationId, id) {
+      const p = patients.get(id);
+      if (!p || p.organizationId !== organizationId) return null;
+      return {
+        id: p.id,
+        mrn: p.mrn,
+        legalFirstName: p.firstName,
+        legalMiddleName: null,
+        legalLastName: p.lastName,
+        legalNameSuffix: null,
+        dob: p.dob,
+        status: p.status,
+        sexAssignedAtBirth: "UNK",
+        genderIdentityCode: null,
+        sexualOrientationCode: null,
+        pronounsCode: null,
+        maritalStatusCode: null,
+        raceCodes: [],
+        ethnicityCodes: [],
+        preferredLanguageCode: null,
+        aliases: [],
+      };
+    },
+
+    async getIdentifiers(organizationId, id) {
+      const p = patients.get(id);
+      if (!p || p.organizationId !== organizationId) return null;
+      const today = "2026-06-20";
+      const rows: IdentifierView[] = [
+        { id: `${id}_mrn`, kind: "mrn", value: p.mrn, last4: null, sensitive: false, issuer: null, effectiveFrom: today, effectiveTo: null },
+      ];
+      if (p.mbi) rows.push({ id: `${id}_mbi`, kind: "mbi", value: p.mbi, last4: null, sensitive: false, issuer: null, effectiveFrom: today, effectiveTo: null });
+      // §2.2: ssn is ENVELOPE-ENCRYPTED — the read layer NEVER returns the value, only the masked tail.
+      if (p.ssn) rows.push({ id: `${id}_ssn`, kind: "ssn", value: null, last4: p.ssn.replace(/\D/g, "").slice(-4) || null, sensitive: true, issuer: null, effectiveFrom: today, effectiveTo: null });
+      return rows;
     },
 
     async list(organizationId, query) {

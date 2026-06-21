@@ -61,6 +61,24 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
     return p;
   });
 
+  // --- §3.3 demographics tab (legal name parts + SOGI/race/ethnicity codes + language + aliases) --
+  app.get("/api/v1/patients/:id/demographics", { preHandler: [READ] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    const { id } = parse(LooseIdParamsSchema, request.params);
+    const d = await service.getDemographics(organizationId, id);
+    if (d === null) throw notFound("patient"); // §7.5 non-leak: other-org / non-existent → 404
+    return d;
+  });
+
+  // --- §3.3/§2.2 identifiers tab (ssn/state_id MASKED — value_encrypted never serialized) ---------
+  app.get("/api/v1/patients/:id/identifiers", { preHandler: [READ] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    const { id } = parse(LooseIdParamsSchema, request.params);
+    const rows = await service.getIdentifiers(organizationId, id);
+    if (rows === null) throw notFound("patient");
+    return { identifiers: rows };
+  });
+
   // --- §4.2 admit (runs the §7.1 match pipeline; hard dup → 409) --------------------------------
   app.post("/api/v1/patients", { preHandler: [CREATE] }, async (request, reply) => {
     const { organizationId, userId } = actorOf(request);

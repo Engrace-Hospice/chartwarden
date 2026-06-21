@@ -29,7 +29,7 @@ function headerAuth(request: FastifyRequest): void {
 const ORG = "org_a";
 const EXISTING = "pat-existing";
 
-// An existing patient with an MBI — the §7.1 hard-duplicate target.
+// An existing patient with an MBI + SSN — the §7.1 hard-duplicate target (and the §3.3 masking case).
 const existing: PatientView & MatchCandidate = {
   id: EXISTING,
   organizationId: ORG,
@@ -39,6 +39,7 @@ const existing: PatientView & MatchCandidate = {
   dob: "1990-01-01",
   status: "active",
   mbi: "1EG4TE5MK73",
+  ssn: "123-45-6789",
 };
 
 const PERMISSION_SEED = [
@@ -176,6 +177,39 @@ describe("M5-T09 — patient routes (§4.2, §4.7 gating, §7.1/§7.4/§7.7)", (
     const { app } = makeServer();
     const res = await app.inject({ method: "GET", url: "/api/v1/patients/pat-nonexistent", headers: EDIT });
     expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("§3.3 demographics tab returns live M5 data (and denies without patient.read)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({ method: "GET", url: `/api/v1/patients/${EXISTING}/demographics`, headers: EDIT });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().legalLastName).toBe("LOVELACE");
+    expect(res.json().dob).toBe("1990-01-01");
+    const denied = await app.inject({ method: "GET", url: `/api/v1/patients/${EXISTING}/demographics`, headers: NOPERM });
+    expect(denied.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("§3.3/§2.2 identifiers are MASKED for ssn (last4 only, no plaintext value)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({ method: "GET", url: `/api/v1/patients/${EXISTING}/identifiers`, headers: EDIT });
+    expect(res.statusCode).toBe(200);
+    const ssn = res.json().identifiers.find((i: { kind: string }) => i.kind === "ssn");
+    expect(ssn.sensitive).toBe(true);
+    expect(ssn.value).toBeNull(); // ciphertext/plaintext NEVER serialized
+    expect(ssn.last4).toBe("6789");
+    const mrn = res.json().identifiers.find((i: { kind: string }) => i.kind === "mrn");
+    expect(mrn.value).toBe("MRN-E"); // non-sensitive kinds are plaintext
+    await app.close();
+  });
+
+  it("§7.5 demographics/identifiers for an unknown patient → 404 (no leak)", async () => {
+    const { app } = makeServer();
+    const a = await app.inject({ method: "GET", url: "/api/v1/patients/pat-nope/demographics", headers: EDIT });
+    const b = await app.inject({ method: "GET", url: "/api/v1/patients/pat-nope/identifiers", headers: EDIT });
+    expect(a.statusCode).toBe(404);
+    expect(b.statusCode).toBe(404);
     await app.close();
   });
 });

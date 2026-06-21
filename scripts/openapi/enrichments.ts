@@ -24,6 +24,8 @@ import {
   AdmitBodySchema,
   AmendmentBodySchema,
   DenyBodySchema,
+  PatientDemographicsSchema,
+  PatientIdentifiersResponseSchema,
   PatientListQuerySchema,
   PatientListResponseSchema,
   PatientSummarySchema,
@@ -282,6 +284,14 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/patients/:id": {
     summary: "Fetch a patient by id (merge-redirect aware, §4.8)",
     response: PatientSummarySchema,
+  },
+  "GET /api/v1/patients/:id/demographics": {
+    summary: "Patient demographics tab — name parts + SOGI/race/ethnicity codes + language (§3.3)",
+    response: PatientDemographicsSchema,
+  },
+  "GET /api/v1/patients/:id/identifiers": {
+    summary: "Patient identifiers — ssn/state_id masked to last4 (§3.3/§2.2)",
+    response: PatientIdentifiersResponseSchema,
   },
   "POST /api/v1/patients": { body: AdmitBodySchema, summary: "Admit a patient (§7.1 duplicate-check)" },
   "POST /api/v1/patients/:id/addresses": {

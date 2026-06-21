@@ -1047,6 +1047,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{id}/demographics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Patient demographics tab — name parts + SOGI/race/ethnicity codes + language (§3.3) */
+        get: operations["getApiV1PatientsByIdDemographics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{id}/identifiers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Patient identifiers — ssn/state_id masked to last4 (§3.3/§2.2) */
+        get: operations["getApiV1PatientsByIdIdentifiers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{patientId}/consents": {
         parameters: {
             query?: never;
@@ -3223,6 +3257,89 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PatientsByIdDemographics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        mrn: string;
+                        legalFirstName: string;
+                        legalMiddleName: string | null;
+                        legalLastName: string;
+                        legalNameSuffix: string | null;
+                        dob: string;
+                        status: string;
+                        sexAssignedAtBirth: string;
+                        genderIdentityCode: string | null;
+                        sexualOrientationCode: string | null;
+                        pronounsCode: string | null;
+                        maritalStatusCode: string | null;
+                        raceCodes: string[];
+                        ethnicityCodes: string[];
+                        preferredLanguageCode: string | null;
+                        aliases: {
+                            kind: string;
+                            fullName: string | null;
+                            firstName: string | null;
+                            middleName: string | null;
+                            lastName: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PatientsByIdIdentifiers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        identifiers: {
+                            id: string;
+                            kind: string;
+                            value: string | null;
+                            last4: string | null;
+                            sensitive: boolean;
+                            issuer: string | null;
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

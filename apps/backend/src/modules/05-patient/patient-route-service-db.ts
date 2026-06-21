@@ -13,9 +13,19 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { type SQL, and, asc, eq, ilike, or, sql } from "drizzle-orm";
 import { type MatchCandidate, runMatch } from "./matching/matcher";
 import { normalizeSubject } from "./matching/normalize";
-import type { AdmitInput, AdmitResult, PatientRouteService, PatientView } from "./routes/service";
+import type {
+  AdmitInput,
+  AdmitResult,
+  DemographicsView,
+  IdentifierView,
+  PatientRouteService,
+  PatientView,
+} from "./routes/service";
 
 const ID = schema.patientIdentifiers;
+const ALIAS = schema.patientNameAliases;
+const COMM = schema.patientCommunicationPreferences;
+const SENSITIVE_KINDS = new Set(["ssn", "state_id"]);
 
 const P = schema.patients;
 const MAX_LIMIT = 200;
@@ -92,6 +102,89 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
     withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
       const rows = await tx.select(VIEW_COLUMNS).from(P).where(eq(P.id, id)).limit(1);
       return rows[0] ? toView(rows[0]) : null;
+    });
+
+  // §3.3 Demographics tab: legal name parts + DOB + the USCDI SOGI/race/ethnicity/marital codes
+  // (M38 value-set labels resolved on the client) + preferred language (a left-join on the
+  // one-row-per-patient comm preference) + name aliases. RLS scopes everything to app.org_id.
+  const getDemographics = async (organizationId: string, id: string): Promise<DemographicsView | null> =>
+    withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      const rows = await tx
+        .select({
+          id: P.id,
+          mrn: P.mrn,
+          legalFirstName: P.legalFirstName,
+          legalMiddleName: P.legalMiddleName,
+          legalLastName: P.legalLastName,
+          legalNameSuffix: P.legalNameSuffix,
+          dob: P.dob,
+          status: P.status,
+          sexAssignedAtBirth: P.sexAssignedAtBirth,
+          genderIdentityCode: P.genderIdentityCode,
+          sexualOrientationCode: P.sexualOrientationCode,
+          pronounsCode: P.pronounsCode,
+          maritalStatusCode: P.maritalStatusCode,
+          raceCodes: P.raceCodes,
+          ethnicityCodes: P.ethnicityCodes,
+          preferredLanguageCode: COMM.preferredLanguageCode,
+        })
+        .from(P)
+        .leftJoin(COMM, eq(COMM.patientId, P.id))
+        .where(eq(P.id, id))
+        .limit(1);
+      const r = rows[0];
+      if (!r) return null;
+      const aliases = await tx
+        .select({ kind: ALIAS.kind, fullName: ALIAS.fullName, firstName: ALIAS.firstName, middleName: ALIAS.middleName, lastName: ALIAS.lastName })
+        .from(ALIAS)
+        .where(eq(ALIAS.patientId, id))
+        .orderBy(asc(ALIAS.kind));
+      return {
+        id: r.id,
+        mrn: r.mrn,
+        legalFirstName: r.legalFirstName,
+        legalMiddleName: r.legalMiddleName ?? null,
+        legalLastName: r.legalLastName,
+        legalNameSuffix: r.legalNameSuffix ?? null,
+        dob: r.dob,
+        status: r.status,
+        sexAssignedAtBirth: r.sexAssignedAtBirth,
+        genderIdentityCode: r.genderIdentityCode ?? null,
+        sexualOrientationCode: r.sexualOrientationCode ?? null,
+        pronounsCode: r.pronounsCode ?? null,
+        maritalStatusCode: r.maritalStatusCode ?? null,
+        raceCodes: r.raceCodes ?? [],
+        ethnicityCodes: r.ethnicityCodes ?? [],
+        preferredLanguageCode: r.preferredLanguageCode ?? null,
+        aliases: aliases.map((a) => ({ kind: a.kind, fullName: a.fullName ?? null, firstName: a.firstName ?? null, middleName: a.middleName ?? null, lastName: a.lastName ?? null })),
+      };
+    });
+
+  // §3.3/§2.2 Identifiers tab. MASKED BY CONSTRUCTION: ssn/state_id rows return `value: null` and only
+  // the `value_last4` tail — the `value_encrypted` ciphertext is NEVER selected here, so no decryption
+  // and no leak. Full reveal is a separate `phi.read_ssn`-gated read (M5 SSN decryption follow-up).
+  const getIdentifiers = async (organizationId: string, id: string): Promise<IdentifierView[] | null> =>
+    withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      const exists = await tx.select({ id: P.id }).from(P).where(eq(P.id, id)).limit(1);
+      if (!exists[0]) return null;
+      const rows = await tx
+        .select({ id: ID.id, kind: ID.kind, value: ID.value, valueLast4: ID.valueLast4, issuer: ID.issuer, effectiveFrom: ID.effectiveFrom, effectiveTo: ID.effectiveTo })
+        .from(ID)
+        .where(eq(ID.patientId, id))
+        .orderBy(asc(ID.kind), asc(ID.effectiveFrom));
+      return rows.map((r) => {
+        const sensitive = SENSITIVE_KINDS.has(r.kind);
+        return {
+          id: r.id,
+          kind: r.kind,
+          value: sensitive ? null : r.value,
+          last4: sensitive ? (r.valueLast4 ?? null) : null,
+          sensitive,
+          issuer: r.issuer ?? null,
+          effectiveFrom: r.effectiveFrom,
+          effectiveTo: r.effectiveTo ?? null,
+        };
+      });
     });
 
   // Insert the patient row (+ its mrn / mbi identifiers) — the census reads patient.mrn (denormalised),
@@ -231,5 +324,5 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
 
   // `writes` (in-memory) is no longer needed — all writes are real now.
 
-  return { list, getPatient, admit, addAddress, submitAmendment, decideAmendment };
+  return { list, getPatient, getDemographics, getIdentifiers, admit, addAddress, submitAmendment, decideAmendment };
 }

@@ -33,7 +33,7 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 | 1 | M2 | Authentication & Session | `screens/core/WARDENX_UI_AUTH.md` | Auth Flow | ✓ `CenteredCardLayout` | done¹ |
 | 2 | M1+M2+M3 | App Shell & Role Home | `screens/core/WARDENX_UI_APP_SHELL_HOME.md` | App Shell | ✓ shell (F0-T03) | done³ |
 | 3 | M1 | System / Utility Pages | `screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md` | System Page | ✓ `CenteredStatusLayout` | done |
-| 4 | M5 | Patient Chart | `screens/clinical/WARDENX_UI_PATIENT_CHART.md` | Patient Workspace | ✓ `PatientWorkspaceLayout` | done (frame) |
+| 4 | M5 | Patient Chart | `screens/clinical/WARDENX_UI_PATIENT_CHART.md` | Patient Workspace | ✓ `PatientWorkspaceLayout` | done (frame + Demographics tab)⁴ |
 | 5 | M5 | Patient List / Census | `screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md` | Work Queue | ✓ `WorkQueueLayout` | done² |
 | 6 | M3 | Roles & Permissions | `screens/admin/WARDENX_UI_ROLES_PERMISSIONS.md` | Admin Split Layout | ✓ `AdminSplitLayout` | done |
 | 7 | M4 | Audit Log Viewer | `screens/admin/WARDENX_UI_AUDIT_LOG_VIEWER.md` | Work Queue | ✓ `WorkQueueLayout` | done |
@@ -45,6 +45,17 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > Patient Chart (#4) is a hub: its M5 frame (banner + summary + module nav rail) is buildable now; the
 > per-module tabs (encounters, orders, eMAR, …) fill in as those modules land — build the frame in
 > Track A, graft tabs in Track B.
+
+> ⁴ **Patient Chart — Demographics & Identifiers tab now LIVE (FB-T06).** The M5-owned tab reads live
+> M5 data via two new gated GET routes — `GET /api/v1/patients/:id/demographics` (legal name parts,
+> DOB, the USCDI SOGI/race/ethnicity/marital codes, preferred language, and name aliases) and
+> `GET /api/v1/patients/:id/identifiers` — both behind `requirePermission("patient.read")` and RLS-scoped
+> by the request org. **§2.2/§3.3 masking is enforced server-side, by construction:** `ssn`/`state_id`
+> identifiers return `value: null` and only the `value_last4` tail (`xxx-xx-####`) — the `value_encrypted`
+> ciphertext is *never selected*, so there is no decrypt path and no leak. MRN is flagged immutable.
+> Full SSN/state-ID reveal stays gated on `phi.read_ssn` (already in M5's catalog) and lands with the M5
+> SSN capture/decryption write-path follow-up. The remaining M5-owned tabs (Addresses FB-T07, Coverage
+> FB-T08, Care Team FB-T09, Privacy/Consent FB-T10) follow; cross-module tabs stay Track B.
 
 > ⁶ **M38 Terminology — now LIVE end-to-end (FB-T01).** The terminology routes are mounted in the
 > composition root (`registerTerminologyRoutes` in `apps/backend/src/index.ts`), and the published
