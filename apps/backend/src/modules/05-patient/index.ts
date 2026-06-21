@@ -111,3 +111,20 @@ export {
   createInMemoryPatientEraseStore,
   registerPatientErasers,
 } from "./erasers/patient-eraser";
+export { createDbPatientRouteService } from "./patient-route-service-db";
+
+import type { DbClient } from "@wardenx/db";
+import type { FastifyInstance } from "fastify";
+import { createDbPatientRouteService as _dbPatientService } from "./patient-route-service-db";
+import { registerPatientRoutes as _registerPatientRoutes } from "./routes/patient-routes";
+
+/**
+ * Mount the M5 patient REST routes (census list, chart-resolve, admit, addresses, amendments) on a
+ * server (composition root, when a DB client is present). The READS (list / getPatient) run on the real
+ * Drizzle PatientRouteService over `patient` under RLS; the WRITES are still in-memory (the Drizzle
+ * admission store is a follow-up). Backs the Patient List/Census + the Patient Chart banner with real
+ * data.
+ */
+export function mountPatientRoutes(app: FastifyInstance, db: DbClient): void {
+  _registerPatientRoutes(app, { service: _dbPatientService(db) });
+}

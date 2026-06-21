@@ -447,4 +447,46 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
 
     await handle8.close();
   });
+
+  it("M5 Patient census: the live read service lists/filters/paginates patients, RLS-scoped (wardenx_app)", async () => {
+    const { createDbClient: mkDb9 } = await import("@wardenx/db");
+    const { createDbPatientRouteService } = await import("../src/modules/05-patient/index");
+    const handle9 = mkDb9({ connectionString: DB_URL as string });
+    const svc = createDbPatientRouteService(asTenantRole(handle9.db) as never);
+
+    const org = (await admin.query("INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'PT','PT') RETURNING id", [`pt-${Date.now()}`])).rows[0].id as string;
+    const otherOrg = (await admin.query("INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'PT2','PT2') RETURNING id", [`pt2-${Date.now()}`])).rows[0].id as string;
+    const addP = (orgId: string, mrn: string, first: string, last: string, status: string) =>
+      admin.query(
+        "INSERT INTO patient (organization_id,mrn,legal_first_name,legal_last_name,dob,sex_assigned_at_birth,status) VALUES ($1,$2,$3,$4,'1990-01-01','M',$5) RETURNING id",
+        [orgId, mrn, first, last, status],
+      );
+    const p3 = (await addP(org, "MRN-S", "Sam", "Smith", "active")).rows[0].id as string;
+    await addP(org, "MRN-A", "Al", "Adams", "active");
+    await addP(org, "MRN-B", "Bo", "Brown", "prospective");
+    await addP(otherOrg, "MRN-O", "Ot", "Other", "active");
+
+    // list: org's patients, ordered by (lastName, firstName, id); RLS hides otherOrg.
+    const all = await svc.list(org, {});
+    expect(all.items.map((p) => p.lastName)).toEqual(["Adams", "Brown", "Smith"]);
+    expect(all.items.every((p) => p.organizationId === org)).toBe(true);
+
+    // q substring (name or MRN); status filter.
+    expect((await svc.list(org, { q: "smit" })).items.map((p) => p.mrn)).toEqual(["MRN-S"]);
+    expect((await svc.list(org, { status: "active" })).items.map((p) => p.lastName)).toEqual(["Adams", "Smith"]);
+
+    // cursor pagination.
+    const page1 = await svc.list(org, { limit: 2 });
+    expect(page1.items.map((p) => p.lastName)).toEqual(["Adams", "Brown"]);
+    expect(page1.nextCursor).not.toBeNull();
+    const page2 = await svc.list(org, { limit: 2, cursor: page1.nextCursor as string });
+    expect(page2.items.map((p) => p.lastName)).toEqual(["Smith"]);
+    expect(page2.nextCursor).toBeNull();
+
+    // getPatient: in-org resolves; a different org's scope returns null (RLS, no leak).
+    expect((await svc.getPatient(org, p3))?.mrn).toBe("MRN-S");
+    expect(await svc.getPatient(otherOrg, p3)).toBeNull();
+
+    await handle9.close();
+  });
 });
