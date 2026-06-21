@@ -37,12 +37,18 @@ Specs (all `docs/modules/`): `WARDENX_MODULE_23_BILLING_MEDICARE_SPEC_v0_2.md`,
 > **Revenue-loop acceptance closes the Phase-1 end-to-end scenario:** …bill Medicare (§11.A clean
 > 837I) → post 835 → cap projection.
 
+> **Track B screens (ADR-0030) — built in-task, not deferred.** Each UI-owning module owns
+> `apps/web/src/modules/NN-*`: its first task adds that web codePath to the manifest + runs
+> `bun run scaffold` (`arch:parity` 1:1); its screen task builds the §5 screens against the
+> generated client and registers them into the M1 shell, flipping the matching
+> `docs/ui/DEFERRED_SCREENS.md` row → `done`. Backend-first preserved.
+
 ---
 
-## Module 23 — Billing, Medicare (deps: 6,8,22,38,40 · codePaths: packages/billing, apps/backend/src/modules/23-billing-medicare)
+## Module 23 — Billing, Medicare (deps: 6,8,22,38,40 · codePaths: packages/billing, apps/backend/src/modules/23-billing-medicare, apps/web/src/modules/23-billing-medicare)
 ownedTables (17): claim, claim_acknowledgment, claim_line, claim_state_history, claim_submission, eligibility_check, hipps_calculation, mac_submitter_credential, noe_record, notr_record, sequestration_policy, sia_calculation, validation_override, validation_result, validation_rule_config, validation_run, wage_index_factor.
 
-- **M23-T01** Enums + `packages/billing` layout + domain (§2, §3.2); types in `packages/types`. → `tsc -b`.
+- **M23-T01** Enums + `packages/billing` layout + domain (§2, §3.2); types in `packages/types`. → `tsc -b`. **Track B (ADR-0030):** add `apps/web/src/modules/23-billing-medicare` to the manifest `codePaths` and run `bun run scaffold` so the empty web slice exists (→ `arch:parity`).
 - **M23-T02** Schema (17 tables, §3.3) + RLS + M4 audit triggers (MBI + `mac_submitter_credential.client_secret_cipher` denylisted) + eraser (§3.7) + migration. → `arch:tables/tenancy/ddl/gaps`.
 - **M23-T03** Claim lifecycle state machine (§2.2) + validation rules (§2.3); `claim`/`claim_line`/`claim_state_history`.
 - **M23-T04** Rate/calc engines: HIPPS (`hipps_calculation`), SIA (`sia_calculation`), sequestration (`sequestration_policy`), wage index (`wage_index_factor`).
@@ -53,25 +59,25 @@ ownedTables (17): claim, claim_acknowledgment, claim_line, claim_state_history, 
 - **M23-T09** NOE/NOTR windows (§7.4–7.6): `noe_record` on `m6.election.signed`, `notr_record` on `m6.discharge.created`; day-3 warning / day-5+1 breach blocks submission.
 - **M23-T10** Five published reader seams (§4.3: `ClaimReader`, `ClaimDayProjectionProvider` for M26, `ClaimMetricsProvider` for M33, …) into M1 registry. → `validateSeams`.
 - **M23-T11** Routes (§4.1–4.2) behind guards + step-up; permission keys (§4.6) + ABAC (§4.7) into M3; outbox (§4.10): `m23.claim.*` + **inert** `m25.remittance.*` consumer; M28 FHIR `Claim` projection forward-seam (Wave H); M24 Medicaid Phase 2.
-- **M23-T12** Screens (§5); tests (§9: RLS §9.3, IDOR §9.4, §11.A rule suite, **clean 837I** §7) + §12 sign-off. → `bun run test` + full `arch:fitness`.
+- **M23-T12** Screens (§5) — **Track B/ADR-0030**: build under `apps/web/src/modules/23-billing-medicare` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`; tests (§9: RLS §9.3, IDOR §9.4, §11.A rule suite, **clean 837I** §7) + §12 sign-off. → `bun run test` + full `arch:fitness`.
 
-## Module 25 — Remittance & Denials (deps: 23,36 · codePaths: apps/backend/src/modules/25-remittance) — BASIC (835 posting + denial worklist)
+## Module 25 — Remittance & Denials (deps: 23,36 · codePaths: apps/backend/src/modules/25-remittance, apps/web/src/modules/25-remittance) — BASIC (835 posting + denial worklist)
 ownedTables (11): appeal_case, appeal_case_event, denial_case, denial_case_assignment, denial_taxonomy_overlay, patient_responsibility_ledger, remittance_adjustment, remittance_advice, remittance_line, remittance_remark, remittance_service_line.
 
-- **M25-T01** Enums + layout + domain (§2); types in `packages/types`. → `tsc -b`.
+- **M25-T01** Enums + layout + domain (§2); types in `packages/types`. → `tsc -b`. **Track B (ADR-0030):** add `apps/web/src/modules/25-remittance` to the manifest `codePaths` and run `bun run scaffold` so the empty web slice exists (→ `arch:parity`).
 - **M25-T02** Schema (11 tables, §3.3) + RLS + M4 audit + eraser (§3.7) + migration (§3.2). → `arch:tables/tenancy/ddl/gaps`.
 - **M25-T03** Remittance lifecycle (§2.2) + validation (§2.3); 835 posting (`remittance_advice`/`remittance_line`/`remittance_service_line`/`remittance_adjustment`/`remittance_remark`) + `patient_responsibility_ledger`.
 - **M25-T04** `packages/x12-835-client` (ADR-0029): parse **835 only** via the sidecar; emit `m25.edi.835_received`. (277CA-derived denials arrive via `m23.claim.rejected` — M25 does not parse 277CA.)
 - **M25-T05** Auto-match 835 → claim: consume M23 `ClaimReader.findByControlNumbers`; `m23.claim.rejected` (277CA) seeds the denial worklist (§7.3).
 - **M25-T06** Denial worklist (`denial_case`/`denial_case_assignment`/`denial_taxonomy_overlay`) + appeals (`appeal_case`/`appeal_case_event`, next-tier auto-spawn §7.10); CARC/RARC via M38; M40 `PayerCatalogReader`.
 - **M25-T07** Eight published reader seams (§4.3: `RemittanceReader`, `DenialMetricsProvider`, …) into M1; emit `m25.remittance.*` (→ **closes M23's inert consumer**: PAID/DENIED/PARTIAL); appeal packets via M22 `DocumentRenderer`. → `validateSeams`.
-- **M25-T08** Routes (§4.1–4.2) + permission keys (§4.6) + ABAC (§4.7, step-up on `appeal.submit`/`remittance.adjustment.override`); screens (§5: inbox, worklist Kanban, appeal builder). M24 Medicaid 835 + commercial = Phase 2.
+- **M25-T08** Routes (§4.1–4.2) + permission keys (§4.6) + ABAC (§4.7, step-up on `appeal.submit`/`remittance.adjustment.override`); screens (§5: inbox, worklist Kanban, appeal builder) — **Track B/ADR-0030**: build under `apps/web/src/modules/25-remittance` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`. M24 Medicaid 835 + commercial = Phase 2.
 - **M25-T09** Tests (§9: RLS §9.3, IDOR §9.4, E2E §9.6, happy-path 835 §7.1, 277CA→denial→appeal §7.3) + §12 sign-off. → `bun run test` + full `arch:fitness`.
 
-## Module 26 — Cap Management (deps: 23,36 · codePaths: apps/backend/src/modules/26-cap) — BASIC projection (cap.full_projection OFF)
+## Module 26 — Cap Management (deps: 23,36 · codePaths: apps/backend/src/modules/26-cap, apps/web/src/modules/26-cap) — BASIC projection (cap.full_projection OFF)
 ownedTables (12): cap_beneficiary_accrual, cap_beneficiary_accrual_line, cap_inpatient_accrual, cap_inpatient_day_line, cap_period, cap_period_methodology_lock, cap_period_platform_constant, cap_projection_snapshot, cap_psr_import, cap_psr_reconciliation, cap_settlement, cap_threshold_event.
 
-- **M26-T01** Enums + layout + domain (§2); types in `packages/types`. → `tsc -b`.
+- **M26-T01** Enums + layout + domain (§2); types in `packages/types`. → `tsc -b`. **Track B (ADR-0030):** add `apps/web/src/modules/26-cap` to the manifest `codePaths` and run `bun run scaffold` so the empty web slice exists (→ `arch:parity`).
 - **M26-T02** Schema (12 tables, §3.3) + RLS + M4 audit + eraser (§3.7: **retains per-cap aggregates, redacts `patient_id`→[ERASED]** per D14) + migration (§3.2). → `arch:tables/tenancy/ddl/gaps`.
 - **M26-T03** Accrual model (§2.2): `cap_beneficiary_accrual(_line)`, `cap_inpatient_accrual`/`cap_inpatient_day_line`; `cap_period` + `cap_period_methodology_lock`; `cap_period_platform_constant` (CMS-published cap amounts).
 - **M26-T04** Consumed seams (§4.4): M23 `MedicareClaimReader`/`ClaimLineReader` (rev-code 0655/0656 inpatient days), M25 `RemittanceReader.postedRemittanceLinesForPatient` (paid amounts; trigger on `m25.remittance.advice_posted`), M5 `PatientReader`/deceased, M6 `ElectionPeriodReader`/`MedicareBeneficiaryIdProvider`/revocation/transfer.
@@ -79,13 +85,15 @@ ownedTables (12): cap_beneficiary_accrual, cap_beneficiary_accrual_line, cap_inp
 - **M26-T06** `CapProjectionProvider` seam (§4.3) + `CapAccrualReader`/`InpatientCapProvider`/`CapSettlementProvider`/`CapMetricsProvider` into M1 — **wires live M23's §11.A warn-only cap rule** (closes the M23 deny-stub). → `validateSeams`.
 - **M26-T07** Cap-year lifecycle (§4.5): auto-open new cap year (§7.7); PS&R import/reconciliation (`cap_psr_import`/`cap_psr_reconciliation`); settlement proposal/finalize (§7.9/7.10, `cap_settlement`) with step-up.
 - **M26-T08** Alerts via M36 **generic `AlertEmitter` + `CapAlertSubscriberProvider`** (no `cap_watch` channel — M36-F03); routes (§4.1–4.2) + permission keys (§4.6) + ABAC (§4.7) into M3.
-- **M26-T09** Outbox (§4.10): `m26.cap.*` watch/warn/breach; nightly projection batch (§7.2); screens (§5.1 web, Phase 1). Full agency-wide watch deferred to Phase 3.
+- **M26-T09** Outbox (§4.10): `m26.cap.*` watch/warn/breach; nightly projection batch (§7.2); screens (§5.1 web, Phase 1) — **Track B/ADR-0030**: build under `apps/web/src/modules/26-cap` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`. Full agency-wide watch deferred to Phase 3.
 - **M26-T10** Tests (§9: RLS §9.3, IDOR §9.4, E2E §9.5, accrual→projection §7.1, warn-only validation §7.12, **enum-drift snapshot §9.9**) + §12 sign-off. → `bun run test` + full `arch:fitness`.
 
 ---
 
 ## Wave G acceptance (the workflow's final gate)
-1. M23(17)+M25(11)+M26(12) ownedTables exist with RLS + migrations; manifest unchanged.
+1. M23(17)+M25(11)+M26(12) ownedTables exist with RLS + migrations; manifest unchanged **except the
+   Track B (ADR-0030) web codePaths** (`apps/web/src/modules/{23-billing-medicare,25-remittance,26-cap}`)
+   added by each module's first task (`arch:parity` 1:1).
 2. `validateSeams()` passes with M23's five reader seams, M25's eight, M26's `CapProjectionProvider`
    et al.; **the M23↔M25 (`m25.remittance.*`) and M23↔M26 (`CapProjectionProvider`) handshakes are live
    and acyclic** (no `dependsOn` cycle — `arch:boundaries` green).
