@@ -4,7 +4,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createApiClient } from "@wardenx/ui";
-import { identityScreens } from "./modules/02-identity";
+import { ScreenLock, identityScreens } from "./modules/02-identity";
 import { authorizationScreens } from "./modules/03-authorization";
 import { auditScreens } from "./modules/04-audit";
 import { patientScreens } from "./modules/05-patient";
@@ -31,6 +31,7 @@ if (!rootEl) throw new Error('Root element "#root" not found');
 
 createRoot(rootEl).render(
   <StrictMode>
-    <AppShell registry={registry} client={client} />
+    {/* M2 idle screen-lock overlays the authenticated frame (soft re-auth after 5 min idle). */}
+    <AppShell registry={registry} client={client} chromeOverlay={<ScreenLock />} />
   </StrictMode>,
 );

@@ -30,7 +30,7 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 
 | # | Module | Screen | Spec | Layout pattern | Layout cmp | Status |
 |---|--------|--------|------|----------------|-----------|--------|
-| 1 | M2 | Authentication & Session | `screens/core/WARDENX_UI_AUTH.md` | Auth Flow | ✓ `CenteredCardLayout` | in-progress¹ |
+| 1 | M2 | Authentication & Session | `screens/core/WARDENX_UI_AUTH.md` | Auth Flow | ✓ `CenteredCardLayout` | done¹ |
 | 2 | M1+M2+M3 | App Shell & Role Home | `screens/core/WARDENX_UI_APP_SHELL_HOME.md` | App Shell | ✓ shell (F0-T03) | done³ |
 | 3 | M1 | System / Utility Pages | `screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md` | System Page | ✓ `CenteredStatusLayout` | done |
 | 4 | M5 | Patient Chart | `screens/clinical/WARDENX_UI_PATIENT_CHART.md` | Patient Workspace | ✓ `PatientWorkspaceLayout` | done (frame) |
@@ -70,7 +70,13 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > (`/step-up?returnTo=…` — fresh re-verification of the current session via the generated REST client
 > over `POST /api/v1/sessions/step-up{/initiate}`; paired-writes `lastStepUpAt`/`lastStepUpFactor` that
 > M3's `step_up_recent` gates on. TOTP is wired; the WebAuthn step-up ceremony is a browser follow-up
-> like passkey). **Still deferred:** screen-lock.
+> like passkey), and the **idle screen-lock** (an overlay, not a route: the composition root mounts it
+> inside the app shell via the new `AppShell chromeOverlay` seam — M1 stays module-free; after
+> `SESSION_POLICY.screenLockSec` = 5 min idle it covers the authenticated frame and soft-re-auths the
+> same user by password, session stays alive per M2 §2.2.4 active→screen_locked→active). **No M2 auth
+> screens remain deferred.** Backend follow-ups only: WebAuthn step-up ceremony, magic-link M36
+> delivery, session-class in the browser context (to gate screen-lock to staff/auditor per
+> `screenLockApplies`).
 
 ### Partial — primary owner merged, but key sections need unbuilt modules
 
