@@ -34,6 +34,7 @@ const NAV_SECTIONS: { label: string; ready: boolean }[] = [
   { label: "Addresses", ready: true },
   { label: "Coverage / Payers", ready: true },
   { label: "Care Team & Assignments", ready: true },
+  { label: "Privacy Flags", ready: true },
   { label: "Care Plan", ready: false },
   { label: "Encounters / Visits", ready: false },
   { label: "Assessments", ready: false },
@@ -119,6 +120,8 @@ export function PatientChart(): JSX.Element {
             <CoverageTab patientId={p.id} />
           ) : section === "Care Team & Assignments" ? (
             <CareTeamTab patientId={p.id} />
+          ) : section === "Privacy Flags" ? (
+            <PrivacyFlagsTab patientId={p.id} />
           ) : (
             <SummaryTab patient={p} />
           )}
@@ -780,6 +783,150 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
       <p style={{ color: "#9ca3af", fontSize: "0.78rem", margin: "0.6rem 0 0" }}>
         Staff display names resolve from the M2 roster once it exposes them (Staff Management enrichment / M34);
         until then an assignment shows its care-team role and the clinician id.
+      </p>
+    </>
+  );
+}
+
+// §3.5 / D10 Privacy Flags tab (consent-gated). Two M5-owned reads compose here: the
+// `patient_privacy_flag_snapshot` (active privacy RESTRICTIONS — a flag present = restricted, e.g.
+// `sud` = 42 CFR Part 2) via GET /privacy-flags, and the patient's active consents (M39, FB-T03 live)
+// via GET /patients/:id/consents. §7.6 fail-closed: when the patient is SUD-restricted and the server
+// reports the records non-disclosable (`sudDisclosable: false`), the Part-2 surface renders a redacted
+// notice instead of detail — the client never fabricates disclosability the server didn't grant.
+interface PrivacyFlags {
+  flags: string[];
+  capturedAt: string | null;
+  sudRestricted: boolean;
+  sudDisclosable: boolean;
+}
+
+// One active consent row (M39 ConsentRecordView; the /consents route is unenriched so it's read loosely).
+interface ConsentRecord {
+  id: string;
+  typeKey: string;
+  status: string;
+  grantorKind?: string;
+  effectiveAt: string | null;
+  expiresAt: string | null;
+  signedAt: string | null;
+}
+
+const FLAG_LABELS: Record<string, string> = {
+  sud: "Substance use (42 CFR Part 2)",
+  hiv: "HIV / AIDS",
+  mental_health: "Mental health",
+  genetic: "Genetic",
+  minor_restricted: "Minor — restricted",
+  abuse_victim: "Abuse victim",
+};
+const flagLabel = (f: string) => FLAG_LABELS[f] ?? titleCase(f);
+
+function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
+  const client = useApiClient();
+  const [flags, setFlags] = useState<PrivacyFlags | null>(null);
+  const [consents, setConsents] = useState<ConsentRecord[] | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      setStatus("loading");
+      const [pf, cons] = await Promise.all([
+        client.GET("/api/v1/patients/{id}/privacy-flags", { params: { path: { id: patientId } } }),
+        client.GET("/api/v1/patients/{patientId}/consents", { params: { path: { patientId } } }),
+      ]);
+      if (!active) return;
+      // The privacy-flags read is the tab's spine; a consents failure degrades that section only.
+      if (pf.error || !pf.data) return setStatus("error");
+      setFlags(pf.data as PrivacyFlags);
+      setConsents(cons.error || !cons.data ? [] : ((cons.data as { data: ConsentRecord[] }).data ?? []));
+      setStatus("ready");
+    })();
+    return () => {
+      active = false;
+    };
+  }, [client, patientId]);
+
+  if (status === "loading") return <LoadingSpinner />;
+  if (status === "error" || flags === null) {
+    return <p style={{ color: "#b91c1c", fontSize: "0.9rem" }}>Privacy flags could not be loaded.</p>;
+  }
+
+  const nonSud = flags.flags.filter((f) => f !== "sud");
+
+  return (
+    <>
+      <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>Privacy Flags</h2>
+
+      <h3 style={h3}>Active restrictions</h3>
+      {flags.flags.length === 0 ? (
+        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>No privacy restrictions on file.</p>
+      ) : (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", margin: "0.4rem 0 0" }}>
+          {flags.sudRestricted ? (
+            <span style={badge("#fef2f2", "#b91c1c")} title="42 CFR Part 2 — SUD records require a Part 2 consent to disclose">
+              {flagLabel("sud")}
+            </span>
+          ) : null}
+          {nonSud.map((f) => (
+            <span key={f} style={badge("#fef3c7", "#92400e")}>{flagLabel(f)}</span>
+          ))}
+        </div>
+      )}
+      {flags.capturedAt ? (
+        <p style={{ color: "#9ca3af", fontSize: "0.78rem", margin: "0.4rem 0 0" }}>
+          Snapshot captured {flags.capturedAt.slice(0, 10)} · recomputed from consent (M39).
+        </p>
+      ) : null}
+
+      {flags.sudRestricted ? (
+        <>
+          <h3 style={h3}>Substance use (42 CFR Part 2)</h3>
+          {flags.sudDisclosable ? (
+            <p style={{ color: "#374151", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>
+              A Part 2 consent is on file — SUD-categorized records are disclosable to authorized care.
+            </p>
+          ) : (
+            // §7.6 fail-closed: no Part-2 consent → the protected detail is redacted, not fabricated.
+            <div style={{ border: "1px solid #fecaca", background: "#fef2f2", borderRadius: "0.5rem", padding: "0.6rem 0.75rem", margin: "0.4rem 0 0", fontSize: "0.85rem", color: "#991b1b" }}>
+              <strong>Redacted.</strong> Substance-use (42 CFR Part 2) records are restricted. Disclosure
+              requires a §2.31 Part 2 consent on file; none is active for this patient.
+            </div>
+          )}
+        </>
+      ) : null}
+
+      <h3 style={h3}>Active consents</h3>
+      {consents === null || consents.length === 0 ? (
+        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>No active consents on file.</p>
+      ) : (
+        <table style={{ borderCollapse: "collapse", fontSize: "0.85rem", width: "100%", maxWidth: 640 }}>
+          <thead>
+            <tr style={{ textAlign: "left", color: "#6b7280" }}>
+              <th style={th}>Type</th>
+              <th style={th}>Status</th>
+              <th style={th}>Effective</th>
+              <th style={th}>Expires</th>
+            </tr>
+          </thead>
+          <tbody>
+            {consents.map((c) => (
+              <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+                <td style={td}>{titleCase(c.typeKey)}</td>
+                <td style={td}>
+                  <span style={badge("#ecfdf5", "#047857")}>{c.status}</span>
+                </td>
+                <td style={td}>{c.effectiveAt ? c.effectiveAt.slice(0, 10) : "—"}</td>
+                <td style={td}>{c.expiresAt ? c.expiresAt.slice(0, 10) : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p style={{ color: "#9ca3af", fontSize: "0.78rem", margin: "0.6rem 0 0" }}>
+        Privacy flags are a denormalized snapshot recomputed from consent (M39); Part 2 / SUD detail
+        fails closed when no qualifying consent is on file.
       </p>
     </>
   );

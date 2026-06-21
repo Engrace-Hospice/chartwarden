@@ -13,6 +13,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { type SQL, and, asc, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { type MatchCandidate, runMatch } from "./matching/matcher";
 import { normalizeSubject } from "./matching/normalize";
+import { type PrivacyFlag, isSudReadAllowed } from "./privacy/index";
 import type {
   AddAddressInput,
   AddressView,
@@ -24,6 +25,7 @@ import type {
   PatientPayerView,
   PatientRouteService,
   PatientView,
+  PrivacyFlagsView,
 } from "./routes/service";
 
 const ID = schema.patientIdentifiers;
@@ -35,6 +37,7 @@ const ASSIGN = schema.patientAssignments;
 const PCG = schema.patientCaregivers;
 const CG = schema.caregivers;
 const EC = schema.emergencyContacts;
+const PFS = schema.patientPrivacyFlagSnapshots;
 const SENSITIVE_KINDS = new Set(["ssn", "state_id"]);
 
 const P = schema.patients;
@@ -432,6 +435,35 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
       };
     });
 
+  // §3.5 / D10 Privacy Flags tab: the patient's active privacy RESTRICTIONS, read from the
+  // denormalized `patient_privacy_flag_snapshot` (recomputed from M39 `m39.consent.*` — at most one
+  // live row per patient, `invalidated_at IS NULL`). A flag present = restricted. The §7.6 SUD read
+  // gate is decided by the M5 privacy engine (`isSudReadAllowed`) — FAIL-CLOSED: a SUD-flagged patient
+  // is non-disclosable here (the snapshot's flag is the source until the M39 consent-present signal is
+  // wired live). RLS scopes by app.org_id; 404 (null) when the patient is absent / out of org
+  // (§7.5 no-leak), mirroring listAddresses/listPayers/getCareTeam.
+  const getPrivacyFlags = async (organizationId: string, patientId: string): Promise<PrivacyFlagsView | null> =>
+    withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      const exists = await tx.select({ id: P.id }).from(P).where(eq(P.id, patientId)).limit(1);
+      if (!exists[0]) return null;
+      const rows = await tx
+        .select({ flags: PFS.flags, capturedAt: PFS.capturedAt, invalidatedAt: PFS.invalidatedAt })
+        .from(PFS)
+        .where(and(eq(PFS.patientId, patientId), isNull(PFS.invalidatedAt)))
+        .limit(1);
+      const snapshot = rows[0];
+      const flags = snapshot?.flags ?? [];
+      // §7.6 fail-closed: no separate consent-present signal at this layer, so the snapshot flag IS the
+      // source — a SUD-restricted patient is non-disclosable (`isSudReadAllowed(flags, false)`).
+      const sudDisclosable = isSudReadAllowed(flags as readonly PrivacyFlag[], false);
+      return {
+        flags,
+        capturedAt: snapshot?.capturedAt ? snapshot.capturedAt.toISOString() : null,
+        sudRestricted: flags.includes("sud"),
+        sudDisclosable,
+      };
+    });
+
   // §7.4 / D5: append a patient address (US addresses require a state — patient_address CHECK) + report
   // the address-change cascade event. An `isPrimary` add performs ATOMIC primary rotation in one tx:
   // close the prior current primary (set effective_to so the partial unique index frees up), then
@@ -520,5 +552,5 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
 
   // `writes` (in-memory) is no longer needed — all writes are real now.
 
-  return { list, getPatient, getDemographics, getIdentifiers, listAddresses, listPayers, getCareTeam, admit, addAddress, submitAmendment, decideAmendment };
+  return { list, getPatient, getDemographics, getIdentifiers, listAddresses, listPayers, getCareTeam, getPrivacyFlags, admit, addAddress, submitAmendment, decideAmendment };
 }

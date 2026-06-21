@@ -221,6 +221,16 @@ export const PatientCareTeamResponseSchema = Type.Object({
   emergencyContacts: Type.Array(PatientEmergencyContactSchema),
 });
 
+// GET /api/v1/patients/:id/privacy-flags (§3.5, D10) — the active privacy RESTRICTIONS from the
+// `patient_privacy_flag_snapshot`. A flag present = restricted; `sudDisclosable` is the §7.6 SUD read
+// gate, FAIL-CLOSED (a SUD-flagged patient is non-disclosable until a Part-2 consent lifts the flag).
+export const PatientPrivacyFlagsResponseSchema = Type.Object({
+  flags: Type.Array(Type.String()),
+  capturedAt: Type.Union([Type.String(), Type.Null()]),
+  sudRestricted: Type.Boolean(),
+  sudDisclosable: Type.Boolean(),
+});
+
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   const converted = Value.Convert(schema, raw ?? {});
   if (!Value.Check(schema, converted)) {

@@ -97,6 +97,15 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
     return team;
   });
 
+  // --- §3.5/§7.6 privacy flags tab (active restrictions snapshot; SUD fail-closed disclosability) --
+  app.get("/api/v1/patients/:id/privacy-flags", { preHandler: [READ] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    const { id } = parse(LooseIdParamsSchema, request.params);
+    const flags = await service.getPrivacyFlags(organizationId, id);
+    if (flags === null) throw notFound("patient"); // §7.5 non-leak
+    return flags;
+  });
+
   // --- §4.2 admit (runs the §7.1 match pipeline; hard dup → 409) --------------------------------
   app.post("/api/v1/patients", { preHandler: [CREATE] }, async (request, reply) => {
     const { organizationId, userId } = actorOf(request);

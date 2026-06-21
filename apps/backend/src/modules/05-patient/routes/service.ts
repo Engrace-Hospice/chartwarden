@@ -140,6 +140,20 @@ export interface CareTeamView {
   readonly emergencyContacts: readonly EmergencyContactView[];
 }
 
+/**
+ * The §3.5 / D10 Privacy Flags tab payload. `flags` is the patient's active privacy RESTRICTIONS,
+ * read from the denormalized `patient_privacy_flag_snapshot` (recomputed from M39 `m39.consent.*`).
+ * A flag present = restricted (no active consent removes it). `sudRestricted` is `flags ∋ "sud"` (the
+ * 42 CFR Part 2 category); `sudDisclosable` is the §7.6 read gate decided by the M5 privacy engine —
+ * FAIL-CLOSED: a SUD-restricted patient is non-disclosable until a Part-2 consent lifts the flag.
+ */
+export interface PrivacyFlagsView {
+  readonly flags: readonly string[];
+  readonly capturedAt: string | null;
+  readonly sudRestricted: boolean;
+  readonly sudDisclosable: boolean;
+}
+
 /** The add-address capture contract (§7.4). `isPrimary` triggers atomic primary rotation. */
 export interface AddAddressInput {
   readonly line1: string;
@@ -229,6 +243,7 @@ export interface PatientRouteService {
   listAddresses(organizationId: string, patientId: string): Promise<AddressView[] | null>;
   listPayers(organizationId: string, patientId: string): Promise<PatientPayerView[] | null>;
   getCareTeam(organizationId: string, patientId: string): Promise<CareTeamView | null>;
+  getPrivacyFlags(organizationId: string, patientId: string): Promise<PrivacyFlagsView | null>;
   addAddress(
     organizationId: string,
     patientId: string,
@@ -402,6 +417,14 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
       if (!p || p.organizationId !== organizationId) return null; // §7.5 no-leak
       // The slice carries no care-team seed; production reads the M5 tables under RLS.
       return { assignments: [], caregivers: [], emergencyContacts: [] };
+    },
+
+    async getPrivacyFlags(organizationId, patientId) {
+      const p = patients.get(patientId);
+      if (!p || p.organizationId !== organizationId) return null; // §7.5 no-leak
+      // The slice carries no snapshot seed; production reads `patient_privacy_flag_snapshot` under RLS.
+      // No flags → unrestricted; SUD disclosable (§7.6 fail-closed only when the sud flag is present).
+      return { flags: [], capturedAt: null, sudRestricted: false, sudDisclosable: true };
     },
 
     async addAddress(_organizationId, patientId, address, _actorUserId) {

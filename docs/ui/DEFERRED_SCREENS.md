@@ -33,7 +33,7 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 | 1 | M2 | Authentication & Session | `screens/core/WARDENX_UI_AUTH.md` | Auth Flow | ✓ `CenteredCardLayout` | done¹ |
 | 2 | M1+M2+M3 | App Shell & Role Home | `screens/core/WARDENX_UI_APP_SHELL_HOME.md` | App Shell | ✓ shell (F0-T03) | done³ |
 | 3 | M1 | System / Utility Pages | `screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md` | System Page | ✓ `CenteredStatusLayout` | done |
-| 4 | M5 | Patient Chart | `screens/clinical/WARDENX_UI_PATIENT_CHART.md` | Patient Workspace | ✓ `PatientWorkspaceLayout` | done (frame + Demographics + Addresses + Coverage + Care Team tabs)⁴ ⁹ ¹⁰ ¹¹ |
+| 4 | M5 | Patient Chart | `screens/clinical/WARDENX_UI_PATIENT_CHART.md` | Patient Workspace | ✓ `PatientWorkspaceLayout` | done (frame + Demographics + Addresses + Coverage + Care Team + Privacy Flags tabs)⁴ ⁹ ¹⁰ ¹¹ ¹² |
 | 5 | M5 | Patient List / Census | `screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md` | Work Queue | ✓ `WorkQueueLayout` | done² |
 | 6 | M3 | Roles & Permissions | `screens/admin/WARDENX_UI_ROLES_PERMISSIONS.md` | Admin Split Layout | ✓ `AdminSplitLayout` | done |
 | 7 | M4 | Audit Log Viewer | `screens/admin/WARDENX_UI_AUDIT_LOG_VIEWER.md` | Work Queue | ✓ `WorkQueueLayout` | done |
@@ -89,6 +89,20 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > shows its care-team role + the short clinician id honestly rather than a fabricated name. **No
 > cross-module backend coupling** (no new `dependsOn` edge, no M2 schema import). Closed assignments /
 > ended involvements render under "Past involvement".
+
+> ¹² **Patient Chart — Privacy Flags tab now LIVE (FB-T10).** The consent-gated M5-owned tab composes
+> two live reads: the §3.5/D10 `patient_privacy_flag_snapshot` via a new gated
+> `GET /api/v1/patients/:id/privacy-flags` (`requirePermission("patient.read")`, RLS-scoped, 404-no-leak),
+> backed by the Drizzle `PatientRouteService.getPrivacyFlags` (live row = `invalidated_at IS NULL`); and
+> the patient's active consents via the M39 `GET /api/v1/patients/:id/consents` (mounted LIVE in FB-T03,
+> RLS-scoped). The snapshot's active **restriction** flags render as badges (a flag present = restricted);
+> `sud` is the **42 CFR Part 2** category. **§7.6 fail-closed:** the server decides disclosability with
+> the M5 privacy engine (`isSudReadAllowed(flags, false)` — the snapshot flag is the source until the M39
+> consent-present signal is wired live), and when a SUD-restricted patient is non-disclosable the Part 2
+> surface renders a **redacted** notice rather than fabricated detail. **No cross-module backend coupling**
+> (the consents read is M39's own route at the client edge; no new `dependsOn` edge, no M39 schema import).
+> This makes **M39's "consent inside Patient Chart" surface (no standalone screen — see below) covered by
+> #4**.
 
 > ⁶ **M38 Terminology — now LIVE end-to-end (FB-T01).** The terminology routes are mounted in the
 > composition root (`registerTerminologyRoutes` in `apps/backend/src/index.ts`), and the published
@@ -189,10 +203,13 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > but **not yet mounted in the running server**, and the membership store is in-memory — a backend
 > mount + DB-store follow-up shared across all modules.
 
-### M39 Consent — no standalone staff screen (backend now LIVE, FB-T03)
+### M39 Consent — no standalone staff screen (backend LIVE FB-T03; consent surface LIVE FB-T10)
 
 M39 has no dedicated screen in the index; consent surfaces inside **Patient Chart** (a tab, #4) and the
-patient-facing **Portal Documents/Consents** (M31, blocked). No separate Track A row — covered by #4.
+patient-facing **Portal Documents/Consents** (M31, blocked). No separate Track A row — **covered by #4,
+now LIVE**: the Patient Chart **Privacy Flags** tab (FB-T10, footnote ¹²) renders the patient's active
+consents from `GET /api/v1/patients/:id/consents` alongside the privacy-flag snapshot, with the §7.6 SUD /
+42 CFR Part 2 surface failing closed when non-disclosable.
 
 **M39 backend now LIVE end-to-end (FB-T03).** The consent routes are mounted in the composition root
 (`mountConsentRoutes` in `apps/backend/src/index.ts`), and the published `ConsentEvaluator` seam (§4.3,

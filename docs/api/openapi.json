@@ -4040,6 +4040,73 @@
         }
       }
     },
+    "/api/v1/patients/{id}/privacy-flags": {
+      "get": {
+        "operationId": "getApiV1PatientsByIdPrivacyflags",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Patient privacy flags — active restrictions snapshot; SUD §7.6 fail-closed (§3.5/D10)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "flags",
+                    "capturedAt",
+                    "sudRestricted",
+                    "sudDisclosable"
+                  ],
+                  "properties": {
+                    "flags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "capturedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sudRestricted": {
+                      "type": "boolean"
+                    },
+                    "sudDisclosable": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/patients/{patientId}/consents": {
       "get": {
         "operationId": "getApiV1PatientsByPatientIdConsents",

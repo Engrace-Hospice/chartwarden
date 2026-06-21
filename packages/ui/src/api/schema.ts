@@ -1116,6 +1116,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{id}/privacy-flags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Patient privacy flags — active restrictions snapshot; SUD §7.6 fail-closed (§3.5/D10) */
+        get: operations["getApiV1PatientsByIdPrivacyflags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{patientId}/consents": {
         parameters: {
             query?: never;
@@ -3508,6 +3525,35 @@ export interface operations {
                             effectiveFrom: string;
                             effectiveTo: string | null;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PatientsByIdPrivacyflags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        flags: string[];
+                        capturedAt: string | null;
+                        sudRestricted: boolean;
+                        sudDisclosable: boolean;
                     };
                 };
             };

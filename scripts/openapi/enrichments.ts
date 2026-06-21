@@ -31,6 +31,7 @@ import {
   PatientListQuerySchema,
   PatientListResponseSchema,
   PatientPayersResponseSchema,
+  PatientPrivacyFlagsResponseSchema,
   PatientSummarySchema,
 } from "../../apps/backend/src/modules/05-patient/routes/patient-typebox";
 import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
@@ -312,6 +313,10 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/patients/:id/care-team": {
     summary: "Patient care team — assignment roster + caregivers + emergency contacts (§3.4/§3.5)",
     response: PatientCareTeamResponseSchema,
+  },
+  "GET /api/v1/patients/:id/privacy-flags": {
+    summary: "Patient privacy flags — active restrictions snapshot; SUD §7.6 fail-closed (§3.5/D10)",
+    response: PatientPrivacyFlagsResponseSchema,
   },
   "POST /api/v1/patients/:id/amendments": {
     body: AmendmentBodySchema,
