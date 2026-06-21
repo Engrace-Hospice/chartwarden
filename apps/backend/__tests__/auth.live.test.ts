@@ -306,6 +306,10 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
     )).rows[0].id as string;
     await admin.query("INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)", [org, adminMem, adminRole]);
 
+    const { runWithRequestContext } = await import("@wardenx/tenancy");
+    const inOrg = <T>(fn: () => Promise<T>) =>
+      runWithRequestContext({ organizationId: org, userId: adminUser } as never, fn);
+
     const roster = await repo.listForOrg(org);
     expect(roster).toHaveLength(2);
     expect(roster.every((m) => m.organizationName === "Maple Org")).toBe(true);
@@ -313,9 +317,10 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
     expect(roster.find((m) => m.userId === rnUser)?.isAdmin).toBe(false);
     expect(await repo.activeAdminCount(org)).toBe(1);
 
-    // A status change persists and the roster reflects it.
-    await repo.setStatus(adminMem, "suspended");
-    expect((await repo.get(adminMem))?.status).toBe("suspended");
+    // A status change persists and the roster reflects it. get()/setStatus() resolve the membership
+    // by id under the AMBIENT request org (withOrgContextFromRequest), so the call is wrapped here.
+    await inOrg(() => repo.setStatus(adminMem, "suspended"));
+    expect((await inOrg(() => repo.get(adminMem)))?.status).toBe("suspended");
     expect(await repo.activeAdminCount(org)).toBe(0); // suspended admin no longer counts
 
     await handle6.close();
