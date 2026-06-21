@@ -11,8 +11,8 @@
 import type { DbClient } from "@wardenx/db";
 import { schema } from "@wardenx/db";
 import type { AdminMembershipReader } from "@wardenx/types";
-import { withOrgContext } from "@wardenx/tenancy";
-import { and, eq } from "drizzle-orm";
+import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
+import { eq } from "drizzle-orm";
 import type { MembershipRecord, MembershipRepository, MembershipStatus } from "./identity-ports";
 
 const MEMBERSHIP_COLUMNS = {
@@ -63,24 +63,32 @@ export function createDbMembershipRepository(
       return rows.map((r) => toRecord(r, adminIds));
     });
 
-  const oneById = async (membershipId: string): Promise<MembershipRecord | null> => {
-    const rows = (await db
-      .select(MEMBERSHIP_COLUMNS)
-      .from(schema.memberships)
-      .innerJoin(schema.organizations, eq(schema.organizations.id, schema.memberships.organizationId))
-      .where(eq(schema.memberships.id, membershipId))
-      .limit(1)) as MembershipDbRow[];
-    const row = rows[0];
-    if (!row) return null;
-    const adminIds = await admin.adminMembershipIds(row.organizationId);
-    return toRecord(row, adminIds);
-  };
+  // Org-scoped by-id read: runs under the AMBIENT request org (withOrgContextFromRequest), so RLS
+  // scopes by app.org_id under the real wardenx_app role — a bare `WHERE id=…` would return nothing
+  // there. The route already requires the membership to be in the caller's org, so scoping to the
+  // request org is exactly the intended semantics.
+  const oneById = async (membershipId: string): Promise<MembershipRecord | null> =>
+    withOrgContextFromRequest(db, async (tx) => {
+      const rows = (await tx
+        .select(MEMBERSHIP_COLUMNS)
+        .from(schema.memberships)
+        .innerJoin(schema.organizations, eq(schema.organizations.id, schema.memberships.organizationId))
+        .where(eq(schema.memberships.id, membershipId))
+        .limit(1)) as MembershipDbRow[];
+      const row = rows[0];
+      if (!row) return null;
+      const adminIds = await admin.adminMembershipIds(row.organizationId);
+      return toRecord(row, adminIds);
+    });
 
   return {
     listForOrg: (organizationId) => selectByOrg(organizationId),
 
     listForUser: async (userId) => {
-      // Pre-org-bind (/auth/memberships): the user's memberships across orgs. Keyed by user, not org.
+      // Pre-org-bind (/auth/memberships): the user's memberships ACROSS orgs — there is no single org
+      // to scope to. The org-only membership RLS policy can't express "my own memberships", so under
+      // the real wardenx_app role this needs a `user_id = app.user_id` read policy (a follow-up); the
+      // bare query below is correct only under a BYPASSRLS/platform connection.
       const rows = (await db
         .select(MEMBERSHIP_COLUMNS)
         .from(schema.memberships)

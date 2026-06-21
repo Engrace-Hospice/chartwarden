@@ -12,6 +12,7 @@
 // plugin — without `fastify-plugin` a registered plugin's hooks would not see routes in
 // the parent scope. Applying on the root keeps the hook global.
 import { randomUUID } from "node:crypto";
+import { runWithRequestContext } from "@wardenx/tenancy";
 import type { HttpRequestContext } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 
@@ -44,5 +45,14 @@ export function applyRequestContext(app: FastifyInstance): void {
     };
 
     request.log = request.log.child({ correlationId, requestId: request.id });
+  });
+
+  // Make `request.context` the AMBIENT request context (AsyncLocalStorage) for the rest of the
+  // request — authenticate (a later onRequest hook) mutates it in place with the tenant/actor, and
+  // because the SAME object is stored, store reads via `withOrgContextFromRequest` see the live
+  // org/user at query time. The callback (`done`) form keeps the context active across the async
+  // continuation (subsequent hooks + the handler). Must run after the context-creation hook above.
+  app.addHook("onRequest", (request, _reply, done) => {
+    runWithRequestContext(request.context, () => done());
   });
 }

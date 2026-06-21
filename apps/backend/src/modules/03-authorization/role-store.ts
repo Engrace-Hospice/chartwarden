@@ -12,7 +12,7 @@
 import type { DbClient } from "@wardenx/db";
 import { schema } from "@wardenx/db";
 import type { ScopeLevel } from "@wardenx/auth";
-import { withOrgContext } from "@wardenx/tenancy";
+import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import type { RoleStore, RoleView } from "./authz-ports";
 
@@ -92,11 +92,17 @@ export function createDbRoleStore(db: DbClient): RoleStore {
     },
 
     async get(roleId: string): Promise<RoleView | null> {
-      // No org scope on the request; read the row, then project (RLS still applies on the connection).
-      const rows = (await db.select(ROLE_COLUMNS).from(schema.roles).where(eq(schema.roles.id, roleId)).limit(1)) as RoleRow[];
-      if (rows.length === 0) return null;
-      const views = await toViews(db, rows);
-      return views[0] ?? null;
+      // By-id read under the AMBIENT request org (withOrgContextFromRequest) so RLS scopes by
+      // app.org_id under wardenx_app; a system template (org_id NULL) stays visible in any scope.
+      return withOrgContextFromRequest(db, async (tx) => {
+        const rows = (await tx
+          .select(ROLE_COLUMNS)
+          .from(schema.roles)
+          .where(eq(schema.roles.id, roleId))
+          .limit(1)) as RoleRow[];
+        if (rows.length === 0) return null;
+        return (await toViews(tx, rows))[0] ?? null;
+      });
     },
 
     async createCustom(input): Promise<RoleView> {
