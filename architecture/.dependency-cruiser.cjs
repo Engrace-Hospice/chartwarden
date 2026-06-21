@@ -129,6 +129,17 @@ module.exports = {
         pathNot: anyOf(["packages/shared", "packages/types", "packages/ui"]),
       },
     },
+    {
+      name: "ui-core-renderer-free",
+      comment:
+        "packages/ui/src/core is the react-dom-free shared layer (ADR-0035): typed API client, " +
+        "context providers, hooks, theme tokens, and native-capability ports. It may NOT import " +
+        "the web rendering layer (packages/ui/src/web), so it stays usable by the Capacitor native " +
+        "build (and a future React Native consumer) without pulling in React DOM.",
+      severity: "error",
+      from: { path: p("packages/ui/src/core") },
+      to: { path: p("packages/ui/src/web") },
+    },
     ...vendorRules,
     ...helperTableRules,
     ...moduleBoundaryRules,
