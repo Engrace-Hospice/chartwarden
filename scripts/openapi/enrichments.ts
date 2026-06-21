@@ -220,6 +220,31 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "Accept an invitation token → membership (§7.1)",
     body: Type.Object({ token: Type.String({ minLength: 1 }) }),
   },
+  // M2 Identity — Staff Management (Track A): org member roster + invitations + lifecycle.
+  "GET /api/v1/orgs/:id/members": {
+    summary: "List an org's members (member.manage, §6)",
+    response: Type.Object({ members: Type.Array(MembershipViewSchema) }),
+  },
+  "POST /api/v1/orgs/:id/invitations": {
+    summary: "Invite a member by email — token emailed, never returned (§7.1)",
+    body: Type.Object({
+      email: Type.String({ format: "email" }),
+      proposedRoleKeys: Type.Optional(Type.Array(Type.String())),
+      proposedDefaultLocationIds: Type.Optional(Type.Array(Type.String())),
+    }),
+  },
+  "PATCH /api/v1/orgs/:id/members/:mId": {
+    summary: "Change a member's status (active|suspended) or default locations; last-admin guarded (§6)",
+    body: Type.Object({
+      status: Type.Optional(Type.Union([Type.Literal("active"), Type.Literal("suspended")])),
+      defaultLocationIds: Type.Optional(Type.Array(Type.String())),
+    }),
+    response: MembershipViewSchema,
+  },
+  "DELETE /api/v1/orgs/:id/members/:mId": {
+    summary: "Revoke a membership (terminates its sessions; last-admin guarded, §6/§7.5)",
+    response: Type.Object({ revoked: Type.Boolean() }),
+  },
   // M2 Identity — session step-up (§4.4). Manual parse() in routes/session-step-up.ts; the wire shapes
   // are mirrored here for the client. SMS is intentionally absent (D9 — only webauthn + totp qualify).
   "POST /api/v1/sessions/step-up/initiate": {

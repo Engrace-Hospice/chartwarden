@@ -84,7 +84,16 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 |-----------|--------|------|-----------|--------|
 | M5 + M2/M3 | Global Search Results | `screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md` | aggregates entities from later modules; M5 patient search ready | deferred (partial) |
 | M2 + M36 + M17 | User Profile & Preferences | `screens/core/WARDENX_UI_USER_PROFILE_PREFERENCES.md` | M17 (scheduling prefs) | deferred (partial) |
-| M2 / M34 | Staff Management | `screens/admin/WARDENX_UI_STAFF_MANAGEMENT.md` | confirm owner M2 (memberships) vs M34 | deferred (partial) |
+| M2 / M34 | Staff Management | `screens/admin/WARDENX_UI_STAFF_MANAGEMENT.md` | owner = M2 (memberships); Name/email, Discipline, Credentials, Last-login, Pending-invite/Locked KPIs need richer member data / M34 | done (M2 roster)⁵ |
+
+> ⁵ **Staff Management — built at the M2 roster level** (`apps/web/src/modules/02-identity/staff-management.tsx`,
+> `/admin/staff`, Work Queue). Invite by email, change member status (active/suspended), and revoke a
+> membership — over the M2 member routes via the generated client; active org from the session. Owner
+> question resolved: **M2** (memberships). Deferred to richer member data / M34: Name/email, Discipline,
+> Credentials, Last-login columns and the Pending-invite / Locked-account KPIs. Like every Track A screen,
+> this is built against the typed contract; the M2 member routes are coded + unit-tested (Fastify `inject`)
+> but **not yet mounted in the running server**, and the membership store is in-memory — a backend
+> mount + DB-store follow-up shared across all modules.
 
 ### M39 Consent — no standalone staff screen
 
