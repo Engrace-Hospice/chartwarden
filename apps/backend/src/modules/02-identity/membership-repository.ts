@@ -12,7 +12,7 @@ import type { DbClient } from "@wardenx/db";
 import { schema } from "@wardenx/db";
 import type { AdminMembershipReader } from "@wardenx/types";
 import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { MembershipRecord, MembershipRepository, MembershipStatus } from "./identity-ports";
 
 const MEMBERSHIP_COLUMNS = {
@@ -52,13 +52,23 @@ export function createDbMembershipRepository(
 ): MembershipRepository {
   const ctx = (orgId: string) => ({ organizationId: orgId, userId: "" });
 
-  const selectByOrg = (orgId: string) =>
+  const selectByOrg = (orgId: string, q?: string) =>
     withOrgContext(db, ctx(orgId), async (tx) => {
+      // `q` (Global Search staff facet, FB-T11) narrows by the wrapped user's identity. RLS still
+      // scopes the org; the ILIKE is an additional in-org filter (forward-compatible to name/email).
+      const needle = q?.trim();
+      // user_id is a uuid; cast to text for the substring match (Postgres has no uuid ILIKE).
+      const where = needle
+        ? and(
+            eq(schema.memberships.organizationId, orgId),
+            sql`${schema.memberships.userId}::text ILIKE ${`%${needle}%`}`,
+          )
+        : eq(schema.memberships.organizationId, orgId);
       const rows = (await tx
         .select(MEMBERSHIP_COLUMNS)
         .from(schema.memberships)
         .innerJoin(schema.organizations, eq(schema.organizations.id, schema.memberships.organizationId))
-        .where(eq(schema.memberships.organizationId, orgId))) as MembershipDbRow[];
+        .where(where)) as MembershipDbRow[];
       const adminIds = await admin.adminMembershipIds(orgId);
       return rows.map((r) => toRecord(r, adminIds));
     });
@@ -82,7 +92,7 @@ export function createDbMembershipRepository(
     });
 
   return {
-    listForOrg: (organizationId) => selectByOrg(organizationId),
+    listForOrg: (organizationId, q) => selectByOrg(organizationId, q),
 
     listForUser: async (userId) => {
       // Pre-org-bind (/auth/memberships): the user's memberships ACROSS orgs — there is no single org

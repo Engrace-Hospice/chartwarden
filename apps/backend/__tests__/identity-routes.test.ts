@@ -301,6 +301,22 @@ describe("M2-T06 identity route inventory", () => {
       });
       expect(res.statusCode).toBe(200);
       expect(res.json().members).toHaveLength(3);
+      // FB-T11 — the view now carries userId (the staff-facet identity key).
+      expect(res.json().members[0]).toHaveProperty("userId");
+      await app.close();
+    });
+
+    it("GET /orgs/:id/members?q narrows the roster by user identity (FB-T11 staff facet)", async () => {
+      const { app } = makeServer({ seed: seed() });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/orgs/org_a/members?q=rn_user",
+        headers: ADMIN,
+      });
+      expect(res.statusCode).toBe(200);
+      const members = res.json().members as Array<{ membershipId: string; userId: string }>;
+      expect(members).toHaveLength(1);
+      expect(members[0]!.membershipId).toBe("rn_1");
       await app.close();
     });
 

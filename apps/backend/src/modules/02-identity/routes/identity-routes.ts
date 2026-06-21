@@ -102,6 +102,7 @@ function auditContextFor(
 
 const toView = (r: MembershipRecord): MembershipView => ({
   membershipId: r.membershipId,
+  userId: r.userId,
   organizationId: r.organizationId,
   organizationName: r.organizationName,
   status: r.status,
@@ -259,7 +260,11 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     await requirePermission("member.manage")(request);
     const orgId = (request.params as { id: string }).id;
     assertOrgMatch(request, orgId);
-    const rows = await deps.memberships.listForOrg(orgId);
+    // Optional `q` narrows the roster (Global Search staff facet, FB-T11). Server-side so the
+    // filter stays under RLS; the permission gate is unchanged (still member.manage).
+    const rawQ = (request.query as { q?: unknown } | null)?.q;
+    const q = typeof rawQ === "string" && rawQ.trim() ? rawQ.trim() : undefined;
+    const rows = await deps.memberships.listForOrg(orgId, q);
     return { members: rows.map(toView) };
   });
 

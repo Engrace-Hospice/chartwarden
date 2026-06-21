@@ -950,7 +950,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List an org's members (member.manage, §6) */
+        /** List an org's members; optional ?q narrows by user identity (member.manage, §6; FB-T11) */
         get: operations["getApiV1OrgsByIdMembers"];
         put?: never;
         post?: never;
@@ -1949,6 +1949,7 @@ export interface operations {
                     "application/json": {
                         memberships: {
                             membershipId: string;
+                            userId: string;
                             organizationId: string;
                             organizationName: string;
                             status: "pending" | "active" | "suspended" | "revoked";
@@ -3046,7 +3047,9 @@ export interface operations {
     };
     getApiV1OrgsByIdMembers: {
         parameters: {
-            query?: never;
+            query?: {
+                q?: string;
+            };
             header?: never;
             path: {
                 id: string;
@@ -3064,6 +3067,7 @@ export interface operations {
                     "application/json": {
                         members: {
                             membershipId: string;
+                            userId: string;
                             organizationId: string;
                             organizationName: string;
                             status: "pending" | "active" | "suspended" | "revoked";
@@ -3131,6 +3135,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         membershipId: string;
+                        userId: string;
                         organizationId: string;
                         organizationName: string;
                         status: "pending" | "active" | "suspended" | "revoked";

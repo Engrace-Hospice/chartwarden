@@ -801,6 +801,7 @@
                         "type": "object",
                         "required": [
                           "membershipId",
+                          "userId",
                           "organizationId",
                           "organizationName",
                           "status",
@@ -809,6 +810,9 @@
                         ],
                         "properties": {
                           "membershipId": {
+                            "type": "string"
+                          },
+                          "userId": {
                             "type": "string"
                           },
                           "organizationId": {
@@ -2503,13 +2507,22 @@
         "tags": [
           "02-identity"
         ],
-        "summary": "List an org's members (member.manage, §6)",
+        "summary": "List an org's members; optional ?q narrows by user identity (member.manage, §6; FB-T11)",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "description": "Narrow the roster by the wrapped user's identity",
               "type": "string"
             }
           }
@@ -2531,6 +2544,7 @@
                         "type": "object",
                         "required": [
                           "membershipId",
+                          "userId",
                           "organizationId",
                           "organizationName",
                           "status",
@@ -2539,6 +2553,9 @@
                         ],
                         "properties": {
                           "membershipId": {
+                            "type": "string"
+                          },
+                          "userId": {
                             "type": "string"
                           },
                           "organizationId": {
@@ -2678,6 +2695,7 @@
                   "type": "object",
                   "required": [
                     "membershipId",
+                    "userId",
                     "organizationId",
                     "organizationName",
                     "status",
@@ -2686,6 +2704,9 @@
                   ],
                   "properties": {
                     "membershipId": {
+                      "type": "string"
+                    },
+                    "userId": {
                       "type": "string"
                     },
                     "organizationId": {

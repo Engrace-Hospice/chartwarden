@@ -111,6 +111,7 @@ const MdmSearchResponseSchema = Type.Object({ results: Type.Array(MdmResolvedSum
 // apps/backend/src/modules/02-identity/routes/identity-routes.ts (toView / readString).
 const MembershipViewSchema = Type.Object({
   membershipId: Type.String(),
+  userId: Type.String(),
   organizationId: Type.String(),
   organizationName: Type.String(),
   status: Type.Union([
@@ -228,7 +229,10 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   },
   // M2 Identity — Staff Management (Track A): org member roster + invitations + lifecycle.
   "GET /api/v1/orgs/:id/members": {
-    summary: "List an org's members (member.manage, §6)",
+    summary: "List an org's members; optional ?q narrows by user identity (member.manage, §6; FB-T11)",
+    query: Type.Object({
+      q: Type.Optional(Type.String({ description: "Narrow the roster by the wrapped user's identity" })),
+    }),
     response: Type.Object({ members: Type.Array(MembershipViewSchema) }),
   },
   "POST /api/v1/orgs/:id/invitations": {

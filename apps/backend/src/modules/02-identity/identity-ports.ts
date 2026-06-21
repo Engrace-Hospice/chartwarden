@@ -44,6 +44,8 @@ export interface MembershipRecord {
 /** The membership view returned to clients (no internal-only fields beyond the lifecycle). */
 export interface MembershipView {
   readonly membershipId: string;
+  /** The user this membership wraps — the staff facet's identity key (richer name/email arrives FB-T12). */
+  readonly userId: string;
   readonly organizationId: string;
   readonly organizationName: string;
   readonly status: MembershipStatus;
@@ -76,7 +78,15 @@ export interface MembershipRepository {
     userId: string,
     organizationId: string,
   ): Promise<MembershipRecord | null> | MembershipRecord | null;
-  listForOrg(organizationId: string): Promise<MembershipRecord[]> | MembershipRecord[];
+  /**
+   * List an org's memberships. `q` (optional) narrows by the wrapped user's identity — the staff
+   * facet of Global Search (FB-T11). The filter is forward-compatible: when the roster joins name/
+   * email (FB-T12), the same `q` extends to those fields server-side.
+   */
+  listForOrg(
+    organizationId: string,
+    q?: string,
+  ): Promise<MembershipRecord[]> | MembershipRecord[];
   get(membershipId: string): Promise<MembershipRecord | null> | MembershipRecord | null;
   setStatus(
     membershipId: string,
@@ -231,8 +241,14 @@ export function createInMemoryMembershipRepository(seed: MembershipRecord[] = []
       [...rows.values()].find(
         (r) => r.userId === userId && r.organizationId === organizationId && r.status === "active",
       ) ?? null,
-    listForOrg: (organizationId) =>
-      [...rows.values()].filter((r) => r.organizationId === organizationId),
+    listForOrg: (organizationId, q) => {
+      const needle = q?.trim().toLowerCase();
+      return [...rows.values()].filter(
+        (r) =>
+          r.organizationId === organizationId &&
+          (!needle || r.userId.toLowerCase().includes(needle)),
+      );
+    },
     get: (membershipId) => rows.get(membershipId) ?? null,
     setStatus: (membershipId, status) => {
       const row = rows.get(membershipId);

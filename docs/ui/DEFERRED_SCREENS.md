@@ -190,7 +190,7 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 
 | Module(s) | Screen | Spec | Blocked-on | Status |
 |-----------|--------|------|-----------|--------|
-| M5 + M2/M3 | Global Search Results | `screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md` | aggregates entities from later modules; M5 patient search ready | deferred (partial) |
+| M5 + M2/M3 | Global Search Results | `screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md` | later facets (documents/orders/visits/commands) need unbuilt modules | done (partial — M5+M2 facets)⁶ |
 | M2 + M36 + M17 | User Profile & Preferences | `screens/core/WARDENX_UI_USER_PROFILE_PREFERENCES.md` | M17 (scheduling prefs) | deferred (partial) |
 | M2 / M34 | Staff Management | `screens/admin/WARDENX_UI_STAFF_MANAGEMENT.md` | owner = M2 (memberships); Name/email, Discipline, Credentials, Last-login, Pending-invite/Locked KPIs need richer member data / M34 | done (M2 roster)⁵ |
 
@@ -202,6 +202,18 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > this is built against the typed contract; the M2 member routes are coded + unit-tested (Fastify `inject`)
 > but **not yet mounted in the running server**, and the membership store is in-memory — a backend
 > mount + DB-store follow-up shared across all modules.
+
+> ⁶ **Global Search Results — built (partial — M5 + M2 facets, FB-T11).** The Global Search frame
+> (`apps/web/src/modules/05-patient/global-search.tsx`, `/search`, Work Queue: facets + grouped results
+> + result preview) ships with its two **live** facets: the M5 **patient** facet over
+> `GET /api/v1/patients?q=` (RLS/caseload-scoped server-side; the list carries no SSN/MBI, so the spec's
+> redaction holds by construction) and the M2 **staff** facet over `GET /api/v1/orgs/:id/members?q=`
+> (server-side `q` added in FB-T11 — narrows by the wrapped user identity; richer name/email search
+> arrives with the FB-T12 roster enrichment). The staff facet stays behind `member.manage`; a 403 / no
+> org-bound session degrades to a clear note, never a hard error. It is reachable from the new shell
+> **top-nav search** box (M1 layout, module-free — it only navigates to `/search?q=`). Later facets
+> (**documents / orders / visits / navigation-commands**) render as labeled "available when *module*
+> ships" rows — visible, not fabricated — and light up with M22 / M16 / M19 (Track B).
 
 ### M39 Consent — no standalone staff screen (backend LIVE FB-T03; consent surface LIVE FB-T10)
 
