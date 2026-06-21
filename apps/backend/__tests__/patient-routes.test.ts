@@ -204,6 +204,57 @@ describe("M5-T09 — patient routes (§4.2, §4.7 gating, §7.1/§7.4/§7.7)", (
     await app.close();
   });
 
+  it("§3.3 addresses tab: add → list shows the current row; geocode pending; denies without patient.read", async () => {
+    const { app } = makeServer();
+    const empty = await app.inject({ method: "GET", url: `/api/v1/patients/${EXISTING}/addresses`, headers: EDIT });
+    expect(empty.statusCode).toBe(200);
+    expect(empty.json().addresses).toHaveLength(0);
+
+    const add = await app.inject({
+      method: "POST",
+      url: `/api/v1/patients/${EXISTING}/addresses`,
+      headers: EDIT,
+      payload: { line1: "10 New St", city: "Portland", state: "OR", postalCode: "97201", isPrimary: true },
+    });
+    expect(add.statusCode).toBe(201);
+
+    const listed = await app.inject({ method: "GET", url: `/api/v1/patients/${EXISTING}/addresses`, headers: EDIT });
+    const rows = listed.json().addresses;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].current).toBe(true);
+    expect(rows[0].isPrimary).toBe(true);
+    expect(rows[0].effectiveTo).toBeNull();
+    expect(rows[0].geocodeLat).toBeNull(); // filled async by the geocode job
+
+    const denied = await app.inject({ method: "GET", url: `/api/v1/patients/${EXISTING}/addresses`, headers: NOPERM });
+    expect(denied.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("§7.4 D5 primary rotation: a new primary closes the prior current primary (append-only)", async () => {
+    const { app } = makeServer();
+    await app.inject({ method: "POST", url: `/api/v1/patients/${EXISTING}/addresses`, headers: EDIT, payload: { line1: "1 First Ave", city: "Portland", state: "OR", postalCode: "97201", isPrimary: true } });
+    await app.inject({ method: "POST", url: `/api/v1/patients/${EXISTING}/addresses`, headers: EDIT, payload: { line1: "2 Second Ave", city: "Salem", state: "OR", postalCode: "97301", isPrimary: true } });
+
+    const listed = await app.inject({ method: "GET", url: `/api/v1/patients/${EXISTING}/addresses`, headers: EDIT });
+    const rows = listed.json().addresses as Array<{ line1: string; isPrimary: boolean; current: boolean; effectiveTo: string | null }>;
+    expect(rows).toHaveLength(2); // append-only: the prior row is kept
+    const currentPrimaries = rows.filter((r) => r.current && r.isPrimary);
+    expect(currentPrimaries).toHaveLength(1); // at most one current primary
+    expect(currentPrimaries[0]!.line1).toBe("2 Second Ave");
+    const closed = rows.find((r) => r.line1 === "1 First Ave");
+    expect(closed!.current).toBe(false);
+    expect(closed!.effectiveTo).not.toBeNull();
+    await app.close();
+  });
+
+  it("§7.5 addresses for an unknown patient → 404 (no leak)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({ method: "GET", url: "/api/v1/patients/pat-nope/addresses", headers: EDIT });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
   it("§7.5 demographics/identifiers for an unknown patient → 404 (no leak)", async () => {
     const { app } = makeServer();
     const a = await app.inject({ method: "GET", url: "/api/v1/patients/pat-nope/demographics", headers: EDIT });

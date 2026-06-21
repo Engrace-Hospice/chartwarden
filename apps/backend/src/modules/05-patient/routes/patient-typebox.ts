@@ -16,12 +16,16 @@ if (!FormatRegistry.Has("uuid")) {
   FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
 }
 
+const ADDRESS_KINDS = ["home", "facility", "mailing", "temporary", "prior"] as const;
+
 const AddressSchema = Type.Object({
   line1: Type.String({ minLength: 1, maxLength: 200 }),
   line2: Type.Optional(Type.String({ maxLength: 200 })),
   city: Type.String({ minLength: 1, maxLength: 120 }),
   state: Type.Optional(Type.String({ minLength: 2, maxLength: 2 })),
   postalCode: Type.String({ minLength: 3, maxLength: 12 }),
+  kind: Type.Optional(Type.Union(ADDRESS_KINDS.map((k) => Type.Literal(k)))),
+  isPrimary: Type.Optional(Type.Boolean()),
 });
 
 export const IdParamsSchema = Type.Object({ id: Type.String({ format: "uuid" }) });
@@ -131,6 +135,30 @@ const PatientIdentifierSchema = Type.Object({
 
 export const PatientIdentifiersResponseSchema = Type.Object({
   identifiers: Type.Array(PatientIdentifierSchema),
+});
+
+// GET /api/v1/patients/:id/addresses (§3.3, D5 append-only history). `current` (effectiveTo null) rows
+// are the live addresses; closed rows are history. At most one `current && isPrimary` per patient.
+const PatientAddressSchema = Type.Object({
+  id: Type.String(),
+  kind: Type.String(),
+  line1: Type.String(),
+  line2: Type.Union([Type.String(), Type.Null()]),
+  city: Type.String(),
+  state: Type.Union([Type.String(), Type.Null()]),
+  postalCode: Type.String(),
+  country: Type.String(),
+  county: Type.Union([Type.String(), Type.Null()]),
+  isPrimary: Type.Boolean(),
+  current: Type.Boolean(),
+  effectiveFrom: Type.String(),
+  effectiveTo: Type.Union([Type.String(), Type.Null()]),
+  geocodeLat: Type.Union([Type.String(), Type.Null()]),
+  geocodeLng: Type.Union([Type.String(), Type.Null()]),
+});
+
+export const PatientAddressesResponseSchema = Type.Object({
+  addresses: Type.Array(PatientAddressSchema),
 });
 
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

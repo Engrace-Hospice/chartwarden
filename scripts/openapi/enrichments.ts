@@ -24,6 +24,7 @@ import {
   AdmitBodySchema,
   AmendmentBodySchema,
   DenyBodySchema,
+  PatientAddressesResponseSchema,
   PatientDemographicsSchema,
   PatientIdentifiersResponseSchema,
   PatientListQuerySchema,
@@ -294,9 +295,13 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: PatientIdentifiersResponseSchema,
   },
   "POST /api/v1/patients": { body: AdmitBodySchema, summary: "Admit a patient (§7.1 duplicate-check)" },
+  "GET /api/v1/patients/:id/addresses": {
+    summary: "Patient address history — D5 append-only; current + closed rows (§3.3)",
+    response: PatientAddressesResponseSchema,
+  },
   "POST /api/v1/patients/:id/addresses": {
     body: AddressBodySchema,
-    summary: "Append a patient address (§7.4 cascade)",
+    summary: "Append a patient address (§7.4 cascade; isPrimary rotates the current primary)",
   },
   "POST /api/v1/patients/:id/amendments": {
     body: AmendmentBodySchema,

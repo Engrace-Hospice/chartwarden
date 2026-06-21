@@ -1020,9 +1020,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Patient address history — D5 append-only; current + closed rows (§3.3) */
+        get: operations["getApiV1PatientsByIdAddresses"];
         put?: never;
-        /** Append a patient address (§7.4 cascade) */
+        /** Append a patient address (§7.4 cascade; isPrimary rotates the current primary) */
         post: operations["postApiV1PatientsByIdAddresses"];
         delete?: never;
         options?: never;
@@ -3201,6 +3202,48 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PatientsByIdAddresses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        addresses: {
+                            id: string;
+                            kind: string;
+                            line1: string;
+                            line2: string | null;
+                            city: string;
+                            state: string | null;
+                            postalCode: string;
+                            country: string;
+                            county: string | null;
+                            isPrimary: boolean;
+                            current: boolean;
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                            geocodeLat: string | null;
+                            geocodeLng: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1PatientsByIdAddresses: {
         parameters: {
             query?: never;
@@ -3218,6 +3261,8 @@ export interface operations {
                     city: string;
                     state?: string;
                     postalCode: string;
+                    kind?: "home" | "facility" | "mailing" | "temporary" | "prior";
+                    isPrimary?: boolean;
                 };
             };
         };

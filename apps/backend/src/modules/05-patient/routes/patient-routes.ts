@@ -96,6 +96,15 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
     return reply.code(201).send(result);
   });
 
+  // --- §3.3 addresses tab (D5 append-only history; current rows + history) ----------------------
+  app.get("/api/v1/patients/:id/addresses", { preHandler: [READ] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    const { id } = parse(LooseIdParamsSchema, request.params);
+    const rows = await service.listAddresses(organizationId, id);
+    if (rows === null) throw notFound("patient"); // §7.5 non-leak
+    return { addresses: rows };
+  });
+
   // --- §4.2 add address (§7.4 cascade) ---------------------------------------------------------
   app.post("/api/v1/patients/:id/addresses", { preHandler: [EDIT] }, async (request, reply) => {
     const { organizationId, userId } = actorOf(request);

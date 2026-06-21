@@ -3086,12 +3086,164 @@
       }
     },
     "/api/v1/patients/{id}/addresses": {
+      "get": {
+        "operationId": "getApiV1PatientsByIdAddresses",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Patient address history — D5 append-only; current + closed rows (§3.3)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "addresses"
+                  ],
+                  "properties": {
+                    "addresses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "kind",
+                          "line1",
+                          "line2",
+                          "city",
+                          "state",
+                          "postalCode",
+                          "country",
+                          "county",
+                          "isPrimary",
+                          "current",
+                          "effectiveFrom",
+                          "effectiveTo",
+                          "geocodeLat",
+                          "geocodeLng"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "line1": {
+                            "type": "string"
+                          },
+                          "line2": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "city": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "postalCode": {
+                            "type": "string"
+                          },
+                          "country": {
+                            "type": "string"
+                          },
+                          "county": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "isPrimary": {
+                            "type": "boolean"
+                          },
+                          "current": {
+                            "type": "boolean"
+                          },
+                          "effectiveFrom": {
+                            "type": "string"
+                          },
+                          "effectiveTo": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "geocodeLat": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "geocodeLng": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "post": {
         "operationId": "postApiV1PatientsByIdAddresses",
         "tags": [
           "05-patient"
         ],
-        "summary": "Append a patient address (§7.4 cascade)",
+        "summary": "Append a patient address (§7.4 cascade; isPrimary rotates the current primary)",
         "parameters": [
           {
             "name": "id",
@@ -3148,6 +3300,33 @@
                     "minLength": 3,
                     "maxLength": 12,
                     "type": "string"
+                  },
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "const": "home",
+                        "type": "string"
+                      },
+                      {
+                        "const": "facility",
+                        "type": "string"
+                      },
+                      {
+                        "const": "mailing",
+                        "type": "string"
+                      },
+                      {
+                        "const": "temporary",
+                        "type": "string"
+                      },
+                      {
+                        "const": "prior",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "isPrimary": {
+                    "type": "boolean"
                   }
                 }
               }

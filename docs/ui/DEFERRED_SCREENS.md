@@ -33,7 +33,7 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 | 1 | M2 | Authentication & Session | `screens/core/WARDENX_UI_AUTH.md` | Auth Flow | ✓ `CenteredCardLayout` | done¹ |
 | 2 | M1+M2+M3 | App Shell & Role Home | `screens/core/WARDENX_UI_APP_SHELL_HOME.md` | App Shell | ✓ shell (F0-T03) | done³ |
 | 3 | M1 | System / Utility Pages | `screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md` | System Page | ✓ `CenteredStatusLayout` | done |
-| 4 | M5 | Patient Chart | `screens/clinical/WARDENX_UI_PATIENT_CHART.md` | Patient Workspace | ✓ `PatientWorkspaceLayout` | done (frame + Demographics tab)⁴ |
+| 4 | M5 | Patient Chart | `screens/clinical/WARDENX_UI_PATIENT_CHART.md` | Patient Workspace | ✓ `PatientWorkspaceLayout` | done (frame + Demographics + Addresses tabs)⁴ ⁹ |
 | 5 | M5 | Patient List / Census | `screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md` | Work Queue | ✓ `WorkQueueLayout` | done² |
 | 6 | M3 | Roles & Permissions | `screens/admin/WARDENX_UI_ROLES_PERMISSIONS.md` | Admin Split Layout | ✓ `AdminSplitLayout` | done |
 | 7 | M4 | Audit Log Viewer | `screens/admin/WARDENX_UI_AUDIT_LOG_VIEWER.md` | Work Queue | ✓ `WorkQueueLayout` | done |
@@ -54,8 +54,19 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > identifiers return `value: null` and only the `value_last4` tail (`xxx-xx-####`) — the `value_encrypted`
 > ciphertext is *never selected*, so there is no decrypt path and no leak. MRN is flagged immutable.
 > Full SSN/state-ID reveal stays gated on `phi.read_ssn` (already in M5's catalog) and lands with the M5
-> SSN capture/decryption write-path follow-up. The remaining M5-owned tabs (Addresses FB-T07, Coverage
-> FB-T08, Care Team FB-T09, Privacy/Consent FB-T10) follow; cross-module tabs stay Track B.
+> SSN capture/decryption write-path follow-up. The remaining M5-owned tabs (Coverage FB-T08, Care Team
+> FB-T09, Privacy/Consent FB-T10) follow; cross-module tabs stay Track B.
+>
+> ⁹ **Patient Chart — Addresses tab now LIVE (FB-T07).** The M5-owned tab renders the D5 **append-only**
+> address history via a new gated `GET /api/v1/patients/:id/addresses` (`requirePermission("patient.read")`,
+> RLS-scoped, 404-no-leak on an out-of-org/absent patient). It shows the **current** rows (`effective_to IS
+> NULL`) — at most one current **primary** per patient — plus closed rows as history, and an add-address
+> form over the live M5 write path (`POST …/addresses`). Setting **primary** performs **atomic rotation**
+> in one `withOrgContext` transaction: the prior current primary is closed (`effective_to` set, freeing the
+> `is_primary && effective_to IS NULL` partial unique index) before the new row is appended — never an
+> overwrite. A **geocode badge** reflects whether the async M5 geocode job has filled lat/lng yet
+> (`geocoded` vs `geocoding…`). Verified end-to-end (list/add/rotate) by route tests; the live-PG path
+> (which alone exercises the partial-unique-index interaction) is covered in `auth.live.test.ts`.
 
 > ⁶ **M38 Terminology — now LIVE end-to-end (FB-T01).** The terminology routes are mounted in the
 > composition root (`registerTerminologyRoutes` in `apps/backend/src/index.ts`), and the published

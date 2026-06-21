@@ -5,7 +5,7 @@
 // cross-module tabs (Encounters, Orders, eMAR, …) graft on as those modules land (Track B). Backed by
 // GET /api/v1/patients/:id (+ /demographics, /identifiers) via the typed client.
 import { useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { FormEvent, JSX } from "react";
 import { useParams } from "react-router-dom";
 import {
   CenteredStatusLayout,
@@ -31,6 +31,7 @@ interface PatientSummary {
 const NAV_SECTIONS: { label: string; ready: boolean }[] = [
   { label: "Summary", ready: true },
   { label: "Demographics & Identifiers", ready: true },
+  { label: "Addresses", ready: true },
   { label: "Coverage / Payers", ready: false },
   { label: "Care Team & Assignments", ready: false },
   { label: "Care Plan", ready: false },
@@ -112,6 +113,8 @@ export function PatientChart(): JSX.Element {
         <div style={{ flex: 1, overflow: "auto", padding: "1.5rem" }}>
           {section === "Demographics & Identifiers" ? (
             <DemographicsTab patientId={p.id} />
+          ) : section === "Addresses" ? (
+            <AddressesTab patientId={p.id} />
           ) : (
             <SummaryTab patient={p} />
           )}
@@ -291,6 +294,189 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
     </>
   );
 }
+
+// D5 append-only address history: a primary change inserts a new row and closes the prior (effectiveTo).
+// `current` = the live row (effectiveTo null); at most one current primary per patient. geocodeLat/Lng
+// are filled asynchronously by the M5 geocode job, so a freshly-added row shows "geocoding…".
+interface Address {
+  id: string;
+  kind: string;
+  line1: string;
+  line2: string | null;
+  city: string;
+  state: string | null;
+  postalCode: string;
+  country: string;
+  county: string | null;
+  isPrimary: boolean;
+  current: boolean;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  geocodeLat: string | null;
+  geocodeLng: string | null;
+}
+
+const ADDRESS_KINDS = ["home", "facility", "mailing", "temporary", "prior"] as const;
+
+function AddressLine({ a }: { a: Address }): JSX.Element {
+  return (
+    <>
+      {a.line1}
+      {a.line2 ? `, ${a.line2}` : ""}, {a.city}
+      {a.state ? `, ${a.state}` : ""} {a.postalCode}
+      {a.country && a.country !== "US" ? ` · ${a.country}` : ""}
+    </>
+  );
+}
+
+function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
+  const client = useApiClient();
+  const [addresses, setAddresses] = useState<Address[] | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [form, setForm] = useState({ line1: "", line2: "", city: "", state: "", postalCode: "", kind: "home", isPrimary: false });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  async function load(active = { v: true }) {
+    setStatus("loading");
+    const res = await client.GET("/api/v1/patients/{id}/addresses", { params: { path: { id: patientId } } });
+    if (!active.v) return;
+    if (res.error || !res.data) return setStatus("error");
+    setAddresses((res.data as { addresses: Address[] }).addresses);
+    setStatus("ready");
+  }
+
+  useEffect(() => {
+    const active = { v: true };
+    void load(active);
+    return () => {
+      active.v = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, patientId]);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setSaveError(null);
+    const body: Record<string, unknown> = {
+      line1: form.line1,
+      city: form.city,
+      postalCode: form.postalCode,
+      kind: form.kind,
+      isPrimary: form.isPrimary,
+    };
+    if (form.line2) body.line2 = form.line2;
+    if (form.state) body.state = form.state.toUpperCase();
+    const res = await client.POST("/api/v1/patients/{id}/addresses", { params: { path: { id: patientId } }, body: body as never });
+    setSaving(false);
+    if (res.error) return setSaveError("Could not save the address. Check the fields and try again.");
+    setForm({ line1: "", line2: "", city: "", state: "", postalCode: "", kind: "home", isPrimary: false });
+    await load();
+  }
+
+  if (status === "loading" && addresses === null) return <LoadingSpinner />;
+  if (status === "error" || addresses === null) {
+    return <p style={{ color: "#b91c1c", fontSize: "0.9rem" }}>Addresses could not be loaded.</p>;
+  }
+
+  const current = addresses.filter((a) => a.current);
+  const history = addresses.filter((a) => !a.current);
+
+  return (
+    <>
+      <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>Addresses</h2>
+
+      <h3 style={h3}>Current</h3>
+      {current.length === 0 ? (
+        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>No current address on file.</p>
+      ) : (
+        <ul style={{ listStyle: "none", margin: "0.25rem 0 0", padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          {current.map((a) => (
+            <li key={a.id} style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", padding: "0.6rem 0.75rem", fontSize: "0.88rem" }}>
+              <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", marginBottom: "0.2rem" }}>
+                <span style={{ fontWeight: 600, textTransform: "capitalize" }}>{a.kind}</span>
+                {a.isPrimary ? <span style={badge("#eef2ff", "#4338ca")}>primary</span> : null}
+                {a.geocodeLat && a.geocodeLng ? (
+                  <span style={badge("#ecfdf5", "#047857")} title={`${a.geocodeLat}, ${a.geocodeLng}`}>geocoded</span>
+                ) : (
+                  <span style={badge("#f3f4f6", "#6b7280")} title="The M5 geocode job fills coordinates asynchronously">geocoding…</span>
+                )}
+              </div>
+              <div><AddressLine a={a} /></div>
+              <div style={{ color: "#9ca3af", fontSize: "0.78rem", marginTop: "0.2rem" }}>since {a.effectiveFrom}</div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <h3 style={h3}>Add address</h3>
+      <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: "0.4rem", maxWidth: 420, fontSize: "0.85rem" }}>
+        <input required placeholder="Street address" value={form.line1} onChange={(e) => setForm({ ...form, line1: e.target.value })} style={input} />
+        <input placeholder="Apt / suite (optional)" value={form.line2} onChange={(e) => setForm({ ...form, line2: e.target.value })} style={input} />
+        <div style={{ display: "flex", gap: "0.4rem" }}>
+          <input required placeholder="City" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} style={{ ...input, flex: 2 }} />
+          <input placeholder="ST" maxLength={2} value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} style={{ ...input, flex: 1, width: 60 }} />
+          <input required placeholder="ZIP" value={form.postalCode} onChange={(e) => setForm({ ...form, postalCode: e.target.value })} style={{ ...input, flex: 1 }} />
+        </div>
+        <div style={{ display: "flex", gap: "0.6rem", alignItems: "center" }}>
+          <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })} style={input}>
+            {ADDRESS_KINDS.map((k) => (
+              <option key={k} value={k}>{k}</option>
+            ))}
+          </select>
+          <label style={{ display: "flex", gap: "0.3rem", alignItems: "center", color: "#374151" }}>
+            <input type="checkbox" checked={form.isPrimary} onChange={(e) => setForm({ ...form, isPrimary: e.target.checked })} />
+            Set as primary
+          </label>
+        </div>
+        {form.isPrimary && current.some((a) => a.isPrimary) ? (
+          <p style={{ color: "#92400e", fontSize: "0.78rem", margin: 0 }}>The current primary address will be closed and moved to history.</p>
+        ) : null}
+        {saveError ? <p style={{ color: "#b91c1c", fontSize: "0.8rem", margin: 0 }}>{saveError}</p> : null}
+        <button type="submit" disabled={saving} style={{ alignSelf: "flex-start", padding: "0.4rem 0.9rem", borderRadius: "0.375rem", border: "1px solid #4338ca", background: saving ? "#c7d2fe" : "#4f46e5", color: "#fff", cursor: saving ? "default" : "pointer", fontSize: "0.85rem" }}>
+          {saving ? "Saving…" : "Add address"}
+        </button>
+      </form>
+
+      {history.length > 0 ? (
+        <>
+          <h3 style={h3}>History</h3>
+          <table style={{ borderCollapse: "collapse", fontSize: "0.82rem", width: "100%", maxWidth: 640 }}>
+            <thead>
+              <tr style={{ textAlign: "left", color: "#6b7280" }}>
+                <th style={th}>Type</th>
+                <th style={th}>Address</th>
+                <th style={th}>From</th>
+                <th style={th}>To</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((a) => (
+                <tr key={a.id} style={{ borderTop: "1px solid #f3f4f6", color: "#6b7280" }}>
+                  <td style={td}>
+                    {a.kind}
+                    {a.isPrimary ? <span style={{ color: "#9ca3af" }}> · was primary</span> : null}
+                  </td>
+                  <td style={td}><AddressLine a={a} /></td>
+                  <td style={td}>{a.effectiveFrom}</td>
+                  <td style={td}>{a.effectiveTo ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ) : null}
+      <p style={{ color: "#9ca3af", fontSize: "0.78rem", margin: "0.6rem 0 0" }}>
+        Addresses are append-only (D5): a change keeps the prior row as history rather than overwriting it.
+      </p>
+    </>
+  );
+}
+
+const input = { padding: "0.35rem 0.5rem", borderRadius: "0.375rem", border: "1px solid #d1d5db", fontSize: "0.85rem" } as const;
+const badge = (bg: string, fg: string) =>
+  ({ background: bg, color: fg, borderRadius: "0.25rem", padding: "0.05rem 0.4rem", fontSize: "0.72rem", fontWeight: 600 }) as const;
 
 const dt = { color: "#6b7280", margin: 0 } as const;
 const dd = { margin: 0 } as const;

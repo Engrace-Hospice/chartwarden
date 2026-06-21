@@ -41,6 +41,41 @@ export interface PatientView {
   readonly status: string;
 }
 
+/**
+ * One row of the §3.3 / D5 append-only `patient_address` history. A change inserts a NEW row and
+ * closes the prior with `effectiveTo`; `current` (effectiveTo IS NULL) is the live row. At most one
+ * `current && isPrimary` row per patient (a partial unique index enforces it). Geocode lat/lng are
+ * filled asynchronously by the M5-T10 geocode job, so they may be null on a freshly-added row.
+ */
+export interface AddressView {
+  readonly id: string;
+  readonly kind: string;
+  readonly line1: string;
+  readonly line2: string | null;
+  readonly city: string;
+  readonly state: string | null;
+  readonly postalCode: string;
+  readonly country: string;
+  readonly county: string | null;
+  readonly isPrimary: boolean;
+  readonly current: boolean; // effectiveTo IS NULL
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string | null;
+  readonly geocodeLat: string | null;
+  readonly geocodeLng: string | null;
+}
+
+/** The add-address capture contract (§7.4). `isPrimary` triggers atomic primary rotation. */
+export interface AddAddressInput {
+  readonly line1: string;
+  readonly line2?: string;
+  readonly city: string;
+  readonly state?: string;
+  readonly postalCode: string;
+  readonly kind?: string;
+  readonly isPrimary?: boolean;
+}
+
 /** An amendment record view (§7.7). */
 export interface AmendmentView {
   readonly id: string;
@@ -116,10 +151,11 @@ export interface PatientRouteService {
     organizationId: string,
     query: PatientListQuery,
   ): Promise<{ items: PatientView[]; nextCursor: string | null }>;
+  listAddresses(organizationId: string, patientId: string): Promise<AddressView[] | null>;
   addAddress(
     organizationId: string,
     patientId: string,
-    address: { line1: string; city: string; state?: string; postalCode: string },
+    address: AddAddressInput,
     actorUserId: string,
   ): Promise<{ addressId: string; cascadeEmitted: "m5.patient.address_changed" }>;
   submitAmendment(
@@ -155,6 +191,7 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
   const candidates: (PatientView & MatchCandidate)[] = [...(seed.patients ?? [])];
   for (const p of candidates) patients.set(p.id, p);
   const amendments = new Map<string, AmendmentView>();
+  const addresses = new Map<string, AddressView[]>(); // patientId → append-only address history
   const now = seed.now ?? (() => new Date("2026-06-20T00:00:00Z"));
   let seq = 0;
   const nextId = (p: string) => `${p}_${(seq += 1)}`;
@@ -261,10 +298,50 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
       return { items: page, nextCursor: nextOffset < filtered.length ? String(nextOffset) : null };
     },
 
-    async addAddress(_organizationId, patientId, _address, _actorUserId) {
-      // §7.4: append-only address + the address-change cascade event.
+    async listAddresses(organizationId, patientId) {
+      const p = patients.get(patientId);
+      if (!p || p.organizationId !== organizationId) return null; // §7.5 no-leak
+      // current rows first (effectiveTo null), primary first, then newest.
+      return [...(addresses.get(patientId) ?? [])].sort(
+        (a, b) =>
+          Number(b.current) - Number(a.current) ||
+          Number(b.isPrimary) - Number(a.isPrimary) ||
+          b.effectiveFrom.localeCompare(a.effectiveFrom),
+      );
+    },
+
+    async addAddress(_organizationId, patientId, address, _actorUserId) {
+      // §7.4 / D5: append-only address + the address-change cascade event. An `isPrimary` add rotates
+      // the current primary atomically — close the prior current primary (set effectiveTo), then append.
+      const today = now().toISOString().slice(0, 10);
+      const history = addresses.get(patientId) ?? [];
+      if (address.isPrimary) {
+        for (let i = 0; i < history.length; i += 1) {
+          const a = history[i]!;
+          if (a.isPrimary && a.current) history[i] = { ...a, current: false, effectiveTo: today };
+        }
+      }
+      const id = nextId("addr");
+      history.push({
+        id,
+        kind: address.kind ?? "home",
+        line1: address.line1,
+        line2: address.line2 ?? null,
+        city: address.city,
+        state: address.state ?? null,
+        postalCode: address.postalCode,
+        country: "US",
+        county: null,
+        isPrimary: address.isPrimary ?? false,
+        current: true,
+        effectiveFrom: today,
+        effectiveTo: null,
+        geocodeLat: null,
+        geocodeLng: null,
+      });
+      addresses.set(patientId, history);
       events.push("m5.patient.address_changed");
-      return { addressId: nextId("addr"), cascadeEmitted: "m5.patient.address_changed" };
+      return { addressId: id, cascadeEmitted: "m5.patient.address_changed" };
     },
 
     async submitAmendment(_organizationId, patientId, _input, _actorUserId) {

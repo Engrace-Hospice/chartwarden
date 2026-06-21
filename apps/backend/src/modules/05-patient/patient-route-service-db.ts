@@ -10,10 +10,12 @@
 // name-alias storage on admit, soft_review match-review rows, and the real outbox cascade emission.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { type SQL, and, asc, eq, ilike, or, sql } from "drizzle-orm";
+import { type SQL, and, asc, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { type MatchCandidate, runMatch } from "./matching/matcher";
 import { normalizeSubject } from "./matching/normalize";
 import type {
+  AddAddressInput,
+  AddressView,
   AdmitInput,
   AdmitResult,
   DemographicsView,
@@ -23,6 +25,7 @@ import type {
 } from "./routes/service";
 
 const ID = schema.patientIdentifiers;
+const ADDR = schema.patientAddresses;
 const ALIAS = schema.patientNameAliases;
 const COMM = schema.patientCommunicationPreferences;
 const SENSITIVE_KINDS = new Set(["ssn", "state_id"]);
@@ -247,28 +250,86 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
 
   const SIXTY_DAYS_MS = 60 * 24 * 3600 * 1000;
 
-  // §7.4: append a patient address (US addresses require a state — patient_address CHECK) + report the
-  // address-change cascade event. The real outbox emission is wired with M1 infra; the in-memory
-  // service likewise only named the event, so the contract is unchanged.
+  // §3.3 / D5: the append-only address history. `current` (effective_to IS NULL) rows render as the
+  // live addresses; closed rows render as history. RLS scopes by app.org_id. 404 (null) when the
+  // patient is absent / out of org (§7.5 no-leak), mirroring getIdentifiers.
+  const listAddresses = async (organizationId: string, patientId: string): Promise<AddressView[] | null> =>
+    withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      const exists = await tx.select({ id: P.id }).from(P).where(eq(P.id, patientId)).limit(1);
+      if (!exists[0]) return null;
+      const rows = await tx
+        .select({
+          id: ADDR.id,
+          kind: ADDR.kind,
+          line1: ADDR.line1,
+          line2: ADDR.line2,
+          city: ADDR.city,
+          state: ADDR.state,
+          postalCode: ADDR.postalCode,
+          country: ADDR.country,
+          county: ADDR.county,
+          isPrimary: ADDR.isPrimary,
+          effectiveFrom: ADDR.effectiveFrom,
+          effectiveTo: ADDR.effectiveTo,
+          geocodeLat: ADDR.geocodeLat,
+          geocodeLng: ADDR.geocodeLng,
+        })
+        .from(ADDR)
+        .where(eq(ADDR.patientId, patientId))
+        // current first (effective_to NULLS FIRST via the boolean), then primary, then newest.
+        .orderBy(asc(ADDR.effectiveTo), desc(ADDR.isPrimary), desc(ADDR.effectiveFrom));
+      return rows.map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        line1: r.line1,
+        line2: r.line2 ?? null,
+        city: r.city,
+        state: r.state ?? null,
+        postalCode: r.postalCode,
+        country: r.country,
+        county: r.county ?? null,
+        isPrimary: r.isPrimary,
+        current: r.effectiveTo === null,
+        effectiveFrom: r.effectiveFrom,
+        effectiveTo: r.effectiveTo ?? null,
+        geocodeLat: r.geocodeLat ?? null,
+        geocodeLng: r.geocodeLng ?? null,
+      }));
+    });
+
+  // §7.4 / D5: append a patient address (US addresses require a state — patient_address CHECK) + report
+  // the address-change cascade event. An `isPrimary` add performs ATOMIC primary rotation in one tx:
+  // close the prior current primary (set effective_to so the partial unique index frees up), then
+  // insert the new current primary. The real outbox emission is wired with M1 infra.
   const addAddress = async (
     organizationId: string,
     patientId: string,
-    address: { line1: string; city: string; state?: string; postalCode: string },
+    address: AddAddressInput,
     actorUserId: string,
   ): Promise<{ addressId: string; cascadeEmitted: "m5.patient.address_changed" }> =>
     withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+      const today = new Date().toISOString().slice(0, 10);
+      if (address.isPrimary) {
+        await tx
+          .update(ADDR)
+          .set({ effectiveTo: today })
+          .where(and(eq(ADDR.patientId, patientId), eq(ADDR.isPrimary, true), isNull(ADDR.effectiveTo)));
+      }
       const inserted = (await tx
-        .insert(schema.patientAddresses)
+        .insert(ADDR)
         .values({
           organizationId,
           patientId,
+          kind: (address.kind ?? "home") as typeof ADDR.$inferInsert.kind,
           line1: address.line1,
+          line2: address.line2 ?? null,
           city: address.city,
           state: address.state ?? null,
           postalCode: address.postalCode,
-          effectiveFrom: new Date().toISOString().slice(0, 10),
+          isPrimary: address.isPrimary ?? false,
+          effectiveFrom: today,
         })
-        .returning({ addressId: schema.patientAddresses.id })) as Array<{ addressId: string }>;
+        .returning({ addressId: ADDR.id })) as Array<{ addressId: string }>;
       return { addressId: inserted[0]!.addressId, cascadeEmitted: "m5.patient.address_changed" };
     });
 
@@ -324,5 +385,5 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
 
   // `writes` (in-memory) is no longer needed — all writes are real now.
 
-  return { list, getPatient, getDemographics, getIdentifiers, admit, addAddress, submitAmendment, decideAmendment };
+  return { list, getPatient, getDemographics, getIdentifiers, listAddresses, admit, addAddress, submitAmendment, decideAmendment };
 }
