@@ -33,6 +33,18 @@ export function SignIn(): JSX.Element {
     navigate("/login/organization"); // bind the org for this session
   }
 
+  async function signInWithPasskey(): Promise<void> {
+    setBusy(true);
+    setError(null);
+    const { error: err } = await authClient.signIn.passkey();
+    setBusy(false);
+    if (err) {
+      setError("Passkey sign-in failed or was cancelled.");
+      return;
+    }
+    navigate("/login/organization");
+  }
+
   return (
     <CenteredCardLayout brand={<strong>WardenX</strong>} footer={<a href="/forgot">Forgot password?</a>}>
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -50,6 +62,12 @@ export function SignIn(): JSX.Element {
           {busy ? "Signing in…" : "Sign in"}
         </button>
       </form>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", margin: "0.5rem 0", color: "#9ca3af", fontSize: "0.75rem" }}>
+        <hr style={{ flex: 1, border: 0, borderTop: "1px solid #e5e7eb" }} /> or <hr style={{ flex: 1, border: 0, borderTop: "1px solid #e5e7eb" }} />
+      </div>
+      <button type="button" onClick={signInWithPasskey} disabled={busy} style={secondaryBtn}>
+        Sign in with a passkey
+      </button>
     </CenteredCardLayout>
   );
 }
@@ -61,6 +79,15 @@ const primaryBtn = {
   borderRadius: "0.5rem",
   background: "#1d4ed8",
   color: "#fff",
+  cursor: "pointer",
+  fontWeight: 600,
+} as const;
+const secondaryBtn = {
+  padding: "0.625rem 1rem",
+  border: "1px solid #1d4ed8",
+  borderRadius: "0.5rem",
+  background: "#fff",
+  color: "#1d4ed8",
   cursor: "pointer",
   fontWeight: 600,
 } as const;

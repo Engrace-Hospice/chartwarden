@@ -108,6 +108,10 @@ export function createIdentityAuth(db: IdentityAuthDb) {
         rpName: "WardenX",
         rpID: process.env.PASSKEY_RP_ID ?? "localhost",
         origin: process.env.BETTER_AUTH_URL ?? "http://localhost:5173",
+        // Field-map: Better Auth's `credentialID` → M1's drizzle property `credentialId` (the other
+        // passkey fields — publicKey/deviceType/backedUp/transports/counter/aaguid — already match the
+        // M1 bindings). The WebAuthn ceremony is browser-only, so this is e2e- (not CI-) verified.
+        schema: { passkey: { fields: { credentialID: "credentialId" } } },
       }),
       magicLink({
         // Auditor / external-collaborator / funeral-home magic-link classes. Token is generated

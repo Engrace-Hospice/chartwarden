@@ -62,8 +62,10 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > 2FA-at-rest encryption are verified against real Postgres** (AUTH wave + ADR-0033/0034). Built screens
 > in `apps/web/src/modules/02-identity` (registered in the shell): **Sign in** (`/login`), **MFA
 > challenge** (`/login/2fa`, TOTP + backup code via `@wardenx/auth/client`'s `twoFactor` plugin),
+> **Passkeys** (`/security/passkeys`, register/manage WebAuthn + "Sign in with a passkey" on `/login`,
+> via the `passkey` client plugin — the ceremony is browser-only, so build-/e2e-verified, not CI),
 > **Organization Select** (`/login/organization`), **Accept Invitation** (`/invite/:token`). **Still
-> deferred:** passkey enrollment (separate field reconciliation), password reset, screen-lock, step-up.
+> deferred:** password reset, screen-lock, step-up.
 
 ### Partial — primary owner merged, but key sections need unbuilt modules
 
