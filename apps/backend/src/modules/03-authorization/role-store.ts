@@ -79,8 +79,12 @@ export function createDbRoleStore(db: DbClient): RoleStore {
   return {
     async listForOrg(organizationId: string): Promise<RoleView[]> {
       return withOrgContext(db, ctx(organizationId), async (tx) => {
-        // Platform templates (org_id NULL) + this org's own roles. RLS also enforces this; the explicit
-        // predicate keeps the result correct even under a broader-privilege connection.
+        // Platform templates (org_id NULL) + this org's own roles.
+        // ⚠ KNOWN GAP (surfaced by the wardenx_app-role test harness): the `role_org` RLS policy is
+        // `organization_id = app.org_id`, so under the real wardenx_app role the NULL-org TEMPLATE rows
+        // are filtered out — the catalog would show only the org's own roles. Fix is a policy change
+        // (`OR organization_id IS NULL`) or seeding templates per-org; tracked as a follow-up. The
+        // explicit predicate below is correct under a BYPASSRLS/platform connection.
         const rows = (await tx
           .select(ROLE_COLUMNS)
           .from(schema.roles)

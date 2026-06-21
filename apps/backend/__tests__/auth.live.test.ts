@@ -8,10 +8,36 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { isSealed } from "@wardenx/auth";
+import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+
+/**
+ * Wrap a Drizzle client so every transaction runs as the RLS-enforced tenant role (`wardenx_app`),
+ * not the superuser the live lane connects as — otherwise RLS is BYPASSED and org-scoping is never
+ * actually tested. `SET LOCAL ROLE` is transaction-scoped (reset on commit), and withOrgContext's
+ * `set_config('app.org_id', …)` runs right after, so the store's queries are genuinely RLS-filtered.
+ * Bare (non-transaction) queries still run as the base role — only withOrgContext(FromRequest) paths
+ * are hardened (which is exactly where tenant reads must live).
+ */
+// biome-ignore lint/suspicious/noExplicitAny: a structural transaction-wrapping proxy over the opaque db.
+function asTenantRole<T extends { transaction: (...a: any[]) => any }>(db: T, role = "wardenx_app"): T {
+  return new Proxy(db, {
+    get(target, prop, receiver) {
+      if (prop === "transaction") {
+        // biome-ignore lint/suspicious/noExplicitAny: delegates to the real (typed) transaction.
+        return (fn: any) =>
+          (target.transaction as (f: unknown) => unknown)(async (tx: { execute: (q: unknown) => Promise<unknown> }) => {
+            await tx.execute(sql`SET LOCAL ROLE ${sql.raw(role)}`);
+            return fn(tx);
+          });
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+}
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer", "mdm_canonical_writer"];
 
@@ -283,7 +309,10 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
     const { createDbAdminMembershipReader } = await import("@wardenx/auth");
     const { createDbMembershipRepository } = await import("../src/modules/02-identity/membership-repository");
     const handle6 = mkDb6({ connectionString: DB_URL as string });
-    const repo = createDbMembershipRepository(handle6.db as never, createDbAdminMembershipReader(handle6.db as never));
+    // Run the store under the RLS-enforced wardenx_app role — this is the real test (the live lane
+    // connects as a superuser, which would bypass RLS and never exercise org-scoping).
+    const tdb = asTenantRole(handle6.db) as never;
+    const repo = createDbMembershipRepository(tdb, createDbAdminMembershipReader(tdb));
 
     const adminEmail = `ma${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
     const rnEmail = `mr${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
@@ -317,8 +346,20 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
     expect(roster.find((m) => m.userId === rnUser)?.isAdmin).toBe(false);
     expect(await repo.activeAdminCount(org)).toBe(1);
 
-    // A status change persists and the roster reflects it. get()/setStatus() resolve the membership
-    // by id under the AMBIENT request org (withOrgContextFromRequest), so the call is wrapped here.
+    // ★ RLS proof (the point of running as wardenx_app): the by-id read is org-scoped. Under the
+    // member's own org it resolves; under a DIFFERENT org's ambient context RLS denies it → null.
+    // With the pre-#47 bare `WHERE id=…` read this would have LEAKED the row across tenants.
+    const otherOrg = (await admin.query(
+      "INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'MM2','Other Org') RETURNING id",
+      [`mm2-${Date.now()}`],
+    )).rows[0].id as string;
+    expect((await inOrg(() => repo.get(adminMem)))?.membershipId).toBe(adminMem);
+    const crossOrg = <T>(fn: () => Promise<T>) =>
+      runWithRequestContext({ organizationId: otherOrg, userId: adminUser } as never, fn);
+    expect(await crossOrg(() => repo.get(adminMem))).toBeNull();
+
+    // A status change persists and the roster reflects it (get()/setStatus() resolve by id under the
+    // ambient request org, so they're wrapped here).
     await inOrg(() => repo.setStatus(adminMem, "suspended"));
     expect((await inOrg(() => repo.get(adminMem)))?.status).toBe("suspended");
     expect(await repo.activeAdminCount(org)).toBe(0); // suspended admin no longer counts
