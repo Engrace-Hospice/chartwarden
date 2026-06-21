@@ -2,7 +2,9 @@
 // Proves the Better Auth ↔ M1 schema reconciliation (migration 0024): a real email+password sign-up
 // writes user/account/session rows against the migrated schema, and sign-in + the DB-backed session
 // store resolve. Skipped without WARDENX_TEST_DATABASE_URL (the CI `auth-live` lane / local pg18).
-// 2FA + passkey ENROLLMENT are out of scope here (deferred to the Option-C / passkey follow-ups).
+// Also proves 2FA-at-rest encryption (ADR-0034) and the password-reset flow (token issuance via the
+// sendResetPassword seam → resetPassword → credential rotation). Passkey enrollment is out of scope
+// (a browser WebAuthn ceremony — not CI-testable without a virtual authenticator).
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { isSealed } from "@wardenx/auth";
@@ -67,6 +69,40 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
     expect(a.rowCount).toBeGreaterThanOrEqual(1);
     const s = await admin.query("SELECT id FROM session WHERE user_id = $1", [u.rows[0].id]);
     expect(s.rowCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("password reset issues a token, sets a new password, and rotates the credential (AUTH polish)", async () => {
+    // A dedicated instance whose sendResetPassword captures the minted token (the M36 delivery seam).
+    let captured: { url: string; token: string } | null = null;
+    const { createDbClient: mkDb2 } = await import("@wardenx/db");
+    const { createIdentityAuth: mk2 } = await import("@wardenx/auth");
+    const handle2 = mkDb2({ connectionString: DB_URL as string });
+    const authR = mk2(handle2.db as never, {
+      sendResetPassword: ({ url, token }) => {
+        captured = { url, token };
+      },
+    });
+
+    const email = `pr${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
+    const oldPw = `Wx9$${Math.random().toString(36).slice(2)}${Date.now()}Qz!`;
+    const newPw = `Zr7#${Math.random().toString(36).slice(2)}${Date.now()}Lp!`;
+    await authR.api.signUpEmail({ body: { email, password: oldPw, name: "PR User" } });
+
+    // Step 1 — request the reset; the callback captures the single-use token.
+    await authR.api.requestPasswordReset({ body: { email, redirectTo: "http://localhost:3000/reset-password" } });
+    expect(captured).not.toBeNull();
+    const token = (captured as unknown as { token: string }).token;
+    expect(token.length).toBeGreaterThan(0);
+
+    // Step 2 — consume the token to set the new password.
+    await authR.api.resetPassword({ body: { newPassword: newPw, token } });
+
+    // The credential rotated: the new password signs in; the old one no longer does.
+    const ok = await authR.api.signInEmail({ body: { email, password: newPw }, asResponse: true });
+    expect((ok as Response).status).toBe(200);
+    await expect(authR.api.signInEmail({ body: { email, password: oldPw } })).rejects.toThrow();
+
+    await handle2.close();
   });
 
   it("2FA enrollment stores the TOTP secret ENCRYPTED at rest (ADR-0034)", async () => {

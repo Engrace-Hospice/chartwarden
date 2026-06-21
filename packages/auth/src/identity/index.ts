@@ -6,6 +6,8 @@ export {
   createIdentityAuth,
   type IdentityAuth,
   type IdentityAuthDb,
+  type IdentityAuthOptions,
+  type ResetPasswordSender,
 } from "./auth";
 export {
   registerIdentityAuth,

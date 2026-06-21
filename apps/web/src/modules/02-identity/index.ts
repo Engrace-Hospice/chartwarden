@@ -2,6 +2,8 @@
 export { identityScreens } from "./screens";
 export { SignIn } from "./sign-in";
 export { MfaChallenge } from "./mfa-challenge";
+export { ForgotPassword } from "./forgot-password";
+export { ResetPassword } from "./reset-password";
 export { SecurityPasskeys } from "./security-passkeys";
 export { OrganizationSelect } from "./organization-select";
 export { AcceptInvitation } from "./accept-invitation";

@@ -4,8 +4,10 @@
 import type { ComponentType } from "react";
 import type { ScreenRegistryModule } from "@wardenx/types";
 import { AcceptInvitation } from "./accept-invitation";
+import { ForgotPassword } from "./forgot-password";
 import { MfaChallenge } from "./mfa-challenge";
 import { OrganizationSelect } from "./organization-select";
+import { ResetPassword } from "./reset-password";
 import { SecurityPasskeys } from "./security-passkeys";
 import { SignIn } from "./sign-in";
 
@@ -26,6 +28,20 @@ export const identityScreens: ScreenRegistryModule<ComponentType> = {
       title: "Two-factor",
       chrome: false,
       screen: MfaChallenge,
+    },
+    {
+      id: "identity.forgot-password",
+      path: "/forgot",
+      title: "Reset password",
+      chrome: false, // Auth Flow — outside the app shell
+      screen: ForgotPassword,
+    },
+    {
+      id: "identity.reset-password",
+      path: "/reset-password",
+      title: "Set a new password",
+      chrome: false,
+      screen: ResetPassword,
     },
     {
       id: "identity.organization-select",

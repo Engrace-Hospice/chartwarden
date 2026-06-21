@@ -64,8 +64,10 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > challenge** (`/login/2fa`, TOTP + backup code via `@wardenx/auth/client`'s `twoFactor` plugin),
 > **Passkeys** (`/security/passkeys`, register/manage WebAuthn + "Sign in with a passkey" on `/login`,
 > via the `passkey` client plugin — the ceremony is browser-only, so build-/e2e-verified, not CI),
-> **Organization Select** (`/login/organization`), **Accept Invitation** (`/invite/:token`). **Still
-> deferred:** password reset, screen-lock, step-up.
+> **Organization Select** (`/login/organization`), **Accept Invitation** (`/invite/:token`),
+> **Password reset** (`/forgot` → `/reset-password?token=…`, via Better Auth `requestPasswordReset` /
+> `resetPassword` — email delivery wired to M36 in a follow-up, like magic-link). **Still
+> deferred:** screen-lock, step-up.
 
 ### Partial — primary owner merged, but key sections need unbuilt modules
 

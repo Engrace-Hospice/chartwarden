@@ -35,6 +35,10 @@ export interface WardenxAuthClient {
     passkey(): Promise<AuthResult>;
   };
   signOut(): Promise<AuthResult>;
+  /** Forgot-password step 1: email a single-use reset link (token lands on `redirectTo`). */
+  requestPasswordReset(input: { email: string; redirectTo: string }): Promise<AuthResult>;
+  /** Forgot-password step 2: set a new password using the token from the reset link. */
+  resetPassword(input: { newPassword: string; token: string }): Promise<AuthResult>;
   twoFactor: {
     verifyTotp(input: { code: string }): Promise<AuthResult>;
     verifyBackupCode(input: { code: string }): Promise<AuthResult>;

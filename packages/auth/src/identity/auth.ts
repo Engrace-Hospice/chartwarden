@@ -35,6 +35,23 @@ import { loadTwoFactorKey } from "./two-factor-crypto";
 export type IdentityAuthDb = Parameters<typeof drizzleAdapter>[0];
 
 /**
+ * Delivers a password-reset link. Better Auth mints the single-use token and calls this with the
+ * full reset `url` (token in its query). Production injects M36 messaging delivery at boot (a
+ * follow-up); the default is a no-op stub (the token-issuance + resetPassword flow works regardless).
+ * This is the delivery SEAM — the auth-live lane injects a capturing sender to exercise the full flow.
+ */
+export type ResetPasswordSender = (data: {
+  readonly user: { readonly email: string };
+  readonly url: string;
+  readonly token: string;
+}) => Promise<void> | void;
+
+/** Optional injected behavior for the identity auth instance (delivery seams). */
+export interface IdentityAuthOptions {
+  readonly sendResetPassword?: ResetPasswordSender;
+}
+
+/**
  * Maps Better Auth's canonical model names onto M1's Drizzle table objects. M1 names the
  * tables in plural JS bindings (`users`) over singular SQL tables (`"user"`); Better Auth
  * keys models singularly, so we map explicitly rather than rely on `usePlural`.
@@ -58,7 +75,7 @@ const m1Schema = {
  * `refreshTokenEncrypted`); `session.additionalFields` declares M1's server-bound
  * `active_organization_id` so Better Auth round-trips the org binding for a session.
  */
-export function createIdentityAuth(db: IdentityAuthDb) {
+export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOptions = {}) {
   return betterAuth({
     appName: "WardenX",
     secret: process.env.BETTER_AUTH_SECRET,
@@ -89,6 +106,16 @@ export function createIdentityAuth(db: IdentityAuthDb) {
       password: {
         hash: argon2idHash,
         verify: ({ hash, password }) => argon2idVerify(hash, password),
+      },
+      // M2 §3.1 (AUTH polish): self-service password reset. Better Auth mints a single-use,
+      // time-boxed token and calls this with the reset URL (token in the query of `redirectTo`,
+      // set by the client's requestPasswordReset). Delivery is via M36 messaging — a follow-up,
+      // so this is a stub like `magicLink.sendMagicLink`; the token-issuance + resetPassword
+      // verification flow is live now and exercised in the AUTH-T06 live-PG lane. The new hash
+      // re-runs Argon2id (the `password` config above), so reset credentials are stored identically.
+      // Wrap so Better Auth always receives an async () => Promise<void> while the seam stays ergonomic.
+      sendResetPassword: async (data: { user: { email: string }; url: string; token: string }) => {
+        await options.sendResetPassword?.(data);
       },
     },
     // M2 plugins (M2-T05). The `organization` plugin is deliberately NOT used: WardenX owns its org /
