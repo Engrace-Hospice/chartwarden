@@ -2405,6 +2405,7 @@
         "tags": [
           "02-identity"
         ],
+        "summary": "Invite a member by email — token emailed, never returned (§7.1)",
         "parameters": [
           {
             "name": "id",
@@ -2424,6 +2425,37 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email"
+                ],
+                "properties": {
+                  "email": {
+                    "format": "email",
+                    "type": "string"
+                  },
+                  "proposedRoleKeys": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "proposedDefaultLocationIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -2471,6 +2503,7 @@
         "tags": [
           "02-identity"
         ],
+        "summary": "List an org's members (member.manage, §6)",
         "parameters": [
           {
             "name": "id",
@@ -2483,7 +2516,73 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "members"
+                  ],
+                  "properties": {
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "membershipId",
+                          "organizationId",
+                          "organizationName",
+                          "status",
+                          "isAdmin",
+                          "defaultLocationIds"
+                        ],
+                        "properties": {
+                          "membershipId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "organizationName": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "active",
+                                "type": "string"
+                              },
+                              {
+                                "const": "suspended",
+                                "type": "string"
+                              },
+                              {
+                                "const": "revoked",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "isAdmin": {
+                            "type": "boolean"
+                          },
+                          "defaultLocationIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -2500,6 +2599,7 @@
         "tags": [
           "02-identity"
         ],
+        "summary": "Revoke a membership (terminates its sessions; last-admin guarded, §6/§7.5)",
         "parameters": [
           {
             "name": "id",
@@ -2520,7 +2620,22 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "revoked"
+                  ],
+                  "properties": {
+                    "revoked": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -2535,6 +2650,7 @@
         "tags": [
           "02-identity"
         ],
+        "summary": "Change a member's status (active|suspended) or default locations; last-admin guarded (§6)",
         "parameters": [
           {
             "name": "id",
@@ -2555,13 +2671,98 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "membershipId",
+                    "organizationId",
+                    "organizationName",
+                    "status",
+                    "isAdmin",
+                    "defaultLocationIds"
+                  ],
+                  "properties": {
+                    "membershipId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "organizationName": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "suspended",
+                          "type": "string"
+                        },
+                        {
+                          "const": "revoked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "isAdmin": {
+                      "type": "boolean"
+                    },
+                    "defaultLocationIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "active",
+                        "type": "string"
+                      },
+                      {
+                        "const": "suspended",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "defaultLocationIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

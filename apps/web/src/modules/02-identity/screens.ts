@@ -10,6 +10,7 @@ import { OrganizationSelect } from "./organization-select";
 import { ResetPassword } from "./reset-password";
 import { SecurityPasskeys } from "./security-passkeys";
 import { SignIn } from "./sign-in";
+import { StaffManagement } from "./staff-management";
 import { StepUp } from "./step-up";
 
 export const identityScreens: ScreenRegistryModule<ComponentType> = {
@@ -72,6 +73,14 @@ export const identityScreens: ScreenRegistryModule<ComponentType> = {
       title: "Passkeys",
       navGroup: "General",
       screen: SecurityPasskeys,
+    },
+    {
+      // Admin — org member roster, invitations, and member lifecycle.
+      id: "identity.staff-management",
+      path: "/admin/staff",
+      title: "Staff Management",
+      navGroup: "Admin",
+      screen: StaffManagement,
     },
   ],
 };

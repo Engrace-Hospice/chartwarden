@@ -919,6 +919,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Invite a member by email — token emailed, never returned (§7.1) */
         post: operations["postApiV1OrgsByIdInvitations"];
         delete?: never;
         options?: never;
@@ -949,6 +950,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List an org's members (member.manage, §6) */
         get: operations["getApiV1OrgsByIdMembers"];
         put?: never;
         post?: never;
@@ -968,9 +970,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
+        /** Revoke a membership (terminates its sessions; last-admin guarded, §6/§7.5) */
         delete: operations["deleteApiV1OrgsByIdMembersByMId"];
         options?: never;
         head?: never;
+        /** Change a member's status (active|suspended) or default locations; last-admin guarded (§6) */
         patch: operations["patchApiV1OrgsByIdMembersByMId"];
         trace?: never;
     };
@@ -2909,7 +2913,16 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: email */
+                    email: string;
+                    proposedRoleKeys?: string[];
+                    proposedDefaultLocationIds?: string[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -2961,7 +2974,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        members: {
+                            membershipId: string;
+                            organizationId: string;
+                            organizationName: string;
+                            status: "pending" | "active" | "suspended" | "revoked";
+                            isAdmin: boolean;
+                            defaultLocationIds: string[];
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -2984,7 +3008,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        revoked: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -3000,14 +3028,30 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    status?: "active" | "suspended";
+                    defaultLocationIds?: string[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        membershipId: string;
+                        organizationId: string;
+                        organizationName: string;
+                        status: "pending" | "active" | "suspended" | "revoked";
+                        isAdmin: boolean;
+                        defaultLocationIds: string[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
