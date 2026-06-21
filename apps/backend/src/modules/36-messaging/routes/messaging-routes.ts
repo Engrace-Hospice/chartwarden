@@ -20,7 +20,7 @@
 // whose mutations run inside `withOrgContext` so RLS on `app.org_id` is the backstop and whose
 // `sendMessage` envelope-encrypts the body under the tenant DEK (§3.4). Org/actor binding is always
 // server-side: the org/user come from `request.context`, never the body.
-import { registerPredicate, requireAbac, requirePermission } from "@wardenx/auth";
+import { abacRegistry, registerPredicate, requireAbac, requirePermission } from "@wardenx/auth";
 import type { MessagingRouteService } from "@wardenx/messaging";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -66,6 +66,8 @@ export interface MessagingRouteDeps {
  * registered before the Authorization Contract's evaluator is installed.
  */
 export function registerMessagingAbacPredicates(service: MessagingRouteService): void {
+  // Single-owner registry; re-boot (tests) re-points safely (mirrors M39's abac-predicates guard).
+  if (abacRegistry.has(CHANNEL_VISIBILITY_PREDICATE)) return;
   registerPredicate(CHANNEL_VISIBILITY_PREDICATE, async (context, target) => {
     const channelId = typeof target.id === "string" ? target.id : null;
     if (!channelId || !context.organizationId || !context.userId) return false;

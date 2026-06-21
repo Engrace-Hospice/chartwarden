@@ -24,7 +24,11 @@ import {
   registerIdentitySeams,
 } from "./modules/02-identity/index";
 import { mountAuthorizationRoutes } from "./modules/03-authorization/index";
-import { registerMessagingErasers, registerMessagingSeams } from "./modules/36-messaging/index";
+import {
+  mountMessagingRoutes,
+  registerMessagingErasers,
+  registerMessagingSeams,
+} from "./modules/36-messaging/index";
 import {
   createDbTerminologyStore,
   mountTerminologyRoutes,
@@ -150,6 +154,7 @@ if ((import.meta as { main?: boolean }).main) {
           mountTerminologyRoutes(app, dbHandle.db); // M38 — terminology read surface + tenant value-set extensions (FB-T01)
           mountMdmRoutes(app, dbHandle.db); // M40 — MDM entity directory + overlay/BAA + platform-ops (FB-T02)
           mountConsentRoutes(app, dbHandle.db); // M39 — consent catalog/records/decision-audit reads (FB-T03)
+          mountMessagingRoutes(app, dbHandle.db); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05)
         }
       : undefined,
     registerModuleSeams: () =>

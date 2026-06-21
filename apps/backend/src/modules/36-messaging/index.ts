@@ -60,3 +60,32 @@ export {
   type VendorDeliveryUpdate,
   registerMessagingWebhookRoutes,
 } from "./routes/webhook-routes";
+
+// FB-T04 — the production Drizzle route-service adapter (over the M36 tables) + the composition-root
+// route mount. `createDbMessagingRouteService` backs the §4.1–4.2 READ surface (channel list / detail
+// / thread envelope / alert inbox / preferences / alert rules) live; the WRITE surface fail-clears
+// (501) until the MessagingProvider write path lands in FB-T05. The staff-messaging +
+// notifications-inbox screens (apps/web/src/modules/36-messaging) read live through these.
+export { createDbMessagingRouteService } from "./messaging-route-service-db";
+
+import type { DbClient } from "@wardenx/db";
+import type { FastifyInstance } from "fastify";
+import { createDbMessagingRouteService as _createDbMessagingRouteService } from "./messaging-route-service-db";
+import {
+  registerMessagingAbacPredicates as _registerMessagingAbacPredicates,
+  registerMessagingRoutes as _registerMessagingRoutes,
+} from "./routes/messaging-routes";
+
+/**
+ * Mount the M36 messaging REST routes (channels / messages / notification preferences + endpoints /
+ * alerts) on a server — invoked by the composition root when a DB client is present. The READ surface
+ * runs over the real Drizzle-backed `MessagingRouteService` (org-scoped reads under RLS), and the
+ * `channel_visibility` ABAC predicate is registered against the same service so the channel-scoped
+ * routes resolve live; the write paths defer to FB-T05 (501). Backs the staff-messaging +
+ * notifications-inbox screens (FB-T04).
+ */
+export function mountMessagingRoutes(app: FastifyInstance, db: DbClient): void {
+  const service = _createDbMessagingRouteService(db);
+  _registerMessagingAbacPredicates(service); // idempotent — single-owner registry, re-boot-safe
+  _registerMessagingRoutes(app, { service });
+}
