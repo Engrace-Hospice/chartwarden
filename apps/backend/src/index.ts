@@ -18,6 +18,7 @@ import { type DbClient, createDbClient } from "@wardenx/db";
 import { buildServer, createSessionAuthenticate, getSeam } from "./bootstrap/index";
 import { assertAuditActionCatalog, registerAuditErasers } from "./modules/04-audit/index";
 import { registerIdentityErasers, registerIdentitySeams } from "./modules/02-identity/index";
+import { mountAuthorizationRoutes } from "./modules/03-authorization/index";
 import { registerMessagingErasers, registerMessagingSeams } from "./modules/36-messaging/index";
 import {
   registerTerminologyErasers,
@@ -109,6 +110,12 @@ if ((import.meta as { main?: boolean }).main) {
   const app = buildServer({
     db: dbHandle?.db,
     authenticate,
+    // Mount module REST routes when a DB client is present (progressive backend wiring). M3 first:
+    // the role catalog runs on the real Drizzle RoleStore; other module routes append here as their
+    // stores land. The slice/tests boot without this (foundation routes only).
+    registerModuleRoutes: dbHandle
+      ? (app) => mountAuthorizationRoutes(app, dbHandle.db)
+      : undefined,
     registerModuleSeams: () =>
       wireModuleSeams({
         sessionContextStore: dbHandle
