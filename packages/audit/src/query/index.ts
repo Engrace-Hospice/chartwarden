@@ -4,3 +4,4 @@
 // access history ("who touched this chart", §10.2). The §164.528 patient accounting-of-
 // disclosures query with scope differentiation (M4-T09, §7) extends this surface.
 export * from "./audit-query";
+export { createDbAuditQuery } from "./drizzle-audit-query";
