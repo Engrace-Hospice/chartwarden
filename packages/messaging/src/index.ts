@@ -164,6 +164,14 @@ export type {
   OutOfBandChannel,
 } from "./notification";
 
+// ── FB-T14 transactional email transport (M36-owned outbound email; DR/INT #14, Postmark) ──
+export {
+  selectTransactionalEmailTransport,
+  createConsoleTransactionalEmailTransport,
+  createNoopTransactionalEmailTransport,
+} from "./notification";
+export type { OutboundEmail, TransactionalEmailTransport } from "./notification";
+
 // ── M36-T05 alert-payload catalog (Foundation Registry + boot gate) — §3.11–3.12 ──────────
 export {
   AlertPayloadCollisionError,

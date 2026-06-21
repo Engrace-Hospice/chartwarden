@@ -4,12 +4,10 @@
 // via `wireModuleSeams` (M1's bootstrap cannot import a downstream module; the composition
 // root does, then hands the registration into the boot gate before validateSeams()).
 import {
-  createConsoleEmailTransport,
   createDbActorEnrichmentReader,
   createDbAdminMembershipReader,
   createDbSessionContextStore,
   createIdentityAuth,
-  createNoopEmailTransport,
   getIdentitySession,
   registerDbEffectivePermissionResolver,
   registerIdentityAuth,
@@ -29,6 +27,7 @@ import {
   mountMessagingRoutes,
   registerMessagingErasers,
   registerMessagingSeams,
+  selectTransactionalEmailTransport,
 } from "./modules/36-messaging/index";
 import {
   createDbTerminologyStore,
@@ -125,13 +124,15 @@ if ((import.meta as { main?: boolean }).main) {
   // AUTH-T02/T03: when a DB client is present, build the Better Auth instance + the authenticate hook
   // (getIdentitySession → SessionContextResolver seam → request.context). The seam is resolved lazily
   // at request time, after bootSeams() has registered it.
-  // Transactional email transport for reset + magic-link links. A real provider (SMTP/Postmark) plugs
-  // in here when credentials exist; until then dev logs the link (console) and production drops it
-  // (no-op — a link in prod logs is a credential in logs). #4/#3 light up once a provider is wired.
-  const emailTransport =
-    process.env.NODE_ENV === "production"
-      ? createNoopEmailTransport()
-      : createConsoleEmailTransport();
+  // Transactional email transport for reset + magic-link links (FB-T14). M36 OWNS outbound email
+  // (manifest VENDOR_ADAPTERS["postmark"] = packages/messaging; DR/INT #14), so auth's `EmailTransport`
+  // seam binds to M36's transport here — the bridge lives in the composition root, so neither M2 imports
+  // a vendor SDK nor takes a `dependsOn` edge on M36. A real Postmark/SES adapter plugs into M36's
+  // `provider` slot when M1 infra wires credentials; until then dev logs the link (console) and
+  // production drops it (no-op — a link in prod logs is a credential in logs).
+  const emailTransport = selectTransactionalEmailTransport({
+    isProduction: process.env.NODE_ENV === "production",
+  });
   const auth = dbHandle
     ? createIdentityAuth(dbHandle.db as Parameters<typeof createIdentityAuth>[0], { emailTransport })
     : undefined;

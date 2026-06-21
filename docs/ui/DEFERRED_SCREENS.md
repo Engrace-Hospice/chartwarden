@@ -174,7 +174,8 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > via the `passkey` client plugin — the ceremony is browser-only, so build-/e2e-verified, not CI),
 > **Organization Select** (`/login/organization`), **Accept Invitation** (`/invite/:token`),
 > **Password reset** (`/forgot` → `/reset-password?token=…`, via Better Auth `requestPasswordReset` /
-> `resetPassword` — email delivery wired to M36 in a follow-up, like magic-link), **Step-up**
+> `resetPassword` — email delivery now wired to M36's transactional email transport, like magic-link;
+> FB-T14), **Step-up**
 > (`/step-up?returnTo=…` — fresh re-verification of the current session via the generated REST client
 > over `POST /api/v1/sessions/step-up{/initiate}`; paired-writes `lastStepUpAt`/`lastStepUpFactor` that
 > M3's `step_up_recent` gates on. BOTH qualifying factors are wired: TOTP, and the **WebAuthn step-up
@@ -185,8 +186,11 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > `SESSION_POLICY.screenLockSec` = 5 min idle it covers the authenticated frame and soft-re-auths the
 > same user by password, session stays alive per M2 §2.2.4 active→screen_locked→active; gated to the
 > `SESSION_POLICY.screenLockClasses` floor = staff/auditor, an unknown class failing safe). **No M2 auth
-> screens remain deferred.** Backend follow-ups only: magic-link M36 delivery (FB-T14),
-> actor role/membership enrichment (the M2↔M3 seam, FB-T15).
+> screens remain deferred.** Magic-link / password-reset **email delivery is now wired to M36's
+> transactional email transport** (`@wardenx/messaging` `selectTransactionalEmailTransport`, bound to the
+> auth `EmailTransport` seam at the composition root; DR/INT #14, Postmark = M36; FB-T14) — the real
+> Postmark/SES provider plugs into M36's `provider` slot when M1 infra wires credentials. Remaining
+> backend follow-up: actor role/membership enrichment (the M2↔M3 seam, FB-T15).
 
 ### Partial — primary owner merged, but key sections need unbuilt modules
 

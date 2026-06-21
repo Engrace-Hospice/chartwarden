@@ -40,9 +40,10 @@ export type IdentityAuthDb = Parameters<typeof drizzleAdapter>[0];
 
 /**
  * Delivers a password-reset link. Better Auth mints the single-use token and calls this with the
- * full reset `url` (token in its query). Production injects M36 messaging delivery at boot (a
- * follow-up); the default is a no-op stub (the token-issuance + resetPassword flow works regardless).
- * This is the delivery SEAM — the auth-live lane injects a capturing sender to exercise the full flow.
+ * full reset `url` (token in its query). The composition root injects M36's transactional email
+ * transport at boot (FB-T14); the default is a no-op stub (the token-issuance + resetPassword flow
+ * works regardless). This is the delivery SEAM — the auth-live lane injects a capturing sender to
+ * exercise the full flow.
  */
 export type ResetPasswordSender = (data: {
   readonly user: { readonly email: string };
@@ -143,8 +144,9 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
     // M2 plugins (M2-T05). The `organization` plugin is deliberately NOT used: WardenX owns its org /
     // membership / invitation model (M1/M2 tables + RLS + select-organization), which Better Auth's
     // org plugin would duplicate/conflict with; the session's `activeOrganizationId` additionalField
-    // carries the binding instead. Magic-link delivery is wired to M36 in a follow-up. Runtime + any
-    // schema reconciliation are exercised in the AUTH-T06 live-PG lane.
+    // carries the binding instead. Magic-link + reset delivery flow through M36's transactional email
+    // transport, injected at the composition root (FB-T14). Runtime + any schema reconciliation are
+    // exercised in the AUTH-T06 live-PG lane.
     plugins: [
       haveIBeenPwned(), // HIBP k-anonymity breach check (M2 §3.1)
       // TOTP + backup codes (M2 §3.1). Field-map to M1's at-rest-encrypted columns (the decorator
@@ -164,8 +166,8 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
       }),
       magicLink({
         // Auditor / external-collaborator / funeral-home magic-link classes. Token is generated
-        // server-side; the link is delivered through the injected email transport (no-op until the
-        // host wires a provider). Stamping the session CLASS on consume is the §3 issuance follow-up.
+        // server-side; the link is delivered through M36's transactional email transport, bound to this
+        // port at the composition root (FB-T14). Stamping the session CLASS on consume is the §3 follow-up.
         sendMagicLink: async ({ email, url }: { email: string; url: string }) => {
           await emailTransport.send({
             to: email,

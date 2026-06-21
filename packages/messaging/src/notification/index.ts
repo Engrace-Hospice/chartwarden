@@ -11,3 +11,13 @@ export {
   type SanitizedNotification,
   type OutOfBandChannel,
 } from "./sanitize";
+
+// FB-T14 — the M36-owned TRANSACTIONAL email transport (password reset / magic-link delivery; the
+// auth `EmailTransport` seam binds to this at the composition root). DR/INT #14 (Postmark = M36).
+export {
+  selectTransactionalEmailTransport,
+  createConsoleTransactionalEmailTransport,
+  createNoopTransactionalEmailTransport,
+  type OutboundEmail,
+  type TransactionalEmailTransport,
+} from "./transactional-email";
