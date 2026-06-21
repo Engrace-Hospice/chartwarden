@@ -5,16 +5,14 @@
 // name, dob, status) are PLAINTEXT on `patient` (mrn is denormalised there for exactly this hot path;
 // only ssn/state_id/mbi are envelope-encrypted, on `patient_identifier`) — so no per-row decryption.
 //
-// ADMIT is now real: the §7.1 matcher runs against the org's existing patients and a no-block result
-// inserts the `patient` row (+ its mrn/mbi identifiers) under RLS — so an admitted patient appears in
-// the real census. addAddress / amendments still run on the in-memory service (not shown in the census;
-// their Drizzle stores are a follow-up), as are SSN/name-alias/address storage on admit.
+// All WRITES are real: admit (§7.1 matcher + patient/identifier insert), addAddress (§7.4), and the
+// amendment lifecycle (§7.7 submit/decide) run under withOrgContext/RLS. Remaining follow-ups: SSN +
+// name-alias storage on admit, soft_review match-review rows, and the real outbox cascade emission.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { type SQL, and, asc, eq, ilike, or, sql } from "drizzle-orm";
 import { type MatchCandidate, runMatch } from "./matching/matcher";
 import { normalizeSubject } from "./matching/normalize";
-import { createInMemoryPatientRouteService } from "./routes/service";
 import type { AdmitInput, AdmitResult, PatientRouteService, PatientView } from "./routes/service";
 
 const ID = schema.patientIdentifiers;
@@ -57,10 +55,8 @@ function decode(cursor: string): [string, string, string] | null {
   }
 }
 
-/** Build the read-backed PatientRouteService; writes delegate to the in-memory slice (follow-up). */
+/** Build the production PatientRouteService — reads + writes are real Drizzle over the patient tables. */
 export function createDbPatientRouteService(db: DbClient): PatientRouteService {
-  const writes = createInMemoryPatientRouteService().service;
-
   const list = async (organizationId: string, query: ListQuery) => {
     const limit = Math.min(MAX_LIMIT, Math.max(1, Math.floor(query.limit ?? DEFAULT_LIMIT)));
     const c = query.cursor ? decode(query.cursor) : null;
@@ -156,13 +152,84 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
       return { outcome: "created", patientId: await insertPatient(tx, organizationId, input) };
     });
 
-  return {
-    list,
-    getPatient,
-    admit,
-    // Still in-memory until their Drizzle stores land: address/amendments (not shown in the census).
-    addAddress: writes.addAddress.bind(writes),
-    submitAmendment: writes.submitAmendment.bind(writes),
-    decideAmendment: writes.decideAmendment.bind(writes),
-  };
+  const SIXTY_DAYS_MS = 60 * 24 * 3600 * 1000;
+
+  // §7.4: append a patient address (US addresses require a state — patient_address CHECK) + report the
+  // address-change cascade event. The real outbox emission is wired with M1 infra; the in-memory
+  // service likewise only named the event, so the contract is unchanged.
+  const addAddress = async (
+    organizationId: string,
+    patientId: string,
+    address: { line1: string; city: string; state?: string; postalCode: string },
+    actorUserId: string,
+  ): Promise<{ addressId: string; cascadeEmitted: "m5.patient.address_changed" }> =>
+    withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+      const inserted = (await tx
+        .insert(schema.patientAddresses)
+        .values({
+          organizationId,
+          patientId,
+          line1: address.line1,
+          city: address.city,
+          state: address.state ?? null,
+          postalCode: address.postalCode,
+          effectiveFrom: new Date().toISOString().slice(0, 10),
+        })
+        .returning({ addressId: schema.patientAddresses.id })) as Array<{ addressId: string }>;
+      return { addressId: inserted[0]!.addressId, cascadeEmitted: "m5.patient.address_changed" };
+    });
+
+  // §7.7: open a record-amendment request; SLA due = received + 60 days. The §4.x body captures
+  // scope + rationale only, so requested_changes is an empty object until the schema carries it.
+  const submitAmendment = async (
+    organizationId: string,
+    patientId: string,
+    input: { scope: string; rationale: string },
+    actorUserId: string,
+  ) =>
+    withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+      const slaDueAt = new Date(Date.now() + SIXTY_DAYS_MS);
+      const inserted = (await tx
+        .insert(schema.patientAmendmentRequests)
+        .values({
+          organizationId,
+          patientId,
+          requestedByUserId: actorUserId,
+          scope: input.scope,
+          requestedChanges: {},
+          rationale: input.rationale,
+          status: "pending",
+          slaDueAt,
+        })
+        .returning({ id: schema.patientAmendmentRequests.id, slaDueAt: schema.patientAmendmentRequests.slaDueAt })) as Array<{ id: string; slaDueAt: Date }>;
+      return { id: inserted[0]!.id, patientId, status: "pending" as const, slaDueAt: inserted[0]!.slaDueAt.toISOString() };
+    });
+
+  // §7.7: accept/deny an amendment (a denial requires a reason).
+  const decideAmendment = async (
+    organizationId: string,
+    amendmentId: string,
+    decision: { accept: boolean; denialReason?: string },
+    actorUserId: string,
+  ) =>
+    withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+      if (!decision.accept && !decision.denialReason) throw new Error("denial requires a reason");
+      const rows = (await tx
+        .select({ patientId: schema.patientAmendmentRequests.patientId, slaDueAt: schema.patientAmendmentRequests.slaDueAt })
+        .from(schema.patientAmendmentRequests)
+        .where(eq(schema.patientAmendmentRequests.id, amendmentId))
+        .limit(1)) as Array<{ patientId: string; slaDueAt: Date }>;
+      const row = rows[0];
+      if (!row) throw new Error(`amendment ${amendmentId} not found`);
+      const status = decision.accept ? ("accepted" as const) : ("denied" as const);
+      await tx
+        .update(schema.patientAmendmentRequests)
+        .set({ status, denialReason: decision.denialReason ?? null })
+        .where(eq(schema.patientAmendmentRequests.id, amendmentId));
+      return { id: amendmentId, patientId: row.patientId, status, slaDueAt: row.slaDueAt.toISOString() };
+    });
+
+  // `writes` (in-memory) is no longer needed — all writes are real now.
+
+  return { list, getPatient, admit, addAddress, submitAmendment, decideAmendment };
 }

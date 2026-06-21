@@ -521,6 +521,17 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
     expect(b.outcome).toBe("created");
     expect((await svc.list(org, {})).items.map((p) => p.lastName).sort()).toEqual(["Nguyen", "Solo"]);
 
+    // §7.4 address + §7.7 amendment lifecycle (real writes under RLS).
+    const patientId = (a as { patientId: string }).patientId;
+    const addr = await svc.addAddress(org, patientId, { line1: "1 Elm St", city: "Portland", state: "OR", postalCode: "97201" }, actor);
+    expect(addr.cascadeEmitted).toBe("m5.patient.address_changed");
+    const amd = await svc.submitAmendment(org, patientId, { scope: "demographic", rationale: "name correction" }, actor);
+    expect(amd.status).toBe("pending");
+    expect(new Date(amd.slaDueAt).getTime()).toBeGreaterThan(Date.now()); // ~received + 60d
+    // a denial requires a reason; an accept transitions to accepted.
+    await expect(svc.decideAmendment(org, amd.id, { accept: false }, actor)).rejects.toThrow();
+    expect((await svc.decideAmendment(org, amd.id, { accept: true }, actor)).status).toBe("accepted");
+
     await handle10.close();
   });
 });
