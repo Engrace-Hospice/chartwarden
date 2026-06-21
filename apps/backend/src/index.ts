@@ -4,6 +4,7 @@
 // via `wireModuleSeams` (M1's bootstrap cannot import a downstream module; the composition
 // root does, then hands the registration into the boot gate before validateSeams()).
 import {
+  createDbActorEnrichmentReader,
   createDbSessionContextStore,
   createIdentityAuth,
   getIdentitySession,
@@ -101,7 +102,9 @@ if ((import.meta as { main?: boolean }).main) {
     authenticate,
     registerModuleSeams: () =>
       wireModuleSeams({
-        sessionContextStore: dbHandle ? createDbSessionContextStore(dbHandle.db) : undefined,
+        sessionContextStore: dbHandle
+          ? createDbSessionContextStore(dbHandle.db, createDbActorEnrichmentReader(dbHandle.db))
+          : undefined,
         db: dbHandle?.db,
       }),
     registerModuleErasers: wireModuleErasers,

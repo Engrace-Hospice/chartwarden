@@ -1,6 +1,7 @@
 // packages/auth/__tests__/db-session-store.test.ts — AUTH-T05b (ADR-0033).
 // Pure mapping logic of the DB-backed SessionContextStore (the Drizzle query is verified in the
-// AUTH-T06 live-PG lane). membershipId/roles are intentionally empty here — M3 owns those tables.
+// AUTH-T06 live-PG lane). membershipId/roles are empty UNLESS an ActorEnrichment is supplied (the
+// M3-owned reader path); both branches are covered here.
 import { describe, expect, it } from "vitest";
 import { toSessionContextRecord } from "../src/identity/db-session-store";
 
@@ -28,5 +29,25 @@ describe("toSessionContextRecord (AUTH-T05b)", () => {
     expect(rec.organizationId).toBe("");
     expect(rec.lastStepUpAt).toBeNull();
     expect(rec.lastStepUpFactor).toBeNull();
+  });
+
+  it("merges M3 actor enrichment (membershipId + roles) when supplied", () => {
+    const rec = toSessionContextRecord(
+      { userId: "u3", activeOrganizationId: "org3", lastStepUpAt: null, lastStepUpFactor: null },
+      "s3",
+      { membershipId: "m3", roles: ["nurse", "on_call"] },
+    );
+    expect(rec.membershipId).toBe("m3");
+    expect(rec.roles).toEqual(["nurse", "on_call"]);
+  });
+
+  it("keeps empty membership/roles when enrichment is null (no active membership in scope)", () => {
+    const rec = toSessionContextRecord(
+      { userId: "u4", activeOrganizationId: "org4", lastStepUpAt: null, lastStepUpFactor: null },
+      "s4",
+      null,
+    );
+    expect(rec.membershipId).toBeNull();
+    expect(rec.roles).toEqual([]);
   });
 });

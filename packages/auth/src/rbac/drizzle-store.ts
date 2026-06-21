@@ -16,6 +16,7 @@
 import { schema } from "@wardenx/db";
 import type { DbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
+import type { ActorEnrichment, ActorEnrichmentReader, OrgScope } from "@wardenx/types";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   type EffectivePermissionStore,
@@ -93,4 +94,55 @@ export function createDbEffectivePermissionStore(db: DbClient): EffectivePermiss
  */
 export function registerDbEffectivePermissionResolver(db: DbClient): RbacEngineHandle {
   return registerEffectivePermissionResolver(createDbEffectivePermissionStore(db));
+}
+
+/**
+ * Build the live `ActorEnrichmentReader` (M2 §4.7 enrichment, M3-owned path). Given an org scope +
+ * user, it returns the actor's ACTIVE `membershipId` and current role keys (enabled + non-expired) —
+ * the fields M2's session store can't read itself (membership_role/role are M3-owned). Runs under
+ * `withOrgContext` so RLS scopes the read by `app.org_id`. Returns null when the user has no active
+ * membership in the org. Role-expiry filtering matches the RBAC engine (§7.2): the actor's `roles`
+ * reflect only currently-effective grants; the authoritative permission set still flows through the
+ * effective-permission resolver.
+ */
+export function createDbActorEnrichmentReader(db: DbClient): ActorEnrichmentReader {
+  return {
+    async read(scope: OrgScope, userId: string): Promise<ActorEnrichment | null> {
+      return withOrgContext(db, { organizationId: scope.orgId, userId }, async (tx) => {
+        const memberships = await tx
+          .select({ id: schema.memberships.id })
+          .from(schema.memberships)
+          .where(
+            and(
+              eq(schema.memberships.userId, userId),
+              eq(schema.memberships.organizationId, scope.orgId),
+              eq(schema.memberships.status, "active"),
+            ),
+          )
+          .limit(1);
+        const membership = memberships[0];
+        if (!membership) return null; // no active membership in this org → no actor context
+
+        const roleRows = await tx
+          .select({
+            roleKey: schema.roles.key,
+            enabled: schema.roles.enabled,
+            expiresAt: schema.membershipRoles.expiresAt,
+          })
+          .from(schema.membershipRoles)
+          .innerJoin(schema.roles, eq(schema.roles.id, schema.membershipRoles.roleId))
+          .where(eq(schema.membershipRoles.membershipId, membership.id));
+
+        const now = Date.now();
+        const roles = [
+          ...new Set(
+            roleRows
+              .filter((r) => r.enabled && (r.expiresAt === null || r.expiresAt.getTime() > now))
+              .map((r) => r.roleKey),
+          ),
+        ];
+        return { membershipId: membership.id, roles };
+      });
+    },
+  };
 }

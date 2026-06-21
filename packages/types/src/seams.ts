@@ -78,6 +78,25 @@ export interface ResolvedActor {
   readonly roles: readonly string[];
 }
 
+/** The membership + active role keys for an actor in one org (the actor-context fields M3 owns). */
+export interface ActorEnrichment {
+  /** `membership.id` for the actor's ACTIVE membership in the scope org (null when none). */
+  readonly membershipId: string | null;
+  /** The actor's current (enabled, non-expired) role keys in the scope org. */
+  readonly roles: readonly string[];
+}
+
+/**
+ * Reads an actor's `membershipId` + `roles` for one org scope (M2 spec §4.7 enrichment). M2's session
+ * store reads only the M1-owned `session` table, so it leaves these empty; this port is the M3-owned
+ * path that fills them (membership + membership_role ⋈ role under RLS) without M2 reading M3 tables.
+ * Injected into the DB session store at boot; returns null when the actor has no active membership in
+ * the org (the session then resolves with no membership/roles).
+ */
+export interface ActorEnrichmentReader {
+  read(scope: OrgScope, userId: string): Promise<ActorEnrichment | null> | ActorEnrichment | null;
+}
+
 /**
  * A session's step-up recency state (M2 spec §4.7). Module 3's `step_up_recent` predicate
  * reads these via the published seam — a typed contract, NOT a direct read of the M1-owned
