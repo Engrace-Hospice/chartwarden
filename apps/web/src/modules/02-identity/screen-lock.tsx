@@ -7,8 +7,9 @@
 // The idle interval is the platform floor SESSION_POLICY.screenLockSec (one source of truth, §11 D1).
 // Unlock soft-re-auths the SAME user (authClient.signIn.email with the session's email), which the
 // server is the authoritative enforcer of. The screen-lock pgEnum/lifecycle is server-tracked; this is
-// the client surface. (Class-gating to staff/auditor — screenLockApplies — needs the session class in
-// the browser context, a follow-up; today it guards the whole authenticated app.)
+// the client surface. The lock applies only to the classes in SESSION_POLICY.screenLockClasses
+// (staff/auditor — §2.2.4 screenLockApplies); external-collaborator / funeral-home magic-link windows
+// are never screen-locked. An unknown/absent class fails SAFE (the lock applies).
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { SESSION_POLICY } from "@wardenx/types";
@@ -17,13 +18,40 @@ import { authClient } from "./auth-client";
 const IDLE_MS = SESSION_POLICY.screenLockSec * 1000;
 const ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "scroll", "touchstart"] as const;
 
+/** Whether the screen-lock applies to a session class. Unknown/absent ⇒ true (fail safe). */
+function screenLockApplies(sessionClass: string | null | undefined): boolean {
+  if (!sessionClass) return true;
+  return (SESSION_POLICY.screenLockClasses as readonly string[]).includes(sessionClass);
+}
+
 export function ScreenLock(): JSX.Element | null {
+  // `applies` is undefined until the session resolves; null-render until then (don't arm prematurely).
+  const [applies, setApplies] = useState<boolean | undefined>(undefined);
   const [locked, setLocked] = useState(false);
   const [email, setEmail] = useState<string | null>(null);
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Resolve the session once: capture the email (so unlock only needs the password) and decide whether
+  // the lock applies to this class. No session ⇒ the lock is inert (the authenticated frame should
+  // always have one, but fail open rather than trap a guest behind a lock).
+  useEffect(() => {
+    let alive = true;
+    void authClient.getSession().then(({ data }) => {
+      if (!alive) return;
+      if (!data?.user?.email) {
+        setApplies(false);
+        return;
+      }
+      setEmail(data.user.email);
+      setApplies(screenLockApplies(data.session?.sessionClass));
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // Lock on idle; the timer is reset by any activity while unlocked.
   const arm = useCallback(() => {
@@ -32,7 +60,7 @@ export function ScreenLock(): JSX.Element | null {
   }, []);
 
   useEffect(() => {
-    if (locked) return; // frozen while locked — activity must not reset/extend the lock
+    if (!applies || locked) return; // inert for non-applicable classes; frozen while locked
     const onActivity = (): void => arm();
     for (const ev of ACTIVITY_EVENTS) window.addEventListener(ev, onActivity, { passive: true });
     arm();
@@ -40,17 +68,7 @@ export function ScreenLock(): JSX.Element | null {
       for (const ev of ACTIVITY_EVENTS) window.removeEventListener(ev, onActivity);
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [locked, arm]);
-
-  // On lock, capture the signed-in email so the user only re-enters their password. No session ⇒ nothing
-  // to lock (the authenticated frame should always have one, but fail open to avoid trapping a guest).
-  useEffect(() => {
-    if (!locked) return;
-    void authClient.getSession().then(({ data }) => {
-      if (data?.user?.email) setEmail(data.user.email);
-      else setLocked(false);
-    });
-  }, [locked]);
+  }, [applies, locked, arm]);
 
   async function unlock(e: FormEvent): Promise<void> {
     e.preventDefault();

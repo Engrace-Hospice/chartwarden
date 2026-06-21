@@ -35,14 +35,24 @@ export interface SessionUser {
   readonly name?: string | null;
 }
 
+/** The session record's server-bound fields the client surfaces (additionalFields, §3.6). */
+export interface SessionInfo {
+  /** The session class (staff | auditor | external_collaborator | funeral_home) — gates screen-lock. */
+  readonly sessionClass?: string | null;
+  readonly activeOrganizationId?: string | null;
+}
+
 export interface WardenxAuthClient {
   signIn: {
     email(input: { email: string; password: string }): Promise<SignInResult>;
     passkey(): Promise<AuthResult>;
   };
   signOut(): Promise<AuthResult>;
-  /** Read the current session's user (null when unauthenticated) — used to soft re-auth on screen-lock. */
-  getSession(): Promise<{ data?: { user: SessionUser } | null; error: { message?: string } | null }>;
+  /** Read the current session (null when unauthenticated) — drives screen-lock (soft re-auth + class gate). */
+  getSession(): Promise<{
+    data?: { user: SessionUser; session?: SessionInfo } | null;
+    error: { message?: string } | null;
+  }>;
   /** Forgot-password step 1: email a single-use reset link (token lands on `redirectTo`). */
   requestPasswordReset(input: { email: string; redirectTo: string }): Promise<AuthResult>;
   /** Forgot-password step 2: set a new password using the token from the reset link. */

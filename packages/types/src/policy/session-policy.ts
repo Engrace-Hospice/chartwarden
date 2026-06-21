@@ -40,6 +40,13 @@ export interface SessionClassTimeout {
 export interface SessionPolicy {
   /** UI screen-lock interval (soft re-auth; session stays alive) — staff/auditor only. */
   readonly screenLockSec: number;
+  /**
+   * The session classes the UI screen-lock applies to (M2 §2.2.4 — `screenLockApplies`). Staff and
+   * auditor work at a workstation that can be left unattended; external-collaborator / funeral-home
+   * are short bounded magic-link windows with no screen-lock. Mirrors `SESSION_CLASS_DESCRIPTORS`
+   * (packages/auth) so the browser can gate the lock without importing the auth package.
+   */
+  readonly screenLockClasses: readonly SessionClassName[];
   /** Per-class idle/absolute floors (M2 spec §2.2.4). */
   readonly byClass: Readonly<Record<SessionClassName, SessionClassTimeout>>;
 }
@@ -54,6 +61,7 @@ const HR = 60 * 60;
  */
 export const SESSION_POLICY: SessionPolicy = Object.freeze({
   screenLockSec: 5 * MIN,
+  screenLockClasses: Object.freeze(["staff", "auditor"]) as readonly SessionClassName[],
   byClass: Object.freeze({
     staff: Object.freeze({ idleSec: 15 * MIN, absoluteSec: 8 * HR, absoluteHardSec: 24 * HR }),
     auditor: Object.freeze({ idleSec: 10 * MIN, absoluteSec: null }),
