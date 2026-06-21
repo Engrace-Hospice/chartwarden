@@ -120,4 +120,63 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
     const stored = String(tf.rows[0].secret_encrypted);
     expect(isSealed(stored)).toBe(true); // our AES-256-GCM token — NOT the plaintext base32 TOTP secret
   });
+
+  it("M3 RBAC: the live effective-permission store resolves grants from membership ⋈ role ⋈ role_permission", async () => {
+    const { createDbClient: mkDb3 } = await import("@wardenx/db");
+    const { createDbEffectivePermissionStore, resolveEffectivePermissions } = await import("@wardenx/auth");
+    const handle3 = mkDb3({ connectionString: DB_URL as string });
+    const store = createDbEffectivePermissionStore(handle3.db as never);
+
+    // Seed the full §2.2 grant graph as superuser (RLS bypassed for seeding).
+    const email = `rb${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
+    const password = `Wx9$${Math.random().toString(36).slice(2)}${Date.now()}Qz!`;
+    await auth.api.signUpEmail({ body: { email, password, name: "RBAC User" } });
+    const userId = (await admin.query('SELECT id FROM "user" WHERE email = $1', [email])).rows[0].id as string;
+
+    const org = (await admin.query(
+      "INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'RB','RB') RETURNING id",
+      [`rb-${Date.now()}`],
+    )).rows[0].id as string;
+    const membership = (await admin.query(
+      "INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'active') RETURNING id",
+      [userId, org],
+    )).rows[0].id as string;
+    await admin.query(
+      "INSERT INTO permission (key,resource,action,category) VALUES ('patient.read','patient','read','clinical') ON CONFLICT (key) DO NOTHING",
+    );
+
+    // An ACTIVE role grant (permanent) and a SECOND grant whose window already closed (expired).
+    const liveRole = (await admin.query(
+      "INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,'rb-nurse','Nurse','clinical_staff',true) RETURNING id",
+      [org],
+    )).rows[0].id as string;
+    const staleRole = (await admin.query(
+      "INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,'rb-locum','Locum','clinical_staff',true) RETURNING id",
+      [org],
+    )).rows[0].id as string;
+    await admin.query("INSERT INTO role_permission (organization_id,role_id,permission_key) VALUES ($1,$2,'patient.read')", [org, liveRole]);
+    await admin.query("INSERT INTO role_permission (organization_id,role_id,permission_key) VALUES ($1,$2,'patient.read')", [org, staleRole]);
+    await admin.query("INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)", [org, membership, liveRole]);
+    await admin.query(
+      "INSERT INTO membership_role (organization_id,membership_id,role_id,expires_at) VALUES ($1,$2,$3, now() - interval '1 day')",
+      [org, membership, staleRole],
+    );
+
+    const grants = await store.loadGrants(org, userId);
+    // The store is a thin reader: it returns BOTH grants (filtering is the engine's job).
+    expect(grants.map((g) => g.roleKey).sort()).toEqual(["rb-locum", "rb-nurse"]);
+    const live = grants.find((g) => g.roleKey === "rb-nurse");
+    expect(live?.permissionKeys).toContain("patient.read");
+    expect(live?.expiresAt).toBeNull();
+    expect(grants.find((g) => g.roleKey === "rb-locum")?.expiresAt).toBeInstanceOf(Date);
+
+    // The engine drops the expired grant; the permanent grant's permission survives.
+    const eff = resolveEffectivePermissions(grants, Date.now());
+    expect(eff.permissions.has("patient.read")).toBe(true);
+
+    // No grants leak to a different org scope (defense in depth beneath RLS).
+    expect(await store.loadGrants(org, crypto.randomUUID())).toEqual([]);
+
+    await handle3.close();
+  });
 });

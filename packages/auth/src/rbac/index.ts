@@ -36,3 +36,7 @@ export {
   resetRbacEngine,
   resolveEffectivePermissions,
 } from "./resolve";
+export {
+  createDbEffectivePermissionStore,
+  registerDbEffectivePermissionResolver,
+} from "./drizzle-store";

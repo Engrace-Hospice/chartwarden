@@ -7,10 +7,11 @@ import {
   createDbSessionContextStore,
   createIdentityAuth,
   getIdentitySession,
+  registerDbEffectivePermissionResolver,
   registerIdentityAuth,
 } from "@wardenx/auth";
 import type { SessionContextStore } from "@wardenx/auth";
-import { createDbClient } from "@wardenx/db";
+import { type DbClient, createDbClient } from "@wardenx/db";
 import { buildServer, createSessionAuthenticate, getSeam } from "./bootstrap/index";
 import { assertAuditActionCatalog, registerAuditErasers } from "./modules/04-audit/index";
 import { registerIdentityErasers, registerIdentitySeams } from "./modules/02-identity/index";
@@ -35,10 +36,15 @@ export * from "./bootstrap/index";
  * buildServer() as `registerModuleSeams`, it runs inside bootSeams() after M1's wireSeams()
  * and before validateSeams(), so the real seams stand over the deny-stubs (§3.18).
  */
-export function wireModuleSeams(deps: { sessionContextStore?: SessionContextStore } = {}): void {
+export function wireModuleSeams(
+  deps: { sessionContextStore?: SessionContextStore; db?: DbClient } = {},
+): void {
   // AUTH-T05b: pass the DB-backed SessionContextStore in production (composition root supplies it when
   // a DB client is present); the slice/tests fall back to M2's in-memory store.
   registerIdentitySeams({ sessions: deps.sessionContextStore }); // M2 — SessionContextResolver + AuditorSessionMinter (§4.7)
+  // M3 — register the live RBAC resolver (DB-backed effective permissions) when a DB client is present,
+  // turning `requirePermission` from fail-closed to real resolution. Slice/tests keep the default.
+  if (deps.db) registerDbEffectivePermissionResolver(deps.db);
   registerTerminologySeams(); // M38 — TerminologyProvider (§4.5)
   registerMessagingSeams(); // M36 — AlertEmitter (§4.6); MessagingProvider stays deny-stub until T07/T08
   registerMdmSeams(); // M40 — MdmEntityProvider (§4.5) + BaaStatusProvider (§4.6 §7.7 as-of gate)
@@ -96,6 +102,7 @@ if ((import.meta as { main?: boolean }).main) {
     registerModuleSeams: () =>
       wireModuleSeams({
         sessionContextStore: dbHandle ? createDbSessionContextStore(dbHandle.db) : undefined,
+        db: dbHandle?.db,
       }),
     registerModuleErasers: wireModuleErasers,
   });
