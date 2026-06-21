@@ -39,12 +39,24 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 | 7 | M4 | Audit Log Viewer | `screens/admin/WARDENX_UI_AUDIT_LOG_VIEWER.md` | Work Queue | ✓ `WorkQueueLayout` | done |
 | 8 | M36 | Internal Staff Secure Messaging | `screens/core/WARDENX_UI_STAFF_MESSAGING.md` | Conversation View | ✓ `ConversationView` | done |
 | 9 | M36 | Notifications & Tasks / Worklist | `screens/core/WARDENX_UI_NOTIFICATIONS_TASKS.md` | Work Queue | ✓ `WorkQueueLayout` | done |
-| 10 | M38 | Terminology / Reference Data | `screens/admin/WARDENX_UI_TERMINOLOGY_ADMIN.md` | Work Queue | ✓ `WorkQueueLayout` | done |
+| 10 | M38 | Terminology / Reference Data | `screens/admin/WARDENX_UI_TERMINOLOGY_ADMIN.md` | Work Queue | ✓ `WorkQueueLayout` | done (live)⁶ |
 | 11 | M40 | Master Data Management | `screens/admin/WARDENX_UI_MASTER_DATA_MDM.md` | Work Queue | ✓ `WorkQueueLayout` | done |
 
 > Patient Chart (#4) is a hub: its M5 frame (banner + summary + module nav rail) is buildable now; the
 > per-module tabs (encounters, orders, eMAR, …) fill in as those modules land — build the frame in
 > Track A, graft tabs in Track B.
+
+> ⁶ **M38 Terminology — now LIVE end-to-end (FB-T01).** The terminology routes are mounted in the
+> composition root (`registerTerminologyRoutes` in `apps/backend/src/index.ts`), and the published
+> `TerminologyProvider` seam is backed by a real Drizzle `TerminologyStore`
+> (`apps/backend/src/modules/38-terminology/terminology-store-db.ts`) over the M38 tables — concept
+> reads (validate / lookup / search) on the four Phase-1 per-system tables, value-set
+> expand / is-member over `value_set_member` (display resolved as-of from the concept tables), and the
+> org-scoped add-only tenant value-set extensions under `withOrgContext`/RLS. Platform reference reads
+> serve via the `USING (true)` policy; canonical writes stay impossible (§7.4). The Terminology Admin
+> screen (`/admin/terminology`) now hits live endpoints instead of 404s. No new routes (already in the
+> contract), so `openapi.json`/the client are unchanged. RLS isolation for the one org-scoped table is
+> covered by `rls-isolation.live.test.ts` (§7.4 lockdown + §9.4 org-scoping).
 
 > ³ **App Shell / Role Home — done at frame level.** The App Shell chrome is F0-T03; the Role Home now
 > renders at `/` (apps/web/src/shell/role-home.tsx): role-aware greeting + quick-access tiles for the

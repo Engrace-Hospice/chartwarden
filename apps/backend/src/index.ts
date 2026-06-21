@@ -26,6 +26,8 @@ import {
 import { mountAuthorizationRoutes } from "./modules/03-authorization/index";
 import { registerMessagingErasers, registerMessagingSeams } from "./modules/36-messaging/index";
 import {
+  createDbTerminologyStore,
+  mountTerminologyRoutes,
   registerTerminologyErasers,
   registerTerminologySeams,
 } from "./modules/38-terminology/index";
@@ -58,7 +60,9 @@ export function wireModuleSeams(
   // M3 — register the live RBAC resolver (DB-backed effective permissions) when a DB client is present,
   // turning `requirePermission` from fail-closed to real resolution. Slice/tests keep the default.
   if (deps.db) registerDbEffectivePermissionResolver(deps.db);
-  registerTerminologySeams(); // M38 — TerminologyProvider (§4.5)
+  // M38 — TerminologyProvider (§4.5). Production backs it with the Drizzle store over the real M38
+  // tables (FB-T01); slice/tests keep the in-memory default.
+  registerTerminologySeams(deps.db ? { store: createDbTerminologyStore(deps.db) } : {});
   registerMessagingSeams(); // M36 — AlertEmitter (§4.6); MessagingProvider stays deny-stub until T07/T08
   registerMdmSeams(); // M40 — MdmEntityProvider (§4.5) + BaaStatusProvider (§4.6 §7.7 as-of gate)
   registerPatientSeams(); // M5 — CaseloadProvider (§4.1, + caseload_membership predicate); PatientReader/Mutator land T08
@@ -129,6 +133,7 @@ if ((import.meta as { main?: boolean }).main) {
           mountIdentityRoutes(app, dbHandle.db, createDbAdminMembershipReader(dbHandle.db));
           mountAuditRoutes(app, dbHandle.db); // M4 — audit-log search on the real Drizzle AuditQuery
           mountPatientRoutes(app, dbHandle.db); // M5 — patient census/chart READS on the real patient table
+          mountTerminologyRoutes(app, dbHandle.db); // M38 — terminology read surface + tenant value-set extensions (FB-T01)
         }
       : undefined,
     registerModuleSeams: () =>
