@@ -6,10 +6,8 @@
 import { useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useNavigate } from "react-router-dom";
-import { createWardenxAuthClient } from "@wardenx/auth/client";
 import { CenteredCardLayout } from "@wardenx/ui";
-
-const authClient = createWardenxAuthClient();
+import { authClient } from "./auth-client";
 
 export function SignIn(): JSX.Element {
   const navigate = useNavigate();
@@ -22,10 +20,14 @@ export function SignIn(): JSX.Element {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const { error: err } = await authClient.signIn.email({ email, password });
+    const { data, error: err } = await authClient.signIn.email({ email, password });
     setBusy(false);
     if (err) {
       setError("Sign-in failed. Check your email and password.");
+      return;
+    }
+    if (data?.twoFactorRedirect) {
+      navigate("/login/2fa"); // a second factor is required before the session is fully established
       return;
     }
     navigate("/login/organization"); // bind the org for this session

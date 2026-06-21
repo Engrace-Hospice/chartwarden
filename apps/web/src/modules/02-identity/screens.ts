@@ -4,6 +4,7 @@
 import type { ComponentType } from "react";
 import type { ScreenRegistryModule } from "@wardenx/types";
 import { AcceptInvitation } from "./accept-invitation";
+import { MfaChallenge } from "./mfa-challenge";
 import { OrganizationSelect } from "./organization-select";
 import { SignIn } from "./sign-in";
 
@@ -17,6 +18,13 @@ export const identityScreens: ScreenRegistryModule<ComponentType> = {
       title: "Sign in",
       chrome: false, // Auth Flow — outside the app shell
       screen: SignIn,
+    },
+    {
+      id: "identity.mfa-challenge",
+      path: "/login/2fa",
+      title: "Two-factor",
+      chrome: false,
+      screen: MfaChallenge,
     },
     {
       id: "identity.organization-select",
