@@ -41,12 +41,185 @@ export interface PatientView {
   readonly status: string;
 }
 
+/**
+ * One row of the §3.3 / D5 append-only `patient_address` history. A change inserts a NEW row and
+ * closes the prior with `effectiveTo`; `current` (effectiveTo IS NULL) is the live row. At most one
+ * `current && isPrimary` row per patient (a partial unique index enforces it). Geocode lat/lng are
+ * filled asynchronously by the M5-T10 geocode job, so they may be null on a freshly-added row.
+ */
+export interface AddressView {
+  readonly id: string;
+  readonly kind: string;
+  readonly line1: string;
+  readonly line2: string | null;
+  readonly city: string;
+  readonly state: string | null;
+  readonly postalCode: string;
+  readonly country: string;
+  readonly county: string | null;
+  readonly isPrimary: boolean;
+  readonly current: boolean; // effectiveTo IS NULL
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string | null;
+  readonly geocodeLat: string | null;
+  readonly geocodeLng: string | null;
+}
+
+/**
+ * One row of the §3.4 `patient_payer` coverage list (Coverage / Payers tab). `payerId` resolves an
+ * M40 canonical Payer — the DISPLAY NAME is resolved on the client via the MDM seam/client (no
+ * cross-module schema import here). `rank` 1 = primary; `current` (effectiveTo IS NULL) marks the
+ * live coverage. `subscriberId` is the member id (MBI for medicare_ffs) — plaintext, like the
+ * identifiers tab's mbi.
+ */
+export interface PatientPayerView {
+  readonly id: string;
+  readonly payerId: string;
+  readonly rank: number;
+  readonly coverageKind: string;
+  readonly subscriberId: string;
+  readonly groupNumber: string | null;
+  readonly binPcn: string | null;
+  readonly current: boolean; // effectiveTo IS NULL
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string | null;
+}
+
+/**
+ * One §3.5 `patient_assignment` row for the Care Team & Assignments tab. Links a clinician (an M2
+ * `user`) to the patient in a care-team `role`, open while `unassignedAt IS NULL` (`current`). The
+ * clinician's DISPLAY NAME is NOT resolved here — that crosses into M2, so the row carries only
+ * `clinicianUserId` and the client resolves the name through the M2 roster (mirrors the §3.4 payer →
+ * M40 client-edge resolution). At most one current `primary_rn` per patient (a partial unique index).
+ */
+export interface AssignmentView {
+  readonly id: string;
+  readonly clinicianUserId: string;
+  readonly role: string;
+  readonly assignedAt: string;
+  readonly unassignedAt: string | null;
+  readonly current: boolean; // unassignedAt IS NULL
+}
+
+/**
+ * One §3.4 caregiver involvement (a `patient_caregiver` row joined to its `caregiver` person). Carries
+ * the relationship, the primary-caregiver flag, and the legal-representative authority (DPOA / guardian
+ * / NOK). `current` (involvementTo IS NULL) marks a live involvement; at most one current primary.
+ */
+export interface CaregiverView {
+  readonly id: string; // patient_caregiver.id
+  readonly caregiverId: string;
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly relationship: string;
+  readonly isPrimary: boolean;
+  readonly isLegalRepresentative: boolean;
+  readonly lrAuthority: string;
+  readonly phone: string | null;
+  readonly email: string | null;
+  readonly current: boolean; // involvementTo IS NULL
+}
+
+/** One §3.4 `emergency_contact` row (priority 1 = first to call). */
+export interface EmergencyContactView {
+  readonly id: string;
+  readonly name: string;
+  readonly relationship: string;
+  readonly phone: string;
+  readonly email: string | null;
+  readonly priority: number;
+}
+
+/**
+ * The Care Team & Assignments tab payload (§3.4/§3.5): the clinical assignment roster + the caregiver
+ * involvements + the emergency contacts. All three are M5-owned reads scoped by RLS to app.org_id.
+ */
+export interface CareTeamView {
+  readonly assignments: readonly AssignmentView[];
+  readonly caregivers: readonly CaregiverView[];
+  readonly emergencyContacts: readonly EmergencyContactView[];
+}
+
+/**
+ * The §3.5 / D10 Privacy Flags tab payload. `flags` is the patient's active privacy RESTRICTIONS,
+ * read from the denormalized `patient_privacy_flag_snapshot` (recomputed from M39 `m39.consent.*`).
+ * A flag present = restricted (no active consent removes it). `sudRestricted` is `flags ∋ "sud"` (the
+ * 42 CFR Part 2 category); `sudDisclosable` is the §7.6 read gate decided by the M5 privacy engine —
+ * FAIL-CLOSED: a SUD-restricted patient is non-disclosable until a Part-2 consent lifts the flag.
+ */
+export interface PrivacyFlagsView {
+  readonly flags: readonly string[];
+  readonly capturedAt: string | null;
+  readonly sudRestricted: boolean;
+  readonly sudDisclosable: boolean;
+}
+
+/** The add-address capture contract (§7.4). `isPrimary` triggers atomic primary rotation. */
+export interface AddAddressInput {
+  readonly line1: string;
+  readonly line2?: string;
+  readonly city: string;
+  readonly state?: string;
+  readonly postalCode: string;
+  readonly kind?: string;
+  readonly isPrimary?: boolean;
+}
+
 /** An amendment record view (§7.7). */
 export interface AmendmentView {
   readonly id: string;
   readonly patientId: string;
   readonly status: "pending" | "accepted" | "denied" | "withdrawn";
   readonly slaDueAt: string; // ISO; received + 60 days
+}
+
+/**
+ * One identifier row for the Demographics & Identifiers tab (§3.3, §2.2). NEVER carries ciphertext:
+ * `ssn`/`state_id` are `sensitive` → `value` is null and only `last4` (the `xxx-xx-####` tail) is
+ * returned. Full reveal is a separate, `phi.read_ssn`-gated read (M5 SSN decryption follow-up).
+ */
+export interface IdentifierView {
+  readonly id: string;
+  readonly kind: string;
+  readonly value: string | null; // plaintext for mrn/mbi/prior_mrn/…; null for ssn/state_id
+  readonly last4: string | null; // display tail for the sensitive kinds (masked)
+  readonly sensitive: boolean; // ssn | state_id
+  readonly issuer: string | null;
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string | null;
+}
+
+/** A preferred/maiden/aka name (§3.3 `patient_name_alias`). */
+export interface NameAliasView {
+  readonly kind: string; // 'preferred' | 'maiden' | 'aka'
+  readonly fullName: string | null;
+  readonly firstName: string | null;
+  readonly middleName: string | null;
+  readonly lastName: string | null;
+}
+
+/**
+ * The Demographics tab payload (§3.3): legal name parts + DOB + the USCDI SOGI/race/ethnicity/marital
+ * codes (resolved to labels via M38 value-sets on the client) + preferred language. All non-encrypted.
+ */
+export interface DemographicsView {
+  readonly id: string;
+  readonly mrn: string;
+  readonly legalFirstName: string;
+  readonly legalMiddleName: string | null;
+  readonly legalLastName: string;
+  readonly legalNameSuffix: string | null;
+  readonly dob: string;
+  readonly status: string;
+  readonly sexAssignedAtBirth: string;
+  readonly genderIdentityCode: string | null;
+  readonly sexualOrientationCode: string | null;
+  readonly pronounsCode: string | null;
+  readonly maritalStatusCode: string | null;
+  readonly raceCodes: readonly string[];
+  readonly ethnicityCodes: readonly string[];
+  readonly preferredLanguageCode: string | null;
+  readonly aliases: readonly NameAliasView[];
 }
 
 /** The route service surface (§4.2). */
@@ -61,14 +234,20 @@ export interface PatientListQuery {
 export interface PatientRouteService {
   admit(organizationId: string, input: AdmitInput, actorUserId: string): Promise<AdmitResult>;
   getPatient(organizationId: string, id: string): Promise<PatientView | null>;
+  getDemographics(organizationId: string, id: string): Promise<DemographicsView | null>;
+  getIdentifiers(organizationId: string, id: string): Promise<IdentifierView[] | null>;
   list(
     organizationId: string,
     query: PatientListQuery,
   ): Promise<{ items: PatientView[]; nextCursor: string | null }>;
+  listAddresses(organizationId: string, patientId: string): Promise<AddressView[] | null>;
+  listPayers(organizationId: string, patientId: string): Promise<PatientPayerView[] | null>;
+  getCareTeam(organizationId: string, patientId: string): Promise<CareTeamView | null>;
+  getPrivacyFlags(organizationId: string, patientId: string): Promise<PrivacyFlagsView | null>;
   addAddress(
     organizationId: string,
     patientId: string,
-    address: { line1: string; city: string; state?: string; postalCode: string },
+    address: AddAddressInput,
     actorUserId: string,
   ): Promise<{ addressId: string; cascadeEmitted: "m5.patient.address_changed" }>;
   submitAmendment(
@@ -104,6 +283,8 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
   const candidates: (PatientView & MatchCandidate)[] = [...(seed.patients ?? [])];
   for (const p of candidates) patients.set(p.id, p);
   const amendments = new Map<string, AmendmentView>();
+  const addresses = new Map<string, AddressView[]>(); // patientId → append-only address history
+  const payers = new Map<string, PatientPayerView[]>(); // patientId → §3.4 coverage rows
   const now = seed.now ?? (() => new Date("2026-06-20T00:00:00Z"));
   let seq = 0;
   const nextId = (p: string) => `${p}_${(seq += 1)}`;
@@ -154,6 +335,43 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
         : null;
     },
 
+    async getDemographics(organizationId, id) {
+      const p = patients.get(id);
+      if (!p || p.organizationId !== organizationId) return null;
+      return {
+        id: p.id,
+        mrn: p.mrn,
+        legalFirstName: p.firstName,
+        legalMiddleName: null,
+        legalLastName: p.lastName,
+        legalNameSuffix: null,
+        dob: p.dob,
+        status: p.status,
+        sexAssignedAtBirth: "UNK",
+        genderIdentityCode: null,
+        sexualOrientationCode: null,
+        pronounsCode: null,
+        maritalStatusCode: null,
+        raceCodes: [],
+        ethnicityCodes: [],
+        preferredLanguageCode: null,
+        aliases: [],
+      };
+    },
+
+    async getIdentifiers(organizationId, id) {
+      const p = patients.get(id);
+      if (!p || p.organizationId !== organizationId) return null;
+      const today = "2026-06-20";
+      const rows: IdentifierView[] = [
+        { id: `${id}_mrn`, kind: "mrn", value: p.mrn, last4: null, sensitive: false, issuer: null, effectiveFrom: today, effectiveTo: null },
+      ];
+      if (p.mbi) rows.push({ id: `${id}_mbi`, kind: "mbi", value: p.mbi, last4: null, sensitive: false, issuer: null, effectiveFrom: today, effectiveTo: null });
+      // §2.2: ssn is ENVELOPE-ENCRYPTED — the read layer NEVER returns the value, only the masked tail.
+      if (p.ssn) rows.push({ id: `${id}_ssn`, kind: "ssn", value: null, last4: p.ssn.replace(/\D/g, "").slice(-4) || null, sensitive: true, issuer: null, effectiveFrom: today, effectiveTo: null });
+      return rows;
+    },
+
     async list(organizationId, query) {
       // §7.5: org-scoped (prod relies on RLS; the slice filters by organizationId).
       const rows: PatientView[] = [...patients.values()]
@@ -173,10 +391,74 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
       return { items: page, nextCursor: nextOffset < filtered.length ? String(nextOffset) : null };
     },
 
-    async addAddress(_organizationId, patientId, _address, _actorUserId) {
-      // §7.4: append-only address + the address-change cascade event.
+    async listAddresses(organizationId, patientId) {
+      const p = patients.get(patientId);
+      if (!p || p.organizationId !== organizationId) return null; // §7.5 no-leak
+      // current rows first (effectiveTo null), primary first, then newest.
+      return [...(addresses.get(patientId) ?? [])].sort(
+        (a, b) =>
+          Number(b.current) - Number(a.current) ||
+          Number(b.isPrimary) - Number(a.isPrimary) ||
+          b.effectiveFrom.localeCompare(a.effectiveFrom),
+      );
+    },
+
+    async listPayers(organizationId, patientId) {
+      const p = patients.get(patientId);
+      if (!p || p.organizationId !== organizationId) return null; // §7.5 no-leak
+      // The slice carries no coverage seed; production reads `patient_payer` under RLS. Primary first.
+      return [...(payers.get(patientId) ?? [])].sort(
+        (a, b) => Number(b.current) - Number(a.current) || a.rank - b.rank,
+      );
+    },
+
+    async getCareTeam(organizationId, patientId) {
+      const p = patients.get(patientId);
+      if (!p || p.organizationId !== organizationId) return null; // §7.5 no-leak
+      // The slice carries no care-team seed; production reads the M5 tables under RLS.
+      return { assignments: [], caregivers: [], emergencyContacts: [] };
+    },
+
+    async getPrivacyFlags(organizationId, patientId) {
+      const p = patients.get(patientId);
+      if (!p || p.organizationId !== organizationId) return null; // §7.5 no-leak
+      // The slice carries no snapshot seed; production reads `patient_privacy_flag_snapshot` under RLS.
+      // No flags → unrestricted; SUD disclosable (§7.6 fail-closed only when the sud flag is present).
+      return { flags: [], capturedAt: null, sudRestricted: false, sudDisclosable: true };
+    },
+
+    async addAddress(_organizationId, patientId, address, _actorUserId) {
+      // §7.4 / D5: append-only address + the address-change cascade event. An `isPrimary` add rotates
+      // the current primary atomically — close the prior current primary (set effectiveTo), then append.
+      const today = now().toISOString().slice(0, 10);
+      const history = addresses.get(patientId) ?? [];
+      if (address.isPrimary) {
+        for (let i = 0; i < history.length; i += 1) {
+          const a = history[i]!;
+          if (a.isPrimary && a.current) history[i] = { ...a, current: false, effectiveTo: today };
+        }
+      }
+      const id = nextId("addr");
+      history.push({
+        id,
+        kind: address.kind ?? "home",
+        line1: address.line1,
+        line2: address.line2 ?? null,
+        city: address.city,
+        state: address.state ?? null,
+        postalCode: address.postalCode,
+        country: "US",
+        county: null,
+        isPrimary: address.isPrimary ?? false,
+        current: true,
+        effectiveFrom: today,
+        effectiveTo: null,
+        geocodeLat: null,
+        geocodeLng: null,
+      });
+      addresses.set(patientId, history);
       events.push("m5.patient.address_changed");
-      return { addressId: nextId("addr"), cascadeEmitted: "m5.patient.address_changed" };
+      return { addressId: id, cascadeEmitted: "m5.patient.address_changed" };
     },
 
     async submitAmendment(_organizationId, patientId, _input, _actorUserId) {

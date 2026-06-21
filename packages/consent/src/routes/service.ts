@@ -70,6 +70,18 @@ export class ConsentRouteError extends Error {
   }
 }
 
+/** A value the routes `await`: the in-memory slice returns it synchronously; the Drizzle-backed
+ *  production impl (FB-T03, `consent-store-db.ts`) returns a Promise. Widening to this union lets the
+ *  one route layer drive both backends without forcing the in-memory slice (+ its M39 acceptance
+ *  tests, which read `.id`/`.status` synchronously) onto Promises. */
+export type Awaitable<T> = T | Promise<T>;
+
+/** Wrap every method's return type in {@link Awaitable} — the awaitable view of a service interface a
+ *  Drizzle backend can implement while the in-memory slice still returns synchronously. */
+export type AwaitableService<S> = {
+  [K in keyof S]: S[K] extends (...args: infer A) => infer R ? (...args: A) => Awaitable<R> : S[K];
+};
+
 export interface ConsentCatalogView {
   typeKey: ConsentTypeKey;
   displayNameEn: string;
@@ -77,7 +89,9 @@ export interface ConsentCatalogView {
   isPerRecipient: boolean;
 }
 
-export interface ConsentRouteService {
+/** The SYNCHRONOUS consent route backend — the canonical method shapes. The in-memory slice (+ its
+ *  M39 acceptance tests, which chain `.id`/`.status` synchronously) implements this directly. */
+export interface SyncConsentRouteService {
   readCatalog(organizationId: string): ConsentCatalogView[];
   listConsentsForPatient(organizationId: string, patientId: string): ConsentRecordView[];
   getConsent(organizationId: string, consentId: string): ConsentRecordView | null;
@@ -91,6 +105,11 @@ export interface ConsentRouteService {
     page: { cursor?: string; pageSize: number },
   ): CursorPage<EvalAuditRow>;
 }
+
+/** What the routes consume: the awaitable view of {@link SyncConsentRouteService}. The in-memory slice
+ *  (sync) is assignable to it (a `T` satisfies `T | Promise<T>`); the Drizzle-backed production impl
+ *  (FB-T03) returns Promises. The one route layer `await`s either. */
+export type ConsentRouteService = AwaitableService<SyncConsentRouteService>;
 
 export interface InMemoryConsentRouteData {
   records: ConsentRecordView[];
@@ -125,9 +144,13 @@ function newId(prefix: string): string {
   return `${prefix}-${idSeq.toString(16).padStart(8, "0")}`;
 }
 
+// The in-memory service is typed `SyncConsentRouteService` (NOT the awaitable `ConsentRouteService`)
+// so the existing M39 route/workflow acceptance tests read `service.createDraft(...).id`
+// synchronously. The sync service is still structurally assignable to the awaitable
+// `ConsentRouteService` the routes consume (a `T` satisfies `T | Promise<T>`).
 export function createInMemoryConsentRouteService(
   data: Partial<InMemoryConsentRouteData> = {},
-): { service: ConsentRouteService; data: InMemoryConsentRouteData } {
+): { service: SyncConsentRouteService; data: InMemoryConsentRouteData } {
   const store: InMemoryConsentRouteData = {
     records: data.records ?? [],
     evalAudit: data.evalAudit ?? [],
@@ -137,7 +160,7 @@ export function createInMemoryConsentRouteService(
   const find = (organizationId: string, consentId: string): ConsentRecordView | null =>
     store.records.find((r) => r.organizationId === organizationId && r.id === consentId) ?? null;
 
-  const service: ConsentRouteService = {
+  const service: SyncConsentRouteService = {
     readCatalog() {
       return [...store.catalog];
     },

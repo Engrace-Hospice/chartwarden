@@ -151,6 +151,63 @@ describe("M2-T06 identity route inventory", () => {
       await app.close();
     });
 
+    it("FB-T15 GET /auth/context returns the org-bound actor's roles, membership + effective permissions", async () => {
+      const { app } = makeServer({
+        seed: [membership({ membershipId: "adm_1", userId: "admin_1", isAdmin: true })],
+      });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/auth/context",
+        headers: ADMIN, // org_a / admin_1 / org_admin — granted member.invite etc. in makeServer
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        userId: string;
+        organizationId: string;
+        membershipId: string;
+        roles: string[];
+        isAdmin: boolean;
+        permissions: string[];
+      };
+      expect(body.userId).toBe("admin_1");
+      expect(body.organizationId).toBe("org_a");
+      expect(body.membershipId).toBe("adm_1");
+      expect(body.roles).toContain("org_admin");
+      expect(body.isAdmin).toBe(true);
+      // Permissions are the M3-resolved effective set (the SAME resolver requirePermission gates on).
+      expect(body.permissions).toContain("member.invite");
+      await app.close();
+    });
+
+    it("FB-T15 GET /auth/context for a pre-org session has no org/membership/roles/permissions", async () => {
+      const { app } = makeServer({ seed });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/auth/context",
+        headers: { "x-test-user": "user_rn" }, // authenticated, not yet org-bound
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        organizationId: string | null;
+        membershipId: string | null;
+        roles: string[];
+        permissions: string[];
+      };
+      expect(body.organizationId).toBeNull();
+      expect(body.membershipId).toBeNull();
+      expect(body.roles).toEqual([]);
+      expect(body.permissions).toEqual([]);
+      await app.close();
+    });
+
+    it("FB-T15 GET /auth/context unauthenticated → 401 envelope", async () => {
+      const { app } = makeServer({ seed });
+      const res = await app.inject({ method: "GET", url: "/api/v1/auth/context" });
+      expect(res.statusCode).toBe(401);
+      expect(res.json().error.code).toBe("UNAUTHORIZED");
+      await app.close();
+    });
+
     it("select-organization binds the chosen org (200)", async () => {
       const { app } = makeServer({ seed });
       const res = await app.inject({
@@ -301,6 +358,78 @@ describe("M2-T06 identity route inventory", () => {
       });
       expect(res.statusCode).toBe(200);
       expect(res.json().members).toHaveLength(3);
+      // FB-T11 — the view now carries userId (the staff-facet identity key).
+      expect(res.json().members[0]).toHaveProperty("userId");
+      await app.close();
+    });
+
+    it("GET /orgs/:id/members?q narrows the roster by user identity (FB-T11 staff facet)", async () => {
+      const { app } = makeServer({ seed: seed() });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/orgs/org_a/members?q=rn_user",
+        headers: ADMIN,
+      });
+      expect(res.statusCode).toBe(200);
+      const members = res.json().members as Array<{ membershipId: string; userId: string }>;
+      expect(members).toHaveLength(1);
+      expect(members[0]!.membershipId).toBe("rn_1");
+      await app.close();
+    });
+
+    it("FB-T12 — the roster carries name/email/last-login + a pending-invite count", async () => {
+      const { app, invitations } = makeServer({
+        seed: [
+          membership({
+            membershipId: "rn_1",
+            userId: "rn_user",
+            displayName: "Robin Nightingale",
+            email: "robin@engrace.test",
+            lastLoginAt: "2026-06-01T08:00:00.000Z",
+            accountStatus: "active",
+          }),
+        ],
+      });
+      // Two still-pending org invitations back the "pending invites" KPI.
+      void invitations.store.create({
+        organizationId: "org_a",
+        organizationName: "Engrace",
+        email: "new1@engrace.test",
+        proposedRoleKeys: [],
+        defaultLocationIds: [],
+      });
+      void invitations.store.create({
+        organizationId: "org_a",
+        organizationName: "Engrace",
+        email: "new2@engrace.test",
+        proposedRoleKeys: [],
+        defaultLocationIds: [],
+      });
+
+      const res = await app.inject({ method: "GET", url: "/api/v1/orgs/org_a/members", headers: ADMIN });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        members: Array<{ displayName: string | null; email: string | null; lastLoginAt: string | null }>;
+        pendingInvitations: number;
+      };
+      expect(body.members[0]!.displayName).toBe("Robin Nightingale");
+      expect(body.members[0]!.email).toBe("robin@engrace.test");
+      expect(body.members[0]!.lastLoginAt).toBe("2026-06-01T08:00:00.000Z");
+      expect(body.pendingInvitations).toBe(2);
+      await app.close();
+    });
+
+    it("FB-T12 — ?q also matches the joined display name / email", async () => {
+      const { app } = makeServer({
+        seed: [
+          membership({ membershipId: "rn_1", userId: "rn_user", displayName: "Robin Nightingale", email: "robin@engrace.test" }),
+          membership({ membershipId: "md_1", userId: "md_user", displayName: "Dana Marlow", email: "dana@engrace.test" }),
+        ],
+      });
+      const res = await app.inject({ method: "GET", url: "/api/v1/orgs/org_a/members?q=nightingale", headers: ADMIN });
+      expect(res.statusCode).toBe(200);
+      const members = res.json().members as Array<{ membershipId: string }>;
+      expect(members.map((m) => m.membershipId)).toEqual(["rn_1"]);
       await app.close();
     });
 

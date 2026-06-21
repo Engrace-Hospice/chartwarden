@@ -24,8 +24,14 @@ import {
   AdmitBodySchema,
   AmendmentBodySchema,
   DenyBodySchema,
+  PatientAddressesResponseSchema,
+  PatientCareTeamResponseSchema,
+  PatientDemographicsSchema,
+  PatientIdentifiersResponseSchema,
   PatientListQuerySchema,
   PatientListResponseSchema,
+  PatientPayersResponseSchema,
+  PatientPrivacyFlagsResponseSchema,
   PatientSummarySchema,
 } from "../../apps/backend/src/modules/05-patient/routes/patient-typebox";
 import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
@@ -105,6 +111,7 @@ const MdmSearchResponseSchema = Type.Object({ results: Type.Array(MdmResolvedSum
 // apps/backend/src/modules/02-identity/routes/identity-routes.ts (toView / readString).
 const MembershipViewSchema = Type.Object({
   membershipId: Type.String(),
+  userId: Type.String(),
   organizationId: Type.String(),
   organizationName: Type.String(),
   status: Type.Union([
@@ -115,6 +122,31 @@ const MembershipViewSchema = Type.Object({
   ]),
   isAdmin: Type.Boolean(),
   defaultLocationIds: Type.Array(Type.String()),
+  // Wrapped-user identity joined in by the live repo (FB-T12). Account status drives the "locked" KPI.
+  displayName: Type.Union([Type.String(), Type.Null()]),
+  email: Type.Union([Type.String(), Type.Null()]),
+  lastLoginAt: Type.Union([Type.String(), Type.Null()]),
+  accountStatus: Type.Union([
+    Type.Literal("created"),
+    Type.Literal("active"),
+    Type.Literal("suspended"),
+    Type.Literal("deactivated"),
+    Type.Null(),
+  ]),
+});
+
+// The authenticated actor's role/membership context (FB-T15, M2↔M3 enrichment). Mirrors the
+// `GET /api/v1/auth/context` wire shape in identity-routes.ts — the shell reflects these
+// server-resolved roles/permissions for Role-Home + nav gating (the server stays the enforcer).
+const ActorContextSchema = Type.Object({
+  userId: Type.String(),
+  organizationId: Type.Union([Type.String(), Type.Null()]),
+  organizationName: Type.Union([Type.String(), Type.Null()]),
+  membershipId: Type.Union([Type.String(), Type.Null()]),
+  displayName: Type.Union([Type.String(), Type.Null()]),
+  roles: Type.Array(Type.String()),
+  isAdmin: Type.Boolean(),
+  permissions: Type.Array(Type.String()),
 });
 
 // Step-up qualifying factors (W-M2-11 / D9): only webauthn + totp; SMS is excluded by design.
@@ -212,6 +244,10 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "List the caller's memberships (pre-org-bind, §7.2)",
     response: Type.Object({ memberships: Type.Array(MembershipViewSchema) }),
   },
+  "GET /api/v1/auth/context": {
+    summary: "The authenticated actor's roles/membership context (M2↔M3 enrichment, FB-T15)",
+    response: ActorContextSchema,
+  },
   "POST /api/v1/auth/select-organization": {
     summary: "Bind the session to one organization (one-time, §7.2)",
     body: Type.Object({ organizationId: Type.String({ minLength: 1 }) }),
@@ -222,8 +258,15 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   },
   // M2 Identity — Staff Management (Track A): org member roster + invitations + lifecycle.
   "GET /api/v1/orgs/:id/members": {
-    summary: "List an org's members (member.manage, §6)",
-    response: Type.Object({ members: Type.Array(MembershipViewSchema) }),
+    summary: "List an org's members; optional ?q narrows by user identity (member.manage, §6; FB-T11)",
+    query: Type.Object({
+      q: Type.Optional(Type.String({ description: "Narrow the roster by the wrapped user's identity" })),
+    }),
+    response: Type.Object({
+      members: Type.Array(MembershipViewSchema),
+      // Org-wide count of still-pending invitations — the "pending invites" KPI (FB-T12).
+      pendingInvitations: Type.Integer(),
+    }),
   },
   "POST /api/v1/orgs/:id/invitations": {
     summary: "Invite a member by email — token emailed, never returned (§7.1)",
@@ -283,10 +326,34 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "Fetch a patient by id (merge-redirect aware, §4.8)",
     response: PatientSummarySchema,
   },
+  "GET /api/v1/patients/:id/demographics": {
+    summary: "Patient demographics tab — name parts + SOGI/race/ethnicity codes + language (§3.3)",
+    response: PatientDemographicsSchema,
+  },
+  "GET /api/v1/patients/:id/identifiers": {
+    summary: "Patient identifiers — ssn/state_id masked to last4 (§3.3/§2.2)",
+    response: PatientIdentifiersResponseSchema,
+  },
   "POST /api/v1/patients": { body: AdmitBodySchema, summary: "Admit a patient (§7.1 duplicate-check)" },
+  "GET /api/v1/patients/:id/addresses": {
+    summary: "Patient address history — D5 append-only; current + closed rows (§3.3)",
+    response: PatientAddressesResponseSchema,
+  },
   "POST /api/v1/patients/:id/addresses": {
     body: AddressBodySchema,
-    summary: "Append a patient address (§7.4 cascade)",
+    summary: "Append a patient address (§7.4 cascade; isPrimary rotates the current primary)",
+  },
+  "GET /api/v1/patients/:id/payers": {
+    summary: "Patient coverage / payers — ranked coverages; payer name resolved via M40 (§3.4)",
+    response: PatientPayersResponseSchema,
+  },
+  "GET /api/v1/patients/:id/care-team": {
+    summary: "Patient care team — assignment roster + caregivers + emergency contacts (§3.4/§3.5)",
+    response: PatientCareTeamResponseSchema,
+  },
+  "GET /api/v1/patients/:id/privacy-flags": {
+    summary: "Patient privacy flags — active restrictions snapshot; SUD §7.6 fail-closed (§3.5/D10)",
+    response: PatientPrivacyFlagsResponseSchema,
   },
   "POST /api/v1/patients/:id/amendments": {
     body: AmendmentBodySchema,

@@ -2,3 +2,4 @@
 export { patientScreens } from "./screens";
 export { PatientListCensus } from "./patient-list-census";
 export { PatientChart } from "./patient-chart";
+export { GlobalSearchResults } from "./global-search";

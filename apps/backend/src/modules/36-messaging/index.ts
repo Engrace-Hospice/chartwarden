@@ -60,3 +60,45 @@ export {
   type VendorDeliveryUpdate,
   registerMessagingWebhookRoutes,
 } from "./routes/webhook-routes";
+
+// FB-T04/FB-T05 — the production Drizzle route-service adapter (over the M36 tables) + the
+// composition-root route mount. `createDbMessagingRouteService` backs the §4.1–4.2 READ + WRITE
+// surface live (channel list / detail / thread envelope decrypt / alert inbox / preferences / alert
+// rules + send / edit / delete / receipts / DM / member admin / announce / preference + endpoint /
+// alert-rule override). The staff-messaging + notifications-inbox screens read/write live through these.
+export { createDbMessagingRouteService } from "./messaging-route-service-db";
+// FB-T05 — the production Drizzle `MessagingProvider` seam (§4.6): the cross-module channel/message
+// CRUD surface, registered into the M1 registry over the deny-stub so `validateSeams()` sees it real.
+export { createDbMessagingProvider } from "./messaging-provider-db";
+// FB-T14 — M36-owned TRANSACTIONAL email transport (password reset / magic-link delivery). The
+// composition root binds the auth `EmailTransport` seam to this, so auth links dispatch through M36
+// (DR/INT #14, Postmark = M36) — no `dependsOn` edge (the bridge lives in the composition root).
+export {
+  selectTransactionalEmailTransport,
+  createConsoleTransactionalEmailTransport,
+  createNoopTransactionalEmailTransport,
+  type OutboundEmail,
+  type TransactionalEmailTransport,
+} from "@wardenx/messaging";
+
+import type { DbClient } from "@wardenx/db";
+import type { FastifyInstance } from "fastify";
+import { createDbMessagingRouteService as _createDbMessagingRouteService } from "./messaging-route-service-db";
+import {
+  registerMessagingAbacPredicates as _registerMessagingAbacPredicates,
+  registerMessagingRoutes as _registerMessagingRoutes,
+} from "./routes/messaging-routes";
+
+/**
+ * Mount the M36 messaging REST routes (channels / messages / notification preferences + endpoints /
+ * alerts) on a server — invoked by the composition root when a DB client is present. The READ surface
+ * runs over the real Drizzle-backed `MessagingRouteService` (org-scoped reads under RLS), and the
+ * `channel_visibility` ABAC predicate is registered against the same service so the channel-scoped
+ * routes resolve live; the write paths defer to FB-T05 (501). Backs the staff-messaging +
+ * notifications-inbox screens (FB-T04).
+ */
+export function mountMessagingRoutes(app: FastifyInstance, db: DbClient): void {
+  const service = _createDbMessagingRouteService(db);
+  _registerMessagingAbacPredicates(service); // idempotent — single-owner registry, re-boot-safe
+  _registerMessagingRoutes(app, { service });
+}

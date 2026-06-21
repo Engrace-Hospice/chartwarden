@@ -33,24 +33,137 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 | 1 | M2 | Authentication & Session | `screens/core/WARDENX_UI_AUTH.md` | Auth Flow | ✓ `CenteredCardLayout` | done¹ |
 | 2 | M1+M2+M3 | App Shell & Role Home | `screens/core/WARDENX_UI_APP_SHELL_HOME.md` | App Shell | ✓ shell (F0-T03) | done³ |
 | 3 | M1 | System / Utility Pages | `screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md` | System Page | ✓ `CenteredStatusLayout` | done |
-| 4 | M5 | Patient Chart | `screens/clinical/WARDENX_UI_PATIENT_CHART.md` | Patient Workspace | ✓ `PatientWorkspaceLayout` | done (frame) |
+| 4 | M5 | Patient Chart | `screens/clinical/WARDENX_UI_PATIENT_CHART.md` | Patient Workspace | ✓ `PatientWorkspaceLayout` | done (frame + Demographics + Addresses + Coverage + Care Team + Privacy Flags tabs)⁴ ⁹ ¹⁰ ¹¹ ¹² |
 | 5 | M5 | Patient List / Census | `screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md` | Work Queue | ✓ `WorkQueueLayout` | done² |
 | 6 | M3 | Roles & Permissions | `screens/admin/WARDENX_UI_ROLES_PERMISSIONS.md` | Admin Split Layout | ✓ `AdminSplitLayout` | done |
 | 7 | M4 | Audit Log Viewer | `screens/admin/WARDENX_UI_AUDIT_LOG_VIEWER.md` | Work Queue | ✓ `WorkQueueLayout` | done |
-| 8 | M36 | Internal Staff Secure Messaging | `screens/core/WARDENX_UI_STAFF_MESSAGING.md` | Conversation View | ✓ `ConversationView` | done |
-| 9 | M36 | Notifications & Tasks / Worklist | `screens/core/WARDENX_UI_NOTIFICATIONS_TASKS.md` | Work Queue | ✓ `WorkQueueLayout` | done |
-| 10 | M38 | Terminology / Reference Data | `screens/admin/WARDENX_UI_TERMINOLOGY_ADMIN.md` | Work Queue | ✓ `WorkQueueLayout` | done |
-| 11 | M40 | Master Data Management | `screens/admin/WARDENX_UI_MASTER_DATA_MDM.md` | Work Queue | ✓ `WorkQueueLayout` | done |
+| 8 | M36 | Internal Staff Secure Messaging | `screens/core/WARDENX_UI_STAFF_MESSAGING.md` | Conversation View | ✓ `ConversationView` | done (live)⁸ |
+| 9 | M36 | Notifications & Tasks / Worklist | `screens/core/WARDENX_UI_NOTIFICATIONS_TASKS.md` | Work Queue | ✓ `WorkQueueLayout` | done (live)⁸ |
+| 10 | M38 | Terminology / Reference Data | `screens/admin/WARDENX_UI_TERMINOLOGY_ADMIN.md` | Work Queue | ✓ `WorkQueueLayout` | done (live)⁶ |
+| 11 | M40 | Master Data Management | `screens/admin/WARDENX_UI_MASTER_DATA_MDM.md` | Work Queue | ✓ `WorkQueueLayout` | done (live)⁷ |
 
 > Patient Chart (#4) is a hub: its M5 frame (banner + summary + module nav rail) is buildable now; the
 > per-module tabs (encounters, orders, eMAR, …) fill in as those modules land — build the frame in
 > Track A, graft tabs in Track B.
 
-> ³ **App Shell / Role Home — done at frame level.** The App Shell chrome is F0-T03; the Role Home now
-> renders at `/` (apps/web/src/shell/role-home.tsx): role-aware greeting + quick-access tiles for the
-> registered screens, grouped by nav group — it auto-populates as Track A/B add screens. Role-specific
-> data widgets (My Patients, AR snapshot, cosign queue…) and the richer Top Nav (org switcher, global
-> search, notifications bell, user menu) arrive with their modules (M36, Global Search, M2 auth backend).
+> ⁴ **Patient Chart — Demographics & Identifiers tab now LIVE (FB-T06).** The M5-owned tab reads live
+> M5 data via two new gated GET routes — `GET /api/v1/patients/:id/demographics` (legal name parts,
+> DOB, the USCDI SOGI/race/ethnicity/marital codes, preferred language, and name aliases) and
+> `GET /api/v1/patients/:id/identifiers` — both behind `requirePermission("patient.read")` and RLS-scoped
+> by the request org. **§2.2/§3.3 masking is enforced server-side, by construction:** `ssn`/`state_id`
+> identifiers return `value: null` and only the `value_last4` tail (`xxx-xx-####`) — the `value_encrypted`
+> ciphertext is *never selected*, so there is no decrypt path and no leak. MRN is flagged immutable.
+> Full SSN/state-ID reveal stays gated on `phi.read_ssn` (already in M5's catalog) and lands with the M5
+> SSN capture/decryption write-path follow-up. The remaining M5-owned tabs (Coverage FB-T08, Care Team
+> FB-T09, Privacy/Consent FB-T10) follow; cross-module tabs stay Track B.
+>
+> ⁹ **Patient Chart — Addresses tab now LIVE (FB-T07).** The M5-owned tab renders the D5 **append-only**
+> address history via a new gated `GET /api/v1/patients/:id/addresses` (`requirePermission("patient.read")`,
+> RLS-scoped, 404-no-leak on an out-of-org/absent patient). It shows the **current** rows (`effective_to IS
+> NULL`) — at most one current **primary** per patient — plus closed rows as history, and an add-address
+> form over the live M5 write path (`POST …/addresses`). Setting **primary** performs **atomic rotation**
+> in one `withOrgContext` transaction: the prior current primary is closed (`effective_to` set, freeing the
+> `is_primary && effective_to IS NULL` partial unique index) before the new row is appended — never an
+> overwrite. A **geocode badge** reflects whether the async M5 geocode job has filled lat/lng yet
+> (`geocoded` vs `geocoding…`). Verified end-to-end (list/add/rotate) by route tests; the live-PG path
+> (which alone exercises the partial-unique-index interaction) is covered in `auth.live.test.ts`.
+>
+> ¹⁰ **Patient Chart — Coverage / Payers tab now LIVE (FB-T08).** The M5-owned tab renders the §3.4
+> `patient_payer` coverages via a new gated `GET /api/v1/patients/:id/payers`
+> (`requirePermission("patient.read")`, RLS-scoped, 404-no-leak), backed by the Drizzle
+> `PatientRouteService.listPayers` (active coverages first by `effective_to IS NULL`, then by `rank`).
+> Each row's `payer_id` names an **M40 canonical Payer**; the display **name** is resolved at the client
+> edge through the generated M40 MDM client (`GET /api/v1/mdm/payer/:id` → `canonical.displayName`) — so
+> there is **no cross-module backend coupling** (no new `dependsOn` edge, no `packages/db/src/schema/mdm`
+> import). A payer the viewer can't resolve (e.g. lacking `mdm.payer.read`) falls back to its raw id,
+> never fabricated. Primary (rank 1) is badged; closed coverages render as history.
+
+> ¹¹ **Patient Chart — Care Team & Assignments tab now LIVE (FB-T09).** The M5-owned tab renders three
+> §3.4/§3.5 M5-owned lists via a new gated `GET /api/v1/patients/:id/care-team`
+> (`requirePermission("patient.read")`, RLS-scoped, 404-no-leak), backed by the Drizzle
+> `PatientRouteService.getCareTeam`: the clinical `patient_assignment` roster (active first by
+> `unassigned_at IS NULL`), the `patient_caregiver` ⨝ `caregiver` involvements (relationship + primary +
+> legal-representative authority), and the priority-ordered `emergency_contact` rows. An assignment's
+> clinician is returned as a bare `clinician_user_id` — the staff **display name** crosses into M2, and
+> the M2 roster does not yet expose user names (Staff Management enrichment FB-T12 / M34), so the row
+> shows its care-team role + the short clinician id honestly rather than a fabricated name. **No
+> cross-module backend coupling** (no new `dependsOn` edge, no M2 schema import). Closed assignments /
+> ended involvements render under "Past involvement".
+
+> ¹² **Patient Chart — Privacy Flags tab now LIVE (FB-T10).** The consent-gated M5-owned tab composes
+> two live reads: the §3.5/D10 `patient_privacy_flag_snapshot` via a new gated
+> `GET /api/v1/patients/:id/privacy-flags` (`requirePermission("patient.read")`, RLS-scoped, 404-no-leak),
+> backed by the Drizzle `PatientRouteService.getPrivacyFlags` (live row = `invalidated_at IS NULL`); and
+> the patient's active consents via the M39 `GET /api/v1/patients/:id/consents` (mounted LIVE in FB-T03,
+> RLS-scoped). The snapshot's active **restriction** flags render as badges (a flag present = restricted);
+> `sud` is the **42 CFR Part 2** category. **§7.6 fail-closed:** the server decides disclosability with
+> the M5 privacy engine (`isSudReadAllowed(flags, false)` — the snapshot flag is the source until the M39
+> consent-present signal is wired live), and when a SUD-restricted patient is non-disclosable the Part 2
+> surface renders a **redacted** notice rather than fabricated detail. **No cross-module backend coupling**
+> (the consents read is M39's own route at the client edge; no new `dependsOn` edge, no M39 schema import).
+> This makes **M39's "consent inside Patient Chart" surface (no standalone screen — see below) covered by
+> #4**.
+
+> ⁶ **M38 Terminology — now LIVE end-to-end (FB-T01).** The terminology routes are mounted in the
+> composition root (`registerTerminologyRoutes` in `apps/backend/src/index.ts`), and the published
+> `TerminologyProvider` seam is backed by a real Drizzle `TerminologyStore`
+> (`apps/backend/src/modules/38-terminology/terminology-store-db.ts`) over the M38 tables — concept
+> reads (validate / lookup / search) on the four Phase-1 per-system tables, value-set
+> expand / is-member over `value_set_member` (display resolved as-of from the concept tables), and the
+> org-scoped add-only tenant value-set extensions under `withOrgContext`/RLS. Platform reference reads
+> serve via the `USING (true)` policy; canonical writes stay impossible (§7.4). The Terminology Admin
+> screen (`/admin/terminology`) now hits live endpoints instead of 404s. No new routes (already in the
+> contract), so `openapi.json`/the client are unchanged. RLS isolation for the one org-scoped table is
+> covered by `rls-isolation.live.test.ts` (§7.4 lockdown + §9.4 org-scoping).
+
+> ⁷ **M40 Master Data Management — now LIVE end-to-end (FB-T02).** The MDM routes are mounted in the
+> composition root (`mountMdmRoutes` in `apps/backend/src/index.ts`), and BOTH published seams —
+> `MdmEntityProvider` (§4.5) and `BaaStatusProvider` (§4.6/§7.7 as-of gate) — are backed by real
+> Drizzle stores (`apps/backend/src/modules/40-mdm/mdm-store-db.ts`) over the M40 tables. The
+> entity-directory **read** surface the console consumes (`GET /api/v1/mdm/{kind}/search`, resolve,
+> relationships) is live: canonical reads (physician/facility/payer) serve via the `USING (true)`
+> policy on the pooled handle; the org-scoped physician overlay + the tenant BAA register read/write
+> under `withOrgContext`/RLS; `mdm_provisional` proposals insert under RLS. The MDM console
+> (`/admin/mdm`) now hits live endpoints instead of 404s. The §7.6 platform-ops governance **writes**
+> (merge approve/reject, provisional promote) stay deferred — they need the `mdm_canonical_writer`
+> SECURITY DEFINER functions (a deeper M40 surface), so they fail-clear with 501 rather than corrupt
+> the redirect graph; the merge-queue / NPPES-sync-log / on-demand-NPI **reads** are wired (wardenx_admin
+> break-glass surface). No new routes (already in the contract), so `openapi.json`/the client are
+> unchanged. RLS isolation for the org-scoped overlay/BAA/provisional tables is covered by
+> `rls-isolation.live.test.ts`.
+
+> ⁸ **M36 Secure Messaging — READ + WRITE paths now LIVE end-to-end (FB-T04 reads, FB-T05 writes).**
+> The messaging routes are mounted in the composition root (`mountMessagingRoutes` in
+> `apps/backend/src/index.ts`), backed by a real Drizzle `MessagingRouteService`
+> (`apps/backend/src/modules/36-messaging/messaging-route-service-db.ts`) over the M36 tables, and the
+> `channel_visibility` ABAC predicate is registered against it. The READ surface is live under
+> `withOrgContext`/RLS: the channel sidebar (`GET /api/v1/messaging/channels`, with delivered-but-unread
+> receipt counts), channel detail + members, the paginated thread envelope, the per-actor alert inbox
+> (`GET /api/v1/alerts/inbox`, `alert` ⋈ `notification_delivery`), the SELF notification preferences, and
+> the tenant + inherited platform `alert_rule` list (the §7.4 `alert_rule_read` policy serves both in one
+> read). **FB-T05 makes the §4.2 WRITE surface live**: message bodies are **envelope-encrypted under the
+> per-tenant DEK** (`message.body_cipher` bytea) at write time and **decrypted for entitled readers** on
+> the thread read (the shared `messaging-write-core.ts` cipher loads the master KEK
+> `MESSAGING_ENCRYPTION_KEY` lazily — a read-only deploy without it still boots). Send / edit / delete
+> (tombstone, cipher retained) / read-receipts (delivered-receipt fan-out → markRead) / DM / member admin
+> / announce / preference + endpoint mutation / alert-rule override all run live. The cross-module
+> `MessagingProvider` seam (`messaging-provider-db.ts`) is registered over the deny-stub when a DB is
+> present, so `validateSeams()` sees it **real**; its `sync*` auto-channel hooks remain forward-seam
+> deferrals (driven by M5/M16/M17/M19 outbox events not wired in Phase 1). No new routes (already in the
+> contract), so `openapi.json`/the client are unchanged. RLS isolation for the org-scoped messaging
+> tables — including the FB-T05 message-receipt fan-out and a cross-tenant-write `WITH CHECK` rejection —
+> is covered by `rls-isolation.live.test.ts` (CI `rls-live`).
+
+> ³ **App Shell / Role Home — frame done + role-scoped (FB-T15).** The App Shell chrome is F0-T03; the
+> Role Home renders at `/` (apps/web/src/shell/role-home.tsx): role-aware greeting + quick-access tiles
+> for the registered screens, grouped by nav group. As of FB-T15 the shell **self-loads the actor's
+> role/membership context** from the live `GET /api/v1/auth/context` (the M2↔M3 enrichment seam: M3-resolved
+> roles + effective permissions over the actor's active membership) via the typed client
+> (`apps/web/src/shell/session.tsx` `ActorSessionProvider`), so the greeting reflects the real role/org and
+> the nav + Home tiles are **gated to the actor's effective permissions** (`canSeeScreen`, the same keys the
+> server enforces — the server stays the sole enforcer, no new client authz). Role-specific data widgets
+> (My Patients, AR snapshot, cosign queue…) and the richer Top Nav (org switcher, notifications bell, user
+> menu) still arrive with their modules.
 
 > ² **M5 Patient Census — built, and it required a backend route.** M5 had no list/search endpoint, so
 > a cursor-paginated `GET /api/v1/patients` (name/MRN search + status filter) was added to the M5 backend
@@ -66,39 +179,81 @@ M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + d
 > via the `passkey` client plugin — the ceremony is browser-only, so build-/e2e-verified, not CI),
 > **Organization Select** (`/login/organization`), **Accept Invitation** (`/invite/:token`),
 > **Password reset** (`/forgot` → `/reset-password?token=…`, via Better Auth `requestPasswordReset` /
-> `resetPassword` — email delivery wired to M36 in a follow-up, like magic-link), **Step-up**
+> `resetPassword` — email delivery now wired to M36's transactional email transport, like magic-link;
+> FB-T14), **Step-up**
 > (`/step-up?returnTo=…` — fresh re-verification of the current session via the generated REST client
 > over `POST /api/v1/sessions/step-up{/initiate}`; paired-writes `lastStepUpAt`/`lastStepUpFactor` that
-> M3's `step_up_recent` gates on. TOTP is wired; the WebAuthn step-up ceremony is a browser follow-up
-> like passkey), and the **idle screen-lock** (an overlay, not a route: the composition root mounts it
+> M3's `step_up_recent` gates on. BOTH qualifying factors are wired: TOTP, and the **WebAuthn step-up
+> ceremony** (FB-T13) — `navigator.credentials.get` against the session-scoped challenge the initiate
+> route mints, assertion posted back for server verification; browser-only, so build-/e2e-verified, not
+> CI-unit), and the **idle screen-lock** (an overlay, not a route: the composition root mounts it
 > inside the app shell via the new `AppShell chromeOverlay` seam — M1 stays module-free; after
 > `SESSION_POLICY.screenLockSec` = 5 min idle it covers the authenticated frame and soft-re-auths the
 > same user by password, session stays alive per M2 §2.2.4 active→screen_locked→active; gated to the
 > `SESSION_POLICY.screenLockClasses` floor = staff/auditor, an unknown class failing safe). **No M2 auth
-> screens remain deferred.** Backend follow-ups only: WebAuthn step-up ceremony, magic-link M36 delivery,
-> actor role/membership enrichment (the M2↔M3 seam).
+> screens remain deferred.** Magic-link / password-reset **email delivery is now wired to M36's
+> transactional email transport** (`@wardenx/messaging` `selectTransactionalEmailTransport`, bound to the
+> auth `EmailTransport` seam at the composition root; DR/INT #14, Postmark = M36; FB-T14) — the real
+> Postmark/SES provider plugs into M36's `provider` slot when M1 infra wires credentials. The actor
+> role/membership enrichment (the M2↔M3 seam) now ships too: `GET /api/v1/auth/context` exposes the
+> actor's M3-resolved roles + effective permissions over their active membership, and the shell self-loads
+> it for the role-scoped Role Home / nav (FB-T15, see ³). **No M2 auth backend follow-ups remain.**
 
 ### Partial — primary owner merged, but key sections need unbuilt modules
 
 | Module(s) | Screen | Spec | Blocked-on | Status |
 |-----------|--------|------|-----------|--------|
-| M5 + M2/M3 | Global Search Results | `screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md` | aggregates entities from later modules; M5 patient search ready | deferred (partial) |
+| M5 + M2/M3 | Global Search Results | `screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md` | later facets (documents/orders/visits/commands) need unbuilt modules | done (partial — M5+M2 facets)⁶ |
 | M2 + M36 + M17 | User Profile & Preferences | `screens/core/WARDENX_UI_USER_PROFILE_PREFERENCES.md` | M17 (scheduling prefs) | deferred (partial) |
-| M2 / M34 | Staff Management | `screens/admin/WARDENX_UI_STAFF_MANAGEMENT.md` | owner = M2 (memberships); Name/email, Discipline, Credentials, Last-login, Pending-invite/Locked KPIs need richer member data / M34 | done (M2 roster)⁵ |
+| M2 / M34 | Staff Management | `screens/admin/WARDENX_UI_STAFF_MANAGEMENT.md` | owner = M2 (memberships); enriched (FB-T12) with name/email, last-login, Pending-invite + Locked-account KPIs; Discipline/Credentials still need M34 | done (M2 roster — enriched)⁵ |
 
-> ⁵ **Staff Management — built at the M2 roster level** (`apps/web/src/modules/02-identity/staff-management.tsx`,
+> ⁵ **Staff Management — built at the M2 roster level, enriched (FB-T12)** (`apps/web/src/modules/02-identity/staff-management.tsx`,
 > `/admin/staff`, Work Queue). Invite by email, change member status (active/suspended), and revoke a
 > membership — over the M2 member routes via the generated client; active org from the session. Owner
-> question resolved: **M2** (memberships). Deferred to richer member data / M34: Name/email, Discipline,
-> Credentials, Last-login columns and the Pending-invite / Locked-account KPIs. Like every Track A screen,
-> this is built against the typed contract; the M2 member routes are coded + unit-tested (Fastify `inject`)
-> but **not yet mounted in the running server**, and the membership store is in-memory — a backend
-> mount + DB-store follow-up shared across all modules.
+> question resolved: **M2** (memberships). **FB-T12** enriched the roster with what the M2 surface carries
+> today: a **Name / email** column (the live `MembershipRepository` joins the M1-owned `user` table), a
+> **Last-login** column (`max(session.created_at)` from the M1-owned `session` table), and two KPIs —
+> **Pending invites** (`pendingInvitations` from the members route, counting still-pending
+> `organization_invitation` rows) and **Locked accounts** (members whose `user.status` is
+> suspended/deactivated, badged inline). All additive read-layer over M1-owned tables (M2 dependsOn 1; no
+> new edge, no schema import). Still deferred to **M34**: Discipline / credentials (no fabrication — the
+> screen omits them). Like every Track A screen this is built against the typed contract; the member
+> roster reads run on the live Drizzle repo, while the remaining M2 lifecycle deps (invitations /
+> sessions / user directory) stay in-memory pending a shared backend mount + DB-store follow-up.
 
-### M39 Consent — no standalone staff screen
+> ⁶ **Global Search Results — built (partial — M5 + M2 facets, FB-T11).** The Global Search frame
+> (`apps/web/src/modules/05-patient/global-search.tsx`, `/search`, Work Queue: facets + grouped results
+> + result preview) ships with its two **live** facets: the M5 **patient** facet over
+> `GET /api/v1/patients?q=` (RLS/caseload-scoped server-side; the list carries no SSN/MBI, so the spec's
+> redaction holds by construction) and the M2 **staff** facet over `GET /api/v1/orgs/:id/members?q=`
+> (server-side `q` added in FB-T11 — narrows by the wrapped user identity; FB-T12 extended `q` to also
+> match the joined `user.name` / `user.email`). The staff facet stays behind `member.manage`; a 403 / no
+> org-bound session degrades to a clear note, never a hard error. It is reachable from the new shell
+> **top-nav search** box (M1 layout, module-free — it only navigates to `/search?q=`). Later facets
+> (**documents / orders / visits / navigation-commands**) render as labeled "available when *module*
+> ships" rows — visible, not fabricated — and light up with M22 / M16 / M19 (Track B).
+
+### M39 Consent — no standalone staff screen (backend LIVE FB-T03; consent surface LIVE FB-T10)
 
 M39 has no dedicated screen in the index; consent surfaces inside **Patient Chart** (a tab, #4) and the
-patient-facing **Portal Documents/Consents** (M31, blocked). No separate Track A row — covered by #4.
+patient-facing **Portal Documents/Consents** (M31, blocked). No separate Track A row — **covered by #4,
+now LIVE**: the Patient Chart **Privacy Flags** tab (FB-T10, footnote ¹²) renders the patient's active
+consents from `GET /api/v1/patients/:id/consents` alongside the privacy-flag snapshot, with the §7.6 SUD /
+42 CFR Part 2 surface failing closed when non-disclosable.
+
+**M39 backend now LIVE end-to-end (FB-T03).** The consent routes are mounted in the composition root
+(`mountConsentRoutes` in `apps/backend/src/index.ts`), and the published `ConsentEvaluator` seam (§4.3,
+the disclosure/redaction gate) is backed by a real Drizzle `ConsentStore`
+(`apps/backend/src/modules/39-consent/consent-store-db.ts`) over the M39 tables. The consent **read**
+surface the Patient Chart consent tab (FB-T10) consumes is live: the platform-shared `consent_type_catalog`
+serves on the pooled handle; the patient's active consents (`GET /api/v1/patients/:id/consents`), a single
+record, and the cursor-paginated decision audit run under `withOrgContext`/RLS. The consent-**lifecycle**
+writes (create-draft / sign / revoke) stay deferred — they need the §2.2.1 capture/step-up-evidence +
+append-only supersession + per-tenant DEK machinery (M39-T09 consent-flow surface), so they fail-clear with
+501 rather than write a half-formed append-only record. The `consent` eraser still refuses §3.8 (legal-hold
+/ 42 CFR Part 2 lifetime). `isPatientDeceased` (D13 post-death scope) returns false until the
+`m5.patient.deceased` outbox consumer + its M1 infra wire (M39-T08). No new routes (already in the
+contract), so `openapi.json`/the client are unchanged.
 
 ---
 

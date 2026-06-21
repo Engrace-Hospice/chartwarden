@@ -12,8 +12,16 @@ import type { DbClient } from "@wardenx/db";
 import { schema } from "@wardenx/db";
 import type { AdminMembershipReader } from "@wardenx/types";
 import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
-import { eq } from "drizzle-orm";
-import type { MembershipRecord, MembershipRepository, MembershipStatus } from "./identity-ports";
+import { and, eq, sql } from "drizzle-orm";
+import type { AccountStatus, MembershipRecord, MembershipRepository, MembershipStatus } from "./identity-ports";
+
+// The wrapped user's display name / email / account status come from the M1-owned `user` table, and
+// `lastLoginAt` from the most recent M1-owned `session` row — both joined in here (FB-T12). M2 reads
+// these (dependsOn 1); they are org-scoped identity, not PHI, and `user`/`session` stay un-RLS'd
+// (org context is applied at the app layer), so they read cleanly under wardenx_app.
+const lastLoginExpr = sql<
+  Date | string | null
+>`(select max(${schema.sessions.createdAt}) from ${schema.sessions} where ${schema.sessions.userId} = ${schema.memberships.userId})`;
 
 const MEMBERSHIP_COLUMNS = {
   membershipId: schema.memberships.id,
@@ -22,6 +30,10 @@ const MEMBERSHIP_COLUMNS = {
   organizationName: schema.organizations.displayName,
   status: schema.memberships.status,
   defaultLocationIds: schema.memberships.defaultLocationIds,
+  displayName: schema.users.name,
+  email: schema.users.email,
+  accountStatus: schema.users.status,
+  lastLoginAt: lastLoginExpr,
 } as const;
 
 interface MembershipDbRow {
@@ -31,6 +43,16 @@ interface MembershipDbRow {
   organizationName: string;
   status: MembershipStatus;
   defaultLocationIds: unknown;
+  displayName: string | null;
+  email: string;
+  accountStatus: AccountStatus;
+  lastLoginAt: Date | string | null;
+}
+
+/** Normalize a timestamptz (Date or already-string) to an ISO string, preserving null. */
+function toIso(value: Date | string | null): string | null {
+  if (value === null) return null;
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
 function toRecord(row: MembershipDbRow, adminIds: ReadonlySet<string>): MembershipRecord {
@@ -42,6 +64,10 @@ function toRecord(row: MembershipDbRow, adminIds: ReadonlySet<string>): Membersh
     status: row.status,
     isAdmin: adminIds.has(row.membershipId),
     defaultLocationIds: Array.isArray(row.defaultLocationIds) ? (row.defaultLocationIds as string[]) : [],
+    displayName: row.displayName,
+    email: row.email,
+    accountStatus: row.accountStatus,
+    lastLoginAt: toIso(row.lastLoginAt),
   };
 }
 
@@ -52,13 +78,27 @@ export function createDbMembershipRepository(
 ): MembershipRepository {
   const ctx = (orgId: string) => ({ organizationId: orgId, userId: "" });
 
-  const selectByOrg = (orgId: string) =>
+  const selectByOrg = (orgId: string, q?: string) =>
     withOrgContext(db, ctx(orgId), async (tx) => {
+      // `q` (Global Search staff facet, FB-T11) narrows by the wrapped user's identity. RLS still
+      // scopes the org; the ILIKE is an additional in-org filter (forward-compatible to name/email).
+      const needle = q?.trim();
+      // `q` matches the wrapped user's identity: name/email (joined), or the user_id (uuid → text,
+      // since Postgres has no uuid ILIKE). FB-T11 staff facet, now extended to name/email (FB-T12).
+      const where = needle
+        ? and(
+            eq(schema.memberships.organizationId, orgId),
+            sql`(${schema.memberships.userId}::text ILIKE ${`%${needle}%`}
+              OR ${schema.users.name} ILIKE ${`%${needle}%`}
+              OR ${schema.users.email} ILIKE ${`%${needle}%`})`,
+          )
+        : eq(schema.memberships.organizationId, orgId);
       const rows = (await tx
         .select(MEMBERSHIP_COLUMNS)
         .from(schema.memberships)
         .innerJoin(schema.organizations, eq(schema.organizations.id, schema.memberships.organizationId))
-        .where(eq(schema.memberships.organizationId, orgId))) as MembershipDbRow[];
+        .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
+        .where(where)) as MembershipDbRow[];
       const adminIds = await admin.adminMembershipIds(orgId);
       return rows.map((r) => toRecord(r, adminIds));
     });
@@ -73,6 +113,7 @@ export function createDbMembershipRepository(
         .select(MEMBERSHIP_COLUMNS)
         .from(schema.memberships)
         .innerJoin(schema.organizations, eq(schema.organizations.id, schema.memberships.organizationId))
+        .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
         .where(eq(schema.memberships.id, membershipId))
         .limit(1)) as MembershipDbRow[];
       const row = rows[0];
@@ -82,7 +123,7 @@ export function createDbMembershipRepository(
     });
 
   return {
-    listForOrg: (organizationId) => selectByOrg(organizationId),
+    listForOrg: (organizationId, q) => selectByOrg(organizationId, q),
 
     listForUser: async (userId) => {
       // Pre-org-bind (/auth/memberships): the user's memberships ACROSS orgs — there is no single org
@@ -93,6 +134,7 @@ export function createDbMembershipRepository(
         .select(MEMBERSHIP_COLUMNS)
         .from(schema.memberships)
         .innerJoin(schema.organizations, eq(schema.organizations.id, schema.memberships.organizationId))
+        .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
         .where(eq(schema.memberships.userId, userId))) as MembershipDbRow[];
       // Admin status is per-org; resolve each org's admin set once.
       const orgIds = [...new Set(rows.map((r) => r.organizationId))];

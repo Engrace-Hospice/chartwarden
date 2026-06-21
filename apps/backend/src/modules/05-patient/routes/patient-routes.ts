@@ -61,6 +61,51 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
     return p;
   });
 
+  // --- §3.3 demographics tab (legal name parts + SOGI/race/ethnicity codes + language + aliases) --
+  app.get("/api/v1/patients/:id/demographics", { preHandler: [READ] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    const { id } = parse(LooseIdParamsSchema, request.params);
+    const d = await service.getDemographics(organizationId, id);
+    if (d === null) throw notFound("patient"); // §7.5 non-leak: other-org / non-existent → 404
+    return d;
+  });
+
+  // --- §3.3/§2.2 identifiers tab (ssn/state_id MASKED — value_encrypted never serialized) ---------
+  app.get("/api/v1/patients/:id/identifiers", { preHandler: [READ] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    const { id } = parse(LooseIdParamsSchema, request.params);
+    const rows = await service.getIdentifiers(organizationId, id);
+    if (rows === null) throw notFound("patient");
+    return { identifiers: rows };
+  });
+
+  // --- §3.4 coverage / payers tab (ranked coverages; payer NAME resolved client-side via M40) -----
+  app.get("/api/v1/patients/:id/payers", { preHandler: [READ] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    const { id } = parse(LooseIdParamsSchema, request.params);
+    const rows = await service.listPayers(organizationId, id);
+    if (rows === null) throw notFound("patient"); // §7.5 non-leak
+    return { payers: rows };
+  });
+
+  // --- §3.4/§3.5 care team & assignments tab (assignment roster + caregivers + emergency contacts) -
+  app.get("/api/v1/patients/:id/care-team", { preHandler: [READ] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    const { id } = parse(LooseIdParamsSchema, request.params);
+    const team = await service.getCareTeam(organizationId, id);
+    if (team === null) throw notFound("patient"); // §7.5 non-leak
+    return team;
+  });
+
+  // --- §3.5/§7.6 privacy flags tab (active restrictions snapshot; SUD fail-closed disclosability) --
+  app.get("/api/v1/patients/:id/privacy-flags", { preHandler: [READ] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    const { id } = parse(LooseIdParamsSchema, request.params);
+    const flags = await service.getPrivacyFlags(organizationId, id);
+    if (flags === null) throw notFound("patient"); // §7.5 non-leak
+    return flags;
+  });
+
   // --- §4.2 admit (runs the §7.1 match pipeline; hard dup → 409) --------------------------------
   app.post("/api/v1/patients", { preHandler: [CREATE] }, async (request, reply) => {
     const { organizationId, userId } = actorOf(request);
@@ -76,6 +121,15 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
       );
     }
     return reply.code(201).send(result);
+  });
+
+  // --- §3.3 addresses tab (D5 append-only history; current rows + history) ----------------------
+  app.get("/api/v1/patients/:id/addresses", { preHandler: [READ] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    const { id } = parse(LooseIdParamsSchema, request.params);
+    const rows = await service.listAddresses(organizationId, id);
+    if (rows === null) throw notFound("patient"); // §7.5 non-leak
+    return { addresses: rows };
   });
 
   // --- §4.2 add address (§7.4 cascade) ---------------------------------------------------------

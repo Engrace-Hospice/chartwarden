@@ -523,8 +523,20 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
 
     // §7.4 address + §7.7 amendment lifecycle (real writes under RLS).
     const patientId = (a as { patientId: string }).patientId;
-    const addr = await svc.addAddress(org, patientId, { line1: "1 Elm St", city: "Portland", state: "OR", postalCode: "97201" }, actor);
+    const addr = await svc.addAddress(org, patientId, { line1: "1 Elm St", city: "Portland", state: "OR", postalCode: "97201", isPrimary: true }, actor);
     expect(addr.cascadeEmitted).toBe("m5.patient.address_changed");
+    // §3.3 list shows the current row; §7.4/D5 a new primary rotates atomically (the partial unique
+    // index `is_primary && effective_to IS NULL` would reject a second open primary if rotation broke).
+    const afterFirst = await svc.listAddresses(org, patientId);
+    expect(afterFirst).toHaveLength(1);
+    expect(afterFirst![0]!.current).toBe(true);
+    expect(afterFirst![0]!.isPrimary).toBe(true);
+    await svc.addAddress(org, patientId, { line1: "2 Oak Ave", city: "Salem", state: "OR", postalCode: "97301", isPrimary: true }, actor);
+    const afterRotate = await svc.listAddresses(org, patientId);
+    expect(afterRotate).toHaveLength(2); // append-only: prior primary kept as history
+    expect(afterRotate!.filter((r) => r.current && r.isPrimary)).toHaveLength(1); // exactly one open primary
+    expect(afterRotate!.find((r) => r.line1 === "2 Oak Ave")!.current).toBe(true);
+    expect(afterRotate!.find((r) => r.line1 === "1 Elm St")!.effectiveTo).not.toBeNull();
     const amd = await svc.submitAmendment(org, patientId, { scope: "demographic", rationale: "name correction" }, actor);
     expect(amd.status).toBe("pending");
     expect(new Date(amd.slaDueAt).getTime()).toBeGreaterThan(Date.now()); // ~received + 60d

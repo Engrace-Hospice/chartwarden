@@ -54,6 +54,8 @@ export {
   type AdmitInput,
   type AdmitResult,
   type PatientView,
+  type AddressView,
+  type AddAddressInput,
   type AmendmentView,
   type InMemoryPatientSeed,
   createInMemoryPatientRouteService,

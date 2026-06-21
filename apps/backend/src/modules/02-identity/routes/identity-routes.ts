@@ -27,7 +27,7 @@
 // an admin route additionally asserts the session's bound org === the path org, so a token
 // replay with an altered org cannot act cross-tenant (§7.12).
 import type { AuditContext, AuditExecutor } from "@wardenx/audit";
-import { requireAbac, requirePermission, requireSession } from "@wardenx/auth";
+import { requireAbac, requirePermission, requireSession, resolveActorPermissions } from "@wardenx/auth";
 import { UnauthorizedError, ValidationError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -102,11 +102,16 @@ function auditContextFor(
 
 const toView = (r: MembershipRecord): MembershipView => ({
   membershipId: r.membershipId,
+  userId: r.userId,
   organizationId: r.organizationId,
   organizationName: r.organizationName,
   status: r.status,
   isAdmin: r.isAdmin,
   defaultLocationIds: r.defaultLocationIds,
+  displayName: r.displayName ?? null,
+  email: r.email ?? null,
+  lastLoginAt: r.lastLoginAt ?? null,
+  accountStatus: r.accountStatus ?? null,
 });
 
 /** Read a required string field from a request body (flat VALIDATION_FAILED on miss). */
@@ -147,6 +152,33 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     const actor = await resolveActor(deps, request);
     const rows = await deps.memberships.listForUser(actor.userId);
     return { memberships: rows.map(toView) };
+  });
+
+  // --- Actor context: the app shell's role/membership enrichment surface (M2↔M3 seam, FB-T15) ---
+  // Read-only projection of the authenticated actor for the web shell: identity + the active
+  // membership + the M3-resolved role keys + the effective permission keys (Role-Home / nav
+  // gating). The roles come from the actor context the authenticate hook fills via the M2↔M3
+  // ActorEnrichment seam; the permissions come through the SAME resolver `requirePermission`
+  // gates on, so the shell only ever REFLECTS server-side grants — the server stays the sole
+  // enforcer (no new authz). A pre-org session resolves with no org/membership/roles/permissions;
+  // unauthenticated fails closed (401), matching `/auth/memberships`.
+  app.get("/api/v1/auth/context", async (request) => {
+    const actor = await resolveActor(deps, request);
+    const orgId = actor.organizationId;
+    const membership = orgId ? await deps.memberships.findActive(actor.userId, orgId) : null;
+    const permissions = orgId
+      ? [...(await resolveActorPermissions({ organizationId: orgId, userId: actor.userId }))]
+      : [];
+    return {
+      userId: actor.userId,
+      organizationId: orgId,
+      organizationName: membership?.organizationName ?? null,
+      membershipId: membership?.membershipId ?? null,
+      displayName: membership?.displayName ?? null,
+      roles: [...actor.roles],
+      isAdmin: membership?.isAdmin ?? false,
+      permissions,
+    };
   });
 
   app.post("/api/v1/auth/select-organization", async (request, reply) => {
@@ -259,8 +291,15 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     await requirePermission("member.manage")(request);
     const orgId = (request.params as { id: string }).id;
     assertOrgMatch(request, orgId);
-    const rows = await deps.memberships.listForOrg(orgId);
-    return { members: rows.map(toView) };
+    // Optional `q` narrows the roster (Global Search staff facet, FB-T11). Server-side so the
+    // filter stays under RLS; the permission gate is unchanged (still member.manage).
+    const rawQ = (request.query as { q?: unknown } | null)?.q;
+    const q = typeof rawQ === "string" && rawQ.trim() ? rawQ.trim() : undefined;
+    const rows = await deps.memberships.listForOrg(orgId, q);
+    // `pendingInvitations` backs the Staff Management "pending invites" KPI (FB-T12). It reflects
+    // the whole org regardless of the `q` roster narrowing, so the KPI stays stable while filtering.
+    const pendingInvitations = await deps.invitations.pendingCount(orgId);
+    return { members: rows.map(toView), pendingInvitations };
   });
 
   app.patch("/api/v1/orgs/:id/members/:mId", async (request, reply) => {

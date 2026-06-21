@@ -1,16 +1,18 @@
 // @wardenx/auth · identity — outbound transactional email transport (M2 delivery seam).
 //
 // Better Auth mints the single-use tokens (password reset, magic-link sign-in) and hands them to the
-// `sendResetPassword` / `sendMagicLink` callbacks; THIS is the delivery mechanism those callbacks send
-// through. It is a thin PORT: the auth wiring templates the message, the transport delivers it. The real
-// provider (SMTP / Postmark / SES) is wired in the composition root from credentials — a deliberately
-// small surface so adding one later is a one-file change. Until credentials exist, the console transport
-// logs the link (dev) and the no-op transport drops it (tests / disabled email).
+// `sendResetPassword` / `sendMagicLink` callbacks; THIS is the thin PORT those callbacks send through —
+// the auth wiring templates the message, the bound transport delivers it.
 //
-// Transactional auth email is intentionally NOT routed through M36's notification pipeline: M36 is for
-// in-app/alert delivery and its out-of-band transport is itself deferred to M1 infra; an auth sign-in
-// link needs a direct, synchronous transactional send. Keeping this seam in M2 avoids a dependency on
-// M36 infra that does not exist yet.
+// FB-T14: M36 OWNS outbound email in the integration catalog (manifest VENDOR_ADAPTERS["postmark"] =
+// packages/messaging; M2_DR_INT_INVENTORY §2.2 #14). The composition root therefore binds this PORT to
+// M36's `selectTransactionalEmailTransport` (`@wardenx/messaging`) — so auth links dispatch through M36,
+// while M2 neither imports a vendor SDK nor takes a `dependsOn` edge on M36 (the bridge is the
+// composition root, which may import both). These sends are TRANSACTIONAL and PHI-free (a sign-in link
+// to one address) with no in-perimeter `Alert`/`Message` source, so they bypass §4.7
+// `sanitizeForOutOfBand` and the org-scoped `notification_delivery` pipeline — a pre-auth reset has no
+// org context to scope. The no-op + console impls below remain as the M2 slice/test fallback and the
+// `EmailTransport` port the auth instance is typed against.
 
 /** A transactional email to deliver (plain-text is required; html is optional). */
 export interface EmailMessage {

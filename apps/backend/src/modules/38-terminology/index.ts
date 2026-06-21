@@ -39,3 +39,26 @@ export {
   AI_FULL_FLAG,
   registerTerminologyRoutes,
 } from "./routes/terminology-routes";
+
+// FB-T01 — the production Drizzle `TerminologyStore` (over the M38 tables) + the composition-root
+// route mount. The store backs both the published `TerminologyProvider` seam (injected in
+// `registerTerminologySeams`) and the consumer-facing route inventory below.
+export { createDbTerminologyStore } from "./terminology-store-db";
+
+import type { DbClient } from "@wardenx/db";
+import { createTerminologyProvider } from "@wardenx/terminology";
+import type { FastifyInstance } from "fastify";
+import { registerTerminologyRoutes as _registerTerminologyRoutes } from "./routes/terminology-routes";
+import { createDbTerminologyStore as _createDbTerminologyStore } from "./terminology-store-db";
+
+/**
+ * Mount the M38 terminology REST routes (validate / lookup / search / value-set expand+is-member /
+ * tenant value-set extensions) on a server — invoked by the composition root when a DB client is
+ * present. The handlers run over the real Drizzle-backed `TerminologyProvider`; reads serve live
+ * reference data and the org-scoped tenant-extension write runs under RLS. Backs the Terminology
+ * Admin screen (FB-T01).
+ */
+export function mountTerminologyRoutes(app: FastifyInstance, db: DbClient): void {
+  const provider = createTerminologyProvider(_createDbTerminologyStore(db));
+  _registerTerminologyRoutes(app, { provider });
+}

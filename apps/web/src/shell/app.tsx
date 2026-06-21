@@ -18,7 +18,7 @@ import type { ScreenRegistry } from "@wardenx/types";
 import { AppLayout } from "./layout";
 import { RoleHome } from "./role-home";
 import type { WebScreen } from "./screen-registry";
-import { SessionProvider } from "./session";
+import { ActorSessionProvider } from "./session";
 import type { Session } from "./session";
 
 export interface AppShellProps {
@@ -74,13 +74,14 @@ export function AppShell({
     <ErrorBoundary correlationId={correlationId}>
       <CorrelationIdProvider value={correlationId}>
         <ApiClientProvider client={client}>
-          <SessionProvider session={session}>
+          {/* Self-loads the actor's role/membership context (FB-T15) unless one is injected. */}
+          <ActorSessionProvider initial={session}>
             <FeatureFlagProvider flags={flags}>
               <SystemStatusProvider components={systemStatus}>
                 <RouterProvider router={router} />
               </SystemStatusProvider>
             </FeatureFlagProvider>
-          </SessionProvider>
+          </ActorSessionProvider>
         </ApiClientProvider>
       </CorrelationIdProvider>
     </ErrorBoundary>

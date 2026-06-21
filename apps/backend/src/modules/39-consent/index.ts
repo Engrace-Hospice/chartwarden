@@ -39,3 +39,29 @@ export {
 // patient's consent subtree EXCEPT rows under a legal hold or a 42 CFR Part 2 release retained for
 // the patient's lifetime; consent_eval_audit destruction is M4's certified audit-retention path.
 export { type ConsentEraserDeps, registerConsentErasers } from "./erasers/consent-eraser";
+
+// FB-T03 — the production Drizzle consent adapters (over the M39 tables) + the composition-root route
+// mount. `createDbConsentStore`/`createDbConsentEvaluator` back the published `ConsentEvaluator` seam
+// (injected in `registerConsentSeams`); `createDbConsentRouteService` backs the §4.1 read routes. The
+// Patient Chart consent tab (apps/web/src/modules/05-patient, FB-T10) reads live through these.
+export {
+  createDbConsentEvaluator,
+  createDbConsentRouteService,
+  createDbConsentStore,
+} from "./consent-store-db";
+
+import type { DbClient } from "@wardenx/db";
+import type { FastifyInstance } from "fastify";
+import { registerConsentRoutes as _registerConsentRoutes } from "./routes/consent-routes";
+import { createDbConsentRouteService as _createDbConsentRouteService } from "./consent-store-db";
+
+/**
+ * Mount the M39 consent REST routes (catalog / patient consents / record / decision audit + the
+ * lifecycle endpoints) on a server — invoked by the composition root when a DB client is present.
+ * The read surface runs over the real Drizzle-backed `ConsentRouteService` (org-scoped reads under
+ * RLS); the lifecycle writes defer to the §2.2.1 consent-flow surface (501). Backs the Patient Chart
+ * consent tab (FB-T03 → FB-T10).
+ */
+export function mountConsentRoutes(app: FastifyInstance, db: DbClient): void {
+  _registerConsentRoutes(app, { service: _createDbConsentRouteService(db) });
+}

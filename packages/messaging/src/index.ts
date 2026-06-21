@@ -11,6 +11,15 @@
 
 export { CHANNEL_KINDS, CHANNEL_KIND_DESCRIPTORS } from "./interfaces/kinds";
 
+// ── FB-T05 message body envelope crypto (§3.4 / M36-F03) — per-tenant DEK seal/open + sha256 ───
+export {
+  loadMessagingKek,
+  deriveOrgDek,
+  sealMessageBody,
+  openMessageBody,
+  messageBodySha256,
+} from "./crypto";
+
 // ── M36-T08 realtime event & room CONTRACT (§4.3) — pure room-set + sanitized event payloads ──
 export {
   // room grammar + connect-time room-set computation
@@ -154,6 +163,14 @@ export type {
   SanitizedNotification,
   OutOfBandChannel,
 } from "./notification";
+
+// ── FB-T14 transactional email transport (M36-owned outbound email; DR/INT #14, Postmark) ──
+export {
+  selectTransactionalEmailTransport,
+  createConsoleTransactionalEmailTransport,
+  createNoopTransactionalEmailTransport,
+} from "./notification";
+export type { OutboundEmail, TransactionalEmailTransport } from "./notification";
 
 // ── M36-T05 alert-payload catalog (Foundation Registry + boot gate) — §3.11–3.12 ──────────
 export {

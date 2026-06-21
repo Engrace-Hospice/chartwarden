@@ -263,6 +263,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The authenticated actor's roles/membership context (M2↔M3 enrichment, FB-T15) */
+        get: operations["getApiV1AuthContext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/memberships": {
         parameters: {
             query?: never;
@@ -950,7 +967,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List an org's members (member.manage, §6) */
+        /** List an org's members; optional ?q narrows by user identity (member.manage, §6; FB-T11) */
         get: operations["getApiV1OrgsByIdMembers"];
         put?: never;
         post?: never;
@@ -1020,9 +1037,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Patient address history — D5 append-only; current + closed rows (§3.3) */
+        get: operations["getApiV1PatientsByIdAddresses"];
         put?: never;
-        /** Append a patient address (§7.4 cascade) */
+        /** Append a patient address (§7.4 cascade; isPrimary rotates the current primary) */
         post: operations["postApiV1PatientsByIdAddresses"];
         delete?: never;
         options?: never;
@@ -1041,6 +1059,91 @@ export interface paths {
         put?: never;
         /** Open a record-amendment request (§7.7, 60-day SLA) */
         post: operations["postApiV1PatientsByIdAmendments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{id}/care-team": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Patient care team — assignment roster + caregivers + emergency contacts (§3.4/§3.5) */
+        get: operations["getApiV1PatientsByIdCareteam"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{id}/demographics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Patient demographics tab — name parts + SOGI/race/ethnicity codes + language (§3.3) */
+        get: operations["getApiV1PatientsByIdDemographics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{id}/identifiers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Patient identifiers — ssn/state_id masked to last4 (§3.3/§2.2) */
+        get: operations["getApiV1PatientsByIdIdentifiers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{id}/payers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Patient coverage / payers — ranked coverages; payer name resolved via M40 (§3.4) */
+        get: operations["getApiV1PatientsByIdPayers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{id}/privacy-flags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Patient privacy flags — active restrictions snapshot; SUD §7.6 fail-closed (§3.5/D10) */
+        get: operations["getApiV1PatientsByIdPrivacyflags"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1845,6 +1948,37 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1AuthContext: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        userId: string;
+                        organizationId: string | null;
+                        organizationName: string | null;
+                        membershipId: string | null;
+                        displayName: string | null;
+                        roles: string[];
+                        isAdmin: boolean;
+                        permissions: string[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1AuthMemberships: {
         parameters: {
             query?: never;
@@ -1863,11 +1997,16 @@ export interface operations {
                     "application/json": {
                         memberships: {
                             membershipId: string;
+                            userId: string;
                             organizationId: string;
                             organizationName: string;
                             status: "pending" | "active" | "suspended" | "revoked";
                             isAdmin: boolean;
                             defaultLocationIds: string[];
+                            displayName: string | null;
+                            email: string | null;
+                            lastLoginAt: string | null;
+                            accountStatus: "created" | "active" | "suspended" | "deactivated" | null;
                         }[];
                     };
                 };
@@ -2960,7 +3099,9 @@ export interface operations {
     };
     getApiV1OrgsByIdMembers: {
         parameters: {
-            query?: never;
+            query?: {
+                q?: string;
+            };
             header?: never;
             path: {
                 id: string;
@@ -2978,12 +3119,18 @@ export interface operations {
                     "application/json": {
                         members: {
                             membershipId: string;
+                            userId: string;
                             organizationId: string;
                             organizationName: string;
                             status: "pending" | "active" | "suspended" | "revoked";
                             isAdmin: boolean;
                             defaultLocationIds: string[];
+                            displayName: string | null;
+                            email: string | null;
+                            lastLoginAt: string | null;
+                            accountStatus: "created" | "active" | "suspended" | "deactivated" | null;
                         }[];
+                        pendingInvitations: number;
                     };
                 };
             };
@@ -3045,11 +3192,16 @@ export interface operations {
                 content: {
                     "application/json": {
                         membershipId: string;
+                        userId: string;
                         organizationId: string;
                         organizationName: string;
                         status: "pending" | "active" | "suspended" | "revoked";
                         isAdmin: boolean;
                         defaultLocationIds: string[];
+                        displayName: string | null;
+                        email: string | null;
+                        lastLoginAt: string | null;
+                        accountStatus: "created" | "active" | "suspended" | "deactivated" | null;
                     };
                 };
             };
@@ -3167,6 +3319,48 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PatientsByIdAddresses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        addresses: {
+                            id: string;
+                            kind: string;
+                            line1: string;
+                            line2: string | null;
+                            city: string;
+                            state: string | null;
+                            postalCode: string;
+                            country: string;
+                            county: string | null;
+                            isPrimary: boolean;
+                            current: boolean;
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                            geocodeLat: string | null;
+                            geocodeLng: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1PatientsByIdAddresses: {
         parameters: {
             query?: never;
@@ -3184,6 +3378,8 @@ export interface operations {
                     city: string;
                     state?: string;
                     postalCode: string;
+                    kind?: "home" | "facility" | "mailing" | "temporary" | "prior";
+                    isPrimary?: boolean;
                 };
             };
         };
@@ -3223,6 +3419,209 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PatientsByIdCareteam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        assignments: {
+                            id: string;
+                            clinicianUserId: string;
+                            role: string;
+                            assignedAt: string;
+                            unassignedAt: string | null;
+                            current: boolean;
+                        }[];
+                        caregivers: {
+                            id: string;
+                            caregiverId: string;
+                            firstName: string;
+                            lastName: string;
+                            relationship: string;
+                            isPrimary: boolean;
+                            isLegalRepresentative: boolean;
+                            lrAuthority: string;
+                            phone: string | null;
+                            email: string | null;
+                            current: boolean;
+                        }[];
+                        emergencyContacts: {
+                            id: string;
+                            name: string;
+                            relationship: string;
+                            phone: string;
+                            email: string | null;
+                            priority: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PatientsByIdDemographics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        mrn: string;
+                        legalFirstName: string;
+                        legalMiddleName: string | null;
+                        legalLastName: string;
+                        legalNameSuffix: string | null;
+                        dob: string;
+                        status: string;
+                        sexAssignedAtBirth: string;
+                        genderIdentityCode: string | null;
+                        sexualOrientationCode: string | null;
+                        pronounsCode: string | null;
+                        maritalStatusCode: string | null;
+                        raceCodes: string[];
+                        ethnicityCodes: string[];
+                        preferredLanguageCode: string | null;
+                        aliases: {
+                            kind: string;
+                            fullName: string | null;
+                            firstName: string | null;
+                            middleName: string | null;
+                            lastName: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PatientsByIdIdentifiers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        identifiers: {
+                            id: string;
+                            kind: string;
+                            value: string | null;
+                            last4: string | null;
+                            sensitive: boolean;
+                            issuer: string | null;
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PatientsByIdPayers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        payers: {
+                            id: string;
+                            payerId: string;
+                            rank: number;
+                            coverageKind: string;
+                            subscriberId: string;
+                            groupNumber: string | null;
+                            binPcn: string | null;
+                            current: boolean;
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PatientsByIdPrivacyflags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        flags: string[];
+                        capturedAt: string | null;
+                        sudRestricted: boolean;
+                        sudDisclosable: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

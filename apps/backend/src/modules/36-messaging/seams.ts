@@ -6,11 +6,11 @@
 // deny-stub. The composition root (apps/backend/src/index.ts `wireModuleSeams`) invokes it inside
 // the boot gate, after M1's wireSeams() and before validateSeams().
 //
-// `MessagingProvider` (the channel/message CRUD surface) is declared fail-closed in REQUIRED_SEAMS
-// but is NOT registered here: its DB-backed implementation (per-tenant DEK body encryption,
-// receipts, entitled-reader decryption) lands with the routes/realtime tasks (M36-T07/T08), which
-// will register it over the deny-stub at their own boot. Until then `getMessagingProvider()`
-// resolves the fail-closed stub (denies loudly on call) — present, never failing open.
+// `MessagingProvider` (the channel/message CRUD surface) is registered here over the deny-stub WHEN
+// a DB-backed implementation is injected (FB-T05): per-tenant DEK body encryption, receipt fan-out,
+// entitled-reader decryption (createDbMessagingProvider). The slice/tests (no `deps.provider`) leave
+// it fail-closed — `getMessagingProvider()` then resolves the deny-stub (denies loudly on call),
+// present and never failing open.
 //
 // Both seams follow M38's rich-seam pattern: the interface lives in @wardenx/messaging (the leaf
 // @wardenx/types may not import it), so the M1 registry holds the instance opaquely
@@ -22,19 +22,26 @@
 // seams) by default — the M36-T04 resolution/fan-out engine over empty recipient ports + the
 // platform-default rule seed. Production injects the Drizzle/seam-backed ports (T07/T08) via
 // `deps.emitter`.
-import { type AlertEmitter, createInMemoryAlertEmitter } from "@wardenx/messaging";
+import { type AlertEmitter, type MessagingProvider, createInMemoryAlertEmitter } from "@wardenx/messaging";
 import { getSeam, registerSeam } from "../../bootstrap/index";
 
 /** Injected production wiring for M36's published seams (the slice defaults to in-memory). */
 export interface MessagingSeamDeps {
   /** The `AlertEmitter` to publish (production: T04 engine over Drizzle/seam-backed ports). */
   emitter?: AlertEmitter;
+  /** The DB-backed `MessagingProvider` to publish over the deny-stub (FB-T05; production only). */
+  provider?: MessagingProvider;
 }
 
-/** Register M36's `AlertEmitter` into the M1 registry (M36-T06; before validateSeams()). */
+/**
+ * Register M36's published seams into the M1 registry (before validateSeams()): `AlertEmitter`
+ * always (M36-T06), and `MessagingProvider` when a DB-backed impl is injected (FB-T05) — otherwise
+ * the latter stays the fail-closed deny-stub validateSeams() applies.
+ */
 export function registerMessagingSeams(deps: MessagingSeamDeps = {}): void {
   const emitter = deps.emitter ?? createInMemoryAlertEmitter().emitter;
   registerSeam("AlertEmitter", emitter);
+  if (deps.provider) registerSeam("MessagingProvider", deps.provider);
 }
 
 /**

@@ -4,12 +4,10 @@
 // via `wireModuleSeams` (M1's bootstrap cannot import a downstream module; the composition
 // root does, then hands the registration into the boot gate before validateSeams()).
 import {
-  createConsoleEmailTransport,
   createDbActorEnrichmentReader,
   createDbAdminMembershipReader,
   createDbSessionContextStore,
   createIdentityAuth,
-  createNoopEmailTransport,
   getIdentitySession,
   registerDbEffectivePermissionResolver,
   registerIdentityAuth,
@@ -24,18 +22,34 @@ import {
   registerIdentitySeams,
 } from "./modules/02-identity/index";
 import { mountAuthorizationRoutes } from "./modules/03-authorization/index";
-import { registerMessagingErasers, registerMessagingSeams } from "./modules/36-messaging/index";
 import {
+  createDbMessagingProvider,
+  mountMessagingRoutes,
+  registerMessagingErasers,
+  registerMessagingSeams,
+  selectTransactionalEmailTransport,
+} from "./modules/36-messaging/index";
+import {
+  createDbTerminologyStore,
+  mountTerminologyRoutes,
   registerTerminologyErasers,
   registerTerminologySeams,
 } from "./modules/38-terminology/index";
-import { registerMdmErasers, registerMdmSeams } from "./modules/40-mdm/index";
+import {
+  createDbBaaStore,
+  createDbMdmStore,
+  mountMdmRoutes,
+  registerMdmErasers,
+  registerMdmSeams,
+} from "./modules/40-mdm/index";
 import {
   mountPatientRoutes,
   registerPatientErasers,
   registerPatientSeams,
 } from "./modules/05-patient/index";
 import {
+  createDbConsentStore,
+  mountConsentRoutes,
   registerConsentAbacPredicates,
   registerConsentErasers,
   registerConsentSeams,
@@ -58,11 +72,21 @@ export function wireModuleSeams(
   // M3 — register the live RBAC resolver (DB-backed effective permissions) when a DB client is present,
   // turning `requirePermission` from fail-closed to real resolution. Slice/tests keep the default.
   if (deps.db) registerDbEffectivePermissionResolver(deps.db);
-  registerTerminologySeams(); // M38 — TerminologyProvider (§4.5)
-  registerMessagingSeams(); // M36 — AlertEmitter (§4.6); MessagingProvider stays deny-stub until T07/T08
-  registerMdmSeams(); // M40 — MdmEntityProvider (§4.5) + BaaStatusProvider (§4.6 §7.7 as-of gate)
+  // M38 — TerminologyProvider (§4.5). Production backs it with the Drizzle store over the real M38
+  // tables (FB-T01); slice/tests keep the in-memory default.
+  registerTerminologySeams(deps.db ? { store: createDbTerminologyStore(deps.db) } : {});
+  // M36 — AlertEmitter (§4.6) always; the DB-backed MessagingProvider (§4.6 channel/message CRUD with
+  // per-tenant DEK encryption) registers over the deny-stub when a DB client is present (FB-T05).
+  registerMessagingSeams(deps.db ? { provider: createDbMessagingProvider(deps.db) } : {});
+  // M40 — MdmEntityProvider (§4.5) + BaaStatusProvider (§4.6 §7.7 as-of gate). Production backs both
+  // seams with Drizzle stores over the real M40 tables (FB-T02); slice/tests keep the in-memory default.
+  registerMdmSeams(
+    deps.db ? { store: createDbMdmStore(deps.db), baaStore: createDbBaaStore(deps.db) } : {},
+  );
   registerPatientSeams(); // M5 — CaseloadProvider (§4.1, + caseload_membership predicate); PatientReader/Mutator land T08
-  registerConsentSeams(); // M39 — ConsentEvaluator (§4.3, the disclosure/redaction gate); slice store until T07/T09
+  // M39 — ConsentEvaluator (§4.3, the disclosure/redaction gate). Production backs it with the Drizzle
+  // store over the real M39 consent tables (FB-T03); slice/tests keep the in-memory default.
+  registerConsentSeams(deps.db ? { store: createDbConsentStore(deps.db) } : {});
   registerConsentAbacPredicates(); // M39 — the 11 §4.8 ABAC predicate resolvers (resolve via the seam)
   // Phase-1 producers append here as they land: M22 DocumentRenderer, …
 }
@@ -100,13 +124,15 @@ if ((import.meta as { main?: boolean }).main) {
   // AUTH-T02/T03: when a DB client is present, build the Better Auth instance + the authenticate hook
   // (getIdentitySession → SessionContextResolver seam → request.context). The seam is resolved lazily
   // at request time, after bootSeams() has registered it.
-  // Transactional email transport for reset + magic-link links. A real provider (SMTP/Postmark) plugs
-  // in here when credentials exist; until then dev logs the link (console) and production drops it
-  // (no-op — a link in prod logs is a credential in logs). #4/#3 light up once a provider is wired.
-  const emailTransport =
-    process.env.NODE_ENV === "production"
-      ? createNoopEmailTransport()
-      : createConsoleEmailTransport();
+  // Transactional email transport for reset + magic-link links (FB-T14). M36 OWNS outbound email
+  // (manifest VENDOR_ADAPTERS["postmark"] = packages/messaging; DR/INT #14), so auth's `EmailTransport`
+  // seam binds to M36's transport here — the bridge lives in the composition root, so neither M2 imports
+  // a vendor SDK nor takes a `dependsOn` edge on M36. A real Postmark/SES adapter plugs into M36's
+  // `provider` slot when M1 infra wires credentials; until then dev logs the link (console) and
+  // production drops it (no-op — a link in prod logs is a credential in logs).
+  const emailTransport = selectTransactionalEmailTransport({
+    isProduction: process.env.NODE_ENV === "production",
+  });
   const auth = dbHandle
     ? createIdentityAuth(dbHandle.db as Parameters<typeof createIdentityAuth>[0], { emailTransport })
     : undefined;
@@ -129,6 +155,10 @@ if ((import.meta as { main?: boolean }).main) {
           mountIdentityRoutes(app, dbHandle.db, createDbAdminMembershipReader(dbHandle.db));
           mountAuditRoutes(app, dbHandle.db); // M4 — audit-log search on the real Drizzle AuditQuery
           mountPatientRoutes(app, dbHandle.db); // M5 — patient census/chart READS on the real patient table
+          mountTerminologyRoutes(app, dbHandle.db); // M38 — terminology read surface + tenant value-set extensions (FB-T01)
+          mountMdmRoutes(app, dbHandle.db); // M40 — MDM entity directory + overlay/BAA + platform-ops (FB-T02)
+          mountConsentRoutes(app, dbHandle.db); // M39 — consent catalog/records/decision-audit reads (FB-T03)
+          mountMessagingRoutes(app, dbHandle.db); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05)
         }
       : undefined,
     registerModuleSeams: () =>

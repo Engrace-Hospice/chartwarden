@@ -3,9 +3,10 @@
 // roster: invite by email, change a member's status (active/suspended), and revoke a membership — over
 // the M2 member routes via the generated client. The active org for the path comes from the session
 // (authClient.getSession). Server stays authoritative (every route is behind member.manage + the
-// last-admin lockout guard). Columns the M2 member view doesn't carry yet — Name/email, Discipline,
-// Credentials, Last login, and the Pending-invite / Locked KPIs — are deferred to richer member data /
-// later modules (M34); see docs/ui/DEFERRED_SCREENS.md.
+// last-admin lockout guard). FB-T12 enriches the roster with what the M2 surface carries today —
+// Name/email, Last login, and the Pending-invite / Locked-account KPIs (the live repo joins the
+// M1-owned user/session tables). Discipline / credentials stay deferred to M34 (noted, not faked);
+// see docs/ui/DEFERRED_SCREENS.md.
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout } from "@wardenx/ui";
@@ -14,15 +15,21 @@ import { authClient } from "./auth-client";
 
 interface Member {
   membershipId: string;
+  userId: string;
   status: "pending" | "active" | "suspended" | "revoked";
   isAdmin: boolean;
   defaultLocationIds: string[];
+  displayName: string | null;
+  email: string | null;
+  lastLoginAt: string | null;
+  accountStatus: "created" | "active" | "suspended" | "deactivated" | null;
 }
 
 export function StaffManagement(): JSX.Element {
   const client = useApiClient();
   const [orgId, setOrgId] = useState<string | null>(null);
   const [members, setMembers] = useState<Member[] | null>(null);
+  const [pendingInvites, setPendingInvites] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
@@ -38,6 +45,7 @@ export function StaffManagement(): JSX.Element {
         return;
       }
       setMembers((data?.members ?? []) as Member[]);
+      setPendingInvites(data?.pendingInvitations ?? 0);
     },
     [client],
   );
@@ -101,6 +109,10 @@ export function StaffManagement(): JSX.Element {
   const active = members?.filter((m) => m.status === "active").length ?? 0;
   const suspended = members?.filter((m) => m.status === "suspended").length ?? 0;
   const admins = members?.filter((m) => m.isAdmin && m.status === "active").length ?? 0;
+  // "Locked accounts": the underlying user account is suspended/deactivated (can't sign in), distinct
+  // from a suspended *membership*. Surfaced from the joined M1 user.status (FB-T12).
+  const locked =
+    members?.filter((m) => m.accountStatus === "suspended" || m.accountStatus === "deactivated").length ?? 0;
 
   return (
     <WorkQueueLayout
@@ -110,6 +122,8 @@ export function StaffManagement(): JSX.Element {
           <Kpi label="Active staff" value={active} />
           <Kpi label="Suspended" value={suspended} />
           <Kpi label="Admins" value={admins} />
+          <Kpi label="Pending invites" value={pendingInvites} />
+          <Kpi label="Locked accounts" value={locked} />
         </div>
       }
       filters={
@@ -140,7 +154,9 @@ export function StaffManagement(): JSX.Element {
             <thead>
               <tr style={{ textAlign: "left", color: "#6b7280", borderBottom: "1px solid #e5e7eb" }}>
                 <th style={th}>Member</th>
+                <th style={th}>Email</th>
                 <th style={th}>Role</th>
+                <th style={th}>Last login</th>
                 <th style={th}>Locations</th>
                 <th style={th}>Status</th>
                 <th style={th}>Actions</th>
@@ -149,8 +165,10 @@ export function StaffManagement(): JSX.Element {
             <tbody>
               {members.map((m) => (
                 <tr key={m.membershipId} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                  <td style={td}><code style={{ fontSize: "0.8rem" }}>{m.membershipId.slice(0, 8)}</code></td>
+                  <td style={td}><MemberName member={m} /></td>
+                  <td style={td}>{m.email ?? "—"}</td>
                   <td style={td}>{m.isAdmin ? "Org admin" : "Member"}</td>
+                  <td style={td}>{formatLastLogin(m.lastLoginAt)}</td>
                   <td style={td}>{m.defaultLocationIds.length}</td>
                   <td style={td}><StatusPill status={m.status} /></td>
                   <td style={td}>
@@ -180,6 +198,28 @@ function Kpi({ label, value }: { label: string; value: number }): JSX.Element {
       <div style={{ fontSize: "0.8rem", color: "#6b7280" }}>{label}</div>
     </div>
   );
+}
+
+// Display name falls back to email, then a short membership id — never a blank cell. A locked account
+// (user.status suspended/deactivated) is badged inline so it's visible even when the membership is active.
+function MemberName({ member }: { member: Member }): JSX.Element {
+  const primary = member.displayName ?? member.email ?? member.membershipId.slice(0, 8);
+  const isLocked = member.accountStatus === "suspended" || member.accountStatus === "deactivated";
+  return (
+    <span>
+      {member.displayName ? primary : <code style={{ fontSize: "0.8rem" }}>{primary}</code>}
+      {isLocked ? (
+        <span style={{ marginLeft: "0.5rem", color: "#b45309", fontSize: "0.7rem", fontWeight: 700 }}>LOCKED</span>
+      ) : null}
+    </span>
+  );
+}
+
+/** Render an ISO last-login timestamp as a local date, or an em dash when the user has never signed in. */
+function formatLastLogin(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString();
 }
 
 function StatusPill({ status }: { status: Member["status"] }): JSX.Element {

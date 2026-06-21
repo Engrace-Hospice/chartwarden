@@ -16,12 +16,16 @@ if (!FormatRegistry.Has("uuid")) {
   FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
 }
 
+const ADDRESS_KINDS = ["home", "facility", "mailing", "temporary", "prior"] as const;
+
 const AddressSchema = Type.Object({
   line1: Type.String({ minLength: 1, maxLength: 200 }),
   line2: Type.Optional(Type.String({ maxLength: 200 })),
   city: Type.String({ minLength: 1, maxLength: 120 }),
   state: Type.Optional(Type.String({ minLength: 2, maxLength: 2 })),
   postalCode: Type.String({ minLength: 3, maxLength: 12 }),
+  kind: Type.Optional(Type.Union(ADDRESS_KINDS.map((k) => Type.Literal(k)))),
+  isPrimary: Type.Optional(Type.Boolean()),
 });
 
 export const IdParamsSchema = Type.Object({ id: Type.String({ format: "uuid" }) });
@@ -84,6 +88,147 @@ export const PatientListQuerySchema = Type.Object({
 export const PatientListResponseSchema = Type.Object({
   items: Type.Array(PatientSummarySchema),
   nextCursor: Type.Union([Type.String(), Type.Null()]),
+});
+
+// GET /api/v1/patients/:id/demographics (§3.3) — name parts + USCDI SOGI/race/ethnicity codes +
+// preferred language + aliases. No encrypted fields (ssn/state_id live on /identifiers, masked).
+const NameAliasSchema = Type.Object({
+  kind: Type.String(),
+  fullName: Type.Union([Type.String(), Type.Null()]),
+  firstName: Type.Union([Type.String(), Type.Null()]),
+  middleName: Type.Union([Type.String(), Type.Null()]),
+  lastName: Type.Union([Type.String(), Type.Null()]),
+});
+
+export const PatientDemographicsSchema = Type.Object({
+  id: Type.String(),
+  mrn: Type.String(),
+  legalFirstName: Type.String(),
+  legalMiddleName: Type.Union([Type.String(), Type.Null()]),
+  legalLastName: Type.String(),
+  legalNameSuffix: Type.Union([Type.String(), Type.Null()]),
+  dob: Type.String(),
+  status: Type.String(),
+  sexAssignedAtBirth: Type.String(),
+  genderIdentityCode: Type.Union([Type.String(), Type.Null()]),
+  sexualOrientationCode: Type.Union([Type.String(), Type.Null()]),
+  pronounsCode: Type.Union([Type.String(), Type.Null()]),
+  maritalStatusCode: Type.Union([Type.String(), Type.Null()]),
+  raceCodes: Type.Array(Type.String()),
+  ethnicityCodes: Type.Array(Type.String()),
+  preferredLanguageCode: Type.Union([Type.String(), Type.Null()]),
+  aliases: Type.Array(NameAliasSchema),
+});
+
+// GET /api/v1/patients/:id/identifiers (§3.3/§2.2) — ssn/state_id are `sensitive`: `value` is null,
+// only `last4` is returned (the ciphertext is never serialized).
+const PatientIdentifierSchema = Type.Object({
+  id: Type.String(),
+  kind: Type.String(),
+  value: Type.Union([Type.String(), Type.Null()]),
+  last4: Type.Union([Type.String(), Type.Null()]),
+  sensitive: Type.Boolean(),
+  issuer: Type.Union([Type.String(), Type.Null()]),
+  effectiveFrom: Type.String(),
+  effectiveTo: Type.Union([Type.String(), Type.Null()]),
+});
+
+export const PatientIdentifiersResponseSchema = Type.Object({
+  identifiers: Type.Array(PatientIdentifierSchema),
+});
+
+// GET /api/v1/patients/:id/addresses (§3.3, D5 append-only history). `current` (effectiveTo null) rows
+// are the live addresses; closed rows are history. At most one `current && isPrimary` per patient.
+const PatientAddressSchema = Type.Object({
+  id: Type.String(),
+  kind: Type.String(),
+  line1: Type.String(),
+  line2: Type.Union([Type.String(), Type.Null()]),
+  city: Type.String(),
+  state: Type.Union([Type.String(), Type.Null()]),
+  postalCode: Type.String(),
+  country: Type.String(),
+  county: Type.Union([Type.String(), Type.Null()]),
+  isPrimary: Type.Boolean(),
+  current: Type.Boolean(),
+  effectiveFrom: Type.String(),
+  effectiveTo: Type.Union([Type.String(), Type.Null()]),
+  geocodeLat: Type.Union([Type.String(), Type.Null()]),
+  geocodeLng: Type.Union([Type.String(), Type.Null()]),
+});
+
+export const PatientAddressesResponseSchema = Type.Object({
+  addresses: Type.Array(PatientAddressSchema),
+});
+
+// GET /api/v1/patients/:id/payers (§3.4) — ranked coverages; `payerId` resolves an M40 canonical
+// Payer whose display name is fetched client-side via the MDM client (no cross-module schema import).
+const PatientPayerSchema = Type.Object({
+  id: Type.String(),
+  payerId: Type.String(),
+  rank: Type.Integer(),
+  coverageKind: Type.String(),
+  subscriberId: Type.String(),
+  groupNumber: Type.Union([Type.String(), Type.Null()]),
+  binPcn: Type.Union([Type.String(), Type.Null()]),
+  current: Type.Boolean(),
+  effectiveFrom: Type.String(),
+  effectiveTo: Type.Union([Type.String(), Type.Null()]),
+});
+
+export const PatientPayersResponseSchema = Type.Object({
+  payers: Type.Array(PatientPayerSchema),
+});
+
+// GET /api/v1/patients/:id/care-team (§3.4/§3.5) — assignment roster + caregivers + emergency contacts.
+// `clinicianUserId` names an M2 user whose display name is resolved client-side via the M2 roster
+// (no cross-module schema import); `current` rows render above closed ones.
+const PatientAssignmentSchema = Type.Object({
+  id: Type.String(),
+  clinicianUserId: Type.String(),
+  role: Type.String(),
+  assignedAt: Type.String(),
+  unassignedAt: Type.Union([Type.String(), Type.Null()]),
+  current: Type.Boolean(),
+});
+
+const PatientCaregiverSchema = Type.Object({
+  id: Type.String(),
+  caregiverId: Type.String(),
+  firstName: Type.String(),
+  lastName: Type.String(),
+  relationship: Type.String(),
+  isPrimary: Type.Boolean(),
+  isLegalRepresentative: Type.Boolean(),
+  lrAuthority: Type.String(),
+  phone: Type.Union([Type.String(), Type.Null()]),
+  email: Type.Union([Type.String(), Type.Null()]),
+  current: Type.Boolean(),
+});
+
+const PatientEmergencyContactSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  relationship: Type.String(),
+  phone: Type.String(),
+  email: Type.Union([Type.String(), Type.Null()]),
+  priority: Type.Integer(),
+});
+
+export const PatientCareTeamResponseSchema = Type.Object({
+  assignments: Type.Array(PatientAssignmentSchema),
+  caregivers: Type.Array(PatientCaregiverSchema),
+  emergencyContacts: Type.Array(PatientEmergencyContactSchema),
+});
+
+// GET /api/v1/patients/:id/privacy-flags (§3.5, D10) — the active privacy RESTRICTIONS from the
+// `patient_privacy_flag_snapshot`. A flag present = restricted; `sudDisclosable` is the §7.6 SUD read
+// gate, FAIL-CLOSED (a SUD-flagged patient is non-disclosable until a Part-2 consent lifts the flag).
+export const PatientPrivacyFlagsResponseSchema = Type.Object({
+  flags: Type.Array(Type.String()),
+  capturedAt: Type.Union([Type.String(), Type.Null()]),
+  sudRestricted: Type.Boolean(),
+  sudDisclosable: Type.Boolean(),
 });
 
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
