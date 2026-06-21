@@ -10,6 +10,7 @@ import { OrganizationSelect } from "./organization-select";
 import { ResetPassword } from "./reset-password";
 import { SecurityPasskeys } from "./security-passkeys";
 import { SignIn } from "./sign-in";
+import { StepUp } from "./step-up";
 
 export const identityScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 2,
@@ -42,6 +43,13 @@ export const identityScreens: ScreenRegistryModule<ComponentType> = {
       title: "Set a new password",
       chrome: false,
       screen: ResetPassword,
+    },
+    {
+      id: "identity.step-up",
+      path: "/step-up",
+      title: "Confirm it’s you",
+      chrome: false, // Auth Flow — a single focused re-verification, outside the app shell
+      screen: StepUp,
     },
     {
       id: "identity.organization-select",
