@@ -10,6 +10,12 @@ export {
   type ResetPasswordSender,
 } from "./auth";
 export {
+  type EmailMessage,
+  type EmailTransport,
+  createConsoleEmailTransport,
+  createNoopEmailTransport,
+} from "./email-transport";
+export {
   registerIdentityAuth,
   type MountableAuth,
   type RegisterIdentityAuthOptions,

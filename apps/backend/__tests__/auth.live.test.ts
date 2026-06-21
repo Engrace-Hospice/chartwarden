@@ -72,14 +72,15 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
   });
 
   it("password reset issues a token, sets a new password, and rotates the credential (AUTH polish)", async () => {
-    // A dedicated instance whose sendResetPassword captures the minted token (the M36 delivery seam).
-    let captured: { url: string; token: string } | null = null;
+    // The token-capturing override gives the single-use token directly (Better Auth puts it in the
+    // reset-URL path, not a ?token= query — so the callback arg, not URL parsing, is the reliable source).
+    let captured: { token: string } | null = null;
     const { createDbClient: mkDb2 } = await import("@wardenx/db");
     const { createIdentityAuth: mk2 } = await import("@wardenx/auth");
     const handle2 = mkDb2({ connectionString: DB_URL as string });
     const authR = mk2(handle2.db as never, {
-      sendResetPassword: ({ url, token }) => {
-        captured = { url, token };
+      sendResetPassword: ({ token }) => {
+        captured = { token };
       },
     });
 
@@ -88,7 +89,7 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
     const newPw = `Zr7#${Math.random().toString(36).slice(2)}${Date.now()}Lp!`;
     await authR.api.signUpEmail({ body: { email, password: oldPw, name: "PR User" } });
 
-    // Step 1 — request the reset; the callback captures the single-use token.
+    // Step 1 — request the reset; the override captures the single-use token.
     await authR.api.requestPasswordReset({ body: { email, redirectTo: "http://localhost:3000/reset-password" } });
     expect(captured).not.toBeNull();
     const token = (captured as unknown as { token: string }).token;
@@ -101,6 +102,18 @@ describe.skipIf(!DB_URL)("Better Auth live — email+password over the reconcile
     const ok = await authR.api.signInEmail({ body: { email, password: newPw }, asResponse: true });
     expect((ok as Response).status).toBe(200);
     await expect(authR.api.signInEmail({ body: { email, password: oldPw } })).rejects.toThrow();
+
+    // Delivery path: with an email transport (no override), the reset link reaches the transport.
+    let deliveredTo: string | null = null;
+    const authT = mk2(handle2.db as never, {
+      emailTransport: {
+        async send(message) {
+          deliveredTo = message.to;
+        },
+      },
+    });
+    await authT.api.requestPasswordReset({ body: { email, redirectTo: "http://localhost:3000/reset-password" } });
+    expect(deliveredTo).toBe(email);
 
     await handle2.close();
   });
