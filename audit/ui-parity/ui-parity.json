@@ -1,0 +1,222 @@
+{
+  "documentedSpecs": 69,
+  "byCategory": {
+    "admin": 14,
+    "core": 10,
+    "clinical": 29,
+    "platform": 4,
+    "portal": 5,
+    "revenue": 7
+  },
+  "registeredModules": [
+    "02-identity",
+    "03-authorization",
+    "04-audit",
+    "05-patient",
+    "06-admission",
+    "07-care-plan",
+    "08-encounters",
+    "36-messaging",
+    "38-terminology",
+    "40-mdm"
+  ],
+  "screens": [
+    {
+      "module": "02-identity",
+      "moduleId": 2,
+      "id": "identity.sign-in",
+      "path": "/login",
+      "permission": "(none)"
+    },
+    {
+      "module": "02-identity",
+      "moduleId": 2,
+      "id": "identity.mfa-challenge",
+      "path": "/login/2fa",
+      "permission": "(none)"
+    },
+    {
+      "module": "02-identity",
+      "moduleId": 2,
+      "id": "identity.forgot-password",
+      "path": "/forgot",
+      "permission": "(none)"
+    },
+    {
+      "module": "02-identity",
+      "moduleId": 2,
+      "id": "identity.reset-password",
+      "path": "/reset-password",
+      "permission": "(none)"
+    },
+    {
+      "module": "02-identity",
+      "moduleId": 2,
+      "id": "identity.step-up",
+      "path": "/step-up",
+      "permission": "(none)"
+    },
+    {
+      "module": "02-identity",
+      "moduleId": 2,
+      "id": "identity.organization-select",
+      "path": "/login/organization",
+      "permission": "(none)"
+    },
+    {
+      "module": "02-identity",
+      "moduleId": 2,
+      "id": "identity.accept-invitation",
+      "path": "/invite/:token",
+      "permission": "(none)"
+    },
+    {
+      "module": "02-identity",
+      "moduleId": 2,
+      "id": "identity.security-passkeys",
+      "path": "/security/passkeys",
+      "permission": "(none)"
+    },
+    {
+      "module": "02-identity",
+      "moduleId": 2,
+      "id": "identity.staff-management",
+      "path": "/admin/staff",
+      "permission": "(none)"
+    },
+    {
+      "module": "03-authorization",
+      "moduleId": 3,
+      "id": "authz.roles-permissions",
+      "path": "/roles",
+      "permission": "role.read"
+    },
+    {
+      "module": "04-audit",
+      "moduleId": 4,
+      "id": "audit.log-viewer",
+      "path": "/audit",
+      "permission": "audit.read"
+    },
+    {
+      "module": "05-patient",
+      "moduleId": 5,
+      "id": "patient.census",
+      "path": "/patients",
+      "permission": "patient.read"
+    },
+    {
+      "module": "05-patient",
+      "moduleId": 5,
+      "id": "search.global",
+      "path": "/search",
+      "permission": "patient.read"
+    },
+    {
+      "module": "05-patient",
+      "moduleId": 5,
+      "id": "patient.chart",
+      "path": "/patients/:id",
+      "permission": "patient.read"
+    },
+    {
+      "module": "06-admission",
+      "moduleId": 6,
+      "id": "admission.referrals",
+      "path": "/referrals",
+      "permission": "referral.read"
+    },
+    {
+      "module": "06-admission",
+      "moduleId": 6,
+      "id": "admission.census",
+      "path": "/admissions",
+      "permission": "admission.read"
+    },
+    {
+      "module": "06-admission",
+      "moduleId": 6,
+      "id": "admission.compliance",
+      "path": "/compliance/admissions",
+      "permission": "compliance.read"
+    },
+    {
+      "module": "06-admission",
+      "moduleId": 6,
+      "id": "admission.detail",
+      "path": "/admissions/:id",
+      "permission": "admission.read"
+    },
+    {
+      "module": "07-care-plan",
+      "moduleId": 7,
+      "id": "care-plan.view",
+      "path": "/patients/:patientId/care-plan",
+      "permission": "care_plan.read"
+    },
+    {
+      "module": "07-care-plan",
+      "moduleId": 7,
+      "id": "care-plan.versions",
+      "path": "/care-plans/:planId/versions",
+      "permission": "care_plan.read"
+    },
+    {
+      "module": "07-care-plan",
+      "moduleId": 7,
+      "id": "care-plan.summary",
+      "path": "/care-plans/:planId/summary",
+      "permission": "care_plan.read_summary"
+    },
+    {
+      "module": "08-encounters",
+      "moduleId": 8,
+      "id": "encounter.read",
+      "path": "/patients/:patientId/encounters/:encounterId",
+      "permission": "encounter.read"
+    },
+    {
+      "module": "08-encounters",
+      "moduleId": 8,
+      "id": "encounter.cosignature-queue",
+      "path": "/work/cosignatures",
+      "permission": "encounter.cosign"
+    },
+    {
+      "module": "08-encounters",
+      "moduleId": 8,
+      "id": "encounter.my-drafts",
+      "path": "/work/drafts",
+      "permission": "encounter.author"
+    },
+    {
+      "module": "36-messaging",
+      "moduleId": 36,
+      "id": "messaging.staff",
+      "path": "/messaging",
+      "permission": "messaging.read"
+    },
+    {
+      "module": "36-messaging",
+      "moduleId": 36,
+      "id": "messaging.notifications",
+      "path": "/notifications",
+      "permission": "(none)"
+    },
+    {
+      "module": "38-terminology",
+      "moduleId": 38,
+      "id": "terminology.admin",
+      "path": "/terminology",
+      "permission": "(none)"
+    },
+    {
+      "module": "40-mdm",
+      "moduleId": 40,
+      "id": "mdm.console",
+      "path": "/mdm",
+      "permission": "(none)"
+    }
+  ],
+  "failures": []
+}
