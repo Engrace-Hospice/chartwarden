@@ -53,10 +53,12 @@ import {
   scaleSeriesProviderDenyStub,
   sessionContextResolverDenyStub,
   signedEncountersReaderDenyStub,
+  supervisoryCadenceReaderDenyStub,
   terminologyProviderDenyStub,
   visitAssignmentReaderDenyStub,
   visitMetricsProviderDenyStub,
   visitReaderDenyStub,
+  volunteerComplianceProviderDenyStub,
 } from "./providers";
 
 export class SeamError extends Error {
@@ -387,6 +389,22 @@ export const REQUIRED_SEAMS = [
     ownerModule: 17,
     phi: true,
     denyStub: visitMetricsProviderDenyStub,
+  },
+  // M15 (Discipline Care Plans, Phase 2) seams M17 CONSUMES (§4.4). Boot-validated and FAIL-CLOSED behind their
+  // deny-stubs until M15 ships (M17-F06/ADR-0009 — M17 Phase 1 no longer hard-requires Phase-2 M15). The
+  // volunteer gate is patient-agnostic staff compliance (phi: false); the supervisory cadence is admission-linked
+  // (phi: true). The volunteer deny-stub denies LOUDLY only when a `volunteer_visit` is scheduled before M15 lands.
+  {
+    key: "VolunteerComplianceProvider",
+    ownerModule: 15,
+    phi: false,
+    denyStub: volunteerComplianceProviderDenyStub,
+  },
+  {
+    key: "SupervisoryCadenceReader",
+    ownerModule: 15,
+    phi: true,
+    denyStub: supervisoryCadenceReaderDenyStub,
   },
 ] satisfies readonly RequiredSeam[];
 

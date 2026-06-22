@@ -47,7 +47,9 @@ export type {
   SeamName,
   SessionContextResolver,
   SessionStepUpFields,
+  SupervisoryCadenceReader,
   VisitAssignmentReader,
   VisitMetricsProvider,
   VisitReader,
+  VolunteerComplianceProvider,
 } from "@wardenx/types";

@@ -7,6 +7,23 @@
 // (lay-language, scrubbed) — + VisitMetricsProvider — the M30/M33 productivity + quality measures read path)
 // registered into the M1 registry via `registerSchedulingSeams` (driven from the composition root's
 // wireModuleSeams()). Routes / ABAC predicates / outbox / screens land in M17-T07/T08.
+//
+// M17-T06 lands the §4.4 CONSUMED surface: the M8-bidirectional `m8.encounter.signed` consumer (the visit's
+// terminal completion, `consumers/index.ts`) + the typed accessors for the upstream reads M17 consumes — M8's
+// `MileagePayrollReader`/`BillableEncounterReader` (Wave E, live) and M15's `VolunteerComplianceProvider`/
+// `SupervisoryCadenceReader` (Phase 2, fail-closed deny-stubs per M17-F06/ADR-0009) — in `seams/consumed.ts`.
+export {
+  type EncounterSignedConsumed,
+  type VisitCompletionPlan,
+  M17_OUTBOX_SUBSCRIPTIONS,
+  planVisitCompletionFromEncounter,
+} from "./consumers/index";
+export {
+  getBillableEncounterReader,
+  getMileagePayrollReader,
+  getSupervisoryCadenceReader,
+  getVolunteerComplianceProvider,
+} from "./seams/consumed";
 export {
   type PortalVisitSeedRow,
   type RouteEfficiencySeedRow,

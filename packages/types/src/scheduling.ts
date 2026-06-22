@@ -368,3 +368,48 @@ export interface VisitMetricsProvider {
     windowIso: { from: IsoInstant; to: IsoInstant },
   ): Promise<number>;
 }
+
+// ── §4.4 seams this module CONSUMES from M15 (Discipline Care Plans, Phase 2) ──────────────────────────
+//
+// These two interfaces are LEAF-TYPED here (M15 owns no types file yet) so M17's pre-schedule gate (D8
+// predicate 6) and day-view advisory can compile against the real contract while M15 is still Phase 2.
+// Per M17-F06/ADR-0009 both register as fail-closed deny-stubs in the M1 registry until M15 ships — M17
+// (Phase 1) no longer hard-requires Phase-2 M15 to boot. The volunteer gate is INVOKED only for the
+// `volunteer_visit` purpose (a non-volunteer visit never calls it), so the deny-stub denies LOUDLY exactly
+// when — and only when — a volunteer visit is scheduled before M15 lands. Consuming via the boot-registered
+// seam adds NO `dependsOn` edge to M15 (the registry is M1-owned).
+
+/** §4.4 / §7.4 — M15's effective volunteer-compliance status for a membership (the pre-schedule gate input). */
+export interface VolunteerComplianceStatus {
+  readonly membershipId: MembershipId;
+  /** False if ANY required gate (TB screening, background check, training) is expired/missing. */
+  readonly isActive: boolean;
+  /** The specific gate keys that are unmet (e.g. `['tb_screening']`); empty when `isActive`. */
+  readonly failingGates: readonly string[];
+}
+
+/** §4.4 / §7.2 — M15's next-due supervisory visit for an admission (advisory on the day view; cadence math is M15's). */
+export interface SupervisoryCadence {
+  readonly admissionId: AdmissionId;
+  /** The org-tz service date the next RN supervisory visit is due by (≤ the §418.76(h)(1) 14-day floor). */
+  readonly nextDueAt: IsoDate;
+}
+
+/**
+ * §4.4 — M15-owned (Phase 2). The pre-schedule gate's predicate 6 (D8) consumes
+ * `effectiveStatusFor(membershipId).isActive` for `volunteer_visit` purpose; an inactive status rejects the
+ * publish/assign with `VOLUNTEER_GATE_UNMET` (42 CFR §418.78(b)). Deny-stubbed until M15 ships (M17-F06).
+ */
+export interface VolunteerComplianceProvider {
+  effectiveStatusFor(orgId: OrgId, membershipId: MembershipId): Promise<VolunteerComplianceStatus>;
+}
+
+/**
+ * §4.4 — M15-owned (Phase 2). The `propose-from-frequency` worker (D5) and the supervising RN's day view
+ * read `nextSupervisoryDueAt(admissionId)` as an advisory; M17 does NOT own the cadence math (the
+ * attestation lives in M15's `aide_supervisory_visit`). Returns `null` when no supervisory cadence applies.
+ * Deny-stubbed until M15 ships (M17-F06).
+ */
+export interface SupervisoryCadenceReader {
+  nextSupervisoryDueAt(orgId: OrgId, admissionId: AdmissionId): Promise<SupervisoryCadence | null>;
+}

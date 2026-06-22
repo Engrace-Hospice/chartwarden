@@ -30,9 +30,11 @@ import type {
 } from "./idg";
 import type {
   PortalVisitReader,
+  SupervisoryCadenceReader,
   VisitAssignmentReader,
   VisitMetricsProvider,
   VisitReader,
+  VolunteerComplianceProvider,
 } from "./scheduling";
 import type { PatientMutator, PatientReader } from "./patient";
 // @wardenx/types — Boot-registered SEAM contracts (Phase 0 skeleton).
@@ -154,7 +156,13 @@ export type SeamName =
   | "VisitReader" // M17 — visit read seam (encounter context / EVV geofence target / IDG since-meeting)
   | "VisitAssignmentReader" // M17 — assignment read seam (caseload contribution / on-call roster / live in_visit)
   | "PortalVisitReader" // M17 — portal upcoming-visit read seam (lay-language, scrubbed)
-  | "VisitMetricsProvider"; // M17 — productivity + quality measures read seam (on-time / no-show / reschedule / route / stability)
+  | "VisitMetricsProvider" // M17 — productivity + quality measures read seam (on-time / no-show / reschedule / route / stability)
+  // M15 (Discipline Care Plans, Phase 2) owned seams M17 CONSUMES (§4.4) — leaf-typed in ./scheduling (M15 has no
+  // types file yet) so M17's D8 pre-schedule gate (predicate 6) + day-view advisory compile against the real
+  // contract. Both fail-closed deny-stub until M15 ships (M17-F06/ADR-0009); the volunteer gate denies LOUDLY
+  // exactly when a `volunteer_visit` is scheduled before M15 lands. No `dependsOn` edge (registry is M1-owned).
+  | "VolunteerComplianceProvider" // M15 — per-membership volunteer-compliance status (gate predicate 6, VOLUNTEER_GATE_UNMET)
+  | "SupervisoryCadenceReader"; // M15 — next-due RN supervisory visit per admission (day-view advisory + propose-from-frequency)
 
 /**
  * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
@@ -384,6 +392,11 @@ export interface SeamContracts {
   VisitAssignmentReader: VisitAssignmentReader;
   PortalVisitReader: PortalVisitReader;
   VisitMetricsProvider: VisitMetricsProvider;
+  // M15's consumed-by-M17 seams (§4.4) are LEAF-TYPED too — interfaces live in ./scheduling (M15 has no types
+  // file yet, Phase 2). The registry holds the deny-stub until M15 registers the real impls (M17-F06/ADR-0009);
+  // M17 resolves them through the module-17 consumed-seam accessors with no schema import edge.
+  VolunteerComplianceProvider: VolunteerComplianceProvider;
+  SupervisoryCadenceReader: SupervisoryCadenceReader;
 }
 
 /**

@@ -45,9 +45,11 @@ import type {
   SeamName,
   SessionContextResolver,
   SignedEncountersReader,
+  SupervisoryCadenceReader,
   VisitAssignmentReader,
   VisitMetricsProvider,
   VisitReader,
+  VolunteerComplianceProvider,
 } from "../interfaces";
 
 export class NotImplementedError extends Error {
@@ -573,6 +575,25 @@ export const visitMetricsProviderDenyStub: VisitMetricsProvider = {
   },
   getScheduleStabilityIndex() {
     throw new NotImplementedError("VisitMetricsProvider");
+  },
+};
+
+// M15 (Discipline Care Plans, Phase 2) seams M17 CONSUMES (§4.4). LEAF-TYPED (interfaces in @wardenx/types),
+// so each gets a concrete typed deny-stub. Per M17-F06/ADR-0009 M17 (Phase 1) no longer hard-requires M15 to
+// boot — these stand fail-closed until M15 ships. The volunteer gate denies LOUDLY exactly when a
+// `volunteer_visit` is scheduled before M15 lands (a non-volunteer visit never invokes predicate 6, M17-T06).
+
+/** M15 — effective volunteer-compliance status (the D8 gate predicate-6 input). Denies until M15 registers it. */
+export const volunteerComplianceProviderDenyStub: VolunteerComplianceProvider = {
+  effectiveStatusFor() {
+    throw new NotImplementedError("VolunteerComplianceProvider");
+  },
+};
+
+/** M15 — next-due RN supervisory visit per admission (day-view advisory). Denies until M15 registers it. */
+export const supervisoryCadenceReaderDenyStub: SupervisoryCadenceReader = {
+  nextSupervisoryDueAt() {
+    throw new NotImplementedError("SupervisoryCadenceReader");
   },
 };
 
