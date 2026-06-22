@@ -31,7 +31,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M19 On-Call Triage | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | M20 Field Safety | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — | ❌ |
 | M21 Supplies, DME & Comfort Kits | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — | ❌ |
-| M22 Document Management | 🟡 Partial | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | — | ❌ |
+| M22 Document Management | 🟡 Partial | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | — | ❌ |
 | M23 Billing — Medicare | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | M24 Billing — Medicaid | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | M25 Remittance & Denials | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
