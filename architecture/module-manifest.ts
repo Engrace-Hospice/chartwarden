@@ -478,7 +478,7 @@ export const MODULES: ModuleDef[] = [
       "apps/backend/src/modules/13-emar",
       "apps/web/src/modules/13-emar",
     ], // +packages/emar: §3.1 M13-owned feature pkg (mode catalog → lifecycle/schedule-parser/five-rights), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M13-T10
-    dependsOn: [12, 36, 38], // +M1 added in M13-T07 when the §2.12 D16 owned seams (MedicationAdministrationProvider/ReconciliationProvider) wire into the bootstrap seam registry
+    dependsOn: [1, 12, 36, 38], // +M1: the bootstrap seam registry (registerSeam/getSeam) M13's backend module wires its §2.12 D16 owned seams (MedicationAdministrationProvider/ReconciliationProvider) into (M13-T07; M6..M12 seam-task precedent)
     ownedTables: [
       "administration_offline_queue",
       "administration_policy",

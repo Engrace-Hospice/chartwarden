@@ -36,6 +36,7 @@ import {
   latestAssessmentProviderDenyStub,
   levelOfCareReaderDenyStub,
   mdmEntityProviderDenyStub,
+  medicationAdministrationProviderDenyStub,
   medicationOrderProviderDenyStub,
   messagingProviderDenyStub,
   mileagePayrollReaderDenyStub,
@@ -43,6 +44,7 @@ import {
   orderSignatureProviderDenyStub,
   patientMutatorDenyStub,
   patientReaderDenyStub,
+  reconciliationProviderDenyStub,
   refillInboxProviderDenyStub,
   scaleSeriesProviderDenyStub,
   sessionContextResolverDenyStub,
@@ -301,6 +303,26 @@ export const REQUIRED_SEAMS = [
     ownerModule: 12,
     phi: true,
     denyStub: refillInboxProviderDenyStub,
+  },
+  // M13 (eMAR & Med Administration) owned seams (§2.12 D16). Both are READ-only DTO surfaces over M13's
+  // `administration_record` / `medication_reconciliation_*` tables: `MedicationAdministrationProvider` is the
+  // administration read path M14 (IDG "administrations since last meeting"), M28 (FHIR `MedicationAdministration`),
+  // M30 (PRN-effectiveness / missed-dose / comfort-kit-timeliness measures), M31 (portal summary), M33 (dashboards),
+  // M37 (IPU IV-pump overlay) consume; `ReconciliationProvider` is the reconciliation-worksheet read path M14
+  // (IDG packet) + M30 (timeliness measure) consume — all instead of importing M13's schema. Both touch
+  // patient-linked clinical records → phi: true; boot-validated and fail-closed until M13 registers the real
+  // impls (M13-T07).
+  {
+    key: "MedicationAdministrationProvider",
+    ownerModule: 13,
+    phi: true,
+    denyStub: medicationAdministrationProviderDenyStub,
+  },
+  {
+    key: "ReconciliationProvider",
+    ownerModule: 13,
+    phi: true,
+    denyStub: reconciliationProviderDenyStub,
   },
 ] satisfies readonly RequiredSeam[];
 

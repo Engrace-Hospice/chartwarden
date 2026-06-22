@@ -22,6 +22,7 @@ import type {
 } from "./hope";
 import type { OrderProvider, OrderSignatureProvider } from "./orders";
 import type { MedicationOrderProvider, RefillInboxProvider } from "./dosespot";
+import type { MedicationAdministrationProvider, ReconciliationProvider } from "./emar";
 import type { PatientMutator, PatientReader } from "./patient";
 // @wardenx/types — Boot-registered SEAM contracts (Phase 0 skeleton).
 //
@@ -108,7 +109,17 @@ export type SeamName =
   // `RefillInboxProvider` is the refill-request read path the prescriber inbox UI, M19 (on-call "any pending
   // refills tonight?"), and M33 (SLA dashboards) consume over `refill_request`.
   | "MedicationOrderProvider" // M12 — medication-order read seam (active / since / admin-context / controlled flag / cost / portal / FHIR)
-  | "RefillInboxProvider"; // M12 — refill-inbox read seam (pending-by-prescriber / pending-by-patient / by-id)
+  | "RefillInboxProvider" // M12 — refill-inbox read seam (pending-by-prescriber / pending-by-patient / by-id)
+  // M13 (eMAR & Med Administration) owned seams (§2.12 D16) — also leaf-typed (interfaces in ./emar, this leaf),
+  // so they are typed here like M6..M12's seams. Both are READ-only surfaces over M13's `administration_record` /
+  // `medication_reconciliation_*` tables: `MedicationAdministrationProvider` is the administration read path M14
+  // (IDG "administrations since last meeting"), M28 (FHIR `MedicationAdministration`), M30 (PRN-effectiveness /
+  // missed-dose / comfort-kit-timeliness measures), M31 (portal lay-language summary, SUD-redacted), M33
+  // (dashboards), and M37 (IPU IV-pump overlay) consume; `ReconciliationProvider` is the reconciliation-worksheet
+  // read path M14 (IDG packet) and M30 (reconciliation-timeliness measure) consume — all instead of importing
+  // M13's schema. M13 owns the recording + reconciliation workflows and downstream modules NEVER import its schema.
+  | "MedicationAdministrationProvider" // M13 — administration read seam (by-id / by-patient / by-order / since / measure inputs / portal / IV session / FHIR)
+  | "ReconciliationProvider"; // M13 — reconciliation read seam (worksheet by-id / by-admission / timeliness)
 
 /**
  * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
@@ -314,6 +325,13 @@ export interface SeamContracts {
   // medication-order + refill-inbox read projections; never a Drizzle row and never the free-text PHI (D14).
   MedicationOrderProvider: MedicationOrderProvider;
   RefillInboxProvider: RefillInboxProvider;
+  // M13's owned seams (§2.12 D16) are LEAF-TYPED too — interfaces live in ./emar (this package), so the registry
+  // is statically typed against the real contract. M13 registers the real Drizzle-backed impls over the deny-stubs
+  // (M13-T07); consumers that list `13` in their manifest `dependsOn` (M14/M28/M30/M31/M33/M37) resolve them through
+  // the typed accessors with no schema import edge. Both are READ-only — M13 publishes the administration +
+  // reconciliation read projections; never a Drizzle row and never the free-text PHI (D12).
+  MedicationAdministrationProvider: MedicationAdministrationProvider;
+  ReconciliationProvider: ReconciliationProvider;
 }
 
 /**

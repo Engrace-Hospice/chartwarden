@@ -28,10 +28,12 @@ import type {
   HopeTimepointProvider,
   LatestAssessmentProvider,
   LevelOfCareReader,
+  MedicationAdministrationProvider,
   MedicationOrderProvider,
   MileagePayrollReader,
   OrderProvider,
   OrderSignatureProvider,
+  ReconciliationProvider,
   RefillInboxProvider,
   PatientMutator,
   PatientReader,
@@ -420,6 +422,61 @@ export const refillInboxProviderDenyStub: RefillInboxProvider = {
   },
   getRefillRequestById() {
     throw new NotImplementedError("RefillInboxProvider");
+  },
+};
+
+// M13 (eMAR & Med Administration) owned seams (§2.12 D16). LEAF-TYPED (interfaces in @wardenx/types) like
+// M6..M12's seams, so each gets a concrete typed deny-stub. Both are READ-only surfaces over M13's
+// `administration_record` / `medication_reconciliation_*` tables; deny LOUDLY until M13 registers the real
+// impls (M13-T07).
+
+/** M13 — the medication-administration read seam (by-id / by-patient / by-order / since / PRN-effectiveness /
+ * comfort-kit timeline / missed-dose / portal summary / IV session / FHIR) M14/M28/M30/M31/M33/M37 consume.
+ * Denies until M13 registers it (no silent empty administration history). */
+export const medicationAdministrationProviderDenyStub: MedicationAdministrationProvider = {
+  getAdministration() {
+    throw new NotImplementedError("MedicationAdministrationProvider");
+  },
+  getAdministrationsForPatient() {
+    throw new NotImplementedError("MedicationAdministrationProvider");
+  },
+  getAdministrationsForOrder() {
+    throw new NotImplementedError("MedicationAdministrationProvider");
+  },
+  getAdministrationsSince() {
+    throw new NotImplementedError("MedicationAdministrationProvider");
+  },
+  getPrnEffectivenessSummary() {
+    throw new NotImplementedError("MedicationAdministrationProvider");
+  },
+  getComfortKitDeploymentTimeline() {
+    throw new NotImplementedError("MedicationAdministrationProvider");
+  },
+  getMissedDoseSummary() {
+    throw new NotImplementedError("MedicationAdministrationProvider");
+  },
+  getPortalAdministrationSummary() {
+    throw new NotImplementedError("MedicationAdministrationProvider");
+  },
+  getIvContinuousSession() {
+    throw new NotImplementedError("MedicationAdministrationProvider");
+  },
+  asFhirMedicationAdministration() {
+    throw new NotImplementedError("MedicationAdministrationProvider");
+  },
+};
+
+/** M13 — the reconciliation-worksheet read seam (worksheet by-id / by-admission / reconciliation-timeliness)
+ * M14 (IDG packet) and M30 (timeliness measure) consume. Denies until M13 registers it. */
+export const reconciliationProviderDenyStub: ReconciliationProvider = {
+  getWorksheet() {
+    throw new NotImplementedError("ReconciliationProvider");
+  },
+  getWorksheetsForAdmission() {
+    throw new NotImplementedError("ReconciliationProvider");
+  },
+  getReconciliationTimelinessByAdmission() {
+    throw new NotImplementedError("ReconciliationProvider");
   },
 };
 
