@@ -28,7 +28,12 @@ import {
   documentRendererDenyStub,
   electionPeriodReaderDenyStub,
   encounterCreatorDenyStub,
+  evvAggregatorReferenceReaderDenyStub,
   evvBracketResolverDenyStub,
+  evvComplianceReaderDenyStub,
+  evvLocationProviderDenyStub,
+  evvMetricsProviderDenyStub,
+  evvVerificationProviderDenyStub,
   faceToFaceReaderDenyStub,
   hopeJ2051ProviderDenyStub,
   hopeSubmissionProviderDenyStub,
@@ -233,6 +238,42 @@ export const REQUIRED_SEAMS = [
     ownerModule: 18,
     phi: true,
     denyStub: evvBracketResolverDenyStub,
+  },
+  // M18 (EVV) other five owned seams (§4.3 / D15). The sixth published M18 seam is `EvvBracketResolver` above (the
+  // EXISTING M8-consumed contract M18 publishes the impl over). All five are READ-only DTO surfaces over M18's
+  // `evv_event` / `evv_missing_resolution` / `evv_aggregator_submission` tables, consumed by M20 (field-safety),
+  // M23/M24 (billing pre-submission gate + claim aggregator id), M25 (denial back-link), M30/M33 (measures), M31
+  // (portal arrival) in later waves instead of importing M18's schema. Patient-visit-linked (the location seam is
+  // coordinate-bearing, D10) → phi: true; boot-validated and fail-closed until M18 registers the real impls (M18-T05).
+  {
+    key: "EvvComplianceReader",
+    ownerModule: 18,
+    phi: true,
+    denyStub: evvComplianceReaderDenyStub,
+  },
+  {
+    key: "EvvAggregatorReferenceReader",
+    ownerModule: 18,
+    phi: true,
+    denyStub: evvAggregatorReferenceReaderDenyStub,
+  },
+  {
+    key: "EvvLocationProvider",
+    ownerModule: 18,
+    phi: true,
+    denyStub: evvLocationProviderDenyStub,
+  },
+  {
+    key: "EvvMetricsProvider",
+    ownerModule: 18,
+    phi: true,
+    denyStub: evvMetricsProviderDenyStub,
+  },
+  {
+    key: "EvvVerificationProvider",
+    ownerModule: 18,
+    phi: true,
+    denyStub: evvVerificationProviderDenyStub,
   },
   // M9 (Clinical Assessments) owned seams (§4.7 / D7). Leaf-typed read-only DTO surfaces over M9's PHI
   // tables (the latest active scale capture + the windowed scored series/delta), consumed by M7 (CTI/IDG

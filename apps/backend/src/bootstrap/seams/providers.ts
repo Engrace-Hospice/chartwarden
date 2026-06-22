@@ -21,7 +21,12 @@ import type {
   DocumentRenderer,
   ElectionPeriodReader,
   EncounterCreator,
+  EvvAggregatorReferenceReader,
   EvvBracketResolver,
+  EvvComplianceReader,
+  EvvLocationProvider,
+  EvvMetricsProvider,
+  EvvVerificationProvider,
   FaceToFaceReader,
   HopeJ2051Provider,
   HopeSubmissionProvider,
@@ -271,6 +276,71 @@ export const encounterCreatorDenyStub: EncounterCreator = {
 export const evvBracketResolverDenyStub: EvvBracketResolver = {
   resolveBracket() {
     throw new NotImplementedError("EvvBracketResolver");
+  },
+};
+
+// M18 (EVV) other five owned seams (§4.3 / D15). LEAF-TYPED (interfaces in @wardenx/types) like M6..M17's readers,
+// so each gets a concrete typed deny-stub. Denies LOUDLY until M18 registers the real impls (M18-T05).
+
+/** M18 — billing compliance gate (M23/M24 pre-submission) + M30 HQRP rate. Denies until M18 registers it. */
+export const evvComplianceReaderDenyStub: EvvComplianceReader = {
+  bracketStateForVisit() {
+    throw new NotImplementedError("EvvComplianceReader");
+  },
+  complianceRateForWindow() {
+    throw new NotImplementedError("EvvComplianceReader");
+  },
+};
+
+/** M18 — per-state aggregator transaction-id back-link (M24 claim / M25 denial). Denies until M18 registers it. */
+export const evvAggregatorReferenceReaderDenyStub: EvvAggregatorReferenceReader = {
+  aggregatorIdForVisit() {
+    throw new NotImplementedError("EvvAggregatorReferenceReader");
+  },
+  submissionForVisit() {
+    throw new NotImplementedError("EvvAggregatorReferenceReader");
+  },
+};
+
+/** M18 — last-known clinician location (M20 field-safety live-awareness). Denies until M18 registers it. */
+export const evvLocationProviderDenyStub: EvvLocationProvider = {
+  lastKnownLocationForClinician() {
+    throw new NotImplementedError("EvvLocationProvider");
+  },
+  lastKnownLocationsForOrgShift() {
+    throw new NotImplementedError("EvvLocationProvider");
+  },
+};
+
+/** M18 — productivity + quality measures (M30/M33 dashboards). Denies until M18 registers it. */
+export const evvMetricsProviderDenyStub: EvvMetricsProvider = {
+  getComplianceRate() {
+    throw new NotImplementedError("EvvMetricsProvider");
+  },
+  getLateCheckoutRate() {
+    throw new NotImplementedError("EvvMetricsProvider");
+  },
+  getGeofenceDeviationRate() {
+    throw new NotImplementedError("EvvMetricsProvider");
+  },
+  getGpsSpoofingDetectedRate() {
+    throw new NotImplementedError("EvvMetricsProvider");
+  },
+  getAggregatorSubmissionSuccessRate() {
+    throw new NotImplementedError("EvvMetricsProvider");
+  },
+  getDeviceRegistrationCoverage() {
+    throw new NotImplementedError("EvvMetricsProvider");
+  },
+};
+
+/** M18 — portal arrival/verification surface (timestamp only, no coordinates). Denies until M18 registers it. */
+export const evvVerificationProviderDenyStub: EvvVerificationProvider = {
+  arrivalEventForVisit() {
+    throw new NotImplementedError("EvvVerificationProvider");
+  },
+  visitVerificationSummaryForPortal() {
+    throw new NotImplementedError("EvvVerificationProvider");
   },
 };
 

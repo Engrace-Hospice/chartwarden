@@ -41,6 +41,7 @@ import { registerDoseSpotErasers, registerDoseSpotSeams } from "./modules/12-dos
 import { registerEmarErasers, registerEmarSeams } from "./modules/13-emar/index";
 import { registerIdgErasers, registerIdgSeams } from "./modules/14-idg/index";
 import { registerSchedulingSeams } from "./modules/17-scheduling/index";
+import { registerEvvSeams } from "./modules/18-evv/index";
 import {
   createDbMessagingProvider,
   mountMessagingRoutes,
@@ -148,6 +149,14 @@ export function wireModuleSeams(
   // productivity + quality measures read path). Slice/tests keep the in-memory store; the Drizzle-backed store
   // lands with M17's routes/repos (M17-T07+).
   registerSchedulingSeams();
+  // M18 — the six §4.3 owned reader seams. `EvvBracketResolver` is published over M8's EXISTING `resolveBracket`
+  // contract — this registration CLOSES M8's `encounter.period` forward seam (M8 D9), replacing its fail-closed
+  // deny-stub with the real resolver. The other five (EvvComplianceReader — M23/M24 billing gate + M30 HQRP —
+  // EvvAggregatorReferenceReader — M24 claim / M25 denial — EvvLocationProvider — M20 field-safety live-awareness,
+  // the only coordinate-bearing seam, D10 — EvvMetricsProvider — M30/M33 dashboards — EvvVerificationProvider — M31
+  // portal arrival surface) stand over their deny-stubs. Slice/tests keep the in-memory store; the Drizzle-backed
+  // store lands with M18's routes/repos (M18-T06+).
+  registerEvvSeams();
   // M39 — ConsentEvaluator (§4.3, the disclosure/redaction gate). Production backs it with the Drizzle
   // store over the real M39 consent tables (FB-T03); slice/tests keep the in-memory default.
   registerConsentSeams(deps.db ? { store: createDbConsentStore(deps.db) } : {});

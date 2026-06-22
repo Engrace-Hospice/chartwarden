@@ -14,6 +14,13 @@ import type {
   MileagePayrollReader,
   SignedEncountersReader,
 } from "./encounter";
+import type {
+  EvvAggregatorReferenceReader,
+  EvvComplianceReader,
+  EvvLocationProvider,
+  EvvMetricsProvider,
+  EvvVerificationProvider,
+} from "./evv";
 import type { LatestAssessmentProvider, ScaleSeriesProvider } from "./assessment";
 import type {
   HopeJ2051Provider,
@@ -93,6 +100,21 @@ export type SeamName =
   // typed here like M6/M7's readers. Registered with a fail-closed deny-stub until M18 lands (Wave F);
   // M8 resolves it with NO `dependsOn` edge to M18 (the leaf interface, not @wardenx/evv).
   | "EvvBracketResolver" // M18 — authoritative EVV bracket for an encounter's visit at finalize (D9)
+  // M18 (EVV) owned seams (§4.3 / D15) — leaf-typed (interfaces in ./evv, this leaf), so they are typed here
+  // like M6..M17's seams. The sixth published M18 seam is `EvvBracketResolver` above (the EXISTING M8-consumed
+  // contract M18 publishes the impl over; M18-T01 GOTCHA — never re-declared). These five are the rest: all
+  // READ-only projections over M18's `evv_event` / `evv_missing_resolution` / `evv_aggregator_submission` rows.
+  // `EvvComplianceReader` — the billing pre-submission compliance gate M23/M24 + the M30 HQRP measure consume;
+  // `EvvAggregatorReferenceReader` — the state-aggregator transaction-id back-link M24 (claim) + M25 (denial)
+  // consume; `EvvLocationProvider` — the last-known-clinician-location read M20 field-safety live-awareness
+  // consumes (coordinate-bearing); `EvvMetricsProvider` — the productivity/quality measures M30/M33 dashboards
+  // consume; `EvvVerificationProvider` — the M31 portal "Nurse arrived at HH:MM" surface (timestamp only, no
+  // coordinates) — all instead of importing M18's schema. M18 owns the EVV lifecycle internally; none mutates.
+  | "EvvComplianceReader" // M18 — billing compliance gate (compliant / documented_missing / unresolved_missing / not_required) + HQRP rate
+  | "EvvAggregatorReferenceReader" // M18 — per-state aggregator transaction-id + submission back-link (M24 claim / M25 denial)
+  | "EvvLocationProvider" // M18 — last-known clinician location (M20 field-safety live-awareness; coordinate-bearing)
+  | "EvvMetricsProvider" // M18 — productivity + quality measures (compliance / late-checkout / geofence / spoof / aggregator / device coverage)
+  | "EvvVerificationProvider" // M18 — portal arrival/verification surface (timestamp only, no coordinates)
   // M9 (Clinical Assessments) owned seams (§4.7 / D7) — also leaf-typed (interfaces in ./assessment), so
   // they are typed here like M6/M7/M8's readers. M7 (CTI/IDG latest PPS/FAST/ESAS-r), M10 (HOPE prognosis),
   // M14 (IDG packet deltas), M28 (FHIR Observation series), M32 (AI symptom-trajectory) consume them
@@ -340,6 +362,17 @@ export interface SeamContracts {
   // registry is statically typed against the real contract. M18 registers the real resolver over the
   // deny-stub when it lands (Wave F); M8 resolves it through the typed accessor with no schema import.
   EvvBracketResolver: EvvBracketResolver;
+  // M18's other five owned seams (§4.3 / D15) are LEAF-TYPED too — interfaces live in ./evv (this package), so the
+  // registry is statically typed against the real contract. M18 registers the real Drizzle-backed impls over the
+  // deny-stubs (M18-T05); consumers that list `18` in their manifest `dependsOn` (M20/M23/M24/M25/M30/M31/M33)
+  // resolve them through the typed accessors with no schema import edge. All five are READ-only — M18 publishes the
+  // compliance / aggregator-reference / location / metrics / verification projections and never a Drizzle row (the
+  // GPS coordinate is encrypted at rest, D10, and crosses only the coordinate-bearing `EvvLocationProvider` seam).
+  EvvComplianceReader: EvvComplianceReader;
+  EvvAggregatorReferenceReader: EvvAggregatorReferenceReader;
+  EvvLocationProvider: EvvLocationProvider;
+  EvvMetricsProvider: EvvMetricsProvider;
+  EvvVerificationProvider: EvvVerificationProvider;
   // M9's owned seams (§4.7 / D7) are LEAF-TYPED too — interfaces live in ./assessment (this package), so
   // the registry is statically typed against the real contract. M9 registers the real Drizzle-backed
   // impls over the deny-stubs (M9-T04); consumers that list `9` in their manifest `dependsOn` resolve

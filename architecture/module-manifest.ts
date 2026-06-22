@@ -579,7 +579,7 @@ export const MODULES: ModuleDef[] = [
       "apps/backend/src/modules/18-evv",
       "apps/web/src/modules/18-evv",
     ],
-    dependsOn: [17],
+    dependsOn: [1, 17], // +M1: the bootstrap seam registry (registerSeam/getSeam) M18's backend module wires its six §4.3 owned seams (EvvBracketResolver/EvvComplianceReader/EvvAggregatorReferenceReader/EvvLocationProvider/EvvMetricsProvider/EvvVerificationProvider) into (M18-T05; M6..M17 seam-task precedent)
     ownedTables: [
       "evv_aggregator_submission",
       "evv_device",
