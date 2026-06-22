@@ -374,3 +374,32 @@ export * from "./emar/medication-reconciliation-decisions";
 export * from "./emar/barcode-scan-events";
 export * from "./emar/administration-offline-queue";
 export * from "./emar/administration-policy";
+
+// ---------------------------------------------------------------------------
+// Module 14 — Interdisciplinary Group / IDG (M14-T02)
+// ---------------------------------------------------------------------------
+// M14 owns 9 tables (M14-T02): idg_recurring_policy (the §2.2/§2.3 per-location cadence template) +
+// idg_meeting (the §2.2 meeting-occurrence lifecycle + frozen quorum snapshot) + idg_attendance (the §2.7
+// per-attendee participation backing the quorate_decision ABAC) + idg_agenda_item (the §2.7 ordered agenda)
+// + idg_decision (the §2.6 D4 canonical-payload decision ledger + open→emitted→superseded) + idg_action_item
+// (the D8 follow-up task lifecycle + downstream-artifact auto-close) + idg_minutes / idg_minutes_amendment
+// (the D10 immutable-on-final minutes + W-MIN-01 amendment ledger) + idg_patient_packet (the §2.4 D1 frozen
+// pre-meeting packet + the M14-F01/ADR-0018 D2 per-patient 15-day review anchor column). The four patient-
+// bearing tables (idg_agenda_item / idg_decision / idg_action_item carry a nullable patient_id → nullable
+// three-column tenancy; idg_patient_packet carries patient_id + admission_id NOT NULL → provider_entity_id +
+// location_id NOT NULL); the other five are org/location-scoped. Cross-module refs (M5 patient, M6 admission,
+// M22 document, and the polymorphic linked_artifact) are plain uuid app-validated, NOT cross-module FKs (M14
+// dependsOn [7,8,36]); actor refs go to M1 `membership` as plain uuid; only the tenancy spine + intra-module
+// parents carry FKs. `idg_patient_packet` is PARTITION BY RANGE (built_at) monthly (D12) — converted from the
+// logical Drizzle shape in the RLS migration, so its "one packet per meeting+patient" rule is a plain index +
+// app-enforced. RLS + grants + M4 write-audit triggers + the partition conversion land in the RLS migration
+// (M14-T02, §3.3/§3.4).
+export * from "./idg/idg-recurring-policies";
+export * from "./idg/idg-meetings";
+export * from "./idg/idg-attendance";
+export * from "./idg/idg-agenda-items";
+export * from "./idg/idg-decisions";
+export * from "./idg/idg-action-items";
+export * from "./idg/idg-minutes";
+export * from "./idg/idg-minutes-amendments";
+export * from "./idg/idg-patient-packets";
