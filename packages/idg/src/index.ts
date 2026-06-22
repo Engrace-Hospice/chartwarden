@@ -14,3 +14,4 @@
 // `DISCIPLINE_VIEW_POLICY` / quorum constants.
 
 export * from "./policy";
+export * from "./lifecycle";
