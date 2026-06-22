@@ -1,4 +1,5 @@
 import { createApiClient } from "@wardenx/ui";
+import "./index.css"; // Tailwind v4 + the WardenX `wx-*` design-system layer (global styles)
 // apps/web/src/main.tsx — the web app COMPOSITION ROOT (outside every module codePath, like
 // apps/backend/src/index.ts). It is the one place allowed to import feature module web-slices and
 // register their screens; the M1 shell stays pure. F0 registers nothing yet — Track A/B add modules.
