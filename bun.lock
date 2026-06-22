@@ -226,6 +226,13 @@
       "name": "@wardenx/saas",
       "version": "0.0.0",
     },
+    "packages/scheduling": {
+      "name": "@wardenx/scheduling",
+      "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
+    },
     "packages/shared": {
       "name": "@wardenx/shared",
       "version": "0.0.0",
@@ -661,6 +668,8 @@
     "@wardenx/routing-client": ["@wardenx/routing-client@workspace:packages/routing-client"],
 
     "@wardenx/saas": ["@wardenx/saas@workspace:packages/saas"],
+
+    "@wardenx/scheduling": ["@wardenx/scheduling@workspace:packages/scheduling"],
 
     "@wardenx/shared": ["@wardenx/shared@workspace:packages/shared"],
 

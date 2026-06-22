@@ -508,7 +508,12 @@ exports.MODULES = [
   {
     id: 17,
     name: "Scheduling & Route Optimization",
-    codePaths: ["packages/routing-client", "apps/backend/src/modules/17-scheduling"],
+    codePaths: [
+      "packages/routing-client",
+      "packages/scheduling",
+      "apps/backend/src/modules/17-scheduling",
+      "apps/web/src/modules/17-scheduling",
+    ], // +packages/scheduling: §3.1 M17-owned feature pkg (cancellation value-set/RRULE-subset/visit-purpose→discipline policy → state machine/proposers), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M17-T08
     dependsOn: [5, 8, 40],
     ownedTables: [
       "clinician_availability",

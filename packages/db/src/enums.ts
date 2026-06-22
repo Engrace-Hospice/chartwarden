@@ -1694,3 +1694,94 @@ export const idgActionItemLinkedKind = pgEnum("idg_action_item_linked_kind", [
 
 /** `idg_minutes_status` — append-only-annotation while `in_progress`; immutable on `final` (D10). */
 export const idgMinutesStatus = pgEnum("idg_minutes_status", ["in_progress", "final"]);
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// Module 17 — Scheduling & Route Optimization (§3.2). The reconciled (M17-F03) eight-state visit machine +
+// the proposal/recurring/time-off lifecycles + the EVV-bracket flag column. The Drizzle tables land in
+// M17-T02 (`packages/db/src/schema/scheduling/`); the leaf mirrors live in `@wardenx/types` (`scheduling.ts`).
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** `visit_status` — the §2.2.1 / D3 (M17-F03-reconciled) eight-state visit lifecycle. `proposed` is worker
+ * output awaiting scheduler review; `en_route`/`in_visit` are EVV-authoritative (M18) or clinician-self-
+ * attested; `completed` is set on `m8.encounter.signed`; `no_show`/`cancelled`/`rescheduled` are terminal. */
+export const visitStatus = pgEnum("visit_status", [
+  "proposed",
+  "published",
+  "en_route",
+  "in_visit",
+  "completed",
+  "no_show",
+  "cancelled",
+  "rescheduled",
+]);
+
+/** `visit_purpose` — the §1.1 discipline+intent taxonomy (the §4.2 `CreateVisitRequest` value set governs). */
+export const visitPurpose = pgEnum("visit_purpose", [
+  "routine_visit",
+  "prn",
+  "aide_poc",
+  "msw_assessment",
+  "msw_followup",
+  "chaplain_visit",
+  "chaplain_assessment",
+  "volunteer_visit",
+  "f2f",
+  "recert",
+  "loc_change",
+  "pronouncement",
+  "admission_visit",
+  "discharge_visit",
+]);
+
+/** `visit_setting` — the §2.3 service-location class; drives the address/facility validation rules. */
+export const visitSetting = pgEnum("visit_setting", [
+  "patient_home",
+  "facility",
+  "inpatient_unit",
+  "telephonic",
+]);
+
+/** `visit_proposal_status` — the §2.2.4 D5 proposal lifecycle; `stale` is set when not actioned by the
+ * cadence hard-cutoff. */
+export const visitProposalStatus = pgEnum("visit_proposal_status", [
+  "pending",
+  "published",
+  "dismissed",
+  "stale",
+]);
+
+/** `visit_proposal_source` — the §2.2.4 origin of a proposal (the upstream module that drove it). */
+export const visitProposalSource = pgEnum("visit_proposal_source", [
+  "frequency_driven_m7",
+  "supervisory_cadence_m15",
+  "order_required_m11",
+  "idg_decision_m14",
+]);
+
+/** `recurring_visit_status` — the §2.2.3 D4 policy lifecycle; `discontinued` cascade-cancels future children. */
+export const recurringVisitStatus = pgEnum("recurring_visit_status", ["active", "discontinued"]);
+
+/** `time_off_kind` — the §1.1 D7 PTO taxonomy. */
+export const timeOffKind = pgEnum("time_off_kind", [
+  "pto",
+  "sick",
+  "bereavement",
+  "training",
+  "other",
+]);
+
+/** `time_off_state` — the §2.2.6 D7 approval lifecycle; `consumed` is set when the window passes. */
+export const timeOffState = pgEnum("time_off_state", [
+  "requested",
+  "approved",
+  "denied",
+  "cancelled",
+  "consumed",
+]);
+
+// NOTE: the §1.1 / D3 EVV-bracket flag column on `visit` reuses the existing shared `evvBracketState`
+// pgEnum (`evv_present` | `evv_missing_documented`) defined above for M8 — those two values are exactly the
+// M17 body vocabulary (§2.2.1 / line 76 / §7.6; the struck M17-F03 `evv_missing_attested` belonged to the
+// discarded state machine, not the flag). `check-ddl-legality` bans a duplicate pgEnum, so M17-T02's
+// `visits.ts` imports the shared one. The §3.2 Phase-A enum list correctly names only the eight M17-owned
+// enums above.
