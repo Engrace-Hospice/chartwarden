@@ -12,3 +12,4 @@ export * from "./geofence-policy";
 export * from "./effects";
 export * from "./event-lifecycle";
 export * from "./missing-resolution";
+export * from "./aggregator-submission";

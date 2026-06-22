@@ -4,6 +4,19 @@
 //
 // M18-T01 landed the §4.5 D1 `EvvAggregatorAdapter` interface + `AggregatorCredentials` shape (the layout).
 // M18-T06 lands the Phase-1 `SandataAdapter`, the `OpenModelAdapter` (no-aggregator open-model path), the
-// per-state `StateAggregatorRegistry` selector (reads M40 master data), the circuit-breaker integration, and
-// the degraded-error envelope. HHAeXchange / Tellus / CareBridge adapters are Phase-2 candidates.
+// per-state `StateAggregatorRegistry` selector (reads M40 master data), the credential-store port, and the
+// `event_pair_hash` idempotency primitive. HHAeXchange / Tellus / CareBridge ship as Phase-2 interface-
+// conformance scaffolding (not registered by default).
 export * from "./interface";
+export * from "./credentials";
+export * from "./event-pair-hash";
+export * from "./registry";
+export {
+  type Clock,
+  type SandataSubmissionBody,
+  type SandataTransport,
+  SandataAdapter,
+  createSandataSandboxTransport,
+} from "./adapters/sandata-adapter";
+export { type OpenModelSubmissionBody, OpenModelAdapter } from "./open-model";
+export { CareBridgeAdapter, HhaeXchangeAdapter, TellusAdapter } from "./adapters/phase2-scaffolding";

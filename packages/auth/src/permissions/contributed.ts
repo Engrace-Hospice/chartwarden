@@ -1356,6 +1356,57 @@ export const M17_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M17 contributed permission keys. */
 export type M17ContributedPermissionKey = keyof typeof M17_CONTRIBUTED_PERMISSIONS;
 
+/**
+ * M18-T06 — Module 18 (Electronic Visit Verification) §4.6 permission keys registered into M3's catalog (the
+ * binding handshake; boot validation fails if any key is missing at startup). All `category: 'evv'`. The
+ * patient-touching event read/correct + missing-resolution keys default to `caseload_or_scope` (the shared
+ * patient-scope predicate M5/M6/M7 own); the `evv.check_in` / `evv.check_out` routes ALSO compose M18's two
+ * OWNED §4.7 predicates at the route — `assigned_clinician_for_visit` ∧ `evv_within_visit_window` (registered
+ * by 18-evv/abac-predicates.ts) — plus the shared `device_attestation_valid` (D8). `evv.read_coords` is a
+ * SEPARATE key from `evv.read` for audit-prominence (D10). The device-registration, geofence-policy,
+ * aggregator-submission, team-location, and metrics keys are pure RBAC (`none`) — they are membership-scoped /
+ * org-wide / billing-ops surfaces the route layer scopes server-side, not patient-caseload reads. The portal
+ * arrival key is the M31 portal session class (per-patient via M39 `family_caregiver_access` consent, not
+ * caseload). Keys carry an `evv.` / `portal.evv.` NAMESPACE prefix on top of the `resource.action`
+ * decomposition (like M11's `orders.` / M14's `idg.`). Twenty-one keys total (§4.6). Kept in a dedicated const
+ * for §3.3 attributability.
+ */
+export const M18_CONTRIBUTED_PERMISSIONS = {
+  // --- EVV event capture (routes ALSO compose `assigned_clinician_for_visit` ∧ `evv_within_visit_window`) ---
+  "evv.check_in": { resource: "evv_event", action: "check_in", category: "evv", abac: "caseload_or_scope" },
+  "evv.check_out": { resource: "evv_event", action: "check_out", category: "evv", abac: "caseload_or_scope" },
+  // --- EVV event reads (coords is a SEPARATE key for audit-prominence, D10) ---
+  "evv.read": { resource: "evv_event", action: "read", category: "evv", abac: "caseload_or_scope" },
+  "evv.read_coords": { resource: "evv_event", action: "read_coords", category: "evv", abac: "caseload_or_scope" },
+  "evv.read_metrics": { resource: "evv_metrics", action: "read", category: "evv", abac: "none" },
+  // --- correction-of-record (Clinical Supervisor+, step-up at the route) ---
+  "evv.correct_record": { resource: "evv_event", action: "correct_record", category: "evv", abac: "caseload_or_scope" },
+  // --- device registration lifecycle (membership-scoped; the route scopes own-vs-team) ---
+  "evv.device.register_self": { resource: "evv_device", action: "register_self", category: "evv", abac: "none" },
+  "evv.device.read": { resource: "evv_device", action: "read", category: "evv", abac: "none" },
+  "evv.device.approve": { resource: "evv_device", action: "approve", category: "evv", abac: "none" },
+  "evv.device.suspend": { resource: "evv_device", action: "suspend", category: "evv", abac: "none" },
+  "evv.device.retire": { resource: "evv_device", action: "retire", category: "evv", abac: "none" },
+  // --- geofence policy (tenant tighten-only + per-address override; Clin Supv / DON / Compliance) ---
+  "evv.policy.read": { resource: "evv_geofence_policy", action: "read", category: "evv", abac: "none" },
+  "evv.policy.edit": { resource: "evv_geofence_policy", action: "edit", category: "evv", abac: "none" },
+  // --- missing-EVV resolution (attest_self route ALSO composes `assigned_clinician_for_visit`) ---
+  "evv.missing_resolution.read": { resource: "evv_missing_resolution", action: "read", category: "evv", abac: "caseload_or_scope" },
+  "evv.missing_resolution.attest_self": { resource: "evv_missing_resolution", action: "attest_self", category: "evv", abac: "caseload_or_scope" },
+  "evv.missing_resolution.supervisor_override": { resource: "evv_missing_resolution", action: "supervisor_override", category: "evv", abac: "none" },
+  // --- per-state aggregator submission queue (billing-ops; org-wide) ---
+  "evv.aggregator.read": { resource: "evv_aggregator_submission", action: "read", category: "evv", abac: "none" },
+  "evv.aggregator.resubmit": { resource: "evv_aggregator_submission", action: "resubmit", category: "evv", abac: "none" },
+  "evv.aggregator.cancel": { resource: "evv_aggregator_submission", action: "cancel", category: "evv", abac: "none" },
+  // --- M20 field-safety supervisor live-awareness (org-wide team-location read; audit-prominent) ---
+  "evv.location.read_team": { resource: "evv_location", action: "read_team", category: "evv", abac: "none" },
+  // --- M31 portal arrival surface (portal session class; per-patient via M39 consent, not caseload) ---
+  "portal.evv.read_arrival": { resource: "portal_evv", action: "read_arrival", category: "evv", abac: "none" },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M18 contributed permission keys. */
+export type M18ContributedPermissionKey = keyof typeof M18_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -1453,6 +1504,11 @@ export function m17ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M17_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M18 contributed keys into `permission`-table mirror rows (M18-T06). */
+export function m18ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M18_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -1479,5 +1535,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m13ContributedPermissionMirrorRows(),
     ...m14ContributedPermissionMirrorRows(),
     ...m17ContributedPermissionMirrorRows(),
+    ...m18ContributedPermissionMirrorRows(),
   ];
 }

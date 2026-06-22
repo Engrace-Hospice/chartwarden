@@ -87,6 +87,14 @@ export const M18_ERROR_STATUS = {
   EVV_VISIT_NOT_CANCELLED: 409,
   // §2.4 — a system-driven close (`closed_system_checkout_received` / `closed_visit_voided`) by a non-system actor.
   EVV_RESOLUTION_SYSTEM_ACTOR_REQUIRED: 403,
+
+  // ── §2.2.5 D7 per-state aggregator submission machine (M18-T06) ─────────────────────────────────────
+  // §2.2.5 — the transition is not accepted from the row's current status (the §2.2.5 mermaid graph).
+  ILLEGAL_AGGREGATOR_SUBMISSION_TRANSITION: 409,
+  // §7.9 / §4.1 — a resubmit attempted from a status other than `rejected` / `timeout` (D7 resubmit-validity).
+  EVV_AGGREGATOR_NOT_RESUBMITTABLE: 409,
+  // §4.1 — a cancel attempted from a terminal status (D7: cancel is valid only from a non-terminal state).
+  EVV_AGGREGATOR_NOT_CANCELLABLE: 409,
 } as const;
 
 /** A machine-readable M18 event-lifecycle / geofence failure code (§2.2 / §2.3). */
