@@ -1119,3 +1119,64 @@ export const assembledOutputKind = pgEnum("assembled_output_kind", [
   "primary_finalize",
   "addendum_finalize",
 ]);
+
+// ── Module 9 (Clinical Assessments Suite) §3.2 ────────────────────────────────────────────────
+// The 14-scale shared-base `clinical_assessment` table keys on `scale_type`; per-scale `data` shape +
+// scoring live in `packages/assessments/src/scales/<scale>/` (D1). Enum values mirror the leaf type
+// surface in `@wardenx/types` (`assessment.ts`); the §3.3 tables (M9-T02) compile against the final
+// enum set (ADR-0022 D1.3: one pgEnum definition site, no later ALTER-then-redeclare).
+
+/** `scale_type` — the 14 §1.1 validated instruments a `clinical_assessment` row may carry (D1). */
+export const scaleType = pgEnum("scale_type", [
+  "pps",
+  "kps",
+  "fast",
+  "painad",
+  "flacc",
+  "esas_r",
+  "nyha",
+  "meld",
+  "bode",
+  "flacker",
+  "gds",
+  "braden",
+  "morse",
+  "aims",
+]);
+
+/** `assessment_status` — the §2.2.1 lifecycle: a correction supersedes its target (append-only, D9). */
+export const assessmentStatus = pgEnum("assessment_status", ["active", "superseded"]);
+
+/** `assessment_acting_as` — whether the reporter is the patient or an attributed representative (DPOA). */
+export const assessmentActingAs = pgEnum("assessment_acting_as", ["self", "patient_representative"]);
+
+/** `significant_change_rule_id` — the §2.4 threshold-crossing rules the detector evaluates (D2). */
+export const significantChangeRuleId = pgEnum("significant_change_rule_id", [
+  "pps_drop_20_in_14d",
+  "kps_drop_20_in_14d",
+  "esas_total_increase_20_in_7d",
+  "esas_symptom_ge_7",
+  "painad_ge_4",
+  "nyha_class_iv",
+  "braden_le_12",
+  "morse_ge_51",
+  "meld_ge_30",
+  "fast_progression_30d",
+  "gds_progression_30d",
+  "flacker_increase",
+  "aims_emergent_dyskinesia",
+]);
+
+/** `significant_change_status` — the §2.2.2 ack lifecycle for a detected change (open → ack/escalated). */
+export const significantChangeStatus = pgEnum("significant_change_status", [
+  "open",
+  "acknowledged",
+  "escalated",
+]);
+
+/** `scale_license_status` — the §2.2.3 per-tenant licensure state for a proprietary scale (D3). */
+export const scaleLicenseStatus = pgEnum("scale_license_status", [
+  "active",
+  "pending_renewal",
+  "expired",
+]);

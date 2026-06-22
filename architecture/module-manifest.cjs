@@ -367,8 +367,8 @@ exports.MODULES = [
   {
     id: 9,
     name: "Clinical Assessments Suite",
-    codePaths: ["packages/assessments", "apps/backend/src/modules/09-assessments"],
-    dependsOn: [38],
+    codePaths: ["packages/assessments", "apps/backend/src/modules/09-assessments", "apps/web/src/modules/09-assessments"],
+    dependsOn: [38], // +web: Track B in-task screens (ADR-0030), land in M9-T07
     ownedTables: [
       "clinical_assessment",
       "assessment_cosignature",

@@ -11,6 +11,7 @@ export * from "./patient";
 export * from "./admission";
 export * from "./care-plan";
 export * from "./encounter";
+export * from "./assessment";
 export * from "./screen-registry";
 export * from "./errors";
 export * from "./http-context";
