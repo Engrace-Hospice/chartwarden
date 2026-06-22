@@ -1201,6 +1201,73 @@ export const M12_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M12 contributed permission keys. */
 export type M12ContributedPermissionKey = keyof typeof M12_CONTRIBUTED_PERMISSIONS;
 
+/**
+ * M13-T08 — Module 13 (eMAR & Med Administration) §4.6 permission keys registered into M3's catalog (the
+ * binding handshake; boot validation fails if any key is missing at startup). The clinical
+ * read/record/refusal/witness/correct/reconciliation/comfort-kit keys default to `caseload_or_scope` (the
+ * patient-scope predicate M5/M6/M7 own); the record route ALSO carries M13's owned
+ * `administering_clinician_eligible[:medClass]` predicate, the witness-attest route M13's owned
+ * `controlled_substance_witness_eligible`, the caregiver acknowledge/dispute routes M13's owned
+ * `caregiver_attested_review_required`, and the reconciliation decide/finalize routes M13's owned
+ * `reconciliation_authoring_eligible` — applied explicitly at the route on top of the default (§4.7). The
+ * significant-late / administrative-override / void / policy keys carry the late-entry tier gate + step-up
+ * enforced at the route. The caregiver-record key is an M31 portal-session path (`none` here; the portal
+ * session token gates it). The policy admin key is pure RBAC (`none`; org-admin / compliance reference rows,
+ * step-up at the route). Keys carry an `administration.` / `reconciliation.` / `comfort_kit.` NAMESPACE prefix
+ * on top of the `resource.action` decomposition (like M12's `prescribing.`), so `key` is the full dotted
+ * permission string used at `requirePermission(...)`. Twenty-two keys total (§4.6). Kept in a dedicated const
+ * for §3.3 attributability.
+ */
+export const M13_CONTRIBUTED_PERMISSIONS = {
+  // Read (caseload-scoped clinical reads) — every GET administration / scheduled-dose / IV-session route.
+  "administration.read": { resource: "administration_record", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  // Record a clinician administration (route ALSO requires `administering_clinician_eligible[:medClass]`).
+  "administration.record": { resource: "administration_record", action: "record", category: "clinical", abac: "caseload_or_scope" },
+  // Significant-late tier (24h-7d) — supervisor cosign queued (D8).
+  "administration.record_significant_late": { resource: "administration_record", action: "record_significant_late", category: "clinical", abac: "caseload_or_scope" },
+  // Administrative-override tier (>7d) — step-up enforced at the route (D8).
+  "administration.administrative_override": { resource: "administration_record", action: "administrative_override", category: "clinical", abac: "caseload_or_scope" },
+  // Record a refusal (patient declined; no medication given; route ALSO requires `administering_clinician_eligible`).
+  "administration.record_refusal": { resource: "administration_record", action: "record_refusal", category: "clinical", abac: "caseload_or_scope" },
+  // Record an intentional hold of a scheduled dose before the grace window expires.
+  "administration.record_missed": { resource: "scheduled_dose", action: "intentional_hold", category: "clinical", abac: "caseload_or_scope" },
+  // Mint a witness-attestation token (route ALSO requires `controlled_substance_witness_eligible`).
+  "administration.witness_attest": { resource: "administration_witness", action: "attest", category: "clinical", abac: "caseload_or_scope" },
+  // Correction of a committed administration (creates a new row, supersedes original).
+  "administration.correct": { resource: "administration_record", action: "correct", category: "clinical", abac: "caseload_or_scope" },
+  // Administrative hard-void (recorded in error) — step-up enforced at the route.
+  "administration.void": { resource: "administration_record", action: "void", category: "clinical", abac: "caseload_or_scope" },
+  // Caregiver-attested administration via M31 portal — the portal session token gates it (no caseload predicate).
+  "administration.caregiver_record": { resource: "administration_record", action: "caregiver_record", category: "clinical", abac: "none" },
+  // RN case manager acknowledges a caregiver-attested row (route ALSO requires `caregiver_attested_review_required`).
+  "administration.caregiver_acknowledge": { resource: "administration_record", action: "caregiver_acknowledge", category: "clinical", abac: "caseload_or_scope" },
+  // RN case manager disputes a caregiver-attested row (route ALSO requires `caregiver_attested_review_required`).
+  "administration.caregiver_dispute": { resource: "administration_record", action: "caregiver_dispute", category: "clinical", abac: "caseload_or_scope" },
+  // Missed-dose read (caseload-scoped).
+  "administration.read_missed": { resource: "missed_dose", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  // Case manager acknowledges a missed dose.
+  "administration.acknowledge_missed": { resource: "missed_dose", action: "acknowledge", category: "clinical", abac: "caseload_or_scope" },
+  // PRN minimum-interval override (supervisor / prescriber; reason captured).
+  "administration.prn_interval_override": { resource: "administration_record", action: "prn_interval_override", category: "clinical", abac: "caseload_or_scope" },
+  // Reconciliation worksheet read (caseload-scoped).
+  "reconciliation.read": { resource: "medication_reconciliation_worksheet", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  // Record/update a per-line decision (route ALSO requires `reconciliation_authoring_eligible`).
+  "reconciliation.decide": { resource: "medication_reconciliation_decision", action: "create", category: "clinical", abac: "caseload_or_scope" },
+  // Finalize the worksheet (route ALSO requires `reconciliation_authoring_eligible`).
+  "reconciliation.finalize": { resource: "medication_reconciliation_worksheet", action: "finalize", category: "clinical", abac: "caseload_or_scope" },
+  // Void a worksheet (e.g., re-triggered by a transfer-correction).
+  "reconciliation.void": { resource: "medication_reconciliation_worksheet", action: "void", category: "clinical", abac: "caseload_or_scope" },
+  // Comfort-kit deployment read (caseload-scoped).
+  "comfort_kit.read": { resource: "comfort_kit_deployment", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  // Manual comfort-kit return acknowledgment (Phase-1 fallback when M21 absent).
+  "comfort_kit.acknowledge_return": { resource: "comfort_kit_deployment", action: "acknowledge_return", category: "clinical", abac: "caseload_or_scope" },
+  // Per-tenant administration policy admin (org-scoped, step-up).
+  "administration.admin.policy": { resource: "administration_policy", action: "admin", category: "compliance", abac: "none" },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M13 contributed permission keys. */
+export type M13ContributedPermissionKey = keyof typeof M13_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -1283,6 +1350,11 @@ export function m12ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M12_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M13 contributed keys into `permission`-table mirror rows (M13-T08). */
+export function m13ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M13_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -1306,5 +1378,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m10ContributedPermissionMirrorRows(),
     ...m11ContributedPermissionMirrorRows(),
     ...m12ContributedPermissionMirrorRows(),
+    ...m13ContributedPermissionMirrorRows(),
   ];
 }

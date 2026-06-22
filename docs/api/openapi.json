@@ -6,6 +6,44 @@
     "description": "Generated from backend routes + TypeBox enrichments (ADR-0032). Source of truth for the typed frontend client until routes are wired to Fastify schema."
   },
   "paths": {
+    "/api/v1/admin/administration-policy": {
+      "get": {
+        "operationId": "getApiV1AdminAdministrationpolicy",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1AdminAdministrationpolicy",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/admin/controlled-substance-policy": {
       "get": {
         "operationId": "getApiV1AdminControlledsubstancepolicy",
@@ -720,6 +758,298 @@
         "operationId": "postApiV1AdminSystemStatus",
         "tags": [
           "bootstrap"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/administrations": {
+      "get": {
+        "operationId": "getApiV1Administrations",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Administrations",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/administrations/{id}": {
+      "get": {
+        "operationId": "getApiV1AdministrationsById",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/administrations/{id}/acknowledge-caregiver": {
+      "post": {
+        "operationId": "postApiV1AdministrationsByIdAcknowledgecaregiver",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/administrations/{id}/correct": {
+      "post": {
+        "operationId": "postApiV1AdministrationsByIdCorrect",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/administrations/{id}/dispute-caregiver": {
+      "post": {
+        "operationId": "postApiV1AdministrationsByIdDisputecaregiver",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/administrations/{id}/void": {
+      "post": {
+        "operationId": "postApiV1AdministrationsByIdVoid",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/administrations/caregiver-attested": {
+      "post": {
+        "operationId": "postApiV1AdministrationsCaregiverattested",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/administrations/iv-sessions/{sessionId}": {
+      "get": {
+        "operationId": "getApiV1AdministrationsIvsessionsBySessionId",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/administrations/offline-sync": {
+      "post": {
+        "operationId": "postApiV1AdministrationsOfflinesync",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/administrations/refuse": {
+      "post": {
+        "operationId": "postApiV1AdministrationsRefuse",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/administrations/witness-attest": {
+      "post": {
+        "operationId": "postApiV1AdministrationsWitnessattest",
+        "tags": [
+          "13-emar"
         ],
         "parameters": [],
         "responses": {
@@ -3309,6 +3639,84 @@
           "02-identity"
         ],
         "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/comfort-kits/deployments": {
+      "get": {
+        "operationId": "getApiV1ComfortkitsDeployments",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/comfort-kits/deployments/{id}": {
+      "get": {
+        "operationId": "getApiV1ComfortkitsDeploymentsById",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/comfort-kits/deployments/{id}/acknowledge-return": {
+      "post": {
+        "operationId": "postApiV1ComfortkitsDeploymentsByIdAcknowledgereturn",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -8460,6 +8868,55 @@
         "operationId": "postApiV1MessagingMessagesByIdRead",
         "tags": [
           "36-messaging"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/missed-doses": {
+      "get": {
+        "operationId": "getApiV1Misseddoses",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/missed-doses/{id}/acknowledge": {
+      "post": {
+        "operationId": "postApiV1MisseddosesByIdAcknowledge",
+        "tags": [
+          "13-emar"
         ],
         "parameters": [
           {
@@ -13689,6 +14146,208 @@
         }
       }
     },
+    "/api/v1/reconciliation/worksheets": {
+      "get": {
+        "operationId": "getApiV1ReconciliationWorksheets",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/reconciliation/worksheets/{id}": {
+      "get": {
+        "operationId": "getApiV1ReconciliationWorksheetsById",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/reconciliation/worksheets/{id}/add-caregiver-reported-line": {
+      "post": {
+        "operationId": "postApiV1ReconciliationWorksheetsByIdAddcaregiverreportedline",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/reconciliation/worksheets/{id}/decisions": {
+      "post": {
+        "operationId": "postApiV1ReconciliationWorksheetsByIdDecisions",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/reconciliation/worksheets/{id}/decisions/{lineId}": {
+      "patch": {
+        "operationId": "patchApiV1ReconciliationWorksheetsByIdDecisionsByLineId",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/reconciliation/worksheets/{id}/finalize": {
+      "post": {
+        "operationId": "postApiV1ReconciliationWorksheetsByIdFinalize",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/reconciliation/worksheets/{id}/void": {
+      "post": {
+        "operationId": "postApiV1ReconciliationWorksheetsByIdVoid",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/referrals": {
       "get": {
         "operationId": "getApiV1Referrals",
@@ -14337,6 +14996,55 @@
           "12-dosespot"
         ],
         "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/scheduled-doses": {
+      "get": {
+        "operationId": "getApiV1Scheduleddoses",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/scheduled-doses/{id}/intentional-hold": {
+      "post": {
+        "operationId": "postApiV1ScheduleddosesByIdIntentionalhold",
+        "tags": [
+          "13-emar"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
