@@ -4,7 +4,7 @@
 > corpus is consistent; this shows how much of it is BUILT in `apps/web`. Do not hand-edit —
 > the `ui:parity --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 69 documented screen specs · 16 module screen-sets registered · 70 screens wired in `apps/web`.
+**Coverage:** 69 documented screen specs · 17 module screen-sets registered · 78 screens wired in `apps/web`.
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -87,6 +87,14 @@
 | 14-idg | `idg.packet` | `/idg/meetings/:meetingId/packets/:patientId` | `idg.read` | ✅ |
 | 14-idg | `idg.action-items` | `/idg/action-items` | `idg.read` | ✅ |
 | 14-idg | `idg.minutes` | `/idg/meetings/:id/minutes` | `idg.read` | ✅ |
+| 17-scheduling | `scheduling.day` | `/scheduling/day` | `visit.read_team` | ✅ |
+| 17-scheduling | `scheduling.week` | `/scheduling/week` | `visit.read_team` | ✅ |
+| 17-scheduling | `scheduling.proposals` | `/scheduling/proposals` | `visit.proposal.read` | ✅ |
+| 17-scheduling | `scheduling.recurring` | `/scheduling/recurring` | `recurring_visit.read` | ✅ |
+| 17-scheduling | `scheduling.time-off` | `/scheduling/time-off` | `time_off.read_team` | ✅ |
+| 17-scheduling | `scheduling.visit-detail` | `/scheduling/visits/:visitId` | `visit.read` | ✅ |
+| 17-scheduling | `scheduling.my-visits` | `/me/visits` | `visit.read` | ✅ |
+| 17-scheduling | `scheduling.metrics` | `/admin/scheduling-metrics` | `visit.read_metrics` | ✅ |
 | 36-messaging | `messaging.staff` | `/messaging` | `messaging.read` | ✅ |
 | 36-messaging | `messaging.notifications` | `/notifications` | `(none)` | ✅ |
 | 38-terminology | `terminology.admin` | `/terminology` | `(none)` | ✅ |

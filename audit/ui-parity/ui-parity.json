@@ -22,6 +22,7 @@
     "12-dosespot",
     "13-emar",
     "14-idg",
+    "17-scheduling",
     "36-messaging",
     "38-terminology",
     "40-mdm"
@@ -488,6 +489,62 @@
       "id": "idg.minutes",
       "path": "/idg/meetings/:id/minutes",
       "permission": "idg.read"
+    },
+    {
+      "module": "17-scheduling",
+      "moduleId": 17,
+      "id": "scheduling.day",
+      "path": "/scheduling/day",
+      "permission": "visit.read_team"
+    },
+    {
+      "module": "17-scheduling",
+      "moduleId": 17,
+      "id": "scheduling.week",
+      "path": "/scheduling/week",
+      "permission": "visit.read_team"
+    },
+    {
+      "module": "17-scheduling",
+      "moduleId": 17,
+      "id": "scheduling.proposals",
+      "path": "/scheduling/proposals",
+      "permission": "visit.proposal.read"
+    },
+    {
+      "module": "17-scheduling",
+      "moduleId": 17,
+      "id": "scheduling.recurring",
+      "path": "/scheduling/recurring",
+      "permission": "recurring_visit.read"
+    },
+    {
+      "module": "17-scheduling",
+      "moduleId": 17,
+      "id": "scheduling.time-off",
+      "path": "/scheduling/time-off",
+      "permission": "time_off.read_team"
+    },
+    {
+      "module": "17-scheduling",
+      "moduleId": 17,
+      "id": "scheduling.visit-detail",
+      "path": "/scheduling/visits/:visitId",
+      "permission": "visit.read"
+    },
+    {
+      "module": "17-scheduling",
+      "moduleId": 17,
+      "id": "scheduling.my-visits",
+      "path": "/me/visits",
+      "permission": "visit.read"
+    },
+    {
+      "module": "17-scheduling",
+      "moduleId": 17,
+      "id": "scheduling.metrics",
+      "path": "/admin/scheduling-metrics",
+      "permission": "visit.read_metrics"
     },
     {
       "module": "36-messaging",

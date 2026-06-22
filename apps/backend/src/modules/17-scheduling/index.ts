@@ -16,8 +16,17 @@
 // inventory behind the M3 Authorization Contract over the §4.6 keys (`M17_CONTRIBUTED_PERMISSIONS`), and the
 // four §4.7 pre-schedule ABAC predicates (`clinician_credentials_active` / `discipline_matches_visit` /
 // `not_on_pto` / `within_caseload_or_unassigned_pool`). Route optimisation stays behind
-// `scheduling.route_optimization` (OFF; §7.9 OSRM degraded mode is the Phase-1 path). Outbox + screens land
-// in M17-T08.
+// `scheduling.route_optimization` (OFF; §7.9 OSRM degraded mode is the Phase-1 path).
+//
+// M17-T08 lands the §4.11 outbox-event catalog (the full `m17.*` taxonomy — `events-by-m17.ts`; check-fitness-
+// gaps.ts scans it for naming + ownership + declared consumers). **`m17.visit.published` wires LIVE M8's
+// visit-seeding inert consumer (M8 D9); M18 consumes the bracket events; M5 reads the assigned/unassigned
+// caseload-contribution stream (§4.5 D11).** M19/M31 (and the M15/M16 seam consumers) stay inert deny-stubs
+// until Phase 2. It also lands the §4.9 M36 typed alert payloads (`alerts-by-m17.ts`; registered onto M36's
+// Foundation registry at boot, composition + recipient resolution is M36's per ADR-0024) and the Track B §5.1
+// web screens (apps/web/src/modules/17-scheduling, ADR-0030).
+export { M17_OUTBOX_EVENTS } from "./events-by-m17";
+export { M17_ALERT_PAYLOADS } from "./alerts-by-m17";
 export {
   type EncounterSignedConsumed,
   type VisitCompletionPlan,

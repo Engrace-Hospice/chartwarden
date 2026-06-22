@@ -3256,10 +3256,66 @@
         "tags": [
           "17-scheduling"
         ],
-        "parameters": [],
+        "summary": "A membership's weekly availability pattern (§5.1 availability editor)",
+        "parameters": [
+          {
+            "name": "membership",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "membershipId",
+                    "timeZone",
+                    "slots"
+                  ],
+                  "properties": {
+                    "membershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "timeZone": {
+                      "type": "string"
+                    },
+                    "slots": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "weekday",
+                          "startTime",
+                          "endTime"
+                        ],
+                        "properties": {
+                          "weekday": {
+                            "minimum": 0,
+                            "maximum": 6,
+                            "type": "integer"
+                          },
+                          "startTime": {
+                            "type": "string"
+                          },
+                          "endTime": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -4748,10 +4804,231 @@
         "tags": [
           "17-scheduling"
         ],
-        "parameters": [],
+        "summary": "Day-view grid — a clinician's visits for one service date (§5.1 day)",
+        "parameters": [
+          {
+            "name": "membership",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "date",
+                    "membershipId",
+                    "visits"
+                  ],
+                  "properties": {
+                    "date": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "membershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "visits": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "organizationId",
+                          "patientId",
+                          "admissionId",
+                          "assignedMembershipId",
+                          "visitPurpose",
+                          "visitSetting",
+                          "scheduledStartedAt",
+                          "scheduledEndedAt",
+                          "serviceDate",
+                          "status",
+                          "patientAddressId",
+                          "externalFacilityId",
+                          "rescheduledIntoVisitId"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "assignedMembershipId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "visitPurpose": {
+                            "anyOf": [
+                              {
+                                "const": "routine_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "prn",
+                                "type": "string"
+                              },
+                              {
+                                "const": "aide_poc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "msw_assessment",
+                                "type": "string"
+                              },
+                              {
+                                "const": "msw_followup",
+                                "type": "string"
+                              },
+                              {
+                                "const": "chaplain_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "chaplain_assessment",
+                                "type": "string"
+                              },
+                              {
+                                "const": "volunteer_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "f2f",
+                                "type": "string"
+                              },
+                              {
+                                "const": "recert",
+                                "type": "string"
+                              },
+                              {
+                                "const": "loc_change",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pronouncement",
+                                "type": "string"
+                              },
+                              {
+                                "const": "admission_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "discharge_visit",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "visitSetting": {
+                            "anyOf": [
+                              {
+                                "const": "patient_home",
+                                "type": "string"
+                              },
+                              {
+                                "const": "facility",
+                                "type": "string"
+                              },
+                              {
+                                "const": "inpatient_unit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "telephonic",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "scheduledStartedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "scheduledEndedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "serviceDate": {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "patientAddressId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "externalFacilityId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rescheduledIntoVisitId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -8739,10 +9016,224 @@
         "tags": [
           "17-scheduling"
         ],
-        "parameters": [],
+        "summary": "Map-view ordered stops for a clinician day (coords-only polylines, D9; §5.1 map)",
+        "parameters": [
+          {
+            "name": "membership",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "membershipId",
+                    "date",
+                    "stops"
+                  ],
+                  "properties": {
+                    "membershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "date": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "stops": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "organizationId",
+                          "patientId",
+                          "admissionId",
+                          "assignedMembershipId",
+                          "visitPurpose",
+                          "visitSetting",
+                          "scheduledStartedAt",
+                          "scheduledEndedAt",
+                          "serviceDate",
+                          "status",
+                          "patientAddressId",
+                          "externalFacilityId",
+                          "rescheduledIntoVisitId"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "assignedMembershipId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "visitPurpose": {
+                            "anyOf": [
+                              {
+                                "const": "routine_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "prn",
+                                "type": "string"
+                              },
+                              {
+                                "const": "aide_poc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "msw_assessment",
+                                "type": "string"
+                              },
+                              {
+                                "const": "msw_followup",
+                                "type": "string"
+                              },
+                              {
+                                "const": "chaplain_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "chaplain_assessment",
+                                "type": "string"
+                              },
+                              {
+                                "const": "volunteer_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "f2f",
+                                "type": "string"
+                              },
+                              {
+                                "const": "recert",
+                                "type": "string"
+                              },
+                              {
+                                "const": "loc_change",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pronouncement",
+                                "type": "string"
+                              },
+                              {
+                                "const": "admission_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "discharge_visit",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "visitSetting": {
+                            "anyOf": [
+                              {
+                                "const": "patient_home",
+                                "type": "string"
+                              },
+                              {
+                                "const": "facility",
+                                "type": "string"
+                              },
+                              {
+                                "const": "inpatient_unit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "telephonic",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "scheduledStartedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "scheduledEndedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "serviceDate": {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "patientAddressId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "externalFacilityId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rescheduledIntoVisitId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -10699,10 +11190,63 @@
         "tags": [
           "17-scheduling"
         ],
-        "parameters": [],
+        "summary": "Per-clinician route-efficiency metrics — proposed miles + override rate (§5.1)",
+        "parameters": [
+          {
+            "name": "membership",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "membershipId",
+                    "totalProposedMiles",
+                    "overrideRate"
+                  ],
+                  "properties": {
+                    "membershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "totalProposedMiles": {
+                      "type": "number"
+                    },
+                    "overrideRate": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -10719,10 +11263,62 @@
         "tags": [
           "17-scheduling"
         ],
-        "parameters": [],
+        "summary": "Org-wide visit metrics — on-time / no-show / reschedule rates (§5.1 scheduling-metrics)",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "discipline",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 32,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "onTimeRate",
+                    "noShowRate",
+                    "rescheduleRate"
+                  ],
+                  "properties": {
+                    "onTimeRate": {
+                      "type": "number"
+                    },
+                    "noShowRate": {
+                      "type": "number"
+                    },
+                    "rescheduleRate": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -16439,10 +17035,128 @@
         "tags": [
           "17-scheduling"
         ],
-        "parameters": [],
+        "summary": "A patient's recurring-visit policies — active/discontinued (§5.1 recurring)",
+        "parameters": [
+          {
+            "name": "patient",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "patientId",
+                      "assignedMembershipId",
+                      "visitPurpose",
+                      "rrule",
+                      "status"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "patientId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "assignedMembershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "visitPurpose": {
+                        "anyOf": [
+                          {
+                            "const": "routine_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "prn",
+                            "type": "string"
+                          },
+                          {
+                            "const": "aide_poc",
+                            "type": "string"
+                          },
+                          {
+                            "const": "msw_assessment",
+                            "type": "string"
+                          },
+                          {
+                            "const": "msw_followup",
+                            "type": "string"
+                          },
+                          {
+                            "const": "chaplain_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "chaplain_assessment",
+                            "type": "string"
+                          },
+                          {
+                            "const": "volunteer_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "f2f",
+                            "type": "string"
+                          },
+                          {
+                            "const": "recert",
+                            "type": "string"
+                          },
+                          {
+                            "const": "loc_change",
+                            "type": "string"
+                          },
+                          {
+                            "const": "pronouncement",
+                            "type": "string"
+                          },
+                          {
+                            "const": "admission_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "discharge_visit",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "rrule": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "anyOf": [
+                          {
+                            "const": "active",
+                            "type": "string"
+                          },
+                          {
+                            "const": "discontinued",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -18274,10 +18988,111 @@
         "tags": [
           "17-scheduling"
         ],
-        "parameters": [],
+        "summary": "Time-off requests — approval queue / my-PTO, membership/state/date filtered (§5.1)",
+        "parameters": [
+          {
+            "name": "membership",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 32,
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "membershipId",
+                      "kind",
+                      "startsAt",
+                      "endsAt",
+                      "state"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "membershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "anyOf": [
+                          {
+                            "const": "pto",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sick",
+                            "type": "string"
+                          },
+                          {
+                            "const": "bereavement",
+                            "type": "string"
+                          },
+                          {
+                            "const": "training",
+                            "type": "string"
+                          },
+                          {
+                            "const": "other",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "startsAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "endsAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "state": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -18428,10 +19243,137 @@
         "tags": [
           "17-scheduling"
         ],
-        "parameters": [],
+        "summary": "The scheduler proposal inbox — pending frequency/order/IDG/supervisory proposals (§5.1)",
+        "parameters": [
+          {
+            "name": "patient",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "patientId",
+                      "admissionId",
+                      "proposedVisitPurpose",
+                      "proposedForDate",
+                      "status"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "patientId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "admissionId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "proposedVisitPurpose": {
+                        "anyOf": [
+                          {
+                            "const": "routine_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "prn",
+                            "type": "string"
+                          },
+                          {
+                            "const": "aide_poc",
+                            "type": "string"
+                          },
+                          {
+                            "const": "msw_assessment",
+                            "type": "string"
+                          },
+                          {
+                            "const": "msw_followup",
+                            "type": "string"
+                          },
+                          {
+                            "const": "chaplain_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "chaplain_assessment",
+                            "type": "string"
+                          },
+                          {
+                            "const": "volunteer_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "f2f",
+                            "type": "string"
+                          },
+                          {
+                            "const": "recert",
+                            "type": "string"
+                          },
+                          {
+                            "const": "loc_change",
+                            "type": "string"
+                          },
+                          {
+                            "const": "pronouncement",
+                            "type": "string"
+                          },
+                          {
+                            "const": "admission_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "discharge_visit",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "proposedForDate": {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      "status": {
+                        "anyOf": [
+                          {
+                            "const": "pending",
+                            "type": "string"
+                          },
+                          {
+                            "const": "published",
+                            "type": "string"
+                          },
+                          {
+                            "const": "dismissed",
+                            "type": "string"
+                          },
+                          {
+                            "const": "stale",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -18506,10 +19448,233 @@
         "tags": [
           "17-scheduling"
         ],
-        "parameters": [],
+        "summary": "Visits in caseload/scope — clinician/patient/status/date-window filtered (§4.1 / §5.1)",
+        "parameters": [
+          {
+            "name": "clinician",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "patient",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 32,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "organizationId",
+                      "patientId",
+                      "admissionId",
+                      "assignedMembershipId",
+                      "visitPurpose",
+                      "visitSetting",
+                      "scheduledStartedAt",
+                      "scheduledEndedAt",
+                      "serviceDate",
+                      "status",
+                      "patientAddressId",
+                      "externalFacilityId",
+                      "rescheduledIntoVisitId"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "organizationId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "patientId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "admissionId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "assignedMembershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "visitPurpose": {
+                        "anyOf": [
+                          {
+                            "const": "routine_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "prn",
+                            "type": "string"
+                          },
+                          {
+                            "const": "aide_poc",
+                            "type": "string"
+                          },
+                          {
+                            "const": "msw_assessment",
+                            "type": "string"
+                          },
+                          {
+                            "const": "msw_followup",
+                            "type": "string"
+                          },
+                          {
+                            "const": "chaplain_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "chaplain_assessment",
+                            "type": "string"
+                          },
+                          {
+                            "const": "volunteer_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "f2f",
+                            "type": "string"
+                          },
+                          {
+                            "const": "recert",
+                            "type": "string"
+                          },
+                          {
+                            "const": "loc_change",
+                            "type": "string"
+                          },
+                          {
+                            "const": "pronouncement",
+                            "type": "string"
+                          },
+                          {
+                            "const": "admission_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "discharge_visit",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "visitSetting": {
+                        "anyOf": [
+                          {
+                            "const": "patient_home",
+                            "type": "string"
+                          },
+                          {
+                            "const": "facility",
+                            "type": "string"
+                          },
+                          {
+                            "const": "inpatient_unit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "telephonic",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "scheduledStartedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "scheduledEndedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "serviceDate": {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "patientAddressId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "externalFacilityId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "rescheduledIntoVisitId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -18544,6 +19709,7 @@
         "tags": [
           "17-scheduling"
         ],
+        "summary": "One visit's detail — status + scheduled window + assignment (§4.1 / §5.1 visit detail)",
         "parameters": [
           {
             "name": "visitId",
@@ -18556,7 +19722,180 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "patientId",
+                    "admissionId",
+                    "assignedMembershipId",
+                    "visitPurpose",
+                    "visitSetting",
+                    "scheduledStartedAt",
+                    "scheduledEndedAt",
+                    "serviceDate",
+                    "status",
+                    "patientAddressId",
+                    "externalFacilityId",
+                    "rescheduledIntoVisitId"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "assignedMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "visitPurpose": {
+                      "anyOf": [
+                        {
+                          "const": "routine_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "prn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "aide_poc",
+                          "type": "string"
+                        },
+                        {
+                          "const": "msw_assessment",
+                          "type": "string"
+                        },
+                        {
+                          "const": "msw_followup",
+                          "type": "string"
+                        },
+                        {
+                          "const": "chaplain_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "chaplain_assessment",
+                          "type": "string"
+                        },
+                        {
+                          "const": "volunteer_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "f2f",
+                          "type": "string"
+                        },
+                        {
+                          "const": "recert",
+                          "type": "string"
+                        },
+                        {
+                          "const": "loc_change",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pronouncement",
+                          "type": "string"
+                        },
+                        {
+                          "const": "admission_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "discharge_visit",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "visitSetting": {
+                      "anyOf": [
+                        {
+                          "const": "patient_home",
+                          "type": "string"
+                        },
+                        {
+                          "const": "facility",
+                          "type": "string"
+                        },
+                        {
+                          "const": "inpatient_unit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "telephonic",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "scheduledStartedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "scheduledEndedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "serviceDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "patientAddressId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalFacilityId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rescheduledIntoVisitId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -18745,10 +20084,231 @@
         "tags": [
           "17-scheduling"
         ],
-        "parameters": [],
+        "summary": "Week-view grid — a clinician's visits across a week (§5.1 week)",
+        "parameters": [
+          {
+            "name": "membership",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "weekStart",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "weekStart",
+                    "membershipId",
+                    "visits"
+                  ],
+                  "properties": {
+                    "weekStart": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "membershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "visits": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "organizationId",
+                          "patientId",
+                          "admissionId",
+                          "assignedMembershipId",
+                          "visitPurpose",
+                          "visitSetting",
+                          "scheduledStartedAt",
+                          "scheduledEndedAt",
+                          "serviceDate",
+                          "status",
+                          "patientAddressId",
+                          "externalFacilityId",
+                          "rescheduledIntoVisitId"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "assignedMembershipId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "visitPurpose": {
+                            "anyOf": [
+                              {
+                                "const": "routine_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "prn",
+                                "type": "string"
+                              },
+                              {
+                                "const": "aide_poc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "msw_assessment",
+                                "type": "string"
+                              },
+                              {
+                                "const": "msw_followup",
+                                "type": "string"
+                              },
+                              {
+                                "const": "chaplain_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "chaplain_assessment",
+                                "type": "string"
+                              },
+                              {
+                                "const": "volunteer_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "f2f",
+                                "type": "string"
+                              },
+                              {
+                                "const": "recert",
+                                "type": "string"
+                              },
+                              {
+                                "const": "loc_change",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pronouncement",
+                                "type": "string"
+                              },
+                              {
+                                "const": "admission_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "discharge_visit",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "visitSetting": {
+                            "anyOf": [
+                              {
+                                "const": "patient_home",
+                                "type": "string"
+                              },
+                              {
+                                "const": "facility",
+                                "type": "string"
+                              },
+                              {
+                                "const": "inpatient_unit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "telephonic",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "scheduledStartedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "scheduledEndedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "serviceDate": {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "patientAddressId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "externalFacilityId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rescheduledIntoVisitId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"

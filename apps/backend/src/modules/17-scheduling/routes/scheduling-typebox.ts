@@ -227,6 +227,112 @@ export const OptimizeDayRequest = Type.Object({
   debounceKey: Type.Optional(Type.String({ maxLength: 128 })),
 });
 
+// ── response view schemas (§5 screen reads; enriched into the OpenAPI contract in M17-T08) ──────────────────
+/** §4.1 — the visit projection the day/week/visit-detail screens read (mirrors `VisitView`). */
+export const VisitViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  organizationId: Type.String({ format: "uuid" }),
+  patientId: Type.String({ format: "uuid" }),
+  admissionId: Type.String({ format: "uuid" }),
+  assignedMembershipId: Type.String({ format: "uuid" }),
+  visitPurpose: VISIT_PURPOSE,
+  visitSetting: VISIT_SETTING,
+  scheduledStartedAt: Type.String({ format: "date-time" }),
+  scheduledEndedAt: Type.String({ format: "date-time" }),
+  serviceDate: Type.String({ format: "date" }),
+  status: Type.String(),
+  patientAddressId: Nullable(Type.String({ format: "uuid" })),
+  externalFacilityId: Nullable(Type.String({ format: "uuid" })),
+  rescheduledIntoVisitId: Nullable(Type.String({ format: "uuid" })),
+});
+export const VisitListResponseSchema = Type.Array(VisitViewSchema);
+
+/** §5 — proposal inbox row (mirrors `ProposalView`). */
+export const ProposalViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  patientId: Type.String({ format: "uuid" }),
+  admissionId: Type.String({ format: "uuid" }),
+  proposedVisitPurpose: VISIT_PURPOSE,
+  proposedForDate: Type.String({ format: "date" }),
+  status: Type.Union([
+    Type.Literal("pending"),
+    Type.Literal("published"),
+    Type.Literal("dismissed"),
+    Type.Literal("stale"),
+  ]),
+});
+export const ProposalListResponseSchema = Type.Array(ProposalViewSchema);
+
+/** §5 — recurring-policy row (mirrors `RecurringView`). */
+export const RecurringViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  patientId: Type.String({ format: "uuid" }),
+  assignedMembershipId: Type.String({ format: "uuid" }),
+  visitPurpose: VISIT_PURPOSE,
+  rrule: Type.String(),
+  status: Type.Union([Type.Literal("active"), Type.Literal("discontinued")]),
+});
+export const RecurringListResponseSchema = Type.Array(RecurringViewSchema);
+
+/** §5 — weekly availability pattern (mirrors `AvailabilityView`). */
+export const AvailabilityViewSchema = Type.Object({
+  membershipId: Type.String({ format: "uuid" }),
+  timeZone: Type.String(),
+  slots: Type.Array(
+    Type.Object({
+      weekday: Type.Integer({ minimum: 0, maximum: 6 }),
+      startTime: Type.String(),
+      endTime: Type.String(),
+    }),
+  ),
+});
+
+/** §5 — time-off approval-queue / my-PTO row (mirrors `TimeOffView`). */
+export const TimeOffViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  membershipId: Type.String({ format: "uuid" }),
+  kind: TIME_OFF_KIND,
+  startsAt: Type.String({ format: "date-time" }),
+  endsAt: Type.String({ format: "date-time" }),
+  state: Type.String(),
+});
+export const TimeOffListResponseSchema = Type.Array(TimeOffViewSchema);
+
+/** §5 — day-view grid (per-clinician visits for one service date). */
+export const DayViewResponseSchema = Type.Object({
+  date: Type.String({ format: "date" }),
+  membershipId: Nullable(Type.String({ format: "uuid" })),
+  visits: VisitListResponseSchema,
+});
+
+/** §5 — week-view grid. */
+export const WeekViewResponseSchema = Type.Object({
+  weekStart: Type.String({ format: "date" }),
+  membershipId: Nullable(Type.String({ format: "uuid" })),
+  visits: VisitListResponseSchema,
+});
+
+/** §5 — map-view ordered stops (polylines are coords-only, D9; the slice returns ordered stops). */
+export const MapViewResponseSchema = Type.Object({
+  membershipId: Type.String({ format: "uuid" }),
+  date: Type.String({ format: "date" }),
+  stops: VisitListResponseSchema,
+});
+
+/** §5.1 — org-wide visit metrics (on-time / no-show / reschedule rates). */
+export const VisitMetricsResponseSchema = Type.Object({
+  onTimeRate: Type.Number(),
+  noShowRate: Type.Number(),
+  rescheduleRate: Type.Number(),
+});
+
+/** §5.1 — per-clinician route-efficiency metrics. */
+export const RouteEfficiencyResponseSchema = Type.Object({
+  membershipId: Type.String({ format: "uuid" }),
+  totalProposedMiles: Type.Number(),
+  overrideRate: Type.Number(),
+});
+
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   const converted = Value.Convert(schema, raw ?? {});

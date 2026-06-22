@@ -66,6 +66,29 @@ import {
   ScheduleListResponseSchema as IdgScheduleListResponseSchema,
   ScheduleQuerySchema as IdgScheduleQuerySchema,
 } from "../../apps/backend/src/modules/14-idg/routes/idg-typebox";
+import {
+  AvailabilityQuerySchema as SchedAvailabilityQuerySchema,
+  AvailabilityViewSchema as SchedAvailabilityViewSchema,
+  DayViewQuerySchema as SchedDayViewQuerySchema,
+  DayViewResponseSchema as SchedDayViewResponseSchema,
+  MapViewQuerySchema as SchedMapViewQuerySchema,
+  MapViewResponseSchema as SchedMapViewResponseSchema,
+  MetricsQuerySchema as SchedMetricsQuerySchema,
+  ProposalListQuerySchema as SchedProposalListQuerySchema,
+  ProposalListResponseSchema as SchedProposalListResponseSchema,
+  RecurringListQuerySchema as SchedRecurringListQuerySchema,
+  RecurringListResponseSchema as SchedRecurringListResponseSchema,
+  RouteEfficiencyQuerySchema as SchedRouteEfficiencyQuerySchema,
+  RouteEfficiencyResponseSchema as SchedRouteEfficiencyResponseSchema,
+  TimeOffListQuerySchema as SchedTimeOffListQuerySchema,
+  TimeOffListResponseSchema as SchedTimeOffListResponseSchema,
+  VisitListQuerySchema as SchedVisitListQuerySchema,
+  VisitListResponseSchema as SchedVisitListResponseSchema,
+  VisitMetricsResponseSchema as SchedVisitMetricsResponseSchema,
+  VisitViewSchema as SchedVisitViewSchema,
+  WeekViewQuerySchema as SchedWeekViewQuerySchema,
+  WeekViewResponseSchema as SchedWeekViewResponseSchema,
+} from "../../apps/backend/src/modules/17-scheduling/routes/scheduling-typebox";
 import { SearchQuerySchema as TerminologySearchQuerySchema } from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
 import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
 
@@ -1175,5 +1198,62 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/idg/meetings/:id/minutes": {
     summary: "A meeting's minutes — in-progress or finalized (§4.1 / §5)",
     response: IdgMinutesViewSchema,
+  },
+  // M17 Scheduling (Track B — the §5.1 read surfaces the day/week/map/proposals/recurring/time-off/availability/
+  // metrics screens consume; M17-T08). Reads only — the create/publish/edit/reschedule/cancel/reassign/approve
+  // write routes keep their route-level TypeBox request bodies (already in the contract).
+  "GET /api/v1/visits": {
+    summary: "Visits in caseload/scope — clinician/patient/status/date-window filtered (§4.1 / §5.1)",
+    query: SchedVisitListQuerySchema,
+    response: SchedVisitListResponseSchema,
+  },
+  "GET /api/v1/visits/:visitId": {
+    summary: "One visit's detail — status + scheduled window + assignment (§4.1 / §5.1 visit detail)",
+    response: SchedVisitViewSchema,
+  },
+  "GET /api/v1/visit-proposals": {
+    summary: "The scheduler proposal inbox — pending frequency/order/IDG/supervisory proposals (§5.1)",
+    query: SchedProposalListQuerySchema,
+    response: SchedProposalListResponseSchema,
+  },
+  "GET /api/v1/recurring-visits": {
+    summary: "A patient's recurring-visit policies — active/discontinued (§5.1 recurring)",
+    query: SchedRecurringListQuerySchema,
+    response: SchedRecurringListResponseSchema,
+  },
+  "GET /api/v1/availability": {
+    summary: "A membership's weekly availability pattern (§5.1 availability editor)",
+    query: SchedAvailabilityQuerySchema,
+    response: SchedAvailabilityViewSchema,
+  },
+  "GET /api/v1/time-off": {
+    summary: "Time-off requests — approval queue / my-PTO, membership/state/date filtered (§5.1)",
+    query: SchedTimeOffListQuerySchema,
+    response: SchedTimeOffListResponseSchema,
+  },
+  "GET /api/v1/day-view": {
+    summary: "Day-view grid — a clinician's visits for one service date (§5.1 day)",
+    query: SchedDayViewQuerySchema,
+    response: SchedDayViewResponseSchema,
+  },
+  "GET /api/v1/week-view": {
+    summary: "Week-view grid — a clinician's visits across a week (§5.1 week)",
+    query: SchedWeekViewQuerySchema,
+    response: SchedWeekViewResponseSchema,
+  },
+  "GET /api/v1/map-view": {
+    summary: "Map-view ordered stops for a clinician day (coords-only polylines, D9; §5.1 map)",
+    query: SchedMapViewQuerySchema,
+    response: SchedMapViewResponseSchema,
+  },
+  "GET /api/v1/metrics/visits": {
+    summary: "Org-wide visit metrics — on-time / no-show / reschedule rates (§5.1 scheduling-metrics)",
+    query: SchedMetricsQuerySchema,
+    response: SchedVisitMetricsResponseSchema,
+  },
+  "GET /api/v1/metrics/route-efficiency": {
+    summary: "Per-clinician route-efficiency metrics — proposed miles + override rate (§5.1)",
+    query: SchedRouteEfficiencyQuerySchema,
+    response: SchedRouteEfficiencyResponseSchema,
   },
 };

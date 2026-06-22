@@ -991,6 +991,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** A membership's weekly availability pattern (§5.1 availability editor) */
         get: operations["getApiV1Availability"];
         put?: never;
         post?: never;
@@ -1604,6 +1605,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Day-view grid — a clinician's visits for one service date (§5.1 day) */
         get: operations["getApiV1Dayview"];
         put?: never;
         post?: never;
@@ -3032,6 +3034,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Map-view ordered stops for a clinician day (coords-only polylines, D9; §5.1 map) */
         get: operations["getApiV1Mapview"];
         put?: never;
         post?: never;
@@ -3583,6 +3586,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Per-clinician route-efficiency metrics — proposed miles + override rate (§5.1) */
         get: operations["getApiV1MetricsRouteefficiency"];
         put?: never;
         post?: never;
@@ -3599,6 +3603,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Org-wide visit metrics — on-time / no-show / reschedule rates (§5.1 scheduling-metrics) */
         get: operations["getApiV1MetricsVisits"];
         put?: never;
         post?: never;
@@ -4576,6 +4581,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** A patient's recurring-visit policies — active/discontinued (§5.1 recurring) */
         get: operations["getApiV1Recurringvisits"];
         put?: never;
         post: operations["postApiV1Recurringvisits"];
@@ -5146,6 +5152,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Time-off requests — approval queue / my-PTO, membership/state/date filtered (§5.1) */
         get: operations["getApiV1Timeoff"];
         put?: never;
         post: operations["postApiV1Timeoff"];
@@ -5226,6 +5233,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The scheduler proposal inbox — pending frequency/order/IDG/supervisory proposals (§5.1) */
         get: operations["getApiV1Visitproposals"];
         put?: never;
         post?: never;
@@ -5274,6 +5282,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Visits in caseload/scope — clinician/patient/status/date-window filtered (§4.1 / §5.1) */
         get: operations["getApiV1Visits"];
         put?: never;
         post: operations["postApiV1Visits"];
@@ -5290,6 +5299,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** One visit's detail — status + scheduled window + assignment (§4.1 / §5.1 visit detail) */
         get: operations["getApiV1VisitsByVisitId"];
         put?: never;
         post?: never;
@@ -5386,6 +5396,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Week-view grid — a clinician's visits across a week (§5.1 week) */
         get: operations["getApiV1Weekview"];
         put?: never;
         post?: never;
@@ -7271,7 +7282,9 @@ export interface operations {
     };
     getApiV1Availability: {
         parameters: {
-            query?: never;
+            query: {
+                membership: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -7283,7 +7296,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        membershipId: string;
+                        timeZone: string;
+                        slots: {
+                            weekday: number;
+                            startTime: string;
+                            endTime: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -8209,7 +8233,10 @@ export interface operations {
     };
     getApiV1Dayview: {
         parameters: {
-            query?: never;
+            query: {
+                membership?: string;
+                date: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -8221,7 +8248,37 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: date */
+                        date: string;
+                        membershipId: string | null;
+                        visits: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            /** Format: uuid */
+                            admissionId: string;
+                            /** Format: uuid */
+                            assignedMembershipId: string;
+                            visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                            visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                            /** Format: date-time */
+                            scheduledStartedAt: string;
+                            /** Format: date-time */
+                            scheduledEndedAt: string;
+                            /** Format: date */
+                            serviceDate: string;
+                            status: string;
+                            patientAddressId: string | null;
+                            externalFacilityId: string | null;
+                            rescheduledIntoVisitId: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -10510,7 +10567,10 @@ export interface operations {
     };
     getApiV1Mapview: {
         parameters: {
-            query?: never;
+            query: {
+                membership: string;
+                date: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -10522,7 +10582,38 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        membershipId: string;
+                        /** Format: date */
+                        date: string;
+                        stops: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            /** Format: uuid */
+                            admissionId: string;
+                            /** Format: uuid */
+                            assignedMembershipId: string;
+                            visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                            visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                            /** Format: date-time */
+                            scheduledStartedAt: string;
+                            /** Format: date-time */
+                            scheduledEndedAt: string;
+                            /** Format: date */
+                            serviceDate: string;
+                            status: string;
+                            patientAddressId: string | null;
+                            externalFacilityId: string | null;
+                            rescheduledIntoVisitId: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -11515,7 +11606,11 @@ export interface operations {
     };
     getApiV1MetricsRouteefficiency: {
         parameters: {
-            query?: never;
+            query: {
+                membership: string;
+                from: string;
+                to: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -11527,7 +11622,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        membershipId: string;
+                        totalProposedMiles: number;
+                        overrideRate: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -11535,7 +11637,11 @@ export interface operations {
     };
     getApiV1MetricsVisits: {
         parameters: {
-            query?: never;
+            query: {
+                from: string;
+                to: string;
+                discipline?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -11547,7 +11653,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        onTimeRate: number;
+                        noShowRate: number;
+                        rescheduleRate: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -13655,7 +13767,9 @@ export interface operations {
     };
     getApiV1Recurringvisits: {
         parameters: {
-            query?: never;
+            query: {
+                patient: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -13667,7 +13781,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        assignedMembershipId: string;
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        rrule: string;
+                        status: "active" | "discontinued";
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -14689,7 +14815,12 @@ export interface operations {
     };
     getApiV1Timeoff: {
         parameters: {
-            query?: never;
+            query?: {
+                membership?: string;
+                state?: string;
+                from?: string;
+                to?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -14701,7 +14832,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        membershipId: string;
+                        kind: "pto" | "sick" | "bereavement" | "training" | "other";
+                        /** Format: date-time */
+                        startsAt: string;
+                        /** Format: date-time */
+                        endsAt: string;
+                        state: string;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -14817,7 +14961,9 @@ export interface operations {
     };
     getApiV1Visitproposals: {
         parameters: {
-            query?: never;
+            query?: {
+                patient?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -14829,7 +14975,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        proposedVisitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        /** Format: date */
+                        proposedForDate: string;
+                        status: "pending" | "published" | "dismissed" | "stale";
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -14881,7 +15040,13 @@ export interface operations {
     };
     getApiV1Visits: {
         parameters: {
-            query?: never;
+            query?: {
+                clinician?: string;
+                patient?: string;
+                from?: string;
+                to?: string;
+                status?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -14893,7 +15058,32 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        assignedMembershipId: string;
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                        /** Format: date-time */
+                        scheduledStartedAt: string;
+                        /** Format: date-time */
+                        scheduledEndedAt: string;
+                        /** Format: date */
+                        serviceDate: string;
+                        status: string;
+                        patientAddressId: string | null;
+                        externalFacilityId: string | null;
+                        rescheduledIntoVisitId: string | null;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -14935,7 +15125,32 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        assignedMembershipId: string;
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                        /** Format: date-time */
+                        scheduledStartedAt: string;
+                        /** Format: date-time */
+                        scheduledEndedAt: string;
+                        /** Format: date */
+                        serviceDate: string;
+                        status: string;
+                        patientAddressId: string | null;
+                        externalFacilityId: string | null;
+                        rescheduledIntoVisitId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -15075,7 +15290,10 @@ export interface operations {
     };
     getApiV1Weekview: {
         parameters: {
-            query?: never;
+            query: {
+                membership?: string;
+                weekStart: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -15087,7 +15305,37 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: date */
+                        weekStart: string;
+                        membershipId: string | null;
+                        visits: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            /** Format: uuid */
+                            admissionId: string;
+                            /** Format: uuid */
+                            assignedMembershipId: string;
+                            visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                            visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                            /** Format: date-time */
+                            scheduledStartedAt: string;
+                            /** Format: date-time */
+                            scheduledEndedAt: string;
+                            /** Format: date */
+                            serviceDate: string;
+                            status: string;
+                            patientAddressId: string | null;
+                            externalFacilityId: string | null;
+                            rescheduledIntoVisitId: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
