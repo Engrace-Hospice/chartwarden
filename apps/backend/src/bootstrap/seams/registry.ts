@@ -15,17 +15,29 @@
 
 import type { RequiredSeam, SeamContracts, SeamName } from "../interfaces";
 import {
+  admissionCensusReaderDenyStub,
+  admissionStatusReaderDenyStub,
   alertEmitterDenyStub,
   auditorSessionMinterDenyStub,
   baaStatusProviderDenyStub,
+  billableEncounterReaderDenyStub,
+  carePlanReaderDenyStub,
   caseloadDenyStub,
+  certificationReaderDenyStub,
   consentEvaluatorDenyStub,
   documentRendererDenyStub,
+  electionPeriodReaderDenyStub,
+  encounterCreatorDenyStub,
+  evvBracketResolverDenyStub,
+  faceToFaceReaderDenyStub,
+  levelOfCareReaderDenyStub,
   mdmEntityProviderDenyStub,
   messagingProviderDenyStub,
+  mileagePayrollReaderDenyStub,
   patientMutatorDenyStub,
   patientReaderDenyStub,
   sessionContextResolverDenyStub,
+  signedEncountersReaderDenyStub,
   terminologyProviderDenyStub,
 } from "./providers";
 
@@ -111,6 +123,96 @@ export const REQUIRED_SEAMS = [
     ownerModule: 40,
     phi: false,
     denyStub: baaStatusProviderDenyStub,
+  },
+  // M6 (Admission, Election & Certification) reader seams (§4.7). Each is a read-only DTO surface over
+  // M6's PHI tables (admission/election/CTI/F2F/LOC status), consumed by M14/M22/M23/M26/M30 in later
+  // waves instead of importing M6's schema. PHI read surfaces (patient-linked clinical status) → phi:
+  // true; boot-validated and fail-closed until M6 registers the real Drizzle-backed readers (M6-T05).
+  {
+    key: "ElectionPeriodReader",
+    ownerModule: 6,
+    phi: true,
+    denyStub: electionPeriodReaderDenyStub,
+  },
+  {
+    key: "CertificationReader",
+    ownerModule: 6,
+    phi: true,
+    denyStub: certificationReaderDenyStub,
+  },
+  {
+    key: "FaceToFaceReader",
+    ownerModule: 6,
+    phi: true,
+    denyStub: faceToFaceReaderDenyStub,
+  },
+  {
+    key: "LevelOfCareReader",
+    ownerModule: 6,
+    phi: true,
+    denyStub: levelOfCareReaderDenyStub,
+  },
+  {
+    key: "AdmissionStatusReader",
+    ownerModule: 6,
+    phi: true,
+    denyStub: admissionStatusReaderDenyStub,
+  },
+  {
+    key: "AdmissionCensusReader",
+    ownerModule: 6,
+    phi: true,
+    denyStub: admissionCensusReaderDenyStub,
+  },
+  // M7 (Care Plan / IPOC) reader seam (§7.8). A read-only DTO surface over M7's PHI tables
+  // (problems/goals/interventions + the version clock), consumed by M8 (encounter authoring + sign
+  // gate), M14 (IDG packet), M15 (discipline plans) in later waves instead of importing M7's schema.
+  // PHI read surface (patient-linked clinical content) → phi: true; boot-validated and fail-closed
+  // until M7 registers the real Drizzle-backed reader (M7-T04).
+  {
+    key: "CarePlanReader",
+    ownerModule: 7,
+    phi: true,
+    denyStub: carePlanReaderDenyStub,
+  },
+  // M8 (Encounters & Visit Notes) owned seams (§4.7). Leaf-typed read/mutate surfaces over M8's PHI
+  // tables (encounter status/narrative, mileage, encounter creation), consumed by M23/M24 (billability),
+  // M14/M22 (signed digests + render), M27 (payroll mileage), M16/M17 (encounter creation) in later
+  // waves instead of importing M8's schema. PHI surfaces (patient-linked encounter data) → phi: true;
+  // boot-validated and fail-closed until M8 registers the real Drizzle-backed impls (M8-T08).
+  {
+    key: "BillableEncounterReader",
+    ownerModule: 8,
+    phi: true,
+    denyStub: billableEncounterReaderDenyStub,
+  },
+  {
+    key: "SignedEncountersReader",
+    ownerModule: 8,
+    phi: true,
+    denyStub: signedEncountersReaderDenyStub,
+  },
+  {
+    key: "MileagePayrollReader",
+    ownerModule: 8,
+    phi: true,
+    denyStub: mileagePayrollReaderDenyStub,
+  },
+  {
+    key: "EncounterCreator",
+    ownerModule: 8,
+    phi: true,
+    denyStub: encounterCreatorDenyStub,
+  },
+  // M18 (EVV) forward seam M8 CONSUMES (§4.7 / D9). A read-only bracket surface over M18's `evv_event`
+  // rows (check-in/out ids + authoritative timestamps), consumed by M8 at finalize. PHI read surface
+  // (patient-visit-linked timing) → phi: true; boot-validated and fail-closed until M18 registers the
+  // real resolver (Wave F). M8's EVV-missing-documented fallback (route 10) stays operative meanwhile.
+  {
+    key: "EvvBracketResolver",
+    ownerModule: 18,
+    phi: true,
+    denyStub: evvBracketResolverDenyStub,
   },
 ] satisfies readonly RequiredSeam[];
 

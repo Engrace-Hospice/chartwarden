@@ -8,6 +8,22 @@
 // bootstrap registry needs to compile and self-validate.
 import type { StepUpFactor } from "./policy/step-up-policy";
 import type { PatientMutator, PatientReader } from "./patient";
+import type {
+  AdmissionCensusReader,
+  AdmissionStatusReader,
+  CertificationReader,
+  ElectionPeriodReader,
+  FaceToFaceReader,
+  LevelOfCareReader,
+} from "./admission";
+import type { CarePlanReader } from "./care-plan";
+import type {
+  BillableEncounterReader,
+  EncounterCreator,
+  EvvBracketResolver,
+  MileagePayrollReader,
+  SignedEncountersReader,
+} from "./encounter";
 
 /** Opaque tenant scope every seam call carries (resolved by withOrgContext). */
 export interface OrgScope {
@@ -30,7 +46,31 @@ export type SeamName =
   | "AlertEmitter" // M36 — emit an event; M36 resolves rules + recipients + fan-out (every module)
   | "MessagingProvider" // M36 — channel/message surface (DEK-encrypted bodies; PHI read surface)
   | "MdmEntityProvider" // M40 — master-data read surface (physician/facility/payer; merge-aware)
-  | "BaaStatusProvider"; // M40 — focused §7.7 BAA disclosure gate (as-of; M22/M28/M29 import this)
+  | "BaaStatusProvider" // M40 — focused §7.7 BAA disclosure gate (as-of; M22/M28/M29 import this)
+  // M6 (Admission, Election & Certification) reader seams (§4.7) — leaf-typed read-only DTO surfaces
+  // every downstream clinical/billing module consumes instead of importing M6's schema. Interfaces
+  // live in ./admission (this leaf), so — unlike the opaque rich-seams above — they are typed here.
+  | "ElectionPeriodReader" // M6 — M23 binds a NOE/NOTR claim to the correct benefit period/sequence
+  | "CertificationReader" // M6 — recert gating: the active CTI for a period + whether it is signed
+  | "FaceToFaceReader" // M6 — recert gating: the attested F2F for a period + whether one exists
+  | "LevelOfCareReader" // M6 — current LOC + LOC-days by level over a range (M26 aggregate cap)
+  | "AdmissionStatusReader" // M6 — admission state projection (M14 queues, M30 dashboard)
+  | "AdmissionCensusReader" // M6 — active-admission census/list (M30 dashboards, M22 form prep)
+  // M7 (Care Plan / IPOC) reader seam (§7.8) — also leaf-typed (interface in ./care-plan), so it is
+  // typed here like M6's readers. M8 (encounter authoring + sign gate), M14 (IDG packet), M15
+  // (discipline care plans) consume it instead of importing M7's schema.
+  | "CarePlanReader" // M7 — encounter-relevance picker + the 5-/15-day overdue sign-gate
+  // M8 (Encounters & Visit Notes) owned seams (§4.7) — also leaf-typed (interfaces in ./encounter), so
+  // they are typed here like M6/M7's readers. M23/M24 (billability), M14/M22 (signed digests + render),
+  // M27 (payroll mileage), and M16/M17 (encounter creation) consume them instead of importing M8's schema.
+  | "BillableEncounterReader" // M8 — per-encounter claim-line eligibility (M23/M24)
+  | "SignedEncountersReader" // M8 — signed-encounter digests + render payload (M14 IDG, M22 PDF)
+  | "MileagePayrollReader" // M8 — authoritative per-clinician mileage for payroll/AP (M27)
+  | "EncounterCreator" // M8 — open a draft encounter for an upstream reuser (M16 bereavement, M17 seeding)
+  // M18 (EVV) forward seam M8 CONSUMES (§4.7 / D9) — leaf-typed (interface in ./encounter), so it is
+  // typed here like M6/M7's readers. Registered with a fail-closed deny-stub until M18 lands (Wave F);
+  // M8 resolves it with NO `dependsOn` edge to M18 (the leaf interface, not @wardenx/evv).
+  | "EvvBracketResolver"; // M18 — authoritative EVV bracket for an encounter's visit at finalize (D9)
 
 /**
  * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
@@ -181,6 +221,33 @@ export interface SeamContracts {
   // omnibus above (different contract: as-of time-travel + sending-facility resolution). Same
   // opaque rich-seam pattern — interface in @wardenx/mdm; M22/M28/M29 import the real type.
   BaaStatusProvider: unknown;
+  // M6's reader seams (§4.7) are LEAF-TYPED — their interfaces live in ./admission (this package),
+  // so the registry is statically typed against the real contract (no `unknown` opacity needed). M6
+  // registers the real Drizzle-backed readers over the deny-stub; consumers that list `6` in their
+  // manifest `dependsOn` resolve them through the typed accessors with no schema import edge.
+  ElectionPeriodReader: ElectionPeriodReader;
+  CertificationReader: CertificationReader;
+  FaceToFaceReader: FaceToFaceReader;
+  LevelOfCareReader: LevelOfCareReader;
+  AdmissionStatusReader: AdmissionStatusReader;
+  AdmissionCensusReader: AdmissionCensusReader;
+  // M7's reader seam (§7.8) is LEAF-TYPED too — its interface lives in ./care-plan (this package), so
+  // the registry is statically typed against the real contract. M7 registers the real Drizzle-backed
+  // reader over the deny-stub; consumers that list `7` in their manifest `dependsOn` resolve it through
+  // the typed accessor with no schema import edge.
+  CarePlanReader: CarePlanReader;
+  // M8's owned seams (§4.7) are LEAF-TYPED too — interfaces live in ./encounter (this package), so the
+  // registry is statically typed against the real contract. M8 registers the real Drizzle-backed impls
+  // over the deny-stubs (M8-T08); consumers that list `8` in their manifest `dependsOn` resolve them
+  // through the typed accessors with no schema import edge.
+  BillableEncounterReader: BillableEncounterReader;
+  SignedEncountersReader: SignedEncountersReader;
+  MileagePayrollReader: MileagePayrollReader;
+  EncounterCreator: EncounterCreator;
+  // M18's EVV-bracket forward seam (§4.7 / D9) is LEAF-TYPED too — interface in ./encounter — so the
+  // registry is statically typed against the real contract. M18 registers the real resolver over the
+  // deny-stub when it lands (Wave F); M8 resolves it through the typed accessor with no schema import.
+  EvvBracketResolver: EvvBracketResolver;
 }
 
 /**
@@ -233,4 +300,32 @@ export type DataClass =
   // eraser deletes these; the org-less CANONICAL entities (physician/facility/payer) are NEVER
   // touched — they are shared registry-sourced reference data that survives the tenant (M40 §7.8;
   // same "erase the tenant's view-of-the-world, not the world" pattern). `subjectId` is the org.
-  | "mdm_tenant_overlays";
+  | "mdm_tenant_overlays"
+  // M6 (Admission, Election & Certification) per-patient admission record: the admission subtree
+  // (election_period / election_statement / certification_of_terminal_illness / face_to_face_encounter
+  // / level_of_care_period / revocation_event / discharge_event / transfer_event /
+  // notice_of_rights_acknowledgment / compliance_window) plus the `referral` rows for the subject.
+  // Erased by M6's registered eraser (M6-T12) under an M4 destruction certificate; the `admission`
+  // row is left a tombstone for FK referential integrity (D8 resolver pattern, same as M5's
+  // `clinical_record`). `subjectId` is the patient being destroyed — M6 owns its own clinical
+  // satellites, distinct from M5's patient-spine `clinical_record` class.
+  | "admission_record"
+  // M7 (Care Plan / IPOC) per-patient care-plan record: the care-plan subtree M7 owns — the
+  // `care_plan_version`, `care_plan_signature`, `problem`, `goal`, and `intervention` rows hung off a
+  // patient's `care_plan` root. Erased by M7's registered eraser (M7-T09) under an M4 destruction
+  // certificate; the `care_plan` root is left a tombstone for FK referential integrity (D8 resolver
+  // pattern, same as M5's `clinical_record` and M6's `admission_record`). `subjectId` is the patient
+  // being destroyed — M7 owns its own care-plan satellites, distinct from M5's patient spine and M6's
+  // admission subtree.
+  | "care_plan_record"
+  // M8 (Encounters & Visit Notes) per-patient encounter record: the encounter subtree M8 owns — the
+  // `encounter_signature`, `encounter_addendum`, `encounter_care_plan_link`, `cosignature_request`,
+  // `vitals`, `mileage`, `hearthnote_selection`, `hearthnote_assembled_output`, and
+  // `hearthnote_llm_modification` rows hung off a patient's `encounter` root. Erased by M8's registered
+  // eraser (M8-T12) under an M4 destruction certificate; the HearthNote ciphertext is crypto-erased via
+  // the tenant DEK (§3.6) and the `encounter` root is left a tombstone for FK referential integrity (D8
+  // resolver pattern, same as M5's `clinical_record`, M6's `admission_record`, M7's `care_plan_record`).
+  // `subjectId` is the patient being destroyed — M8 owns its own encounter satellites, distinct from
+  // M5's patient spine and M6/M7's admission/care-plan subtrees (the spec's §3.6 `clinical_record`
+  // mention is reconciled to this disjoint class so the M5 eraser is never double-registered).
+  | "encounter_record";

@@ -1,2 +1,10 @@
-// @wardenx/hearthnote — Phase 0 placeholder (no business logic; see PHASE_0_SCAFFOLD_PLAN.md).
-export {};
+// packages/hearthnote/src/index.ts — M8-T05 (spec §2.6, architecture §10.5).
+//
+// `@wardenx/hearthnote` is the HearthNote narrative engine: the deterministic Layer-1 core (template
+// engine + byte-identical assembly) and the flag-gated Layer-2 LLM enhancement deny-stub. Layer 3 (the
+// always-on compliance gate) is enforced by Module 8's lifecycle/service (M8-T04/T09) reading this
+// package's template `required` flags + `missingRequiredSections`; it is not re-implemented here. No IO,
+// no vendor SDK — the only dependencies are the leaf `@wardenx/narrative-vocab` corpus and `@wardenx/types`.
+export * from "./templates/index";
+export * from "./assembly/index";
+export * from "./layer2/index";

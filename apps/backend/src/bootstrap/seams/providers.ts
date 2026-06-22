@@ -11,13 +11,25 @@
 // wireSeams() is where boot invokes those Phase-1 registrations.
 
 import type {
+  AdmissionCensusReader,
+  AdmissionStatusReader,
   AuditorSessionMinter,
+  BillableEncounterReader,
+  CarePlanReader,
   CaseloadProvider,
+  CertificationReader,
   DocumentRenderer,
+  ElectionPeriodReader,
+  EncounterCreator,
+  EvvBracketResolver,
+  FaceToFaceReader,
+  LevelOfCareReader,
+  MileagePayrollReader,
   PatientMutator,
   PatientReader,
   SeamName,
   SessionContextResolver,
+  SignedEncountersReader,
 } from "../interfaces";
 
 export class NotImplementedError extends Error {
@@ -125,6 +137,122 @@ export const baaStatusProviderDenyStub: unknown = denyingSeamProxy("BaaStatusPro
 /** M39 — the §4.3 disclosure/redaction gate. Rich-seam pattern (interface in @wardenx/consent).
  *  Denies until M39 registers the real evaluator (M39-T05). Every PHI-egress module consumes it. */
 export const consentEvaluatorDenyStub: unknown = denyingSeamProxy("ConsentEvaluator");
+
+// M6 (Admission) reader seams (§4.7). These are LEAF-TYPED (interfaces in @wardenx/types), so —
+// unlike the opaque rich-seams above — they get concrete typed deny-stubs (like CaseloadProvider /
+// PatientReader). Each denies LOUDLY until M6 registers the real Drizzle-backed reader (M6-T05).
+
+/** M6 — election-period reads (M23 NOE/NOTR window math). Denies until M6 registers the real reader. */
+export const electionPeriodReaderDenyStub: ElectionPeriodReader = {
+  findActivePeriodForPatient() {
+    throw new NotImplementedError("ElectionPeriodReader");
+  },
+  listPeriodsForAdmission() {
+    throw new NotImplementedError("ElectionPeriodReader");
+  },
+};
+
+/** M6 — CTI recert-gating reads. Denies until M6 registers the real reader. */
+export const certificationReaderDenyStub: CertificationReader = {
+  getActiveCertification() {
+    throw new NotImplementedError("CertificationReader");
+  },
+  isCertificationSignedForPeriod() {
+    throw new NotImplementedError("CertificationReader");
+  },
+};
+
+/** M6 — F2F recert-gating reads. Denies until M6 registers the real reader. */
+export const faceToFaceReaderDenyStub: FaceToFaceReader = {
+  getAttestedF2fForPeriod() {
+    throw new NotImplementedError("FaceToFaceReader");
+  },
+  isF2fAttestedForPeriod() {
+    throw new NotImplementedError("FaceToFaceReader");
+  },
+};
+
+/** M6 — level-of-care reads (current LOC + LOC-days, M26 cap). Denies until M6 registers the reader. */
+export const levelOfCareReaderDenyStub: LevelOfCareReader = {
+  getCurrentLevelOfCare() {
+    throw new NotImplementedError("LevelOfCareReader");
+  },
+  getLevelOfCareDays() {
+    throw new NotImplementedError("LevelOfCareReader");
+  },
+};
+
+/** M6 — admission-status projection (M14/M30 queues). Denies until M6 registers the real reader. */
+export const admissionStatusReaderDenyStub: AdmissionStatusReader = {
+  getAdmissionSummary() {
+    throw new NotImplementedError("AdmissionStatusReader");
+  },
+};
+
+/** M6 — active-admission census/list. Denies until M6 registers the real reader. */
+export const admissionCensusReaderDenyStub: AdmissionCensusReader = {
+  listActiveAdmissions() {
+    throw new NotImplementedError("AdmissionCensusReader");
+  },
+};
+
+// M7 (Care Plan) reader seam (§7.8). LEAF-TYPED (interface in @wardenx/types), so — like M6's readers
+// — it gets a concrete typed deny-stub. Denies LOUDLY until M7 registers the real reader (M7-T04).
+
+/** M7 — encounter-relevance picker + the 5-/15-day overdue sign-gate. Denies until M7 registers it. */
+export const carePlanReaderDenyStub: CarePlanReader = {
+  relevantElementsForEncounter() {
+    throw new NotImplementedError("CarePlanReader");
+  },
+  isReviewOverdue() {
+    throw new NotImplementedError("CarePlanReader");
+  },
+};
+
+// M8 (Encounters) owned seams (§4.7). LEAF-TYPED (interfaces in @wardenx/types) like M6/M7's readers,
+// so each gets a concrete typed deny-stub. Denies LOUDLY until M8 registers the real impl (M8-T08).
+
+/** M8 — per-encounter claim-line eligibility (M23/M24). Denies until M8 registers the real reader. */
+export const billableEncounterReaderDenyStub: BillableEncounterReader = {
+  billability() {
+    throw new NotImplementedError("BillableEncounterReader");
+  },
+};
+
+/** M8 — signed-encounter digests + render payload (M14 IDG, M22 PDF). Denies until M8 registers it. */
+export const signedEncountersReaderDenyStub: SignedEncountersReader = {
+  signedEncountersForPatientSince() {
+    throw new NotImplementedError("SignedEncountersReader");
+  },
+  renderPayloadFor() {
+    throw new NotImplementedError("SignedEncountersReader");
+  },
+};
+
+/** M8 — authoritative per-clinician mileage for payroll/AP (M27). Denies until M8 registers it. */
+export const mileagePayrollReaderDenyStub: MileagePayrollReader = {
+  mileageForPayrollPeriod() {
+    throw new NotImplementedError("MileagePayrollReader");
+  },
+};
+
+/** M8 — open a draft encounter for an upstream reuser (M16/M17). Denies until M8 registers it. */
+export const encounterCreatorDenyStub: EncounterCreator = {
+  createDraftEncounter() {
+    throw new NotImplementedError("EncounterCreator");
+  },
+};
+
+// M18 (EVV) forward seam M8 CONSUMES (§4.7 / D9). LEAF-TYPED (interface in @wardenx/types), so it gets a
+// concrete typed deny-stub. Denies LOUDLY until M18 registers the real resolver (Wave F); M8's
+// EVV-missing-documented fallback path (route 10) stays operative while this denies.
+
+/** M18 — authoritative EVV bracket for an encounter's visit at finalize (D9). Denies until M18 lands. */
+export const evvBracketResolverDenyStub: EvvBracketResolver = {
+  resolveBracket() {
+    throw new NotImplementedError("EvvBracketResolver");
+  },
+};
 
 /**
  * Boot hook for Phase-1 seam registration. Each producer module registers its REAL seam

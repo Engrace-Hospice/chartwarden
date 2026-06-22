@@ -56,3 +56,24 @@ export {
   M39_CONTRIBUTED_PERMISSIONS,
   m39ContributedPermissionMirrorRows,
 } from "./contributed";
+// M6-T06 — Module 6's permission keys registered into M3's catalog (§4.5 handshake), in a
+// dedicated const so each module's contribution stays attributable (§3.3 ownership model).
+export {
+  type M6ContributedPermissionKey,
+  M6_CONTRIBUTED_PERMISSIONS,
+  m6ContributedPermissionMirrorRows,
+} from "./contributed";
+// M7-T05 — Module 7's permission keys registered into M3's catalog (§4.5 handshake), in a
+// dedicated const so each module's contribution stays attributable (§3.3 ownership model).
+export {
+  type M7ContributedPermissionKey,
+  M7_CONTRIBUTED_PERMISSIONS,
+  m7ContributedPermissionMirrorRows,
+} from "./contributed";
+// M8-T09 — Module 8's permission keys registered into M3's catalog (§4.5 handshake), in a
+// dedicated const so each module's contribution stays attributable (§3.3 ownership model).
+export {
+  type M8ContributedPermissionKey,
+  M8_CONTRIBUTED_PERMISSIONS,
+  m8ContributedPermissionMirrorRows,
+} from "./contributed";
