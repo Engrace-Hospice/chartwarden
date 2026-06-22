@@ -98,11 +98,11 @@ import {
   createInMemoryCollaboratorLinkStore as _collabStore,
   createContextActorResolver as _ctxActor,
   createInMemoryInvitationStore as _inviteStore,
-  createInMemorySessionWriter as _sessionWriter,
   createInMemoryUserDirectory as _userDir,
 } from "./identity-ports";
 import { createDbMembershipRepository as _dbMemberships } from "./membership-repository";
 import { registerIdentityRoutes as _registerIdentityRoutes } from "./routes/identity-routes";
+import { createDbSessionWriter as _dbSessionWriter } from "./session-writer-db";
 import { createInMemoryAuditExecutor as _inMemAudit } from "./step-up-ports";
 
 /**
@@ -121,7 +121,7 @@ export function mountIdentityRoutes(
   const deps: IdentityRouteDeps = {
     actors: _ctxActor(),
     memberships: _dbMemberships(db, admin),
-    sessions: _sessionWriter().writer,
+    sessions: _dbSessionWriter(db),
     invitations: _inviteStore().store,
     collaborators: _collabStore().store,
     users: _userDir().directory,

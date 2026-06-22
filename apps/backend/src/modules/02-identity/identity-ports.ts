@@ -235,9 +235,13 @@ export function createContextActorResolver(): ActorResolver {
     resolve(request) {
       const ctx = request.context;
       if (!ctx?.userId) return null;
+      const sid =
+        ctx.attributes && typeof ctx.attributes.sessionId === "string"
+          ? ctx.attributes.sessionId
+          : String(request.id);
       return {
         userId: ctx.userId,
-        sessionId: String(request.id),
+        sessionId: sid,
         organizationId: ctx.organizationId || null,
         membershipId: null,
         roles: ctx.roles,

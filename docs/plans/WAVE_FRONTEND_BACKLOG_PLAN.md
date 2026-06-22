@@ -44,6 +44,15 @@ manifest `codePaths` change is required — the `apps/web/src/modules/NN-*` slic
 4. **Ledger is the coordination point.** Each task flips its `DEFERRED_SCREENS.md` row(s)/notes; Track B
    skips anything marked `done`.
 
+> **Landed early (local bring-up, 2026-06-22).** Standing up the app locally surfaced that **M2
+> org-select was a no-op end-to-end**: `mountIdentityRoutes` wired `sessions:` to the in-memory
+> `createInMemorySessionWriter` (which the auth layer never reads), and the route actor resolver used
+> the Fastify `request.id` as the session id. Fixed under FB-T16 below: `session-writer-db.ts` persists
+> `session.active_organization_id`, and `authenticate` threads the real Better-Auth session id through
+> `request.context.attributes.sessionId`. With it, sign-in → select-org → org-scoped routes
+> (roles/members/patients/audit) all return 200. Local runtime is also scripted now
+> (`bun run db:up && db:migrate && db:seed [&& db:seed:patients]`, `dev:backend`/`dev:web`).
+
 ---
 
 ## Group 1 — Live-wire merged-module backends (the screens already exist; make them real)
@@ -182,6 +191,17 @@ eMAR, …) stay Track B.
   (the M2↔M3 seam) so the Role Home / nav reflect real role-scoped tiles instead of the placeholder
   greeting. Read-only via the client; no new authz.
 - accept: gate green; Role Home renders role-scoped; ledger App-Shell ³-note updated.
+
+### FB-T16 — Live-wire the remaining in-memory M2 identity stores
+- deps: none · files: `apps/backend/src/modules/02-identity/*`, `apps/backend/src/modules/02-identity/index.ts`
+- status: **org-bind session writer DONE** (`session-writer-db.ts` + the `request.context.attributes.sessionId`
+  thread in `authenticate.ts` / `identity-ports.ts` — landed during local bring-up; see the note above).
+  Remaining `mountIdentityRoutes` deps are still in-memory and need Drizzle stores: **invitations**
+  (`organization_invitation`), **collaborators** (per-patient magic-link, §7.6), **user directory**
+  (deactivate/offboard §7.5), and the **audit sink** (route the identity audit through the real M4 `audit()`
+  instead of the in-memory executor). Each replaces a `createInMemory*` slice with a `*-db.ts` store.
+- accept: gate green; invite → accept → membership, offboard, and collaborator-link flows persist to the DB;
+  identity mutations land in `audit_event`; the in-memory M2 slices remain only as the test default.
 
 ---
 
