@@ -10,6 +10,11 @@
 // precedents. Neither seam is a mutate path: M12 owns the medication-order lifecycle internally.
 import type { MedicationOrderProvider, RefillInboxProvider } from "@wardenx/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
+import type {
+  DoseSpotConsentValidator,
+  DoseSpotMdmValidator,
+  DoseSpotTerminologyValidator,
+} from "../routes/service";
 import { createMedicationOrderProvider, createRefillInboxProvider } from "./providers";
 import { type DoseSpotSeamStore, createInMemoryDoseSpotSeamStore } from "./store";
 
@@ -47,4 +52,29 @@ export function getMedicationOrderProvider(): MedicationOrderProvider {
 /** Typed resolver for M12's RefillInboxProvider (the prescriber inbox UI + M19/M33 consume the read seam). */
 export function getRefillInboxProvider(): RefillInboxProvider {
   return getSeam("RefillInboxProvider");
+}
+
+// ── §4.1 cross-module bindings M12 CONSUMES (not owned) ──────────────────────────────────────────────────
+// The medication-order route service "binds" the M38 terminology surface (the RxNorm/NDC code on the order),
+// the M40 master-data surface (the prescribing physician + dispensing pharmacy + the prescriber's DEA roster),
+// and the M39 consent surface (the §7.8 SUD-treatment-medication disclosure gate). Each is resolved from the
+// M1 registry here and injected into the service (seed.terminology / seed.mdm / seed.consent). M38 / M40 are
+// already in M12's `dependsOn`; M39's `ConsentEvaluator` is an OPAQUE rich seam (interface in @wardenx/consent,
+// `SeamContracts["ConsentEvaluator"] = unknown`) consumed via the M1 registry with NO schema import — so these
+// getters narrow to the minimal validator subsets the service uses (the M11 `getOrderMdmValidator` pattern),
+// and no new manifest edge is introduced (the seam is already in REQUIRED_SEAMS, owner M39).
+
+/** Resolve the M38 `TerminologyProvider` seam narrowed to the order service's RxNorm/NDC validator. */
+export function getDoseSpotTerminologyValidator(): DoseSpotTerminologyValidator {
+  return getSeam("TerminologyProvider") as DoseSpotTerminologyValidator;
+}
+
+/** Resolve the M40 `MdmEntityProvider` seam narrowed to the order service's physician/pharmacy validator. */
+export function getDoseSpotMdmValidator(): DoseSpotMdmValidator {
+  return getSeam("MdmEntityProvider") as DoseSpotMdmValidator;
+}
+
+/** Resolve the M39 `ConsentEvaluator` seam narrowed to the order service's SUD-medication consent gate. */
+export function getDoseSpotConsentValidator(): DoseSpotConsentValidator {
+  return getSeam("ConsentEvaluator") as DoseSpotConsentValidator;
 }

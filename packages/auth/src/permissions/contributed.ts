@@ -1153,6 +1153,54 @@ export const M11_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M11 contributed permission keys. */
 export type M11ContributedPermissionKey = keyof typeof M11_CONTRIBUTED_PERMISSIONS;
 
+/**
+ * M12-T08 — Module 12 (DoseSpot Integration) §4.6 permission keys registered into M3's catalog (the binding
+ * handshake; boot validation fails if any key is missing at startup). The clinical read/draft/sign/verbal/
+ * cosign/discontinue/history/refill keys default to `caseload_or_scope` (the patient-scope predicate M5/M6/M7
+ * own); the draft routes ALSO carry M12's owned `prescriber_eligible[:medClass]` predicate, the sign routes
+ * M11's `signer_eligible[:medication_order]` (via seam), the controlled-substance routes M12's owned
+ * `dea_schedule_authorized[:schedule]`, the cosign route M11's `cosigner_role_match`, and the refill-inbox
+ * read the owned `refill_inbox_scope` — applied explicitly at the route on top of the default (§4.7). The
+ * admin roster/policy/EPCS-certification keys are pure RBAC (`none`; org-admin / compliance / platform-ops
+ * reference rows, step-up enforced at the route). Keys carry a `prescribing.` NAMESPACE prefix on top of the
+ * `resource.action` decomposition (like M11's `orders.` / M10's `hope.`), so `key` is the full dotted
+ * permission string used at `requirePermission(...)`. Fourteen keys total (§4.6). Kept in a dedicated const
+ * for §3.3 attributability.
+ */
+export const M12_CONTRIBUTED_PERMISSIONS = {
+  // Read (caseload-scoped clinical reads) — every GET medication-order route.
+  "prescribing.read": { resource: "medication_order", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  // Authoring — POST/PATCH draft (route ALSO requires `prescriber_eligible[:medClass]`).
+  "prescribing.draft": { resource: "medication_order", action: "draft", category: "clinical", abac: "caseload_or_scope" },
+  // Standard sign (→ signed; route ALSO requires M11 `signer_eligible[:medication_order]`).
+  "prescribing.sign": { resource: "medication_order", action: "sign", category: "clinical", abac: "caseload_or_scope" },
+  // Controlled-substance EPCS sign (route ALSO requires `dea_schedule_authorized[:schedule]` + IAL2 + tenant EPCS).
+  "prescribing.sign_controlled_substance": { resource: "medication_order", action: "sign_controlled", category: "clinical", abac: "caseload_or_scope" },
+  // Verbal medication-order recording — RN+ (D18: controlled is Phase-1-OFF).
+  "prescribing.verbal.record": { resource: "medication_order", action: "verbal_record", category: "clinical", abac: "caseload_or_scope" },
+  // Cosignature attach (route ALSO requires M11 `cosigner_role_match`).
+  "prescribing.cosign": { resource: "medication_order", action: "cosign", category: "clinical", abac: "cosigner_role_match" },
+  // Discontinue / complete an active / pending / verbal medication order.
+  "prescribing.discontinue": { resource: "medication_order", action: "discontinue", category: "clinical", abac: "caseload_or_scope" },
+  // Refill-inbox decide (approve mints a new order; route ALSO requires M11 `signer_eligible`).
+  "prescribing.refill_decide": { resource: "refill_request", action: "decide", category: "clinical", abac: "caseload_or_scope" },
+  // Per-tenant DoseSpot prescriber roster admin (org-scoped, step-up).
+  "prescribing.admin.roster": { resource: "dosespot_prescriber", action: "admin", category: "compliance", abac: "none" },
+  // Refill-inbox / controlled-substance policy admin (org-scoped, step-up, tighten-only).
+  "prescribing.admin.policy": { resource: "prescribing_policy", action: "admin", category: "compliance", abac: "none" },
+  // Platform + org EPCS certification gate (the D18 certification toggle, step-up).
+  "prescribing.admin.epcs_certification": { resource: "epcs_certification", action: "admin", category: "platform", abac: "none" },
+  // Medication-history read (caseload-scoped).
+  "prescribing.history.read": { resource: "medication_history_record", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  // Medication-history reconcile (carry-forward mints a draft).
+  "prescribing.history.reconcile": { resource: "medication_history_record", action: "reconcile", category: "clinical", abac: "caseload_or_scope" },
+  // RxBenefit cached lookup (every prescriber + drafter).
+  "prescribing.rx_benefit.lookup": { resource: "rx_benefit", action: "lookup", category: "clinical", abac: "caseload_or_scope" },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M12 contributed permission keys. */
+export type M12ContributedPermissionKey = keyof typeof M12_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -1230,6 +1278,11 @@ export function m11ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M11_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M12 contributed keys into `permission`-table mirror rows (M12-T08). */
+export function m12ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M12_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -1252,5 +1305,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m9ContributedPermissionMirrorRows(),
     ...m10ContributedPermissionMirrorRows(),
     ...m11ContributedPermissionMirrorRows(),
+    ...m12ContributedPermissionMirrorRows(),
   ];
 }

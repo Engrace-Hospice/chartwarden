@@ -98,3 +98,10 @@ export {
   M11_CONTRIBUTED_PERMISSIONS,
   m11ContributedPermissionMirrorRows,
 } from "./contributed";
+// M12-T08 — Module 12's permission keys registered into M3's catalog (§4.6 handshake), in a
+// dedicated const so each module's contribution stays attributable (§3.3 ownership model).
+export {
+  type M12ContributedPermissionKey,
+  M12_CONTRIBUTED_PERMISSIONS,
+  m12ContributedPermissionMirrorRows,
+} from "./contributed";
