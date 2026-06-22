@@ -403,3 +403,28 @@ export * from "./idg/idg-action-items";
 export * from "./idg/idg-minutes";
 export * from "./idg/idg-minutes-amendments";
 export * from "./idg/idg-patient-packets";
+
+// ---------------------------------------------------------------------------
+// M17 owns 7 tables (M17-T02, §3.3): visit (the §2.2.1 D3 eight-state scheduling aggregate + EVV-bracket
+// flag + route-optimizer cache) + visit_state_history (the D3 append-only transition ledger, written in the
+// same tx as each transition) + recurring_visit (the §2.2.3 D4 RRULE-subset cadence policy, source of truth
+// for materialized child visits) + visit_proposal (the §2.2.4 D5 scheduler inbox, idempotent per source
+// event) + clinician_availability (the D7 positive-declaration weekly pattern) + time_off (the D7 negative-
+// overlay PTO workflow) + route_segment (the D10 optimized day-route legs; mileage is a proposal — M8 owns
+// billable). M17 is the Location-scoped module (M17-F01, BLOCKER): every table carries the three tenancy
+// columns — provider_entity_id + location_id NOT NULL on the patient-scoped tables (visit / recurring_visit /
+// visit_proposal), nullable on the clinician/route-scoped ones (visit_state_history / clinician_availability /
+// time_off / route_segment). Cross-module refs (M5 patient / patient_address, M6 admission, M8 encounter, M40
+// facility, M18 evv_event, M31 telehealth) are plain uuid app-validated (M17 dependsOn [5,8,40]); actor/
+// assignment refs go to M1 `membership` as SQL FKs; only the tenancy spine + membership carry FKs. `visit`
+// is PARTITION BY RANGE (service_date) and `visit_state_history` PARTITION BY RANGE (transitioned_at), both
+// monthly (D14) — converted from the logical Drizzle shape in the RLS migration, so refs TO `visit` are
+// plain uuid (no SQL FK). The D6 visit-overlap + D7 PTO-overlap GiST EXCLUDE backstops also land in that SQL
+// migration. RLS + grants + M4 write-audit triggers land in M17-T02 (§3.3/§3.5/§3.6).
+export * from "./scheduling/visits";
+export * from "./scheduling/visit-state-history";
+export * from "./scheduling/recurring-visits";
+export * from "./scheduling/visit-proposals";
+export * from "./scheduling/clinician-availability";
+export * from "./scheduling/time-off";
+export * from "./scheduling/route-segments";

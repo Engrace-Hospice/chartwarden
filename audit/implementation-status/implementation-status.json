@@ -1,8 +1,8 @@
 {
   "totals": {
     "Implemented": 17,
-    "Partial": 1,
-    "Placeholder": 22
+    "Partial": 2,
+    "Placeholder": 21
   },
   "rows": [
     {
@@ -232,10 +232,10 @@
     {
       "id": 17,
       "module": "M17 Scheduling & Route Optimization",
-      "status": "Placeholder",
+      "status": "Partial",
       "spec": true,
-      "schema": false,
-      "migration": false,
+      "schema": true,
+      "migration": true,
       "routes": false,
       "enriched": false,
       "screens": false,

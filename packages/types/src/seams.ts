@@ -499,4 +499,14 @@ export type DataClass =
   // caseload-wide / org-level meeting artifacts (a meeting is not a single patient's record), and patient-
   // specific references inside `idg_minutes` snapshots are hash-redacted by the M4 trigger pattern, not deleted
   // here. `subjectId` is the patient being destroyed; disjoint from every other module's clinical subtree.
-  | "idg_record";
+  | "idg_record"
+  // M17 (Scheduling & Route Optimization) per-patient schedule record: the patient-scoped scheduling rows
+  // M17 owns — the partitioned `visit` rows (and their cascaded `visit_state_history` transitions),
+  // `recurring_visit` policies, `visit_proposal` rows, and the `route_segment` legs joinable via a visit
+  // being erased (§3.7). Registered in M17-T02 (this task) so the contract is present from the schema task;
+  // M17-T08 registers the REAL eraser via the composition-root hook over the Phase-0 deny-stub — under an M4
+  // destruction certificate it row-deletes the patient's visits / state-history / recurring policies /
+  // proposals / route segments (retention class `operational`, 3 years post-discharge, §3.7). The clinician-
+  // scoped `clinician_availability` and `time_off` rows SURVIVE (they are workforce data, not a single
+  // patient's record). `subjectId` is the patient being destroyed; disjoint from every other module's subtree.
+  | "operational_schedule";
