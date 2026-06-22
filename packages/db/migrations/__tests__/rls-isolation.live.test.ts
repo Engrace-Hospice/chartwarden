@@ -1532,4 +1532,105 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       expect(r.rows[0].after.status).toBe("pending"); // structured column passes through
     });
   });
+
+  // ── M13 eMAR & Med Administration — org-scoped RLS, append-only no-DELETE, audit scrub (§3.5 / §3.6 / §9.4)
+  // 0040/0041 (M13) applied above. Proves on REAL Postgres: administration_record is tenant-isolated on
+  // app.org_id even with app authorization stubbed open (§9.4 layer-independence); the WITH CHECK blocks a
+  // cross-tenant write; wardenx_app has NO DELETE (administrations supersede via correction / void, never delete
+  // — §3.6); the RANGE-partitioned (administered_at) parent's M4 write-audit trigger scrubs BOTH the top-level
+  // free-text columns (notes / refusal_reason / …) AND the nested per-mode `data` json-paths (sig_free_text /
+  // titrationReason / …, §3.6 D12) while the structured `mode` column passes through; the scheduled_dose child is
+  // org-scoped.
+  describe("M13 eMAR — cross-tenant isolation, no-DELETE, nested audit scrub (§3.5 / §3.6 / §9.4)", () => {
+    const PE_A13 = "ea000000-0000-0000-0000-000000000091";
+    const PE_B13 = "eb000000-0000-0000-0000-0000000000a1";
+    const LOC_A13 = "ea000000-0000-0000-0000-000000000092";
+    const LOC_B13 = "eb000000-0000-0000-0000-0000000000a2";
+    const AR_A13 = "ea000000-0000-0000-0000-000000000095";
+    const AR_B13 = "eb000000-0000-0000-0000-0000000000a5";
+    const SD_A13 = "ea000000-0000-0000-0000-000000000096";
+    const ACOLS =
+      "(id,organization_id,provider_entity_id,location_id,patient_id,admission_id,medication_order_id,mode,data,drug_name_snapshot,route_snapshot,administered_at,actor_kind,administering_clinician_membership_id,notes)";
+
+    beforeAll(async () => {
+      await db.query(
+        `INSERT INTO provider_entity (id,organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
+           VALUES ($1,$2,'CCN-M13A','M13 A','NPI-M13A','enc','12-31'),
+                  ($3,$4,'CCN-M13B','M13 B','NPI-M13B','enc','12-31')`,
+        [PE_A13, ORG_A, PE_B13, ORG_B],
+      );
+      await db.query(
+        `INSERT INTO location (id,provider_entity_id,name,address_line1,city,state,postal_code,timezone)
+           VALUES ($1,$2,'L13A','1 St','Town','OR','97000','America/Los_Angeles'),
+                  ($3,$4,'L13B','1 St','Town','OR','97000','America/Los_Angeles')`,
+        [LOC_A13, PE_A13, LOC_B13, PE_B13],
+      );
+      // One committed administration per org (superuser → RLS bypassed). The top-level notes column AND the
+      // nested data.sig_free_text json-path are both free-text PHI so the §3.6 D12 scrub is observable on each.
+      await db.query(
+        `INSERT INTO administration_record ${ACOLS} VALUES
+           ($1,$2,$3,$4,gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),'single_dose','{"sig_free_text":"give half — free text PHI"}'::jsonb,'Morphine','PO',now(),'clinician',gen_random_uuid(),'bedside note — free text PHI'),
+           ($5,$6,$7,$8,gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),'single_dose','{"sig_free_text":"give half — free text PHI"}'::jsonb,'Morphine','PO',now(),'clinician',gen_random_uuid(),'bedside note — free text PHI')`,
+        [AR_A13, ORG_A, PE_A13, LOC_A13, AR_B13, ORG_B, PE_B13, LOC_B13],
+      );
+      // One scheduled_dose on Org A (the §2.3 materialized-dose child; org-scoped).
+      await db.query(
+        `INSERT INTO scheduled_dose
+           (id,organization_id,provider_entity_id,location_id,patient_id,admission_id,medication_order_id,due_at,grace_window_minutes,expected_dose_amount,expected_dose_unit,expected_route,materialization_sequence)
+         VALUES ($1,$2,$3,$4,gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),now(),60,5,'mg','PO',1)`,
+        [SD_A13, ORG_A, PE_A13, LOC_A13],
+      );
+    });
+
+    it("§3.5 Org A sees ONLY its own administration_record (RLS blocks cross-tenant reads, auth stubbed open)", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM administration_record WHERE id=$1", [AR_A13]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM administration_record WHERE id=$1", [AR_A13]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§3.5 Org B cannot INSERT an administration_record into Org A (WITH CHECK blocks the cross-tenant write)", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO administration_record ${ACOLS} VALUES
+               (gen_random_uuid(),$1,$2,$3,gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),'single_dose','{}'::jsonb,'X','PO',now(),'clinician',gen_random_uuid(),NULL)`,
+            [ORG_A, PE_A13, LOC_A13],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§3.6 administration_record has NO DELETE grant for wardenx_app (administrations supersede/void, never delete)", async () => {
+      await expect(
+        withOrg(ORG_A, () => db.query("DELETE FROM administration_record WHERE id=$1", [AR_A13])),
+      ).rejects.toThrow();
+    });
+
+    it("§3.5 scheduled_dose is org-scoped — Org A sees its dose, Org B sees none", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM scheduled_dose WHERE id=$1", [SD_A13]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM scheduled_dose WHERE id=$1", [SD_A13]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§3.6 the M4 write-audit trigger scrubbed BOTH the top-level notes AND the nested data.sig_free_text", async () => {
+      const r = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='administration_record' AND event_type='administration_record.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.notes).toBe("<changed>"); // §3.6 top-level free-text PHI scrub
+      expect(r.rows[0].after.data.sig_free_text).toBe("<changed>"); // §3.6 D12 nested json-path scrub
+      expect(r.rows[0].after.mode).toBe("single_dose"); // structured column passes through
+    });
+  });
 });
