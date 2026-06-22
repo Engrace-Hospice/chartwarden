@@ -171,7 +171,7 @@
       "screens": true,
       "tests": true,
       "adapter": true,
-      "liveInfra": false
+      "liveInfra": true
     },
     {
       "id": 13,

@@ -1408,4 +1408,128 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       expect(r.rows[0].after.kind).toBe("lab"); // structured column passes through
     });
   });
+
+  // ── M12 DoseSpot Prescribing — org-scoped RLS, append-only no-DELETE, audit scrub (§3.5 / §3.6 / §7.6 / §9.4)
+  // 0038/0039 (M12) applied above. Proves on REAL Postgres: medication_order is tenant-isolated on app.org_id
+  // even with app authorization stubbed open (§9.4 layer-independence); the WITH CHECK blocks a cross-tenant
+  // write; wardenx_app has NO DELETE (orders are append + status-transition, never deleted — §3.6); the
+  // monthly-partitioned (created_at) parent's M4 write-audit trigger scrubs the whole `data` jsonb (all
+  // clinician free-text — sig_free_text / indication / notes — lives inside the per-class payload, §7.6) while
+  // the structured med_class column passes through; the refill_request child is org-scoped and scrubs its
+  // pharmacy_notes / denial_reason free-text.
+  describe("M12 DoseSpot — cross-tenant isolation, no-DELETE, audit scrub (§3.5 / §3.6 / §7.6 / §9.4)", () => {
+    const PE_A12 = "ea000000-0000-0000-0000-0000000000e1";
+    const PE_B12 = "eb000000-0000-0000-0000-0000000000f1";
+    const LOC_A12 = "ea000000-0000-0000-0000-0000000000e2";
+    const LOC_B12 = "eb000000-0000-0000-0000-0000000000f2";
+    const USER_A12 = "ea000000-0000-0000-0000-0000000000e3";
+    const USER_B12 = "eb000000-0000-0000-0000-0000000000f3";
+    const MEM_A12 = "ea000000-0000-0000-0000-0000000000e4";
+    const MEM_B12 = "eb000000-0000-0000-0000-0000000000f4";
+    const MO_A12 = "ea000000-0000-0000-0000-0000000000e5";
+    const MO_B12 = "eb000000-0000-0000-0000-0000000000f5";
+    const RF_A12 = "ea000000-0000-0000-0000-0000000000e6";
+    const MCOLS =
+      "(id,organization_id,provider_entity_id,location_id,patient_id,admission_id,med_class,drug_name,strength,dose_form,route,data,prescriber_membership_id,prescribing_physician_mdm_id)";
+
+    beforeAll(async () => {
+      await db.query(
+        `INSERT INTO provider_entity (id,organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
+           VALUES ($1,$2,'CCN-M12A','M12 A','NPI-M12A','enc','12-31'),
+                  ($3,$4,'CCN-M12B','M12 B','NPI-M12B','enc','12-31')`,
+        [PE_A12, ORG_A, PE_B12, ORG_B],
+      );
+      await db.query(
+        `INSERT INTO location (id,provider_entity_id,name,address_line1,city,state,postal_code,timezone)
+           VALUES ($1,$2,'L12A','1 St','Town','OR','97000','America/Los_Angeles'),
+                  ($3,$4,'L12B','1 St','Town','OR','97000','America/Los_Angeles')`,
+        [LOC_A12, PE_A12, LOC_B12, PE_B12],
+      );
+      await db.query(`INSERT INTO "user" (id,email) VALUES ($1,'m12a@x.test'),($2,'m12b@x.test')`, [
+        USER_A12,
+        USER_B12,
+      ]);
+      await db.query(
+        `INSERT INTO membership (id,user_id,organization_id,status)
+           VALUES ($1,$2,$3,'active'),($4,$5,$6,'active')`,
+        [MEM_A12, USER_A12, ORG_A, MEM_B12, USER_B12, ORG_B],
+      );
+      // One draft medication_order per org (superuser → RLS bypassed). data jsonb carries a free-text sig so
+      // the audit scrub is observable; created_at defaults to now() → the current monthly partition (created
+      // by create_medication_order_partition for current_month-1..+1 post-migration).
+      await db.query(
+        `INSERT INTO medication_order ${MCOLS} VALUES
+           ($1,$2,$3,$4,gen_random_uuid(),gen_random_uuid(),'standard','Aspirin','81 mg','tablet','oral','{"sigFreeText":"1 tablet by mouth daily — free text PHI"}'::jsonb,$5,gen_random_uuid()),
+           ($6,$7,$8,$9,gen_random_uuid(),gen_random_uuid(),'standard','Aspirin','81 mg','tablet','oral','{"sigFreeText":"1 tablet by mouth daily — free text PHI"}'::jsonb,$10,gen_random_uuid())`,
+        [MO_A12, ORG_A, PE_A12, LOC_A12, MEM_A12, MO_B12, ORG_B, PE_B12, LOC_B12, MEM_B12],
+      );
+      // One pending refill_request on Org A's order (the §2.7 inbox child). pharmacy_notes is free-text PHI.
+      await db.query(
+        `INSERT INTO refill_request
+           (id,organization_id,provider_entity_id,location_id,source_medication_order_id,patient_id,dosespot_event_id,pharmacy_notes,received_at,status)
+         VALUES ($1,$2,$3,$4,$5,gen_random_uuid(),'DS-EVT-A12','call pharmacy re: dose — free text PHI',now(),'pending')`,
+        [RF_A12, ORG_A, PE_A12, LOC_A12, MO_A12],
+      );
+    });
+
+    it("§3.5 Org A sees ONLY its own medication_order (RLS blocks cross-tenant reads, auth stubbed open)", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM medication_order WHERE id=$1", [MO_A12]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM medication_order WHERE id=$1", [MO_A12]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§3.5 Org B cannot INSERT a medication_order into Org A (WITH CHECK blocks the cross-tenant write)", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO medication_order ${MCOLS} VALUES
+               (gen_random_uuid(),$1,$2,$3,gen_random_uuid(),gen_random_uuid(),'standard','X','1 mg','tablet','oral','{}'::jsonb,$4,gen_random_uuid())`,
+            [ORG_A, PE_A12, LOC_A12, MEM_A12],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§3.6 medication_order has NO DELETE grant for wardenx_app (orders supersede/discontinue, never delete)", async () => {
+      await expect(
+        withOrg(ORG_A, () => db.query("DELETE FROM medication_order WHERE id=$1", [MO_A12])),
+      ).rejects.toThrow();
+    });
+
+    it("§3.5 refill_request is org-scoped — Org A sees its refill, Org B sees none", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM refill_request WHERE id=$1", [RF_A12]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM refill_request WHERE id=$1", [RF_A12]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§7.6 the M4 write-audit trigger fired for the medication_order write and scrubbed the data denylist", async () => {
+      const r = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='medication_order' AND event_type='medication_order.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.data).toBe("<changed>"); // §7.6 whole `data` jsonb (free-text PHI) scrub
+      expect(r.rows[0].after.med_class).toBe("standard"); // structured column passes through
+    });
+
+    it("§7.6 the refill_request write-audit trigger scrubbed pharmacy_notes (free-text PHI)", async () => {
+      const r = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='refill_request' AND event_type='refill_request.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.pharmacy_notes).toBe("<changed>"); // §7.6 free-text PHI scrub
+      expect(r.rows[0].after.status).toBe("pending"); // structured column passes through
+    });
+  });
 });
