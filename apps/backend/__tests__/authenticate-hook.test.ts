@@ -11,9 +11,10 @@ interface Ctx {
   userId: string;
   organizationId: string;
   roles: string[];
+  attributes: Record<string, unknown>;
 }
 const reqWith = (): { req: FastifyRequest; ctx: Ctx } => {
-  const ctx: Ctx = { userId: "", organizationId: "", roles: [] };
+  const ctx: Ctx = { userId: "", organizationId: "", roles: [], attributes: {} };
   return { req: { context: ctx } as unknown as FastifyRequest, ctx };
 };
 
@@ -36,7 +37,12 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
         }),
     });
     await hook(req);
-    expect(ctx).toEqual({ userId: "u1", organizationId: "org1", roles: ["rn"] });
+    expect(ctx).toEqual({
+      userId: "u1",
+      organizationId: "org1",
+      roles: ["rn"],
+      attributes: { sessionId: "s1" },
+    });
   });
 
   it("leaves context anonymous when there is no session", async () => {
@@ -46,7 +52,7 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
       getResolver: () => resolverReturning(null),
     });
     await hook(req);
-    expect(ctx).toEqual({ userId: "", organizationId: "", roles: [] });
+    expect(ctx).toEqual({ userId: "", organizationId: "", roles: [], attributes: {} });
   });
 
   it("sets userId only for a pre-org session (no org binding yet)", async () => {
@@ -56,7 +62,12 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
       getResolver: () => resolverReturning(null),
     });
     await hook(req);
-    expect(ctx).toEqual({ userId: "u1", organizationId: "", roles: [] });
+    expect(ctx).toEqual({
+      userId: "u1",
+      organizationId: "",
+      roles: [],
+      attributes: { sessionId: "s1" },
+    });
   });
 
   it("drops the org binding when the resolver returns null (session/org mismatch)", async () => {
@@ -66,6 +77,11 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
       getResolver: () => resolverReturning(null),
     });
     await hook(req);
-    expect(ctx).toEqual({ userId: "u1", organizationId: "", roles: [] });
+    expect(ctx).toEqual({
+      userId: "u1",
+      organizationId: "",
+      roles: [],
+      attributes: { sessionId: "s1" },
+    });
   });
 });
