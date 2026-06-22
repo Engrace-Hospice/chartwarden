@@ -456,7 +456,7 @@ exports.MODULES = [
       "apps/backend/src/modules/14-idg",
       "apps/web/src/modules/14-idg",
     ], // +packages/idg: §3.1 M14-owned feature pkg (quorum/schedule/discipline-view policy → lifecycle/packet-builder), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M14-T07
-    dependsOn: [7, 8, 36],
+    dependsOn: [1, 7, 8, 36], // +M1: the bootstrap seam registry (registerSeam/getSeam) M14's backend module wires its §4.8 owned seams (IdgPacketProvider/IdgDecisionProvider/IdgScheduleProvider) into (M14-T05; M6..M13 seam-task precedent)
     ownedTables: [
       "idg_meeting",
       "idg_recurring_policy",

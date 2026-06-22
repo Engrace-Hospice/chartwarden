@@ -26,6 +26,9 @@ import type {
   HopeJ2051Provider,
   HopeSubmissionProvider,
   HopeTimepointProvider,
+  IdgDecisionProvider,
+  IdgPacketProvider,
+  IdgScheduleProvider,
   LatestAssessmentProvider,
   LevelOfCareReader,
   MedicationAdministrationProvider,
@@ -477,6 +480,39 @@ export const reconciliationProviderDenyStub: ReconciliationProvider = {
   },
   getReconciliationTimelinessByAdmission() {
     throw new NotImplementedError("ReconciliationProvider");
+  },
+};
+
+/** M14 — the packet read seam (snapshot by-id + the M22 deterministic render payload) M22/M33 consume.
+ * Denies until M14 registers it (M14-T05). */
+export const idgPacketProviderDenyStub: IdgPacketProvider = {
+  getPacketSnapshot() {
+    throw new NotImplementedError("IdgPacketProvider");
+  },
+  renderPayloadFor() {
+    throw new NotImplementedError("IdgPacketProvider");
+  },
+};
+
+/** M14 — the decision read seam (by-care-plan / by-meeting) M30 (decision-latency measure) / M33 consume.
+ * Denies until M14 registers it (M14-T05). */
+export const idgDecisionProviderDenyStub: IdgDecisionProvider = {
+  getDecisionsForCarePlan() {
+    throw new NotImplementedError("IdgDecisionProvider");
+  },
+  getDecisionsForMeeting() {
+    throw new NotImplementedError("IdgDecisionProvider");
+  },
+};
+
+/** M14 — the schedule read seam (meetings-for-location / 15-day-cadence-adherence) M28/M30/M33 consume.
+ * Denies until M14 registers it (M14-T05). */
+export const idgScheduleProviderDenyStub: IdgScheduleProvider = {
+  listMeetingsForLocation() {
+    throw new NotImplementedError("IdgScheduleProvider");
+  },
+  getCadenceAdherence() {
+    throw new NotImplementedError("IdgScheduleProvider");
   },
 };
 

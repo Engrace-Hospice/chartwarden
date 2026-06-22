@@ -39,6 +39,7 @@ import { registerHopeErasers, registerHopeSeams } from "./modules/10-hope/index"
 import { registerOrderErasers, registerOrderSeams } from "./modules/11-orders/index";
 import { registerDoseSpotErasers, registerDoseSpotSeams } from "./modules/12-dosespot/index";
 import { registerEmarErasers, registerEmarSeams } from "./modules/13-emar/index";
+import { registerIdgSeams } from "./modules/14-idg/index";
 import {
   createDbMessagingProvider,
   mountMessagingRoutes,
@@ -132,6 +133,12 @@ export function wireModuleSeams(
   // consume — + ReconciliationProvider — the reconciliation-worksheet read path M14/M30 consume). Slice/tests
   // keep the in-memory store; the Drizzle-backed store lands with M13's routes/repos (M13-T08+).
   registerEmarSeams();
+  // M14 — the three §4.8 owned READ seams (IdgPacketProvider — the packet-snapshot + M22 render handshake M22
+  // (minutes / packet PDF) + M33 consume — + IdgDecisionProvider — the decision read path M30
+  // (decision-to-careplan-update latency) + M33 consume — + IdgScheduleProvider — the meeting-schedule +
+  // 15-day-cadence read path M28 (FHIR) + M30 (cadence-adherence) + M33 consume). Slice/tests keep the
+  // in-memory store; the Drizzle-backed store lands with M14's routes/repos (M14-T05+).
+  registerIdgSeams();
   // M39 — ConsentEvaluator (§4.3, the disclosure/redaction gate). Production backs it with the Drizzle
   // store over the real M39 consent tables (FB-T03); slice/tests keep the in-memory default.
   registerConsentSeams(deps.db ? { store: createDbConsentStore(deps.db) } : {});

@@ -33,6 +33,9 @@ import {
   hopeJ2051ProviderDenyStub,
   hopeSubmissionProviderDenyStub,
   hopeTimepointProviderDenyStub,
+  idgDecisionProviderDenyStub,
+  idgPacketProviderDenyStub,
+  idgScheduleProviderDenyStub,
   latestAssessmentProviderDenyStub,
   levelOfCareReaderDenyStub,
   mdmEntityProviderDenyStub,
@@ -323,6 +326,31 @@ export const REQUIRED_SEAMS = [
     ownerModule: 13,
     phi: true,
     denyStub: reconciliationProviderDenyStub,
+  },
+  // M14 (Interdisciplinary Group / IDG) owned seams (§4.8). All three are READ-only DTO surfaces over M14's
+  // `idg_*` tables: `IdgPacketProvider` is the packet-snapshot + M22 render handshake M22 + M33 consume;
+  // `IdgDecisionProvider` is the decision read path M30 (decision-to-careplan-update latency) + M33 consume;
+  // `IdgScheduleProvider` is the meeting-schedule + 15-day-cadence read path M28 (FHIR `CareTeam`/`Encounter`) +
+  // M30 (cadence-adherence measure) + M33 consume — all instead of importing M14's schema. All touch
+  // patient-linked clinical records → phi: true; boot-validated and fail-closed until M14 registers the real
+  // impls (M14-T05).
+  {
+    key: "IdgPacketProvider",
+    ownerModule: 14,
+    phi: true,
+    denyStub: idgPacketProviderDenyStub,
+  },
+  {
+    key: "IdgDecisionProvider",
+    ownerModule: 14,
+    phi: true,
+    denyStub: idgDecisionProviderDenyStub,
+  },
+  {
+    key: "IdgScheduleProvider",
+    ownerModule: 14,
+    phi: true,
+    denyStub: idgScheduleProviderDenyStub,
   },
 ] satisfies readonly RequiredSeam[];
 

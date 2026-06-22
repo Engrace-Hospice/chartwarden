@@ -23,6 +23,11 @@ import type {
 import type { OrderProvider, OrderSignatureProvider } from "./orders";
 import type { MedicationOrderProvider, RefillInboxProvider } from "./dosespot";
 import type { MedicationAdministrationProvider, ReconciliationProvider } from "./emar";
+import type {
+  IdgDecisionProvider,
+  IdgPacketProvider,
+  IdgScheduleProvider,
+} from "./idg";
 import type { PatientMutator, PatientReader } from "./patient";
 // @wardenx/types — Boot-registered SEAM contracts (Phase 0 skeleton).
 //
@@ -119,7 +124,17 @@ export type SeamName =
   // read path M14 (IDG packet) and M30 (reconciliation-timeliness measure) consume — all instead of importing
   // M13's schema. M13 owns the recording + reconciliation workflows and downstream modules NEVER import its schema.
   | "MedicationAdministrationProvider" // M13 — administration read seam (by-id / by-patient / by-order / since / measure inputs / portal / IV session / FHIR)
-  | "ReconciliationProvider"; // M13 — reconciliation read seam (worksheet by-id / by-admission / timeliness)
+  | "ReconciliationProvider" // M13 — reconciliation read seam (worksheet by-id / by-admission / timeliness)
+  // M14 (Interdisciplinary Group / IDG) owned seams (§4.8) — also leaf-typed (interfaces in ./idg, this leaf), so
+  // they are typed here like M6..M13's seams. All three are READ surfaces over M14's `idg_*` tables:
+  // `IdgPacketProvider` is the packet-snapshot + render handshake M22 (minutes/packet PDF) + M33 (dashboards)
+  // consume; `IdgDecisionProvider` is the decision read path M30 (decision-to-careplan-update latency measure) +
+  // M33 consume; `IdgScheduleProvider` is the meeting-schedule + 15-day-cadence read path M28 (FHIR
+  // `CareTeam`/`Encounter`) + M30 (cadence-adherence measure) + M33 consume — all instead of importing M14's
+  // schema. M14 owns the meeting/decision/packet lifecycle internally and downstream modules NEVER import its schema.
+  | "IdgPacketProvider" // M14 — packet read seam (snapshot by-id + M22 render payload)
+  | "IdgDecisionProvider" // M14 — decision read seam (by-care-plan / by-meeting)
+  | "IdgScheduleProvider"; // M14 — schedule read seam (meetings-for-location / cadence-adherence)
 
 /**
  * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
@@ -332,6 +347,14 @@ export interface SeamContracts {
   // reconciliation read projections; never a Drizzle row and never the free-text PHI (D12).
   MedicationAdministrationProvider: MedicationAdministrationProvider;
   ReconciliationProvider: ReconciliationProvider;
+  // M14's owned seams (§4.8) are LEAF-TYPED too — interfaces live in ./idg (this package), so the registry is
+  // statically typed against the real contract. M14 registers the real Drizzle-backed impls over the deny-stubs
+  // (M14-T05); consumers that list `14` in their manifest `dependsOn` (M22/M28/M30/M33) resolve them through the
+  // typed accessors with no schema import edge. All three are READ-only — M14 publishes the packet / decision /
+  // schedule read projections and never the free-text PHI (the SUD-redacted layer crosses, never the raw notes).
+  IdgPacketProvider: IdgPacketProvider;
+  IdgDecisionProvider: IdgDecisionProvider;
+  IdgScheduleProvider: IdgScheduleProvider;
 }
 
 /**

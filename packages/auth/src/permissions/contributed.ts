@@ -1268,6 +1268,42 @@ export const M13_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M13 contributed permission keys. */
 export type M13ContributedPermissionKey = keyof typeof M13_CONTRIBUTED_PERMISSIONS;
 
+/**
+ * M14-T05 — Module 14 (Interdisciplinary Group / IDG) §4.6 permission keys registered into M3's catalog (the
+ * binding handshake; boot validation fails if any key is missing at startup). The clinical
+ * read/attend/coordinate/decide keys default to `idg_meeting_scope` (M14's owned location-scope predicate); the
+ * decision routes ALSO carry M14's owned `quorate_decision` predicate and the cancel/reschedule routes M14's
+ * owned `per_patient_review_floor_clear` — applied explicitly at the route on top of the default (§4.7). The
+ * `idg.act` key is self-scoped to the assignee via the shared `is_assignee` predicate. The
+ * `idg.schedule` / `idg.override_review_floor` / `idg.amend_minutes` keys carry a tenant-admin / compliance
+ * scope (`none` here; the step-up + override-permission gates are enforced at the route). The `idg.system` key
+ * is the internal system-principal path (packet build / FHIR / render reads; `none` — the system actor gates
+ * it). Nine keys total (§4.6). Kept in a dedicated const for §3.3 attributability.
+ */
+export const M14_CONTRIBUTED_PERMISSIONS = {
+  // Read packets / minutes / decisions / schedule for in-scope meetings (default `idg_meeting_scope`).
+  "idg.read": { resource: "idg_meeting", action: "read", category: "clinical", abac: "idg_meeting_scope" },
+  // Self check-in/check-out attendance (default `idg_meeting_scope`).
+  "idg.attend": { resource: "idg_attendance", action: "check_in", category: "clinical", abac: "idg_meeting_scope" },
+  // Build packets, manage agenda, run lifecycle transitions, manage action items as coordinator.
+  "idg.coordinate": { resource: "idg_meeting", action: "coordinate", category: "clinical", abac: "idg_meeting_scope" },
+  // Record / supersede decisions (route ALSO requires `quorate_decision`).
+  "idg.decide": { resource: "idg_decision", action: "record", category: "clinical", abac: "idg_meeting_scope" },
+  // Update assigned action items (self-scoped via the shared `is_assignee` predicate).
+  "idg.act": { resource: "idg_action_item", action: "update", category: "clinical", abac: "is_assignee" },
+  // Manage recurring policies, cancel/reschedule meetings (cancel/reschedule ALSO require `per_patient_review_floor_clear`).
+  "idg.schedule": { resource: "idg_recurring_policy", action: "manage", category: "clinical", abac: "none" },
+  // Override the per-patient 15-day review-floor guard on CANCEL/RESCHEDULE (audited + step-up; M14-F01 / ADR-0018 D2).
+  "idg.override_review_floor": { resource: "idg_meeting", action: "override_review_floor", category: "compliance", abac: "none" },
+  // Submit minutes amendments (tenant-admin / compliance scope).
+  "idg.amend_minutes": { resource: "idg_minutes", action: "amend", category: "compliance", abac: "none" },
+  // Internal system principal — packet build, action-item auto-close consumers, FHIR/render reads.
+  "idg.system": { resource: "idg_patient_packet", action: "system_read", category: "admin", abac: "none" },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M14 contributed permission keys. */
+export type M14ContributedPermissionKey = keyof typeof M14_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -1355,6 +1391,11 @@ export function m13ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M13_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M14 contributed keys into `permission`-table mirror rows (M14-T05). */
+export function m14ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M14_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -1379,5 +1420,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m11ContributedPermissionMirrorRows(),
     ...m12ContributedPermissionMirrorRows(),
     ...m13ContributedPermissionMirrorRows(),
+    ...m14ContributedPermissionMirrorRows(),
   ];
 }
