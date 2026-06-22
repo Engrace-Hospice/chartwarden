@@ -41,6 +41,15 @@ const PRN_REQUESTED_BY = Type.Union([
   Type.Literal("scheduled_reassessment_protocol"),
 ]);
 
+/** §2.9 BCMA — the optional bedside scan (camera plugin); the server re-derives the canonical `matchResult`. */
+const BARCODE_SCAN = Type.Object({
+  scannedNdc: Type.Optional(Type.String({ maxLength: 64 })),
+  scannedRxnormRxcui: Type.Optional(Type.String({ maxLength: 64 })),
+  scannedLotNumber: Type.Optional(Type.String({ maxLength: 64 })),
+  scannedExpirationDate: Type.Optional(Type.String({ maxLength: 10 })),
+  patientWristbandPayloadDigest: Type.Optional(Type.String({ maxLength: 128 })),
+});
+
 // ── request bodies (§4.2) ───────────────────────────────────────────────────────────────────────────────
 export const RecordAdministrationRequest = Type.Object({
   medicationOrderId: Type.String({ format: "uuid" }),
@@ -69,6 +78,7 @@ export const RecordAdministrationRequest = Type.Object({
       capturedAt: Type.String({ format: "date-time" }),
     }),
   ),
+  barcodeScan: Type.Optional(BARCODE_SCAN),
   notes: Type.Optional(Type.String({ maxLength: 2000 })),
 });
 
@@ -80,6 +90,7 @@ export const RecordCaregiverAttestedRequest = Type.Object({
   administeredUnit: Type.String({ maxLength: 32 }),
   route: Type.String({ maxLength: 64 }),
   caregiverAttestationText: Type.String({ minLength: 1, maxLength: 1000 }),
+  barcodeScan: Type.Optional(BARCODE_SCAN),
   notes: Type.Optional(Type.String({ maxLength: 2000 })),
 });
 

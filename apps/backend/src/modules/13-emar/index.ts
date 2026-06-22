@@ -22,6 +22,13 @@ export {
   getReconciliationProvider,
   registerEmarSeams,
 } from "./seams/index";
+// M13-T09 — the M31 caregiver-attested-portal forward seam (deny-stub; §2.9 D10). Forward declaration only;
+// no registry wiring, no dependsOn edge (mirrors M12's M28 FHIR-publisher deny-stub).
+export {
+  type CaregiverPortalSessionResolution,
+  type CaregiverPortalSessionResolver,
+  denyStubCaregiverPortalSessionResolver,
+} from "./seams/index";
 // M13-T08 — the four §4.7 ABAC predicates M13 owns (`administering_clinician_eligible` /
 // `controlled_substance_witness_eligible` / `caregiver_attested_review_required` /
 // `reconciliation_authoring_eligible`). The §4.6 permission keys M13 contributes to M3 live in @wardenx/auth
@@ -45,11 +52,14 @@ export {
   type AdministrationPolicyView,
   type AdministrationView,
   type DeploymentView,
+  type EmarOrderSeed,
+  type EmarPatientSeed,
   type EmarRouteSeed,
   type EmarRouteService,
   type IvSessionView,
   type MissedDoseView,
   type RecordAdministrationArgs,
+  type RecordCaregiverAttestedArgs,
   type RecordedEmarEvent,
   type ReconciliationDecisionView,
   type ScheduledDoseView,

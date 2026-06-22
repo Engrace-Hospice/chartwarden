@@ -30,6 +30,14 @@ export {
   createMedicationAdministrationProvider,
   createReconciliationProvider,
 } from "./providers";
+// M13-T09 — the M31 caregiver-attested-portal FORWARD seam (deny-stub; §2.9 D10). M31's authenticated portal
+// session resolver is not built (later wave); M13 declares the contract + ships a fail-closed deny-stub. NOT
+// wired into the M1 registry and adds NO dependsOn edge (the M12 M28-publisher deny-stub precedent).
+export {
+  type CaregiverPortalSessionResolution,
+  type CaregiverPortalSessionResolver,
+  denyStubCaregiverPortalSessionResolver,
+} from "./m31-caregiver-attested-portal";
 
 /** Deps for M13's owned-seam registration (slice defaults to the in-memory store). */
 export interface EmarSeamDeps {

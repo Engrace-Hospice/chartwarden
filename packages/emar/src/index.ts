@@ -30,6 +30,11 @@
 // finalization, and the 24h-pre-deadline / overdue timeliness sweep) and the §2.11 D11 IV-continuous session
 // (`iv/`: the `start → (rate_change | pause→resume)* → stop` ordering graph, the titration safety bounds, the
 // controlled-witness/wastage flags the §2.2 commit consumes, and the `getIvContinuousSession` projection). All PURE.
+//
+// M13-T09 lands the §2.9 BCMA barcode-medication-administration verifier (`barcode/`: `evaluateBarcodeScan`
+// re-derives the canonical `barcode_scan_event.match_result` from the scanned NDC/RxCUI/wristband tokens against
+// the M12 order projection + the patient wristband digest, and `barcodeScanBlocks` names the unsafe results the
+// caregiver- and clinician-administration write paths refuse). PURE, shared with the Capacitor mobile eMAR.
 
 export * from "./modes/catalog";
 export * from "./lifecycle";
@@ -41,3 +46,4 @@ export * from "./comfort-kit";
 export * from "./cascade";
 export * from "./reconciliation";
 export * from "./iv";
+export * from "./barcode";

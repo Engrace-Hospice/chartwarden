@@ -105,6 +105,18 @@ const witnessHeader = (request: FastifyRequest): string | undefined => {
   return typeof h === "string" && h.length > 0 ? h : undefined;
 };
 
+// The per-mode `data` body is carried opaquely at the route boundary (the server discriminates on `mode`). The
+// §5.11 five-rights `route`/`dose` rights and the §2.9 BCMA gate read the discrete single-dose fields out of it.
+type DataFields = { route?: string; doseAmount?: number | null; doseUnit?: string | null };
+const dataFieldsOf = (data: unknown): DataFields => {
+  const d = (data ?? {}) as { route?: unknown; administeredAmount?: unknown; administeredUnit?: unknown };
+  return {
+    route: typeof d.route === "string" ? d.route : undefined,
+    doseAmount: typeof d.administeredAmount === "number" ? d.administeredAmount : null,
+    doseUnit: typeof d.administeredUnit === "string" ? d.administeredUnit : null,
+  };
+};
+
 export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): void {
   const { service } = deps;
 
@@ -112,11 +124,13 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
   app.post("/api/v1/administrations", { preHandler: [RECORD, ABAC_ADMINISTER] }, async (request, reply) => {
     const { organizationId, userId } = actorOf(request);
     const b = parse(RecordAdministrationRequest, request.body);
+    const data = dataFieldsOf(b.data);
     const res = await service.recordAdministration(organizationId, userId, {
       medicationOrderId: b.medicationOrderId, medClass: b.medClass, mode: b.mode, administeredAt: b.administeredAt,
       scheduledDoseId: b.scheduledDoseId, comfortKitDeploymentId: b.comfortKitDeploymentId, encounterId: b.encounterId,
       prn: b.prn ? { triggeringPrnReason: b.prn.triggeringPrnReason, requestedByKind: b.prn.requestedByKind } : undefined,
       lateEntryReason: b.lateEntryReason, offlineCapture: b.offlineCapture, witnessToken: witnessHeader(request),
+      barcodeScan: b.barcodeScan, route: data.route, doseAmount: data.doseAmount, doseUnit: data.doseUnit,
     });
     return reply.code(201).send(res);
   });
@@ -138,6 +152,7 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
     const b = parse(RecordCaregiverAttestedRequest, request.body);
     const res = await service.recordCaregiverAttested(organizationId, {
       patientId: b.patientId, medicationOrderId: b.medicationOrderId, administeredAt: b.administeredAt, caregiverSessionId: userId,
+      route: b.route, doseAmount: b.administeredAmount, doseUnit: b.administeredUnit, barcodeScan: b.barcodeScan,
     });
     return reply.code(201).send(res);
   });
@@ -214,11 +229,15 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
     const res = await service.offlineSync(
       organizationId,
       userId,
-      b.rows.map((r) => ({
-        medicationOrderId: r.medicationOrderId, medClass: r.medClass, mode: r.mode, administeredAt: r.administeredAt,
-        scheduledDoseId: r.scheduledDoseId, comfortKitDeploymentId: r.comfortKitDeploymentId, encounterId: r.encounterId,
-        offlineCapture: r.offlineCapture,
-      })),
+      b.rows.map((r) => {
+        const data = dataFieldsOf(r.data);
+        return {
+          medicationOrderId: r.medicationOrderId, medClass: r.medClass, mode: r.mode, administeredAt: r.administeredAt,
+          scheduledDoseId: r.scheduledDoseId, comfortKitDeploymentId: r.comfortKitDeploymentId, encounterId: r.encounterId,
+          offlineCapture: r.offlineCapture, barcodeScan: r.barcodeScan,
+          route: data.route, doseAmount: data.doseAmount, doseUnit: data.doseUnit,
+        };
+      }),
     );
     return reply.code(201).send(res);
   });

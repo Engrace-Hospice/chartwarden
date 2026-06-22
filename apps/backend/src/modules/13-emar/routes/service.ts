@@ -13,7 +13,16 @@
 //
 // This service ALSO implements {@link EmarAbacResolver} so the §4.7 predicates resolve over the same dataset
 // (M12-T08 precedent: the backend is both the route service and the ABAC resolver).
-import { resolveLateEntryTier } from "@wardenx/emar";
+import {
+  AdministrationStateError,
+  type BarcodeMatchResult,
+  type BarcodeScanInput,
+  type FiveRightsOrderContext,
+  assertFiveRights,
+  barcodeScanBlocks,
+  evaluateBarcodeScan,
+  resolveLateEntryTier,
+} from "@wardenx/emar";
 import type {
   AdministrationActorKind,
   AdministrationLateEntryTier,
@@ -61,6 +70,8 @@ export interface AdministrationView {
   readonly isComfortKitDrawdown: boolean;
   readonly requiresRnReview: boolean;
   readonly supersededById: string | null;
+  /** §2.9 BCMA — the canonical `barcode_scan_event.match_result` for this dose, or null when no scan was captured. */
+  readonly barcodeMatchResult: BarcodeMatchResult | null;
 }
 
 export interface ScheduledDoseView {
@@ -129,12 +140,25 @@ export interface RecordAdministrationArgs {
   readonly lateEntryReason?: string;
   readonly offlineCapture?: { deviceId: string; localId: string; capturedAt: string };
   readonly witnessToken?: string;
+  /** §2.9 BCMA — the bedside scan re-verified against the M12 order + patient wristband at write time. */
+  readonly barcodeScan?: BarcodeScanInput;
+  /** The per-dose route (lifted from the per-mode `data` body) for the §5.11 five-rights `route` right. */
+  readonly route?: string;
+  /** The administered amount + unit (from `data`) for the §5.11 `dose` right. */
+  readonly doseAmount?: number | null;
+  readonly doseUnit?: string | null;
 }
 export interface RecordCaregiverAttestedArgs {
   readonly patientId: string;
   readonly medicationOrderId: string;
   readonly administeredAt: string;
   readonly caregiverSessionId: string;
+  /** §2.9 — the caregiver-entered route/dose, run through the SAME §5.11 five-rights validator as the clinician path. */
+  readonly route: string;
+  readonly doseAmount: number;
+  readonly doseUnit: string;
+  /** §2.9 BCMA — a caregiver-side scan, when the home kit medication is barcoded. */
+  readonly barcodeScan?: BarcodeScanInput;
 }
 export interface WitnessAttestArgs {
   readonly patientId: string;
@@ -238,6 +262,26 @@ export interface EmarDeploymentSeed {
   readonly admissionId: string;
   readonly disposalStatus?: string;
 }
+/** A seeded M12 order projection (the slice's `MedicationOrderProvider.getAdministrationContext` D6 + the
+ * §5.11 five-rights order context + the §2.9 BCMA drug identity). Absent → the slice treats the order as freely
+ * administerable and skips the order-context gates (the existing in-mem default). */
+export interface EmarOrderSeed {
+  readonly medicationOrderId: string;
+  readonly patientId: string;
+  readonly route: string;
+  readonly doseAmount?: number | null;
+  readonly doseUnit?: string | null;
+  /** D6 — `getAdministrationContext.allowAdministration`; false → the write returns 422 ADMINISTRATION_BLOCKED. */
+  readonly administerable?: boolean;
+  readonly blockedReasons?: readonly string[];
+  readonly rxnormRxcui?: string | null;
+  readonly ndc?: string | null;
+}
+/** A seeded patient identity for the §2.9 BCMA wristband match. */
+export interface EmarPatientSeed {
+  readonly patientId: string;
+  readonly wristbandPayloadDigest?: string | null;
+}
 export interface EmarRouteSeed {
   readonly now?: () => string;
   readonly witnessSecret?: string;
@@ -249,6 +293,8 @@ export interface EmarRouteSeed {
   readonly missedDoses?: readonly EmarMissedDoseSeed[];
   readonly worksheets?: readonly EmarWorksheetSeed[];
   readonly deployments?: readonly EmarDeploymentSeed[];
+  readonly orders?: readonly EmarOrderSeed[];
+  readonly patients?: readonly EmarPatientSeed[];
   readonly signedEncountersReader?: SignedEncountersReader;
 }
 
@@ -274,6 +320,7 @@ interface AdminRow {
   isComfortKitDrawdown: boolean;
   requiresRnReview: boolean;
   supersededById: string | null;
+  barcodeMatchResult: BarcodeMatchResult | null;
 }
 interface WorksheetRow {
   id: string;
@@ -314,8 +361,13 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
       encounterId: null, scheduledDoseId: null, comfortKitDeploymentId: null, ivSessionId: null,
       isControlledSubstance: false, isComfortKitDrawdown: false,
       requiresRnReview: a.requiresRnReview ?? a.actorKind === "caregiver_attested", supersededById: null,
+      barcodeMatchResult: null,
     });
   }
+  const orders = new Map<string, EmarOrderSeed>();
+  for (const o of seed.orders ?? []) orders.set(o.medicationOrderId, o);
+  const patients = new Map<string, EmarPatientSeed>();
+  for (const p of seed.patients ?? []) patients.set(p.patientId, p);
   const scheduled = new Map<string, EmarScheduledDoseSeed & { status: ScheduledDoseStatus }>();
   for (const s of seed.scheduledDoses ?? []) scheduled.set(s.id, { ...s, status: s.status ?? "pending" });
   const missed = new Map<string, EmarMissedDoseSeed & { acknowledgedAt: string | null }>();
@@ -365,6 +417,50 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
     return within.length > 0 ? within[within.length - 1]!.encounterId : null;
   }
 
+  // D6 — the bidirectional-consistency consult against M12's `getAdministrationContext`. The slice resolves the
+  // order from its seed; an unseeded order is treated as freely administerable (the in-mem default). A seeded
+  // order with `administerable=false` blocks the write with 422 ADMINISTRATION_BLOCKED, echoing the reasons.
+  function assertAdministerable(medicationOrderId: string): void {
+    const o = orders.get(medicationOrderId);
+    if (o && o.administerable === false) {
+      const reasons = o.blockedReasons && o.blockedReasons.length > 0 ? o.blockedReasons.join(", ") : "order not active";
+      throw new AdministrationStateError("ADMINISTRATION_BLOCKED", `administration blocked by M12 order state: ${reasons}`);
+    }
+  }
+
+  // §5.11 — run the five-rights validator against the seeded M12 order context. Skipped when the order is not
+  // seeded (the slice's default; the real path always has an M12 projection). `route`/`doseAmount`/`doseUnit`
+  // come from the per-mode `data` body (clinician) or the caregiver request body.
+  function assertFiveRightsForOrder(
+    medicationOrderId: string, patientId: string,
+    req: { route?: string; doseAmount?: number | null; doseUnit?: string | null }, administeredAt: string,
+  ): void {
+    const o = orders.get(medicationOrderId);
+    if (!o || req.route === undefined) return;
+    const orderContext: FiveRightsOrderContext = {
+      patientId: o.patientId, medicationOrderId: o.medicationOrderId, route: o.route,
+      doseAmount: o.doseAmount ?? null, doseUnit: o.doseUnit ?? null,
+    };
+    assertFiveRights(
+      { patientId, medicationOrderId, route: req.route, doseAmount: req.doseAmount ?? null, doseUnit: req.doseUnit ?? null, administeredAt },
+      orderContext, now(),
+    );
+  }
+
+  // §2.9 BCMA — re-derive the canonical barcode `match_result` against the seeded order + patient wristband, and
+  // refuse the write on an unsafe result (wrong_patient/wrong_drug/expired). Records nothing in the slice beyond
+  // the `barcodeMatchResult` carried on the administration view; returns null when no scan was captured.
+  function evaluateBarcode(medicationOrderId: string, patientId: string, scan: BarcodeScanInput | undefined, administeredAt: string): BarcodeMatchResult | null {
+    if (!scan) return null;
+    const o = orders.get(medicationOrderId);
+    const orderContext = o ? { orderActive: o.administerable !== false, rxnormRxcui: o.rxnormRxcui ?? null, ndc: o.ndc ?? null } : null;
+    const p = patients.get(patientId);
+    const result = evaluateBarcodeScan(scan, orderContext, { wristbandPayloadDigest: p?.wristbandPayloadDigest ?? null }, administeredAt.slice(0, 10));
+    if (barcodeScanBlocks(result))
+      throw new AdministrationStateError("BARCODE_VERIFICATION_FAILED", `barcode verification failed: ${result}`);
+    return result;
+  }
+
   return {
     // ── EmarAbacResolver ─────────────────────────────────────────────────────────────────────────────────
     async loadWitnessFacts(orgId: string, witnessUserId: string): Promise<WitnessAbacFacts | null> {
@@ -407,7 +503,11 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
       const id = nextId("adm");
       // The patient/admission are resolved from M12 in prod; the slice derives from the scheduled dose or seed.
       const sched = args.scheduledDoseId ? scheduled.get(args.scheduledDoseId) : undefined;
-      const patientId = sched?.patientId ?? findPatient(args);
+      const patientId = sched?.patientId ?? orders.get(args.medicationOrderId)?.patientId ?? findPatient(args);
+      // D6 + §5.11 + §2.9 BCMA — the order-context gates run before any state mutation.
+      assertAdministerable(args.medicationOrderId);
+      assertFiveRightsForOrder(args.medicationOrderId, patientId, args, args.administeredAt);
+      const barcodeMatchResult = evaluateBarcode(args.medicationOrderId, patientId, args.barcodeScan, args.administeredAt);
       const encounterId = args.encounterId ?? (await autoLinkEncounter(orgId, patientId, args.administeredAt, args.mode));
       const row: AdminRow = {
         id, organizationId: orgId, patientId, admissionId: "00000000-0000-4000-8000-0000000000bb",
@@ -416,7 +516,7 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
         administeringClinicianMembershipId: m?.membershipId ?? userId, witnessMembershipId, encounterId,
         scheduledDoseId: args.scheduledDoseId ?? null, comfortKitDeploymentId: args.comfortKitDeploymentId ?? null,
         ivSessionId: null, isControlledSubstance: isControlled, isComfortKitDrawdown, requiresRnReview: false,
-        supersededById: null,
+        supersededById: null, barcodeMatchResult,
       };
       admins.set(id, row);
       if (sched) sched.status = "administered";
@@ -448,6 +548,13 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
     },
 
     async recordCaregiverAttested(orgId, args): Promise<AdministrationView> {
+      // §2.9 D10 — even on the caregiver path the M12 consistency check (D6) is MANDATORY and the §5.11
+      // five-rights validation runs against the order; a caregiver-reported dose the order does not authorize
+      // is echoed back through M31 as 422 FIVE_RIGHTS_VIOLATION. The controlled-substance double-witness rule
+      // does NOT apply (a caregiver is one person); encounter_id stays nullable (D9).
+      assertAdministerable(args.medicationOrderId);
+      assertFiveRightsForOrder(args.medicationOrderId, args.patientId, args, args.administeredAt);
+      const barcodeMatchResult = evaluateBarcode(args.medicationOrderId, args.patientId, args.barcodeScan, args.administeredAt);
       const id = nextId("adm");
       const row: AdminRow = {
         id, organizationId: orgId, patientId: args.patientId, admissionId: "00000000-0000-4000-8000-0000000000bb",
@@ -456,6 +563,7 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
         lateEntryTier: "normal", administeringClinicianMembershipId: null, witnessMembershipId: null,
         encounterId: null, scheduledDoseId: null, comfortKitDeploymentId: null, ivSessionId: null,
         isControlledSubstance: false, isComfortKitDrawdown: false, requiresRnReview: true, supersededById: null,
+        barcodeMatchResult,
       };
       admins.set(id, row);
       emit("m13.administration.recorded_caregiver_attested", {
@@ -518,7 +626,7 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
         administeringClinicianMembershipId: memberships.get(userId)?.membershipId ?? userId, witnessMembershipId: null,
         encounterId: null, scheduledDoseId: args.scheduledDoseId ?? null, comfortKitDeploymentId: null, ivSessionId: null,
         isControlledSubstance: args.medClass === "controlled_substance", isComfortKitDrawdown: false,
-        requiresRnReview: false, supersededById: null,
+        requiresRnReview: false, supersededById: null, barcodeMatchResult: null,
       };
       admins.set(id, row);
       emit("m13.administration.refused", { administrationRecordId: id, patientId: args.patientId, medicationOrderId: args.medicationOrderId, refusalAt: args.refusedAt });

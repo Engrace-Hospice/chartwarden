@@ -21,6 +21,8 @@ export const M13_ERROR_STATUS = {
   ADMINISTRATION_BLOCKED: 422,
   // §2.2 / §5.11 — the five-rights validation failed (right patient/drug/dose/route/time).
   FIVE_RIGHTS_VIOLATION: 422,
+  // §2.9 BCMA — the bedside barcode scan re-derived an unsafe match_result (wrong_patient/wrong_drug/expired).
+  BARCODE_VERIFICATION_FAILED: 422,
   // §2.2 / D8 — the late-entry tier could not be resolved against (administeredAt, recordedAt).
   LATE_ENTRY_TIER_UNRESOLVED: 422,
   // §2.7 D5 — the comfort-kit drawdown decrement would go negative; the administration is rejected.
