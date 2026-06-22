@@ -19,7 +19,8 @@ export type SchedulingReasonField =
   | "reschedule_reason"
   | "no_show_reason"
   | "evv_missing_reason"
-  | "denial_reason";
+  | "denial_reason"
+  | "dismissal_reason";
 
 /**
  * One in-transaction (or, for alerts, fire-and-forget) side effect a transition declares (§2.4). The

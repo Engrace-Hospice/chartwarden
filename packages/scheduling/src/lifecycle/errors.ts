@@ -60,6 +60,14 @@ export const M17_ERROR_STATUS = {
   RECURRENCE_BYDAY_INVALID: 422,
   // §2.2.3 `discontinue` — the policy is already discontinued.
   RECURRENCE_POLICY_NOT_ACTIVE: 409,
+
+  // ── §2.2.4 / §7.7 D5 visit_proposal (frequency-driven proposal worker) ──────────────────────────────
+  // §7.7 — the M7/M15 `frequency` string does not match the `count:unit:period` grammar.
+  FREQUENCY_UNPARSEABLE: 422,
+  // §2.2.4 — the proposal transition graph (an event from a state that does not accept it).
+  ILLEGAL_PROPOSAL_TRANSITION: 409,
+  // §2.2.4 `dismiss` — a dismissal must carry a reason (denylisted `dismissal_reason`).
+  PROPOSAL_DISMISSAL_REASON_REQUIRED: 422,
 } as const;
 
 /** A machine-readable M17 scheduling-lifecycle failure code (§2.2 / §2.3 / §7.7). */
