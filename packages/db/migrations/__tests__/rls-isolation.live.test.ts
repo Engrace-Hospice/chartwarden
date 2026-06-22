@@ -1771,4 +1771,132 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       expect(r.rows[0].after.since_cursor_iso).toBe("2026-06-01T00:00:00.000Z"); // structural column passes through
     });
   });
+
+  // ── M17 Scheduling — org-scoped RLS, append-only no-DELETE, PHI-column audit scrub (§3.5 / §3.6 / §9.3/§9.4)
+  // 0044/0045 (M17) applied above. Proves on REAL Postgres: `visit` (the central scheduling aggregate,
+  // PARTITION BY RANGE service_date, D14) is tenant-isolated on app.org_id even with app authorization stubbed
+  // open (§9.4 layer-independence); the WITH CHECK blocks a cross-tenant write; wardenx_app has NO DELETE on
+  // `visit` or `visit_state_history` (visits are cancelled/voided + the history is append-only — destruction is
+  // the admin eraseFn, §3.6); the M4 write-audit trigger scrubs the §3.6 free-text denylist on `visit`
+  // (scheduler_internal_notes / cancellation_reason / reschedule_reason / no_show_reason / evv_missing_reason)
+  // and the `reason` column on `visit_state_history`, while the structural columns (status / visit_purpose /
+  // to_state) pass through. `visit.assigned_membership_id` is a real FK to membership, so a user + membership
+  // are seeded per org first.
+  describe("M17 Scheduling — cross-tenant isolation, no-DELETE, PHI-column audit scrub (§3.5 / §3.6 / §9.3 / §9.4)", () => {
+    const PE_A17 = "ea000000-0000-0000-0000-0000000000d1";
+    const PE_B17 = "eb000000-0000-0000-0000-0000000000e1";
+    const LOC_A17 = "ea000000-0000-0000-0000-0000000000d2";
+    const LOC_B17 = "eb000000-0000-0000-0000-0000000000e2";
+    const USER_A17 = "ea000000-0000-0000-0000-0000000000d3";
+    const USER_B17 = "eb000000-0000-0000-0000-0000000000e3";
+    const MEM_A17 = "ea000000-0000-0000-0000-0000000000d4";
+    const MEM_B17 = "eb000000-0000-0000-0000-0000000000e4";
+    const VIS_A17 = "ea000000-0000-0000-0000-0000000000d5";
+    const VIS_B17 = "eb000000-0000-0000-0000-0000000000e5";
+    const VSH_A17 = "ea000000-0000-0000-0000-0000000000d6";
+    // The visit insert: NOT NULL tenancy spine + the assignment + schedule + the §3.6 free-text PHI columns.
+    const VCOLS =
+      "(id,organization_id,provider_entity_id,location_id,patient_id,admission_id,assigned_membership_id,assigned_discipline_at_assignment,visit_purpose,visit_setting,scheduled_started_at,scheduled_ended_at,service_date,scheduler_internal_notes,cancellation_reason)";
+    // id=$1, org=$2, pe=$3, loc=$4, assigned_membership=$5; patient/admission synthetic; the two free-text
+    // columns carry PHI so the §3.6 audit scrub is observable; service_date=today → the current monthly partition.
+    const VSEED =
+      "$1,$2,$3,$4,gen_random_uuid(),gen_random_uuid(),$5,'rn','routine_visit','patient_home',now(),now()+interval '1 hour',now()::date,'internal note — free text PHI','cancel narrative — free text PHI'";
+
+    beforeAll(async () => {
+      await db.query(
+        `INSERT INTO provider_entity (id,organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
+           VALUES ($1,$2,'CCN-M17A','M17 A','NPI-M17A','enc','12-31'),
+                  ($3,$4,'CCN-M17B','M17 B','NPI-M17B','enc','12-31')`,
+        [PE_A17, ORG_A, PE_B17, ORG_B],
+      );
+      await db.query(
+        `INSERT INTO location (id,provider_entity_id,name,address_line1,city,state,postal_code,timezone)
+           VALUES ($1,$2,'L17A','1 St','Town','OR','97000','America/Los_Angeles'),
+                  ($3,$4,'L17B','1 St','Town','OR','97000','America/Los_Angeles')`,
+        [LOC_A17, PE_A17, LOC_B17, PE_B17],
+      );
+      await db.query(`INSERT INTO "user" (id,email) VALUES ($1,'m17a@x.test'),($2,'m17b@x.test')`, [
+        USER_A17,
+        USER_B17,
+      ]);
+      await db.query(
+        `INSERT INTO membership (id,user_id,organization_id,status)
+           VALUES ($1,$2,$3,'active'),($4,$5,$6,'active')`,
+        [MEM_A17, USER_A17, ORG_A, MEM_B17, USER_B17, ORG_B],
+      );
+      // One visit per org (superuser → RLS bypassed).
+      await db.query(`INSERT INTO visit ${VCOLS} VALUES (${VSEED})`, [VIS_A17, ORG_A, PE_A17, LOC_A17, MEM_A17]);
+      await db.query(`INSERT INTO visit ${VCOLS} VALUES (${VSEED})`, [VIS_B17, ORG_B, PE_B17, LOC_B17, MEM_B17]);
+      // One state-history row on Org A's visit (append-only; reason is denylisted, to_state structural).
+      await db.query(
+        `INSERT INTO visit_state_history (id,organization_id,provider_entity_id,location_id,visit_id,from_state,to_state,reason)
+           VALUES ($1,$2,$3,$4,$5,'proposed','published','transition narrative — free text PHI')`,
+        [VSH_A17, ORG_A, PE_A17, LOC_A17, VIS_A17],
+      );
+    });
+
+    it("§9.3 Org A sees ONLY its own visit (RLS blocks cross-tenant reads, auth stubbed open)", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM visit WHERE id=$1", [VIS_A17]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM visit WHERE id=$1", [VIS_A17]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§3.5 Org B cannot INSERT a visit into Org A (WITH CHECK blocks the cross-tenant write)", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO visit ${VCOLS} VALUES (gen_random_uuid(),$1,$2,$3,gen_random_uuid(),gen_random_uuid(),$4,'rn','routine_visit','patient_home',now(),now()+interval '1 hour',now()::date,NULL,NULL)`,
+            [ORG_A, PE_A17, LOC_A17, MEM_A17],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§3.6 visit + visit_state_history have NO DELETE grant for wardenx_app (visits void, history is append-only)", async () => {
+      await expect(
+        withOrg(ORG_A, () => db.query("DELETE FROM visit WHERE id=$1", [VIS_A17])),
+      ).rejects.toThrow();
+      await expect(
+        withOrg(ORG_A, () => db.query("DELETE FROM visit_state_history WHERE id=$1", [VSH_A17])),
+      ).rejects.toThrow();
+    });
+
+    it("§3.4 visit_state_history is org-scoped — Org A sees its transition row, Org B sees none", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM visit_state_history WHERE id=$1", [VSH_A17]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM visit_state_history WHERE id=$1", [VSH_A17]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§3.6 the M4 write-audit trigger scrubbed the visit free-text denylist; structural columns pass through", async () => {
+      const r = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='visit' AND event_type='visit.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.scheduler_internal_notes).toBe("<changed>"); // §3.6 free-text PHI scrub
+      expect(r.rows[0].after.cancellation_reason).toBe("<changed>"); // §3.6 free-text PHI scrub
+      expect(r.rows[0].after.status).toBe("proposed"); // structural column passes through
+      expect(r.rows[0].after.visit_purpose).toBe("routine_visit"); // structural column passes through
+    });
+
+    it("§3.6 the M4 write-audit trigger scrubbed the visit_state_history reason; to_state passes through", async () => {
+      const r = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='visit_state_history' AND event_type='visit_state_history.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.reason).toBe("<changed>"); // §3.6 free-text PHI scrub
+      expect(r.rows[0].after.to_state).toBe("published"); // structural column passes through
+    });
+  });
 });
