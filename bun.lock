@@ -163,6 +163,13 @@
         "@wardenx/types": "workspace:*",
       },
     },
+    "packages/idg": {
+      "name": "@wardenx/idg",
+      "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
+    },
     "packages/inpatient": {
       "name": "@wardenx/inpatient",
       "version": "0.0.0",
@@ -628,6 +635,8 @@
     "@wardenx/hearthnote": ["@wardenx/hearthnote@workspace:packages/hearthnote"],
 
     "@wardenx/hope": ["@wardenx/hope@workspace:packages/hope"],
+
+    "@wardenx/idg": ["@wardenx/idg@workspace:packages/idg"],
 
     "@wardenx/inpatient": ["@wardenx/inpatient@workspace:packages/inpatient"],
 

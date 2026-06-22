@@ -72,6 +72,9 @@
       "path": "./packages/hope"
     },
     {
+      "path": "./packages/idg"
+    },
+    {
       "path": "./packages/inpatient"
     },
     {

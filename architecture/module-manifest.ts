@@ -497,7 +497,11 @@ export const MODULES: ModuleDef[] = [
   {
     id: 14,
     name: "IDG",
-    codePaths: ["apps/backend/src/modules/14-idg"],
+    codePaths: [
+      "packages/idg",
+      "apps/backend/src/modules/14-idg",
+      "apps/web/src/modules/14-idg",
+    ], // +packages/idg: §3.1 M14-owned feature pkg (quorum/schedule/discipline-view policy → lifecycle/packet-builder), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M14-T07
     dependsOn: [7, 8, 36],
     ownedTables: [
       "idg_meeting",

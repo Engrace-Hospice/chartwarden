@@ -1622,3 +1622,75 @@ export const offlineSyncStatus = pgEnum("offline_sync_status", [
   "synced",
   "rejected",
 ]);
+
+// ── Module 14 (Interdisciplinary Group / IDG) — §3.2 enums (M14-T01) ──────────────────────────────────
+
+/** `idg_meeting_status` — the §2.2 meeting lifecycle. `scheduled → packets_building → packets_ready →
+ * live → adjourned`, with terminal `cancelled` / `rescheduled` branches. */
+export const idgMeetingStatus = pgEnum("idg_meeting_status", [
+  "scheduled",
+  "packets_building",
+  "packets_ready",
+  "live",
+  "adjourned",
+  "cancelled",
+  "rescheduled",
+]);
+
+/** `idg_attendance_status` — per-attendee participation (§1.1 / §2.7). */
+export const idgAttendanceStatus = pgEnum("idg_attendance_status", [
+  "present",
+  "tardy",
+  "partial",
+  "absent",
+  "excused",
+]);
+
+/** `idg_agenda_item_kind` — the §2.7 agenda-item taxonomy (carry-forward of overdue action items is its
+ * own kind so the next meeting's cover surfaces it). */
+export const idgAgendaItemKind = pgEnum("idg_agenda_item_kind", [
+  "patient_review",
+  "carry_forward",
+  "administrative_note",
+  "family_meeting_setup",
+  "other",
+]);
+
+/** `idg_decision_kind` — the §2.6 D4 canonical decision taxonomy; the discriminator on the
+ * `idg.decision_recorded` payload union (`IdgDecisionRecordedPayload`). */
+export const idgDecisionKind = pgEnum("idg_decision_kind", [
+  "care_plan_update",
+  "order_request",
+  "medication_recommendation",
+  "level_of_care_consideration",
+  "recertification_consideration",
+  "family_meeting_needed",
+  "bereavement_risk_flag",
+  "referral",
+  "team_note",
+]);
+
+/** `idg_decision_status` — `open` at record-time; flips to `emitted` in the adjournment outbox burst;
+ * `superseded` when a later meeting's decision replaces it (§2.7 / §2.8). */
+export const idgDecisionStatus = pgEnum("idg_decision_status", ["open", "emitted", "superseded"]);
+
+/** `idg_action_item_status` — the §1.1 / D8 action-item lifecycle; `auto_closed` is set by the
+ * downstream-artifact auto-close engine (care-plan version / order / encounter / medication order). */
+export const idgActionItemStatus = pgEnum("idg_action_item_status", [
+  "open",
+  "in_progress",
+  "completed",
+  "cancelled",
+  "auto_closed",
+]);
+
+/** `idg_action_item_linked_kind` — which downstream absorbing artifact closes an action item (D8). */
+export const idgActionItemLinkedKind = pgEnum("idg_action_item_linked_kind", [
+  "care_plan_version",
+  "order",
+  "encounter",
+  "medication_order",
+]);
+
+/** `idg_minutes_status` — append-only-annotation while `in_progress`; immutable on `final` (D10). */
+export const idgMinutesStatus = pgEnum("idg_minutes_status", ["in_progress", "final"]);
