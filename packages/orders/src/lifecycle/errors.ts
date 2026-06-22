@@ -50,6 +50,20 @@ export const M11_ERROR_STATUS = {
   ALREADY_COSIGNED: 409,
   // §2.5 / §6 — the cosigner's role does not satisfy the required cosign axis.
   COSIGNER_NOT_ELIGIBLE: 403,
+  // §2.3 D3 — a tenant `order_verbal_policy.window_hours` set above the 48h platform floor (tighten-only).
+  VERBAL_WINDOW_EXCEEDS_FLOOR: 422,
+  // §2.3 D3 — a tenant `order_verbal_policy.window_hours` below the minimum (must be ≥ 1).
+  VERBAL_WINDOW_OUT_OF_RANGE: 422,
+  // §2.4 D5 — a standing-order template kind ∉ {lab, supply, ancillary_service}.
+  STANDING_KIND_NOT_ELIGIBLE: 422,
+  // §2.4 D5 — the standing-order template is not yet signed (the spawn signature-anchor is missing).
+  STANDING_ORDER_NOT_SIGNED: 412,
+  // §2.4 D5 — a spawn was attempted from a non-`active` standing-order template.
+  STANDING_ORDER_NOT_ACTIVE: 409,
+  // §2.4 D5 — `now()` is outside the template's `[effective_from, effective_until]` bounds.
+  STANDING_OUTSIDE_EFFECTIVE_WINDOW: 422,
+  // §2.4 D5 — the template's `max_spawns` cap has been reached.
+  STANDING_MAX_SPAWNS_REACHED: 409,
 } as const;
 
 /** A machine-readable M11 order-lifecycle failure code (§2.2 / §2.5). */

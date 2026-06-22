@@ -10,9 +10,14 @@
 // `@wardenx/domain` leaf because it reads the local `KIND_CATALOG` — a feature-package dependency the pure
 // floor must not take on (the dependency-cruiser `domain-is-pure` direction). IO-free, `@wardenx/types`-only.
 //
+// M11-T04 lands the pure verbal-order timer (`lifecycle/verbal-window.ts`: §2.3 D3 tighten-only floor +
+// wall-clock/business-hours deadline math + 12h/2h pre-expiry tiers + expiry plan) and the standing-order
+// template/spawn engine (`lifecycle/standing-order.ts`: §2.4 D5 cadence next-spawn-at + spawn gate + spawn/
+// create/discontinue plans), over the shared org-timezone clock math in `lifecycle/time.ts`.
+//
 // Later tasks add: the per-kind TypeBox `data` schemas + cross-field validators + terminology bindings
-// (`kinds/<kind>/`, M11-T06); the verbal-window / standing-order math (M11-T04); the §4.9 M36 typed-alert
-// builders (`alerts.ts`, M11-T07); the typed `m11.*` outbox payload assemblers (`outbox.ts`, M11-T07).
+// (`kinds/<kind>/`, M11-T06); the §4.9 M36 typed-alert builders (`alerts.ts`, M11-T07); the typed `m11.*`
+// outbox payload assemblers (`outbox.ts`, M11-T07).
 
 export * from "./catalog";
 export * from "./seams";

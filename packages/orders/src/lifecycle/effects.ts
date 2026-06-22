@@ -7,7 +7,12 @@
 // DECLARATIVELY as data; the service layer (M11-T06+) executes them inside the order's optimistic-locked
 // transaction (load FOR UPDATE on version → run guards → update row → write child rows → audit() →
 // outbox.publish()). Keeping them as data makes the machines deterministic and unit-testable with no DB.
-import type { M11EventName, OrderSignatureKind, OrderDiscontinuationReason } from "@wardenx/types";
+import type {
+  M11EventName,
+  OrderSignatureKind,
+  OrderDiscontinuationReason,
+  VerbalOrderStatus,
+} from "@wardenx/types";
 
 /**
  * One in-transaction side effect a transition declares (§2.2 / §2.6). The service layer is the only place
@@ -26,6 +31,8 @@ export type OrderSideEffect =
   | { readonly kind: "write_discontinuation"; readonly reason: OrderDiscontinuationReason }
   /** Set the cosign overlay markers on the order row (`cosign_required` / `cosign_status`, §2.2). */
   | { readonly kind: "set_cosign_overlay"; readonly required: boolean; readonly status: "pending" | "attached" }
+  /** Flip the linked `verbal_order` row's own status (§2.3 — `signed_in_time` / `expired_unsigned`). */
+  | { readonly kind: "set_verbal_status"; readonly status: VerbalOrderStatus }
   /** Set a timestamp/marker column on the aggregate (e.g. `signed_at`, `expired_at`, `completed_at`). */
   | { readonly kind: "set_timestamp"; readonly field: string }
   /** Increment the order row's optimistic-concurrency `version` (every signed-state mutation, §2.6). */
