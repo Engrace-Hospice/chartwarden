@@ -8,7 +8,12 @@
 // (M18-T06/T07) executes them inside one transaction. Keeping them as data makes the recorder deterministic
 // and unit-testable with no DB. `outbox` events are restricted to the §4.10 `m18.evv.*` catalog (the
 // dispatcher + `events-by-m18.ts` registration land in M18-T07).
-import type { EvvAlertPayload, EvvMissingResolutionKind, M18EventName } from "@wardenx/types";
+import type {
+  EvvAlertPayload,
+  EvvMissingResolutionKind,
+  EvvMissingResolutionStatus,
+  M18EventName,
+} from "@wardenx/types";
 import type { GeofenceEvaluation } from "./geofence";
 
 /** The §4.9 typed-alert discriminator the `alert` effect names (the payload is assembled in M18-T07). */
@@ -36,11 +41,17 @@ export type EvvSideEffect =
   /** §2.4 check-out — auto-close any `open` `missing_checkout` resolution for this visit via
    * `closed_system_checkout_received` (system-driven; no human attestation). Drives the D6 machine in T04. */
   | { readonly kind: "close_missing_resolution_system"; readonly resolutionKind: EvvMissingResolutionKind }
-  /** §2.4 — persist a denylisted free-text reason on the event row (§3.6 audit scrub records `<changed>`). */
+  /** §2.2.4 D6 (T04) — move an `evv_missing_resolution` row to a terminal `closed_*` status (with the
+   * optimistic `version` bump, §2.5). The machine emits exactly one of these per close. */
+  | { readonly kind: "set_resolution_status"; readonly status: EvvMissingResolutionStatus }
+  /** §2.2.4 / §2.3 (T04) — stamp `resolved_by_membership_id` + `resolved_at` on a HUMAN close (clinician
+   * self-attest, supervisor override, documented-at-encounter). System closes do not emit this. */
+  | { readonly kind: "stamp_resolver" }
+  /** §2.4 — persist a denylisted free-text reason on the event / resolution row (§3.6 scrub records `<changed>`). */
   | { readonly kind: "capture_reason"; readonly field: EvvReasonField; readonly value: string };
 
-/** The free-text reason columns a recording may capture (each denylisted from audit per §3.6). */
-export type EvvReasonField = "geofence_breach_reason" | "correction_reason";
+/** The free-text reason columns a recording / resolution may capture (each denylisted from audit per §3.6). */
+export type EvvReasonField = "geofence_breach_reason" | "correction_reason" | "resolution_reason";
 
 /** Collect the outbox event names a side-effect list declares, order-preserving (test/assembly helper). */
 export function outboxEvents(effects: readonly EvvSideEffect[]): M18EventName[] {

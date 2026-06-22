@@ -10,9 +10,9 @@
 // (M18-T02 / 0046+0047) repeat the strongest of these at the schema layer as defense in depth. The route
 // layer (M18-T06) reuses these codes verbatim.
 //
-// Scope note (M18-T03): this catalog covers the event recorder + the geofence policy/evaluation only. The
-// `evv_missing_resolution` close-transition codes (≥40/≥60 reason floors, 24h/7d windows) land with the D6
-// resolution machine in M18-T04; the aggregator-submission codes land in M18-T06.
+// Scope note: M18-T03 added the event recorder + geofence policy/evaluation codes; M18-T04 appends the
+// `evv_missing_resolution` D6 close-transition codes (≥40/≥60 reason floors, 24h/7d windows, system-actor
+// guards) below. The aggregator-submission codes land in M18-T06. All share one `EvvStateError` envelope.
 import { WardenXError } from "@wardenx/types";
 
 /** The §2.2.1 / §2.3 / §7.5 / §7.7 EVV event-lifecycle + geofence failure-code catalog → HTTP status. */
@@ -65,6 +65,28 @@ export const M18_ERROR_STATUS = {
   GEOFENCE_OVERRIDE_REASON_TOO_SHORT: 422,
   // §2.2.2 — the resolver found no applicable layer (the platform floor row is always seeded; D-Phase-D).
   GEOFENCE_POLICY_LAYER_UNRESOLVED: 422,
+
+  // ── §2.2.4 D6 missing-EVV resolution machine (M18-T04) ─────────────────────────────────────────────
+  // §2.2.4 — the event is not accepted from the row's current status (every `closed_*` state is terminal).
+  ILLEGAL_RESOLUTION_TRANSITION: 409,
+  // §7.3 — a self-attest close by a membership that is not the visit's assigned clinician.
+  EVV_RESOLUTION_NOT_ASSIGNED_CLINICIAN: 403,
+  // §7.3 — a self-attest filed after the 24h self-attest window (must take the supervisor-override path).
+  EVV_SELF_ATTEST_WINDOW_EXPIRED: 409,
+  // §2.3 / §7.3 / §7.4 — the close `resolution_reason` is below the per-state floor (≥40 clinician / ≥60 supervisor).
+  EVV_RESOLUTION_REASON_TOO_SHORT: 422,
+  // §7.4 — a supervisor override without fresh M2 step-up auth (SESSION_POLICY for `evv.missing_resolution.supervisor_override`).
+  EVV_SUPERVISOR_OVERRIDE_STEP_UP_REQUIRED: 403,
+  // §7.4 — a supervisor override filed past the 7d window from the original visit.
+  EVV_SUPERVISOR_OVERRIDE_WINDOW_EXPIRED: 409,
+  // §2.3 — a human close (clinician / supervisor / documented-at-encounter) missing `resolved_by_membership_id`.
+  EVV_RESOLVER_REQUIRED: 422,
+  // §7.10 / M8 D9 — the documented-at-encounter close carries an `evv_missing_reason` below the 20-char M8 floor.
+  EVV_DOCUMENTED_MISSING_REASON_TOO_SHORT: 422,
+  // §2.4 — a `closed_visit_voided` close whose M17 visit is not actually cancelled.
+  EVV_VISIT_NOT_CANCELLED: 409,
+  // §2.4 — a system-driven close (`closed_system_checkout_received` / `closed_visit_voided`) by a non-system actor.
+  EVV_RESOLUTION_SYSTEM_ACTOR_REQUIRED: 403,
 } as const;
 
 /** A machine-readable M18 event-lifecycle / geofence failure code (§2.2 / §2.3). */
