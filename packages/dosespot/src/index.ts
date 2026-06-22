@@ -24,13 +24,25 @@
 // certification is gated by ADR-006); no Phase-1 route transmits a controlled-substance Rx through it.
 // IO-free, `@wardenx/types`-only.
 //
-// Later tasks add: the per-class TypeBox `data` schemas + cross-field validators + transmission mappers +
-// per-class EPCS rules (`classes/<class>/`, M12-T06+); the DoseSpot adapter + webhook security (`client/`,
-// `webhook/`, `credentials/`, M12-T06); the `MedicationOrderProvider`/`RefillInboxProvider` seam impls
-// (`seams.ts`, M12-T07); the typed M36 alert builders (`alerts.ts`) + `m12.*` outbox payload assemblers
-// (`outbox.ts`) (M12-T08).
+// M12-T06 lands the DoseSpot adapter boundary + the webhook security envelope + the transmission/patient-sync
+// domains. `client/` is the ONLY package allowed to talk to DoseSpot (D5): the typed `DoseSpotClient`
+// contract, the per-tenant circuit breaker (§2.5), the typed `DegradedError`/`RetryableError` (INT-009), the
+// per-call backoff schedule (§4.10), and the Phase-1 deny-stub (`createUnboundDoseSpotClient`). `webhook/` is
+// the §7.4 D7 inbound-webhook security core (HMAC-SHA256 constant-time verify + 5-min replay window + dedup
+// key + body digest). `transmission/` is the D8 NewRx idempotency key + the `medication_order_transmission`
+// enqueue / success / failure planners (§4.10 retry-exhaustion → M36 alert). `patient-sync/` is the §2.6 D4
+// M5 → DoseSpot upsert planner. All IO-free, `@wardenx/types`-only; the live HTTP transport + the service /
+// worker / subscriber wiring bind at boot (M12-T08).
+//
+// Later tasks add: the per-class TypeBox `data` schemas + cross-field validators (`classes/<class>/`); the
+// `MedicationOrderProvider`/`RefillInboxProvider` seam impls (`seams.ts`, M12-T07); the typed M36 alert
+// builders (`alerts.ts`) + `m12.*` outbox payload assemblers (`outbox.ts`) (M12-T08).
 
 export * from "./classes/catalog";
 export * from "./lifecycle";
 export * from "./refill";
 export * from "./epcs";
+export * from "./client";
+export * from "./webhook";
+export * from "./transmission";
+export * from "./patient-sync";
