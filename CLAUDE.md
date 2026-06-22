@@ -66,6 +66,12 @@ the prose docs in `docs/architecture/`.
   as `bun run docs:ui`).
 - `scripts/audit-fitness.ts` — point-in-time enforcement audit (module matrix, table
   ownership, dependency graph/cycles); writes `audit/FITNESS_ENFORCEMENT_AUDIT.md`.
+- `scripts/report-implementation-status.ts` — per-module **implementation-status matrix**
+  (spec/schema/migration/routes/screens/tests/adapter per module). A green `arch:fitness`
+  proves architecture coherence, NOT feature-completeness — this advisory report shows build
+  progress. Regenerate with `bun run status:matrix`; `arch:fitness` runs it in `--check` mode
+  (`arch:status-matrix`) to keep `audit/implementation-status/` fresh and to hard-fail on orphan
+  (unowned) schema/migration tables. Writes `audit/implementation-status/IMPLEMENTATION_STATUS.md` (+ `.json`).
 
 ### Governance & history
 

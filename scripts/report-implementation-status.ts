@@ -1,0 +1,343 @@
+/**
+ * WardenX — Module Implementation-Status Matrix (audit remediation #4)
+ * --------------------------------------------------------------------
+ * A green `arch:fitness` proves the architecture is *coherent* (ownership, boundaries,
+ * tenancy, DDL legality) — NOT that a module is *built*. Many manifest-owned modules are
+ * deliberate Phase-0 placeholders (the Wave E–P3 roadmap). This report makes build progress
+ * visible per module so green gates are never mistaken for feature-completeness.
+ *
+ * It is ADVISORY: the matrix never fails on incompleteness (a placeholder is not a defect).
+ * Two things DO hard-fail, because they are genuine consistency defects regardless of wave
+ * progress and are not caught elsewhere (check-table-ownership skips unowned tables):
+ *   - ORPHAN SCHEMA    — a `pgTable("x")` defined for a table no module owns.
+ *   - ORPHAN MIGRATION — a `CREATE TABLE x` for a table no module owns.
+ * One thing WARNS (real schema↔migration drift, but a legitimate mid-wave transient):
+ *   - SCHEMA-WITHOUT-MIGRATION — an owned table has a Drizzle def but no CREATE TABLE.
+ *
+ * Heuristic columns (openapi-enriched, live-infra, adapter) are best-effort and labelled so.
+ *
+ * Modes:
+ *   bun run scripts/report-implementation-status.ts            → regenerate the report
+ *   bun run scripts/report-implementation-status.ts --check    → fail if the committed report
+ *                                                                is stale, plus run the hard-fails
+ *
+ * Writes audit/implementation-status/IMPLEMENTATION_STATUS.md (+ .json).
+ */
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { MODULES } from "../architecture/module-manifest";
+
+const ROOT = process.cwd();
+const CHECK = process.argv.includes("--check");
+const OUT_DIR = "audit/implementation-status";
+const OUT_MD = join(OUT_DIR, "IMPLEMENTATION_STATUS.md");
+const OUT_JSON = join(OUT_DIR, "implementation-status.json");
+
+type Mod = { id: number; name: string; codePaths?: string[]; ownedTables?: string[] };
+const mods = (MODULES as unknown as Mod[]).slice().sort((a, b) => a.id - b.id);
+const pad = (id: number) => String(id).padStart(2, "0");
+const M = (id: number) => `M${pad(id)}`;
+
+// ---- recursive file walk (skips heavy/irrelevant dirs) ----------------------
+const SKIP = new Set(["node_modules", "dist", ".git", ".turbo"]);
+function walk(dir: string, out: string[] = []): string[] {
+  let entries: string[];
+  try {
+    entries = readdirSync(join(ROOT, dir));
+  } catch {
+    return out;
+  }
+  for (const e of entries) {
+    if (SKIP.has(e)) continue;
+    const rel = join(dir, e);
+    let st: ReturnType<typeof statSync>;
+    try {
+      st = statSync(join(ROOT, rel));
+    } catch {
+      continue;
+    }
+    if (st.isDirectory()) walk(rel, out);
+    else out.push(rel);
+  }
+  return out;
+}
+const read = (rel: string) => {
+  try {
+    return readFileSync(join(ROOT, rel), "utf8");
+  } catch {
+    return "";
+  }
+};
+
+// ---- corpus scans (robust, multi-line aware) --------------------------------
+const owned = new Map<string, number>(); // table -> owner module id
+for (const m of mods) for (const t of m.ownedTables ?? []) owned.set(t, m.id);
+
+// pgTable defs across the Drizzle schema corpus: table -> file
+const pgTableRe = /export\s+const\s+\w+\s*=\s*pgTable\(\s*['"]([\w]+)['"]/g;
+const schemaTables = new Map<string, string>();
+for (const f of walk("packages/db/src/schema")) {
+  if (!f.endsWith(".ts")) continue;
+  const src = read(f);
+  for (let m = pgTableRe.exec(src); m; m = pgTableRe.exec(src)) schemaTables.set(m[1]!, f);
+}
+
+// CREATE TABLE in migration SQL: set of migrated table names. Skip partition children
+// (`... PARTITION OF <owned-parent>`) and reserved-word captures from the optional IF-NOT-EXISTS.
+const createTableRe = /create\s+table\s+(?:if\s+not\s+exists\s+)?"?(\w+)"?([^;]*)/gi;
+const RESERVED = new Set(["if", "not", "exists"]);
+const migratedTables = new Set<string>();
+for (const f of walk("packages/db/migrations")) {
+  if (!f.endsWith(".sql")) continue;
+  const src = read(f);
+  for (let m = createTableRe.exec(src); m; m = createTableRe.exec(src)) {
+    const name = m[1]!;
+    if (RESERVED.has(name.toLowerCase())) continue;
+    if (/partition\s+of/i.test(m[2]!)) continue; // partition child belongs to its owned parent
+    migratedTables.add(name);
+  }
+}
+
+// spec files: 7 -> docs/modules/WARDENX_MODULE_07_*.md
+const specFiles = (() => {
+  try {
+    return readdirSync(join(ROOT, "docs/modules")).filter((f) => /^WARDENX_MODULE_\d\d_/.test(f));
+  } catch {
+    return [];
+  }
+})();
+const hasSpec = (id: number) => specFiles.some((f) => f.startsWith(`WARDENX_MODULE_${pad(id)}_`));
+
+// OpenAPI enrichment: which module typebox files are imported by enrichments.ts
+const enrichSrc = read("scripts/openapi/enrichments.ts");
+const enrichedModules = new Set<number>();
+for (const m of enrichSrc.matchAll(/modules\/(\d\d)-[\w-]+\/routes/g))
+  enrichedModules.add(Number(m[1]));
+
+// Web screens: modules whose screens.ts declares a moduleId AND is wired into main.tsx
+const mainTsx = read("apps/web/src/main.tsx");
+
+// Test corpus: backend __tests__ filenames (slug-prefix match) + live test bodies.
+// (Module package __tests__ are matched definitively by directory containment, below.)
+const backendTestFiles = walk("apps/backend/__tests__")
+  .filter((f) => f.endsWith(".test.ts"))
+  .map((f) => f.split("/").pop()!);
+const liveTestBodies = walk("apps/backend/__tests__")
+  .concat(walk("packages/db/migrations/__tests__"))
+  .filter((f) => f.endsWith(".live.test.ts"))
+  .map(read)
+  .join("\n");
+
+// ---- per-codePath helpers ---------------------------------------------------
+const isPlaceholderFile = (rel: string) => /Phase 0 placeholder/i.test(read(rel));
+function backendDir(m: Mod) {
+  return (m.codePaths ?? []).find((p) => p.startsWith("apps/backend/src/modules/"));
+}
+function webDir(m: Mod) {
+  return (m.codePaths ?? []).find((p) => p.startsWith("apps/web/src/modules/"));
+}
+function pkgDirs(m: Mod) {
+  return (m.codePaths ?? []).filter((p) => p.startsWith("packages/"));
+}
+const slug = (dir: string) =>
+  dir
+    .split("/")
+    .pop()!
+    .replace(/^\d\d-/, "");
+
+// ---- compute one row per module ---------------------------------------------
+type Row = {
+  id: number;
+  module: string;
+  status: "Implemented" | "Partial" | "Placeholder";
+  spec: boolean;
+  schema: boolean;
+  migration: boolean;
+  routes: boolean;
+  enriched: boolean;
+  screens: boolean;
+  tests: boolean;
+  adapter: boolean | null; // null = N/A (module owns no adapter package)
+  liveInfra: boolean;
+};
+
+const VENDOR_HINT = /-client$|-adapters$|-vendors$|dosespot|x12-|nppes|telehealth/;
+
+const rows: Row[] = mods.map((m) => {
+  const tables = m.ownedTables ?? [];
+  const schema = tables.some((t) => schemaTables.has(t));
+  const migration = tables.length > 0 && tables.every((t) => migratedTables.has(t));
+
+  const beDir = backendDir(m);
+  const beIndex = beDir ? `${beDir}/index.ts` : undefined;
+  const bePlaceholder = beIndex
+    ? !existsSync(join(ROOT, beIndex)) || isPlaceholderFile(beIndex)
+    : true;
+  const routes = !!beDir && !bePlaceholder && existsSync(join(ROOT, `${beDir}/routes`));
+
+  const wDir = webDir(m);
+  const screensRel = wDir ? `${wDir}/screens.ts` : undefined;
+  const screens =
+    !!screensRel &&
+    existsSync(join(ROOT, screensRel)) &&
+    /moduleId\s*:/.test(read(screensRel)) &&
+    new RegExp(`${slug(wDir!)}|${m.id}\\b`).test(mainTsx);
+
+  // Tests (heuristic): a definitive hit if any test lives inside the module's own package
+  // __tests__ dir, else a backend test filename begins with a module slug (plural OR singular).
+  const pkgTests = pkgDirs(m).some((p) =>
+    walk(join(p, "__tests__")).some((f) => f.endsWith(".test.ts")),
+  );
+  const toks = [beDir, wDir]
+    .filter(Boolean)
+    .map((d) => slug(d as string))
+    .flatMap((s) => [s, s.replace(/s$/, "")]);
+  const tests =
+    pkgTests ||
+    backendTestFiles.some((b) => toks.some((t) => b.startsWith(`${t}-`) || b.startsWith(`${t}.`)));
+
+  const adapterPkgs = pkgDirs(m).filter((p) => VENDOR_HINT.test(p));
+  const adapter =
+    adapterPkgs.length === 0
+      ? null
+      : adapterPkgs.some(
+          (p) =>
+            existsSync(join(ROOT, `${p}/src/index.ts`)) && !isPlaceholderFile(`${p}/src/index.ts`),
+        );
+
+  const liveInfra = tables.some((t) => new RegExp(`\\b${t}\\b`).test(liveTestBodies));
+
+  // Headline status keys off the authoritative placeholder marker + the core backend artifacts
+  // (schema + routes). Tests/enriched/screens/live are informational columns, not status drivers,
+  // because their detection is heuristic and would otherwise misclassify built modules.
+  const anySignal = schema || routes || screens || tests;
+  let status: Row["status"];
+  if (!bePlaceholder && schema && routes) status = "Implemented";
+  else if (bePlaceholder && !anySignal) status = "Placeholder";
+  else status = "Partial";
+
+  return {
+    id: m.id,
+    module: `${M(m.id)} ${m.name}`,
+    status,
+    spec: hasSpec(m.id),
+    schema,
+    migration,
+    routes,
+    enriched: enrichedModules.has(m.id),
+    screens,
+    tests,
+    adapter,
+    liveInfra,
+  };
+});
+
+// ---- consistency assertions -------------------------------------------------
+const failures: string[] = [];
+const warnings: string[] = [];
+
+for (const [t, file] of schemaTables)
+  if (!owned.has(t))
+    failures.push(`ORPHAN SCHEMA: pgTable("${t}") in ${file} is owned by no module`);
+for (const t of migratedTables)
+  if (!owned.has(t)) failures.push(`ORPHAN MIGRATION: CREATE TABLE "${t}" is owned by no module`);
+for (const [t, file] of schemaTables)
+  if (owned.has(t) && !migratedTables.has(t))
+    warnings.push(
+      `SCHEMA-WITHOUT-MIGRATION: owned table "${t}" (${file}) has no CREATE TABLE in migrations`,
+    );
+
+// ---- render -----------------------------------------------------------------
+const counts = {
+  Implemented: rows.filter((r) => r.status === "Implemented").length,
+  Partial: rows.filter((r) => r.status === "Partial").length,
+  Placeholder: rows.filter((r) => r.status === "Placeholder").length,
+};
+const yn = (b: boolean | null) => (b === null ? "—" : b ? "✅" : "❌");
+const badge = (s: Row["status"]) =>
+  s === "Implemented" ? "🟢 Implemented" : s === "Partial" ? "🟡 Partial" : "⚪ Placeholder";
+
+function renderMarkdown(): string {
+  const lines: string[] = [];
+  lines.push("# WardenX — Module Implementation-Status Matrix");
+  lines.push("");
+  lines.push(
+    "> **Generated, advisory report** (`bun run status:matrix`). A green `arch:fitness` proves the",
+  );
+  lines.push(
+    "> architecture is coherent, NOT that a module is built. This matrix shows per-module build progress.",
+  );
+  lines.push(
+    "> Do not hand-edit — the `status:matrix --check` gate (in `arch:fitness`) keeps it in sync with source.",
+  );
+  lines.push("");
+  lines.push(
+    `**Totals:** 🟢 ${counts.Implemented} Implemented · 🟡 ${counts.Partial} Partial · ⚪ ${counts.Placeholder} Placeholder (of ${rows.length} modules)`,
+  );
+  lines.push("");
+  lines.push(
+    "Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned tables in a `CREATE TABLE`) · " +
+      "Routes (non-placeholder backend `routes/`) · Enriched (OpenAPI bodies, *heuristic*) · Screens (registered web `screens.ts`) · " +
+      "Tests (package `__tests__` or slug-matched backend test, *heuristic*) · Adapter (vendor/client package built; — = none owned, *heuristic*) · " +
+      "Live (owned table named in a `*.live.test.ts`, *heuristic*). Headline status keys off the placeholder marker + schema + routes only.",
+  );
+  lines.push("");
+  lines.push(
+    "| Module | Status | Spec | Schema | Migration | Routes | Enriched | Screens | Tests | Adapter | Live |",
+  );
+  lines.push("|---|---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|");
+  for (const r of rows)
+    lines.push(
+      `| ${r.module} | ${badge(r.status)} | ${yn(r.spec)} | ${yn(r.schema)} | ${yn(r.migration)} | ${yn(r.routes)} | ${yn(r.enriched)} | ${yn(r.screens)} | ${yn(r.tests)} | ${yn(r.adapter)} | ${yn(r.liveInfra)} |`,
+    );
+  lines.push("");
+  if (warnings.length) {
+    lines.push("## ⚠️ Warnings (non-failing)");
+    lines.push("");
+    for (const w of warnings) lines.push(`- ${w}`);
+    lines.push("");
+  }
+  lines.push("## Hard-fail consistency checks");
+  lines.push("");
+  lines.push(
+    failures.length
+      ? failures.map((f) => `- ❌ ${f}`).join("\n")
+      : "- ✅ No orphan schema/migration tables (every defined table is owned by a module).",
+  );
+  lines.push("");
+  return lines.join("\n");
+}
+
+const md = renderMarkdown();
+const jsonOut = JSON.stringify({ totals: counts, rows, warnings, failures }, null, 2);
+
+// ---- emit / check -----------------------------------------------------------
+function fail(msg: string): never {
+  console.error(`✗ status-matrix: ${msg}`);
+  process.exit(1);
+}
+
+if (failures.length) {
+  // Hard-fails are enforced in BOTH modes — an orphan table is a real defect.
+  console.error(`✗ status-matrix: ${failures.length} orphan-table violation(s):`);
+  for (const f of failures) console.error(`  - ${f}`);
+  process.exit(1);
+}
+
+if (CHECK) {
+  const curMd = read(OUT_MD);
+  const curJson = read(OUT_JSON);
+  if (curMd !== md || curJson !== jsonOut)
+    fail(`${OUT_MD} is out of date. Run: bun run status:matrix`);
+  console.log(
+    `OK status-matrix: report fresh (🟢 ${counts.Implemented} · 🟡 ${counts.Partial} · ⚪ ${counts.Placeholder}; ${warnings.length} warning(s))`,
+  );
+  process.exit(0);
+}
+
+mkdirSync(join(ROOT, OUT_DIR), { recursive: true });
+writeFileSync(join(ROOT, OUT_MD), md);
+writeFileSync(join(ROOT, OUT_JSON), jsonOut);
+console.log(
+  `✓ status-matrix → ${OUT_MD} (🟢 ${counts.Implemented} Implemented · 🟡 ${counts.Partial} Partial · ⚪ ${counts.Placeholder} Placeholder; ${warnings.length} warning(s))`,
+);
