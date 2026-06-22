@@ -119,3 +119,10 @@ export {
   M14_CONTRIBUTED_PERMISSIONS,
   m14ContributedPermissionMirrorRows,
 } from "./contributed";
+// M17-T07 — Module 17's permission keys registered into M3's catalog (§4.6 handshake), in a
+// dedicated const so each module's contribution stays attributable (§3.3 ownership model).
+export {
+  type M17ContributedPermissionKey,
+  M17_CONTRIBUTED_PERMISSIONS,
+  m17ContributedPermissionMirrorRows,
+} from "./contributed";

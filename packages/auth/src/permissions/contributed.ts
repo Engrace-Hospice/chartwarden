@@ -1304,6 +1304,58 @@ export const M14_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M14 contributed permission keys. */
 export type M14ContributedPermissionKey = keyof typeof M14_CONTRIBUTED_PERMISSIONS;
 
+/**
+ * M17-T07 — Module 17 (Scheduling & Route Optimization) §4.6 permission keys registered into M3's catalog
+ * (the binding handshake; boot validation fails if any key is missing at startup). All `category:
+ * 'scheduling'`. The patient-touching visit / proposal / recurring keys default to `caseload_or_scope` (the
+ * shared patient-scope predicate M5/M6/M7 own); the assignment-write routes (create/edit/reschedule/reassign)
+ * ALSO compose M17's four OWNED §4.7 predicates at the route — `clinician_credentials_active`,
+ * `discipline_matches_visit`, `not_on_pto`, `within_caseload_or_unassigned_pool` (registered by
+ * 17-scheduling/abac-predicates.ts) — the pre-schedule gate (D8). The membership-scoped availability/time_off
+ * keys, the org-wide team/metrics reads, the on-demand optimisation trigger, and the portal upcoming-visit key
+ * are pure RBAC (`none`); the route layer scopes them server-side (own-vs-team) or the portal session class
+ * applies (per-patient via M39 consent, not caseload). Kept in a dedicated const for §3.3 attributability.
+ */
+export const M17_CONTRIBUTED_PERMISSIONS = {
+  // --- visit reads (caseload-scoped clinical read + org-wide team/metrics) ---
+  "visit.read": { resource: "visit", action: "read", category: "scheduling", abac: "caseload_or_scope" },
+  "visit.read_team": { resource: "visit", action: "read_team", category: "scheduling", abac: "none" },
+  "visit.read_metrics": { resource: "visit", action: "read_metrics", category: "scheduling", abac: "none" },
+  // --- visit lifecycle writes (assignment routes ALSO compose the four owned §4.7 pre-schedule predicates) ---
+  "visit.create": { resource: "visit", action: "create", category: "scheduling", abac: "caseload_or_scope" },
+  "visit.edit": { resource: "visit", action: "edit", category: "scheduling", abac: "caseload_or_scope" },
+  "visit.start": { resource: "visit", action: "start", category: "scheduling", abac: "caseload_or_scope" },
+  "visit.cancel": { resource: "visit", action: "cancel", category: "scheduling", abac: "caseload_or_scope" },
+  "visit.reschedule": { resource: "visit", action: "reschedule", category: "scheduling", abac: "caseload_or_scope" },
+  "visit.reassign": { resource: "visit", action: "reassign", category: "scheduling", abac: "caseload_or_scope" },
+  "visit.mark_no_show": { resource: "visit", action: "mark_no_show", category: "scheduling", abac: "caseload_or_scope" },
+  // --- visit proposals (scheduler inbox) ---
+  "visit.proposal.read": { resource: "visit_proposal", action: "read", category: "scheduling", abac: "caseload_or_scope" },
+  "visit.proposal.dismiss": { resource: "visit_proposal", action: "dismiss", category: "scheduling", abac: "caseload_or_scope" },
+  // --- recurring visit policies ---
+  "recurring_visit.read": { resource: "recurring_visit", action: "read", category: "scheduling", abac: "caseload_or_scope" },
+  "recurring_visit.create": { resource: "recurring_visit", action: "create", category: "scheduling", abac: "caseload_or_scope" },
+  "recurring_visit.discontinue": { resource: "recurring_visit", action: "discontinue", category: "scheduling", abac: "caseload_or_scope" },
+  // --- clinician availability (membership-scoped; own-vs-any) ---
+  "availability.read": { resource: "availability", action: "read", category: "scheduling", abac: "none" },
+  "availability.edit_own": { resource: "availability", action: "edit_own", category: "scheduling", abac: "none" },
+  "availability.edit_any": { resource: "availability", action: "edit_any", category: "scheduling", abac: "none" },
+  // --- time off (PTO) ---
+  "time_off.read_own": { resource: "time_off", action: "read_own", category: "scheduling", abac: "none" },
+  "time_off.read_team": { resource: "time_off", action: "read_team", category: "scheduling", abac: "none" },
+  "time_off.request_own": { resource: "time_off", action: "request_own", category: "scheduling", abac: "none" },
+  "time_off.approve": { resource: "time_off", action: "approve", category: "scheduling", abac: "none" },
+  "time_off.cancel_own": { resource: "time_off", action: "cancel_own", category: "scheduling", abac: "none" },
+  // --- route optimisation (behind scheduling.route_optimization, OFF) + efficiency metrics ---
+  "route.optimize_on_demand": { resource: "route", action: "optimize_on_demand", category: "scheduling", abac: "none" },
+  "route.read_metrics": { resource: "route", action: "read_metrics", category: "scheduling", abac: "none" },
+  // --- portal session class — upcoming visits, lay-language, scrubbed (per-patient via M39 consent) ---
+  "portal.visit.read_upcoming": { resource: "portal_visit", action: "read_upcoming", category: "scheduling", abac: "none" },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M17 contributed permission keys. */
+export type M17ContributedPermissionKey = keyof typeof M17_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -1396,6 +1448,11 @@ export function m14ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M14_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M17 contributed keys into `permission`-table mirror rows (M17-T07). */
+export function m17ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M17_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -1421,5 +1478,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m12ContributedPermissionMirrorRows(),
     ...m13ContributedPermissionMirrorRows(),
     ...m14ContributedPermissionMirrorRows(),
+    ...m17ContributedPermissionMirrorRows(),
   ];
 }

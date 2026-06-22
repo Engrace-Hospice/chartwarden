@@ -3250,6 +3250,55 @@
         }
       }
     },
+    "/api/v1/availability": {
+      "get": {
+        "operationId": "getApiV1Availability",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/availability/{membershipId}": {
+      "put": {
+        "operationId": "putApiV1AvailabilityByMembershipId",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "membershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/breakglass": {
       "get": {
         "operationId": "getApiV1Breakglass",
@@ -4680,6 +4729,26 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/day-view": {
+      "get": {
+        "operationId": "getApiV1Dayview",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [],
         "responses": {
           "200": {
             "description": "OK"
@@ -8664,6 +8733,26 @@
         }
       }
     },
+    "/api/v1/map-view": {
+      "get": {
+        "operationId": "getApiV1Mapview",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/mdm/{kind}/{id}": {
       "get": {
         "operationId": "getApiV1MdmByKindById",
@@ -10604,6 +10693,46 @@
         }
       }
     },
+    "/api/v1/metrics/route-efficiency": {
+      "get": {
+        "operationId": "getApiV1MetricsRouteefficiency",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/metrics/visits": {
+      "get": {
+        "operationId": "getApiV1MetricsVisits",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/missed-doses": {
       "get": {
         "operationId": "getApiV1Misseddoses",
@@ -10819,6 +10948,26 @@
         "operationId": "putApiV1NotificationsPreferences",
         "tags": [
           "36-messaging"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/optimize-day": {
+      "post": {
+        "operationId": "postApiV1Optimizeday",
+        "tags": [
+          "17-scheduling"
         ],
         "parameters": [],
         "responses": {
@@ -15923,6 +16072,26 @@
         }
       }
     },
+    "/api/v1/portal/upcoming": {
+      "get": {
+        "operationId": "getApiV1PortalUpcoming",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/reconciliation/worksheets": {
       "get": {
         "operationId": "getApiV1ReconciliationWorksheets",
@@ -16240,6 +16409,73 @@
         "operationId": "postApiV1ReconciliationWorksheetsByIdVoid",
         "tags": [
           "13-emar"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/recurring-visits": {
+      "get": {
+        "operationId": "getApiV1Recurringvisits",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Recurringvisits",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/recurring-visits/{id}/discontinue": {
+      "post": {
+        "operationId": "postApiV1RecurringvisitsByIdDiscontinue",
+        "tags": [
+          "17-scheduling"
         ],
         "parameters": [
           {
@@ -18032,6 +18268,131 @@
         }
       }
     },
+    "/api/v1/time-off": {
+      "get": {
+        "operationId": "getApiV1Timeoff",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Timeoff",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/time-off/{id}/approve": {
+      "post": {
+        "operationId": "postApiV1TimeoffByIdApprove",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/time-off/{id}/cancel": {
+      "post": {
+        "operationId": "postApiV1TimeoffByIdCancel",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/time-off/{id}/deny": {
+      "post": {
+        "operationId": "postApiV1TimeoffByIdDeny",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/users/{id}/deactivate": {
       "post": {
         "operationId": "postApiV1UsersByIdDeactivate",
@@ -18048,6 +18409,343 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/visit-proposals": {
+      "get": {
+        "operationId": "getApiV1Visitproposals",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/visit-proposals/{proposalId}/dismiss": {
+      "post": {
+        "operationId": "postApiV1VisitproposalsByProposalIdDismiss",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/visit-proposals/{proposalId}/publish": {
+      "post": {
+        "operationId": "postApiV1VisitproposalsByProposalIdPublish",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/visits": {
+      "get": {
+        "operationId": "getApiV1Visits",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Visits",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/visits/{visitId}": {
+      "get": {
+        "operationId": "getApiV1VisitsByVisitId",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1VisitsByVisitId",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/visits/{visitId}/cancel": {
+      "post": {
+        "operationId": "postApiV1VisitsByVisitIdCancel",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/visits/{visitId}/no-show": {
+      "post": {
+        "operationId": "postApiV1VisitsByVisitIdNoshow",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/visits/{visitId}/reassign": {
+      "post": {
+        "operationId": "postApiV1VisitsByVisitIdReassign",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/visits/{visitId}/reschedule": {
+      "post": {
+        "operationId": "postApiV1VisitsByVisitIdReschedule",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/visits/{visitId}/start": {
+      "post": {
+        "operationId": "postApiV1VisitsByVisitIdStart",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/week-view": {
+      "get": {
+        "operationId": "getApiV1Weekview",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [],
         "responses": {
           "200": {
             "description": "OK"

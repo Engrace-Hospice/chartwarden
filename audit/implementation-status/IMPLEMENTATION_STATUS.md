@@ -4,7 +4,7 @@
 > architecture is coherent, NOT that a module is built. This matrix shows per-module build progress.
 > Do not hand-edit — the `status:matrix --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Totals:** 🟢 17 Implemented · 🟡 2 Partial · ⚪ 21 Placeholder (of 40 modules)
+**Totals:** 🟢 18 Implemented · 🟡 1 Partial · ⚪ 21 Placeholder (of 40 modules)
 
 Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned tables in a `CREATE TABLE`) · Routes (non-placeholder backend `routes/`) · Enriched (OpenAPI bodies, *heuristic*) · Screens (registered web `screens.ts`) · Tests (package `__tests__` or slug-matched backend test, *heuristic*) · Adapter (vendor/client package built; — = none owned, *heuristic*) · Live (owned table named in a `*.live.test.ts`, *heuristic*). Headline status keys off the placeholder marker + schema + routes only.
 
@@ -26,7 +26,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M14 IDG | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 | M15 Discipline Care Plans | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — | ❌ |
 | M16 Bereavement | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — | ❌ |
-| M17 Scheduling & Route Optimization | 🟡 Partial | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ |
+| M17 Scheduling & Route Optimization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ |
 | M18 EVV | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — | ❌ |
 | M19 On-Call Triage | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | M20 Field Safety | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — | ❌ |

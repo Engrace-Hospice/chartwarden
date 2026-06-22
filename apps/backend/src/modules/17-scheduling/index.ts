@@ -12,12 +12,47 @@
 // terminal completion, `consumers/index.ts`) + the typed accessors for the upstream reads M17 consumes — M8's
 // `MileagePayrollReader`/`BillableEncounterReader` (Wave E, live) and M15's `VolunteerComplianceProvider`/
 // `SupervisoryCadenceReader` (Phase 2, fail-closed deny-stubs per M17-F06/ADR-0009) — in `seams/consumed.ts`.
+// M17-T07 lands the §4.10 D1 OSRM `RoutingProvider` adapter (`@wardenx/routing-client`), the §4.1 route
+// inventory behind the M3 Authorization Contract over the §4.6 keys (`M17_CONTRIBUTED_PERMISSIONS`), and the
+// four §4.7 pre-schedule ABAC predicates (`clinician_credentials_active` / `discipline_matches_visit` /
+// `not_on_pto` / `within_caseload_or_unassigned_pool`). Route optimisation stays behind
+// `scheduling.route_optimization` (OFF; §7.9 OSRM degraded mode is the Phase-1 path). Outbox + screens land
+// in M17-T08.
 export {
   type EncounterSignedConsumed,
   type VisitCompletionPlan,
   M17_OUTBOX_SUBSCRIPTIONS,
   planVisitCompletionFromEncounter,
 } from "./consumers/index";
+// M17-T07 — the four §4.7 pre-schedule ABAC predicate resolvers M17 owns + registers into M3.
+export {
+  type SchedulingAbacDeps,
+  type SchedulingAbacResolver,
+  M17_ABAC_PREDICATES,
+  buildSchedulingAbacPredicates,
+  registerSchedulingAbacPredicates,
+} from "./abac-predicates";
+// M17-T07 — the §4.1 route inventory over an in-memory backend + the route service contract (in-mem slice;
+// Drizzle in prod under withOrgContext so RLS backstops). The service also implements SchedulingAbacResolver.
+export { type SchedulingRouteDeps, registerSchedulingRoutes } from "./routes/scheduling-routes";
+export {
+  type AvailabilityView,
+  type CreateRecurringInput,
+  type CreateVisitInput,
+  type EditVisitInput,
+  type OptimizeDayInput,
+  type ProposalView,
+  type RecordedSchedulingEvent,
+  type RecurringView,
+  type RequestTimeOffInput,
+  type RescheduleVisitInput,
+  type SchedulingSeed,
+  type SchedulingServiceDeps,
+  type TimeOffView,
+  type UpsertAvailabilityInput,
+  type VisitView,
+  SchedulingRouteService,
+} from "./routes/service";
 export {
   getBillableEncounterReader,
   getMileagePayrollReader,
