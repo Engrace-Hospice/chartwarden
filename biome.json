@@ -6,7 +6,10 @@
     "ignore": [
       "node_modules",
       "dist",
+      ".vscode",
       "**/*.tsbuildinfo",
+      "packages/ui/src/core/api/schema.ts",
+      "packages/db/migrations/meta",
       "docs",
       "audit",
       "**/*.md",

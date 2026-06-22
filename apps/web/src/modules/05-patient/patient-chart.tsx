@@ -1,3 +1,11 @@
+import {
+  CenteredStatusLayout,
+  LeftNavRail,
+  LoadingSpinner,
+  PatientBanner,
+  PatientWorkspaceLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/05-patient — Patient Chart (M5, Track A).
 // Spec: docs/ui/screens/clinical/WARDENX_UI_PATIENT_CHART.md — "Use Patient Workspace."
 // The patient-scoped hub: sticky Patient Banner + a module nav rail + a center summary. This builds
@@ -7,14 +15,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useParams } from "react-router-dom";
-import {
-  CenteredStatusLayout,
-  LeftNavRail,
-  LoadingSpinner,
-  PatientBanner,
-  PatientWorkspaceLayout,
-  useApiClient,
-} from "@wardenx/ui";
 
 interface PatientSummary {
   id: string;
@@ -50,14 +50,19 @@ export function PatientChart(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const [section, setSection] = useState("Summary");
   const [state, setState] = useState<
-    { kind: "loading" } | { kind: "notfound" } | { kind: "error" } | { kind: "ready"; patient: PatientSummary }
+    | { kind: "loading" }
+    | { kind: "notfound" }
+    | { kind: "error" }
+    | { kind: "ready"; patient: PatientSummary }
   >({ kind: "loading" });
 
   useEffect(() => {
     let active = true;
     (async () => {
       if (!id) return;
-      const { data, error, response } = await client.GET("/api/v1/patients/{id}", { params: { path: { id } } });
+      const { data, error, response } = await client.GET("/api/v1/patients/{id}", {
+        params: { path: { id } },
+      });
       if (!active) return;
       if (response?.status === 404) return setState({ kind: "notfound" });
       if (error || !data) return setState({ kind: "error" });
@@ -70,10 +75,20 @@ export function PatientChart(): JSX.Element {
 
   if (state.kind === "loading") return <LoadingSpinner />;
   if (state.kind === "notfound") {
-    return <CenteredStatusLayout headline="Patient not found" explanation="This patient does not exist or is outside your access." />;
+    return (
+      <CenteredStatusLayout
+        headline="Patient not found"
+        explanation="This patient does not exist or is outside your access."
+      />
+    );
   }
   if (state.kind === "error") {
-    return <CenteredStatusLayout headline="Unavailable" explanation="The patient chart could not be loaded." />;
+    return (
+      <CenteredStatusLayout
+        headline="Unavailable"
+        explanation="The patient chart could not be loaded."
+      />
+    );
   }
 
   const p = state.patient;
@@ -90,11 +105,32 @@ export function PatientChart(): JSX.Element {
     >
       <div style={{ display: "flex", minHeight: 0, flex: 1 }}>
         <LeftNavRail ariaLabel="Patient modules">
-          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+          <ul
+            style={{
+              listStyle: "none",
+              margin: 0,
+              padding: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.25rem",
+            }}
+          >
             {NAV_SECTIONS.map((s) => (
               <li
                 key={s.label}
+                role={s.ready ? "button" : undefined}
+                tabIndex={s.ready ? 0 : undefined}
                 onClick={s.ready ? () => setSection(s.label) : undefined}
+                onKeyDown={
+                  s.ready
+                    ? (ev) => {
+                        if (ev.key === "Enter" || ev.key === " ") {
+                          ev.preventDefault();
+                          setSection(s.label);
+                        }
+                      }
+                    : undefined
+                }
                 aria-current={s.ready && s.label === section ? "page" : undefined}
                 style={{
                   padding: "0.4rem 0.5rem",
@@ -135,7 +171,14 @@ function SummaryTab({ patient }: { patient: PatientSummary }): JSX.Element {
   return (
     <>
       <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>Summary</h2>
-      <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "0.4rem 1rem", fontSize: "0.9rem" }}>
+      <dl
+        style={{
+          display: "grid",
+          gridTemplateColumns: "max-content 1fr",
+          gap: "0.4rem 1rem",
+          fontSize: "0.9rem",
+        }}
+      >
         <dt style={dt}>MRN</dt>
         <dd style={dd}>{patient.mrn}</dd>
         <dt style={dt}>Date of birth</dt>
@@ -170,7 +213,13 @@ interface Demographics {
   raceCodes: string[];
   ethnicityCodes: string[];
   preferredLanguageCode: string | null;
-  aliases: { kind: string; fullName: string | null; firstName: string | null; middleName: string | null; lastName: string | null }[];
+  aliases: {
+    kind: string;
+    fullName: string | null;
+    firstName: string | null;
+    middleName: string | null;
+    lastName: string | null;
+  }[];
 }
 
 interface Identifier {
@@ -211,12 +260,14 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
 
   if (status === "loading") return <LoadingSpinner />;
   if (status === "error" || !demographics || !identifiers) {
-    return <p style={{ color: "#b91c1c", fontSize: "0.9rem" }}>Demographics could not be loaded.</p>;
+    return (
+      <p style={{ color: "#b91c1c", fontSize: "0.9rem" }}>Demographics could not be loaded.</p>
+    );
   }
 
   const d = demographics;
   const codes = (arr: string[]) => (arr.length ? arr.join(", ") : "—");
-  const orDash = (v: string | null) => (v && v.length ? v : "—");
+  const orDash = (v: string | null) => (v?.length ? v : "—");
 
   return (
     <>
@@ -226,7 +277,9 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
       <dl style={grid}>
         <dt style={dt}>Legal name</dt>
         <dd style={dd}>
-          {[d.legalLastName, [d.legalFirstName, d.legalMiddleName].filter(Boolean).join(" ")].filter(Boolean).join(", ")}
+          {[d.legalLastName, [d.legalFirstName, d.legalMiddleName].filter(Boolean).join(" ")]
+            .filter(Boolean)
+            .join(", ")}
           {d.legalNameSuffix ? ` ${d.legalNameSuffix}` : ""}
         </dd>
         <dt style={dt}>Aliases</dt>
@@ -234,7 +287,10 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
           {d.aliases.length === 0
             ? "—"
             : d.aliases
-                .map((a) => `${a.fullName ?? [a.firstName, a.lastName].filter(Boolean).join(" ")} (${a.kind})`)
+                .map(
+                  (a) =>
+                    `${a.fullName ?? [a.firstName, a.lastName].filter(Boolean).join(" ")} (${a.kind})`,
+                )
                 .join("; ")}
         </dd>
       </dl>
@@ -265,7 +321,9 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
       </p>
 
       <h3 style={h3}>Identifiers</h3>
-      <table style={{ borderCollapse: "collapse", fontSize: "0.85rem", width: "100%", maxWidth: 560 }}>
+      <table
+        style={{ borderCollapse: "collapse", fontSize: "0.85rem", width: "100%", maxWidth: 560 }}
+      >
         <thead>
           <tr style={{ textAlign: "left", color: "#6b7280" }}>
             <th style={th}>Type</th>
@@ -278,7 +336,12 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
             <tr key={i.id} style={{ borderTop: "1px solid #f3f4f6" }}>
               <td style={td}>
                 {i.kind.toUpperCase()}
-                {i.kind === "mrn" ? <span style={{ color: "#9ca3af" }} title="MRN is immutable after creation"> · immutable</span> : null}
+                {i.kind === "mrn" ? (
+                  <span style={{ color: "#9ca3af" }} title="MRN is immutable after creation">
+                    {" "}
+                    · immutable
+                  </span>
+                ) : null}
               </td>
               <td style={td}>
                 {i.sensitive ? (
@@ -340,19 +403,30 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
   const client = useApiClient();
   const [addresses, setAddresses] = useState<Address[] | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [form, setForm] = useState({ line1: "", line2: "", city: "", state: "", postalCode: "", kind: "home", isPrimary: false });
+  const [form, setForm] = useState({
+    line1: "",
+    line2: "",
+    city: "",
+    state: "",
+    postalCode: "",
+    kind: "home",
+    isPrimary: false,
+  });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   async function load(active = { v: true }) {
     setStatus("loading");
-    const res = await client.GET("/api/v1/patients/{id}/addresses", { params: { path: { id: patientId } } });
+    const res = await client.GET("/api/v1/patients/{id}/addresses", {
+      params: { path: { id: patientId } },
+    });
     if (!active.v) return;
     if (res.error || !res.data) return setStatus("error");
     setAddresses((res.data as { addresses: Address[] }).addresses);
     setStatus("ready");
   }
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: load is recreated each render from client+patientId; depending on those is the intended trigger.
   useEffect(() => {
     const active = { v: true };
     void load(active);
@@ -375,10 +449,22 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
     };
     if (form.line2) body.line2 = form.line2;
     if (form.state) body.state = form.state.toUpperCase();
-    const res = await client.POST("/api/v1/patients/{id}/addresses", { params: { path: { id: patientId } }, body: body as never });
+    const res = await client.POST("/api/v1/patients/{id}/addresses", {
+      params: { path: { id: patientId } },
+      body: body as never,
+    });
     setSaving(false);
-    if (res.error) return setSaveError("Could not save the address. Check the fields and try again.");
-    setForm({ line1: "", line2: "", city: "", state: "", postalCode: "", kind: "home", isPrimary: false });
+    if (res.error)
+      return setSaveError("Could not save the address. Check the fields and try again.");
+    setForm({
+      line1: "",
+      line2: "",
+      city: "",
+      state: "",
+      postalCode: "",
+      kind: "home",
+      isPrimary: false,
+    });
     await load();
   }
 
@@ -396,52 +482,157 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
 
       <h3 style={h3}>Current</h3>
       {current.length === 0 ? (
-        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>No current address on file.</p>
+        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>
+          No current address on file.
+        </p>
       ) : (
-        <ul style={{ listStyle: "none", margin: "0.25rem 0 0", padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <ul
+          style={{
+            listStyle: "none",
+            margin: "0.25rem 0 0",
+            padding: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.5rem",
+          }}
+        >
           {current.map((a) => (
-            <li key={a.id} style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", padding: "0.6rem 0.75rem", fontSize: "0.88rem" }}>
-              <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", marginBottom: "0.2rem" }}>
+            <li
+              key={a.id}
+              style={{
+                border: "1px solid #e5e7eb",
+                borderRadius: "0.5rem",
+                padding: "0.6rem 0.75rem",
+                fontSize: "0.88rem",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  gap: "0.4rem",
+                  alignItems: "center",
+                  marginBottom: "0.2rem",
+                }}
+              >
                 <span style={{ fontWeight: 600, textTransform: "capitalize" }}>{a.kind}</span>
                 {a.isPrimary ? <span style={badge("#eef2ff", "#4338ca")}>primary</span> : null}
                 {a.geocodeLat && a.geocodeLng ? (
-                  <span style={badge("#ecfdf5", "#047857")} title={`${a.geocodeLat}, ${a.geocodeLng}`}>geocoded</span>
+                  <span
+                    style={badge("#ecfdf5", "#047857")}
+                    title={`${a.geocodeLat}, ${a.geocodeLng}`}
+                  >
+                    geocoded
+                  </span>
                 ) : (
-                  <span style={badge("#f3f4f6", "#6b7280")} title="The M5 geocode job fills coordinates asynchronously">geocoding…</span>
+                  <span
+                    style={badge("#f3f4f6", "#6b7280")}
+                    title="The M5 geocode job fills coordinates asynchronously"
+                  >
+                    geocoding…
+                  </span>
                 )}
               </div>
-              <div><AddressLine a={a} /></div>
-              <div style={{ color: "#9ca3af", fontSize: "0.78rem", marginTop: "0.2rem" }}>since {a.effectiveFrom}</div>
+              <div>
+                <AddressLine a={a} />
+              </div>
+              <div style={{ color: "#9ca3af", fontSize: "0.78rem", marginTop: "0.2rem" }}>
+                since {a.effectiveFrom}
+              </div>
             </li>
           ))}
         </ul>
       )}
 
       <h3 style={h3}>Add address</h3>
-      <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: "0.4rem", maxWidth: 420, fontSize: "0.85rem" }}>
-        <input required placeholder="Street address" value={form.line1} onChange={(e) => setForm({ ...form, line1: e.target.value })} style={input} />
-        <input placeholder="Apt / suite (optional)" value={form.line2} onChange={(e) => setForm({ ...form, line2: e.target.value })} style={input} />
+      <form
+        onSubmit={submit}
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.4rem",
+          maxWidth: 420,
+          fontSize: "0.85rem",
+        }}
+      >
+        <input
+          required
+          placeholder="Street address"
+          value={form.line1}
+          onChange={(e) => setForm({ ...form, line1: e.target.value })}
+          style={input}
+        />
+        <input
+          placeholder="Apt / suite (optional)"
+          value={form.line2}
+          onChange={(e) => setForm({ ...form, line2: e.target.value })}
+          style={input}
+        />
         <div style={{ display: "flex", gap: "0.4rem" }}>
-          <input required placeholder="City" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} style={{ ...input, flex: 2 }} />
-          <input placeholder="ST" maxLength={2} value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} style={{ ...input, flex: 1, width: 60 }} />
-          <input required placeholder="ZIP" value={form.postalCode} onChange={(e) => setForm({ ...form, postalCode: e.target.value })} style={{ ...input, flex: 1 }} />
+          <input
+            required
+            placeholder="City"
+            value={form.city}
+            onChange={(e) => setForm({ ...form, city: e.target.value })}
+            style={{ ...input, flex: 2 }}
+          />
+          <input
+            placeholder="ST"
+            maxLength={2}
+            value={form.state}
+            onChange={(e) => setForm({ ...form, state: e.target.value })}
+            style={{ ...input, flex: 1, width: 60 }}
+          />
+          <input
+            required
+            placeholder="ZIP"
+            value={form.postalCode}
+            onChange={(e) => setForm({ ...form, postalCode: e.target.value })}
+            style={{ ...input, flex: 1 }}
+          />
         </div>
         <div style={{ display: "flex", gap: "0.6rem", alignItems: "center" }}>
-          <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })} style={input}>
+          <select
+            value={form.kind}
+            onChange={(e) => setForm({ ...form, kind: e.target.value })}
+            style={input}
+          >
             {ADDRESS_KINDS.map((k) => (
-              <option key={k} value={k}>{k}</option>
+              <option key={k} value={k}>
+                {k}
+              </option>
             ))}
           </select>
           <label style={{ display: "flex", gap: "0.3rem", alignItems: "center", color: "#374151" }}>
-            <input type="checkbox" checked={form.isPrimary} onChange={(e) => setForm({ ...form, isPrimary: e.target.checked })} />
+            <input
+              type="checkbox"
+              checked={form.isPrimary}
+              onChange={(e) => setForm({ ...form, isPrimary: e.target.checked })}
+            />
             Set as primary
           </label>
         </div>
         {form.isPrimary && current.some((a) => a.isPrimary) ? (
-          <p style={{ color: "#92400e", fontSize: "0.78rem", margin: 0 }}>The current primary address will be closed and moved to history.</p>
+          <p style={{ color: "#92400e", fontSize: "0.78rem", margin: 0 }}>
+            The current primary address will be closed and moved to history.
+          </p>
         ) : null}
-        {saveError ? <p style={{ color: "#b91c1c", fontSize: "0.8rem", margin: 0 }}>{saveError}</p> : null}
-        <button type="submit" disabled={saving} style={{ alignSelf: "flex-start", padding: "0.4rem 0.9rem", borderRadius: "0.375rem", border: "1px solid #4338ca", background: saving ? "#c7d2fe" : "#4f46e5", color: "#fff", cursor: saving ? "default" : "pointer", fontSize: "0.85rem" }}>
+        {saveError ? (
+          <p style={{ color: "#b91c1c", fontSize: "0.8rem", margin: 0 }}>{saveError}</p>
+        ) : null}
+        <button
+          type="submit"
+          disabled={saving}
+          style={{
+            alignSelf: "flex-start",
+            padding: "0.4rem 0.9rem",
+            borderRadius: "0.375rem",
+            border: "1px solid #4338ca",
+            background: saving ? "#c7d2fe" : "#4f46e5",
+            color: "#fff",
+            cursor: saving ? "default" : "pointer",
+            fontSize: "0.85rem",
+          }}
+        >
           {saving ? "Saving…" : "Add address"}
         </button>
       </form>
@@ -449,7 +640,14 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
       {history.length > 0 ? (
         <>
           <h3 style={h3}>History</h3>
-          <table style={{ borderCollapse: "collapse", fontSize: "0.82rem", width: "100%", maxWidth: 640 }}>
+          <table
+            style={{
+              borderCollapse: "collapse",
+              fontSize: "0.82rem",
+              width: "100%",
+              maxWidth: 640,
+            }}
+          >
             <thead>
               <tr style={{ textAlign: "left", color: "#6b7280" }}>
                 <th style={th}>Type</th>
@@ -465,7 +663,9 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
                     {a.kind}
                     {a.isPrimary ? <span style={{ color: "#9ca3af" }}> · was primary</span> : null}
                   </td>
-                  <td style={td}><AddressLine a={a} /></td>
+                  <td style={td}>
+                    <AddressLine a={a} />
+                  </td>
                   <td style={td}>{a.effectiveFrom}</td>
                   <td style={td}>{a.effectiveTo ?? "—"}</td>
                 </tr>
@@ -475,7 +675,8 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
         </>
       ) : null}
       <p style={{ color: "#9ca3af", fontSize: "0.78rem", margin: "0.6rem 0 0" }}>
-        Addresses are append-only (D5): a change keeps the prior row as history rather than overwriting it.
+        Addresses are append-only (D5): a change keeps the prior row as history rather than
+        overwriting it.
       </p>
     </>
   );
@@ -509,7 +710,9 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
     let active = true;
     (async () => {
       setStatus("loading");
-      const res = await client.GET("/api/v1/patients/{id}/payers", { params: { path: { id: patientId } } });
+      const res = await client.GET("/api/v1/patients/{id}/payers", {
+        params: { path: { id: patientId } },
+      });
       if (!active) return;
       if (res.error || !res.data) return setStatus("error");
       const rows = (res.data as { payers: PatientPayer[] }).payers;
@@ -519,8 +722,11 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
       const ids = [...new Set(rows.map((r) => r.payerId))];
       const resolved = await Promise.all(
         ids.map(async (pid) => {
-          const r = await client.GET("/api/v1/mdm/{kind}/{id}", { params: { path: { kind: "payer", id: pid } } });
-          const name = (r.data as { canonical?: { displayName?: string } } | undefined)?.canonical?.displayName;
+          const r = await client.GET("/api/v1/mdm/{kind}/{id}", {
+            params: { path: { kind: "payer", id: pid } },
+          });
+          const name = (r.data as { canonical?: { displayName?: string } } | undefined)?.canonical
+            ?.displayName;
           return [pid, name ?? ""] as const;
         }),
       );
@@ -539,7 +745,12 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
 
   const current = payers.filter((p) => p.current);
   const history = payers.filter((p) => !p.current);
-  const payerName = (p: PatientPayer) => names[p.payerId] ?? <span style={{ color: "#9ca3af" }} title={`M40 payer ${p.payerId}`}>{p.payerId.slice(0, 8)}…</span>;
+  const payerName = (p: PatientPayer) =>
+    names[p.payerId] ?? (
+      <span style={{ color: "#9ca3af" }} title={`M40 payer ${p.payerId}`}>
+        {p.payerId.slice(0, 8)}…
+      </span>
+    );
 
   return (
     <>
@@ -547,14 +758,44 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
 
       <h3 style={h3}>Active coverage</h3>
       {current.length === 0 ? (
-        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>No active coverage on file.</p>
+        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>
+          No active coverage on file.
+        </p>
       ) : (
-        <ul style={{ listStyle: "none", margin: "0.25rem 0 0", padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <ul
+          style={{
+            listStyle: "none",
+            margin: "0.25rem 0 0",
+            padding: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.5rem",
+          }}
+        >
           {current.map((p) => (
-            <li key={p.id} style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", padding: "0.6rem 0.75rem", fontSize: "0.88rem" }}>
-              <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", marginBottom: "0.2rem" }}>
+            <li
+              key={p.id}
+              style={{
+                border: "1px solid #e5e7eb",
+                borderRadius: "0.5rem",
+                padding: "0.6rem 0.75rem",
+                fontSize: "0.88rem",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  gap: "0.4rem",
+                  alignItems: "center",
+                  marginBottom: "0.2rem",
+                }}
+              >
                 <span style={{ fontWeight: 600 }}>{payerName(p)}</span>
-                {p.rank === 1 ? <span style={badge("#eef2ff", "#4338ca")}>primary</span> : <span style={badge("#f3f4f6", "#6b7280")}>rank {p.rank}</span>}
+                {p.rank === 1 ? (
+                  <span style={badge("#eef2ff", "#4338ca")}>primary</span>
+                ) : (
+                  <span style={badge("#f3f4f6", "#6b7280")}>rank {p.rank}</span>
+                )}
                 <span style={badge("#ecfdf5", "#047857")}>{p.coverageKind}</span>
               </div>
               <div style={{ color: "#374151" }}>
@@ -562,7 +803,9 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
                 {p.groupNumber ? ` · Group ${p.groupNumber}` : ""}
                 {p.binPcn ? ` · BIN/PCN ${p.binPcn}` : ""}
               </div>
-              <div style={{ color: "#9ca3af", fontSize: "0.78rem", marginTop: "0.2rem" }}>since {p.effectiveFrom}</div>
+              <div style={{ color: "#9ca3af", fontSize: "0.78rem", marginTop: "0.2rem" }}>
+                since {p.effectiveFrom}
+              </div>
             </li>
           ))}
         </ul>
@@ -571,7 +814,14 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
       {history.length > 0 ? (
         <>
           <h3 style={h3}>History</h3>
-          <table style={{ borderCollapse: "collapse", fontSize: "0.82rem", width: "100%", maxWidth: 640 }}>
+          <table
+            style={{
+              borderCollapse: "collapse",
+              fontSize: "0.82rem",
+              width: "100%",
+              maxWidth: 640,
+            }}
+          >
             <thead>
               <tr style={{ textAlign: "left", color: "#6b7280" }}>
                 <th style={th}>Payer</th>
@@ -669,7 +919,9 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
     let active = true;
     (async () => {
       setStatus("loading");
-      const res = await client.GET("/api/v1/patients/{id}/care-team", { params: { path: { id: patientId } } });
+      const res = await client.GET("/api/v1/patients/{id}/care-team", {
+        params: { path: { id: patientId } },
+      });
       if (!active) return;
       if (res.error || !res.data) return setStatus("error");
       setTeam(res.data as CareTeam);
@@ -697,19 +949,50 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
 
       <h3 style={h3}>Clinical assignments</h3>
       {activeAssignments.length === 0 ? (
-        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>No active assignments on file.</p>
+        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>
+          No active assignments on file.
+        </p>
       ) : (
-        <ul style={{ listStyle: "none", margin: "0.25rem 0 0", padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <ul
+          style={{
+            listStyle: "none",
+            margin: "0.25rem 0 0",
+            padding: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.5rem",
+          }}
+        >
           {activeAssignments.map((a) => (
-            <li key={a.id} style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", padding: "0.6rem 0.75rem", fontSize: "0.88rem" }}>
-              <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", marginBottom: "0.2rem" }}>
+            <li
+              key={a.id}
+              style={{
+                border: "1px solid #e5e7eb",
+                borderRadius: "0.5rem",
+                padding: "0.6rem 0.75rem",
+                fontSize: "0.88rem",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  gap: "0.4rem",
+                  alignItems: "center",
+                  marginBottom: "0.2rem",
+                }}
+              >
                 <span style={{ fontWeight: 600 }}>{roleLabel(a.role)}</span>
-                {a.role === "primary_rn" ? <span style={badge("#eef2ff", "#4338ca")}>primary RN</span> : null}
+                {a.role === "primary_rn" ? (
+                  <span style={badge("#eef2ff", "#4338ca")}>primary RN</span>
+                ) : null}
               </div>
               <div style={{ color: "#374151" }} title={`M2 user ${a.clinicianUserId}`}>
-                Clinician <code style={{ fontSize: "0.82rem" }}>{a.clinicianUserId.slice(0, 8)}…</code>
+                Clinician{" "}
+                <code style={{ fontSize: "0.82rem" }}>{a.clinicianUserId.slice(0, 8)}…</code>
               </div>
-              <div style={{ color: "#9ca3af", fontSize: "0.78rem", marginTop: "0.2rem" }}>assigned {a.assignedAt}</div>
+              <div style={{ color: "#9ca3af", fontSize: "0.78rem", marginTop: "0.2rem" }}>
+                assigned {a.assignedAt}
+              </div>
             </li>
           ))}
         </ul>
@@ -717,23 +1000,56 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
 
       <h3 style={h3}>Caregivers</h3>
       {caregivers.length === 0 ? (
-        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>No caregivers on file.</p>
+        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>
+          No caregivers on file.
+        </p>
       ) : (
-        <ul style={{ listStyle: "none", margin: "0.25rem 0 0", padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <ul
+          style={{
+            listStyle: "none",
+            margin: "0.25rem 0 0",
+            padding: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.5rem",
+          }}
+        >
           {caregivers.map((c) => (
-            <li key={c.id} style={{ border: "1px solid #e5e7eb", borderRadius: "0.5rem", padding: "0.6rem 0.75rem", fontSize: "0.88rem" }}>
-              <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", marginBottom: "0.2rem" }}>
-                <span style={{ fontWeight: 600 }}>{c.lastName}, {c.firstName}</span>
+            <li
+              key={c.id}
+              style={{
+                border: "1px solid #e5e7eb",
+                borderRadius: "0.5rem",
+                padding: "0.6rem 0.75rem",
+                fontSize: "0.88rem",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  gap: "0.4rem",
+                  alignItems: "center",
+                  marginBottom: "0.2rem",
+                }}
+              >
+                <span style={{ fontWeight: 600 }}>
+                  {c.lastName}, {c.firstName}
+                </span>
                 <span style={badge("#ecfdf5", "#047857")}>{titleCase(c.relationship)}</span>
                 {c.isPrimary ? <span style={badge("#eef2ff", "#4338ca")}>primary</span> : null}
                 {c.isLegalRepresentative ? (
-                  <span style={badge("#fef3c7", "#92400e")} title={`Legal-representative authority: ${titleCase(c.lrAuthority)}`}>
+                  <span
+                    style={badge("#fef3c7", "#92400e")}
+                    title={`Legal-representative authority: ${titleCase(c.lrAuthority)}`}
+                  >
                     legal rep · {titleCase(c.lrAuthority)}
                   </span>
                 ) : null}
               </div>
               {c.phone || c.email ? (
-                <div style={{ color: "#374151" }}>{[c.phone, c.email].filter(Boolean).join(" · ")}</div>
+                <div style={{ color: "#374151" }}>
+                  {[c.phone, c.email].filter(Boolean).join(" · ")}
+                </div>
               ) : null}
             </li>
           ))}
@@ -742,9 +1058,13 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
 
       <h3 style={h3}>Emergency contacts</h3>
       {team.emergencyContacts.length === 0 ? (
-        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>No emergency contacts on file.</p>
+        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>
+          No emergency contacts on file.
+        </p>
       ) : (
-        <table style={{ borderCollapse: "collapse", fontSize: "0.85rem", width: "100%", maxWidth: 640 }}>
+        <table
+          style={{ borderCollapse: "collapse", fontSize: "0.85rem", width: "100%", maxWidth: 640 }}
+        >
           <thead>
             <tr style={{ textAlign: "left", color: "#6b7280" }}>
               <th style={th}>#</th>
@@ -766,23 +1086,35 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
         </table>
       )}
 
-      {(pastAssignments.length > 0 || pastCaregivers.length > 0) ? (
+      {pastAssignments.length > 0 || pastCaregivers.length > 0 ? (
         <>
           <h3 style={h3}>Past involvement</h3>
-          <ul style={{ margin: "0.25rem 0 0", paddingLeft: "1.1rem", color: "#6b7280", fontSize: "0.82rem" }}>
+          <ul
+            style={{
+              margin: "0.25rem 0 0",
+              paddingLeft: "1.1rem",
+              color: "#6b7280",
+              fontSize: "0.82rem",
+            }}
+          >
             {pastAssignments.map((a) => (
-              <li key={a.id}>{roleLabel(a.role)} · clinician {a.clinicianUserId.slice(0, 8)}… · {a.assignedAt} → {a.unassignedAt ?? "—"}</li>
+              <li key={a.id}>
+                {roleLabel(a.role)} · clinician {a.clinicianUserId.slice(0, 8)}… · {a.assignedAt} →{" "}
+                {a.unassignedAt ?? "—"}
+              </li>
             ))}
             {pastCaregivers.map((c) => (
-              <li key={c.id}>{c.lastName}, {c.firstName} · {titleCase(c.relationship)} (ended)</li>
+              <li key={c.id}>
+                {c.lastName}, {c.firstName} · {titleCase(c.relationship)} (ended)
+              </li>
             ))}
           </ul>
         </>
       ) : null}
 
       <p style={{ color: "#9ca3af", fontSize: "0.78rem", margin: "0.6rem 0 0" }}>
-        Staff display names resolve from the M2 roster once it exposes them (Staff Management enrichment / M34);
-        until then an assignment shows its care-team role and the clinician id.
+        Staff display names resolve from the M2 roster once it exposes them (Staff Management
+        enrichment / M34); until then an assignment shows its care-team role and the clinician id.
       </p>
     </>
   );
@@ -840,7 +1172,9 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
       // The privacy-flags read is the tab's spine; a consents failure degrades that section only.
       if (pf.error || !pf.data) return setStatus("error");
       setFlags(pf.data as PrivacyFlags);
-      setConsents(cons.error || !cons.data ? [] : ((cons.data as { data: ConsentRecord[] }).data ?? []));
+      setConsents(
+        cons.error || !cons.data ? [] : ((cons.data as { data: ConsentRecord[] }).data ?? []),
+      );
       setStatus("ready");
     })();
     return () => {
@@ -850,7 +1184,9 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
 
   if (status === "loading") return <LoadingSpinner />;
   if (status === "error" || flags === null) {
-    return <p style={{ color: "#b91c1c", fontSize: "0.9rem" }}>Privacy flags could not be loaded.</p>;
+    return (
+      <p style={{ color: "#b91c1c", fontSize: "0.9rem" }}>Privacy flags could not be loaded.</p>
+    );
   }
 
   const nonSud = flags.flags.filter((f) => f !== "sud");
@@ -861,16 +1197,23 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
 
       <h3 style={h3}>Active restrictions</h3>
       {flags.flags.length === 0 ? (
-        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>No privacy restrictions on file.</p>
+        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>
+          No privacy restrictions on file.
+        </p>
       ) : (
         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", margin: "0.4rem 0 0" }}>
           {flags.sudRestricted ? (
-            <span style={badge("#fef2f2", "#b91c1c")} title="42 CFR Part 2 — SUD records require a Part 2 consent to disclose">
+            <span
+              style={badge("#fef2f2", "#b91c1c")}
+              title="42 CFR Part 2 — SUD records require a Part 2 consent to disclose"
+            >
               {flagLabel("sud")}
             </span>
           ) : null}
           {nonSud.map((f) => (
-            <span key={f} style={badge("#fef3c7", "#92400e")}>{flagLabel(f)}</span>
+            <span key={f} style={badge("#fef3c7", "#92400e")}>
+              {flagLabel(f)}
+            </span>
           ))}
         </div>
       )}
@@ -885,13 +1228,24 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
           <h3 style={h3}>Substance use (42 CFR Part 2)</h3>
           {flags.sudDisclosable ? (
             <p style={{ color: "#374151", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>
-              A Part 2 consent is on file — SUD-categorized records are disclosable to authorized care.
+              A Part 2 consent is on file — SUD-categorized records are disclosable to authorized
+              care.
             </p>
           ) : (
             // §7.6 fail-closed: no Part-2 consent → the protected detail is redacted, not fabricated.
-            <div style={{ border: "1px solid #fecaca", background: "#fef2f2", borderRadius: "0.5rem", padding: "0.6rem 0.75rem", margin: "0.4rem 0 0", fontSize: "0.85rem", color: "#991b1b" }}>
-              <strong>Redacted.</strong> Substance-use (42 CFR Part 2) records are restricted. Disclosure
-              requires a §2.31 Part 2 consent on file; none is active for this patient.
+            <div
+              style={{
+                border: "1px solid #fecaca",
+                background: "#fef2f2",
+                borderRadius: "0.5rem",
+                padding: "0.6rem 0.75rem",
+                margin: "0.4rem 0 0",
+                fontSize: "0.85rem",
+                color: "#991b1b",
+              }}
+            >
+              <strong>Redacted.</strong> Substance-use (42 CFR Part 2) records are restricted.
+              Disclosure requires a §2.31 Part 2 consent on file; none is active for this patient.
             </div>
           )}
         </>
@@ -899,9 +1253,13 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
 
       <h3 style={h3}>Active consents</h3>
       {consents === null || consents.length === 0 ? (
-        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>No active consents on file.</p>
+        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>
+          No active consents on file.
+        </p>
       ) : (
-        <table style={{ borderCollapse: "collapse", fontSize: "0.85rem", width: "100%", maxWidth: 640 }}>
+        <table
+          style={{ borderCollapse: "collapse", fontSize: "0.85rem", width: "100%", maxWidth: 640 }}
+        >
           <thead>
             <tr style={{ textAlign: "left", color: "#6b7280" }}>
               <th style={th}>Type</th>
@@ -932,13 +1290,31 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
   );
 }
 
-const input = { padding: "0.35rem 0.5rem", borderRadius: "0.375rem", border: "1px solid #d1d5db", fontSize: "0.85rem" } as const;
+const input = {
+  padding: "0.35rem 0.5rem",
+  borderRadius: "0.375rem",
+  border: "1px solid #d1d5db",
+  fontSize: "0.85rem",
+} as const;
 const badge = (bg: string, fg: string) =>
-  ({ background: bg, color: fg, borderRadius: "0.25rem", padding: "0.05rem 0.4rem", fontSize: "0.72rem", fontWeight: 600 }) as const;
+  ({
+    background: bg,
+    color: fg,
+    borderRadius: "0.25rem",
+    padding: "0.05rem 0.4rem",
+    fontSize: "0.72rem",
+    fontWeight: 600,
+  }) as const;
 
 const dt = { color: "#6b7280", margin: 0 } as const;
 const dd = { margin: 0 } as const;
-const grid = { display: "grid", gridTemplateColumns: "max-content 1fr", gap: "0.4rem 1rem", fontSize: "0.9rem", margin: "0.25rem 0 0" } as const;
+const grid = {
+  display: "grid",
+  gridTemplateColumns: "max-content 1fr",
+  gap: "0.4rem 1rem",
+  fontSize: "0.9rem",
+  margin: "0.25rem 0 0",
+} as const;
 const h3 = { fontSize: "0.92rem", margin: "1.25rem 0 0.4rem", color: "#374151" } as const;
 const th = { padding: "0.3rem 0.5rem", fontWeight: 500 } as const;
 const td = { padding: "0.3rem 0.5rem" } as const;

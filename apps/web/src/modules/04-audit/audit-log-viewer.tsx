@@ -1,9 +1,3 @@
-// apps/web/src/modules/04-audit — Audit Log Viewer (M4, Track A).
-// Spec: docs/ui/screens/admin/WARDENX_UI_AUDIT_LOG_VIEWER.md — "Use Work Queue."
-// Filterable, cursor-paginated audit-event table with a right detail panel, over the real route
-// GET /api/v1/audit/events via the generated typed client. Imports only leaves (@wardenx/ui).
-import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
 import {
   EmptyState,
   FilterBar,
@@ -13,6 +7,12 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
+// apps/web/src/modules/04-audit — Audit Log Viewer (M4, Track A).
+// Spec: docs/ui/screens/admin/WARDENX_UI_AUDIT_LOG_VIEWER.md — "Use Work Queue."
+// Filterable, cursor-paginated audit-event table with a right detail panel, over the real route
+// GET /api/v1/audit/events via the generated typed client. Imports only leaves (@wardenx/ui).
+import { useCallback, useEffect, useState } from "react";
+import type { JSX } from "react";
 
 // Wire shape mirrored from apps/backend/.../audit-typebox.ts AuditEventSchema (UI owns its copy).
 interface AuditEvent {
@@ -108,13 +108,21 @@ export function AuditLogViewer(): JSX.Element {
             value={filters.resourceKind}
             onChange={(e) => setFilters((f) => ({ ...f, resourceKind: e.target.value }))}
           />
-          <select aria-label="Outcome" value={filters.outcome} onChange={(e) => setFilters((f) => ({ ...f, outcome: e.target.value }))}>
+          <select
+            aria-label="Outcome"
+            value={filters.outcome}
+            onChange={(e) => setFilters((f) => ({ ...f, outcome: e.target.value }))}
+          >
             <option value="">Any outcome</option>
             <option value="success">success</option>
             <option value="failure">failure</option>
             <option value="denied">denied</option>
           </select>
-          <select aria-label="Severity" value={filters.severity} onChange={(e) => setFilters((f) => ({ ...f, severity: e.target.value }))}>
+          <select
+            aria-label="Severity"
+            value={filters.severity}
+            onChange={(e) => setFilters((f) => ({ ...f, severity: e.target.value }))}
+          >
             <option value="">Any severity</option>
             <option value="info">info</option>
             <option value="warn">warn</option>
@@ -132,7 +140,9 @@ export function AuditLogViewer(): JSX.Element {
           onLoadMore={nextCursor ? () => load(nextCursor) : undefined}
         />
       }
-      detail={selected ? <EventDetail event={selected} onClose={() => setSelected(null)} /> : undefined}
+      detail={
+        selected ? <EventDetail event={selected} onClose={() => setSelected(null)} /> : undefined
+      }
     />
   );
 }
@@ -154,7 +164,10 @@ function AuditTable({
 }): JSX.Element {
   if (error) return <EmptyState title="Unavailable" description={error} />;
   if (loading && items.length === 0) return <LoadingSpinner />;
-  if (items.length === 0) return <EmptyState title="No audit events" description="No events match the current filters." />;
+  if (items.length === 0)
+    return (
+      <EmptyState title="No audit events" description="No events match the current filters." />
+    );
   return (
     <div style={{ padding: "0 1.5rem 1.5rem" }}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
@@ -172,8 +185,21 @@ function AuditTable({
           {items.map((e) => (
             <tr
               key={e.id}
+              // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+              role="button"
+              tabIndex={0}
               onClick={() => onSelect(e)}
-              style={{ cursor: "pointer", background: e.id === selectedId ? "#eff6ff" : undefined, borderTop: "1px solid #f3f4f6" }}
+              onKeyDown={(ev) => {
+                if (ev.key === "Enter" || ev.key === " ") {
+                  ev.preventDefault();
+                  onSelect(e);
+                }
+              }}
+              style={{
+                cursor: "pointer",
+                background: e.id === selectedId ? "#eff6ff" : undefined,
+                borderTop: "1px solid #f3f4f6",
+              }}
             >
               <td style={td}>{new Date(e.createdAt).toLocaleString()}</td>
               <td style={td}>{e.actorUserId ?? e.actorKind}</td>
@@ -206,7 +232,10 @@ function EventDetail({ event, onClose }: { event: AuditEvent; onClose: () => voi
   return (
     <RightDetailPanel title="Event detail" onClose={onClose}>
       {row("Timestamp", new Date(event.createdAt).toLocaleString())}
-      {row("Actor", `${event.actorUserId ?? "—"} (${event.actorKind}${event.actorRole ? `, ${event.actorRole}` : ""})`)}
+      {row(
+        "Actor",
+        `${event.actorUserId ?? "—"} (${event.actorKind}${event.actorRole ? `, ${event.actorRole}` : ""})`,
+      )}
       {row("Action", event.eventType)}
       {row("Entity", `${event.resourceKind}${event.resourceId ? ` · ${event.resourceId}` : ""}`)}
       {row("Outcome", event.outcome)}
@@ -214,8 +243,20 @@ function EventDetail({ event, onClose }: { event: AuditEvent; onClose: () => voi
       {row("Retention", event.retentionClass)}
       <details style={{ marginTop: "0.75rem" }}>
         <summary style={{ cursor: "pointer", fontSize: "0.8rem" }}>Context / changes</summary>
-        <pre style={{ fontSize: "0.7rem", overflowX: "auto", background: "#f9fafb", padding: "0.5rem", borderRadius: "0.375rem" }}>
-          {JSON.stringify({ before: event.before, after: event.after, context: event.context }, null, 2)}
+        <pre
+          style={{
+            fontSize: "0.7rem",
+            overflowX: "auto",
+            background: "#f9fafb",
+            padding: "0.5rem",
+            borderRadius: "0.375rem",
+          }}
+        >
+          {JSON.stringify(
+            { before: event.before, after: event.after, context: event.context },
+            null,
+            2,
+          )}
         </pre>
       </details>
     </RightDetailPanel>

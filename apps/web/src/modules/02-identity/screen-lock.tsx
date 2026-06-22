@@ -1,3 +1,4 @@
+import { SESSION_POLICY } from "@wardenx/types";
 // apps/web/src/modules/02-identity — Idle Screen-Lock overlay (M2 Auth, AUTH polish).
 // Spec: docs/ui/screens/core/WARDENX_UI_AUTH.md "Screen-lock overlay" — after 5 minutes idle, a soft
 // re-auth (password); the SESSION STAYS ALIVE (lifecycle active → screen_locked → active, M2 §2.2.4).
@@ -12,7 +13,6 @@
 // are never screen-locked. An unknown/absent class fails SAFE (the lock applies).
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
-import { SESSION_POLICY } from "@wardenx/types";
 import { authClient } from "./auth-client";
 
 const IDLE_MS = SESSION_POLICY.screenLockSec * 1000;
@@ -89,16 +89,23 @@ export function ScreenLock(): JSX.Element | null {
   if (!locked) return null;
 
   return (
+    // biome-ignore lint/a11y/useSemanticElements: native <dialog> needs imperative showModal(); role="dialog" overlay is the intended pattern.
     <div role="dialog" aria-modal="true" aria-label="Screen locked" style={overlay}>
       <form onSubmit={unlock} style={card}>
         <strong style={{ fontSize: "1rem" }}>WardenX</strong>
         <h1 style={{ margin: 0, fontSize: "1.05rem" }}>Locked</h1>
         <p style={{ margin: 0, color: "#6b7280", fontSize: "0.85rem" }}>
-          Your screen locked after inactivity. {email ? <>Enter your password to continue as <strong>{email}</strong>.</> : "Confirm your password to continue."}
+          Your screen locked after inactivity.{" "}
+          {email ? (
+            <>
+              Enter your password to continue as <strong>{email}</strong>.
+            </>
+          ) : (
+            "Confirm your password to continue."
+          )}
         </p>
         <input
           type="password"
-          autoFocus
           autoComplete="current-password"
           aria-label="Password"
           required
@@ -146,7 +153,11 @@ const card = {
   borderRadius: "0.75rem",
   boxShadow: "0 20px 50px rgba(0,0,0,0.25)",
 } as const;
-const field = { padding: "0.5rem 0.625rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem" } as const;
+const field = {
+  padding: "0.5rem 0.625rem",
+  border: "1px solid #e5e7eb",
+  borderRadius: "0.5rem",
+} as const;
 const primaryBtn = {
   padding: "0.625rem 1rem",
   border: "none",

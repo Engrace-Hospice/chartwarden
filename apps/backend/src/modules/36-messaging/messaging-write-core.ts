@@ -43,6 +43,7 @@ export interface MessageBodyCipher {
 /** Build the lazy, per-process {@link MessageBodyCipher}. `kek` is injectable for tests. */
 export function createMessageBodyCipher(opts: { kek?: Buffer } = {}): MessageBodyCipher {
   let kek: Buffer | undefined = opts.kek;
+  // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic lazy memoization via ??=.
   const getKek = (): Buffer => (kek ??= loadMessagingKek());
   const dekCache = new Map<string, Buffer>();
   const dekFor = (orgId: string): Buffer => {
@@ -55,7 +56,10 @@ export function createMessageBodyCipher(opts: { kek?: Buffer } = {}): MessageBod
   };
   return {
     seal(orgId, plaintext) {
-      return { cipher: sealMessageBody(plaintext, dekFor(orgId)), sha256: messageBodySha256(plaintext) };
+      return {
+        cipher: sealMessageBody(plaintext, dekFor(orgId)),
+        sha256: messageBodySha256(plaintext),
+      };
     },
     open(orgId, cipher) {
       return openMessageBody(cipher, dekFor(orgId));
@@ -68,7 +72,9 @@ export async function activeMemberIds(tx: Tx, orgId: string, channelId: string):
   const rows = (await tx
     .select({ userId: CM.userId })
     .from(CM)
-    .where(and(eq(CM.organizationId, orgId), eq(CM.channelId, channelId), isNull(CM.removedAt)))) as Array<{
+    .where(
+      and(eq(CM.organizationId, orgId), eq(CM.channelId, channelId), isNull(CM.removedAt)),
+    )) as Array<{
     userId: string;
   }>;
   return rows.map((r) => r.userId);

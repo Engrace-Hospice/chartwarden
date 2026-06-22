@@ -27,8 +27,16 @@ export interface AdmitInput {
 /** The admit outcome (§7.1). hard_block → 409; soft_review/created → 201. */
 export type AdmitResult =
   | { readonly outcome: "created"; readonly patientId: string }
-  | { readonly outcome: "soft_review"; readonly patientId: string; readonly matchReviewIds: readonly string[] }
-  | { readonly outcome: "hard_block"; readonly existingPatientId: string; readonly matchedOn: string };
+  | {
+      readonly outcome: "soft_review";
+      readonly patientId: string;
+      readonly matchReviewIds: readonly string[];
+    }
+  | {
+      readonly outcome: "hard_block";
+      readonly existingPatientId: string;
+      readonly matchedOn: string;
+    };
 
 /** A minimal patient view a read returns. */
 export interface PatientView {
@@ -287,6 +295,7 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
   const payers = new Map<string, PatientPayerView[]>(); // patientId → §3.4 coverage rows
   const now = seed.now ?? (() => new Date("2026-06-20T00:00:00Z"));
   let seq = 0;
+  // biome-ignore lint/suspicious/noAssignInExpressions: in-memory monotonic id counter.
   const nextId = (p: string) => `${p}_${(seq += 1)}`;
 
   function toCandidate(raw: RawSubject): MatchCandidate[] {
@@ -302,7 +311,11 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
         const result = runMatch(incoming, toCandidate(input));
         if (result.outcome === "hard_block") {
           events.push("m5.patient.duplicate_block");
-          return { outcome: "hard_block", existingPatientId: result.existingPatientId, matchedOn: String(result.matchedOn) };
+          return {
+            outcome: "hard_block",
+            existingPatientId: result.existingPatientId,
+            matchedOn: String(result.matchedOn),
+          };
         }
         const id = nextId("pat");
         const view: PatientView & MatchCandidate = {
@@ -323,7 +336,15 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
       }
       // bypass path
       const id = nextId("pat");
-      patients.set(id, { id, organizationId, mrn: `MRN-${id}`, lastName: incoming.lastName, firstName: incoming.firstName, dob: incoming.dob, status: "prospective" });
+      patients.set(id, {
+        id,
+        organizationId,
+        mrn: `MRN-${id}`,
+        lastName: incoming.lastName,
+        firstName: incoming.firstName,
+        dob: incoming.dob,
+        status: "prospective",
+      });
       events.push("m5.patient.created");
       return { outcome: "created", patientId: id };
     },
@@ -331,7 +352,15 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
     async getPatient(organizationId, id) {
       const p = patients.get(id);
       return p && p.organizationId === organizationId
-        ? { id: p.id, organizationId: p.organizationId, mrn: p.mrn, lastName: p.lastName, firstName: p.firstName, dob: p.dob, status: p.status }
+        ? {
+            id: p.id,
+            organizationId: p.organizationId,
+            mrn: p.mrn,
+            lastName: p.lastName,
+            firstName: p.firstName,
+            dob: p.dob,
+            status: p.status,
+          }
         : null;
     },
 
@@ -364,11 +393,40 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
       if (!p || p.organizationId !== organizationId) return null;
       const today = "2026-06-20";
       const rows: IdentifierView[] = [
-        { id: `${id}_mrn`, kind: "mrn", value: p.mrn, last4: null, sensitive: false, issuer: null, effectiveFrom: today, effectiveTo: null },
+        {
+          id: `${id}_mrn`,
+          kind: "mrn",
+          value: p.mrn,
+          last4: null,
+          sensitive: false,
+          issuer: null,
+          effectiveFrom: today,
+          effectiveTo: null,
+        },
       ];
-      if (p.mbi) rows.push({ id: `${id}_mbi`, kind: "mbi", value: p.mbi, last4: null, sensitive: false, issuer: null, effectiveFrom: today, effectiveTo: null });
+      if (p.mbi)
+        rows.push({
+          id: `${id}_mbi`,
+          kind: "mbi",
+          value: p.mbi,
+          last4: null,
+          sensitive: false,
+          issuer: null,
+          effectiveFrom: today,
+          effectiveTo: null,
+        });
       // §2.2: ssn is ENVELOPE-ENCRYPTED — the read layer NEVER returns the value, only the masked tail.
-      if (p.ssn) rows.push({ id: `${id}_ssn`, kind: "ssn", value: null, last4: p.ssn.replace(/\D/g, "").slice(-4) || null, sensitive: true, issuer: null, effectiveFrom: today, effectiveTo: null });
+      if (p.ssn)
+        rows.push({
+          id: `${id}_ssn`,
+          kind: "ssn",
+          value: null,
+          last4: p.ssn.replace(/\D/g, "").slice(-4) || null,
+          sensitive: true,
+          issuer: null,
+          effectiveFrom: today,
+          effectiveTo: null,
+        });
       return rows;
     },
 
@@ -376,14 +434,33 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
       // §7.5: org-scoped (prod relies on RLS; the slice filters by organizationId).
       const rows: PatientView[] = [...patients.values()]
         .filter((p) => p.organizationId === organizationId)
-        .map((p) => ({ id: p.id, organizationId: p.organizationId, mrn: p.mrn, lastName: p.lastName, firstName: p.firstName, dob: p.dob, status: p.status }));
+        .map((p) => ({
+          id: p.id,
+          organizationId: p.organizationId,
+          mrn: p.mrn,
+          lastName: p.lastName,
+          firstName: p.firstName,
+          dob: p.dob,
+          status: p.status,
+        }));
       const q = query.q?.trim().toLowerCase();
       const filtered = rows.filter((p) => {
         if (query.status && p.status !== query.status) return false;
-        if (q && !(`${p.lastName} ${p.firstName}`.toLowerCase().includes(q) || p.mrn.toLowerCase().includes(q))) return false;
+        if (
+          q &&
+          !(
+            `${p.lastName} ${p.firstName}`.toLowerCase().includes(q) ||
+            p.mrn.toLowerCase().includes(q)
+          )
+        )
+          return false;
         return true;
       });
-      filtered.sort((a, b) => (a.lastName === b.lastName ? a.firstName.localeCompare(b.firstName) : a.lastName.localeCompare(b.lastName)));
+      filtered.sort((a, b) =>
+        a.lastName === b.lastName
+          ? a.firstName.localeCompare(b.firstName)
+          : a.lastName.localeCompare(b.lastName),
+      );
       const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
       const offset = query.cursor ? Number.parseInt(query.cursor, 10) || 0 : 0;
       const page = filtered.slice(offset, offset + limit);

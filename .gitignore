@@ -2,6 +2,7 @@
 # Tooling/build artifacts are reproducible via `bun install`.
 node_modules/
 .DS_Store
+.vscode/
 .claude/settings.local.json
 
 # TypeScript project-reference build output (regenerable via `tsc -b`).

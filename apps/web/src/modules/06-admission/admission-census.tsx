@@ -1,11 +1,3 @@
-// apps/web/src/modules/06-admission — Admission Census (M6 §5.2.12 entry, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md — "Use Work Queue."
-// Org-scoped admissions queue read from GET /api/v1/admissions (optional state filter) via the
-// generated typed client; a row opens the Admission Detail (§5.2.4). The server enforces every scope
-// (ADR-0030 — no authz on the frontend). Imports only leaves (@wardenx/ui).
-import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
-import { useNavigate } from "react-router-dom";
 import {
   EmptyState,
   FilterBar,
@@ -16,6 +8,14 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
+// apps/web/src/modules/06-admission — Admission Census (M6 §5.2.12 entry, Track B / ADR-0030).
+// Spec: docs/ui/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md — "Use Work Queue."
+// Org-scoped admissions queue read from GET /api/v1/admissions (optional state filter) via the
+// generated typed client; a row opens the Admission Detail (§5.2.4). The server enforces every scope
+// (ADR-0030 — no authz on the frontend). Imports only leaves (@wardenx/ui).
+import { useCallback, useEffect, useState } from "react";
+import type { JSX } from "react";
+import { useNavigate } from "react-router-dom";
 
 interface AdmissionRow {
   id: string;
@@ -69,8 +69,18 @@ export function AdmissionCensus(): JSX.Element {
         </KpiStrip>
       }
       filters={
-        <FilterBar actions={<button type="button" onClick={() => setState("")}>Clear</button>}>
-          <select aria-label="Admission state" value={state} onChange={(e) => setState(e.target.value)}>
+        <FilterBar
+          actions={
+            <button type="button" onClick={() => setState("")}>
+              Clear
+            </button>
+          }
+        >
+          <select
+            aria-label="Admission state"
+            value={state}
+            onChange={(e) => setState(e.target.value)}
+          >
             <option value="">Any state</option>
             <option value="pending">pending</option>
             <option value="active">active</option>
@@ -109,7 +119,9 @@ function AdmissionTable({
   if (error) return <EmptyState title="Unavailable" description={error} />;
   if (loading && items.length === 0) return <LoadingSpinner />;
   if (items.length === 0)
-    return <EmptyState title="No admissions" description="No admissions match the current filters." />;
+    return (
+      <EmptyState title="No admissions" description="No admissions match the current filters." />
+    );
   return (
     <div style={{ padding: "0 1.5rem 1.5rem" }}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
@@ -121,7 +133,20 @@ function AdmissionTable({
         </thead>
         <tbody>
           {items.map((a) => (
-            <tr key={a.id} onClick={() => onOpen(a.id)} style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}>
+            <tr
+              key={a.id}
+              // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+              role="button"
+              tabIndex={0}
+              onClick={() => onOpen(a.id)}
+              onKeyDown={(ev) => {
+                if (ev.key === "Enter" || ev.key === " ") {
+                  ev.preventDefault();
+                  onOpen(a.id);
+                }
+              }}
+              style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}
+            >
               <td style={td}>{a.id}</td>
               <td style={td}>{a.state}</td>
             </tr>

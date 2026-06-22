@@ -19,7 +19,7 @@
  * CI:    exits 1 on any violation (arch:fitness stage).
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { MODULES } from "../architecture/module-manifest";
 
@@ -30,7 +30,11 @@ type Violation = { file: string; rule: string; detail: string };
 
 function listFiles(dir: string, acc: string[] = []): string[] {
   let entries: string[] = [];
-  try { entries = readdirSync(join(REPO_ROOT, dir)); } catch { return acc; }
+  try {
+    entries = readdirSync(join(REPO_ROOT, dir));
+  } catch {
+    return acc;
+  }
   for (const e of entries) {
     const rel = join(dir, e);
     if (statSync(join(REPO_ROOT, rel)).isDirectory()) {
@@ -59,10 +63,15 @@ for (const base of SCAN_DIRS) {
     // CHECK ( ... SELECT ... ) — match CHECK(...) blocks containing a SELECT.
     const checkRe = /\bCHECK\s*\(([^;]*?)\)/gis;
     let cm: RegExpExecArray | null;
+    // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic regex exec() iteration.
     while ((cm = checkRe.exec(src))) {
       if (/\bSELECT\b/i.test(cm[1]!)) {
-        violations.push({ file, rule: "check-subquery",
-          detail: "a CHECK constraint contains a SELECT — illegal in PostgreSQL (ADR-0022 D1.2); move to a BEFORE trigger / partial unique index" });
+        violations.push({
+          file,
+          rule: "check-subquery",
+          detail:
+            "a CHECK constraint contains a SELECT — illegal in PostgreSQL (ADR-0022 D1.2); move to a BEFORE trigger / partial unique index",
+        });
       }
     }
 
@@ -70,17 +79,22 @@ for (const base of SCAN_DIRS) {
     const flagEnum = (name: string, map: Map<string, string>, kind: string) => {
       const prev = map.get(name);
       if (prev) {
-        violations.push({ file, rule: "duplicate-enum",
-          detail: `${kind} enum type '${name}' already defined in ${relative(REPO_ROOT, prev)} — a second definition of the same kind fails the migration (ADR-0022 D1.3)` });
+        violations.push({
+          file,
+          rule: "duplicate-enum",
+          detail: `${kind} enum type '${name}' already defined in ${relative(REPO_ROOT, prev)} — a second definition of the same kind fails the migration (ADR-0022 D1.3)`,
+        });
       } else {
         map.set(name, file);
       }
     };
     let sm: RegExpExecArray | null;
     const sqlEnumRe = /CREATE\s+TYPE\s+(\w+)\s+AS\s+ENUM/gi;
+    // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic regex exec() iteration.
     while ((sm = sqlEnumRe.exec(src))) flagEnum(sm[1]!, sqlEnumDefs, "SQL");
     let tm: RegExpExecArray | null;
     const tsEnumRe = /pgEnum\(\s*['"]([\w]+)['"]/gi;
+    // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic regex exec() iteration.
     while ((tm = tsEnumRe.exec(src))) flagEnum(tm[1]!, tsEnumDefs, "Drizzle");
 
     // ---- Rule 1: partition key absent from a unique index (heuristic) ----
@@ -90,13 +104,18 @@ for (const base of SCAN_DIRS) {
       /partitionedBy\w*\(\s*['"](\w+)['"]/i.exec(src)?.[1] ??
       /PARTITION\s+BY\s+\w+\s*\(\s*(\w+)/i.exec(src)?.[1];
     if (partCol) {
-      const uniqRe = /uniqueIndex\([^)]*\)\.on\(([^)]*)\)|UNIQUE\s*\(([^)]*)\)|PRIMARY\s+KEY\s*\(([^)]*)\)/gi;
+      const uniqRe =
+        /uniqueIndex\([^)]*\)\.on\(([^)]*)\)|UNIQUE\s*\(([^)]*)\)|PRIMARY\s+KEY\s*\(([^)]*)\)/gi;
       let um: RegExpExecArray | null;
+      // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic regex exec() iteration.
       while ((um = uniqRe.exec(src))) {
-        const cols = (um[1] ?? um[2] ?? um[3] ?? "");
+        const cols = um[1] ?? um[2] ?? um[3] ?? "";
         if (!new RegExp(`\\b${partCol}\\b`).test(cols)) {
-          violations.push({ file, rule: "partition-key-not-in-unique",
-            detail: `table partitioned by '${partCol}' has a UNIQUE/PK index not including it (\`${cols.trim().slice(0, 60)}\`) — illegal in PostgreSQL (ADR-0022 D1.1)` });
+          violations.push({
+            file,
+            rule: "partition-key-not-in-unique",
+            detail: `table partitioned by '${partCol}' has a UNIQUE/PK index not including it (\`${cols.trim().slice(0, 60)}\`) — illegal in PostgreSQL (ADR-0022 D1.1)`,
+          });
         }
       }
     }
@@ -104,7 +123,9 @@ for (const base of SCAN_DIRS) {
 }
 
 if (violations.length === 0) {
-  console.log("✓ ddl-legality: no CHECK subqueries, duplicate enums, or partition-key/unique conflicts");
+  console.log(
+    "✓ ddl-legality: no CHECK subqueries, duplicate enums, or partition-key/unique conflicts",
+  );
   process.exit(0);
 }
 console.error(`✗ ddl-legality: ${violations.length} violation(s)\n`);

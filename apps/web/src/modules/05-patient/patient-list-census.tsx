@@ -1,10 +1,3 @@
-// apps/web/src/modules/05-patient — Patient List / Census (M5, Track A).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md — "Use Work Queue."
-// Filterable, cursor-paginated census over GET /api/v1/patients via the generated typed client.
-// A row opens the patient chart (/patients/:id, built later). Imports only leaves (@wardenx/ui).
-import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
-import { useNavigate } from "react-router-dom";
 import {
   EmptyState,
   FilterBar,
@@ -13,6 +6,13 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
+// apps/web/src/modules/05-patient — Patient List / Census (M5, Track A).
+// Spec: docs/ui/screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md — "Use Work Queue."
+// Filterable, cursor-paginated census over GET /api/v1/patients via the generated typed client.
+// A row opens the patient chart (/patients/:id, built later). Imports only leaves (@wardenx/ui).
+import { useCallback, useEffect, useState } from "react";
+import type { JSX } from "react";
+import { useNavigate } from "react-router-dom";
 
 interface PatientSummary {
   id: string;
@@ -78,7 +78,12 @@ export function PatientListCensus(): JSX.Element {
             </button>
           }
         >
-          <input aria-label="Search name or MRN" placeholder="Name or MRN" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input
+            aria-label="Search name or MRN"
+            placeholder="Name or MRN"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
           <select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">Any status</option>
             <option value="prospective">prospective</option>
@@ -116,7 +121,8 @@ function CensusTable({
 }): JSX.Element {
   if (error) return <EmptyState title="Unavailable" description={error} />;
   if (loading && items.length === 0) return <LoadingSpinner />;
-  if (items.length === 0) return <EmptyState title="No patients" description="No patients match the current filters." />;
+  if (items.length === 0)
+    return <EmptyState title="No patients" description="No patients match the current filters." />;
   return (
     <div style={{ padding: "0 1.5rem 1.5rem" }}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
@@ -132,7 +138,16 @@ function CensusTable({
           {items.map((p) => (
             <tr
               key={p.id}
+              // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+              role="button"
+              tabIndex={0}
               onClick={() => onOpen(p.id)}
+              onKeyDown={(ev) => {
+                if (ev.key === "Enter" || ev.key === " ") {
+                  ev.preventDefault();
+                  onOpen(p.id);
+                }
+              }}
               style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}
             >
               <td style={td}>

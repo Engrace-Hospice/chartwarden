@@ -15,9 +15,9 @@
 // projection (§7.9) are the Drizzle-backed store's job in T07/T09 — this default keeps them
 // deliberately simple.
 
-import { type ConceptCandidate, includesAsOf } from "../resolution";
 import type { CodeSystemId, ExpansionMember, ResolvedConcept } from "../interfaces/kinds";
 import type { DeprecationMappingResponse, SearchOptions } from "../interfaces/provider";
+import { type ConceptCandidate, includesAsOf } from "../resolution";
 
 /** Identity for a tenant value-set extension write (the only mutating path, §2.4.3). */
 export interface TenantExtensionInput {
@@ -196,6 +196,7 @@ export function createInMemoryTerminologyStore(seed: InMemoryTerminologySeed = {
     },
 
     async insertTenantExtension(input) {
+      // biome-ignore lint/suspicious/noAssignInExpressions: in-memory monotonic id counter.
       const extensionId = `vsext_${(extensionSeq += 1)}`;
       const k = compoundKey(input.orgId, input.valueSetId);
       const member: ExpansionMember & { extensionId: string } = {
