@@ -34,7 +34,10 @@ const M = (n: number) => `M${String(n).padStart(2, "0")}`;
 // Unprefixed system events are explicitly permitted by M01 D8 ("or it's an unprefixed
 // system event"). Keep this allowlist tight and visible.
 const SYSTEM_EVENT_ALLOWLIST = new Set<string>([
-  // none ratified yet — add deliberately, with an ADR reference
+  // `idg.decision_recorded` — the M14 canonical cross-module decision seam (M14 spec §4.4; M7 D4). Its name
+  // PREDATES the `m14.` namespace and is the LOCKED consumer contract for M7/M11/M12/M16; M14 owns it
+  // (events-by-m14.ts `moduleOwner: 'm14'`). Deliberately exempt from the `mN.<resource>.<verb>` prefix scan.
+  "idg.decision_recorded",
 ]);
 
 type V = { check: string; detail: string };
