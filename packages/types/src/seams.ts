@@ -21,6 +21,7 @@ import type {
   HopeTimepointProvider,
 } from "./hope";
 import type { OrderProvider, OrderSignatureProvider } from "./orders";
+import type { MedicationOrderProvider, RefillInboxProvider } from "./dosespot";
 import type { PatientMutator, PatientReader } from "./patient";
 // @wardenx/types — Boot-registered SEAM contracts (Phase 0 skeleton).
 //
@@ -98,7 +99,16 @@ export type SeamName =
   // them instead of importing M11's schema. `OrderSignatureProvider` is the one MUTATE seam (M12 writes med-
   // order signatures through it); `OrderProvider` is the read-side counterpart.
   | "OrderSignatureProvider" // M11 — polymorphic clinical-signature primitive (sign / verbal / cosign / discontinue)
-  | "OrderProvider"; // M11 — order read seam (active / by-patient / since / verbal-timeliness / discontinuation)
+  | "OrderProvider" // M11 — order read seam (active / by-patient / since / verbal-timeliness / discontinuation)
+  // M12 (DoseSpot Integration) owned seams (§2.10 D17) — also leaf-typed (interfaces in ./dosespot, this leaf),
+  // so they are typed here like M6..M11's seams. Both are READ-only surfaces: `MedicationOrderProvider` is the
+  // medication-order read path M13 (eMAR administration context), M14 (IDG packet), M19/M30/M33 (derived
+  // signals + cost basis + quality), M28 (FHIR `MedicationRequest`), M31 (portal summary) consume; M12 owns the
+  // `medication_order` table + the prescribing workflow and downstream modules NEVER import its schema.
+  // `RefillInboxProvider` is the refill-request read path the prescriber inbox UI, M19 (on-call "any pending
+  // refills tonight?"), and M33 (SLA dashboards) consume over `refill_request`.
+  | "MedicationOrderProvider" // M12 — medication-order read seam (active / since / admin-context / controlled flag / cost / portal / FHIR)
+  | "RefillInboxProvider"; // M12 — refill-inbox read seam (pending-by-prescriber / pending-by-patient / by-id)
 
 /**
  * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
@@ -297,6 +307,13 @@ export interface SeamContracts {
   // `order_signature.target_kind`, D4); `OrderProvider` is the read-side counterpart.
   OrderSignatureProvider: OrderSignatureProvider;
   OrderProvider: OrderProvider;
+  // M12's owned seams (§2.10 D17) are LEAF-TYPED too — interfaces live in ./dosespot (this package), so the
+  // registry is statically typed against the real contract. M12 registers the real Drizzle-backed impls over
+  // the deny-stubs (M12-T07); consumers that list `12` in their manifest `dependsOn` (M13/M14/M19/M28/M31/M33)
+  // resolve them through the typed accessors with no schema import edge. Both are READ-only — M12 publishes the
+  // medication-order + refill-inbox read projections; never a Drizzle row and never the free-text PHI (D14).
+  MedicationOrderProvider: MedicationOrderProvider;
+  RefillInboxProvider: RefillInboxProvider;
 }
 
 /**

@@ -36,12 +36,14 @@ import {
   latestAssessmentProviderDenyStub,
   levelOfCareReaderDenyStub,
   mdmEntityProviderDenyStub,
+  medicationOrderProviderDenyStub,
   messagingProviderDenyStub,
   mileagePayrollReaderDenyStub,
   orderProviderDenyStub,
   orderSignatureProviderDenyStub,
   patientMutatorDenyStub,
   patientReaderDenyStub,
+  refillInboxProviderDenyStub,
   scaleSeriesProviderDenyStub,
   sessionContextResolverDenyStub,
   signedEncountersReaderDenyStub,
@@ -280,6 +282,25 @@ export const REQUIRED_SEAMS = [
     ownerModule: 11,
     phi: true,
     denyStub: orderProviderDenyStub,
+  },
+  // M12 (DoseSpot Integration) owned seams (§2.10 D17). Both are READ-only DTO surfaces over M12's
+  // `medication_order` / `refill_request` tables: `MedicationOrderProvider` is the medication-order read path
+  // M13 (eMAR administration context), M14 (IDG packet), M19/M30/M33 (derived signals + cost + quality), M28
+  // (FHIR `MedicationRequest`), M31 (portal summary) consume; `RefillInboxProvider` is the refill-inbox read
+  // path the prescriber inbox UI, M19 (on-call), and M33 (SLA dashboards) consume — all instead of importing
+  // M12's schema. Both touch patient-linked medication records → phi: true; boot-validated and fail-closed
+  // until M12 registers the real impls (M12-T07).
+  {
+    key: "MedicationOrderProvider",
+    ownerModule: 12,
+    phi: true,
+    denyStub: medicationOrderProviderDenyStub,
+  },
+  {
+    key: "RefillInboxProvider",
+    ownerModule: 12,
+    phi: true,
+    denyStub: refillInboxProviderDenyStub,
   },
 ] satisfies readonly RequiredSeam[];
 

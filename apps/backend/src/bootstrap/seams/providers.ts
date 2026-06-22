@@ -28,9 +28,11 @@ import type {
   HopeTimepointProvider,
   LatestAssessmentProvider,
   LevelOfCareReader,
+  MedicationOrderProvider,
   MileagePayrollReader,
   OrderProvider,
   OrderSignatureProvider,
+  RefillInboxProvider,
   PatientMutator,
   PatientReader,
   ScaleSeriesProvider,
@@ -365,6 +367,59 @@ export const orderProviderDenyStub: OrderProvider = {
   },
   findByCarePlanIntervention() {
     throw new NotImplementedError("OrderProvider");
+  },
+};
+
+// M12 (DoseSpot Integration) owned seams (§2.10 D17). LEAF-TYPED (interfaces in @wardenx/types) like M6..M11's
+// seams, so each gets a concrete typed deny-stub. Both are READ-only surfaces over M12's `medication_order` /
+// `refill_request` tables; deny LOUDLY until M12 registers the real impls (M12-T07).
+
+/** M12 — the medication-order read seam (active / since / admin-context / controlled flag / cost / portal /
+ * FHIR) M13/M14/M19/M28/M30/M31/M33 consume. Denies until M12 registers it (no silent empty medication list). */
+export const medicationOrderProviderDenyStub: MedicationOrderProvider = {
+  getActiveMedications() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  getMedicationsSince() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  getMedicationOrder() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  listForAdmission() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  getAdministrationContext() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  getControlledSubstanceFlag() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  getComfortKitDeploymentTimeline() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  getCostBasisSummary() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  getPortalMedicationSummary() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  asFhirMedicationRequest() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+};
+
+/** M12 — the refill-inbox read seam (pending-by-prescriber / pending-by-patient / by-id) the prescriber
+ * inbox UI, M19 (on-call), and M33 (SLA dashboards) consume. Denies until M12 registers it. */
+export const refillInboxProviderDenyStub: RefillInboxProvider = {
+  getPendingRefillsForPrescriber() {
+    throw new NotImplementedError("RefillInboxProvider");
+  },
+  getPendingRefillsForPatient() {
+    throw new NotImplementedError("RefillInboxProvider");
+  },
+  getRefillRequestById() {
+    throw new NotImplementedError("RefillInboxProvider");
   },
 };
 

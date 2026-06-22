@@ -460,7 +460,7 @@ export const MODULES: ModuleDef[] = [
       "apps/backend/src/modules/12-dosespot",
       "apps/web/src/modules/12-dosespot",
     ], // +web: Track B in-task screens (ADR-0030), land in M12-T09
-    dependsOn: [5, 11, 38, 40],
+    dependsOn: [1, 5, 11, 38, 40], // +M1: the bootstrap seam registry (registerSeam/getSeam) M12's backend module wires its §2.10 D17 owned seams (MedicationOrderProvider/RefillInboxProvider) into (M12-T07; M6..M11 seam-task precedent)
     ownedTables: [
       "dosespot_prescriber",
       "dosespot_webhook_event",
