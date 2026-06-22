@@ -26,7 +26,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer", "mdm_canonical_writer"];
+const ROLES = [
+  "wardenx_app",
+  "wardenx_admin",
+  "wardenx_readonly",
+  "wardenx_audit_writer",
+  "mdm_canonical_writer",
+];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 
@@ -103,7 +109,10 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
     // through audit_event's monthly partition, THIS throws "stack depth limit exceeded" and
     // the whole suite fails — which is exactly the regression we want pinned.
     peA = await withOrg(ORG_A, async () => {
-      const r = await db.query(`INSERT INTO provider_entity ${PE_COLS} VALUES ${PE_VALS} RETURNING id`, [ORG_A]);
+      const r = await db.query(
+        `INSERT INTO provider_entity ${PE_COLS} VALUES ${PE_VALS} RETURNING id`,
+        [ORG_A],
+      );
       const id = r.rows[0].id as string;
       await db.query(
         `INSERT INTO location (provider_entity_id,name,address_line1,city,state,postal_code,timezone)
@@ -121,12 +130,16 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
   it("audited writes do NOT recurse through audit_event partitions (regression: 0004 guard)", async () => {
     expect(peA).toBeTruthy(); // the seed insert above succeeded → no stack-overflow
     // and the AFTER trigger actually wrote an audit row for it (read as superuser)
-    const r = await db.query("SELECT count(*)::int AS n FROM audit_event WHERE resource_kind='provider_entity'");
+    const r = await db.query(
+      "SELECT count(*)::int AS n FROM audit_event WHERE resource_kind='provider_entity'",
+    );
     expect(r.rows[0].n).toBeGreaterThan(0);
   });
 
   it("org B sees NONE of org A's rows (org-column policy: provider_entity)", async () => {
-    const r = await withOrg(ORG_B, () => db.query("SELECT count(*)::int AS n FROM provider_entity WHERE id=$1", [peA]));
+    const r = await withOrg(ORG_B, () =>
+      db.query("SELECT count(*)::int AS n FROM provider_entity WHERE id=$1", [peA]),
+    );
     expect(r.rows[0].n).toBe(0);
   });
 
@@ -139,7 +152,9 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
 
   it("rejects a cross-tenant write — org B cannot insert an org-A row (WITH CHECK)", async () => {
     await expect(
-      withOrg(ORG_B, () => db.query(`INSERT INTO provider_entity ${PE_COLS} VALUES ${PE_VALS}`, [ORG_A])),
+      withOrg(ORG_B, () =>
+        db.query(`INSERT INTO provider_entity ${PE_COLS} VALUES ${PE_VALS}`, [ORG_A]),
+      ),
     ).rejects.toThrow();
   });
 
@@ -153,12 +168,16 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
   });
 
   it("org A still sees its OWN row (isolation is not just 'deny everything')", async () => {
-    const r = await withOrg(ORG_A, () => db.query("SELECT count(*)::int AS n FROM provider_entity WHERE id=$1", [peA]));
+    const r = await withOrg(ORG_A, () =>
+      db.query("SELECT count(*)::int AS n FROM provider_entity WHERE id=$1", [peA]),
+    );
     expect(r.rows[0].n).toBe(1);
   });
 
   it("audit_event is append-only to the app role (UPDATE + DELETE both denied)", async () => {
-    await expect(withOrg(ORG_A, () => db.query("UPDATE audit_event SET created_at = now()"))).rejects.toThrow();
+    await expect(
+      withOrg(ORG_A, () => db.query("UPDATE audit_event SET created_at = now()")),
+    ).rejects.toThrow();
     await expect(withOrg(ORG_A, () => db.query("DELETE FROM audit_event"))).rejects.toThrow();
   });
 
@@ -208,11 +227,14 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
          VALUES ('icd10cm','X-RETIRED','2024-10-01',ARRAY['X-NEW'],'equivalent',$1)`,
         [v2],
       );
-      await db.query("INSERT INTO value_set (id,name,scope) VALUES ('hospice_terminal_dx','Hospice terminal dx','platform')");
+      await db.query(
+        "INSERT INTO value_set (id,name,scope) VALUES ('hospice_terminal_dx','Hospice terminal dx','platform')",
+      );
       await db.query(
         "INSERT INTO value_set_member (value_set_id,system_id,code,member_effective) VALUES ('hospice_terminal_dx','icd10cm','A00','2015-10-01')",
       );
-      platformCodeSystems = (await db.query("SELECT count(*)::int AS n FROM code_system")).rows[0].n;
+      platformCodeSystems = (await db.query("SELECT count(*)::int AS n FROM code_system")).rows[0]
+        .n;
 
       // Org A adds a tenant extension AS the app role — exercises the org-scoped WITH CHECK policy
       // and fires the M4 write-audit trigger (§3.8).
@@ -227,7 +249,9 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
 
     it("§7.4 wardenx_app CANNOT write canonical terminology (code_system + concept table)", async () => {
       await expect(
-        withOrg(ORG_A, () => db.query("INSERT INTO code_system (id,name,license_source) VALUES ('snomed','x','y')")),
+        withOrg(ORG_A, () =>
+          db.query("INSERT INTO code_system (id,name,license_source) VALUES ('snomed','x','y')"),
+        ),
       ).rejects.toThrow();
       await expect(
         withOrg(ORG_A, () =>
@@ -245,8 +269,12 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       expect(a.rows[0].n).toBe(platformCodeSystems);
       expect(b.rows[0].n).toBe(platformCodeSystems);
       // and value_set members read identically across tenants
-      const ma = await withOrg(ORG_A, () => db.query("SELECT count(*)::int AS n FROM value_set_member"));
-      const mb = await withOrg(ORG_B, () => db.query("SELECT count(*)::int AS n FROM value_set_member"));
+      const ma = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM value_set_member"),
+      );
+      const mb = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM value_set_member"),
+      );
       expect(ma.rows[0].n).toBe(mb.rows[0].n);
     });
 
@@ -267,14 +295,19 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       expect(now.rows[0].status).toBe("retired");
       // the deprecation successor is populated for the retired code
       const dep = await withOrg(ORG_A, () =>
-        db.query("SELECT successor_codes FROM deprecation_mapping WHERE deprecated_code='X-RETIRED'"),
+        db.query(
+          "SELECT successor_codes FROM deprecation_mapping WHERE deprecated_code='X-RETIRED'",
+        ),
       );
       expect(dep.rows[0].successor_codes).toEqual(["X-NEW"]);
     });
 
     it("§9.4 value_set_tenant_extension is org-scoped — Org A sees its row, Org B sees none", async () => {
       const a = await withOrg(ORG_A, () =>
-        db.query("SELECT count(*)::int AS n FROM value_set_tenant_extension WHERE organization_id=$1", [ORG_A]),
+        db.query(
+          "SELECT count(*)::int AS n FROM value_set_tenant_extension WHERE organization_id=$1",
+          [ORG_A],
+        ),
       );
       const b = await withOrg(ORG_B, () =>
         db.query("SELECT count(*)::int AS n FROM value_set_tenant_extension"),
@@ -338,10 +371,10 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
     beforeAll(async () => {
       // Users + active memberships (superuser; RLS bypassed) so presence co-worker visibility and
       // channel_member FKs resolve.
-      await db.query(
-        "INSERT INTO \"user\" (id,email) VALUES ($1,'a@x.test'),($2,'b@x.test')",
-        [U_A, U_B],
-      );
+      await db.query("INSERT INTO \"user\" (id,email) VALUES ($1,'a@x.test'),($2,'b@x.test')", [
+        U_A,
+        U_B,
+      ]);
       await db.query(
         `INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$3,'active'),($2,$4,'active')`,
         [U_A, U_B, ORG_A, ORG_B],
@@ -386,10 +419,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
           [ORG_A, messageId, U_A],
         );
         // presence + delivery_endpoint are user-scoped
-        await db.query(
-          "INSERT INTO presence (user_id,status) VALUES ($1,'online')",
-          [U_A],
-        );
+        await db.query("INSERT INTO presence (user_id,status) VALUES ($1,'online')", [U_A]);
         await db.query(
           `INSERT INTO delivery_endpoint (user_id,channel,endpoint_value) VALUES ($1,'email','a@x.test')`,
           [U_A],
@@ -411,14 +441,20 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
     }, 60_000);
 
     it("§3.7 Org B sees NONE of Org A's channels or messages", async () => {
-      const ch = await withOrg(ORG_B, () => db.query("SELECT count(*)::int AS n FROM channel WHERE id=$1", [channelId]));
-      const ms = await withOrg(ORG_B, () => db.query("SELECT count(*)::int AS n FROM message WHERE id=$1", [messageId]));
+      const ch = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM channel WHERE id=$1", [channelId]),
+      );
+      const ms = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM message WHERE id=$1", [messageId]),
+      );
       expect(ch.rows[0].n).toBe(0);
       expect(ms.rows[0].n).toBe(0);
     });
 
     it("§3.7 Org A still reads its own channel + message (isolation is not deny-all)", async () => {
-      const ch = await withOrg(ORG_A, () => db.query("SELECT count(*)::int AS n FROM channel WHERE id=$1", [channelId]));
+      const ch = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM channel WHERE id=$1", [channelId]),
+      );
       expect(ch.rows[0].n).toBe(1);
     });
 
@@ -436,16 +472,22 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
 
     it("§3.7 children with no org column are org-isolated through the parent join", async () => {
       const att = await withOrg(ORG_B, () =>
-        db.query("SELECT count(*)::int AS n FROM message_attachment WHERE message_id=$1", [messageId]),
+        db.query("SELECT count(*)::int AS n FROM message_attachment WHERE message_id=$1", [
+          messageId,
+        ]),
       );
       const nd = await withOrg(ORG_B, () =>
-        db.query("SELECT count(*)::int AS n FROM notification_delivery WHERE alert_id=$1", [alertId]),
+        db.query("SELECT count(*)::int AS n FROM notification_delivery WHERE alert_id=$1", [
+          alertId,
+        ]),
       );
       expect(att.rows[0].n).toBe(0);
       expect(nd.rows[0].n).toBe(0);
       // Org A still sees them through its own parent rows
       const attA = await withOrg(ORG_A, () =>
-        db.query("SELECT count(*)::int AS n FROM message_attachment WHERE message_id=$1", [messageId]),
+        db.query("SELECT count(*)::int AS n FROM message_attachment WHERE message_id=$1", [
+          messageId,
+        ]),
       );
       expect(attA.rows[0].n).toBe(1);
     });
@@ -473,8 +515,12 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
     });
 
     it("§3.7 alert_rule platform-default (NULL org) is read by every tenant", async () => {
-      const a = await withOrg(ORG_A, () => db.query("SELECT count(*)::int AS n FROM alert_rule WHERE organization_id IS NULL"));
-      const b = await withOrg(ORG_B, () => db.query("SELECT count(*)::int AS n FROM alert_rule WHERE organization_id IS NULL"));
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM alert_rule WHERE organization_id IS NULL"),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM alert_rule WHERE organization_id IS NULL"),
+      );
       expect(a.rows[0].n).toBeGreaterThan(0);
       expect(b.rows[0].n).toBe(a.rows[0].n);
     });
@@ -482,14 +528,22 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
     it("§7.4 a system_locked alert_rule cannot be updated or deleted by a tenant", async () => {
       // The platform-default rule has NULL org → not own-org, so UPDATE/DELETE match no row (0 rows),
       // never the locked row. Assert the row survives.
-      await withOrg(ORG_A, () => db.query("UPDATE alert_rule SET enabled=false WHERE event_type='m36.test.ping'"));
-      const r = await db.query("SELECT enabled FROM alert_rule WHERE event_type='m36.test.ping' AND organization_id IS NULL");
+      await withOrg(ORG_A, () =>
+        db.query("UPDATE alert_rule SET enabled=false WHERE event_type='m36.test.ping'"),
+      );
+      const r = await db.query(
+        "SELECT enabled FROM alert_rule WHERE event_type='m36.test.ping' AND organization_id IS NULL",
+      );
       expect(r.rows[0].enabled).toBe(true);
     });
 
     it("§3.12 alert_payload_catalog is platform-floor public-read across tenants", async () => {
-      const a = await withOrg(ORG_A, () => db.query("SELECT count(*)::int AS n FROM alert_payload_catalog"));
-      const b = await withOrg(ORG_B, () => db.query("SELECT count(*)::int AS n FROM alert_payload_catalog"));
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM alert_payload_catalog"),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM alert_payload_catalog"),
+      );
       expect(a.rows[0].n).toBeGreaterThan(0);
       expect(a.rows[0].n).toBe(b.rows[0].n);
     });
@@ -506,7 +560,10 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
     });
 
     it("§3.9 the M4 write-audit trigger fired for channel + message and scrubbed body_cipher", async () => {
-      const ch = await db.query("SELECT count(*)::int AS n FROM audit_event WHERE resource_kind='channel' AND organization_id=$1", [ORG_A]);
+      const ch = await db.query(
+        "SELECT count(*)::int AS n FROM audit_event WHERE resource_kind='channel' AND organization_id=$1",
+        [ORG_A],
+      );
       expect(ch.rows[0].n).toBeGreaterThan(0);
       const msg = await db.query(
         "SELECT after FROM audit_event WHERE resource_kind='message' AND event_type='message.insert' ORDER BY created_at DESC LIMIT 1",
@@ -540,7 +597,9 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       await db.query(
         `INSERT INTO facility (ccn,kind,name,status) VALUES ('123456','hospital','Mercy General','active')`,
       );
-      await db.query(`INSERT INTO payer (kind,name,status) VALUES ('medicare','Medicare','active')`);
+      await db.query(
+        `INSERT INTO payer (kind,name,status) VALUES ('medicare','Medicare','active')`,
+      );
       canonicalFacilities = (await db.query("SELECT count(*)::int AS n FROM facility")).rows[0].n;
 
       // Org A writes its overlay for the canonical physician AS the app role — exercises the
@@ -576,13 +635,18 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       const b = await withOrg(ORG_B, () => db.query("SELECT count(*)::int AS n FROM facility"));
       expect(a.rows[0].n).toBe(canonicalFacilities);
       expect(b.rows[0].n).toBe(canonicalFacilities);
-      const pa = await withOrg(ORG_A, () => db.query("SELECT count(*)::int AS n FROM external_physician WHERE id=$1", [physicianId]));
+      const pa = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM external_physician WHERE id=$1", [physicianId]),
+      );
       expect(pa.rows[0].n).toBe(1); // canonical is the same answer for every tenant (§2.3)
     });
 
     it("§7.3 external_physician_tenant_overlay is org-scoped — Org A sees its row, Org B sees none", async () => {
       const a = await withOrg(ORG_A, () =>
-        db.query("SELECT count(*)::int AS n FROM external_physician_tenant_overlay WHERE organization_id=$1", [ORG_A]),
+        db.query(
+          "SELECT count(*)::int AS n FROM external_physician_tenant_overlay WHERE organization_id=$1",
+          [ORG_A],
+        ),
       );
       const b = await withOrg(ORG_B, () =>
         db.query("SELECT count(*)::int AS n FROM external_physician_tenant_overlay"),
@@ -799,8 +863,12 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
     });
 
     it("§9.3 Org A sees ONLY its own referral (RLS blocks cross-tenant reads, auth stubbed open)", async () => {
-      const a = await withOrg(ORG_A, () => db.query("SELECT count(*)::int AS n FROM referral WHERE id=$1", [REF_A]));
-      const b = await withOrg(ORG_B, () => db.query("SELECT count(*)::int AS n FROM referral WHERE id=$1", [REF_A]));
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM referral WHERE id=$1", [REF_A]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM referral WHERE id=$1", [REF_A]),
+      );
       expect(a.rows[0].n).toBe(1);
       expect(b.rows[0].n).toBe(0);
     });
@@ -808,7 +876,9 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
     it("§3.6 Org B cannot INSERT a referral into Org A (WITH CHECK blocks the cross-tenant write)", async () => {
       await expect(
         withOrg(ORG_B, () =>
-          db.query(`INSERT INTO referral ${RCOLS} VALUES (gen_random_uuid(),$1,'X','portal')`, [ORG_A]),
+          db.query(`INSERT INTO referral ${RCOLS} VALUES (gen_random_uuid(),$1,'X','portal')`, [
+            ORG_A,
+          ]),
         ),
       ).rejects.toThrow();
     });
@@ -847,7 +917,8 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
     const MEM_B8 = "e8b00000-0000-0000-0000-0000000000b4";
     const ENC_A8 = "e8a00000-0000-0000-0000-0000000000a5";
     const ENC_B8 = "e8b00000-0000-0000-0000-0000000000b5";
-    const LATE_REASON = "Documented late entry: visit charted after the same-day cutoff per policy.";
+    const LATE_REASON =
+      "Documented late entry: visit charted after the same-day cutoff per policy.";
     const ECOLS =
       "(id,organization_id,provider_entity_id,location_id,patient_id,admission_id,encounter_type,discipline,authored_by_membership_id,service_date,late_entry_reason)";
 

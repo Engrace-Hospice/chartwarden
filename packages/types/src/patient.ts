@@ -44,13 +44,55 @@ export interface PatientIdentifierRule {
 export const PATIENT_IDENTIFIER_RULES: {
   readonly [K in PatientIdentifierKind]: PatientIdentifierRule & { kind: K };
 } = {
-  mrn: { kind: "mrn", storage: "plaintext", mutability: "immutable", indexed: true, uniqueScope: "per_org" },
-  mbi: { kind: "mbi", storage: "plaintext", mutability: "replaceable", indexed: true, uniqueScope: "per_org" },
-  ssn: { kind: "ssn", storage: "encrypted_last4", mutability: "replaceable", indexed: false, uniqueScope: null },
-  state_id: { kind: "state_id", storage: "encrypted_last4", mutability: "replaceable", indexed: false, uniqueScope: null },
-  prior_mrn: { kind: "prior_mrn", storage: "plaintext", mutability: "append_only", indexed: true, uniqueScope: "per_org_per_issuer" },
-  hospice_external: { kind: "hospice_external", storage: "plaintext", mutability: "append_only", indexed: true, uniqueScope: "per_org_per_issuer" },
-  partner_mrn: { kind: "partner_mrn", storage: "plaintext", mutability: "append_only", indexed: true, uniqueScope: "per_org_per_issuer" },
+  mrn: {
+    kind: "mrn",
+    storage: "plaintext",
+    mutability: "immutable",
+    indexed: true,
+    uniqueScope: "per_org",
+  },
+  mbi: {
+    kind: "mbi",
+    storage: "plaintext",
+    mutability: "replaceable",
+    indexed: true,
+    uniqueScope: "per_org",
+  },
+  ssn: {
+    kind: "ssn",
+    storage: "encrypted_last4",
+    mutability: "replaceable",
+    indexed: false,
+    uniqueScope: null,
+  },
+  state_id: {
+    kind: "state_id",
+    storage: "encrypted_last4",
+    mutability: "replaceable",
+    indexed: false,
+    uniqueScope: null,
+  },
+  prior_mrn: {
+    kind: "prior_mrn",
+    storage: "plaintext",
+    mutability: "append_only",
+    indexed: true,
+    uniqueScope: "per_org_per_issuer",
+  },
+  hospice_external: {
+    kind: "hospice_external",
+    storage: "plaintext",
+    mutability: "append_only",
+    indexed: true,
+    uniqueScope: "per_org_per_issuer",
+  },
+  partner_mrn: {
+    kind: "partner_mrn",
+    storage: "plaintext",
+    mutability: "append_only",
+    indexed: true,
+    uniqueScope: "per_org_per_issuer",
+  },
 } as const;
 
 /** The CMS MBI alphabet (§2.2): digits + A–Z minus the visually-ambiguous S/L/O/I/B/Z. */

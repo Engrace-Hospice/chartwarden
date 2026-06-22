@@ -23,7 +23,7 @@
  * Run: bun run scripts/check-fitness-gaps.ts   (alias: bun run arch:gaps)
  * CI:  exits 1 on any violation; exits 0 (with an `inert` note) when source is absent.
  */
-import { readdirSync, readFileSync, statSync, existsSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { MODULES } from "../architecture/module-manifest";
 
@@ -44,10 +44,19 @@ const fail = (check: string, detail: string) => violations.push({ check, detail 
 
 function walk(dir: string, test: RegExp, acc: string[] = []): string[] {
   let entries: string[] = [];
-  try { entries = readdirSync(join(ROOT, dir)); } catch { return acc; }
+  try {
+    entries = readdirSync(join(ROOT, dir));
+  } catch {
+    return acc;
+  }
   for (const e of entries) {
     const rel = join(dir, e);
-    let st; try { st = statSync(join(ROOT, rel)); } catch { continue; }
+    let st: ReturnType<typeof statSync>;
+    try {
+      st = statSync(join(ROOT, rel));
+    } catch {
+      continue;
+    }
     if (st.isDirectory()) {
       if (["node_modules", ".git", "dist", ".turbo"].includes(e)) continue;
       walk(rel, test, acc);
@@ -70,26 +79,36 @@ const hasAppSource = existsSync(join(ROOT, "apps")) || existsSync(join(ROOT, "pa
       const src = readFileSync(join(ROOT, f), "utf8");
       // event name string literals: eventName: '...' | publish('...') | name: "mN..."
       const names = new Set<string>();
-      for (const m of src.matchAll(/\b(?:eventName|name)\s*:\s*['"]([a-z0-9_]+\.[a-z0-9_.]+)['"]/g)) names.add(m[1]!);
-      for (const m of src.matchAll(/\bpublish\(\s*['"]([a-z0-9_]+\.[a-z0-9_.]+)['"]/g)) names.add(m[1]!);
+      for (const m of src.matchAll(/\b(?:eventName|name)\s*:\s*['"]([a-z0-9_]+\.[a-z0-9_.]+)['"]/g))
+        names.add(m[1]!);
+      for (const m of src.matchAll(/\bpublish\(\s*['"]([a-z0-9_]+\.[a-z0-9_.]+)['"]/g))
+        names.add(m[1]!);
       const fileModule = /events-by-m(\d+)\.ts$/.exec(f)?.[1];
       for (const name of names) {
         if (SYSTEM_EVENT_ALLOWLIST.has(name)) continue;
         const mPrefix = /^m(\d+)\./.exec(name);
         if (!mPrefix) {
-          fail("event-naming", `'${name}' (${f}) does not follow the mN.<resource>.<verb> convention (M01 D8 / M03 D9)`);
+          fail(
+            "event-naming",
+            `'${name}' (${f}) does not follow the mN.<resource>.<verb> convention (M01 D8 / M03 D9)`,
+          );
           continue;
         }
         const owner = Number(mPrefix[1]);
-        if (!moduleIds.has(owner)) fail("event-owner", `'${name}' uses prefix m${owner} which is not a module id`);
+        if (!moduleIds.has(owner))
+          fail("event-owner", `'${name}' uses prefix m${owner} which is not a module id`);
         if (fileModule && Number(fileModule) !== owner)
-          fail("event-namespace", `${f} (module m${fileModule}) declares '${name}' under another module's m${owner} prefix`);
+          fail(
+            "event-namespace",
+            `${f} (module m${fileModule}) declares '${name}' under another module's m${owner} prefix`,
+          );
       }
       // declared consumers must be real modules
       for (const m of src.matchAll(/consumers\s*:\s*\[([^\]]*)\]/g)) {
         for (const c of m[1]!.matchAll(/['"]m(\d+)['"]/g)) {
           const cid = Number(c[1]);
-          if (!moduleIds.has(cid)) fail("event-consumer", `${f} declares consumer m${cid} which is not a module id`);
+          if (!moduleIds.has(cid))
+            fail("event-consumer", `${f} declares consumer m${cid} which is not a module id`);
         }
       }
     }
@@ -99,8 +118,13 @@ const hasAppSource = existsSync(join(ROOT, "apps")) || existsSync(join(ROOT, "pa
 
 // ---- 2. SEAM REGISTRY -------------------------------------------------------
 {
-  const seamFiles = [...walk("packages", /seams?\/.+\.ts$|REQUIRED_SEAMS/), ...walk("apps", /seams?\/.+\.ts$/)];
-  const registryHit = seamFiles.some((f) => /REQUIRED_SEAMS|registerSeam/.test(readFileSync(join(ROOT, f), "utf8")));
+  const seamFiles = [
+    ...walk("packages", /seams?\/.+\.ts$|REQUIRED_SEAMS/),
+    ...walk("apps", /seams?\/.+\.ts$/),
+  ];
+  const registryHit = seamFiles.some((f) =>
+    /REQUIRED_SEAMS|registerSeam/.test(readFileSync(join(ROOT, f), "utf8")),
+  );
   if (seamFiles.length === 0 || !registryHit) {
     notes.push("seam-registry: inert (no seam registry source yet) — armed");
   } else {
@@ -108,20 +132,29 @@ const hasAppSource = existsSync(join(ROOT, "apps")) || existsSync(join(ROOT, "pa
     const consumed = new Map<string, string>();
     for (const f of seamFiles) {
       const src = readFileSync(join(ROOT, f), "utf8");
-      for (const m of src.matchAll(/registerSeam\(\s*['"]([A-Za-z0-9_]+)['"]/g)) registered.add(m[1]!);
+      for (const m of src.matchAll(/registerSeam\(\s*['"]([A-Za-z0-9_]+)['"]/g))
+        registered.add(m[1]!);
       for (const m of src.matchAll(/REQUIRED_SEAMS\s*=\s*\[([^\]]*)\]/g))
         for (const s of m[1]!.matchAll(/['"]([A-Za-z0-9_]+)['"]/g)) registered.add(s[1]!);
       for (const m of src.matchAll(/getSeam\(\s*['"]([A-Za-z0-9_]+)['"]/g)) consumed.set(m[1]!, f);
     }
     for (const [seam, f] of consumed)
-      if (!registered.has(seam)) fail("seam-unregistered", `seam '${seam}' is consumed in ${f} but not in REQUIRED_SEAMS / registerSeam`);
+      if (!registered.has(seam))
+        fail(
+          "seam-unregistered",
+          `seam '${seam}' is consumed in ${f} but not in REQUIRED_SEAMS / registerSeam`,
+        );
     notes.push(`seam-registry: ${registered.size} registered, ${consumed.size} consumed`);
   }
 }
 
 // ---- 3. PHI GUARDS (RLS + audit trigger presence) ---------------------------
 {
-  const schemaFiles = [...walk("packages", /schema.*\.ts$/), ...walk("packages", /\.sql$/), ...walk("apps", /\.sql$/)];
+  const schemaFiles = [
+    ...walk("packages", /schema.*\.ts$/),
+    ...walk("packages", /\.sql$/),
+    ...walk("apps", /\.sql$/),
+  ];
   if (schemaFiles.length === 0) {
     notes.push("phi-guards: inert (no schema/migration source yet) — armed");
   } else {
@@ -129,14 +162,28 @@ const hasAppSource = existsSync(join(ROOT, "apps")) || existsSync(join(ROOT, "pa
     // must have both an RLS policy and an audit trigger somewhere in the schema corpus.
     const corpus = schemaFiles.map((f) => readFileSync(join(ROOT, f), "utf8")).join("\n");
     const orgScoped = new Set<string>();
-    for (const m of corpus.matchAll(/create table\s+(?:if not exists\s+)?["']?(\w+)["']?[\s\S]{0,4000}?organization_id/gi)) orgScoped.add(m[1]!);
+    for (const m of corpus.matchAll(
+      /create table\s+(?:if not exists\s+)?["']?(\w+)["']?[\s\S]{0,4000}?organization_id/gi,
+    ))
+      orgScoped.add(m[1]!);
     for (const t of orgScoped) {
-      if (!new RegExp(`enable row level security[\\s\\S]*?${t}|${t}[\\s\\S]*?enable row level security|policy[\\s\\S]*?on\\s+${t}\\b`, "i").test(corpus))
+      if (
+        !new RegExp(
+          `enable row level security[\\s\\S]*?${t}|${t}[\\s\\S]*?enable row level security|policy[\\s\\S]*?on\\s+${t}\\b`,
+          "i",
+        ).test(corpus)
+      )
         fail("rls-missing", `org-scoped table '${t}' has no RLS policy/enable (M01 RLS generator)`);
-      if (!new RegExp(`trigger[\\s\\S]*?on\\s+${t}\\b[\\s\\S]*?(audit|wardenx_audit)`, "i").test(corpus))
+      if (
+        !new RegExp(`trigger[\\s\\S]*?on\\s+${t}\\b[\\s\\S]*?(audit|wardenx_audit)`, "i").test(
+          corpus,
+        )
+      )
         fail("audit-trigger-missing", `org-scoped table '${t}' has no audit trigger (M04)`);
     }
-    notes.push(`phi-guards: scanned ${schemaFiles.length} schema file(s), ${orgScoped.size} org-scoped table(s)`);
+    notes.push(
+      `phi-guards: scanned ${schemaFiles.length} schema file(s), ${orgScoped.size} org-scoped table(s)`,
+    );
   }
 }
 

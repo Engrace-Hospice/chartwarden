@@ -37,7 +37,9 @@ export function createNoopEmailTransport(): EmailTransport {
  * exercisable in local/dev without a provider. NOT for production — a link in logs is a credential in
  * logs; the composition root selects a real transport when provider credentials are present.
  */
-export function createConsoleEmailTransport(log: (line: string) => void = console.info): EmailTransport {
+export function createConsoleEmailTransport(
+  log: (line: string) => void = console.info,
+): EmailTransport {
   return {
     async send(message: EmailMessage): Promise<void> {
       log(`[email] to=${message.to} subject=${JSON.stringify(message.subject)}\n${message.text}`);

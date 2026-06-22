@@ -1,3 +1,10 @@
+import {
+  DetailPageLayout,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/07-care-plan — Care Plan Summary (M7 §5.2, Track B / ADR-0030).
 // Spec: docs/ui/screens/clinical/WARDENX_UI_CARE_PLAN.md — "Use Patient Workspace + Documentation Workspace."
 // The printable, patient/family-friendly view, generated server-side from the active version's state.
@@ -8,7 +15,6 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import { DetailPageLayout, EmptyState, LoadingSpinner, PageHeader, useApiClient } from "@wardenx/ui";
 
 interface Summary {
   planId: string;
@@ -50,7 +56,8 @@ export function CarePlanSummary(): JSX.Element {
   }, [client, planId]);
 
   if (loading) return <LoadingSpinner />;
-  if (error || !summary) return <EmptyState title="Unavailable" description={error ?? "No summary."} />;
+  if (error || !summary)
+    return <EmptyState title="Unavailable" description={error ?? "No summary."} />;
 
   return (
     <DetailPageLayout header={<PageHeader title="Care Plan Summary" />}>
@@ -68,6 +75,7 @@ export function CarePlanSummary(): JSX.Element {
           ) : (
             <ul>
               {summary.activeProblems.map((p, idx) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: static read-only list, never reordered.
                 <li key={idx}>
                   {p.description} <span style={meta}>({p.kind})</span>
                 </li>
@@ -83,6 +91,7 @@ export function CarePlanSummary(): JSX.Element {
           ) : (
             <ul>
               {summary.patientStatedGoals.map((g, idx) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: static read-only list, never reordered.
                 <li key={idx}>
                   {g.text}
                   {g.measurableOutcome ? <span style={meta}> — {g.measurableOutcome}</span> : null}
@@ -99,8 +108,12 @@ export function CarePlanSummary(): JSX.Element {
           ) : (
             <ul>
               {summary.activeInterventions.map((i, idx) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: static read-only list, never reordered.
                 <li key={idx}>
-                  {i.layText} <span style={meta}>({i.discipline} · {i.frequencyText})</span>
+                  {i.layText}{" "}
+                  <span style={meta}>
+                    ({i.discipline} · {i.frequencyText})
+                  </span>
                 </li>
               ))}
             </ul>
@@ -111,5 +124,10 @@ export function CarePlanSummary(): JSX.Element {
   );
 }
 
-const h3 = { fontSize: "0.8rem", textTransform: "uppercase", color: "#6b7280", margin: "1rem 0 0.5rem" } as const;
+const h3 = {
+  fontSize: "0.8rem",
+  textTransform: "uppercase",
+  color: "#6b7280",
+  margin: "1rem 0 0.5rem",
+} as const;
 const meta = { fontSize: "0.8rem", color: "#6b7280" } as const;

@@ -11,8 +11,8 @@
 // service maps an unknown key to the §4.2 422 domain error.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
 import { CHANNEL_KINDS } from "@wardenx/messaging";
+import { ValidationError } from "@wardenx/types";
 
 // --- shared scalars ---------------------------------------------------------------------------
 

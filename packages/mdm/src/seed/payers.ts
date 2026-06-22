@@ -20,10 +20,57 @@ export interface PayerSeedRow {
 
 /** The 50 states + DC — the per-state Medicaid placeholder set (§3.8). */
 export const US_STATES = [
-  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA",
-  "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM",
-  "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA",
-  "WV", "WI", "WY",
+  "AL",
+  "AK",
+  "AZ",
+  "AR",
+  "CA",
+  "CO",
+  "CT",
+  "DE",
+  "DC",
+  "FL",
+  "GA",
+  "HI",
+  "ID",
+  "IL",
+  "IN",
+  "IA",
+  "KS",
+  "KY",
+  "LA",
+  "ME",
+  "MD",
+  "MA",
+  "MI",
+  "MN",
+  "MS",
+  "MO",
+  "MT",
+  "NE",
+  "NV",
+  "NH",
+  "NJ",
+  "NM",
+  "NY",
+  "NC",
+  "ND",
+  "OH",
+  "OK",
+  "OR",
+  "PA",
+  "RI",
+  "SC",
+  "SD",
+  "TN",
+  "TX",
+  "UT",
+  "VT",
+  "VA",
+  "WA",
+  "WV",
+  "WI",
+  "WY",
 ] as const;
 
 /** Medicare — the one fully-specified canonical payer in the §3.8 seed. */
@@ -40,12 +87,14 @@ export const MEDICARE_SEED: PayerSeedRow = {
  */
 export const MDM_PAYER_SEED: readonly PayerSeedRow[] = [
   MEDICARE_SEED,
-  ...US_STATES.map((st): PayerSeedRow => ({
-    seedKey: `medicaid_${st.toLowerCase()}`,
-    kind: "medicaid",
-    name: `${st} Medicaid`,
-    x12PayerId: null,
-  })),
+  ...US_STATES.map(
+    (st): PayerSeedRow => ({
+      seedKey: `medicaid_${st.toLowerCase()}`,
+      kind: "medicaid",
+      name: `${st} Medicaid`,
+      x12PayerId: null,
+    }),
+  ),
 ];
 
 /** The canonical-payer projection (§4.5 `CanonicalPayerFields` shape) for one seed row + its id. */

@@ -30,10 +30,7 @@ export const payers = pgTable(
     mergedIntoId: uuid("merged_into_id").references((): AnyPgColumn => payers.id, {
       onDelete: "restrict",
     }),
-    mergedFrom: uuid("merged_from")
-      .array()
-      .notNull()
-      .default(sql`'{}'::uuid[]`),
+    mergedFrom: uuid("merged_from").array().notNull().default(sql`'{}'::uuid[]`),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

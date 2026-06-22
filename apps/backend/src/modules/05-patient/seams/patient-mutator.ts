@@ -115,7 +115,13 @@ export function createPatientMutator(store: PatientMutatorStore): PatientMutator
       // Emit `patient.updated` only when something actually changed (§4.6); a pure-stripped patch is a no-op.
       if (applied.length > 0) await store.emitPatientUpdated(organizationId, patientId, applied);
 
-      return { patientId, appliedFields: applied, strippedFields: stripped, addressVersionCreated, externalMrnsAddedCount };
+      return {
+        patientId,
+        appliedFields: applied,
+        strippedFields: stripped,
+        addressVersionCreated,
+        externalMrnsAddedCount,
+      };
     },
   };
 }

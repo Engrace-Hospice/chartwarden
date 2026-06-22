@@ -1,3 +1,13 @@
+import {
+  type AlertNewEvent,
+  MESSAGING_SERVER_EVENTS,
+  type MessageNewEvent,
+  careTeamRoom,
+  computeRoomSet,
+  fieldSafetyRoom,
+  orgRoom,
+  userRoom,
+} from "@wardenx/messaging";
 // M36-T08 — Socket.IO room-set computation + event-contract invariants (M36 spec §4.3, §7.9).
 //
 // Accept: `computeRoomSet` is pure (sorted, de-duplicated), every user joins user+org, channel
@@ -5,16 +15,6 @@
 // and the sanitized event types keep PHI optional (`message.new.bodyPreview`) / sanitizer-only
 // (`alert.new.summary`) per §4.3.
 import { describe, expect, it } from "vitest";
-import {
-  type AlertNewEvent,
-  type MessageNewEvent,
-  MESSAGING_SERVER_EVENTS,
-  careTeamRoom,
-  computeRoomSet,
-  fieldSafetyRoom,
-  orgRoom,
-  userRoom,
-} from "@wardenx/messaging";
 
 const ORG = "org_a";
 

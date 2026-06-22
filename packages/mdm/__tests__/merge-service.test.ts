@@ -7,9 +7,9 @@
 // visible to a resolve through the provider (the same end-to-end path production takes).
 import { describe, expect, it } from "vitest";
 import {
+  type SeedCanonical,
   createInMemoryMdmBackend,
   createMdmEntityProvider,
-  type SeedCanonical,
 } from "../src/index";
 
 const SURVIVOR = "11111111-1111-1111-1111-111111111111";

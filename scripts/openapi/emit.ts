@@ -28,7 +28,9 @@ const OUT_FILE = join(REPO_ROOT, "docs/api/openapi.json");
 
 function readVersion(): string {
   try {
-    const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as { version?: string };
+    const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
+      version?: string;
+    };
     return pkg.version ?? "0.0.0";
   } catch {
     return "0.0.0";
@@ -50,7 +52,11 @@ const capitalize = (s: string): string => (s ? s[0].toUpperCase() + s.slice(1) :
 function operationId(route: ScannedRoute): string {
   const parts = route.path.split("/").filter(Boolean);
   const tail = parts
-    .map((p) => (p.startsWith(":") ? `By${capitalize(p.slice(1))}` : capitalize(p.replace(/[^a-zA-Z0-9]/g, ""))))
+    .map((p) =>
+      p.startsWith(":")
+        ? `By${capitalize(p.slice(1))}`
+        : capitalize(p.replace(/[^a-zA-Z0-9]/g, "")),
+    )
     .join("");
   return route.method + tail;
 }
@@ -67,7 +73,10 @@ function pathParameters(path: string): unknown[] {
 /** OpenAPI query parameters from a TypeBox object schema (each property → one `in: query` param). */
 function queryParameters(schema: TSchema | undefined): unknown[] {
   if (!schema) return [];
-  const json = toJsonSchema(schema) as { properties?: Record<string, unknown>; required?: string[] };
+  const json = toJsonSchema(schema) as {
+    properties?: Record<string, unknown>;
+    required?: string[];
+  };
   const required = new Set(json.required ?? []);
   return Object.entries(json.properties ?? {}).map(([name, propSchema]) => ({
     name,
@@ -89,9 +98,12 @@ function build(routes: ScannedRoute[]): BuildResult {
   const routeKeys = new Set(routes.map(routeKey));
   for (const [key, enrich] of Object.entries(ROUTE_ENRICHMENTS)) {
     if (!routeKeys.has(key)) errors.push(`enrichment targets unknown route: "${key}"`);
-    if (enrich.body !== undefined && !isTypeBoxSchema(enrich.body)) errors.push(`enrichment "${key}": body is not a TypeBox schema`);
-    if (enrich.query !== undefined && !isTypeBoxSchema(enrich.query)) errors.push(`enrichment "${key}": query is not a TypeBox schema`);
-    if (enrich.response !== undefined && !isTypeBoxSchema(enrich.response)) errors.push(`enrichment "${key}": response is not a TypeBox schema`);
+    if (enrich.body !== undefined && !isTypeBoxSchema(enrich.body))
+      errors.push(`enrichment "${key}": body is not a TypeBox schema`);
+    if (enrich.query !== undefined && !isTypeBoxSchema(enrich.query))
+      errors.push(`enrichment "${key}": query is not a TypeBox schema`);
+    if (enrich.response !== undefined && !isTypeBoxSchema(enrich.response))
+      errors.push(`enrichment "${key}": response is not a TypeBox schema`);
   }
 
   // 2. assemble paths; detect duplicate operationIds.
@@ -100,7 +112,8 @@ function build(routes: ScannedRoute[]): BuildResult {
   for (const route of routes) {
     const opId = operationId(route);
     const existing = opIds.get(opId);
-    if (existing) errors.push(`duplicate operationId "${opId}" for "${routeKey(route)}" and "${existing}"`);
+    if (existing)
+      errors.push(`duplicate operationId "${opId}" for "${routeKey(route)}" and "${existing}"`);
     opIds.set(opId, routeKey(route));
 
     const enrich = ROUTE_ENRICHMENTS[routeKey(route)];
@@ -111,14 +124,20 @@ function build(routes: ScannedRoute[]): BuildResult {
       parameters: [...pathParameters(route.path), ...queryParameters(enrich?.query)],
       responses: {
         "200": enrich?.response
-          ? { description: "OK", content: { "application/json": { schema: toJsonSchema(enrich.response) } } }
+          ? {
+              description: "OK",
+              content: { "application/json": { schema: toJsonSchema(enrich.response) } },
+            }
           : { description: "OK" },
         "4XX": { $ref: "#/components/responses/Error" },
         "5XX": { $ref: "#/components/responses/Error" },
       },
     };
     if (enrich?.body) {
-      op.requestBody = { required: true, content: { "application/json": { schema: toJsonSchema(enrich.body) } } };
+      op.requestBody = {
+        required: true,
+        content: { "application/json": { schema: toJsonSchema(enrich.body) } },
+      };
     }
     const oaPath = toOpenApiPath(route.path);
     paths[oaPath] ??= {};
@@ -189,13 +208,17 @@ function main(): void {
       console.error("✗ docs/api/openapi.json is out of date. Run: bun run openapi:emit");
       process.exit(1);
     }
-    console.log(`✓ openapi.json up to date (${routes.length} routes, ${Object.keys(ROUTE_ENRICHMENTS).length} enriched)`);
+    console.log(
+      `✓ openapi.json up to date (${routes.length} routes, ${Object.keys(ROUTE_ENRICHMENTS).length} enriched)`,
+    );
     return;
   }
 
   mkdirSync(dirname(OUT_FILE), { recursive: true });
   writeFileSync(OUT_FILE, json);
-  console.log(`✓ wrote docs/api/openapi.json (${routes.length} routes, ${Object.keys(ROUTE_ENRICHMENTS).length} enriched)`);
+  console.log(
+    `✓ wrote docs/api/openapi.json (${routes.length} routes, ${Object.keys(ROUTE_ENRICHMENTS).length} enriched)`,
+  );
 }
 
 main();

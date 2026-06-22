@@ -4,7 +4,16 @@
 // default recipient resolver. A NULL organization_id row is the platform-floor template.
 // Org-scoped (nullable organization_id); RLS + the M4 write-audit trigger (operational) land
 // in M36-T03.
-import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { alertPayloadCatalog } from "./alert-payload-catalog";
 

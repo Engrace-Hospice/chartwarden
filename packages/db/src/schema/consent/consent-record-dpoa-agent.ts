@@ -4,10 +4,19 @@
 // unique indexes enforce ≤1 of each agent_kind active per consent record. Org-scoped child of
 // consent_record (no patient field) → standard app.org_id RLS in M39-T03.
 import { sql } from "drizzle-orm";
-import { check, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import {
-  consentDpoaAgentKind,
+  check,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
+import {
   consentDpoaActivationCondition,
+  consentDpoaAgentKind,
   consentDpoaScopeKind,
   consentDpoaTermKind,
 } from "../../enums";

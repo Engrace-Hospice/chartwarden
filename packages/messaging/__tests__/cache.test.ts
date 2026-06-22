@@ -1,9 +1,3 @@
-// M36-T08 — cache key grammar + invalidation + the three access patterns (M36 spec §4.8).
-//
-// Accept: the §4.8 key grammar is stable; the resolver cache round-trips and prefix-invalidates; the
-// room set round-trips; per-user unread counts increment and floor at 0; `hashResolverArgs` is
-// order-independent and deterministic.
-import { describe, expect, it } from "vitest";
 import {
   createInMemoryMessagingCache,
   hashResolverArgs,
@@ -12,6 +6,12 @@ import {
   roomMembershipKey,
   unreadCountKey,
 } from "@wardenx/messaging";
+// M36-T08 — cache key grammar + invalidation + the three access patterns (M36 spec §4.8).
+//
+// Accept: the §4.8 key grammar is stable; the resolver cache round-trips and prefix-invalidates; the
+// room set round-trips; per-user unread counts increment and floor at 0; `hashResolverArgs` is
+// order-independent and deterministic.
+import { describe, expect, it } from "vitest";
 
 describe("M36-T08 cache key grammar (§4.8)", () => {
   it("builds the documented key shapes", () => {
@@ -41,7 +41,10 @@ describe("M36-T08 in-memory cache (§4.8)", () => {
   it("round-trips a room set", async () => {
     const { cache } = createInMemoryMessagingCache();
     await cache.setRooms(roomMembershipKey("u1"), ["user:u1", "org:org_a"], 3600);
-    expect((await cache.getRooms(roomMembershipKey("u1"))).sort()).toEqual(["org:org_a", "user:u1"]);
+    expect((await cache.getRooms(roomMembershipKey("u1"))).sort()).toEqual([
+      "org:org_a",
+      "user:u1",
+    ]);
   });
 
   it("increments and decrements unread counts, flooring at 0", async () => {

@@ -7,16 +7,7 @@
 // M22 document) are plain uuid app-validated, NOT cross-module FKs; actor refs go to M1 `membership`.
 // RLS + grants + the M4 write-audit trigger land in migration 0031 (M8-T03, §3.3/§3.4).
 import { sql } from "drizzle-orm";
-import {
-  bigint,
-  check,
-  date,
-  index,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { bigint, check, date, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import {
   encounterDiscipline,
   encounterStatus,
@@ -24,10 +15,10 @@ import {
   evvBracketState,
   lateEntryTier,
 } from "../../enums";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 
 export const encounters = pgTable(
   "encounter",
@@ -71,10 +62,9 @@ export const encounters = pgTable(
       { onDelete: "set null" },
     ),
     significantLateOverrideReason: text("significant_late_override_reason"),
-    administrativeOverrideBy: uuid("administrative_override_by").references(
-      () => memberships.id,
-      { onDelete: "set null" },
-    ),
+    administrativeOverrideBy: uuid("administrative_override_by").references(() => memberships.id, {
+      onDelete: "set null",
+    }),
     administrativeOverrideReason: text("administrative_override_reason"),
 
     vocabVersionId: uuid("vocab_version_id"), // M38 code_system_version (logical); set at first finalize; immutable thereafter (D11)

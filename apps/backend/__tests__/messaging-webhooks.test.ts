@@ -47,7 +47,11 @@ describe("M36-T08 Twilio SMS-status webhook (§4.9)", () => {
   it("accepts a correctly-signed, fresh callback and reconciles the delivery", async () => {
     const { app, captured } = makeServer();
     const body = { MessageSid: "SM1", MessageStatus: "delivered" };
-    const signature = computeTwilioSignature(`${BASE}/webhooks/twilio/sms-status`, body, AUTH_TOKEN);
+    const signature = computeTwilioSignature(
+      `${BASE}/webhooks/twilio/sms-status`,
+      body,
+      AUTH_TOKEN,
+    );
     const res = await app.inject({
       method: "POST",
       url: "/webhooks/twilio/sms-status",
@@ -55,9 +59,7 @@ describe("M36-T08 Twilio SMS-status webhook (§4.9)", () => {
       payload: body,
     });
     expect(res.statusCode).toBe(204);
-    expect(captured.sms).toEqual([
-      { vendorMessageId: "SM1", status: "delivered", raw: body },
-    ]);
+    expect(captured.sms).toEqual([{ vendorMessageId: "SM1", status: "delivered", raw: body }]);
   });
 
   it("rejects a forged signature (401) before touching the service", async () => {
@@ -76,7 +78,11 @@ describe("M36-T08 Twilio SMS-status webhook (§4.9)", () => {
   it("rejects a stale timestamp (400) before signature verification", async () => {
     const { app, captured } = makeServer();
     const body = { MessageSid: "SM1", MessageStatus: "delivered" };
-    const signature = computeTwilioSignature(`${BASE}/webhooks/twilio/sms-status`, body, AUTH_TOKEN);
+    const signature = computeTwilioSignature(
+      `${BASE}/webhooks/twilio/sms-status`,
+      body,
+      AUTH_TOKEN,
+    );
     const stale = String(Math.floor(Date.now() / 1000) - 600);
     const res = await app.inject({
       method: "POST",
@@ -104,7 +110,13 @@ describe("M36-T08 Postmark event webhook (§4.9 / INT-016)", () => {
       payload: { MessageID: "pm1", RecordType: "Delivery" },
     });
     expect(res.statusCode).toBe(204);
-    expect(captured.postmark).toEqual([{ vendorMessageId: "pm1", status: "Delivery", raw: { MessageID: "pm1", RecordType: "Delivery" } }]);
+    expect(captured.postmark).toEqual([
+      {
+        vendorMessageId: "pm1",
+        status: "Delivery",
+        raw: { MessageID: "pm1", RecordType: "Delivery" },
+      },
+    ]);
   });
 
   it("rejects a valid token from a non-allowlisted IP (403)", async () => {

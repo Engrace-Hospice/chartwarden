@@ -35,13 +35,19 @@ export interface MileageCapturePlan {
   readonly effects: readonly EncounterSideEffect[];
 }
 
-const isNum = (v: number | null | undefined): v is number => typeof v === "number" && Number.isFinite(v);
-const isText = (v: string | null | undefined): v is string => typeof v === "string" && v.trim().length > 0;
+const isNum = (v: number | null | undefined): v is number =>
+  typeof v === "number" && Number.isFinite(v);
+const isText = (v: string | null | undefined): v is string =>
+  typeof v === "string" && v.trim().length > 0;
 
 /** §3.3 `mileage_*` CHECK envelopes mirrored as guards (precise 422 before the write). */
 export function validateMileage(input: MileageInput): void {
   if (isNum(input.odometerStart) && isNum(input.odometerEnd)) {
-    require_(input.odometerEnd >= input.odometerStart, "MILEAGE_ODOMETER_ORDER", "odometer_end must be ≥ odometer_start");
+    require_(
+      input.odometerEnd >= input.odometerStart,
+      "MILEAGE_ODOMETER_ORDER",
+      "odometer_end must be ≥ odometer_start",
+    );
   }
   if (input.source === "manual_override") {
     require_(

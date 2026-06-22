@@ -1,15 +1,9 @@
 // @wardenx/db — `patient_name_alias` (M5 §3.3). Preferred / maiden / AKA names. PHI-bearing →
 // three-column tenancy rule. Name parts are on the M4 audit denylist (M5-T05). Append-style history.
-import {
-  index,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 import { patients } from "./patients";
 
 export const patientNameAliases = pgTable(

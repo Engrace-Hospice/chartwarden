@@ -12,30 +12,30 @@
 // scenario asserts the data-layer contract the engines own and points at the live suite.
 import { describe, expect, it } from "vitest";
 import {
-  // §7.1 / §7.5 / §7.6 / §7.7 — the fan-out planner + outcome roll-up
-  planFanOut,
-  computeOutcome,
-  type AlertContext,
-  type FanOutInput,
-  type PlannedDelivery,
-  type DeliverySettlement,
-  type RecipientPreferences,
-  type RoutingMap,
-  // §7.2 — the PHI sanitizer chokepoint
-  sanitizeForOutOfBand,
   type Alert,
-  // §7.3 — dynamic recipient resolution against the source-of-truth seam
-  createRecipientResolverRegistry,
-  resolveRecipients,
-  type RecipientSourcePorts,
+  type AlertContext,
+  DekDestroyedError,
+  type DeliverySettlement,
+  type FanOutInput,
   // §7.4 / §7.7 — the platform-default alert-rule seed + system_locked floor
   PLATFORM_DEFAULT_ALERT_RULES,
+  type PlannedDelivery,
+  type RecipientPreferences,
+  type RecipientSourcePorts,
+  type RoutingMap,
   SYSTEM_LOCKED_EVENT_TYPES,
-  validateAlertRuleSeed,
+  computeOutcome,
+  createInMemoryMessagingEraseStore,
+  // §7.3 — dynamic recipient resolution against the source-of-truth seam
+  createRecipientResolverRegistry,
   // §7.8 — D9 tenant-offboarding cryptographic erasure
   eraseTenantMessaging,
-  createInMemoryMessagingEraseStore,
-  DekDestroyedError,
+  // §7.1 / §7.5 / §7.6 / §7.7 — the fan-out planner + outcome roll-up
+  planFanOut,
+  resolveRecipients,
+  // §7.2 — the PHI sanitizer chokepoint
+  sanitizeForOutOfBand,
+  validateAlertRuleSeed,
 } from "../src/index";
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
@@ -85,7 +85,9 @@ function settle(
 // Done means: every emit produces ≥1 in_app row per recipient and the floor survives a total
 // out-of-band outage — the alert settles `partial`, never `failed`.
 describe("§7.1 in-app is the always-available floor", () => {
-  const routingMap: RoutingMap = { clinical_urgent: { critical: ["in_app", "push", "sms", "email"] } };
+  const routingMap: RoutingMap = {
+    clinical_urgent: { critical: ["in_app", "push", "sms", "email"] },
+  };
   const ALERT: AlertContext = {
     eventType: "lab.critical",
     category: "clinical_urgent",
@@ -117,9 +119,15 @@ describe("§7.1 in-app is the always-available floor", () => {
 
   it("settles `failed` only when even the in-app floor is lost (nobody reached)", () => {
     const plan = planFanOut(
-      input({ alert: ALERT, recipientUserIds: ["u-1"], preferences: new Map([["u-1", prefs({ userId: "u-1", routingMap })]]) }),
+      input({
+        alert: ALERT,
+        recipientUserIds: ["u-1"],
+        preferences: new Map([["u-1", prefs({ userId: "u-1", routingMap })]]),
+      }),
     );
-    expect(computeOutcome(settle(plan, new Set(["in_app", "push", "sms", "email"])))).toBe("failed");
+    expect(computeOutcome(settle(plan, new Set(["in_app", "push", "sms", "email"])))).toBe(
+      "failed",
+    );
   });
 });
 
@@ -175,12 +183,24 @@ describe("§7.3 auto-managed membership tracks source-of-truth", () => {
     const registry = createRecipientResolverRegistry(portsWith(careTeam));
     const payload = { patientId: "pt-1" };
 
-    const before = await resolveRecipients(registry, "care_team", "org-1", { patientIdPath: "patientId" }, payload);
+    const before = await resolveRecipients(
+      registry,
+      "care_team",
+      "org-1",
+      { patientIdPath: "patientId" },
+      payload,
+    );
     expect(before).toEqual(["rn-1", "md-1"]);
 
     // The care team changes at the source (RN swapped out, social worker added).
     careTeam.set("pt-1", ["md-1", "sw-1"]);
-    const after = await resolveRecipients(registry, "care_team", "org-1", { patientIdPath: "patientId" }, payload);
+    const after = await resolveRecipients(
+      registry,
+      "care_team",
+      "org-1",
+      { patientIdPath: "patientId" },
+      payload,
+    );
     expect(after).toEqual(["md-1", "sw-1"]); // re-synced, not frozen on the rule
   });
 });
@@ -232,7 +252,9 @@ describe("§7.5 quiet hours respect severity override", () => {
       input({
         alert: { eventType: "x.info", category: "administrative", severity: "info" },
         recipientUserIds: ["u-1"],
-        preferences: new Map([["u-1", prefs({ userId: "u-1", routingMap, quietHours: quietNight })]]),
+        preferences: new Map([
+          ["u-1", prefs({ userId: "u-1", routingMap, quietHours: quietNight })],
+        ]),
         at: atNight,
       }),
     );
@@ -247,7 +269,9 @@ describe("§7.5 quiet hours respect severity override", () => {
       input({
         alert: { eventType: "lab.critical", category: "clinical_urgent", severity: "critical" },
         recipientUserIds: ["u-1"],
-        preferences: new Map([["u-1", prefs({ userId: "u-1", routingMap, quietHours: quietNight })]]),
+        preferences: new Map([
+          ["u-1", prefs({ userId: "u-1", routingMap, quietHours: quietNight })],
+        ]),
         at: atNight,
       }),
     );
@@ -261,7 +285,11 @@ describe("§7.5 quiet hours respect severity override", () => {
 // rows for the backup; an expired window delivers to the original; forwarding is single-hop.
 describe("§7.6 vacation forwarding works and is bounded", () => {
   const routingMap: RoutingMap = { clinical_routine: { warn: ["in_app", "sms"] } };
-  const ALERT: AlertContext = { eventType: "hope.sfv_triggered", category: "clinical_routine", severity: "warn" };
+  const ALERT: AlertContext = {
+    eventType: "hope.sfv_triggered",
+    category: "clinical_routine",
+    severity: "warn",
+  };
   const now = new Date("2026-06-15T12:00:00Z");
 
   it("active window → forwarded row for the original + the backup receives out-of-band", () => {
@@ -270,7 +298,15 @@ describe("§7.6 vacation forwarding works and is bounded", () => {
         alert: ALERT,
         recipientUserIds: ["u-orig"],
         preferences: new Map([
-          ["u-orig", prefs({ userId: "u-orig", routingMap, vacationForwardToUserId: "u-backup", vacationUntil: new Date("2026-06-20T00:00:00Z") })],
+          [
+            "u-orig",
+            prefs({
+              userId: "u-orig",
+              routingMap,
+              vacationForwardToUserId: "u-backup",
+              vacationUntil: new Date("2026-06-20T00:00:00Z"),
+            }),
+          ],
           ["u-backup", prefs({ userId: "u-backup", routingMap })],
         ]),
         at: now,
@@ -292,7 +328,15 @@ describe("§7.6 vacation forwarding works and is bounded", () => {
         alert: ALERT,
         recipientUserIds: ["u-orig"],
         preferences: new Map([
-          ["u-orig", prefs({ userId: "u-orig", routingMap, vacationForwardToUserId: "u-backup", vacationUntil: new Date("2026-06-10T00:00:00Z") })],
+          [
+            "u-orig",
+            prefs({
+              userId: "u-orig",
+              routingMap,
+              vacationForwardToUserId: "u-backup",
+              vacationUntil: new Date("2026-06-10T00:00:00Z"),
+            }),
+          ],
         ]),
         at: now,
       }),
@@ -308,7 +352,11 @@ describe("§7.6 vacation forwarding works and is bounded", () => {
 // the other Tier-1 channels still settle (outcome `partial`), which is the redundancy contract.
 describe("§7.7 SOS voice path is Tier-1 redundant", () => {
   const SOS_RULE = PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === "field_safety.sos")!;
-  const SOS: AlertContext = { eventType: "field_safety.sos", category: "field_safety", severity: "critical" };
+  const SOS: AlertContext = {
+    eventType: "field_safety.sos",
+    category: "field_safety",
+    severity: "critical",
+  };
 
   it("the SOS rule is system_locked and routes the four-channel set including voice", () => {
     expect(SYSTEM_LOCKED_EVENT_TYPES).toContain("field_safety.sos");

@@ -1,3 +1,4 @@
+import type { ScopeLevel } from "@wardenx/auth";
 // apps/backend/src/modules/03-authorization — the PRODUCTION RoleStore (M3 §3.4 / §7.6).
 //
 // The role catalog routes (GET /api/v1/roles, POST/PATCH/DELETE) run through an injected RoleStore.
@@ -11,7 +12,6 @@
 // store performs the writes.
 import type { DbClient } from "@wardenx/db";
 import { schema } from "@wardenx/db";
-import type { ScopeLevel } from "@wardenx/auth";
 import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import type { RoleStore, RoleView } from "./authz-ports";
@@ -29,10 +29,7 @@ interface RoleRow {
 }
 
 /** Attach each role's granted permission keys (`role_permission`) and project to a RoleView[]. */
-async function toViews(
-  tx: { select: DbClient["select"] },
-  rows: RoleRow[],
-): Promise<RoleView[]> {
+async function toViews(tx: { select: DbClient["select"] }, rows: RoleRow[]): Promise<RoleView[]> {
   if (rows.length === 0) return [];
   const roleIds = rows.map((r) => r.id);
   const perms = await tx
@@ -86,7 +83,10 @@ export function createDbRoleStore(db: DbClient): RoleStore {
           .select(ROLE_COLUMNS)
           .from(schema.roles)
           .where(
-            or(isNull(schema.roles.organizationId), eq(schema.roles.organizationId, organizationId)),
+            or(
+              isNull(schema.roles.organizationId),
+              eq(schema.roles.organizationId, organizationId),
+            ),
           )) as RoleRow[];
         return toViews(tx, rows);
       });
@@ -136,7 +136,11 @@ export function createDbRoleStore(db: DbClient): RoleStore {
     },
 
     async update(roleId, patch): Promise<RoleView> {
-      const current = (await db.select(ROLE_COLUMNS).from(schema.roles).where(eq(schema.roles.id, roleId)).limit(1)) as RoleRow[];
+      const current = (await db
+        .select(ROLE_COLUMNS)
+        .from(schema.roles)
+        .where(eq(schema.roles.id, roleId))
+        .limit(1)) as RoleRow[];
       const row = current[0];
       if (!row) throw new Error(`role ${roleId} not found`);
       const orgId = row.organizationId ?? "";
@@ -159,13 +163,21 @@ export function createDbRoleStore(db: DbClient): RoleStore {
             );
           }
         }
-        const updated = (await tx.select(ROLE_COLUMNS).from(schema.roles).where(eq(schema.roles.id, roleId)).limit(1)) as RoleRow[];
+        const updated = (await tx
+          .select(ROLE_COLUMNS)
+          .from(schema.roles)
+          .where(eq(schema.roles.id, roleId))
+          .limit(1)) as RoleRow[];
         return (await toViews(tx, updated))[0]!;
       });
     },
 
     async delete(roleId: string): Promise<void> {
-      const current = (await db.select({ organizationId: schema.roles.organizationId }).from(schema.roles).where(eq(schema.roles.id, roleId)).limit(1)) as Array<{ organizationId: string | null }>;
+      const current = (await db
+        .select({ organizationId: schema.roles.organizationId })
+        .from(schema.roles)
+        .where(eq(schema.roles.id, roleId))
+        .limit(1)) as Array<{ organizationId: string | null }>;
       const orgId = current[0]?.organizationId ?? "";
       await withOrgContext(db, ctx(orgId), async (tx) => {
         await tx.delete(schema.rolePermissions).where(eq(schema.rolePermissions.roleId, roleId));

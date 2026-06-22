@@ -42,11 +42,11 @@ export { createDbBaaStore, createDbMdmRouteService, createDbMdmStore } from "./m
 import type { DbClient } from "@wardenx/db";
 import { createMdmEntityProvider } from "@wardenx/mdm";
 import type { FastifyInstance } from "fastify";
-import { registerMdmRoutes as _registerMdmRoutes } from "./routes/mdm-routes";
 import {
   createDbMdmRouteService as _createDbMdmRouteService,
   createDbMdmStore as _createDbMdmStore,
 } from "./mdm-store-db";
+import { registerMdmRoutes as _registerMdmRoutes } from "./routes/mdm-routes";
 
 /**
  * Mount the M40 MDM REST routes (faceted search / resolve / overlay / BAA register / platform-ops

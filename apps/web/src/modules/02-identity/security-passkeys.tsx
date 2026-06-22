@@ -1,11 +1,11 @@
+import type { PasskeyInfo } from "@wardenx/auth/client";
+import { EmptyState, LoadingSpinner, PageHeader } from "@wardenx/ui";
 // apps/web/src/modules/02-identity — Passkey enrollment & management (M2 Auth, ADR-0034 follow-up).
 // Spec: docs/ui/screens/core/WARDENX_UI_AUTH.md "passkey enrollment". An authenticated user registers a
 // WebAuthn passkey (authClient.passkey.addPasskey) and lists/removes them. The WebAuthn ceremony is
 // browser-only (a real authenticator) — not CI-testable — so this is build-/e2e-verified.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { EmptyState, LoadingSpinner, PageHeader } from "@wardenx/ui";
-import type { PasskeyInfo } from "@wardenx/auth/client";
 import { authClient } from "./auth-client";
 
 export function SecurityPasskeys(): JSX.Element {
@@ -30,7 +30,9 @@ export function SecurityPasskeys(): JSX.Element {
   async function register(): Promise<void> {
     setBusy(true);
     setError(null);
-    const { error: err } = await authClient.passkey.addPasskey(name.trim() ? { name: name.trim() } : undefined);
+    const { error: err } = await authClient.passkey.addPasskey(
+      name.trim() ? { name: name.trim() } : undefined,
+    );
     setBusy(false);
     if (err) {
       setError("Passkey registration failed or was cancelled.");
@@ -52,9 +54,18 @@ export function SecurityPasskeys(): JSX.Element {
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
       <PageHeader title="Passkeys" />
-      <div style={{ padding: "1.5rem", maxWidth: "40rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <div
+        style={{
+          padding: "1.5rem",
+          maxWidth: "40rem",
+          display: "flex",
+          flexDirection: "column",
+          gap: "1rem",
+        }}
+      >
         <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
-          Passkeys let you sign in with your device’s biometrics or security key instead of a password.
+          Passkeys let you sign in with your device’s biometrics or security key instead of a
+          password.
         </p>
         <div style={{ display: "flex", gap: "0.5rem" }}>
           <input
@@ -62,7 +73,12 @@ export function SecurityPasskeys(): JSX.Element {
             placeholder="Name (e.g. iPhone Face ID)"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            style={{ flex: 1, padding: "0.5rem 0.625rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem" }}
+            style={{
+              flex: 1,
+              padding: "0.5rem 0.625rem",
+              border: "1px solid #e5e7eb",
+              borderRadius: "0.5rem",
+            }}
           />
           <button type="button" onClick={register} disabled={busy} style={primaryBtn}>
             {busy ? "Registering…" : "Register a passkey"}
@@ -72,16 +88,51 @@ export function SecurityPasskeys(): JSX.Element {
         {passkeys === null ? (
           <LoadingSpinner />
         ) : passkeys.length === 0 ? (
-          <EmptyState title="No passkeys" description="Register one above to sign in without a password." />
+          <EmptyState
+            title="No passkeys"
+            description="Register one above to sign in without a password."
+          />
         ) : (
-          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <ul
+            style={{
+              listStyle: "none",
+              margin: 0,
+              padding: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.5rem",
+            }}
+          >
             {passkeys.map((p) => (
-              <li key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.625rem 0.75rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem" }}>
+              <li
+                key={p.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "0.625rem 0.75rem",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "0.5rem",
+                }}
+              >
                 <span>
                   <strong>{p.name ?? "Passkey"}</strong>
-                  {p.deviceType ? <span style={{ marginLeft: "0.5rem", fontSize: "0.75rem", color: "#6b7280" }}>{p.deviceType}</span> : null}
+                  {p.deviceType ? (
+                    <span style={{ marginLeft: "0.5rem", fontSize: "0.75rem", color: "#6b7280" }}>
+                      {p.deviceType}
+                    </span>
+                  ) : null}
                 </span>
-                <button type="button" onClick={() => remove(p.id)} style={{ cursor: "pointer", color: "#b91c1c", background: "none", border: "none" }}>
+                <button
+                  type="button"
+                  onClick={() => remove(p.id)}
+                  style={{
+                    cursor: "pointer",
+                    color: "#b91c1c",
+                    background: "none",
+                    border: "none",
+                  }}
+                >
                   Remove
                 </button>
               </li>

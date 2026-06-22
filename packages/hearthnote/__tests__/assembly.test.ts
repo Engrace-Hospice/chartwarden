@@ -1,11 +1,11 @@
+import { VOCAB_VERSION } from "@wardenx/narrative-vocab";
 // packages/hearthnote/__tests__/assembly.test.ts — M8-T05 (spec §2.6, architecture §10.5.2).
 // Layer-1 deterministic core: byte-identical assembly, template-order rendering, verbatim free-text,
 // numeric-direct interpolation, and the D11 vocab-pin / legal-pair / unknown-code guards.
 import { describe, expect, it } from "vitest";
-import { VOCAB_VERSION } from "@wardenx/narrative-vocab";
 import {
-  HearthnoteAssemblyError,
   type AssemblyContext,
+  HearthnoteAssemblyError,
   type SelectionState,
   assemble,
   assembleLayer1,
@@ -27,7 +27,11 @@ function rnRoutineSelection(overrides: Partial<SelectionState> = {}): SelectionS
     encounterType: "routine_visit",
     discipline: "rn",
     sections: [
-      { sectionId: "chief_concern", entries: [], freeText: "Routine scheduled visit per care plan." },
+      {
+        sectionId: "chief_concern",
+        entries: [],
+        freeText: "Routine scheduled visit per care plan.",
+      },
       {
         sectionId: "assessment",
         entries: [{ code: "nv.cv.stable" }, { code: "nv.resp.unlabored" }],
@@ -36,7 +40,11 @@ function rnRoutineSelection(overrides: Partial<SelectionState> = {}): SelectionS
         sectionId: "symptom_management",
         entries: [{ code: "nv.sym.pain_controlled", params: { pain_score: 2 } }],
       },
-      { sectionId: "plan", entries: [], freeText: "Continue current plan; RN to revisit in one week." },
+      {
+        sectionId: "plan",
+        entries: [],
+        freeText: "Continue current plan; RN to revisit in one week.",
+      },
     ],
     ...overrides,
   };
@@ -46,8 +54,17 @@ describe("assembleLayer1 — deterministic core", () => {
   const template = resolveTemplate("routine_visit", "rn")!;
 
   it("renders sections in TEMPLATE order, omitting empty sections", () => {
-    const { narrative, sectionsAssembled } = assembleLayer1(template, rnRoutineSelection(), CONTEXT);
-    expect(sectionsAssembled).toEqual(["chief_concern", "assessment", "symptom_management", "plan"]);
+    const { narrative, sectionsAssembled } = assembleLayer1(
+      template,
+      rnRoutineSelection(),
+      CONTEXT,
+    );
+    expect(sectionsAssembled).toEqual([
+      "chief_concern",
+      "assessment",
+      "symptom_management",
+      "plan",
+    ]);
     expect(narrative).toBe(
       [
         "Reason for Visit\nRoutine scheduled visit per care plan.",
@@ -94,7 +111,12 @@ describe("assembleLayer1 — deterministic core", () => {
 
   it("entry params override context for slot collisions", () => {
     const sel = rnRoutineSelection({
-      sections: [{ sectionId: "symptom_management", entries: [{ code: "nv.sym.pain_controlled", params: { pain_score: 7 } }] }],
+      sections: [
+        {
+          sectionId: "symptom_management",
+          entries: [{ code: "nv.sym.pain_controlled", params: { pain_score: 7 } }],
+        },
+      ],
     });
     expect(assembleLayer1(template, sel, CONTEXT).narrative).toContain("controlled at 7 of 10");
   });

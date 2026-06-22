@@ -81,12 +81,27 @@ export function createPatientReader(store: PatientReaderStore): PatientReader {
       );
     },
     async findBySsnLast4AndDob({ organizationId, ssnLast4, dateOfBirth }) {
-      return resolveMany(organizationId, await store.bySsnLast4AndDob(organizationId, ssnLast4, dateOfBirth));
-    },
-    async findByNameDobSex({ organizationId, lastName, firstName, dateOfBirth, administrativeSex }) {
       return resolveMany(
         organizationId,
-        await store.byNameDobSex(organizationId, lastName, firstName, dateOfBirth, administrativeSex),
+        await store.bySsnLast4AndDob(organizationId, ssnLast4, dateOfBirth),
+      );
+    },
+    async findByNameDobSex({
+      organizationId,
+      lastName,
+      firstName,
+      dateOfBirth,
+      administrativeSex,
+    }) {
+      return resolveMany(
+        organizationId,
+        await store.byNameDobSex(
+          organizationId,
+          lastName,
+          firstName,
+          dateOfBirth,
+          administrativeSex,
+        ),
       );
     },
     async findByLooseName({ organizationId, lastName, firstNameInitial, dateOfBirth }) {
@@ -123,7 +138,9 @@ export function createInMemoryPatientReaderStore(seed: readonly PatientIdentity[
         );
       },
       async bySsnLast4AndDob(organizationId, ssnLast4, dateOfBirth) {
-        return byOrg(organizationId).filter((p) => p.ssnLast4 === ssnLast4 && p.dateOfBirth === dateOfBirth);
+        return byOrg(organizationId).filter(
+          (p) => p.ssnLast4 === ssnLast4 && p.dateOfBirth === dateOfBirth,
+        );
       },
       async byNameDobSex(organizationId, lastName, firstName, dateOfBirth, administrativeSex) {
         return byOrg(organizationId).filter(

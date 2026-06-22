@@ -16,9 +16,19 @@ const FIELDS = ["secret", "backupCodes"] as const;
 
 /** Minimal slice of Better Auth's adapter the decorator touches; the rest passes through via spread. */
 export interface EncryptableAdapter {
-  create(data: { model: string; data: Record<string, unknown>; [k: string]: unknown }): Promise<Record<string, unknown>>;
-  update(data: { model: string; update: Record<string, unknown>; [k: string]: unknown }): Promise<Record<string, unknown> | null>;
-  updateMany(data: { model: string; update: Record<string, unknown>; [k: string]: unknown }): Promise<number>;
+  create(data: { model: string; data: Record<string, unknown>; [k: string]: unknown }): Promise<
+    Record<string, unknown>
+  >;
+  update(data: {
+    model: string;
+    update: Record<string, unknown>;
+    [k: string]: unknown;
+  }): Promise<Record<string, unknown> | null>;
+  updateMany(data: {
+    model: string;
+    update: Record<string, unknown>;
+    [k: string]: unknown;
+  }): Promise<number>;
   findOne(data: { model: string; [k: string]: unknown }): Promise<Record<string, unknown> | null>;
   findMany(data: { model: string; [k: string]: unknown }): Promise<Record<string, unknown>[]>;
   [k: string]: unknown;
@@ -46,7 +56,10 @@ function decryptFields<T extends Record<string, unknown> | null>(row: T, key: Bu
  * LAZILY (memoized) on the first twoFactor operation — so creating the auth instance never requires the
  * key (the config test / password sign-in don't touch 2FA); fail-closed happens at 2FA-enrollment time.
  */
-export function withTwoFactorEncryption<A extends EncryptableAdapter>(inner: A, getKey: () => Buffer): A {
+export function withTwoFactorEncryption<A extends EncryptableAdapter>(
+  inner: A,
+  getKey: () => Buffer,
+): A {
   let cached: Buffer | undefined;
   const key = (): Buffer => {
     cached ??= getKey();

@@ -6,12 +6,12 @@
 // and an all-days window so the assertions turn only on the clock, never the calendar.
 import { describe, expect, it } from "vitest";
 import {
-  planFanOut,
   type AlertContext,
   type FanOutInput,
   type PlannedDelivery,
   type RecipientPreferences,
   type RoutingMap,
+  planFanOut,
 } from "../src/index";
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
@@ -47,9 +47,7 @@ const rows = (p: PlannedDelivery[], userId: string) =>
 
 describe("fan-out planner — the in-app floor (§2.1.1)", () => {
   it("plans an in-app pending row for every recipient, even with no preferences", () => {
-    const plan = planFanOut(
-      input({ alert: CLINICAL_ROUTINE, recipientUserIds: ["u-1", "u-2"] }),
-    );
+    const plan = planFanOut(input({ alert: CLINICAL_ROUTINE, recipientUserIds: ["u-1", "u-2"] }));
     expect(plan).toHaveLength(2);
     for (const u of ["u-1", "u-2"]) {
       const r = rows(plan, u);
@@ -148,7 +146,9 @@ describe("fan-out planner — quiet hours (§2.5)", () => {
       input({
         alert: CLINICAL_ROUTINE,
         recipientUserIds: ["u-1"],
-        preferences: new Map([["u-1", prefs({ userId: "u-1", routingMap, quietHours: quietNight })]]),
+        preferences: new Map([
+          ["u-1", prefs({ userId: "u-1", routingMap, quietHours: quietNight })],
+        ]),
         at: atNight,
       }),
     );
@@ -163,7 +163,9 @@ describe("fan-out planner — quiet hours (§2.5)", () => {
       input({
         alert: { eventType: "lab.critical", category: "clinical_urgent", severity: "critical" },
         recipientUserIds: ["u-1"],
-        preferences: new Map([["u-1", prefs({ userId: "u-1", routingMap, quietHours: quietNight })]]),
+        preferences: new Map([
+          ["u-1", prefs({ userId: "u-1", routingMap, quietHours: quietNight })],
+        ]),
         at: atNight,
       }),
     );
@@ -176,7 +178,9 @@ describe("fan-out planner — quiet hours (§2.5)", () => {
       input({
         alert: CLINICAL_ROUTINE,
         recipientUserIds: ["u-1"],
-        preferences: new Map([["u-1", prefs({ userId: "u-1", routingMap, quietHours: quietNight })]]),
+        preferences: new Map([
+          ["u-1", prefs({ userId: "u-1", routingMap, quietHours: quietNight })],
+        ]),
         at: new Date("2026-06-15T12:00:00Z"),
       }),
     );

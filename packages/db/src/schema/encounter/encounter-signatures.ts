@@ -15,12 +15,12 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { encounterDiscipline, signatureKind, signatureMethod } from "../../enums";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
-import { encounters } from "./encounters";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 import { encounterAddenda } from "./encounter-addenda";
+import { encounters } from "./encounters";
 
 export const encounterSignatures = pgTable(
   "encounter_signature",

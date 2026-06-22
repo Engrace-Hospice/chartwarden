@@ -5,7 +5,10 @@ import { createDbClient } from "../src/client";
 
 describe("createDbClient (AUTH-T01) — production pg + Drizzle factory", () => {
   it("constructs a pooled Drizzle client without connecting", async () => {
-    const handle = createDbClient({ connectionString: "postgres://u:p@localhost:5432/none", max: 3 });
+    const handle = createDbClient({
+      connectionString: "postgres://u:p@localhost:5432/none",
+      max: 3,
+    });
     expect(handle.db).toBeTruthy();
     expect(handle.pool).toBeTruthy();
     expect(handle.pool.options.max).toBe(3);

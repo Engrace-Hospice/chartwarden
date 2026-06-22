@@ -5,9 +5,9 @@
 import { sql } from "drizzle-orm";
 import { date, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { patientAssignmentRole } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 import { users } from "../users";
 import { patients } from "./patients";
 

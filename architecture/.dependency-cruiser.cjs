@@ -33,18 +33,18 @@ const {
 
 /** pathToRegex: 'packages/auth/src/rbac' -> '^packages/auth/src/rbac(/|$)' */
 const p = (path) => `^${path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(/|$)`;
-const anyOf = (paths) => `(${paths.map(p).map((r) => r.slice(1)).join("|")})`;
+const anyOf = (paths) =>
+  `(${paths
+    .map(p)
+    .map((r) => r.slice(1))
+    .join("|")})`;
 
 // ---- Generated module-boundary rules -------------------------------------
 const moduleBoundaryRules = MODULES.map((m) => {
   const allowed = allowedImportPaths(m.id);
   return {
     name: `module-${m.id}-boundary`,
-    comment:
-      `Module ${m.id} (${m.name}) may import only its own code, its declared ` +
-      `dependsOn modules, and the shared leaves. Reaching across an undeclared ` +
-      `boundary is forbidden — extend the module's dependsOn in the manifest ` +
-      `(a deliberate architecture change), never reach through.`,
+    comment: `Module ${m.id} (${m.name}) may import only its own code, its declared dependsOn modules, and the shared leaves. Reaching across an undeclared boundary is forbidden — extend the module's dependsOn in the manifest (a deliberate architecture change), never reach through.`,
     severity: "error",
     from: { path: anyOf(m.codePaths) },
     to: {
@@ -58,20 +58,19 @@ const moduleBoundaryRules = MODULES.map((m) => {
 // ---- Generated vendor-adapter rules --------------------------------------
 const vendorRules = Object.entries(VENDOR_ADAPTERS).map(([pkg, owner]) => ({
   name: `vendor-adapter-${pkg.replace(/[^a-z0-9]/gi, "-")}`,
-  comment:
-    `Vendor SDK '${pkg}' may be imported only inside ${owner} (adapter mandate, ` +
-    `ARCHITECTURE §25.14). Everything else depends on the adapter's typed interface.`,
+  comment: `Vendor SDK '${pkg}' may be imported only inside ${owner} (adapter mandate, ARCHITECTURE §25.14). Everything else depends on the adapter's typed interface.`,
   severity: "error",
   from: { pathNot: p(owner) },
-  to: { dependencyTypes: ["npm"], path: `node_modules/${pkg.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(/|$)` },
+  to: {
+    dependencyTypes: ["npm"],
+    path: `node_modules/${pkg.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(/|$)`,
+  },
 }));
 
 // ---- Generated helper-only-table rules -----------------------------------
 const helperTableRules = Object.entries(HELPER_ONLY_TABLES).map(([table, where]) => ({
   name: `helper-only-table-${table}`,
-  comment:
-    `Table '${table}' is written only via ${where}. Direct schema import is ` +
-    `forbidden outside the owning helper package.`,
+  comment: `Table '${table}' is written only via ${where}. Direct schema import is forbidden outside the owning helper package.`,
   severity: "error",
   from: { pathNot: anyOf(["packages/audit", "packages/shared", "packages/db"]) },
   to: { path: `^packages/db/src/schema/.*${table}` },
@@ -95,9 +94,17 @@ module.exports = {
       from: { path: p("packages/domain") },
       to: {
         path: anyOf([
-          "packages/db", "packages/auth", "packages/audit", "packages/tenancy",
-          "packages/messaging", "packages/fhir", "packages/dosespot", "packages/saas",
-          "packages/ai-platform", "packages/billing", "packages/cost-report",
+          "packages/db",
+          "packages/auth",
+          "packages/audit",
+          "packages/tenancy",
+          "packages/messaging",
+          "packages/fhir",
+          "packages/dosespot",
+          "packages/saas",
+          "packages/ai-platform",
+          "packages/billing",
+          "packages/cost-report",
         ]),
       },
     },

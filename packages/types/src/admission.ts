@@ -106,7 +106,12 @@ export type M6TableName =
 /** Per-table audit denylist (§2.2). The trigger records that a write happened but never mirrors the
  * listed high-sensitivity columns into the audit row. Empty array = no free-text PHI on that table. */
 export const M6_AUDIT_DENYLIST: { readonly [K in M6TableName]: readonly string[] } = {
-  referral: ["patient_name_at_receipt", "patient_dob_at_receipt", "referring_dx_text", "referrer_phone"],
+  referral: [
+    "patient_name_at_receipt",
+    "patient_dob_at_receipt",
+    "referring_dx_text",
+    "referrer_phone",
+  ],
   admission: [],
   election_period: [],
   election_statement: ["patient_name_at_signing", "narrative"],
@@ -234,7 +239,13 @@ export interface LevelOfCarePeriodSummary {
 export interface CertificationSummary {
   readonly certificationId: CertificationId;
   readonly electionPeriodId: ElectionPeriodId;
-  readonly status: "drafted" | "awaiting_hospice_md" | "awaiting_attending" | "signed" | "voided" | "superseded";
+  readonly status:
+    | "drafted"
+    | "awaiting_hospice_md"
+    | "awaiting_attending"
+    | "signed"
+    | "voided"
+    | "superseded";
   readonly hospiceMdSignedAt: LocalDate | null;
   readonly signedLate: boolean;
   readonly isRecert: boolean;
@@ -284,7 +295,10 @@ export interface AdmissionReaderScope {
  * within the consumer's tenant context (the reader does not switch tenants). Read-only DTOs.
  */
 export interface ElectionPeriodReader {
-  findActivePeriodForPatient(patientId: PatientId, on: LocalDate): Promise<ActiveElectionPeriod | null>;
+  findActivePeriodForPatient(
+    patientId: PatientId,
+    on: LocalDate,
+  ): Promise<ActiveElectionPeriod | null>;
   listPeriodsForAdmission(admissionId: AdmissionId): Promise<ReadonlyArray<ElectionPeriodSummary>>;
 }
 

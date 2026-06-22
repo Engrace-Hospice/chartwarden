@@ -64,7 +64,11 @@ describe("M7-T06 §7.3 — patient-stated goal preservation", () => {
     const goal = await service.addGoal(
       ORG,
       PLAN,
-      { problemId: PROBLEM_ID, originalText: "Want to walk to mailbox without help", source: "patient_stated" },
+      {
+        problemId: PROBLEM_ID,
+        originalText: "Want to walk to mailbox without help",
+        source: "patient_stated",
+      },
       false,
     );
     const revised = await service.patchGoal(ORG, PLAN, goal.id, goal.version, {
@@ -101,7 +105,12 @@ describe("M7-T06 §7.3 — patient-stated goal preservation", () => {
     });
     // A blank verbatim original is itself rejected (the write guard requires non-empty verbatim text).
     await expect(
-      service.addGoal(ORG, PLAN, { problemId: PROBLEM_ID, originalText: "", source: "patient_stated" }, false),
+      service.addGoal(
+        ORG,
+        PLAN,
+        { problemId: PROBLEM_ID, originalText: "", source: "patient_stated" },
+        false,
+      ),
     ).rejects.toBeInstanceOf(CarePlanStateError);
   });
 });
@@ -109,9 +118,15 @@ describe("M7-T06 §7.3 — patient-stated goal preservation", () => {
 // ── §7.4 Discipline contribution & cross-discipline view ─────────────────────────────────────────
 describe("M7-T06 §7.4 — discipline contribution & cross-discipline view", () => {
   it("an aide may not author an rn intervention; an RN may; the IDG Coordinator may author any", () => {
-    expect(canAuthorInterventionDiscipline({ disciplines: ["chha"], isIdgCoordinator: false }, "rn")).toBe(false);
-    expect(canAuthorInterventionDiscipline({ disciplines: ["rn"], isIdgCoordinator: false }, "rn")).toBe(true);
-    expect(canAuthorInterventionDiscipline({ disciplines: [], isIdgCoordinator: true }, "rn")).toBe(true);
+    expect(
+      canAuthorInterventionDiscipline({ disciplines: ["chha"], isIdgCoordinator: false }, "rn"),
+    ).toBe(false);
+    expect(
+      canAuthorInterventionDiscipline({ disciplines: ["rn"], isIdgCoordinator: false }, "rn"),
+    ).toBe(true);
+    expect(canAuthorInterventionDiscipline({ disciplines: [], isIdgCoordinator: true }, "rn")).toBe(
+      true,
+    );
   });
 
   it("the service write path raises DISCIPLINE_SCOPE_VIOLATION (403) for an out-of-discipline author", async () => {
@@ -150,10 +165,12 @@ describe("M7-T06 §7.4 — discipline contribution & cross-discipline view", () 
   });
 
   it("assertDisciplineScope throws for a mismatch and is silent for the IDG Coordinator", () => {
-    expect(() => assertDisciplineScope({ disciplines: ["chaplain"], isIdgCoordinator: false }, "rn")).toThrow(
-      CarePlanStateError,
-    );
-    expect(() => assertDisciplineScope({ disciplines: [], isIdgCoordinator: true }, "rn")).not.toThrow();
+    expect(() =>
+      assertDisciplineScope({ disciplines: ["chaplain"], isIdgCoordinator: false }, "rn"),
+    ).toThrow(CarePlanStateError);
+    expect(() =>
+      assertDisciplineScope({ disciplines: [], isIdgCoordinator: true }, "rn"),
+    ).not.toThrow();
   });
 
   it("the discipline_scope predicate reads the body's discipline against the actor's session scope", async () => {
@@ -161,7 +178,9 @@ describe("M7-T06 §7.4 — discipline contribution & cross-discipline view", () 
     const target: AbacTarget = { discipline: "rn" };
     expect(await predicates.discipline_scope(makeContext({ roles: ["chha"] }), target)).toBe(false);
     expect(await predicates.discipline_scope(makeContext({ roles: ["rn"] }), target)).toBe(true);
-    expect(await predicates.discipline_scope(makeContext({ roles: ["idg_coordinator"] }), target)).toBe(true);
+    expect(
+      await predicates.discipline_scope(makeContext({ roles: ["idg_coordinator"] }), target),
+    ).toBe(true);
   });
 });
 
@@ -175,7 +194,11 @@ describe("M7-T06 §7.5 — DPOA-attributed decisions", () => {
       service.addGoal(
         ORG,
         PLAN,
-        { problemId: PROBLEM_ID, originalText: "Honor the agent's stated wishes", source: "agent_stated" },
+        {
+          problemId: PROBLEM_ID,
+          originalText: "Honor the agent's stated wishes",
+          source: "agent_stated",
+        },
         false, // no active DPOA
       ),
     ).rejects.toMatchObject({ code: "DPOA_CONSENT_REQUIRED" });
@@ -196,7 +219,13 @@ describe("M7-T06 §7.5 — DPOA-attributed decisions", () => {
 
   it("a later DPOA revocation preserves the entry and annotates 'consent revoked on <date>'", () => {
     const view = projectGoalAttribution(
-      { id: "g2", source: "agent_stated", originalText: "Agent wishes", revisedText: null, actingConsentId: "consent_1" },
+      {
+        id: "g2",
+        source: "agent_stated",
+        originalText: "Agent wishes",
+        revisedText: null,
+        actingConsentId: "consent_1",
+      },
       { consentRevokedAt: "2026-07-01" },
     );
     expect(view.attributedTo).toBe("agent");
@@ -205,12 +234,16 @@ describe("M7-T06 §7.5 — DPOA-attributed decisions", () => {
   });
 
   it("the dpoa_active predicate resolves through the consent seam for the plan's patient", async () => {
-    const withConsent = makePredicates({ isConsentActive: async (q) => q.consentType === "dpoa_healthcare" });
+    const withConsent = makePredicates({
+      isConsentActive: async (q) => q.consentType === "dpoa_healthcare",
+    });
     const noConsent = makePredicates({ isConsentActive: async () => false });
     const target: AbacTarget = { planId: PLAN };
     expect(await withConsent.predicates.dpoa_active(makeContext(), target)).toBe(true);
     expect(await noConsent.predicates.dpoa_active(makeContext(), target)).toBe(false);
-    expect(await withConsent.predicates.dpoa_active(makeContext(), { planId: "cp_absent" })).toBe(false); // fail-closed
+    expect(await withConsent.predicates.dpoa_active(makeContext(), { planId: "cp_absent" })).toBe(
+      false,
+    ); // fail-closed
   });
 });
 
@@ -248,10 +281,21 @@ describe("M7-T06 §7.6 — SUD problem confidentiality", () => {
     const { service } = createInMemoryCarePlanBackend({
       plans: [{ id: PLAN, organizationId: ORG, patientId: PATIENT }],
     });
-    await service.addProblem(ORG, PLAN, { description: "Terminal CA", kind: "terminal", source: "clinical" });
-    await service.addProblem(ORG, PLAN, { description: "Opioid use disorder", kind: "related", source: "clinical", sudRelated: true });
+    await service.addProblem(ORG, PLAN, {
+      description: "Terminal CA",
+      kind: "terminal",
+      source: "clinical",
+    });
+    await service.addProblem(ORG, PLAN, {
+      description: "Opioid use disorder",
+      kind: "related",
+      source: "clinical",
+      sudRelated: true,
+    });
 
-    const redacted = (await service.getCarePlanForPatient(ORG, PATIENT, { sudDisclosureAllowed: false })) as {
+    const redacted = (await service.getCarePlanForPatient(ORG, PATIENT, {
+      sudDisclosureAllowed: false,
+    })) as {
       problems: unknown[];
       redacted: boolean;
     };
@@ -259,7 +303,10 @@ describe("M7-T06 §7.6 — SUD problem confidentiality", () => {
     expect(redacted.redacted).toBe(true);
 
     // The SIGNING path uses the FULL problem set (system actor, no viewer) — redaction must not hide it.
-    const full = (await service.getCarePlanForPatient(ORG, PATIENT)) as { problems: unknown[]; redacted: boolean };
+    const full = (await service.getCarePlanForPatient(ORG, PATIENT)) as {
+      problems: unknown[];
+      redacted: boolean;
+    };
     expect(full.problems).toHaveLength(2);
     expect(full.redacted).toBe(false);
   });
@@ -268,7 +315,11 @@ describe("M7-T06 §7.6 — SUD problem confidentiality", () => {
     const { service, predicates } = makePredicates({
       isConsentActive: async (q) => q.consentType === "42_cfr_part_2_release",
     });
-    const nonSud = await service.addProblem(ORG, PLAN, { description: "Pain", kind: "terminal", source: "clinical" });
+    const nonSud = await service.addProblem(ORG, PLAN, {
+      description: "Pain",
+      kind: "terminal",
+      source: "clinical",
+    });
     const sud = await service.addProblem(ORG, PLAN, {
       description: "SUD",
       kind: "related",
@@ -278,21 +329,48 @@ describe("M7-T06 §7.6 — SUD problem confidentiality", () => {
 
     // A non-SUD problem is always disclosable, even with no consent.
     const denyConsent = makePredicates({ isConsentActive: async () => false });
-    const nonSud2 = await denyConsent.service.addProblem(ORG, PLAN, { description: "Pain", kind: "terminal", source: "clinical" });
-    expect(await denyConsent.predicates.sud_disclosure_allowed(makeContext(), { elementId: nonSud2.id })).toBe(true);
+    const nonSud2 = await denyConsent.service.addProblem(ORG, PLAN, {
+      description: "Pain",
+      kind: "terminal",
+      source: "clinical",
+    });
+    expect(
+      await denyConsent.predicates.sud_disclosure_allowed(makeContext(), { elementId: nonSud2.id }),
+    ).toBe(true);
 
     // A SUD problem: allowed with an active Part-2 release consent context...
-    expect(await predicates.sud_disclosure_allowed(makeContext(), { elementId: sud.id })).toBe(true);
-    expect(await predicates.sud_disclosure_allowed(makeContext(), { elementId: nonSud.id })).toBe(true);
+    expect(await predicates.sud_disclosure_allowed(makeContext(), { elementId: sud.id })).toBe(
+      true,
+    );
+    expect(await predicates.sud_disclosure_allowed(makeContext(), { elementId: nonSud.id })).toBe(
+      true,
+    );
     // ...or for the assigned RN Case Manager...
     expect(
-      await denyConsent.predicates.sud_disclosure_allowed(makeContext({ roles: ["rn_case_manager"] }), {
-        elementId: (await denyConsent.service.addProblem(ORG, PLAN, { description: "SUD", kind: "related", source: "clinical", sudRelated: true })).id,
-      }),
+      await denyConsent.predicates.sud_disclosure_allowed(
+        makeContext({ roles: ["rn_case_manager"] }),
+        {
+          elementId: (
+            await denyConsent.service.addProblem(ORG, PLAN, {
+              description: "SUD",
+              kind: "related",
+              source: "clinical",
+              sudRelated: true,
+            })
+          ).id,
+        },
+      ),
     ).toBe(true);
     // ...and denied to a consulting clinician with neither.
-    const sudDeny = await denyConsent.service.addProblem(ORG, PLAN, { description: "SUD", kind: "related", source: "clinical", sudRelated: true });
-    expect(await denyConsent.predicates.sud_disclosure_allowed(makeContext(), { elementId: sudDeny.id })).toBe(false);
+    const sudDeny = await denyConsent.service.addProblem(ORG, PLAN, {
+      description: "SUD",
+      kind: "related",
+      source: "clinical",
+      sudRelated: true,
+    });
+    expect(
+      await denyConsent.predicates.sud_disclosure_allowed(makeContext(), { elementId: sudDeny.id }),
+    ).toBe(false);
   });
 });
 
@@ -301,11 +379,19 @@ describe("M7-T06 §6 — caseload_or_scope & signer_role_match predicates", () =
   it("caseload_or_scope allows an org-wide scope role, a session-scoped patient, or caseload membership", async () => {
     const target: AbacTarget = { planId: PLAN };
     const orgWide = makePredicates();
-    expect(await orgWide.predicates.caseload_or_scope(makeContext({ roles: ["medical_director"] }), target)).toBe(true);
+    expect(
+      await orgWide.predicates.caseload_or_scope(
+        makeContext({ roles: ["medical_director"] }),
+        target,
+      ),
+    ).toBe(true);
 
     const scoped = makePredicates();
     expect(
-      await scoped.predicates.caseload_or_scope(makeContext({ attributes: { scopePatientIds: [PATIENT] } }), target),
+      await scoped.predicates.caseload_or_scope(
+        makeContext({ attributes: { scopePatientIds: [PATIENT] } }),
+        target,
+      ),
     ).toBe(true);
 
     const caseload = makePredicates({ isInCaseload: async () => true });
@@ -320,12 +406,22 @@ describe("M7-T06 §6 — caseload_or_scope & signer_role_match predicates", () =
       plans: [{ id: PLAN, organizationId: ORG, patientId: PATIENT }],
     });
     const version = (await service.createVersion(ORG, PLAN, "initial", null)) as { id: string };
-    const predicates = buildCarePlanAbacPredicates({ resolver, isInCaseload: async () => false, isConsentActive: async () => false });
+    const predicates = buildCarePlanAbacPredicates({
+      resolver,
+      isInCaseload: async () => false,
+      isConsentActive: async () => false,
+    });
     const target: AbacTarget = { versionId: version.id };
     // INITIAL set = (hospice_physician|nurse_practitioner) + rn_case_manager.
-    expect(await predicates.signer_role_match(makeContext({ roles: ["rn_case_manager"] }), target)).toBe(true);
-    expect(await predicates.signer_role_match(makeContext({ roles: ["nurse_practitioner"] }), target)).toBe(true);
-    expect(await predicates.signer_role_match(makeContext({ roles: ["chaplain"] }), target)).toBe(false); // not in INITIAL set
+    expect(
+      await predicates.signer_role_match(makeContext({ roles: ["rn_case_manager"] }), target),
+    ).toBe(true);
+    expect(
+      await predicates.signer_role_match(makeContext({ roles: ["nurse_practitioner"] }), target),
+    ).toBe(true);
+    expect(await predicates.signer_role_match(makeContext({ roles: ["chaplain"] }), target)).toBe(
+      false,
+    ); // not in INITIAL set
     expect(await predicates.signer_role_match(makeContext({ roles: [] }), target)).toBe(false);
   });
 });

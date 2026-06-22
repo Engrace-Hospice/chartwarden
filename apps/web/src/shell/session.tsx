@@ -1,3 +1,4 @@
+import { useApiClient } from "@wardenx/ui";
 // apps/web/src/shell — session/tenant context (M1, ADR-0030). The authenticated actor + org
 // for the current browser session. F0 ships the context + a null default; FB-T15 self-loads it
 // from the live `GET /api/v1/auth/context` (the M2↔M3 role/membership enrichment) via the typed
@@ -5,7 +6,6 @@
 // the authoritative enforcer — this context only drives client-side rendering and the token header.
 import { createContext, useContext, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
-import { useApiClient } from "@wardenx/ui";
 import { toSession } from "./actor-session";
 import type { Session } from "./session-types";
 

@@ -7,11 +7,8 @@
 // CarePlanReaderStore (in-memory slice here; Drizzle in prod, reads under the consumer's RLS).
 import type { CarePlanReader } from "@wardenx/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
-import { createCarePlanReader, type NowClock } from "./reader";
-import {
-  type CarePlanReaderStore,
-  createInMemoryCarePlanReaderStore,
-} from "./store";
+import { type NowClock, createCarePlanReader } from "./reader";
+import { type CarePlanReaderStore, createInMemoryCarePlanReaderStore } from "./store";
 
 export {
   type CarePlanClockRecord,

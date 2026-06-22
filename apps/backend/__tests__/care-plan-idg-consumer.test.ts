@@ -30,7 +30,12 @@ function payload(over: Partial<IdgDecisionPayload> = {}): IdgDecisionPayload {
     patientId: PAT,
     changes: [
       { target: "intervention", op: "add", discipline: "rn" },
-      { target: "intervention", op: "discontinue", interventionId: "intv-grief", discipline: "msw" },
+      {
+        target: "intervention",
+        op: "discontinue",
+        interventionId: "intv-grief",
+        discipline: "msw",
+      },
     ],
     ...over,
   };
@@ -94,7 +99,9 @@ describe("decideIdgDecision — apply (§7.9)", () => {
 
 describe("decideIdgDecision — idempotency (§11 D4)", () => {
   it("no-ops when a version already records this idgDecisionId", () => {
-    expect(decideIdgDecision(payload(), facts({ alreadyApplied: true }))).toEqual({ kind: "idempotent_skip" });
+    expect(decideIdgDecision(payload(), facts({ alreadyApplied: true }))).toEqual({
+      kind: "idempotent_skip",
+    });
   });
 
   it("checks idempotency before any contract guard (a replayed terminal-discontinue still skips)", () => {
@@ -117,11 +124,16 @@ describe("decideIdgDecision — contract guards", () => {
   });
 
   it("refuses an empty decision (no changes carries no work)", () => {
-    expect(decideIdgDecision(payload({ changes: [] }), facts())).toEqual({ kind: "refuse", reason: "no_changes" });
+    expect(decideIdgDecision(payload({ changes: [] }), facts())).toEqual({
+      kind: "refuse",
+      reason: "no_changes",
+    });
   });
 
   it("refuses an update/discontinue change missing its element id", () => {
-    expect(decideIdgDecision(payload({ changes: [{ target: "goal", op: "update" }] }), facts())).toEqual({
+    expect(
+      decideIdgDecision(payload({ changes: [{ target: "goal", op: "update" }] }), facts()),
+    ).toEqual({
       kind: "refuse",
       reason: "missing_element_id",
     });

@@ -17,7 +17,8 @@ function storeWith(cred: StoredPasskey | null): {
   return {
     counterUpdates,
     store: {
-      findCredential: (_userId, credentialId) => (cred && cred.credentialId === credentialId ? cred : null),
+      findCredential: (_userId, credentialId) =>
+        cred && cred.credentialId === credentialId ? cred : null,
       updateCounter: (id, counter) => {
         counterUpdates.push({ id, counter });
       },
@@ -57,7 +58,11 @@ describe("createWebauthnAssertionVerifier (M2 §4.4)", () => {
   });
 
   it("fails closed on a forged/garbage assertion and does NOT advance the counter", async () => {
-    const { store, counterUpdates } = storeWith({ credentialId: "cred-1", publicKey: "AAAA", counter: 7 });
+    const { store, counterUpdates } = storeWith({
+      credentialId: "cred-1",
+      publicKey: "AAAA",
+      counter: 7,
+    });
     const verifier = createWebauthnAssertionVerifier(store);
     const out = await verifier.verify({
       userId: "u1",

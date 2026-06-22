@@ -7,9 +7,14 @@
 // version to `signed` and emits `m7.care_plan.version_signed` (the system keys off this — M8 encounter
 // gate, M22 PDF, M28 FHIR). Pure over already-resolved facts; the quorum math lives in
 // `./required-signer-set`, the per-version → root promotion in `./care-plan`.
-import type { CarePlanSignerRole, CarePlanVersionKind, IsoInstant, RequiredSignerSet } from "@wardenx/types";
-import { CarePlanStateError, require_ } from "./errors";
+import type {
+  CarePlanSignerRole,
+  CarePlanVersionKind,
+  IsoInstant,
+  RequiredSignerSet,
+} from "@wardenx/types";
 import { type TransitionResult, result } from "./effects";
+import { CarePlanStateError, require_ } from "./errors";
 import { decideRecordSignature, resolveRequiredSignerSet } from "./required-signer-set";
 import { checkInitialHasProblem } from "./validation";
 
@@ -37,7 +42,10 @@ export type CarePlanVersionEvent =
   | { readonly type: "editAfterFirstSignature" }
   | { readonly type: "supersede" };
 
-export type CarePlanVersionTransition = TransitionResult<CarePlanVersionState, CarePlanVersionEvent["type"]>;
+export type CarePlanVersionTransition = TransitionResult<
+  CarePlanVersionState,
+  CarePlanVersionEvent["type"]
+>;
 
 /** The legal §2.2.2 transition graph (from → events accepted). Guards are checked separately. */
 export const CARE_PLAN_VERSION_GRAPH: Readonly<
@@ -62,10 +70,7 @@ export function openCarePlanVersion(kind: CarePlanVersionKind): {
   return {
     status: "draft",
     kind,
-    effects: [
-      { kind: "audit" },
-      { kind: "outbox", event: "m7.care_plan.version_drafted" },
-    ],
+    effects: [{ kind: "audit" }, { kind: "outbox", event: "m7.care_plan.version_drafted" }],
   };
 }
 
@@ -96,7 +101,11 @@ export function transitionCarePlanVersion(
     }
     case "recordSignature": {
       // Validate the incoming signature against the unmet slots; the last one flips to `signed`.
-      const decision = decideRecordSignature(event.requiredSignerSet, event.alreadySigned, event.signerRole);
+      const decision = decideRecordSignature(
+        event.requiredSignerSet,
+        event.alreadySigned,
+        event.signerRole,
+      );
       if (!decision.quorumMet) {
         return result(from, event.type, "in_review", [{ kind: "audit" }]);
       }
@@ -109,17 +118,16 @@ export function transitionCarePlanVersion(
     case "returnForEdits": {
       // Any required signer may bounce the version back to draft; prior signatures are cleared.
       return result(from, event.type, "draft", [
-        ...(event.hasSignatures ? ([{ kind: "clear_signatures" }] as CarePlanVersionTransition["effects"]) : []),
+        ...(event.hasSignatures
+          ? ([{ kind: "clear_signatures" }] as CarePlanVersionTransition["effects"])
+          : []),
         { kind: "audit" },
       ]);
     }
     case "editAfterFirstSignature": {
       // D8 — editing the snapshot once a signature exists invalidates that signature: return to draft,
       // clear all collected signatures (the signers re-sign the corrected plan).
-      return result(from, event.type, "draft", [
-        { kind: "clear_signatures" },
-        { kind: "audit" },
-      ]);
+      return result(from, event.type, "draft", [{ kind: "clear_signatures" }, { kind: "audit" }]);
     }
     case "supersede": {
       require_(from === "signed", "ILLEGAL_TRANSITION", "only a signed version can be superseded");

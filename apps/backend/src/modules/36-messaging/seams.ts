@@ -22,7 +22,11 @@
 // seams) by default — the M36-T04 resolution/fan-out engine over empty recipient ports + the
 // platform-default rule seed. Production injects the Drizzle/seam-backed ports (T07/T08) via
 // `deps.emitter`.
-import { type AlertEmitter, type MessagingProvider, createInMemoryAlertEmitter } from "@wardenx/messaging";
+import {
+  type AlertEmitter,
+  type MessagingProvider,
+  createInMemoryAlertEmitter,
+} from "@wardenx/messaging";
 import { getSeam, registerSeam } from "../../bootstrap/index";
 
 /** Injected production wiring for M36's published seams (the slice defaults to in-memory). */

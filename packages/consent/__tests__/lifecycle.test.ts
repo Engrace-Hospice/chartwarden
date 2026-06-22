@@ -82,19 +82,31 @@ describe("recipient machine (§2.2.2)", () => {
 
 describe("revocation cascade machine (§2.2.3)", () => {
   it("all consumers ACKed → completed", () => {
-    const r = nextCascadeStatus({ status: "in_progress", consumers: { m2: true, m22: true }, attempts: 1 });
+    const r = nextCascadeStatus({
+      status: "in_progress",
+      consumers: { m2: true, m22: true },
+      attempts: 1,
+    });
     expect(r).toEqual({ ok: true, value: "completed" });
   });
 
   it("stragglers under budget → in_progress, and the un-ACKed consumer needs dispatch", () => {
-    const progress = { status: "in_progress" as const, consumers: { m2: true, m22: false }, attempts: 2 };
+    const progress = {
+      status: "in_progress" as const,
+      consumers: { m2: true, m22: false },
+      attempts: 2,
+    };
     expect(nextCascadeStatus(progress)).toEqual({ ok: true, value: "in_progress" });
     expect(consumerNeedsDispatch(progress, "m22")).toBe(true);
     expect(consumerNeedsDispatch(progress, "m2")).toBe(false);
   });
 
   it("budget exhausted with stragglers → partial_failed refusal", () => {
-    const r = nextCascadeStatus({ status: "in_progress", consumers: { m22: false }, attempts: CASCADE_MAX_ATTEMPTS });
+    const r = nextCascadeStatus({
+      status: "in_progress",
+      consumers: { m22: false },
+      attempts: CASCADE_MAX_ATTEMPTS,
+    });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe("cascade_retry_budget_exhausted");
   });
@@ -103,7 +115,10 @@ describe("revocation cascade machine (§2.2.3)", () => {
 describe("renewal cycle machine (§2.4)", () => {
   it("closes an open cycle to the right terminal status per reason", () => {
     expect(closeRenewalCycle("open", "renewed")).toEqual({ ok: true, value: "renewed" });
-    expect(closeRenewalCycle("open", "expired_without_renewal")).toEqual({ ok: true, value: "closed_expired" });
+    expect(closeRenewalCycle("open", "expired_without_renewal")).toEqual({
+      ok: true,
+      value: "closed_expired",
+    });
     expect(closeRenewalCycle("open", "revoked")).toEqual({ ok: true, value: "closed_revoked" });
   });
 

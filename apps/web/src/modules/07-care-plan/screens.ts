@@ -1,3 +1,4 @@
+import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/07-care-plan — M7 screen registration (Track B, ADR-0030).
 // The §5 Care Plan (IPOC) screens that have a backing M7 read route on the generated client: the
 // patient-scoped Care Plan View (§5.2), the Version History ledger (§5.1), and the patient-friendly
@@ -5,9 +6,8 @@
 // stays the only enforcement point (no frontend authz). The signing modal / draft editor / IDG-review
 // screens fill in as their write surfaces harden (M7 §5.2).
 import type { ComponentType } from "react";
-import type { ScreenRegistryModule } from "@wardenx/types";
-import { CarePlanSummary } from "./summary";
 import { CarePlanView } from "./care-plan-view";
+import { CarePlanSummary } from "./summary";
 import { CarePlanVersionHistory } from "./version-history";
 
 export const carePlanScreens: ScreenRegistryModule<ComponentType> = {

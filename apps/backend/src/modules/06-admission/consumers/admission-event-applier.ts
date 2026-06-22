@@ -39,7 +39,11 @@ export interface ProposedEventContext {
   readonly admissionSource?: string; // PV1-14
   readonly patientClass?: string; // PV1-2 ('I' = inpatient, 'O' = outpatient, 'E' = emergency)
   readonly facilityCode?: string; // PV1-3 building/facility
-  readonly mappedDischargeReason?: "death" | "transferred_to_acute" | "left_against_advice" | "other";
+  readonly mappedDischargeReason?:
+    | "death"
+    | "transferred_to_acute"
+    | "left_against_advice"
+    | "other";
   /** For a cancel-admit (A11) this is the REFERENCED original-admit control id, not the cancel's own. */
   readonly messageControlId: string;
   readonly sendingFacility: string;
@@ -127,7 +131,11 @@ export type ApplierAction =
   /** A contract violation (D13) — audit `m6.applier.contract_violation_refused` + emit `m6.applier.refused`. */
   | { readonly kind: "refuse"; readonly reason: string }
   /** Open an informational compliance window for human triage; record `outcome` on the processed row. */
-  | { readonly kind: "open_window"; readonly window: ExternalSignalWindowDescriptor; readonly outcome: ApplierProcessedOutcome }
+  | {
+      readonly kind: "open_window";
+      readonly window: ExternalSignalWindowDescriptor;
+      readonly outcome: ApplierProcessedOutcome;
+    }
   /** The narrow D14 happy path — record the external-death discharge via `DischargeService.recordExternalDeath`. */
   | {
       readonly kind: "record_external_death";
@@ -182,7 +190,10 @@ function openWindow(
  * descriptor. Mirrors the §4.8 `handle` → `applyDischargeEvent` / `applyAdmissionEvent` /
  * `applyCancelAdmission` arms exactly, including the five D14 preconditions and the idempotency gate.
  */
-export function decideAdmissionEvent(payload: ProposalAcceptedPayload, facts: ApplierFacts): ApplierAction {
+export function decideAdmissionEvent(
+  payload: ProposalAcceptedPayload,
+  facts: ApplierFacts,
+): ApplierAction {
   if (payload.ownerModule !== "m6") return { kind: "ignore", reason: "not_m6_owned" };
   if (facts.alreadyProcessed) return { kind: "idempotent_skip" };
 
@@ -199,7 +210,10 @@ export function decideAdmissionEvent(payload: ProposalAcceptedPayload, facts: Ap
   }
 }
 
-function decideDischargeEvent(payload: ProposalAcceptedPayload, facts: ApplierFacts): ApplierAction {
+function decideDischargeEvent(
+  payload: ProposalAcceptedPayload,
+  facts: ApplierFacts,
+): ApplierAction {
   const ctx = payload.proposedEventContext;
   if (!ctx) return { kind: "refuse", reason: "missing_event_context" };
   if (!payload.matchedPatientId) return { kind: "refuse", reason: "no_matched_patient" };
@@ -251,9 +265,13 @@ function decideDischargeEvent(payload: ProposalAcceptedPayload, facts: ApplierFa
   };
 }
 
-function decideAdmissionSignal(payload: ProposalAcceptedPayload, facts: ApplierFacts): ApplierAction {
+function decideAdmissionSignal(
+  payload: ProposalAcceptedPayload,
+  facts: ApplierFacts,
+): ApplierAction {
   const ctx = payload.proposedEventContext;
-  if (!ctx || !payload.matchedPatientId) return { kind: "refuse", reason: "missing_context_or_patient" };
+  if (!ctx || !payload.matchedPatientId)
+    return { kind: "refuse", reason: "missing_context_or_patient" };
 
   const summary = facts.admissionSummary;
   if (!summary || summary.status !== "active") {
@@ -296,7 +314,10 @@ function decideAdmissionSignal(payload: ProposalAcceptedPayload, facts: ApplierF
   );
 }
 
-function decideCancelAdmission(payload: ProposalAcceptedPayload, facts: ApplierFacts): ApplierAction {
+function decideCancelAdmission(
+  payload: ProposalAcceptedPayload,
+  facts: ApplierFacts,
+): ApplierAction {
   const ctx = payload.proposedEventContext;
   if (!ctx) return { kind: "refuse", reason: "missing_event_context" };
 

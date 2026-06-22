@@ -13,7 +13,12 @@
 // outbox events that are not wired in Phase 1 — they stay forward-seam deferrals (a clear NOT_IMPLEMENTED
 // throw) rather than reconcile membership against source data that has no live producer yet.
 import { type DbClient, schema } from "@wardenx/db";
-import type { ChannelKind, MessageBodyKind, MessagingProvider, ResolvedMessage } from "@wardenx/messaging";
+import type {
+  ChannelKind,
+  MessageBodyKind,
+  MessagingProvider,
+  ResolvedMessage,
+} from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
 import { and, asc, eq } from "drizzle-orm";
@@ -30,9 +35,10 @@ const CM = schema.channelMembers;
 const MSG = schema.messages;
 
 /** The channel-kind shape the §3.3 `channel_kind_subject_shape` CHECK enforces (subject + retention). */
-function channelShape(
-  kind: ChannelKind,
-): { retentionClass: "operational" | "care_related" | "bereavement"; subjectRequired: boolean } {
+function channelShape(kind: ChannelKind): {
+  retentionClass: "operational" | "care_related" | "bereavement";
+  subjectRequired: boolean;
+} {
   switch (kind) {
     case "dm":
       return { retentionClass: "care_related", subjectRequired: false };
@@ -67,66 +73,83 @@ export function createDbMessagingProvider(
         // bereavement needs a pre-computed archives_at (M16 plan), so it is opened via the M16 sync hook.
         notWired("opening a bereavement channel");
       }
-      return withOrgContext(db, { organizationId: orgId, userId: spec.creatorUserId }, async (tx) => {
-        if (shape.subjectRequired && spec.subjectId) {
-          const existing = (await tx
-            .select({ id: CH.id })
-            .from(CH)
-            .where(
-              and(eq(CH.organizationId, orgId), eq(CH.channelKind, spec.kind), eq(CH.subjectId, spec.subjectId)),
-            )
-            .limit(1)) as Array<{ id: string }>;
-          if (existing[0]) return { channelId: existing[0].id, created: false };
-        }
-        if (spec.kind === "announcement") {
-          const existing = (await tx
-            .select({ id: CH.id })
-            .from(CH)
-            .where(and(eq(CH.organizationId, orgId), eq(CH.channelKind, "announcement")))
-            .limit(1)) as Array<{ id: string }>;
-          if (existing[0]) return { channelId: existing[0].id, created: false };
-        }
-        const inserted = (await tx
-          .insert(CH)
-          .values({
+      return withOrgContext(
+        db,
+        { organizationId: orgId, userId: spec.creatorUserId },
+        async (tx) => {
+          if (shape.subjectRequired && spec.subjectId) {
+            const existing = (await tx
+              .select({ id: CH.id })
+              .from(CH)
+              .where(
+                and(
+                  eq(CH.organizationId, orgId),
+                  eq(CH.channelKind, spec.kind),
+                  eq(CH.subjectId, spec.subjectId),
+                ),
+              )
+              .limit(1)) as Array<{ id: string }>;
+            if (existing[0]) return { channelId: existing[0].id, created: false };
+          }
+          if (spec.kind === "announcement") {
+            const existing = (await tx
+              .select({ id: CH.id })
+              .from(CH)
+              .where(and(eq(CH.organizationId, orgId), eq(CH.channelKind, "announcement")))
+              .limit(1)) as Array<{ id: string }>;
+            if (existing[0]) return { channelId: existing[0].id, created: false };
+          }
+          const inserted = (await tx
+            .insert(CH)
+            .values({
+              organizationId: orgId,
+              channelKind: spec.kind,
+              subjectId: shape.subjectRequired ? (spec.subjectId ?? null) : null,
+              title: spec.title ?? defaultTitle(spec.kind),
+              retentionClass: shape.retentionClass,
+            })
+            .returning({ id: CH.id })) as Array<{ id: string }>;
+          const channelId = inserted[0]!.id;
+          await tx.insert(CM).values({
             organizationId: orgId,
-            channelKind: spec.kind,
-            subjectId: shape.subjectRequired ? (spec.subjectId ?? null) : null,
-            title: spec.title ?? defaultTitle(spec.kind),
-            retentionClass: shape.retentionClass,
-          })
-          .returning({ id: CH.id })) as Array<{ id: string }>;
-        const channelId = inserted[0]!.id;
-        await tx.insert(CM).values({
-          organizationId: orgId,
-          channelId,
-          userId: spec.creatorUserId,
-          role: "owner",
-          source: "manual",
-        });
-        return { channelId, created: true };
-      });
+            channelId,
+            userId: spec.creatorUserId,
+            role: "owner",
+            source: "manual",
+          });
+          return { channelId, created: true };
+        },
+      );
     },
 
     async sendMessage(orgId, input) {
-      return withOrgContext(db, { organizationId: orgId, userId: input.authorUserId }, async (tx) => {
-        const ch = await channelOr404(tx, orgId, input.channelId);
-        if (ch.isArchived) throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
-        return insertEncryptedMessage(tx, cipher, {
-          orgId,
-          channelId: input.channelId,
-          authorUserId: input.authorUserId,
-          body: input.body,
-          bodyKind: input.bodyKind,
-          parentMessageId: input.parentMessageId,
-          quotedMessageId: input.quotedMessageId,
-        });
-      });
+      return withOrgContext(
+        db,
+        { organizationId: orgId, userId: input.authorUserId },
+        async (tx) => {
+          const ch = await channelOr404(tx, orgId, input.channelId);
+          if (ch.isArchived) throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+          return insertEncryptedMessage(tx, cipher, {
+            orgId,
+            channelId: input.channelId,
+            authorUserId: input.authorUserId,
+            body: input.body,
+            bodyKind: input.bodyKind,
+            parentMessageId: input.parentMessageId,
+            quotedMessageId: input.quotedMessageId,
+          });
+        },
+      );
     },
 
     async markRead(orgId, input) {
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, (tx) =>
-        markMessagesRead(tx, { orgId, userId: input.userId, messageId: input.messageId, upTo: input.upTo }),
+        markMessagesRead(tx, {
+          orgId,
+          userId: input.userId,
+          messageId: input.messageId,
+          upTo: input.upTo,
+        }),
       );
     },
 

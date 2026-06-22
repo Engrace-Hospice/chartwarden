@@ -24,10 +24,7 @@ import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } fr
 import type { ConsentEvaluator, ConsentTypeKey } from "@wardenx/consent";
 import type { CarePlanSignerRole } from "@wardenx/types";
 import { getSeam } from "../../bootstrap/index";
-import {
-  IDG_COORDINATOR_ROLE,
-  canAuthorInterventionDiscipline,
-} from "./authoring/index";
+import { IDG_COORDINATOR_ROLE, canAuthorInterventionDiscipline } from "./authoring/index";
 import type { AuthoringDisciplineScope } from "./authoring/index";
 import type { CarePlanAbacResolver } from "./routes/service";
 
@@ -41,7 +38,11 @@ export const M7_ABAC_PREDICATES = [
 ] as const;
 
 /** Roles that read the whole org's care plans without caseload (§6 `caseload_or_scope`). */
-const ORG_WIDE_SCOPE_ROLES = ["medical_director", "compliance_officer", "survey_coordinator"] as const;
+const ORG_WIDE_SCOPE_ROLES = [
+  "medical_director",
+  "compliance_officer",
+  "survey_coordinator",
+] as const;
 
 /** The InterventionDiscipline tokens a role key directly names (used to assemble the actor's scope). */
 const DISCIPLINE_ROLE_TOKENS = [
@@ -77,8 +78,12 @@ export function disciplineScopeOf(context: AbacContext): AuthoringDisciplineScop
   const fromAttributes = Array.isArray(context.attributes.disciplines)
     ? context.attributes.disciplines.filter((x): x is string => typeof x === "string")
     : [];
-  const fromRoles = context.roles.filter((r) => (DISCIPLINE_ROLE_TOKENS as readonly string[]).includes(r));
-  const disciplines = [...new Set([...fromAttributes, ...fromRoles])] as AuthoringDisciplineScope["disciplines"];
+  const fromRoles = context.roles.filter((r) =>
+    (DISCIPLINE_ROLE_TOKENS as readonly string[]).includes(r),
+  );
+  const disciplines = [
+    ...new Set([...fromAttributes, ...fromRoles]),
+  ] as AuthoringDisciplineScope["disciplines"];
   return { disciplines, isIdgCoordinator: hasRole(context, IDG_COORDINATOR_ROLE) };
 }
 
@@ -97,7 +102,11 @@ export interface CarePlanAbacDeps {
   /** Loads a plan/problem/version's org-scoped owner facts (in-memory in the slice; Drizzle in prod). */
   readonly resolver: CarePlanAbacResolver;
   /** Caseload membership check (defaults to the boot-registered M5 `CaseloadProvider` seam). */
-  readonly isInCaseload?: (q: { organizationId: string; userId: string; patientId: string }) => Promise<boolean>;
+  readonly isInCaseload?: (q: {
+    organizationId: string;
+    userId: string;
+    patientId: string;
+  }) => Promise<boolean>;
   /** Active-consent check (defaults to M39's `ConsentEvaluator` seam; fail-closed on absence). */
   readonly isConsentActive?: (q: {
     organizationId: string;
@@ -114,8 +123,7 @@ export function buildCarePlanAbacPredicates(
   deps: CarePlanAbacDeps,
 ): Record<string, (context: AbacContext, target: AbacTarget) => Promise<boolean>> {
   const { resolver } = deps;
-  const isInCaseload =
-    deps.isInCaseload ?? ((q) => getSeam("CaseloadProvider").isInCaseload(q));
+  const isInCaseload = deps.isInCaseload ?? ((q) => getSeam("CaseloadProvider").isInCaseload(q));
   const isConsentActive =
     deps.isConsentActive ??
     (async (q) => {
@@ -135,18 +143,22 @@ export function buildCarePlanAbacPredicates(
     if (ORG_WIDE_SCOPE_ROLES.some((r) => hasRole(context, r))) return true;
     if (sessionScopePatientIds(context).includes(patientId)) return true;
     if (!context.userId) return false;
-    return isInCaseload({ organizationId: context.organizationId, userId: context.userId, patientId });
+    return isInCaseload({
+      organizationId: context.organizationId,
+      userId: context.userId,
+      patientId,
+    });
   };
 
   return {
-    "caseload_or_scope": async (context, target) => {
+    caseload_or_scope: async (context, target) => {
       const id = targetId(target, "planId");
       if (!id) return false;
       const facts = await resolver.loadPlan(context.organizationId, id);
       if (!facts) return false; // fail-closed (absent / cross-tenant)
       return caseloadOrScopeFor(context, facts.patientId);
     },
-    "dpoa_active": async (context, target) => {
+    dpoa_active: async (context, target) => {
       const id = targetId(target, "planId");
       if (!id) return false;
       const facts = await resolver.loadPlan(context.organizationId, id);
@@ -157,7 +169,7 @@ export function buildCarePlanAbacPredicates(
         consentType: "dpoa_healthcare",
       });
     },
-    "sud_disclosure_allowed": async (context, target) => {
+    sud_disclosure_allowed: async (context, target) => {
       const id = targetId(target, "elementId") ?? targetId(target, "problemId");
       if (!id) return false;
       const facts = await resolver.loadProblem(context.organizationId, id);
@@ -170,7 +182,7 @@ export function buildCarePlanAbacPredicates(
         consentType: "42_cfr_part_2_release",
       });
     },
-    "signer_role_match": async (context, target) => {
+    signer_role_match: async (context, target) => {
       const id = targetId(target, "versionId");
       if (!id) return false;
       const facts = await resolver.loadVersion(context.organizationId, id);
@@ -179,10 +191,12 @@ export function buildCarePlanAbacPredicates(
       if (eligible.length === 0) return false;
       // True iff the caller can satisfy at least one slot (a `|`-union slot needs any one member).
       return facts.requiredSignerSet.some((slot) =>
-        slot.role.split("|").some((roleToken) => eligible.includes(roleToken as CarePlanSignerRole)),
+        slot.role
+          .split("|")
+          .some((roleToken) => eligible.includes(roleToken as CarePlanSignerRole)),
       );
     },
-    "discipline_scope": async (context, target) => {
+    discipline_scope: async (context, target) => {
       const discipline = targetId(target, "discipline");
       if (!discipline) return false;
       return canAuthorInterventionDiscipline(

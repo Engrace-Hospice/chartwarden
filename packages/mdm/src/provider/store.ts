@@ -13,8 +13,6 @@
 // and the as-of BAA time-travel gate (§7.7, the `BaaStatusProvider` seam) are T06/T07/T08 — this
 // default keeps them deliberately simple.
 
-import type { CanonicalRedirectRow } from "../resolve/follow-merge";
-import type { MdmEntityKind } from "../interfaces/kinds";
 import type {
   CanonicalFields,
   IdentifyingFields,
@@ -22,6 +20,8 @@ import type {
   OverlayFields,
   SearchSpec,
 } from "../interfaces/entity-provider";
+import type { MdmEntityKind } from "../interfaces/kinds";
+import type { CanonicalRedirectRow } from "../resolve/follow-merge";
 
 /**
  * The data-access boundary the {@link MdmEntityProvider} composes over. Every method returns raw
@@ -33,10 +33,7 @@ export interface MdmStore {
   canonicalRedirect(kind: MdmEntityKind, id: string): Promise<CanonicalRedirectRow | null>;
 
   /** The survivor canonical's full payload (after the redirect resolved its id). */
-  canonicalFields<K extends MdmEntityKind>(
-    kind: K,
-    id: string,
-  ): Promise<CanonicalFields<K> | null>;
+  canonicalFields<K extends MdmEntityKind>(kind: K, id: string): Promise<CanonicalFields<K> | null>;
 
   /** This tenant's overlay row for a (kind, canonicalId), or `null` when none / overlay-less kind. */
   overlay<K extends MdmEntityKind>(
@@ -180,6 +177,7 @@ export function createInMemoryMdmStore(seed: InMemoryMdmSeed = {}): { store: Mdm
     },
 
     async createProvisional() {
+      // biome-ignore lint/suspicious/noAssignInExpressions: in-memory monotonic id counter.
       return { provisionalId: `prov_${(provisionalSeq += 1)}` };
     },
 

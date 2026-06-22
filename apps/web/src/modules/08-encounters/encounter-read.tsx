@@ -1,3 +1,10 @@
+import {
+  DetailPageLayout,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/08-encounters — Encounter Read (M8 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/ui/screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md — "Use Patient Workspace + Documentation Workspace."
 // The signed encounter (or in-flight draft): the encounter header (type · discipline · service date ·
@@ -8,13 +15,6 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import {
-  DetailPageLayout,
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-} from "@wardenx/ui";
 
 interface Encounter {
   id: string;
@@ -79,7 +79,8 @@ export function EncounterRead(): JSX.Element {
   }, [client, encounterId]);
 
   if (loading) return <LoadingSpinner />;
-  if (error || !encounter) return <EmptyState title="Unavailable" description={error ?? "Not found."} />;
+  if (error || !encounter)
+    return <EmptyState title="Unavailable" description={error ?? "Not found."} />;
 
   return (
     <DetailPageLayout
@@ -92,7 +93,15 @@ export function EncounterRead(): JSX.Element {
         </PageHeader>
       }
       aside={
-        <aside style={{ width: "18rem", flexShrink: 0, borderLeft: "1px solid #e5e7eb", padding: "1.5rem", overflow: "auto" }}>
+        <aside
+          style={{
+            width: "18rem",
+            flexShrink: 0,
+            borderLeft: "1px solid #e5e7eb",
+            padding: "1.5rem",
+            overflow: "auto",
+          }}
+        >
           <h3 style={h3}>Cosignature</h3>
           {cosignStatus ? (
             <p style={meta}>Status: {cosignStatus}</p>
@@ -104,15 +113,27 @@ export function EncounterRead(): JSX.Element {
             <li>Status: {encounter.status}</li>
             <li>Version: v{encounter.version}</li>
             <li>Late-entry tier: {encounter.lateEntryTier}</li>
-            {encounter.signedAt ? <li>Signed: {encounter.signedAt.slice(0, 16).replace("T", " ")}</li> : null}
-            {encounter.cosignedAt ? <li>Cosigned: {encounter.cosignedAt.slice(0, 16).replace("T", " ")}</li> : null}
+            {encounter.signedAt ? (
+              <li>Signed: {encounter.signedAt.slice(0, 16).replace("T", " ")}</li>
+            ) : null}
+            {encounter.cosignedAt ? (
+              <li>Cosigned: {encounter.cosignedAt.slice(0, 16).replace("T", " ")}</li>
+            ) : null}
           </ul>
         </aside>
       }
     >
       <div style={card}>
         <h3 style={h3}>Encounter details</h3>
-        <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.25rem 1rem", fontSize: "0.85rem" }}>
+        <dl
+          style={{
+            margin: 0,
+            display: "grid",
+            gridTemplateColumns: "auto 1fr",
+            gap: "0.25rem 1rem",
+            fontSize: "0.85rem",
+          }}
+        >
           <dt style={dt}>Type</dt>
           <dd style={dd}>{encounter.encounterType}</dd>
           <dt style={dt}>Discipline</dt>
@@ -131,7 +152,12 @@ export function EncounterRead(): JSX.Element {
   );
 }
 
-const h3 = { fontSize: "0.8rem", textTransform: "uppercase", color: "#6b7280", margin: "0 0 0.5rem" } as const;
+const h3 = {
+  fontSize: "0.8rem",
+  textTransform: "uppercase",
+  color: "#6b7280",
+  margin: "0 0 0.5rem",
+} as const;
 const meta = { fontSize: "0.75rem", color: "#6b7280", margin: "0.25rem 0" } as const;
 const card = { border: "1px solid #f3f4f6", borderRadius: "0.375rem", padding: "1rem" } as const;
 const dt = { fontWeight: 600, color: "#6b7280" } as const;

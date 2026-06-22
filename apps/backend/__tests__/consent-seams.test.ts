@@ -50,7 +50,10 @@ describe("M39 seams — published ConsentEvaluator + consumed PatientReader/Docu
     const reader = getConsentPatientReader();
     // The real M5 reader resolves a miss to null (no patient seeded) rather than throwing — proving it
     // is the real impl, not the throwing deny-stub.
-    const found = await resolvePatientForConsent(reader, { organizationId: ORG, patientId: "missing" });
+    const found = await resolvePatientForConsent(reader, {
+      organizationId: ORG,
+      patientId: "missing",
+    });
     expect(found).toBeNull();
   });
 

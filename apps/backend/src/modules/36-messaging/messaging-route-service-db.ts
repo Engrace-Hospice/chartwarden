@@ -27,26 +27,26 @@
 // at write time and decrypted for entitled readers on the thread read — the shared `MessageBodyCipher`
 // loads the master KEK lazily so a read-only deployment without MESSAGING_ENCRYPTION_KEY still boots.
 import { type DbClient, schema } from "@wardenx/db";
-import {
-  type AlertCategory,
-  type AlertInboxItem,
-  type AlertRecipientResolver,
-  type AlertRuleView,
-  type AlertSeverity,
-  type ChannelDetail,
-  type ChannelKind,
-  type ChannelMemberRole,
-  type ChannelMemberSource,
-  type ChannelSummary,
-  type DeliveryEndpointChannel,
-  type DeliveryEndpointVerification,
-  type MessageBodyKind,
-  type MessagingRouteService,
-  type NotificationChannel,
-  type NotificationPreferencesView,
-  type QuietHoursConfig,
-  type ResolvedMessage,
-  type RoutingMap,
+import type {
+  AlertCategory,
+  AlertInboxItem,
+  AlertRecipientResolver,
+  AlertRuleView,
+  AlertSeverity,
+  ChannelDetail,
+  ChannelKind,
+  ChannelMemberRole,
+  ChannelMemberSource,
+  ChannelSummary,
+  DeliveryEndpointChannel,
+  DeliveryEndpointVerification,
+  MessageBodyKind,
+  MessagingRouteService,
+  NotificationChannel,
+  NotificationPreferencesView,
+  QuietHoursConfig,
+  ResolvedMessage,
+  RoutingMap,
 } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
@@ -79,7 +79,13 @@ const ALERT_CATEGORIES: readonly AlertCategory[] = [
   "system",
 ];
 const ALERT_SEVERITIES: readonly AlertSeverity[] = ["info", "warn", "critical"];
-const NOTIFICATION_CHANNELS: readonly NotificationChannel[] = ["in_app", "push", "sms", "email", "voice"];
+const NOTIFICATION_CHANNELS: readonly NotificationChannel[] = [
+  "in_app",
+  "push",
+  "sms",
+  "email",
+  "voice",
+];
 const RECIPIENT_RESOLVERS: readonly AlertRecipientResolver[] = [
   "care_team",
   "on_call",
@@ -203,7 +209,9 @@ export function createDbMessagingRouteService(
           .select({ channelId: MSG.channelId, count: sql<number>`count(*)::int` })
           .from(MR)
           .innerJoin(MSG, eq(MSG.id, MR.messageId))
-          .where(and(eq(MR.organizationId, orgId), eq(MR.userId, userId), eq(MR.status, "delivered")))
+          .where(
+            and(eq(MR.organizationId, orgId), eq(MR.userId, userId), eq(MR.status, "delivered")),
+          )
           .groupBy(MSG.channelId);
         const unread = new Map(unreadRows.map((r) => [r.channelId, Number(r.count)]));
         return rows.map(
@@ -350,20 +358,24 @@ export function createDbMessagingRouteService(
 
     // --- post a message: archive gate (410) → DEK-encrypt + insert + receipt fan-out (§3.4) -----
     async sendMessage(orgId, input) {
-      return withOrgContext(db, { organizationId: orgId, userId: input.authorUserId }, async (tx) => {
-        const ch = await channelOr404(tx, orgId, input.channelId);
-        if (ch.isArchived) throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
-        const { messageId, createdAt } = await insertEncryptedMessage(tx, cipher, {
-          orgId,
-          channelId: input.channelId,
-          authorUserId: input.authorUserId,
-          body: input.body,
-          bodyKind: input.bodyKind,
-          parentMessageId: input.parentMessageId,
-          quotedMessageId: input.quotedMessageId,
-        });
-        return { messageId, channelId: input.channelId, createdAt };
-      });
+      return withOrgContext(
+        db,
+        { organizationId: orgId, userId: input.authorUserId },
+        async (tx) => {
+          const ch = await channelOr404(tx, orgId, input.channelId);
+          if (ch.isArchived) throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+          const { messageId, createdAt } = await insertEncryptedMessage(tx, cipher, {
+            orgId,
+            channelId: input.channelId,
+            authorUserId: input.authorUserId,
+            body: input.body,
+            bodyKind: input.bodyKind,
+            parentMessageId: input.parentMessageId,
+            quotedMessageId: input.quotedMessageId,
+          });
+          return { messageId, channelId: input.channelId, createdAt };
+        },
+      );
     },
 
     // --- edit within the window (author only): re-encrypt + re-hash, status='edited' -----------
@@ -413,7 +425,12 @@ export function createDbMessagingRouteService(
 
     async markRead(orgId, input) {
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, (tx) =>
-        markMessagesRead(tx, { orgId, userId: input.userId, messageId: input.messageId, upTo: input.upTo }),
+        markMessagesRead(tx, {
+          orgId,
+          userId: input.userId,
+          messageId: input.messageId,
+          upTo: input.upTo,
+        }),
       );
     },
 
@@ -453,7 +470,13 @@ export function createDbMessagingRouteService(
         const channelId = inserted[0]!.id;
         await tx.insert(CM).values([
           { organizationId: orgId, channelId, userId, role: "owner", source: "manual" },
-          { organizationId: orgId, channelId, userId: peerUserId, role: "member", source: "manual" },
+          {
+            organizationId: orgId,
+            channelId,
+            userId: peerUserId,
+            role: "member",
+            source: "manual",
+          },
         ]);
         return { channelId, created: true };
       });
@@ -507,34 +530,38 @@ export function createDbMessagingRouteService(
 
     // --- post to the tenant announcement channel (find-or-create; org_admin gated at the route) -
     async announce(orgId, input) {
-      return withOrgContext(db, { organizationId: orgId, userId: input.authorUserId }, async (tx) => {
-        const existing = (await tx
-          .select({ id: CH.id })
-          .from(CH)
-          .where(and(eq(CH.organizationId, orgId), eq(CH.channelKind, "announcement")))
-          .limit(1)) as Array<{ id: string }>;
-        let channelId = existing[0]?.id;
-        if (!channelId) {
-          const inserted = (await tx
-            .insert(CH)
-            .values({
-              organizationId: orgId,
-              channelKind: "announcement",
-              subjectId: null,
-              title: "Announcements",
-              retentionClass: "operational",
-            })
-            .returning({ id: CH.id })) as Array<{ id: string }>;
-          channelId = inserted[0]!.id;
-        }
-        const { messageId, createdAt } = await insertEncryptedMessage(tx, cipher, {
-          orgId,
-          channelId,
-          authorUserId: input.authorUserId,
-          body: input.body,
-        });
-        return { messageId, channelId, createdAt };
-      });
+      return withOrgContext(
+        db,
+        { organizationId: orgId, userId: input.authorUserId },
+        async (tx) => {
+          const existing = (await tx
+            .select({ id: CH.id })
+            .from(CH)
+            .where(and(eq(CH.organizationId, orgId), eq(CH.channelKind, "announcement")))
+            .limit(1)) as Array<{ id: string }>;
+          let channelId = existing[0]?.id;
+          if (!channelId) {
+            const inserted = (await tx
+              .insert(CH)
+              .values({
+                organizationId: orgId,
+                channelKind: "announcement",
+                subjectId: null,
+                title: "Announcements",
+                retentionClass: "operational",
+              })
+              .returning({ id: CH.id })) as Array<{ id: string }>;
+            channelId = inserted[0]!.id;
+          }
+          const { messageId, createdAt } = await insertEncryptedMessage(tx, cipher, {
+            orgId,
+            channelId,
+            authorUserId: input.authorUserId,
+            body: input.body,
+          });
+          return { messageId, channelId, createdAt };
+        },
+      );
     },
 
     // ── notification preferences & endpoints (§4.2; SELF-only) ──────────────────────────────────
@@ -581,10 +608,16 @@ export function createDbMessagingRouteService(
           const target = (await tx
             .select({ fwd: UNP.vacationForwardToUserId })
             .from(UNP)
-            .where(and(eq(UNP.userId, input.vacationForwardToUserId), eq(UNP.organizationId, orgId)))
+            .where(
+              and(eq(UNP.userId, input.vacationForwardToUserId), eq(UNP.organizationId, orgId)),
+            )
             .limit(1)) as Array<{ fwd: string | null }>;
           if (target[0]?.fwd === userId) {
-            throw new WardenXError("VACATION_FORWARD_CYCLE", "the forward target also forwards to you", 409);
+            throw new WardenXError(
+              "VACATION_FORWARD_CYCLE",
+              "the forward target also forwards to you",
+              409,
+            );
           }
         }
         // The `user_notif_pref_vacation_shape` CHECK pairs the forward target with a future expiry;
@@ -617,7 +650,10 @@ export function createDbMessagingRouteService(
               updatedAt,
             },
           })
-          .returning({ id: UNP.id, updatedAt: UNP.updatedAt })) as Array<{ id: string; updatedAt: Date }>;
+          .returning({ id: UNP.id, updatedAt: UNP.updatedAt })) as Array<{
+          id: string;
+          updatedAt: Date;
+        }>;
         return { id: rows[0]!.id, updatedAt: rows[0]!.updatedAt.toISOString() };
       });
     },
@@ -635,7 +671,11 @@ export function createDbMessagingRouteService(
             verificationStatus: verified ? "verified" : "pending",
             verifiedAt: verified ? new Date() : null,
           })
-          .returning({ id: DE.id, channel: DE.channel, verificationStatus: DE.verificationStatus })) as Array<{
+          .returning({
+            id: DE.id,
+            channel: DE.channel,
+            verificationStatus: DE.verificationStatus,
+          })) as Array<{
           id: string;
           channel: DeliveryEndpointChannel;
           verificationStatus: DeliveryEndpointVerification;
@@ -749,8 +789,10 @@ export function createDbMessagingRouteService(
           .from(AR)
           .where(or(isNull(AR.organizationId), eq(AR.organizationId, orgId)));
         const byEvent = new Map<string, AlertRuleView>();
-        for (const r of rows) if (r.organizationId === null) byEvent.set(r.eventType, toRuleView(r));
-        for (const r of rows) if (r.organizationId !== null) byEvent.set(r.eventType, toRuleView(r));
+        for (const r of rows)
+          if (r.organizationId === null) byEvent.set(r.eventType, toRuleView(r));
+        for (const r of rows)
+          if (r.organizationId !== null) byEvent.set(r.eventType, toRuleView(r));
         return [...byEvent.values()];
       });
     },
@@ -770,7 +812,10 @@ export function createDbMessagingRouteService(
           .select()
           .from(AR)
           .where(
-            and(eq(AR.id, input.ruleId), or(isNull(AR.organizationId), eq(AR.organizationId, orgId))),
+            and(
+              eq(AR.id, input.ruleId),
+              or(isNull(AR.organizationId), eq(AR.organizationId, orgId)),
+            ),
           )
           .limit(1)) as Array<typeof AR.$inferSelect>;
         const base = baseRows[0];

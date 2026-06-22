@@ -21,7 +21,8 @@ export interface ApiClientOptions {
 }
 
 function defaultCorrelationId(): string | undefined {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+    return crypto.randomUUID();
   return undefined;
 }
 

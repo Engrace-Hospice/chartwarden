@@ -25,7 +25,8 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m5.patient.updated",
     moduleOwner: "m5",
-    description: "Patient demographics changed (e.g. an M29 proposal apply); carries the changed-field list.",
+    description:
+      "Patient demographics changed (e.g. an M29 proposal apply); carries the changed-field list.",
     payloadSchema: Type.Object({ ...corePatient, changed: Type.Array(Type.String()) }),
     declaredConsumers: ["m28"],
     isOutboxOnly: true,
@@ -34,14 +35,19 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m5.patient.status_changed",
     moduleOwner: "m5",
     description: "Patient lifecycle status transition (prospective→active→discharged, etc.).",
-    payloadSchema: Type.Object({ ...corePatient, fromStatus: Type.String(), toStatus: Type.String() }),
+    payloadSchema: Type.Object({
+      ...corePatient,
+      fromStatus: Type.String(),
+      toStatus: Type.String(),
+    }),
     declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
     eventName: "m5.patient.address_changed",
     moduleOwner: "m5",
-    description: "An address was appended (D5); triggers re-geocode (M17) + Medicaid state recheck (M24).",
+    description:
+      "An address was appended (D5); triggers re-geocode (M17) + Medicaid state recheck (M24).",
     payloadSchema: Type.Object({ ...corePatient, addressId: Type.String() }),
     declaredConsumers: ["m17", "m24"],
     isOutboxOnly: true,
@@ -73,7 +79,8 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m5.patient.privacy_flag_changed",
     moduleOwner: "m5",
-    description: "The patient_privacy_flag_snapshot was recomputed (e.g. a SUD flag added) — redaction consumers refresh.",
+    description:
+      "The patient_privacy_flag_snapshot was recomputed (e.g. a SUD flag added) — redaction consumers refresh.",
     payloadSchema: Type.Object({ ...corePatient, flags: Type.Array(Type.String()) }),
     declaredConsumers: ["m22", "m28"],
     isOutboxOnly: true,
@@ -81,7 +88,8 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m5.patient.deceased",
     moduleOwner: "m5",
-    description: "Patient death recorded; seeds bereavement (M16), enables final claim (M23), FHIR sync (M28), IDG alert (M36).",
+    description:
+      "Patient death recorded; seeds bereavement (M16), enables final claim (M23), FHIR sync (M28), IDG alert (M36).",
     payloadSchema: Type.Object({ ...corePatient, deceasedDate: Type.String() }),
     declaredConsumers: ["m16", "m23", "m28", "m36"],
     isOutboxOnly: false,
@@ -122,14 +130,19 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m5.patient.amendment_decided",
     moduleOwner: "m5",
     description: "An amendment request was accepted or denied.",
-    payloadSchema: Type.Object({ ...corePatient, amendmentId: Type.String(), decision: Type.String() }),
+    payloadSchema: Type.Object({
+      ...corePatient,
+      amendmentId: Type.String(),
+      decision: Type.String(),
+    }),
     declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
     eventName: "m5.patient.bereavement_opt_out_changed",
     moduleOwner: "m5",
-    description: "Bereavement opt-out toggled; M16 bereavement-plan reconciler skips/closes plans (D9).",
+    description:
+      "Bereavement opt-out toggled; M16 bereavement-plan reconciler skips/closes plans (D9).",
     payloadSchema: Type.Object({ ...corePatient, optedOut: Type.Boolean() }),
     declaredConsumers: ["m16"],
     isOutboxOnly: true,

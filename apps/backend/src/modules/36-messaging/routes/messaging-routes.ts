@@ -159,28 +159,20 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   );
 
   // --- edit a message within the edit window (author check in the service) -------------------
-  app.patch(
-    "/api/v1/messaging/messages/:id",
-    { preHandler: [SEND] },
-    async (request) => {
-      const { organizationId, userId } = actorOf(request);
-      const { id } = parse(MessageParamsSchema, request.params);
-      const body = parse(EditMessageBodySchema, request.body);
-      return service.editMessage(organizationId, { userId, messageId: id, body: body.body });
-    },
-  );
+  app.patch("/api/v1/messaging/messages/:id", { preHandler: [SEND] }, async (request) => {
+    const { organizationId, userId } = actorOf(request);
+    const { id } = parse(MessageParamsSchema, request.params);
+    const body = parse(EditMessageBodySchema, request.body);
+    return service.editMessage(organizationId, { userId, messageId: id, body: body.body });
+  });
 
   // --- soft-delete a message (author check in the service) -----------------------------------
-  app.delete(
-    "/api/v1/messaging/messages/:id",
-    { preHandler: [SEND] },
-    async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
-      const { id } = parse(MessageParamsSchema, request.params);
-      await service.deleteMessage(organizationId, { userId, messageId: id });
-      return reply.code(204).send();
-    },
-  );
+  app.delete("/api/v1/messaging/messages/:id", { preHandler: [SEND] }, async (request, reply) => {
+    const { organizationId, userId } = actorOf(request);
+    const { id } = parse(MessageParamsSchema, request.params);
+    await service.deleteMessage(organizationId, { userId, messageId: id });
+    return reply.code(204).send();
+  });
 
   // --- mark message(s) read (single or up-through-id) ----------------------------------------
   app.post(
@@ -211,7 +203,11 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
       const { organizationId } = actorOf(request);
       const { id } = parse(ChannelParamsSchema, request.params);
       const body = parse(AddMemberBodySchema, request.body);
-      await service.addMember(organizationId, { channelId: id, userId: body.userId, role: body.role });
+      await service.addMember(organizationId, {
+        channelId: id,
+        userId: body.userId,
+        role: body.role,
+      });
       return reply.code(204).send();
     },
   );
@@ -232,7 +228,10 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   app.post("/api/v1/messaging/announce", { preHandler: [ANNOUNCE] }, async (request, reply) => {
     const { organizationId, userId } = actorOf(request);
     const body = parse(AnnounceBodySchema, request.body);
-    const result = await service.announce(organizationId, { authorUserId: userId, body: body.body });
+    const result = await service.announce(organizationId, {
+      authorUserId: userId,
+      body: body.body,
+    });
     return reply.code(201).send(result);
   });
 
@@ -257,15 +256,19 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   });
 
   // --- register a push / sms / email endpoint ------------------------------------------------
-  app.post("/api/v1/notifications/endpoints", { preHandler: [ENDPOINT] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const body = parse(RegisterEndpointBodySchema, request.body);
-    const result = await service.registerEndpoint(organizationId, userId, {
-      channel: body.channel,
-      target: body.target,
-    });
-    return reply.code(201).send(result);
-  });
+  app.post(
+    "/api/v1/notifications/endpoints",
+    { preHandler: [ENDPOINT] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(RegisterEndpointBodySchema, request.body);
+      const result = await service.registerEndpoint(organizationId, userId, {
+        channel: body.channel,
+        target: body.target,
+      });
+      return reply.code(201).send(result);
+    },
+  );
 
   // --- confirm a verification token ----------------------------------------------------------
   app.post(

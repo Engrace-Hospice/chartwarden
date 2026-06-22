@@ -21,6 +21,7 @@ const FORALL_RE = /CREATE\s+POLICY\s+\w+\s+ON\s+(\w+)\s+FOR\s+ALL/gi;
 function tenancyGateAccepts(sql: string): boolean {
   SESSION_VAR_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: standard RegExp.exec iteration idiom.
   while ((m = SESSION_VAR_RE.exec(sql))) {
     if (m[1] !== "app.org_id") return false; // Rule 2
   }
@@ -45,7 +46,9 @@ describe("generateRlsPolicy (M1-T05 §3.13)", () => {
     expect(sql).toContain("FOR ALL TO wardenx_app");
     expect(sql).toContain("current_setting('app.org_id', true)::uuid");
     // symmetric USING + WITH CHECK so a tenant can neither read nor write cross-org.
-    expect(sql).toContain("WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid)");
+    expect(sql).toContain(
+      "WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid)",
+    );
     expect(sql).toContain("GRANT SELECT, INSERT, UPDATE, DELETE ON patient TO wardenx_app;");
   });
 
@@ -72,6 +75,7 @@ describe("generateRlsPolicy (M1-T05 §3.13)", () => {
     SESSION_VAR_RE.lastIndex = 0;
     const vars: string[] = [];
     let m: RegExpExecArray | null;
+    // biome-ignore lint/suspicious/noAssignInExpressions: standard RegExp.exec iteration idiom.
     while ((m = SESSION_VAR_RE.exec(sql))) vars.push(m[1]!);
     expect(vars.length).toBeGreaterThan(0);
     expect(new Set(vars)).toEqual(new Set(["app.org_id"]));

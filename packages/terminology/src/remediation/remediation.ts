@@ -115,7 +115,9 @@ export function buildRemediationReport(
       guidance: mapping.guidance,
       affectedCount: recordIds.length,
       sampleRecordIds: recordIds.slice(0, sampleSize),
-      affectedByType: Object.fromEntries([...byType.entries()].sort(([a], [b]) => (a < b ? -1 : 1))),
+      affectedByType: Object.fromEntries(
+        [...byType.entries()].sort(([a], [b]) => (a < b ? -1 : 1)),
+      ),
     }))
     .sort((a, b) =>
       a.affectedCount !== b.affectedCount

@@ -8,8 +8,8 @@
 // commands describe the period/LCP/outbox cascade that rides the same transaction.
 import type { LocalDate } from "@wardenx/types";
 import type { SideEffect } from "./effects";
-import { checkDeathCertifier, daysBetween } from "./validation";
 import { require_ } from "./errors";
+import { checkDeathCertifier, daysBetween } from "./validation";
 
 /** A command's resolved cascade (the §2.5 in-transaction side-effect list). */
 export interface CommandCascade {
@@ -49,7 +49,11 @@ export function planRevocation(input: {
  * receiving hospice can inherit it. The admission moves to `discharged`.
  */
 export function planTransferOut(input: { transferAlreadyDoneThisPeriod: boolean }): CommandCascade {
-  require_(!input.transferAlreadyDoneThisPeriod, "TRANSFER_LIMIT_EXCEEDED", "only one transfer per benefit period");
+  require_(
+    !input.transferAlreadyDoneThisPeriod,
+    "TRANSFER_LIMIT_EXCEEDED",
+    "only one transfer per benefit period",
+  );
   return {
     effects: [
       { kind: "end_election_period", cause: "transfer" },
@@ -65,7 +69,10 @@ export function planTransferOut(input: { transferAlreadyDoneThisPeriod: boolean 
  * (R-XFR-02). The caller creates a NEW admission with `transferred_in=true`; no re-collection of the
  * election statement is required if the prior signed statement is in hand and re-acknowledged.
  */
-export function validateTransferIn(input: { sourceCcnValid: boolean; carriedSequencePresent: boolean }): void {
+export function validateTransferIn(input: {
+  sourceCcnValid: boolean;
+  carriedSequencePresent: boolean;
+}): void {
   require_(
     input.sourceCcnValid && input.carriedSequencePresent,
     "TRANSFER_IN_SOURCE_INVALID",
@@ -81,14 +88,25 @@ export function validateTransferIn(input: { sourceCcnValid: boolean; carriedSequ
  * certifier (R-DC-01). One discharge per admission is the table UNIQUE; the service surfaces it.
  */
 export function planDischarge(input: {
-  dischargeType: "death" | "routine" | "for_cause" | "moved" | "no_longer_terminal" | "revocation" | "transfer";
+  dischargeType:
+    | "death"
+    | "routine"
+    | "for_cause"
+    | "moved"
+    | "no_longer_terminal"
+    | "revocation"
+    | "transfer";
   forCauseCosigned: boolean;
   deathAt?: LocalDate;
   today?: LocalDate;
   deathCertifierCredentialed?: boolean;
 }): CommandCascade {
   if (input.dischargeType === "for_cause") {
-    require_(input.forCauseCosigned, "FOR_CAUSE_REQUIRES_COSIGN", "for-cause discharge requires DON + Medical Director co-sign");
+    require_(
+      input.forCauseCosigned,
+      "FOR_CAUSE_REQUIRES_COSIGN",
+      "for-cause discharge requires DON + Medical Director co-sign",
+    );
   }
   const isDeath = input.dischargeType === "death";
   if (isDeath) {

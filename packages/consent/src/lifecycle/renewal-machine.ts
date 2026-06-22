@@ -5,7 +5,7 @@
 // (→ renewed), or (b) the source expires unrenewed (→ closed_expired), or (c) the source is revoked
 // (→ closed_revoked), or (d) it no longer applies (→ closed_no_longer_applicable). The renewal chain
 // is auditable independently from the supersession chain.
-import { type ConsentRenewalCycleStatus } from "../interfaces/kinds";
+import type { ConsentRenewalCycleStatus } from "../interfaces/kinds";
 import { type Decision, deny, ok } from "./result";
 
 export type RenewalCloseReason =

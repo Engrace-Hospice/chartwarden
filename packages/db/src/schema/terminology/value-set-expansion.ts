@@ -21,11 +21,7 @@ export const valueSetExpansion = pgTable(
   },
   (t) => ({
     pk: primaryKey({ columns: [t.valueSetId, t.systemId, t.code, t.asOfLower] }),
-    membershipIdx: index("value_set_expansion_membership_idx").on(
-      t.systemId,
-      t.code,
-      t.valueSetId,
-    ),
+    membershipIdx: index("value_set_expansion_membership_idx").on(t.systemId, t.code, t.valueSetId),
     asOfIdx: index("value_set_expansion_asof_idx").on(t.valueSetId, t.asOfLower, t.asOfUpper),
   }),
 );

@@ -47,8 +47,20 @@ const CONCEPTS: ResolvedConcept<"loinc">[] = [
 ];
 
 const VALUE_SET_MEMBERS = [
-  { valueSetId: "hospice_vitals", systemId: "loinc" as const, code: "8480-6", display: "Systolic blood pressure", annotations: {} },
-  { valueSetId: "hospice_vitals", systemId: "loinc" as const, code: "8867-4", display: "Heart rate", annotations: {} },
+  {
+    valueSetId: "hospice_vitals",
+    systemId: "loinc" as const,
+    code: "8480-6",
+    display: "Systolic blood pressure",
+    annotations: {},
+  },
+  {
+    valueSetId: "hospice_vitals",
+    systemId: "loinc" as const,
+    code: "8867-4",
+    display: "Heart rate",
+    annotations: {},
+  },
 ];
 
 function makeProvider(concepts = CONCEPTS) {
@@ -99,7 +111,9 @@ describe("M38-T09 — golden FHIR projection (§7.9)", () => {
   });
 
   it("asFhirValueSet('hospice_vitals', 2024-08-01) is byte-identical to the golden fixture", async () => {
-    const vs = await makeProvider().asFhirValueSet("hospice_vitals", { asOf: new Date("2024-08-01") });
+    const vs = await makeProvider().asFhirValueSet("hospice_vitals", {
+      asOf: new Date("2024-08-01"),
+    });
     expect(JSON.stringify(vs)).toBe(JSON.stringify(GOLDEN_VALUE_SET));
   });
 

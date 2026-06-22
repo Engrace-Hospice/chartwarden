@@ -61,9 +61,17 @@ export function createInMemoryAdmissionEraseStore(seed: Partial<AdmissionEraseCo
   tombstoned: string[];
 } {
   const zero: AdmissionEraseCounts = {
-    referrals: 0, electionPeriods: 0, electionStatements: 0, certifications: 0,
-    faceToFaceEncounters: 0, levelOfCarePeriods: 0, revocationEvents: 0, dischargeEvents: 0,
-    transferEvents: 0, noticeOfRightsAcknowledgments: 0, complianceWindows: 0,
+    referrals: 0,
+    electionPeriods: 0,
+    electionStatements: 0,
+    certifications: 0,
+    faceToFaceEncounters: 0,
+    levelOfCarePeriods: 0,
+    revocationEvents: 0,
+    dischargeEvents: 0,
+    transferEvents: 0,
+    noticeOfRightsAcknowledgments: 0,
+    complianceWindows: 0,
   };
   const counts: AdmissionEraseCounts = { ...zero, ...seed };
   const tombstoned: string[] = [];

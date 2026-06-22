@@ -1,7 +1,10 @@
+import { describe, expect, it } from "vitest";
 // apps/backend/__tests__/patient-matching.test.ts — M5-T06 patient-matching pipeline
 // (§2.3, §7.2 hard block, §7.3 soft review, W-M5-17 SSN ignore; D2).
 import {
   DEFAULT_THRESHOLDS,
+  type MatchCandidate,
+  type MatchSubject,
   clampThresholds,
   jaroWinkler,
   levenshtein,
@@ -9,10 +12,7 @@ import {
   probabilisticScore,
   runMatch,
   stripForbiddenProposalFields,
-  type MatchCandidate,
-  type MatchSubject,
 } from "../src/modules/05-patient/matching/index";
-import { describe, expect, it } from "vitest";
 
 const ada: MatchCandidate = {
   id: "p-ada",
@@ -42,7 +42,12 @@ describe("similarity primitives (§2.3)", () => {
 
 describe("§7.2 hard duplicate block (deterministic)", () => {
   it("exact MBI → hard_block matchedOn mbi (no row created)", () => {
-    const incoming = normalizeSubject({ lastName: "Smith", firstName: "Ada", dob: "1991-02-02", mbi: "1EG4-TE5-MK73" });
+    const incoming = normalizeSubject({
+      lastName: "Smith",
+      firstName: "Ada",
+      dob: "1991-02-02",
+      mbi: "1EG4-TE5-MK73",
+    });
     const r = runMatch(incoming, [ada]);
     expect(r.outcome).toBe("hard_block");
     if (r.outcome === "hard_block") {
@@ -51,7 +56,12 @@ describe("§7.2 hard duplicate block (deterministic)", () => {
     }
   });
   it("exact SSN + exact DOB → hard_block matchedOn ssn_dob", () => {
-    const incoming = normalizeSubject({ lastName: "Different", firstName: "Name", dob: "1990-01-01", ssn: "123-45-6789" });
+    const incoming = normalizeSubject({
+      lastName: "Different",
+      firstName: "Name",
+      dob: "1990-01-01",
+      ssn: "123-45-6789",
+    });
     const r = runMatch(incoming, [ada]);
     expect(r.outcome).toBe("hard_block");
     if (r.outcome === "hard_block") expect(r.matchedOn).toBe("ssn_dob");
@@ -120,7 +130,11 @@ describe("§7.3 soft duplicate review", () => {
     expect(r.outcome).toBe("quiet_create");
   });
   it("no candidates → quiet create", () => {
-    const incoming = normalizeSubject({ lastName: "Anyone", firstName: "Nobody", dob: "2000-01-01" });
+    const incoming = normalizeSubject({
+      lastName: "Anyone",
+      firstName: "Nobody",
+      dob: "2000-01-01",
+    });
     expect(runMatch(incoming, []).outcome).toBe("quiet_create");
   });
 });
@@ -128,7 +142,12 @@ describe("§7.3 soft duplicate review", () => {
 describe("W-M5-17 SSN ignored even if present (defense in depth)", () => {
   it("SSN is never a probabilistic feature — two people sharing SSN but nothing else don't fuzzy-match", () => {
     // Same SSN, different DOB (so the deterministic ssn_dob rule does NOT fire), nothing else alike.
-    const incoming = normalizeSubject({ lastName: "Nomatch", firstName: "Xyz", dob: "1999-09-09", ssn: "123-45-6789" });
+    const incoming = normalizeSubject({
+      lastName: "Nomatch",
+      firstName: "Xyz",
+      dob: "1999-09-09",
+      ssn: "123-45-6789",
+    });
     const score = probabilisticScore(incoming, ada);
     expect(score).toBeLessThan(0.5); // SSN contributes nothing to the score
     expect(runMatch(incoming, [ada]).outcome).toBe("quiet_create");

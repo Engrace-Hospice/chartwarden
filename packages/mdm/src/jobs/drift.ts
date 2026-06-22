@@ -63,13 +63,28 @@ export function detectNppesDrift(
     const f = fresh.get(k.npi);
     if (f === undefined) continue;
     if (k.status === "active" && f.status === "deactivated") {
-      events.push({ npi: k.npi, canonicalId: k.canonicalId, kind: "deactivated", changedFields: [] });
+      events.push({
+        npi: k.npi,
+        canonicalId: k.canonicalId,
+        kind: "deactivated",
+        changedFields: [],
+      });
     } else if (k.status === "deactivated" && f.status === "active") {
-      events.push({ npi: k.npi, canonicalId: k.canonicalId, kind: "reactivated", changedFields: [] });
+      events.push({
+        npi: k.npi,
+        canonicalId: k.canonicalId,
+        kind: "reactivated",
+        changedFields: [],
+      });
     } else {
       const changedFields = changedAttributes(k, f);
       if (changedFields.length > 0) {
-        events.push({ npi: k.npi, canonicalId: k.canonicalId, kind: "attribute_changed", changedFields });
+        events.push({
+          npi: k.npi,
+          canonicalId: k.canonicalId,
+          kind: "attribute_changed",
+          changedFields,
+        });
       }
     }
   }

@@ -17,12 +17,12 @@
 
 import type {
   CodeSystemId,
+  ConceptStatus,
   DeprecationMappingKind,
   ExpansionMember,
   FhirCodeSystemProjection,
   FhirValueSetProjection,
   ResolvedConcept,
-  ConceptStatus,
   ValueSetMembershipSource,
 } from "./kinds";
 

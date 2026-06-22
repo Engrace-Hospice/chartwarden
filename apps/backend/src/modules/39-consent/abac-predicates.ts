@@ -8,7 +8,7 @@
 // (patient, consentType) → allowed adapter. Registered once, idempotently (the registry is single-
 // owner / no-clear, so re-boot in tests guards on `abacRegistry.has`).
 import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@wardenx/auth";
-import { type ConsentSessionContext, type ConsentTypeKey } from "@wardenx/consent";
+import type { ConsentSessionContext, ConsentTypeKey } from "@wardenx/consent";
 import { getConsentEvaluator } from "./seams";
 
 /** The eleven §4.8 predicates → the consent type each evaluates against. */
@@ -32,7 +32,8 @@ export const M39_ABAC_PREDICATES = Object.keys(PREDICATE_CONSENT_TYPE) as readon
 
 /** Build the seam's session context from the ABAC request context (the originating membership). */
 function sessionContextOf(context: AbacContext): ConsentSessionContext {
-  const sessionClass = typeof context.attributes.sessionClass === "string" ? context.attributes.sessionClass : "staff";
+  const sessionClass =
+    typeof context.attributes.sessionClass === "string" ? context.attributes.sessionClass : "staff";
   return { sessionClass, membershipId: context.userId };
 }
 

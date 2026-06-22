@@ -91,12 +91,10 @@ export function versionLoadInvalidationPrefixes(system: CodeSystemId): readonly 
  * enough for a best-effort 15-minute cache. NOT a security hash.
  */
 export function hashQueryOpts(q: string, opts: Readonly<Record<string, unknown>> = {}): string {
-  const canonical =
-    `q=${q}|` +
-    Object.keys(opts)
-      .sort()
-      .map((k) => `${k}=${String(opts[k])}`)
-      .join("|");
+  const canonical = `q=${q}|${Object.keys(opts)
+    .sort()
+    .map((k) => `${k}=${String(opts[k])}`)
+    .join("|")}`;
   let h = 0x811c9dc5;
   for (let i = 0; i < canonical.length; i += 1) {
     h ^= canonical.charCodeAt(i);

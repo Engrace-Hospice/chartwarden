@@ -6,15 +6,15 @@
 // call), that the real provider is MERGE-AWARE (§7.2: a FK to a merged row still resolves, carrying
 // `resolvedFrom`) and joins this tenant's overlay (§2.3), and that the composition-root
 // `wireModuleSeams` hook wires it during a real buildServer() boot.
-import {
-  type MdmEntityProvider,
-  type SeedCanonical,
-  createInMemoryMdmStore,
-} from "@wardenx/mdm";
+import { type MdmEntityProvider, type SeedCanonical, createInMemoryMdmStore } from "@wardenx/mdm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { NotImplementedError } from "../src/bootstrap/seams/providers";
-import { REQUIRED_SEAMS, __resetSeamsForTest, validateSeams } from "../src/bootstrap/seams/registry";
+import {
+  REQUIRED_SEAMS,
+  __resetSeamsForTest,
+  validateSeams,
+} from "../src/bootstrap/seams/registry";
 import { wireModuleSeams } from "../src/index";
 import { getMdmEntityProvider, registerMdmSeams } from "../src/modules/40-mdm/index";
 

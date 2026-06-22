@@ -7,9 +7,9 @@
 import { describe, expect, it } from "vitest";
 import {
   type ApplierFacts,
-  type ProposalAcceptedPayload,
   M6_PROPOSAL_ACCEPTED_CONSUMER,
   M6_PROPOSAL_ACCEPTED_CONSUMER_DEFERRED,
+  type ProposalAcceptedPayload,
   decideAdmissionEvent,
   decideProposalAccepted,
 } from "../src/modules/06-admission";
@@ -130,7 +130,9 @@ describe("decideAdmissionEvent — D14 preconditions", () => {
 
   it("(c) non-death discharge reason → informational window, never a discharge", () => {
     const action = decideAdmissionEvent(
-      payload({ proposedEventContext: deathCtx({ mappedDischargeReason: "transferred_to_acute" }) }),
+      payload({
+        proposedEventContext: deathCtx({ mappedDischargeReason: "transferred_to_acute" }),
+      }),
       facts({ admissionSummary: ACTIVE_ADMISSION, activePeriodOnDeathDate: PERIOD_COVERING_DEATH }),
     );
     expect(action.kind === "open_window" && action.window.payload.reasonCode).toBe(
@@ -166,7 +168,12 @@ describe("decideAdmissionEvent — W-M6-32 concurrent hospital admission", () =>
     const action = decideAdmissionEvent(
       payload({
         resourceKind: "admission_event",
-        proposedEventContext: deathCtx({ eventType: "A01", mappedDischargeReason: undefined, patientClass: "I", facilityCode: "B3" }),
+        proposedEventContext: deathCtx({
+          eventType: "A01",
+          mappedDischargeReason: undefined,
+          patientClass: "I",
+          facilityCode: "B3",
+        }),
       }),
       facts({ admissionSummary: ACTIVE_ADMISSION }),
     );
@@ -181,7 +188,10 @@ describe("decideAdmissionEvent — W-M6-32 concurrent hospital admission", () =>
 
   it("auto-acknowledges an admission signal for a patient not on active hospice", () => {
     const action = decideAdmissionEvent(
-      payload({ resourceKind: "admission_event", proposedEventContext: deathCtx({ eventType: "A01" }) }),
+      payload({
+        resourceKind: "admission_event",
+        proposedEventContext: deathCtx({ eventType: "A01" }),
+      }),
       facts({ admissionSummary: null }),
     );
     expect(action.kind).toBe("open_window");
@@ -196,7 +206,10 @@ describe("decideAdmissionEvent — W-M6-32 concurrent hospital admission", () =>
 describe("decideAdmissionEvent — W-M6-33 cancel-admit", () => {
   it("withdraws a matched pending referral", () => {
     const action = decideAdmissionEvent(
-      payload({ resourceKind: "cancel_admission", proposedEventContext: deathCtx({ eventType: "A11", messageControlId: "MSG-12345" }) }),
+      payload({
+        resourceKind: "cancel_admission",
+        proposedEventContext: deathCtx({ eventType: "A11", messageControlId: "MSG-12345" }),
+      }),
       facts({ pendingReferralId: "ref_w33" }),
     );
     expect(action).toEqual({
@@ -210,7 +223,10 @@ describe("decideAdmissionEvent — W-M6-33 cancel-admit", () => {
 
   it("opens an informational hl7_admission_cancellation window when no referral matches (race lost)", () => {
     const action = decideAdmissionEvent(
-      payload({ resourceKind: "cancel_admission", proposedEventContext: deathCtx({ eventType: "A11" }) }),
+      payload({
+        resourceKind: "cancel_admission",
+        proposedEventContext: deathCtx({ eventType: "A11" }),
+      }),
       facts({ pendingReferralId: null }),
     );
     expect(action.kind).toBe("open_window");
@@ -227,7 +243,11 @@ describe("decideAdmissionEvent — W-M6-35 idempotency", () => {
   it("skips a redelivery whose proposalId was already processed", () => {
     const action = decideAdmissionEvent(
       payload({ proposedEventContext: deathCtx() }),
-      facts({ alreadyProcessed: true, admissionSummary: ACTIVE_ADMISSION, activePeriodOnDeathDate: PERIOD_COVERING_DEATH }),
+      facts({
+        alreadyProcessed: true,
+        admissionSummary: ACTIVE_ADMISSION,
+        activePeriodOnDeathDate: PERIOD_COVERING_DEATH,
+      }),
     );
     expect(action).toEqual({ kind: "idempotent_skip" });
   });
@@ -259,7 +279,11 @@ describe("decideAdmissionEvent — narrow rails (D13)", () => {
 
   it("refuses an admission signal missing context or patient", () => {
     const action = decideAdmissionEvent(
-      payload({ resourceKind: "admission_event", matchedPatientId: null, proposedEventContext: deathCtx({ eventType: "A01" }) }),
+      payload({
+        resourceKind: "admission_event",
+        matchedPatientId: null,
+        proposedEventContext: deathCtx({ eventType: "A01" }),
+      }),
       facts(),
     );
     expect(action).toEqual({ kind: "refuse", reason: "missing_context_or_patient" });
@@ -279,7 +303,10 @@ describe("M29 proposal-accepted consumer binding", () => {
 
   it("decideProposalAccepted delegates to the pure decider", () => {
     const p = payload({ proposedEventContext: deathCtx() });
-    const f = facts({ admissionSummary: ACTIVE_ADMISSION, activePeriodOnDeathDate: PERIOD_COVERING_DEATH });
+    const f = facts({
+      admissionSummary: ACTIVE_ADMISSION,
+      activePeriodOnDeathDate: PERIOD_COVERING_DEATH,
+    });
     expect(decideProposalAccepted(p, f)).toEqual(decideAdmissionEvent(p, f));
   });
 });

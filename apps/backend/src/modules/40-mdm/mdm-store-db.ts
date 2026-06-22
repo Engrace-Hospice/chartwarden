@@ -19,22 +19,22 @@
 //     clear 501) — the entity-directory read surface + the org-scoped overlay/BAA writes ARE live,
 //     which is what the merged-module screen (apps/web/src/modules/40-mdm) consumes.
 import { type DbClient, schema } from "@wardenx/db";
-import {
-  type BaaRecordRow,
-  type BaaRegisterEntry,
-  type BaaStore,
-  type CanonicalFields,
-  type CanonicalRedirectRow,
-  type IdentifyingFields,
-  type MdmBaaGateResult,
-  type MdmEntityKind,
-  type MdmRouteService,
-  type MdmStore,
-  type MergeRequestRow,
-  type NppesSyncRun,
-  type OverlayFields,
-  type OverlayPhysicianFields,
-  type SearchSpec,
+import type {
+  BaaRecordRow,
+  BaaRegisterEntry,
+  BaaStore,
+  CanonicalFields,
+  CanonicalRedirectRow,
+  IdentifyingFields,
+  MdmBaaGateResult,
+  MdmEntityKind,
+  MdmRouteService,
+  MdmStore,
+  MergeRequestRow,
+  NppesSyncRun,
+  OverlayFields,
+  OverlayPhysicianFields,
+  SearchSpec,
 } from "@wardenx/mdm";
 import type { BaaEntityKind } from "@wardenx/mdm";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -102,7 +102,11 @@ function mapPayer(r: typeof PAY.$inferSelect): CanonicalFields<"payer"> {
 }
 
 /** The §2.5 redirect projection (`id`/`status`/`mergedIntoId`) drives the T04 `followMerge` chase. */
-function redirectOf(r: { id: string; status: CanonicalRedirectRow["status"]; mergedIntoId: string | null }): CanonicalRedirectRow {
+function redirectOf(r: {
+  id: string;
+  status: CanonicalRedirectRow["status"];
+  mergedIntoId: string | null;
+}): CanonicalRedirectRow {
   return { id: r.id, status: r.status, mergedIntoId: r.mergedIntoId };
 }
 
@@ -145,7 +149,9 @@ export function createDbMdmStore(db: DbClient): MdmStore {
         tx
           .select()
           .from(OVERLAY)
-          .where(and(eq(OVERLAY.externalPhysicianId, canonicalId), eq(OVERLAY.organizationId, orgId)))
+          .where(
+            and(eq(OVERLAY.externalPhysicianId, canonicalId), eq(OVERLAY.organizationId, orgId)),
+          )
           .limit(1),
       );
       const o = rows[0];
@@ -173,7 +179,10 @@ export function createDbMdmStore(db: DbClient): MdmStore {
 
     async searchCanonicalIds<K extends MdmEntityKind>(kind: K, q: SearchSpec<K>) {
       if (!hasCanonicalTable(kind)) return [];
-      const limit = Math.min(SEARCH_MAX_LIMIT, Math.max(1, Math.floor(q.limit ?? SEARCH_DEFAULT_LIMIT)));
+      const limit = Math.min(
+        SEARCH_MAX_LIMIT,
+        Math.max(1, Math.floor(q.limit ?? SEARCH_DEFAULT_LIMIT)),
+      );
       const t = kind === "physician" ? PH : kind === "facility" ? FAC : PAY;
       const nameExpr =
         kind === "physician"
@@ -205,16 +214,19 @@ export function createDbMdmStore(db: DbClient): MdmStore {
       identifying: IdentifyingFields<K>,
       actorUserId: string,
     ) {
-      const inserted = await withOrgContext(db, { organizationId: orgId, userId: actorUserId }, (tx) =>
-        tx
-          .insert(PROV)
-          .values({
-            organizationId: orgId,
-            entityKind: kind,
-            proposedFields: identifying as unknown as Record<string, unknown>,
-            proposedBy: actorUserId || null,
-          })
-          .returning({ id: PROV.id }),
+      const inserted = await withOrgContext(
+        db,
+        { organizationId: orgId, userId: actorUserId },
+        (tx) =>
+          tx
+            .insert(PROV)
+            .values({
+              organizationId: orgId,
+              entityKind: kind,
+              proposedFields: identifying as unknown as Record<string, unknown>,
+              proposedBy: actorUserId || null,
+            })
+            .returning({ id: PROV.id }),
       );
       return { provisionalId: inserted[0]!.id };
     },
@@ -244,7 +256,13 @@ export function createDbMdmStore(db: DbClient): MdmStore {
         tx
           .select({ baaStatus: BAA.baaStatus, expiresOn: BAA.expiresOn })
           .from(BAA)
-          .where(and(eq(BAA.organizationId, orgId), eq(BAA.entityKind, kind), eq(BAA.canonicalId, canonicalId)))
+          .where(
+            and(
+              eq(BAA.organizationId, orgId),
+              eq(BAA.entityKind, kind),
+              eq(BAA.canonicalId, canonicalId),
+            ),
+          )
           .orderBy(desc(BAA.executedOn))
           .limit(1),
       );
@@ -287,11 +305,27 @@ export function createDbBaaStore(db: DbClient): BaaStore {
     async baaRecords(orgId, kind: BaaEntityKind, canonicalId): Promise<readonly BaaRecordRow[]> {
       const rows = await withOrgContext(db, { organizationId: orgId, userId: "" }, (tx) =>
         tx
-          .select({ id: BAA.id, baaStatus: BAA.baaStatus, executedOn: BAA.executedOn, expiresOn: BAA.expiresOn })
+          .select({
+            id: BAA.id,
+            baaStatus: BAA.baaStatus,
+            executedOn: BAA.executedOn,
+            expiresOn: BAA.expiresOn,
+          })
           .from(BAA)
-          .where(and(eq(BAA.organizationId, orgId), eq(BAA.entityKind, kind), eq(BAA.canonicalId, canonicalId))),
+          .where(
+            and(
+              eq(BAA.organizationId, orgId),
+              eq(BAA.entityKind, kind),
+              eq(BAA.canonicalId, canonicalId),
+            ),
+          ),
       );
-      return rows.map((r) => ({ id: r.id, baaStatus: r.baaStatus, executedOn: r.executedOn, expiresOn: r.expiresOn }));
+      return rows.map((r) => ({
+        id: r.id,
+        baaStatus: r.baaStatus,
+        executedOn: r.executedOn,
+        expiresOn: r.expiresOn,
+      }));
     },
   };
 }
@@ -370,27 +404,30 @@ export function createDbMdmRouteService(db: DbClient): MdmRouteService {
     },
 
     async recordBaa(orgId, input, actorUserId) {
-      const inserted = await withOrgContext(db, { organizationId: orgId, userId: actorUserId }, (tx) =>
-        tx
-          .insert(BAA)
-          .values({
-            organizationId: orgId,
-            entityKind: input.kind,
-            canonicalId: input.canonicalId,
-            baaStatus: input.baaStatus,
-            executedOn: input.executedOn,
-            expiresOn: input.expiresOn,
-          })
-          .onConflictDoUpdate({
-            target: [BAA.organizationId, BAA.entityKind, BAA.canonicalId],
-            set: {
+      const inserted = await withOrgContext(
+        db,
+        { organizationId: orgId, userId: actorUserId },
+        (tx) =>
+          tx
+            .insert(BAA)
+            .values({
+              organizationId: orgId,
+              entityKind: input.kind,
+              canonicalId: input.canonicalId,
               baaStatus: input.baaStatus,
               executedOn: input.executedOn,
               expiresOn: input.expiresOn,
-              updatedAt: sql`now()`,
-            },
-          })
-          .returning({ id: BAA.id }),
+            })
+            .onConflictDoUpdate({
+              target: [BAA.organizationId, BAA.entityKind, BAA.canonicalId],
+              set: {
+                baaStatus: input.baaStatus,
+                executedOn: input.executedOn,
+                expiresOn: input.expiresOn,
+                updatedAt: sql`now()`,
+              },
+            })
+            .returning({ id: BAA.id }),
       );
       return { id: inserted[0]!.id };
     },

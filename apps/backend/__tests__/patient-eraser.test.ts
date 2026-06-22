@@ -4,20 +4,29 @@
 // preserved). Plus the m5 audit-catalog action.
 import { ACTION_CATALOG, M5_ACTION_CATALOG, validateActionCatalog } from "@wardenx/audit";
 import { beforeEach, describe, expect, it } from "vitest";
-import { __resetErasersForTest, getEraser, validateErasers } from "../src/bootstrap/erasers/registry";
-import { buildServer } from "../src/bootstrap/index";
 import {
-  createInMemoryPatientEraseStore as makeEraseStore,
+  __resetErasersForTest,
+  getEraser,
+  validateErasers,
+} from "../src/bootstrap/erasers/registry";
+import { buildServer } from "../src/bootstrap/index";
+import { wireModuleErasers, wireModuleSeams } from "../src/index";
+import {
   erasePatientClinicalRecord,
+  createInMemoryPatientEraseStore as makeEraseStore,
   registerPatientErasers,
 } from "../src/modules/05-patient/index";
-import { wireModuleErasers, wireModuleSeams } from "../src/index";
 
 describe("M5-T12 — clinical_record eraser (§8/§10, D7/D8)", () => {
   beforeEach(() => __resetErasersForTest());
 
   it("erases the patient subtree, tombstones the row, reports the total", async () => {
-    const { store, tombstoned } = makeEraseStore({ addresses: 2, identifiers: 3, payers: 1, assignments: 4 });
+    const { store, tombstoned } = makeEraseStore({
+      addresses: 2,
+      identifiers: 3,
+      payers: 1,
+      assignments: 4,
+    });
     const { erased, counts } = await erasePatientClinicalRecord("org_a", "p1", store);
     expect(erased).toBe(10);
     expect(counts.addresses).toBe(2);
@@ -37,7 +46,10 @@ describe("M5-T12 — clinical_record eraser (§8/§10, D7/D8)", () => {
   });
 
   it("a real buildServer() boot wires the eraser so validateErasers() passes", async () => {
-    const app = buildServer({ registerModuleSeams: wireModuleSeams, registerModuleErasers: wireModuleErasers });
+    const app = buildServer({
+      registerModuleSeams: wireModuleSeams,
+      registerModuleErasers: wireModuleErasers,
+    });
     expect(() => validateErasers()).not.toThrow();
     const r = await getEraser("clinical_record").erase({ orgId: "org_a" }, "p-unseeded");
     expect(r.erased).toBe(0); // default in-memory store → nothing to erase, no throw (real impl)

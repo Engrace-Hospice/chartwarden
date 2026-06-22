@@ -11,7 +11,6 @@
 import { requirePermission } from "@wardenx/auth";
 import { UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { PatientRouteService } from "./service";
 import {
   AddressBodySchema,
   AdmitBodySchema,
@@ -21,6 +20,7 @@ import {
   PatientListQuerySchema,
   parse,
 } from "./patient-typebox";
+import type { PatientRouteService } from "./service";
 
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
@@ -142,13 +142,17 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
   });
 
   // --- §4.2 submit amendment (§7.7 60-day SLA) -------------------------------------------------
-  app.post("/api/v1/patients/:id/amendments", { preHandler: [AMEND_RECORD] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(LooseIdParamsSchema, request.params);
-    const body = parse(AmendmentBodySchema, request.body);
-    const out = await service.submitAmendment(organizationId, id, body, userId);
-    return reply.code(201).send(out);
-  });
+  app.post(
+    "/api/v1/patients/:id/amendments",
+    { preHandler: [AMEND_RECORD] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(LooseIdParamsSchema, request.params);
+      const body = parse(AmendmentBodySchema, request.body);
+      const out = await service.submitAmendment(organizationId, id, body, userId);
+      return reply.code(201).send(out);
+    },
+  );
 
   // --- §4.2 accept / deny an amendment (§7.7) --------------------------------------------------
   app.post("/api/v1/amendments/:id/accept", { preHandler: [AMEND_REVIEW] }, async (request) => {

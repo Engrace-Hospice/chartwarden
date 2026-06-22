@@ -6,11 +6,11 @@
 import { sql } from "drizzle-orm";
 import { boolean, check, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { assembledOutputKind, layer2EligibilityReason } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
-import { encounters } from "./encounters";
 import { encounterAddenda } from "./encounter-addenda";
+import { encounters } from "./encounters";
 
 export const hearthnoteAssembledOutputs = pgTable(
   "hearthnote_assembled_output",

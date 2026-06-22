@@ -61,7 +61,10 @@ function pathArg(args: Record<string, unknown>, key: string): string | undefined
 }
 
 /** Role keys off `resolverArgs.roleKeys` when present, else the supplied default. */
-function roleKeysArg(args: Record<string, unknown>, fallback: readonly string[]): readonly string[] {
+function roleKeysArg(
+  args: Record<string, unknown>,
+  fallback: readonly string[],
+): readonly string[] {
   const v = args.roleKeys;
   return Array.isArray(v) && v.every((k) => typeof k === "string") ? (v as string[]) : fallback;
 }
@@ -97,7 +100,10 @@ export function registerCompositionResolvers(
   );
 
   registry.set("intake_supervisor", async (orgId, args) =>
-    ports.roleSetMembers(orgId, roleKeysArg(args, COMPOSITION_RESOLVER_ROLE_KEYS.intake_supervisor)),
+    ports.roleSetMembers(
+      orgId,
+      roleKeysArg(args, COMPOSITION_RESOLVER_ROLE_KEYS.intake_supervisor),
+    ),
   );
 
   registry.set("admissions_team", async (orgId, args) =>

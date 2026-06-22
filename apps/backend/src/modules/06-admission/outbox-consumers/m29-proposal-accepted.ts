@@ -14,7 +14,11 @@
 // foundation outbox, never via a `dependsOn` edge (§4 boundary rule). The file lives under
 // outbox-consumers/ (not events-by-m6.ts) so the arch:gaps event-catalog scan does not treat the
 // consumed `m29.*` name as an M6-produced event.
-import type { ApplierAction, ApplierFacts, ProposalAcceptedPayload } from "../consumers/admission-event-applier";
+import type {
+  ApplierAction,
+  ApplierFacts,
+  ProposalAcceptedPayload,
+} from "../consumers/admission-event-applier";
 import { decideAdmissionEvent } from "../consumers/admission-event-applier";
 
 /** The forward-declared (event → consumer) binding M29 dispatches to once it lands (Wave H, §4.8.3). */
@@ -31,6 +35,9 @@ export const M6_PROPOSAL_ACCEPTED_CONSUMER_DEFERRED = true;
  * M6's read seams + audit log, then call this to get the {@link ApplierAction} to execute. Kept as a
  * one-line re-export so the boot wiring (when M29 lands) reads `decideProposalAccepted(payload, facts)`.
  */
-export function decideProposalAccepted(payload: ProposalAcceptedPayload, facts: ApplierFacts): ApplierAction {
+export function decideProposalAccepted(
+  payload: ProposalAcceptedPayload,
+  facts: ApplierFacts,
+): ApplierAction {
   return decideAdmissionEvent(payload, facts);
 }

@@ -8,13 +8,13 @@
 // entry points must agree — both are the same chase over different loaders.
 import { describe, expect, it } from "vitest";
 import {
-  resolveRedirect,
+  type CanonicalRedirectRow,
+  MAX_REDIRECT_DEPTH,
+  type MergeRedirect,
+  MergeRedirectError,
   followMerge,
   joinOverlay,
-  MergeRedirectError,
-  MAX_REDIRECT_DEPTH,
-  type CanonicalRedirectRow,
-  type MergeRedirect,
+  resolveRedirect,
 } from "../src/index";
 
 // An in-memory canonical row set keyed by id — the test analog of T05's Drizzle loader. Each
@@ -50,11 +50,7 @@ describe("merge-redirect chase (§7.1, §7.2)", () => {
   });
 
   it("§7.2 follows a multi-hop chain (A→B→C) transitively to the final survivor", () => {
-    const { sync } = rowSet([
-      mergedInto("a", "b"),
-      mergedInto("b", "c"),
-      live("c"),
-    ]);
+    const { sync } = rowSet([mergedInto("a", "b"), mergedInto("b", "c"), live("c")]);
     expect(resolveRedirect(sync, "physician", "a")).toEqual<MergeRedirect>({
       id: "c",
       resolvedFrom: "a",

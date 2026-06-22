@@ -6,10 +6,10 @@
 // §2.3 placement table sorts each field class to canonical or overlay as written.
 import { describe, expect, it } from "vitest";
 import {
+  FIELD_PLACEMENT_RULES,
   MDM_ENTITY_KINDS,
   MDM_ENTITY_KIND_DESCRIPTORS,
   PHASE_1_CANONICAL_KINDS,
-  FIELD_PLACEMENT_RULES,
 } from "../src/index";
 
 describe("entity kind discriminator (§2.3, §2.4)", () => {

@@ -5,6 +5,7 @@
 // code (T07 §7.3) and emits the M36 alert only when records are affected (§8.1); the queue catalog
 // names the nine §4.3 queues.
 import { describe, expect, it } from "vitest";
+import type { ValueSetMemberRow } from "../src/expansion/index";
 import {
   TERMINOLOGY_QUEUES,
   createInMemoryRefreshExpansionsPorts,
@@ -12,18 +13,37 @@ import {
   runRefreshExpansions,
   runTenantDeprecationScan,
 } from "../src/jobs/index";
-import type { ValueSetMemberRow } from "../src/expansion/index";
-import type { TenantCodeRecord } from "../src/remediation/index";
 import type { ScanDeprecation } from "../src/jobs/processors";
+import type { TenantCodeRecord } from "../src/remediation/index";
 
 describe("M38-T10 jobs — refresh_expansions (§7.5)", () => {
   it("recomputes the expansion for the loaded system's value sets and reports them", async () => {
     const members: ValueSetMemberRow[] = [
-      { valueSetId: "vs_b", systemId: "icd10cm", code: "I50.21", memberEffective: "2024-01-01", memberEnd: null },
-      { valueSetId: "vs_a", systemId: "icd10cm", code: "G30.9", memberEffective: "2024-01-01", memberEnd: null },
-      { valueSetId: "vs_a", systemId: "icd10cm", code: "I50.22", memberEffective: "2024-01-01", memberEnd: null },
+      {
+        valueSetId: "vs_b",
+        systemId: "icd10cm",
+        code: "I50.21",
+        memberEffective: "2024-01-01",
+        memberEnd: null,
+      },
+      {
+        valueSetId: "vs_a",
+        systemId: "icd10cm",
+        code: "G30.9",
+        memberEffective: "2024-01-01",
+        memberEnd: null,
+      },
+      {
+        valueSetId: "vs_a",
+        systemId: "icd10cm",
+        code: "I50.22",
+        memberEffective: "2024-01-01",
+        memberEnd: null,
+      },
     ];
-    const { ports, written } = createInMemoryRefreshExpansionsPorts({ membersBySystem: { icd10cm: members } });
+    const { ports, written } = createInMemoryRefreshExpansionsPorts({
+      membersBySystem: { icd10cm: members },
+    });
 
     const result = await runRefreshExpansions("icd10cm", ports);
 
@@ -73,7 +93,9 @@ describe("M38-T10 jobs — tenant_deprecation_scan (§7.3 / §8.1)", () => {
 
   it("emits no alert for a tenant with no affected records", async () => {
     const { ports, alerts } = createInMemoryTenantDeprecationScanPorts({
-      recordsByOrg: { org_1: [{ recordId: "p1", recordType: "problem_list", systemId: "icd10cm", code: "G30.9" }] },
+      recordsByOrg: {
+        org_1: [{ recordId: "p1", recordType: "problem_list", systemId: "icd10cm", code: "G30.9" }],
+      },
       deprecations,
     });
     const result = await runTenantDeprecationScan("org_1", ports);

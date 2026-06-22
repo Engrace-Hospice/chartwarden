@@ -9,8 +9,8 @@
 // passed in as a boolean. Addendum authoring is its own small machine (see ./addendum) — the parent row
 // never leaves signed/cosigned, so it is not an event on this aggregate.
 import type { EncounterDiscipline, EncounterStatus, LocalDate } from "@wardenx/types";
-import { EncounterStateError, require_ } from "./errors";
 import { type EncounterSideEffect, type TransitionResult, result } from "./effects";
+import { EncounterStateError, require_ } from "./errors";
 import { COSIGN_REQUIRED_DISCIPLINES, TEXT_MINIMUMS } from "./validation";
 
 export type EncounterState = EncounterStatus;
@@ -49,7 +49,9 @@ export type EncounterEvent =
 export type EncounterTransition = TransitionResult<EncounterState, EncounterEvent["type"]>;
 
 /** The legal §2.3 transition graph (from → events accepted). Guards are checked separately. */
-export const ENCOUNTER_GRAPH: Readonly<Record<EncounterState, ReadonlyArray<EncounterEvent["type"]>>> = {
+export const ENCOUNTER_GRAPH: Readonly<
+  Record<EncounterState, ReadonlyArray<EncounterEvent["type"]>>
+> = {
   draft: ["finalize", "void"],
   finalized: ["sign"],
   signed: [],
@@ -77,7 +79,10 @@ export function planDraftCreation(): ReadonlyArray<EncounterSideEffect> {
  * Apply an encounter lifecycle event (§2.3). Throws {@link EncounterStateError} `ILLEGAL_TRANSITION` if
  * the event is not accepted from `from`, or the specific §2.7 guard code on a guard failure.
  */
-export function transitionEncounter(from: EncounterState, event: EncounterEvent): EncounterTransition {
+export function transitionEncounter(
+  from: EncounterState,
+  event: EncounterEvent,
+): EncounterTransition {
   if (!ENCOUNTER_GRAPH[from].includes(event.type)) {
     throw new EncounterStateError(
       "ILLEGAL_TRANSITION",
@@ -142,7 +147,11 @@ export function transitionEncounter(from: EncounterState, event: EncounterEvent)
     }
     case "void": {
       // Admin-only true terminal state; reason ≥ 40 chars (§2.3). Row is never deleted.
-      require_(event.isAdmin, "VOID_NOT_PERMITTED", "void requires encounter.administrative_override");
+      require_(
+        event.isAdmin,
+        "VOID_NOT_PERMITTED",
+        "void requires encounter.administrative_override",
+      );
       require_(
         event.reason.trim().length >= TEXT_MINIMUMS.voidReason,
         "VOID_REASON_TOO_SHORT",

@@ -10,18 +10,16 @@
 // service; the per-consumer batched `mdm.repoint_*` jobs are the T08 surface — they only optimize,
 // they don't gate, because the redirect already keeps queries correct (§7.6).
 
-import type {
-  BaaEntityKind,
-} from "../interfaces/baa-status-provider";
+import type { BaaEntityKind } from "../interfaces/baa-status-provider";
 import type {
   CanonicalFields,
   OverlayFields,
   OverlayPhysicianFields,
 } from "../interfaces/entity-provider";
 import type { MdmEntityKind, MdmMergeStatus } from "../interfaces/kinds";
-import type { CanonicalRedirectRow } from "../resolve/follow-merge";
 import type { MdmStore } from "../provider/store";
 import type { SeedCanonical } from "../provider/store";
+import type { CanonicalRedirectRow } from "../resolve/follow-merge";
 
 /** A merge-request row (§2.4.2) the platform-ops surface lists/approves/rejects. */
 export interface MergeRequestRow {
@@ -87,7 +85,10 @@ export interface MdmRouteService {
    * survivor's `merged_from` updated; the merge row becomes `executed`. Throws when the merge id is
    * unknown or not `pending`. After this, resolving the duplicate id redirects to the survivor.
    */
-  approveMerge(mergeId: string, actorUserId: string): Promise<{ duplicateId: string; canonicalId: string }>;
+  approveMerge(
+    mergeId: string,
+    actorUserId: string,
+  ): Promise<{ duplicateId: string; canonicalId: string }>;
 
   /** Reject a pending merge with a reason (§4.1 POST …/reject). */
   rejectMerge(mergeId: string, reason: string, actorUserId: string): Promise<void>;
@@ -174,6 +175,7 @@ export function createInMemoryMdmBackend(seed: InMemoryMdmBackendSeed = {}): {
       return q.limit !== undefined ? hits.slice(0, q.limit) : hits;
     },
     async createProvisional() {
+      // biome-ignore lint/suspicious/noAssignInExpressions: in-memory monotonic id counter.
       return { provisionalId: `prov_${(provisionalSeq += 1)}` };
     },
     async parentId() {
@@ -204,11 +206,14 @@ export function createInMemoryMdmBackend(seed: InMemoryMdmBackendSeed = {}): {
     },
 
     async recordBaa(orgId, input) {
+      // biome-ignore lint/suspicious/noAssignInExpressions: in-memory monotonic id counter.
       const id = `baa_${(baaSeq += 1)}`;
       const entry: BaaRegisterEntry = { id, ...input };
       const list = baa.get(orgId) ?? [];
       // Replace any existing entry for the same (kind, canonicalId) — one register row per entity.
-      const next = list.filter((e) => !(e.kind === input.kind && e.canonicalId === input.canonicalId));
+      const next = list.filter(
+        (e) => !(e.kind === input.kind && e.canonicalId === input.canonicalId),
+      );
       next.push(entry);
       baa.set(orgId, next);
       return { id };
@@ -225,9 +230,14 @@ export function createInMemoryMdmBackend(seed: InMemoryMdmBackendSeed = {}): {
     async approveMerge(mergeId) {
       const m = merges.get(mergeId);
       if (m === undefined) throw new Error(`merge request ${mergeId} not found`);
-      if (m.status !== "pending") throw new Error(`merge request ${mergeId} is ${m.status}, not pending`);
+      if (m.status !== "pending")
+        throw new Error(`merge request ${mergeId} is ${m.status}, not pending`);
       // §7.6: flip the duplicate to merged → survivor; update the survivor's merged_from.
-      setRedirect(m.kind, m.duplicateId, { id: m.duplicateId, status: "merged", mergedIntoId: m.canonicalId });
+      setRedirect(m.kind, m.duplicateId, {
+        id: m.duplicateId,
+        status: "merged",
+        mergedIntoId: m.canonicalId,
+      });
       merges.set(mergeId, { ...m, status: "executed" });
       return { duplicateId: m.duplicateId, canonicalId: m.canonicalId };
     },

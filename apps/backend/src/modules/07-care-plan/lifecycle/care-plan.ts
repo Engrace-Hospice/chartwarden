@@ -7,8 +7,8 @@
 // `active` while signed revisions flip `active_version_id`; terminal `discharged` when the admission
 // ends. Pure transition over already-resolved facts; the per-version machine lives in `./version`.
 import type { IsoInstant } from "@wardenx/types";
-import { CarePlanStateError, require_ } from "./errors";
 import { type TransitionResult, result } from "./effects";
+import { CarePlanStateError, require_ } from "./errors";
 import { checkTerminalProblemPresent } from "./validation";
 
 /** The §2.2.1 care_plan root states (mirrors `care_plan_status`). */
@@ -44,13 +44,13 @@ export const CARE_PLAN_GRAPH: Readonly<
  * `admission.activated` event is processed (§2.2.1). Returns the draft state + `m7.care_plan.created`
  * outbox effect; the partial unique index is the structural backstop for "exactly one per admission".
  */
-export function openCarePlan(): { readonly status: "draft"; readonly effects: CarePlanTransition["effects"] } {
+export function openCarePlan(): {
+  readonly status: "draft";
+  readonly effects: CarePlanTransition["effects"];
+} {
   return {
     status: "draft",
-    effects: [
-      { kind: "audit" },
-      { kind: "outbox", event: "m7.care_plan.created" },
-    ],
+    effects: [{ kind: "audit" }, { kind: "outbox", event: "m7.care_plan.created" }],
   };
 }
 

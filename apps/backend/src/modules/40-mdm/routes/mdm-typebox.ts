@@ -9,8 +9,8 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
 import { MDM_ENTITY_KINDS } from "@wardenx/mdm";
+import { ValidationError } from "@wardenx/types";
 
 // --- format registration (TypeBox Value does not validate `format` until registered) ----------
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -88,7 +88,9 @@ export const LicenseBodySchema = Type.Object({
 });
 
 // --- POST /admin/mdm/merge-requests/:id/reject (§4.2) ------------------------------------------
-export const RejectBodySchema = Type.Object({ reason: Type.String({ minLength: 1, maxLength: 500 }) });
+export const RejectBodySchema = Type.Object({
+  reason: Type.String({ minLength: 1, maxLength: 500 }),
+});
 
 // --- POST /admin/mdm/nppes/lookup (§4.2) -------------------------------------------------------
 export const NppesLookupBodySchema = Type.Object({

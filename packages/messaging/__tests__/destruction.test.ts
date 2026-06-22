@@ -38,7 +38,9 @@ describe("eraseTenantMessaging — D9 tenant offboarding (§7.8)", () => {
     expect(result.bodiesRendered).toBe(2); // both ORG bodies undecryptable
     expect(result.structuralRows).toBe(3); // 1 channel + 2 message rows
     expect(result.crossTenantRows).toBe(1); // only the sole-tenant user
-    expect(result.erased).toBe(result.bodiesRendered + result.structuralRows + result.crossTenantRows);
+    expect(result.erased).toBe(
+      result.bodiesRendered + result.structuralRows + result.crossTenantRows,
+    );
 
     // OTHER org untouched: its body still decrypts, its rows remain.
     expect(() => inMem.tryDecrypt("m3")).not.toThrow();

@@ -15,9 +15,9 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { electionSignatureMethod, electionSignerKind } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 import { electionPeriods } from "./election-periods";
 
 export const electionStatements = pgTable(

@@ -48,7 +48,11 @@ export interface AdmissionAbacDeps {
   /** Loads a resource's org-scoped owner facts (in-memory in the slice; Drizzle in prod). */
   readonly resolver: AdmissionAbacResolver;
   /** Caseload membership check (defaults to the boot-registered M5 `CaseloadProvider` seam). */
-  readonly isInCaseload?: (q: { organizationId: string; userId: string; patientId: string }) => Promise<boolean>;
+  readonly isInCaseload?: (q: {
+    organizationId: string;
+    userId: string;
+    patientId: string;
+  }) => Promise<boolean>;
 }
 
 const hasRole = (context: AbacContext, role: string): boolean => context.roles.includes(role);
@@ -59,10 +63,11 @@ const targetId = (target: AbacTarget): string | null =>
  * Build M6's ten §4.6 predicate resolvers over injected deps (pure factory — unit-tested with a fresh
  * registry; the boot path registers these into the shared registry via {@link registerAdmissionAbacPredicates}).
  */
-export function buildAdmissionAbacPredicates(deps: AdmissionAbacDeps): Record<string, (context: AbacContext, target: AbacTarget) => Promise<boolean>> {
+export function buildAdmissionAbacPredicates(
+  deps: AdmissionAbacDeps,
+): Record<string, (context: AbacContext, target: AbacTarget) => Promise<boolean>> {
   const { resolver } = deps;
-  const isInCaseload =
-    deps.isInCaseload ?? ((q) => getSeam("CaseloadProvider").isInCaseload(q));
+  const isInCaseload = deps.isInCaseload ?? ((q) => getSeam("CaseloadProvider").isInCaseload(q));
 
   /** Caseload-or-scope over an admission's patient (medical_director = org-wide). §4.6 admission.scope. */
   const admissionScopeFor = async (
@@ -70,9 +75,14 @@ export function buildAdmissionAbacPredicates(deps: AdmissionAbacDeps): Record<st
     facts: { patientId: string; providerEntityId: string | null },
   ): Promise<boolean> => {
     if (hasRole(context, "medical_director")) return true; // org-wide
-    if (facts.providerEntityId && context.providerEntityIds.includes(facts.providerEntityId)) return true;
+    if (facts.providerEntityId && context.providerEntityIds.includes(facts.providerEntityId))
+      return true;
     if (!context.userId) return false;
-    return isInCaseload({ organizationId: context.organizationId, userId: context.userId, patientId: facts.patientId });
+    return isInCaseload({
+      organizationId: context.organizationId,
+      userId: context.userId,
+      patientId: facts.patientId,
+    });
   };
 
   return {
@@ -97,7 +107,10 @@ export function buildAdmissionAbacPredicates(deps: AdmissionAbacDeps): Record<st
       if (!id) return false;
       const facts = await resolver.loadCti(context.organizationId, id);
       if (!facts) return false;
-      return context.userId === facts.hospiceMedicalDirectorId || hasRole(context, "acting_medical_director");
+      return (
+        context.userId === facts.hospiceMedicalDirectorId ||
+        hasRole(context, "acting_medical_director")
+      );
     },
     "cti.is_attending": async (context, target) => {
       const id = targetId(target);
@@ -125,7 +138,10 @@ export function buildAdmissionAbacPredicates(deps: AdmissionAbacDeps): Record<st
       if (!id) return false;
       const facts = await resolver.loadComplianceWindow(context.organizationId, id);
       if (!facts) return false;
-      return admissionScopeFor(context, { patientId: facts.patientId, providerEntityId: facts.providerEntityId });
+      return admissionScopeFor(context, {
+        patientId: facts.patientId,
+        providerEntityId: facts.providerEntityId,
+      });
     },
     "compliance.window_override": async (context) => hasRole(context, "compliance_officer"),
   };

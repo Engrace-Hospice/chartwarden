@@ -4,21 +4,29 @@
 // tombstones the admission row, and the m6 action catalog is well-formed (namespace + uniqueness).
 import { ACTION_CATALOG, M6_ACTION_CATALOG, validateActionCatalog } from "@wardenx/audit";
 import { beforeEach, describe, expect, it } from "vitest";
-import { __resetErasersForTest, getEraser, validateErasers } from "../src/bootstrap/erasers/registry";
-import { buildServer } from "../src/bootstrap/index";
 import {
-  createInMemoryAdmissionEraseStore as makeEraseStore,
+  __resetErasersForTest,
+  getEraser,
+  validateErasers,
+} from "../src/bootstrap/erasers/registry";
+import { buildServer } from "../src/bootstrap/index";
+import { wireModuleErasers, wireModuleSeams } from "../src/index";
+import {
   eraseAdmissionRecord,
+  createInMemoryAdmissionEraseStore as makeEraseStore,
   registerAdmissionErasers,
 } from "../src/modules/06-admission/index";
-import { wireModuleErasers, wireModuleSeams } from "../src/index";
 
 describe("M6-T12 — admission_record eraser (§3.6, D7/D8)", () => {
   beforeEach(() => __resetErasersForTest());
 
   it("erases the admission subtree, tombstones the admission, reports the total", async () => {
     const { store, tombstoned } = makeEraseStore({
-      referrals: 1, electionPeriods: 2, certifications: 2, faceToFaceEncounters: 1, complianceWindows: 3,
+      referrals: 1,
+      electionPeriods: 2,
+      certifications: 2,
+      faceToFaceEncounters: 1,
+      complianceWindows: 3,
     });
     const { erased, counts } = await eraseAdmissionRecord("org_a", "pat_1", store);
     expect(erased).toBe(9);
@@ -39,7 +47,10 @@ describe("M6-T12 — admission_record eraser (§3.6, D7/D8)", () => {
   });
 
   it("a real buildServer() boot wires the eraser so validateErasers() passes", async () => {
-    const app = buildServer({ registerModuleSeams: wireModuleSeams, registerModuleErasers: wireModuleErasers });
+    const app = buildServer({
+      registerModuleSeams: wireModuleSeams,
+      registerModuleErasers: wireModuleErasers,
+    });
     expect(() => validateErasers()).not.toThrow();
     const r = await getEraser("admission_record").erase({ orgId: "org_a" }, "pat_unseeded");
     expect(r.erased).toBe(0); // default in-memory store → nothing to erase, no throw (real impl)
@@ -60,7 +71,11 @@ describe("M6-T12 action catalog (§8.1.2)", () => {
 
   it("scrubs free-text reason carriers (override/discharge) for narrative_free_text", () => {
     const overrides = M6_ACTION_CATALOG.filter((e) =>
-      ["m6.f2f.window_overridden", "m6.compliance.window.overridden", "m6.discharge.created"].includes(e.action),
+      [
+        "m6.f2f.window_overridden",
+        "m6.compliance.window.overridden",
+        "m6.discharge.created",
+      ].includes(e.action),
     );
     expect(overrides).toHaveLength(3);
     for (const e of overrides) expect(e.denylistCategories).toContain("narrative_free_text");

@@ -3,8 +3,8 @@
 // invariants arch:gaps enforces) against M7_EVENT_NAMES, the org-tz due-date clock (gate-clock), and the
 // two pure gate scans for emission + idempotency.
 import { Value } from "@sinclair/typebox/value";
-import { describe, expect, it } from "vitest";
 import { M7_EVENT_NAMES } from "@wardenx/types";
+import { describe, expect, it } from "vitest";
 import {
   type CarePlanGateSnapshot,
   DEFAULT_ORG_TIME_ZONE,
@@ -174,12 +174,23 @@ describe("15day-overdue gate scan (§7.2)", () => {
     const plan = planReviewGateScan([signed({})], "2026-06-18T12:00:00.000Z");
     expect(plan.events).toHaveLength(1);
     expect(plan.events[0]?.eventName).toBe("m7.care_plan.review_overdue");
-    expect(plan.events[0]?.payload).toMatchObject({ planId: "p1", overdueAt: "2026-06-18T12:00:00.000Z" });
+    expect(plan.events[0]?.payload).toMatchObject({
+      planId: "p1",
+      overdueAt: "2026-06-18T12:00:00.000Z",
+    });
   });
 
   it("is idempotent on each marker and skips plans without a signed initial version", () => {
-    expect(planReviewGateScan([signed({ reviewDueEmitted: true })], "2026-06-15T12:00:00.000Z").events).toHaveLength(0);
-    expect(planReviewGateScan([signed({ reviewOverdueEmitted: true })], "2026-06-18T12:00:00.000Z").events).toHaveLength(0);
-    expect(planReviewGateScan([snap({ hasSignedInitialVersion: false })], "2026-06-18T12:00:00.000Z").events).toHaveLength(0);
+    expect(
+      planReviewGateScan([signed({ reviewDueEmitted: true })], "2026-06-15T12:00:00.000Z").events,
+    ).toHaveLength(0);
+    expect(
+      planReviewGateScan([signed({ reviewOverdueEmitted: true })], "2026-06-18T12:00:00.000Z")
+        .events,
+    ).toHaveLength(0);
+    expect(
+      planReviewGateScan([snap({ hasSignedInitialVersion: false })], "2026-06-18T12:00:00.000Z")
+        .events,
+    ).toHaveLength(0);
   });
 });

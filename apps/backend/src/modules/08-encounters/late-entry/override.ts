@@ -13,8 +13,8 @@
 // schema import. The override reified columns (`significant_late_override_by`/`_reason`,
 // `administrative_override_by`/`_reason`) back the DB CHECK constraints the service writes within the tx.
 import type { LateEntryTier } from "@wardenx/types";
+import type { EncounterSideEffect } from "../lifecycle/effects";
 import { require_ } from "../lifecycle/errors";
-import { type EncounterSideEffect } from "../lifecycle/effects";
 import { TEXT_MINIMUMS } from "../lifecycle/validation";
 
 /** The §2.5 tiers that require a recorded override before the encounter may sign. */

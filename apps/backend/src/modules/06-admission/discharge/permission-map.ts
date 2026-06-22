@@ -76,7 +76,9 @@ export function isDischargeReason(value: unknown): value is DischargeReason {
  * never left ungated (the TypeBox schema rejects the bad reason in the handler afterwards).
  */
 export function deriveDischargePermissionKey(reason: unknown): string {
-  return isDischargeReason(reason) ? DISCHARGE_POLICY[reason].permissionKey : DISCHARGE_FALLBACK_PERMISSION;
+  return isDischargeReason(reason)
+    ? DISCHARGE_POLICY[reason].permissionKey
+    : DISCHARGE_FALLBACK_PERMISSION;
 }
 
 /** True when this reason's discharge must wait on a medical-director cosign (D11 — only `for_cause`). */

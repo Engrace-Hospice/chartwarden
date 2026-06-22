@@ -1,10 +1,3 @@
-// apps/web/src/modules/03-authorization — Roles & Permissions (M3, Track A).
-// Spec: docs/ui/screens/admin/WARDENX_UI_ROLES_PERMISSIONS.md — "Use Admin Split Layout."
-// Roles list | the selected role's permission matrix (grouped by catalog category) | right detail.
-// Backed by GET /api/v1/roles + GET /api/v1/permissions via the generated typed client. Read-only
-// in this first cut (edit/clone is a follow-up). Imports only leaves (@wardenx/ui).
-import { useEffect, useMemo, useState } from "react";
-import type { JSX } from "react";
 import {
   AdminSplitLayout,
   EmptyState,
@@ -13,6 +6,13 @@ import {
   RightDetailPanel,
   useApiClient,
 } from "@wardenx/ui";
+// apps/web/src/modules/03-authorization — Roles & Permissions (M3, Track A).
+// Spec: docs/ui/screens/admin/WARDENX_UI_ROLES_PERMISSIONS.md — "Use Admin Split Layout."
+// Roles list | the selected role's permission matrix (grouped by catalog category) | right detail.
+// Backed by GET /api/v1/roles + GET /api/v1/permissions via the generated typed client. Read-only
+// in this first cut (edit/clone is a follow-up). Imports only leaves (@wardenx/ui).
+import { useEffect, useMemo, useState } from "react";
+import type { JSX } from "react";
 
 interface RoleView {
   roleId: string;
@@ -74,12 +74,20 @@ export function RolesPermissions(): JSX.Element {
       list={<RoleList roles={roles} selectedId={selectedId} onSelect={setSelectedId} />}
       detail={selected ? <RoleDetail role={selected} /> : undefined}
     >
-      {selected ? <PermissionMatrix role={selected} catalog={catalog} /> : <EmptyState title="Select a role" description="Pick a role to view its permissions." />}
+      {selected ? (
+        <PermissionMatrix role={selected} catalog={catalog} />
+      ) : (
+        <EmptyState title="Select a role" description="Pick a role to view its permissions." />
+      )}
     </AdminSplitLayout>
   );
 }
 
-function RoleList({ roles, selectedId, onSelect }: { roles: RoleView[]; selectedId: string | null; onSelect: (id: string) => void }): JSX.Element {
+function RoleList({
+  roles,
+  selectedId,
+  onSelect,
+}: { roles: RoleView[]; selectedId: string | null; onSelect: (id: string) => void }): JSX.Element {
   return (
     <ul style={{ listStyle: "none", margin: 0, padding: "0.5rem" }}>
       {roles.map((r) => (
@@ -87,7 +95,15 @@ function RoleList({ roles, selectedId, onSelect }: { roles: RoleView[]; selected
           <button
             type="button"
             onClick={() => onSelect(r.roleId)}
-            style={{ width: "100%", textAlign: "left", padding: "0.5rem 0.625rem", border: "none", borderRadius: "0.375rem", cursor: "pointer", background: r.roleId === selectedId ? "#eff6ff" : "transparent" }}
+            style={{
+              width: "100%",
+              textAlign: "left",
+              padding: "0.5rem 0.625rem",
+              border: "none",
+              borderRadius: "0.375rem",
+              cursor: "pointer",
+              background: r.roleId === selectedId ? "#eff6ff" : "transparent",
+            }}
           >
             <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{r.name}</div>
             <div style={{ fontSize: "0.7rem", color: "#6b7280" }}>
@@ -103,7 +119,10 @@ function RoleList({ roles, selectedId, onSelect }: { roles: RoleView[]; selected
   );
 }
 
-function PermissionMatrix({ role, catalog }: { role: RoleView; catalog: PermissionRow[] }): JSX.Element {
+function PermissionMatrix({
+  role,
+  catalog,
+}: { role: RoleView; catalog: PermissionRow[] }): JSX.Element {
   const granted = useMemo(() => new Set(role.permissionKeys), [role]);
   // Group the catalog by category; show which permissions this role grants.
   const byCategory = useMemo(() => {
@@ -120,7 +139,9 @@ function PermissionMatrix({ role, catalog }: { role: RoleView; catalog: Permissi
     // No catalog → just list the granted keys.
     return (
       <div>
-        <h2 style={{ marginTop: 0, fontSize: "1rem" }}>{role.name} — permissions ({role.permissionKeys.length})</h2>
+        <h2 style={{ marginTop: 0, fontSize: "1rem" }}>
+          {role.name} — permissions ({role.permissionKeys.length})
+        </h2>
         <ul style={{ columns: 2, fontSize: "0.8rem", fontFamily: "monospace" }}>
           {role.permissionKeys.map((k) => (
             <li key={k}>{k}</li>
@@ -137,13 +158,33 @@ function PermissionMatrix({ role, catalog }: { role: RoleView; catalog: Permissi
       </h2>
       {byCategory.map(([category, perms]) => (
         <section key={category} style={{ marginBottom: "1rem" }}>
-          <h3 style={{ fontSize: "0.8rem", textTransform: "uppercase", color: "#6b7280", margin: "0 0 0.25rem" }}>{category}</h3>
-          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.15rem 1rem" }}>
+          <h3
+            style={{
+              fontSize: "0.8rem",
+              textTransform: "uppercase",
+              color: "#6b7280",
+              margin: "0 0 0.25rem",
+            }}
+          >
+            {category}
+          </h3>
+          <ul
+            style={{
+              listStyle: "none",
+              margin: 0,
+              padding: 0,
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "0.15rem 1rem",
+            }}
+          >
             {perms.map((p) => {
               const on = granted.has(p.key);
               return (
                 <li key={p.key} style={{ fontSize: "0.8rem", color: on ? "#111827" : "#9ca3af" }}>
-                  <span aria-hidden style={{ marginRight: "0.4rem" }}>{on ? "✓" : "○"}</span>
+                  <span aria-hidden style={{ marginRight: "0.4rem" }}>
+                    {on ? "✓" : "○"}
+                  </span>
                   <span style={{ fontFamily: "monospace" }}>{p.key}</span>
                 </li>
               );

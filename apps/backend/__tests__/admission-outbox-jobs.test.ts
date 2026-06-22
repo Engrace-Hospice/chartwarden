@@ -3,8 +3,8 @@
 // enforces) against the §4.4 name list, and the two pure compliance-window scans (recompute +
 // window-alert) for status promotion + idempotency.
 import { Value } from "@sinclair/typebox/value";
-import { describe, expect, it } from "vitest";
 import { M6_EVENT_NAMES } from "@wardenx/types";
+import { describe, expect, it } from "vitest";
 import {
   CLOSING_SOON_LEAD_MS,
   type ComplianceWindowSnapshot,
@@ -54,7 +54,11 @@ describe("M6 outbox event contract (§4.4)", () => {
   });
 
   it("applier-reused events carry the optional provenance `source` marker", () => {
-    for (const name of ["m6.discharge.created", "m6.discharge.death", "m6.compliance.window.opened"]) {
+    for (const name of [
+      "m6.discharge.created",
+      "m6.discharge.death",
+      "m6.compliance.window.opened",
+    ]) {
       const e = M6_OUTBOX_EVENTS.find((x) => x.eventName === name)!;
       // optional → present without source validates; with the marker validates too.
       const base =
@@ -82,7 +86,9 @@ describe("M6 outbox event contract (§4.4)", () => {
 
   it("rejects payloads missing required keys", () => {
     const overdue = M6_OUTBOX_EVENTS.find((e) => e.eventName === "m6.compliance.window.overdue")!;
-    expect(Value.Check(overdue.payloadSchema, { complianceWindowId: "w1", severity: "alert" })).toBe(true);
+    expect(
+      Value.Check(overdue.payloadSchema, { complianceWindowId: "w1", severity: "alert" }),
+    ).toBe(true);
     expect(Value.Check(overdue.payloadSchema, { complianceWindowId: "w1" })).toBe(false);
   });
 });
@@ -141,8 +147,16 @@ describe("admission.window_alert scan (§4.3)", () => {
     const plan = planWindowAlert(
       [
         win({ complianceWindowId: "w-open", dueAt: "2026-07-30T00:00:00.000Z" }),
-        win({ complianceWindowId: "w-newly-overdue", status: "open", dueAt: "2026-06-20T00:00:00.000Z" }),
-        win({ complianceWindowId: "w-already-overdue", status: "overdue", dueAt: "2026-06-20T00:00:00.000Z" }),
+        win({
+          complianceWindowId: "w-newly-overdue",
+          status: "open",
+          dueAt: "2026-06-20T00:00:00.000Z",
+        }),
+        win({
+          complianceWindowId: "w-already-overdue",
+          status: "overdue",
+          dueAt: "2026-06-20T00:00:00.000Z",
+        }),
       ],
       NOW,
     );

@@ -34,6 +34,9 @@ export const M7_IDG_DECISION_CONSUMER_DEFERRED = true;
  * execute. Kept as a one-line re-export so the boot wiring (when M14 lands) reads
  * `decideIdgDecisionRecorded(payload, facts)`.
  */
-export function decideIdgDecisionRecorded(payload: IdgDecisionPayload, facts: IdgApplyFacts): IdgApplyAction {
+export function decideIdgDecisionRecorded(
+  payload: IdgDecisionPayload,
+  facts: IdgApplyFacts,
+): IdgApplyAction {
   return decideIdgDecision(payload, facts);
 }

@@ -1,3 +1,5 @@
+import type { NppesCanonicalPhysician, NppesConsumerPorts } from "@wardenx/mdm";
+import { describe, expect, it } from "vitest";
 // apps/backend/__tests__/mdm-nppes-consumers.test.ts — M40-T09 the M29 NPPES-sync consumers as a
 // Phase-1 forward-seam / deny-stub (M40 spec §4.7, §7.11–7.12).
 //
@@ -10,8 +12,6 @@ import {
   M29_NPPES_CONSUMERS,
   createM29NppesConsumerHandlers,
 } from "../src/modules/40-mdm/index";
-import type { NppesCanonicalPhysician, NppesConsumerPorts } from "@wardenx/mdm";
-import { describe, expect, it } from "vitest";
 
 describe("M40-T09 — M29 NPPES consumers (forward-seam / deny-stub)", () => {
   it("declares both §4.7 consumers against M29-owned events with m40.* handler names", () => {

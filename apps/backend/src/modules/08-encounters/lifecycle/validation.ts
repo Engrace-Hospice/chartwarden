@@ -1,3 +1,11 @@
+import {
+  type EncounterDiscipline,
+  type EncounterStatus,
+  type EncounterType,
+  type LateEntryTier,
+  type LocalDate,
+  isValidEncounterDisciplinePair,
+} from "@wardenx/types";
 // apps/backend/src/modules/08-encounters/lifecycle/validation.ts — M8-T04 (§2.7).
 //
 // §2.7 has two kinds of rule: SYNCHRONOUS (run inside the service before/within the optimistic-locked
@@ -8,19 +16,7 @@
 // a rule needs (org-timezone "today", the M5 caseload check, the M38 active vocab version, the M15
 // volunteer-assignment lookup) is resolved by the caller and passed in as a boolean/value — M8 never
 // imports another module's schema (§2.8).
-import {
-  EncounterStateError,
-  type M8ErrorCode,
-  require_,
-} from "./errors";
-import {
-  type EncounterDiscipline,
-  type EncounterStatus,
-  type EncounterType,
-  type LateEntryTier,
-  type LocalDate,
-  isValidEncounterDisciplinePair,
-} from "@wardenx/types";
+import { EncounterStateError, type M8ErrorCode, require_ } from "./errors";
 
 // ── §2.7 thresholds (the free-text minimums + the D13 step-up freshness window) ─────────────────────
 
@@ -87,7 +83,10 @@ export function checkEncounterDisciplinePair(input: {
 }
 
 /** §2.7 — `service_date` must not be in the future (org timezone "today" resolved upstream). */
-export function checkServiceDateNotFuture(input: { serviceDate: LocalDate; today: LocalDate }): void {
+export function checkServiceDateNotFuture(input: {
+  serviceDate: LocalDate;
+  today: LocalDate;
+}): void {
   require_(
     daysBetween(input.serviceDate, input.today) >= 0,
     "SERVICE_DATE_IN_FUTURE",
@@ -135,7 +134,10 @@ export function checkVolunteerAssignment(input: {
 }
 
 /** §2.7 D11 — the pinned vocab version must equal the active M38 version at finalize-time. */
-export function checkVocabVersion(input: { pinnedVersionId: string; activeVersionId: string }): void {
+export function checkVocabVersion(input: {
+  pinnedVersionId: string;
+  activeVersionId: string;
+}): void {
   require_(
     input.pinnedVersionId === input.activeVersionId,
     "VOCAB_VERSION_MISMATCH",
@@ -153,7 +155,10 @@ export function checkStepUpFresh(input: { stepUpAgeSeconds: number | null }): vo
 }
 
 /** §2.7 D1 — an F2F encounter requires `face_to_face_encounter_id` (M6) populated in the same tx. */
-export function checkF2fDualWrite(input: { isF2f: boolean; faceToFaceEncounterIdPresent: boolean }): void {
+export function checkF2fDualWrite(input: {
+  isF2f: boolean;
+  faceToFaceEncounterIdPresent: boolean;
+}): void {
   if (!input.isF2f) return;
   require_(
     input.faceToFaceEncounterIdPresent,

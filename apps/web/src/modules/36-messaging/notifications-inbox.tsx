@@ -1,9 +1,9 @@
+import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/36-messaging — Notifications & Tasks / Worklist (M36, Track A).
 // Spec: docs/ui/screens/core/WARDENX_UI_NOTIFICATIONS_TASKS.md — "Use Work Queue."
 // The caller's alert inbox. Backed by GET /api/v1/alerts/inbox via the generated typed client.
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
-import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@wardenx/ui";
 
 interface AlertItem {
   alertId: string;
@@ -15,7 +15,12 @@ interface AlertItem {
   deliveryStatus: "delivered" | "partial" | "failed" | "pending";
 }
 
-const severityColor: Record<string, string> = { critical: "#b91c1c", warn: "#b45309", high: "#b91c1c", info: "#6b7280" };
+const severityColor: Record<string, string> = {
+  critical: "#b91c1c",
+  warn: "#b45309",
+  high: "#b91c1c",
+  info: "#6b7280",
+};
 
 export function NotificationsInbox(): JSX.Element {
   const client = useApiClient();
@@ -43,10 +48,14 @@ export function NotificationsInbox(): JSX.Element {
   );
 }
 
-function AlertTable({ alerts, error }: { alerts: AlertItem[] | null; error: string | null }): JSX.Element {
+function AlertTable({
+  alerts,
+  error,
+}: { alerts: AlertItem[] | null; error: string | null }): JSX.Element {
   if (error) return <EmptyState title="Unavailable" description={error} />;
   if (alerts === null) return <LoadingSpinner />;
-  if (alerts.length === 0) return <EmptyState title="All clear" description="You have no notifications." />;
+  if (alerts.length === 0)
+    return <EmptyState title="All clear" description="You have no notifications." />;
   return (
     <div style={{ padding: "0 1.5rem 1.5rem" }}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
@@ -62,7 +71,9 @@ function AlertTable({ alerts, error }: { alerts: AlertItem[] | null; error: stri
         <tbody>
           {alerts.map((a) => (
             <tr key={a.alertId} style={{ borderTop: "1px solid #f3f4f6" }}>
-              <td style={{ ...td, color: severityColor[a.severity] ?? "#111827", fontWeight: 600 }}>{a.severity}</td>
+              <td style={{ ...td, color: severityColor[a.severity] ?? "#111827", fontWeight: 600 }}>
+                {a.severity}
+              </td>
               <td style={td}>{a.category}</td>
               <td style={td}>{a.summary}</td>
               <td style={td}>{new Date(a.createdAt).toLocaleString()}</td>

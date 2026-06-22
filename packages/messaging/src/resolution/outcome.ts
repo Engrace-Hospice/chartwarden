@@ -33,7 +33,9 @@ export function computeOutcome(settlements: readonly DeliverySettlement[]): Aler
 
   const recipients = new Set(settlements.map((s) => s.recipientUserId));
   const floorDelivered = new Set(
-    settlements.filter((s) => s.channel === FLOOR_CHANNEL && s.delivered).map((s) => s.recipientUserId),
+    settlements
+      .filter((s) => s.channel === FLOOR_CHANNEL && s.delivered)
+      .map((s) => s.recipientUserId),
   );
   const everyRecipientGotFloor = [...recipients].every((r) => floorDelivered.has(r));
   const anyFailure = settlements.some((s) => !s.delivered);

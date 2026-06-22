@@ -167,8 +167,7 @@ export function createInMemoryAdmissionReaderStore(seed: AdmissionReaderSeed = {
           (a) =>
             a.organizationId === scope.orgId &&
             a.status === "active" &&
-            (scope.providerEntityId === undefined ||
-              a.providerEntityId === scope.providerEntityId),
+            (scope.providerEntityId === undefined || a.providerEntityId === scope.providerEntityId),
         );
       },
     },

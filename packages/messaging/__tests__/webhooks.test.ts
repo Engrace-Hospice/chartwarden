@@ -1,10 +1,3 @@
-// M36-T08 — webhook two-layer defense (M36 spec §4.9 / §4.9.1 / §4.9.2; SD-056 / INT-016).
-//
-// Accept: the replay window rejects missing/invalid/expired timestamps and admits fresh ones; the
-// Twilio HMAC verifier accepts a correctly-signed request and rejects a forged one; the Postmark
-// verifier requires BOTH a valid source IP and a constant-time-correct bearer token (a valid token
-// from a bad IP is rejected; a wrong token from a good IP is rejected).
-import { describe, expect, it } from "vitest";
 import {
   WebhookError,
   assertReplayWindow,
@@ -12,6 +5,13 @@ import {
   verifyPostmarkWebhook,
   verifyTwilioSignature,
 } from "@wardenx/messaging";
+// M36-T08 — webhook two-layer defense (M36 spec §4.9 / §4.9.1 / §4.9.2; SD-056 / INT-016).
+//
+// Accept: the replay window rejects missing/invalid/expired timestamps and admits fresh ones; the
+// Twilio HMAC verifier accepts a correctly-signed request and rejects a forged one; the Postmark
+// verifier requires BOTH a valid source IP and a constant-time-correct bearer token (a valid token
+// from a bad IP is rejected; a wrong token from a good IP is rejected).
+import { describe, expect, it } from "vitest";
 
 const NOW = Date.parse("2026-06-15T12:00:00Z");
 

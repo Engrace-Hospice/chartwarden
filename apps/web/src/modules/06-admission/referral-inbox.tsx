@@ -1,11 +1,3 @@
-// apps/web/src/modules/06-admission — Referral Inbox (M6 §5.2.1, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md — "Use Work Queue."
-// The queue of inbound referrals across sources, read from GET /api/v1/referrals via the generated
-// typed client. A row opens the referral's admission (built later); the server enforces every scope
-// (no authz on the frontend — ADR-0030). Imports only leaves (@wardenx/ui).
-import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
-import { useNavigate } from "react-router-dom";
 import {
   EmptyState,
   FilterBar,
@@ -16,6 +8,14 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
+// apps/web/src/modules/06-admission — Referral Inbox (M6 §5.2.1, Track B / ADR-0030).
+// Spec: docs/ui/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md — "Use Work Queue."
+// The queue of inbound referrals across sources, read from GET /api/v1/referrals via the generated
+// typed client. A row opens the referral's admission (built later); the server enforces every scope
+// (no authz on the frontend — ADR-0030). Imports only leaves (@wardenx/ui).
+import { useCallback, useEffect, useState } from "react";
+import type { JSX } from "react";
+import { useNavigate } from "react-router-dom";
 
 interface ReferralRow {
   id: string;
@@ -70,8 +70,18 @@ export function ReferralInbox(): JSX.Element {
         </KpiStrip>
       }
       filters={
-        <FilterBar actions={<button type="button" onClick={() => setState("")}>Clear</button>}>
-          <select aria-label="Referral state" value={state} onChange={(e) => setState(e.target.value)}>
+        <FilterBar
+          actions={
+            <button type="button" onClick={() => setState("")}>
+              Clear
+            </button>
+          }
+        >
+          <select
+            aria-label="Referral state"
+            value={state}
+            onChange={(e) => setState(e.target.value)}
+          >
             <option value="">Any state</option>
             <option value="received">received</option>
             <option value="triaged">triaged</option>
@@ -128,7 +138,20 @@ function ReferralTable({
         </thead>
         <tbody>
           {items.map((r) => (
-            <tr key={r.id} onClick={() => onOpen(r.id)} style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}>
+            <tr
+              key={r.id}
+              // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+              role="button"
+              tabIndex={0}
+              onClick={() => onOpen(r.id)}
+              onKeyDown={(ev) => {
+                if (ev.key === "Enter" || ev.key === " ") {
+                  ev.preventDefault();
+                  onOpen(r.id);
+                }
+              }}
+              style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}
+            >
               <td style={td}>{r.id}</td>
               <td style={td}>{r.state}</td>
             </tr>

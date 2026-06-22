@@ -38,7 +38,11 @@ describe("enhanceNarrative — Phase-1 deny-stub", () => {
   });
 
   it("never mutates the narrative even when every per-tenant gate passes (flag still OFF)", () => {
-    const out = enhanceNarrative({ layer1: LAYER1, flags: { layer2: false }, eligibility: ALL_ELIGIBLE });
+    const out = enhanceNarrative({
+      layer1: LAYER1,
+      flags: { layer2: false },
+      eligibility: ALL_ELIGIBLE,
+    });
     expect(out.final).toBe(out.layer1);
   });
 });

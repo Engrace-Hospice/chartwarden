@@ -1,3 +1,10 @@
+import {
+  DetailPageLayout,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/07-care-plan — Care Plan Version History (M7 §5.1, Track B / ADR-0030).
 // Spec: docs/ui/screens/clinical/WARDENX_UI_CARE_PLAN.md — "Use Patient Workspace + Documentation Workspace."
 // The immutable version ledger for a plan: every version with its kind, status, signed-at, and the
@@ -7,7 +14,6 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import { DetailPageLayout, EmptyState, LoadingSpinner, PageHeader, useApiClient } from "@wardenx/ui";
 
 interface Version {
   id: string;
@@ -56,7 +62,10 @@ export function CarePlanVersionHistory(): JSX.Element {
       ) : error ? (
         <EmptyState title="Unavailable" description={error} />
       ) : items.length === 0 ? (
-        <EmptyState title="No versions" description="Versions appear as the care plan is drafted and signed." />
+        <EmptyState
+          title="No versions"
+          description="Versions appear as the care plan is drafted and signed."
+        />
       ) : (
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
           <thead>
@@ -81,7 +90,10 @@ export function CarePlanVersionHistory(): JSX.Element {
                     {v.requiredSignerSet.map((role) => {
                       const signed = v.signatures.some((s) => s.signerRole === role);
                       return (
-                        <span key={role} style={{ marginRight: "0.5rem", color: signed ? "#15803d" : "#b45309" }}>
+                        <span
+                          key={role}
+                          style={{ marginRight: "0.5rem", color: signed ? "#15803d" : "#b45309" }}
+                        >
                           {signed ? "✓" : "○"} {role}
                         </span>
                       );

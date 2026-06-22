@@ -64,7 +64,11 @@ export function decideCosignatureSlaStage(input: {
 }): CosignatureSlaStage {
   // Only requests still actively awaiting cosignature are swept; the rest are terminal or supervisor-
   // gated (a `hard_cap_reached`/`supervisor_released`/`signed` request has already reached its ceiling).
-  if (input.currentStatus !== "routed" && input.currentStatus !== "acknowledged" && input.currentStatus !== "escalated") {
+  if (
+    input.currentStatus !== "routed" &&
+    input.currentStatus !== "acknowledged" &&
+    input.currentStatus !== "escalated"
+  ) {
     return "none";
   }
   const elapsed = hoursBetween(input.routedAtInstant, input.asOfInstant);

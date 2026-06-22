@@ -3,16 +3,7 @@
 // direct patient identifier; tenancy via the admission FK). Cross-module refs (M40 facility, M22
 // document) are plain uuid app-validated; the admission FK is intra-M6. RLS + the M4 write-audit
 // trigger land in M6-T03 (§3.6–3.7).
-import {
-  bigint,
-  date,
-  index,
-  pgTable,
-  smallint,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { bigint, date, index, pgTable, smallint, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { transferDirection } from "../../enums";
 import { organizations } from "../organizations";
 import { admissions } from "./admissions";

@@ -65,7 +65,12 @@ export interface ScoredCandidate {
 
 /** The matcher's decision. */
 export type MatchResult =
-  | { readonly outcome: "hard_block"; readonly existingPatientId: string; readonly matchedOn: DeterministicRule | "probabilistic"; readonly score?: number }
+  | {
+      readonly outcome: "hard_block";
+      readonly existingPatientId: string;
+      readonly matchedOn: DeterministicRule | "probabilistic";
+      readonly score?: number;
+    }
   | { readonly outcome: "soft_review"; readonly reviewCandidates: readonly ScoredCandidate[] }
   | { readonly outcome: "quiet_create"; readonly topScore: number };
 
@@ -141,7 +146,12 @@ export function runMatch(
   if (top === undefined) return { outcome: "quiet_create", topScore: 0 };
 
   if (top.score >= hard) {
-    return { outcome: "hard_block", existingPatientId: top.id, matchedOn: "probabilistic", score: top.score };
+    return {
+      outcome: "hard_block",
+      existingPatientId: top.id,
+      matchedOn: "probabilistic",
+      score: top.score,
+    };
   }
   const reviewCandidates = scored.filter((s) => s.score >= soft && s.score < hard);
   if (reviewCandidates.length > 0) return { outcome: "soft_review", reviewCandidates };

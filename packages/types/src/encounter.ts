@@ -12,8 +12,8 @@
 
 // ── Leaf-safe shared id aliases (single definition site elsewhere; imported for internal use only so
 // the package surface stays unambiguous under `export *` — re-exporting would be a TS2308 collision) ─
-import type { PatientId, AdmissionId, DateRange, LocalDate } from "./admission";
-import type { MembershipId, IsoInstant } from "./care-plan";
+import type { AdmissionId, DateRange, LocalDate, PatientId } from "./admission";
+import type { IsoInstant, MembershipId } from "./care-plan";
 
 // ── Encounter-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ──
 export type EncounterId = string;
@@ -51,13 +51,31 @@ export type EncounterType =
   | "idg_followup";
 
 /** The §2.2 authoring/signing discipline (mirrors `encounter_discipline`). */
-export type EncounterDiscipline = "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+export type EncounterDiscipline =
+  | "rn"
+  | "lpn"
+  | "chha"
+  | "msw"
+  | "chaplain"
+  | "volunteer"
+  | "md"
+  | "np";
 
 /** The §2.3 encounter lifecycle (mirrors `encounter_status`). */
-export type EncounterStatus = "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
+export type EncounterStatus =
+  | "draft"
+  | "finalized"
+  | "signed"
+  | "cosign_pending"
+  | "cosigned"
+  | "voided";
 
 /** The §2.5 D4 late-entry tier (mirrors `late_entry_tier`). */
-export type LateEntryTier = "normal" | "late_entry" | "significant_late_entry" | "administrative_override";
+export type LateEntryTier =
+  | "normal"
+  | "late_entry"
+  | "significant_late_entry"
+  | "administrative_override";
 
 /** Which signature slot an `encounter_signature` row fills (mirrors `signature_kind`). */
 export type SignatureKind = "primary" | "cosignature" | "addendum";
@@ -123,7 +141,9 @@ export type AssembledOutputKind = "primary_finalize" | "addendum_finalize";
 // shared/clinical types admit the clinical disciplines their §2.2 notes describe.
 
 /** Per encounter-type, the disciplines that may author/sign it (§2.2). */
-export const ENCOUNTER_DISCIPLINE_RULES: { readonly [K in EncounterType]: readonly EncounterDiscipline[] } = {
+export const ENCOUNTER_DISCIPLINE_RULES: {
+  readonly [K in EncounterType]: readonly EncounterDiscipline[];
+} = {
   routine_visit: ["rn", "lpn"],
   admission_visit: ["rn"],
   recert_visit: ["rn"],
@@ -270,7 +290,9 @@ export interface EncounterBillability {
  * claim engine holds the visit out of assembly. Resolved within the caller's tenant context.
  */
 export interface BillableEncounterReader {
-  billability(encounterIds: ReadonlyArray<EncounterId>): Promise<ReadonlyArray<EncounterBillability>>;
+  billability(
+    encounterIds: ReadonlyArray<EncounterId>,
+  ): Promise<ReadonlyArray<EncounterBillability>>;
 }
 
 /**
@@ -292,7 +314,7 @@ export interface SignedEncountersReader {
  * direct cross-module calls at the boundary; all downstream communication is the `m8.*` outbox (§2.8).
  */
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface EncounterEventPublisher {}
+export type EncounterEventPublisher = Record<string, never>;
 
 /** One per-encounter mileage row M27 payroll/AP reads (§4.5 D10). */
 export interface MileagePayrollRow {

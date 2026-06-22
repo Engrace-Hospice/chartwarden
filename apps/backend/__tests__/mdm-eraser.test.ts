@@ -9,10 +9,14 @@
 //   • a tenant-offboarding erase reports the org's per-class total.
 import { createInMemoryMdmEraseStore } from "@wardenx/mdm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { __resetErasersForTest, getEraser, validateErasers } from "../src/bootstrap/erasers/registry";
+import {
+  __resetErasersForTest,
+  getEraser,
+  validateErasers,
+} from "../src/bootstrap/erasers/registry";
 import { buildServer } from "../src/bootstrap/index";
-import { registerMdmErasers } from "../src/modules/40-mdm/index";
 import { wireModuleErasers, wireModuleSeams } from "../src/index";
+import { registerMdmErasers } from "../src/modules/40-mdm/index";
 
 const ORG = "org_1";
 

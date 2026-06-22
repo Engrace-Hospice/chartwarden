@@ -63,7 +63,10 @@ export interface WardenxAuthClient {
   };
   passkey: {
     addPasskey(input?: { name?: string }): Promise<AuthResult>;
-    listUserPasskeys(): Promise<{ data?: PasskeyInfo[] | null; error: { message?: string } | null }>;
+    listUserPasskeys(): Promise<{
+      data?: PasskeyInfo[] | null;
+      error: { message?: string } | null;
+    }>;
     deletePasskey(input: { id: string }): Promise<AuthResult>;
   };
 }

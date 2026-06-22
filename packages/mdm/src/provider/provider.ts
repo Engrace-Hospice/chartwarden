@@ -16,14 +16,14 @@
 // time-travel gate (§7.7) is the `BaaStatusProvider` seam (T06) this delegates to. The slice store
 // keeps those deliberately simple here.
 
-import { followMerge, joinOverlay } from "../resolve";
-import type { MdmEntityKind } from "../interfaces/kinds";
 import type {
   IdentifyingFields,
   MdmEntityProvider,
   MdmResolved,
   SearchSpec,
 } from "../interfaces/entity-provider";
+import type { MdmEntityKind } from "../interfaces/kinds";
+import { followMerge, joinOverlay } from "../resolve";
 import type { MdmStore } from "./store";
 
 /**
@@ -106,7 +106,12 @@ export function createMdmEntityProvider(store: MdmStore): MdmEntityProvider {
         const entity = await resolveOne(store, orgId, kind, matchId);
         if (entity !== null) return { kind: "matched_canonical" as const, entity };
       }
-      const { provisionalId } = await store.createProvisional(orgId, kind, identifying, actorUserId);
+      const { provisionalId } = await store.createProvisional(
+        orgId,
+        kind,
+        identifying,
+        actorUserId,
+      );
       return { kind: "created_provisional" as const, provisionalId };
     },
 

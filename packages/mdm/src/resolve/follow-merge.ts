@@ -127,7 +127,9 @@ export function resolveRedirect(
   // `current` is the survivor: mergedIntoId is null, so by the invariant status !== 'merged'.
   assertInvariant(kind, id, current);
   const status = current.status as ResolvedStatus;
-  return current.id === id ? { id: current.id, status } : { id: current.id, resolvedFrom: id, status };
+  return current.id === id
+    ? { id: current.id, status }
+    : { id: current.id, resolvedFrom: id, status };
 }
 
 /** Async loader port over the canonical tables — T05 supplies a Drizzle-backed implementation
@@ -172,5 +174,7 @@ export async function followMerge(
   }
   assertInvariant(kind, id, current);
   const status = current.status as ResolvedStatus;
-  return current.id === id ? { id: current.id, status } : { id: current.id, resolvedFrom: id, status };
+  return current.id === id
+    ? { id: current.id, status }
+    : { id: current.id, resolvedFrom: id, status };
 }

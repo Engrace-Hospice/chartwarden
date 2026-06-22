@@ -194,11 +194,13 @@ describe("Encounter state machine (§2.3)", () => {
   it("void: refused for a non-admin (VOID_NOT_PERMITTED) and for a short reason (VOID_REASON_TOO_SHORT)", () => {
     const longReason = "x".repeat(40);
     expectCode(
-      () => transitionEncounter("draft", { type: "void", isAdmin: false, reason: longReason, at: AT }),
+      () =>
+        transitionEncounter("draft", { type: "void", isAdmin: false, reason: longReason, at: AT }),
       "VOID_NOT_PERMITTED",
     );
     expectCode(
-      () => transitionEncounter("draft", { type: "void", isAdmin: true, reason: "too short", at: AT }),
+      () =>
+        transitionEncounter("draft", { type: "void", isAdmin: true, reason: "too short", at: AT }),
       "VOID_REASON_TOO_SHORT",
     );
   });
@@ -226,7 +228,12 @@ describe("Addendum sub-machine (§2.3)", () => {
   it("draft → finalized → signed; sign emits m8.encounter.addendum_signed", () => {
     const fin = transitionAddendum("draft", { type: "finalize", gatePreviewPassed: true, at: AT });
     expect(fin.to).toBe("finalized");
-    const signed = transitionAddendum("finalized", { type: "sign", gatePassed: true, stepUpFresh: true, at: AT });
+    const signed = transitionAddendum("finalized", {
+      type: "sign",
+      gatePassed: true,
+      stepUpFresh: true,
+      at: AT,
+    });
     expect(signed.to).toBe("signed");
     expect(signed.effects).toContainEqual({ kind: "write_signature", signature: "addendum" });
     expect(outboxEvents(signed.effects)).toEqual(["m8.encounter.addendum_signed"]);
@@ -234,7 +241,8 @@ describe("Addendum sub-machine (§2.3)", () => {
 
   it("rejects an illegal addendum event (ILLEGAL_TRANSITION)", () => {
     expectCode(
-      () => transitionAddendum("signed", { type: "sign", gatePassed: true, stepUpFresh: true, at: AT }),
+      () =>
+        transitionAddendum("signed", { type: "sign", gatePassed: true, stepUpFresh: true, at: AT }),
       "ILLEGAL_TRANSITION",
     );
     expect(ADDENDUM_GRAPH.signed).toEqual([]);
@@ -243,7 +251,9 @@ describe("Addendum sub-machine (§2.3)", () => {
 
 describe("§2.7 synchronous validators", () => {
   it("checkEncounterDisciplinePair enforces the §2.2 legal-pair matrix", () => {
-    expect(() => checkEncounterDisciplinePair({ encounterType: "routine_visit", discipline: "rn" })).not.toThrow();
+    expect(() =>
+      checkEncounterDisciplinePair({ encounterType: "routine_visit", discipline: "rn" }),
+    ).not.toThrow();
     expectCode(
       () => checkEncounterDisciplinePair({ encounterType: "face_to_face", discipline: "rn" }),
       "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
@@ -252,12 +262,19 @@ describe("§2.7 synchronous validators", () => {
 
   it("checkServiceDateNotFuture / checkServiceDateAfterAdmission", () => {
     expect(() => checkServiceDateNotFuture({ serviceDate: "2026-06-20", today: AT })).not.toThrow();
-    expectCode(() => checkServiceDateNotFuture({ serviceDate: "2026-06-22", today: AT }), "SERVICE_DATE_IN_FUTURE");
+    expectCode(
+      () => checkServiceDateNotFuture({ serviceDate: "2026-06-22", today: AT }),
+      "SERVICE_DATE_IN_FUTURE",
+    );
     expect(() =>
       checkServiceDateAfterAdmission({ serviceDate: AT, admissionActivationDate: "2026-06-01" }),
     ).not.toThrow();
     expectCode(
-      () => checkServiceDateAfterAdmission({ serviceDate: "2026-05-31", admissionActivationDate: "2026-06-01" }),
+      () =>
+        checkServiceDateAfterAdmission({
+          serviceDate: "2026-05-31",
+          admissionActivationDate: "2026-06-01",
+        }),
       "SERVICE_DATE_BEFORE_ADMISSION",
     );
   });
@@ -275,27 +292,41 @@ describe("§2.7 synchronous validators", () => {
 
   it("checkVolunteerAssignment: only volunteer_visit needs an active assignment", () => {
     expect(() =>
-      checkVolunteerAssignment({ encounterType: "routine_visit", hasActiveVolunteerAssignment: false }),
+      checkVolunteerAssignment({
+        encounterType: "routine_visit",
+        hasActiveVolunteerAssignment: false,
+      }),
     ).not.toThrow();
     expectCode(
-      () => checkVolunteerAssignment({ encounterType: "volunteer_visit", hasActiveVolunteerAssignment: false }),
+      () =>
+        checkVolunteerAssignment({
+          encounterType: "volunteer_visit",
+          hasActiveVolunteerAssignment: false,
+        }),
       "NO_VOLUNTEER_ASSIGNMENT",
     );
   });
 
   it("checkStepUpFresh: enforces the D13 5-minute window", () => {
     expect(() => checkStepUpFresh({ stepUpAgeSeconds: STEP_UP_MAX_AGE_SECONDS })).not.toThrow();
-    expectCode(() => checkStepUpFresh({ stepUpAgeSeconds: STEP_UP_MAX_AGE_SECONDS + 1 }), "STEP_UP_AUTH_REQUIRED");
+    expectCode(
+      () => checkStepUpFresh({ stepUpAgeSeconds: STEP_UP_MAX_AGE_SECONDS + 1 }),
+      "STEP_UP_AUTH_REQUIRED",
+    );
     expectCode(() => checkStepUpFresh({ stepUpAgeSeconds: null }), "STEP_UP_AUTH_REQUIRED");
   });
 
   it("checkF2fDualWrite / checkEligibleCosignerExists are discipline/flag conditional", () => {
-    expect(() => checkF2fDualWrite({ isF2f: false, faceToFaceEncounterIdPresent: false })).not.toThrow();
+    expect(() =>
+      checkF2fDualWrite({ isF2f: false, faceToFaceEncounterIdPresent: false }),
+    ).not.toThrow();
     expectCode(
       () => checkF2fDualWrite({ isF2f: true, faceToFaceEncounterIdPresent: false }),
       "F2F_DUAL_WRITE_REQUIRED",
     );
-    expect(() => checkEligibleCosignerExists({ discipline: "rn", eligibleCosignerExists: false })).not.toThrow();
+    expect(() =>
+      checkEligibleCosignerExists({ discipline: "rn", eligibleCosignerExists: false }),
+    ).not.toThrow();
     expectCode(
       () => checkEligibleCosignerExists({ discipline: "chha", eligibleCosignerExists: false }),
       "NO_ELIGIBLE_COSIGNER",

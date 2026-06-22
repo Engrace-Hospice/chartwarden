@@ -2,7 +2,7 @@
   "name": "wardenx",
   "private": true,
   "type": "module",
-  "description": "WardenX — multi-tenant hospice EHR SaaS. Architecture-fitness kit + spec corpus + buildable monorepo skeleton.",
+  "description": "WardenX - multi-tenant hospice EHR SaaS. Architecture-fitness kit, spec corpus, and staged implementation monorepo.",
   "engines": {
     "bun": ">=1.3.0"
   },
@@ -29,14 +29,15 @@
     "arch:ddl": "bun run scripts/check-ddl-legality.ts",
     "arch:graph": "depcruise apps packages --config architecture/.dependency-cruiser.cjs --output-type dot | dot -T svg > docs/architecture-graph.svg",
     "arch:gaps": "bun run scripts/check-fitness-gaps.ts",
+    "arch:ai-governance": "bun run scripts/check-ai-governance.ts",
     "arch:parity": "bun run scripts/scaffold-from-manifest.ts --check",
     "arch:plan-integrity": "bun run scripts/check-plan-integrity.ts",
-    "arch:fitness": "bun run arch:parity && bun run arch:boundaries && bun run arch:tables && bun run arch:tenancy && bun run arch:ddl && bun run arch:gaps && bun run arch:plan-integrity && bun run docs:ui && bun run openapi:check",
+    "arch:fitness": "bun run arch:parity && bun run arch:boundaries && bun run arch:tables && bun run arch:tenancy && bun run arch:ddl && bun run arch:gaps && bun run arch:ai-governance && bun run arch:plan-integrity && bun run docs:ui && bun run openapi:check",
     "docs:ui": "bun run scripts/check-ui-screens.ts",
     "openapi:emit": "bun run scripts/openapi/emit.ts",
     "openapi:check": "bun run scripts/openapi/emit.ts --check",
     "client:gen": "openapi-typescript docs/api/openapi.json -o packages/ui/src/core/api/schema.ts",
-    "client:check": "openapi-typescript docs/api/openapi.json -o /tmp/wardenx-client-schema.ts && diff -q packages/ui/src/core/api/schema.ts /tmp/wardenx-client-schema.ts || (echo '✗ packages/ui/src/core/api/schema.ts is out of date. Run: bun run client:gen' && exit 1)"
+    "client:check": "openapi-typescript docs/api/openapi.json -o /tmp/wardenx-client-schema.ts && diff -q packages/ui/src/core/api/schema.ts /tmp/wardenx-client-schema.ts || (echo 'FAIL packages/ui/src/core/api/schema.ts is out of date. Run: bun run client:gen' && exit 1)"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

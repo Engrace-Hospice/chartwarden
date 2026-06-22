@@ -16,20 +16,17 @@
 // ride only the in-app floor — the §4.7 sanitizer strips them for any out-of-band hop.
 
 import {
-  createRecipientResolverRegistry,
   type RecipientResolverFn,
+  createRecipientResolverRegistry,
   resolveRecipients,
 } from "../resolution/recipients";
 import { PLATFORM_NOTIFICATION_TEMPLATES } from "../seed/notification-templates";
-import {
-  type CompositionResolverPorts,
-  registerCompositionResolvers,
-} from "./resolvers";
+import { type CompositionResolverPorts, registerCompositionResolvers } from "./resolvers";
 import {
   type NotificationTemplateRow,
+  type TenantTemplateOverlayRow,
   renderTemplate,
   resolveTemplate,
-  type TenantTemplateOverlayRow,
 } from "./template-render";
 
 /** A producer's typed outbox event as the composer consumes it (§4.11). For the six moved rows the
@@ -190,9 +187,7 @@ const EMPTY_RECIPIENT_PORTS = {
  * validates the composed `payloadType` against the known catalog set before recording it. Returns
  * the composer plus the `recorded` array so tests can assert the composed dispatch + recipients.
  */
-export function createInMemoryCrossModuleComposer(
-  options: InMemoryComposerOptions = {},
-): {
+export function createInMemoryCrossModuleComposer(options: InMemoryComposerOptions = {}): {
   composeAndDispatch: (input: CrossModuleCompositionInput) => Promise<CrossModuleCompositionResult>;
   registry: Map<string, RecipientResolverFn>;
   recorded: RecordedComposedDispatch[];

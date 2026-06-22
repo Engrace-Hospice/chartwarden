@@ -1,20 +1,20 @@
+import type { PatientMutator, PatientReader } from "@wardenx/types";
+import { getSeam, registerSeam } from "../../../bootstrap/index";
 // apps/backend/src/modules/05-patient/seams — M5's published cross-module seams (M5-T07/T08).
 // M5 closes THREE M3/Wave-A boot-gate deny-stubs, all required by validateSeams(): CaseloadProvider
 // (§4.1, T07 — also wires the `caseload_membership` ABAC predicate), PatientReader (§4.8, T08), and
 // PatientMutator (§4.9, T08). `registerPatientSeams` registers them all from the composition root.
 import { type CaseloadSeamDeps, registerCaseloadSeam } from "./caseload-provider";
 import {
-  type PatientReaderStore,
-  createInMemoryPatientReaderStore,
-  createPatientReader,
-} from "./patient-reader";
-import {
   type PatientMutatorStore,
   createInMemoryPatientMutatorStore,
   createPatientMutator,
 } from "./patient-mutator";
-import { registerSeam, getSeam } from "../../../bootstrap/index";
-import type { PatientMutator, PatientReader } from "@wardenx/types";
+import {
+  type PatientReaderStore,
+  createInMemoryPatientReaderStore,
+  createPatientReader,
+} from "./patient-reader";
 
 export {
   type CaseloadStore,

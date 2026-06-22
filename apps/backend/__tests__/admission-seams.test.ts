@@ -1,19 +1,15 @@
-// apps/backend/__tests__/admission-seams.test.ts — M6-T05 (§4.7 reader seams). Each seam is pure
-// orchestration over an injected AdmissionReaderStore; these cover the projection + the derived facts
-// (active-period containment, LOC-day counting, signed/attested booleans, current-LOC selection) and
-// the boot wiring (registerAdmissionSeams replaces the deny-stubs; validateSeams passes).
-import { afterEach, describe, expect, it } from "vitest";
 import type {
   AdmissionSummary,
   CertificationSummary,
   FaceToFaceSummary,
   LevelOfCarePeriodSummary,
 } from "@wardenx/types";
-import {
-  __resetSeamsForTest,
-  getSeam,
-  validateSeams,
-} from "../src/bootstrap/index";
+// apps/backend/__tests__/admission-seams.test.ts — M6-T05 (§4.7 reader seams). Each seam is pure
+// orchestration over an injected AdmissionReaderStore; these cover the projection + the derived facts
+// (active-period containment, LOC-day counting, signed/attested booleans, current-LOC selection) and
+// the boot wiring (registerAdmissionSeams replaces the deny-stubs; validateSeams passes).
+import { afterEach, describe, expect, it } from "vitest";
+import { __resetSeamsForTest, getSeam, validateSeams } from "../src/bootstrap/index";
 import {
   AdmissionNotFoundError,
   type AdmissionReaderSeed,

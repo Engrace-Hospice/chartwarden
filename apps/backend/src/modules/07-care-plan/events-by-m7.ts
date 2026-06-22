@@ -47,7 +47,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m7.care_plan.version_signed",
     moduleOwner: "m7",
-    description: "The last required signer signed a version — drives the M8 encounter gate + M22 PDF.",
+    description:
+      "The last required signer signed a version — drives the M8 encounter gate + M22 PDF.",
     payloadSchema: Type.Object({
       planId: Type.String({ minLength: 1 }),
       versionId: Type.String({ minLength: 1 }),
@@ -60,7 +61,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m7.care_plan.review_due",
     moduleOwner: "m7",
-    description: "The 15-day review enters its warning window at T+13 (M36 alert to IDG coordinator; D10).",
+    description:
+      "The 15-day review enters its warning window at T+13 (M36 alert to IDG coordinator; D10).",
     payloadSchema: Type.Object({
       planId: Type.String({ minLength: 1 }),
       patientId: Type.String({ minLength: 1 }),
@@ -72,7 +74,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m7.care_plan.review_overdue",
     moduleOwner: "m7",
-    description: "The 15-day review gate engaged (T+15) — also pushed over Socket.IO for the live banner (§4.4).",
+    description:
+      "The 15-day review gate engaged (T+15) — also pushed over Socket.IO for the live banner (§4.4).",
     payloadSchema: Type.Object({
       planId: Type.String({ minLength: 1 }),
       patientId: Type.String({ minLength: 1 }),
@@ -85,7 +88,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m7.care_plan.initial_overdue",
     moduleOwner: "m7",
-    description: "The initial 5-day gate engaged — the unsigned initial version blocks new encounter signs.",
+    description:
+      "The initial 5-day gate engaged — the unsigned initial version blocks new encounter signs.",
     payloadSchema: Type.Object({
       planId: Type.String({ minLength: 1 }),
       patientId: Type.String({ minLength: 1 }),
@@ -97,7 +101,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m7.care_plan.discharged",
     moduleOwner: "m7",
-    description: "The care plan was discharged when the admission ended — seeds M16 bereavement plan init.",
+    description:
+      "The care plan was discharged when the admission ended — seeds M16 bereavement plan init.",
     payloadSchema: Type.Object({
       planId: Type.String({ minLength: 1 }),
       patientId: Type.String({ minLength: 1 }),
@@ -110,7 +115,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m7.problem.added",
     moduleOwner: "m7",
-    description: "A problem was added to the working version (M14 packet aggregation / M28 FHIR Condition).",
+    description:
+      "A problem was added to the working version (M14 packet aggregation / M28 FHIR Condition).",
     payloadSchema: Type.Object({
       planId: Type.String({ minLength: 1 }),
       problemId: Type.String({ minLength: 1 }),
@@ -147,7 +153,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m7.goal.added",
     moduleOwner: "m7",
-    description: "A goal was added (carries `source` for patient/agent-stated attribution; M28 FHIR Goal).",
+    description:
+      "A goal was added (carries `source` for patient/agent-stated attribution; M28 FHIR Goal).",
     payloadSchema: Type.Object({
       planId: Type.String({ minLength: 1 }),
       goalId: Type.String({ minLength: 1 }),
@@ -160,7 +167,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m7.goal.updated",
     moduleOwner: "m7",
-    description: "A goal was revised (clinical revised_text added; original_text preserved verbatim, §7.3).",
+    description:
+      "A goal was revised (clinical revised_text added; original_text preserved verbatim, §7.3).",
     payloadSchema: Type.Object({
       planId: Type.String({ minLength: 1 }),
       goalId: Type.String({ minLength: 1 }),
@@ -200,7 +208,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m7.intervention.added",
     moduleOwner: "m7",
-    description: "An intervention was added (carries `discipline`; M11 links it when an order backs it).",
+    description:
+      "An intervention was added (carries `discipline`; M11 links it when an order backs it).",
     payloadSchema: Type.Object({
       planId: Type.String({ minLength: 1 }),
       interventionId: Type.String({ minLength: 1 }),

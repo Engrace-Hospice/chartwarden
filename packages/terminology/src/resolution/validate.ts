@@ -4,7 +4,7 @@
 // Pure: the row was already selected for the caller's `asOf`, so "valid" here means "may this
 // code carry NEW data as of that date". The status→validity mapping is the §7.1 contract.
 
-import type { ConceptStatus, CodeSystemId, ResolvedConcept } from "../interfaces/kinds";
+import type { CodeSystemId, ConceptStatus, ResolvedConcept } from "../interfaces/kinds";
 import type { DeprecationMappingResponse, ValidateResult } from "../interfaces/provider";
 
 /**

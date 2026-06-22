@@ -7,9 +7,9 @@
 import { sql } from "drizzle-orm";
 import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { consentDelegatedAccessScope } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 import { consentRecord } from "./consent-record";
 import { consentRecordRecipient } from "./consent-record-recipient";
 

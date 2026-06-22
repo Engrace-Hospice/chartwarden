@@ -5,20 +5,11 @@
 // activates them). Cross-module refs (M5 patient, M40 referral-source) are plain uuid app-validated,
 // NOT cross-module FKs. `external_message_ref` carries the M29 HL7 provenance for the consumer path
 // (§3.4). RLS + the M4 write-audit trigger land in M6-T03 (§3.6–3.7).
-import {
-  bigint,
-  date,
-  index,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { bigint, date, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { referralSourceChannel, referralStatus } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 import { users } from "../users";
 
 export const referrals = pgTable(

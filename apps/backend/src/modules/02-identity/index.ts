@@ -95,15 +95,15 @@ import type { AdminMembershipReader } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import {
   type IdentityRouteDeps,
-  createContextActorResolver as _ctxActor,
   createInMemoryCollaboratorLinkStore as _collabStore,
+  createContextActorResolver as _ctxActor,
   createInMemoryInvitationStore as _inviteStore,
   createInMemorySessionWriter as _sessionWriter,
   createInMemoryUserDirectory as _userDir,
 } from "./identity-ports";
-import { createInMemoryAuditExecutor as _inMemAudit } from "./step-up-ports";
 import { createDbMembershipRepository as _dbMemberships } from "./membership-repository";
 import { registerIdentityRoutes as _registerIdentityRoutes } from "./routes/identity-routes";
+import { createInMemoryAuditExecutor as _inMemAudit } from "./step-up-ports";
 
 /**
  * Mount the M2 identity REST routes on a server (composition root, via buildServer's

@@ -6,7 +6,7 @@
 // retention event), active→superseded (a newer row supersedes this one), active→revoked (explicit),
 // active→expired (tick). `revoked`/`expired`/`superseded` are terminal for the row; the forward path
 // is a brand-new consent record (renewal chain, distinct from the supersession chain).
-import { type ConsentStatus } from "../interfaces/kinds";
+import type { ConsentStatus } from "../interfaces/kinds";
 import { type Decision, deny, ok } from "./result";
 
 /** A row that has been discarded from `draft` leaves the live table entirely (§2.2.1). */
@@ -40,9 +40,11 @@ export function nextConsentStatus(
   const t = TRANSITIONS[event];
   if (current === t.from) return ok<ConsentRowState>(t.to);
   if (current === "revoked")
-    return deny("revoked_is_terminal", `a revoked consent cannot ${event}; re-grant creates a new record`);
-  if (current === t.to)
-    return deny("already_in_state", `consent is already '${current}'`);
+    return deny(
+      "revoked_is_terminal",
+      `a revoked consent cannot ${event}; re-grant creates a new record`,
+    );
+  if (current === t.to) return deny("already_in_state", `consent is already '${current}'`);
   return deny(
     "invalid_transition",
     `cannot '${event}' a consent in state '${current}' (requires '${t.from}')`,
@@ -56,6 +58,9 @@ export function validateDraftHasNoSupersede(
   supersedesConsentRecordId: string | null,
 ): Decision {
   if (status === "draft" && supersedesConsentRecordId !== null)
-    return deny("draft_cannot_supersede", "a draft consent cannot set supersedes_consent_record_id");
+    return deny(
+      "draft_cannot_supersede",
+      "a draft consent cannot set supersedes_consent_record_id",
+    );
   return ok();
 }

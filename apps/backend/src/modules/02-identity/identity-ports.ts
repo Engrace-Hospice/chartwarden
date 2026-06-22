@@ -101,10 +101,7 @@ export interface MembershipRepository {
    * facet of Global Search (FB-T11). The filter is forward-compatible: when the roster joins name/
    * email (FB-T12), the same `q` extends to those fields server-side.
    */
-  listForOrg(
-    organizationId: string,
-    q?: string,
-  ): Promise<MembershipRecord[]> | MembershipRecord[];
+  listForOrg(organizationId: string, q?: string): Promise<MembershipRecord[]> | MembershipRecord[];
   get(membershipId: string): Promise<MembershipRecord | null> | MembershipRecord | null;
   setStatus(
     membershipId: string,
@@ -363,7 +360,8 @@ export function createInMemoryInvitationStore(
         (p) => p.organizationId === organizationId && p.email === email && !p.consumed,
       ),
     pendingCount: (organizationId) =>
-      [...pending.values()].filter((p) => p.organizationId === organizationId && !p.consumed).length,
+      [...pending.values()].filter((p) => p.organizationId === organizationId && !p.consumed)
+        .length,
     create(input) {
       const invitationId = crypto.randomUUID();
       const token = crypto.randomUUID();

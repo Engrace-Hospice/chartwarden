@@ -80,8 +80,7 @@ export class MissingTemplateVariableError extends Error {
     readonly missing: readonly string[],
   ) {
     super(
-      `missing_template_variable: template '${templateKey}' requires [${missing.join(", ")}] ` +
-        `not present in the source payload`,
+      `missing_template_variable: template '${templateKey}' requires [${missing.join(", ")}] not present in the source payload`,
     );
     this.name = "MissingTemplateVariableError";
   }

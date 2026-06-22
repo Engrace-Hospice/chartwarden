@@ -27,7 +27,11 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const MIGRATIONS = join(__dirname, "..");
-const SQL = ["0001_foundation_rls_roles_partitioning", "0002_feature_flag_global_read", "0006_identity_m2_rls_audit_triggers"]
+const SQL = [
+  "0001_foundation_rls_roles_partitioning",
+  "0002_feature_flag_global_read",
+  "0006_identity_m2_rls_audit_triggers",
+]
   .map((f) => readFileSync(join(MIGRATIONS, `${f}.sql`), "utf8"))
   .join("\n");
 
@@ -59,7 +63,11 @@ function visibleUnder(rows: Row[], model: Model, ctx: string, ctxUser?: string):
 }
 
 /** Whether a session bound to `ctx` may WRITE a row carrying `target` org (WITH CHECK). */
-function mayWrite(model: Model, ctx: string, target: { org?: string | null; parentOrg?: string | null }): boolean {
+function mayWrite(
+  model: Model,
+  ctx: string,
+  target: { org?: string | null; parentOrg?: string | null },
+): boolean {
   switch (model.write) {
     case "append-only":
       return false; // wardenx_app has no UPDATE/DELETE/INSERT path â€” audit writes go via wardenx_audit_writer
@@ -119,7 +127,9 @@ describe("M2-T11 â€” RLS cross-tenant isolation, every PHI table in the slice (Â
         .filter((b) => new RegExp(`ON "${table}"`).test(b));
       expect(blocks.length).toBeGreaterThan(0);
       for (const b of blocks) {
-        const vars = [...b.matchAll(/current_setting\(\s*'((?:app|wardenx)\.[a-z_]+)'/g)].map((m) => m[1]);
+        const vars = [...b.matchAll(/current_setting\(\s*'((?:app|wardenx)\.[a-z_]+)'/g)].map(
+          (m) => m[1],
+        );
         expect(vars.length).toBeGreaterThan(0);
         expect(new Set(vars)).toEqual(new Set(["app.org_id"]));
       }
@@ -153,7 +163,9 @@ describe("M2-T11 â€” RLS cross-tenant isolation, every PHI table in the slice (Â
       { id: "a_flag", org: ORG_A },
       { id: "b_flag", org: ORG_B },
     ];
-    const seenByB = visibleUnder(rows, model, ORG_B).map((r) => r.id).sort();
+    const seenByB = visibleUnder(rows, model, ORG_B)
+      .map((r) => r.id)
+      .sort();
     expect(seenByB).toEqual(["b_flag", "global"]); // org A's flag invisible; the global one shared
   });
 
@@ -178,7 +190,9 @@ describe("M2-T11 â€” RLS cross-tenant isolation, every PHI table in the slice (Â
         { id: "y1", org: null, userId: "user_y" },
       ];
       expect(visibleUnder(rows, model, ORG_A, "user_y").map((r) => r.id)).toEqual(["y1"]);
-      expect(visibleUnder(rows, model, ORG_A, "user_x").some((r) => r.userId === "user_y")).toBe(false);
+      expect(visibleUnder(rows, model, ORG_A, "user_x").some((r) => r.userId === "user_y")).toBe(
+        false,
+      );
     });
   });
 });

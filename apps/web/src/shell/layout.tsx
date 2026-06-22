@@ -1,10 +1,10 @@
+import { DegradedBanner, EmptyState } from "@wardenx/ui";
 // apps/web/src/shell — app-shell chrome (M1, ADR-0030). Renders the primary nav (built from the
 // registered screens), the degraded-mode banner, a header with the session identity, and the routed
 // <Outlet/>. Imports only @wardenx/ui (leaf) + react-router — never a feature module.
 import { useState } from "react";
 import type { FormEvent, JSX, ReactNode } from "react";
 import { Link, Outlet, useNavigate } from "react-router-dom";
-import { DegradedBanner, EmptyState } from "@wardenx/ui";
 import { canSeeScreen } from "./actor-session";
 import type { WebScreenDescriptor } from "./screen-registry";
 import { useSession } from "./session";
@@ -25,7 +25,9 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
         {/* Top-nav global search (FB-T11). Module-free: it only navigates to the registered
             /search route — the Global Search screen (M5) owns the query + facets. */}
         <TopNavSearch />
-        <span className="wx-actor">{session ? (session.displayName ?? session.userId) : "Not signed in"}</span>
+        <span className="wx-actor">
+          {session ? (session.displayName ?? session.userId) : "Not signed in"}
+        </span>
       </header>
       <div className="wx-body">
         <nav className="wx-nav" aria-label="Primary">
@@ -60,6 +62,7 @@ function TopNavSearch(): JSX.Element {
     navigate(term ? `/search?q=${encodeURIComponent(term)}` : "/search");
   }
   return (
+    // biome-ignore lint/a11y/useSemanticElements: role="search" on the form is the intended, widely-supported pattern.
     <form className="wx-topnav-search" onSubmit={submit} role="search">
       <input
         type="search"

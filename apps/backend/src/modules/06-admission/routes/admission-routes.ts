@@ -114,9 +114,18 @@ const COMPLIANCE_OVERRIDE = P("compliance.override");
 
 // §4.6 role-gated ABAC guards (pure over context.roles).
 const ABAC_F2F_ATTEST = requireAbac("f2f.attest", M6_ROLE_PREDICATE_NAMES.f2fAttest) as PreHandler;
-const ABAC_F2F_OVERRIDE = requireAbac("f2f.window_override", M6_ROLE_PREDICATE_NAMES.f2fWindowOverride) as PreHandler;
-const ABAC_DISCHARGE_MD = requireAbac("discharge.cosign_for_cause", M6_ROLE_PREDICATE_NAMES.dischargeMedicalDirector) as PreHandler;
-const ABAC_COMPLIANCE_OVERRIDE = requireAbac("compliance.override", M6_ROLE_PREDICATE_NAMES.complianceWindowOverride) as PreHandler;
+const ABAC_F2F_OVERRIDE = requireAbac(
+  "f2f.window_override",
+  M6_ROLE_PREDICATE_NAMES.f2fWindowOverride,
+) as PreHandler;
+const ABAC_DISCHARGE_MD = requireAbac(
+  "discharge.cosign_for_cause",
+  M6_ROLE_PREDICATE_NAMES.dischargeMedicalDirector,
+) as PreHandler;
+const ABAC_COMPLIANCE_OVERRIDE = requireAbac(
+  "compliance.override",
+  M6_ROLE_PREDICATE_NAMES.complianceWindowOverride,
+) as PreHandler;
 
 /**
  * §6.3 — derive route 39's permission from the body `reason` server-side (the `discharge/` submodule is
@@ -230,19 +239,31 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     return service.resumeAdmission(organizationId, idOf(request), body.ifVersion);
   });
 
-  app.post("/api/v1/admissions/:id/activate", { preHandler: [ADMISSION_ACTIVATE] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const body = parse(AdmissionActivateSchema, request.body);
-    return service.activateAdmission(organizationId, idOf(request), body.ifVersion);
-  });
+  app.post(
+    "/api/v1/admissions/:id/activate",
+    { preHandler: [ADMISSION_ACTIVATE] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const body = parse(AdmissionActivateSchema, request.body);
+      return service.activateAdmission(organizationId, idOf(request), body.ifVersion);
+    },
+  );
 
   // ── Election statement & period (routes 15–21) ───────────────────────────────────────────────
-  app.post("/api/v1/admissions/:id/election-statements", { preHandler: [ELECTION_DRAFT] }, async (request, reply) => {
-    const { organizationId } = actorOf(request);
-    const body = parse(ElectionStatementDraftSchema, request.body);
-    const res = await service.draftElectionStatement(organizationId, idOf(request), body.electionPeriodId);
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/admissions/:id/election-statements",
+    { preHandler: [ELECTION_DRAFT] },
+    async (request, reply) => {
+      const { organizationId } = actorOf(request);
+      const body = parse(ElectionStatementDraftSchema, request.body);
+      const res = await service.draftElectionStatement(
+        organizationId,
+        idOf(request),
+        body.electionPeriodId,
+      );
+      return reply.code(201).send(res);
+    },
+  );
 
   app.get("/api/v1/election-statements/:id", { preHandler: [ELECTION_READ] }, async (request) => {
     const { organizationId } = actorOf(request);
@@ -250,30 +271,46 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     return row ?? notFound(idOf(request));
   });
 
-  app.post("/api/v1/election-statements/:id/sign", { preHandler: [ELECTION_SIGN] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const body = parse(ElectionSignSchema, request.body);
-    return service.signElection(organizationId, idOf(request), body.ifVersion, userId);
-  });
+  app.post(
+    "/api/v1/election-statements/:id/sign",
+    { preHandler: [ELECTION_SIGN] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(ElectionSignSchema, request.body);
+      return service.signElection(organizationId, idOf(request), body.ifVersion, userId);
+    },
+  );
 
-  app.post("/api/v1/election-statements/:id/void", { preHandler: [ELECTION_VOID] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const body = parse(ElectionVoidSchema, request.body);
-    return service.voidElection(organizationId, idOf(request), body.reason, body.ifVersion);
-  });
+  app.post(
+    "/api/v1/election-statements/:id/void",
+    { preHandler: [ELECTION_VOID] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const body = parse(ElectionVoidSchema, request.body);
+      return service.voidElection(organizationId, idOf(request), body.reason, body.ifVersion);
+    },
+  );
 
-  app.get("/api/v1/admissions/:id/election-periods", { preHandler: [ELECTION_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const rows = await service.listElectionPeriods(organizationId, idOf(request));
-    return rows === null ? notFound(idOf(request)) : { items: rows };
-  });
+  app.get(
+    "/api/v1/admissions/:id/election-periods",
+    { preHandler: [ELECTION_READ] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const rows = await service.listElectionPeriods(organizationId, idOf(request));
+      return rows === null ? notFound(idOf(request)) : { items: rows };
+    },
+  );
 
-  app.post("/api/v1/admissions/:id/election-periods", { preHandler: [ELECTION_DRAFT] }, async (request, reply) => {
-    const { organizationId } = actorOf(request);
-    parse(ElectionPeriodCreateSchema, request.body);
-    const res = await service.createElectionPeriod(organizationId, idOf(request));
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/admissions/:id/election-periods",
+    { preHandler: [ELECTION_DRAFT] },
+    async (request, reply) => {
+      const { organizationId } = actorOf(request);
+      parse(ElectionPeriodCreateSchema, request.body);
+      const res = await service.createElectionPeriod(organizationId, idOf(request));
+      return reply.code(201).send(res);
+    },
+  );
 
   app.patch("/api/v1/election-periods/:id", { preHandler: [ELECTION_DRAFT] }, async (request) => {
     const { organizationId } = actorOf(request);
@@ -282,21 +319,25 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   });
 
   // ── CTI (routes 22–27) ───────────────────────────────────────────────────────────────────────
-  app.post("/api/v1/election-periods/:id/cti", { preHandler: [CTI_DRAFT] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const body = parse(CtiDraftSchema, request.body);
-    const res = await service.draftCti(
-      organizationId,
-      {
-        electionPeriodId: idOf(request),
-        hospiceMedicalDirectorId: body.hospiceMedicalDirectorId,
-        attendingPhysicianId: body.attendingPhysicianId,
-        isRecert: body.isRecert,
-      },
-      userId,
-    );
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/election-periods/:id/cti",
+    { preHandler: [CTI_DRAFT] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(CtiDraftSchema, request.body);
+      const res = await service.draftCti(
+        organizationId,
+        {
+          electionPeriodId: idOf(request),
+          hospiceMedicalDirectorId: body.hospiceMedicalDirectorId,
+          attendingPhysicianId: body.attendingPhysicianId,
+          isRecert: body.isRecert,
+        },
+        userId,
+      );
+      return reply.code(201).send(res);
+    },
+  );
 
   app.get("/api/v1/cti/:id", { preHandler: [CTI_READ] }, async (request) => {
     const { organizationId } = actorOf(request);
@@ -304,17 +345,25 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     return row ?? notFound(idOf(request));
   });
 
-  app.post("/api/v1/cti/:id/sign-hospice-md", { preHandler: [CTI_SIGN_HOSPICE_MD] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const body = parse(CtiSignSchema, request.body);
-    return service.signCtiHospiceMd(organizationId, idOf(request), body.ifVersion, userId);
-  });
+  app.post(
+    "/api/v1/cti/:id/sign-hospice-md",
+    { preHandler: [CTI_SIGN_HOSPICE_MD] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(CtiSignSchema, request.body);
+      return service.signCtiHospiceMd(organizationId, idOf(request), body.ifVersion, userId);
+    },
+  );
 
-  app.post("/api/v1/cti/:id/sign-attending", { preHandler: [CTI_SIGN_ATTENDING] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const body = parse(CtiSignSchema, request.body);
-    return service.signCtiAttending(organizationId, idOf(request), body.ifVersion, userId);
-  });
+  app.post(
+    "/api/v1/cti/:id/sign-attending",
+    { preHandler: [CTI_SIGN_ATTENDING] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(CtiSignSchema, request.body);
+      return service.signCtiAttending(organizationId, idOf(request), body.ifVersion, userId);
+    },
+  );
 
   app.post("/api/v1/cti/:id/void", { preHandler: [CTI_VOID] }, async (request) => {
     const { organizationId } = actorOf(request);
@@ -329,18 +378,22 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   });
 
   // ── F2F (routes 28–32) ─────────────────────────────────────────────────────────────────────
-  app.post("/api/v1/admissions/:id/face-to-face", { preHandler: [F2F_SCHEDULE] }, async (request, reply) => {
-    const { organizationId } = actorOf(request);
-    const body = parse(F2fScheduleSchema, request.body);
-    const res = await service.scheduleF2f(organizationId, {
-      admissionId: idOf(request),
-      electionPeriodId: body.electionPeriodId,
-      scheduledClinicianId: body.scheduledClinicianId,
-      clinicianRole: body.clinicianRole,
-      scheduledDate: body.scheduledDate,
-    });
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/admissions/:id/face-to-face",
+    { preHandler: [F2F_SCHEDULE] },
+    async (request, reply) => {
+      const { organizationId } = actorOf(request);
+      const body = parse(F2fScheduleSchema, request.body);
+      const res = await service.scheduleF2f(organizationId, {
+        admissionId: idOf(request),
+        electionPeriodId: body.electionPeriodId,
+        scheduledClinicianId: body.scheduledClinicianId,
+        clinicianRole: body.clinicianRole,
+        scheduledDate: body.scheduledDate,
+      });
+      return reply.code(201).send(res);
+    },
+  );
 
   app.get("/api/v1/face-to-face/:id", { preHandler: [F2F_READ] }, async (request) => {
     const { organizationId } = actorOf(request);
@@ -354,11 +407,15 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     return service.completeF2f(organizationId, idOf(request), body.ifVersion);
   });
 
-  app.post("/api/v1/face-to-face/:id/attest", { preHandler: [F2F_ATTEST, ABAC_F2F_ATTEST] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const body = parse(F2fAttestSchema, request.body);
-    return service.attestF2f(organizationId, idOf(request), body.ifVersion, userId);
-  });
+  app.post(
+    "/api/v1/face-to-face/:id/attest",
+    { preHandler: [F2F_ATTEST, ABAC_F2F_ATTEST] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(F2fAttestSchema, request.body);
+      return service.attestF2f(organizationId, idOf(request), body.ifVersion, userId);
+    },
+  );
 
   app.post(
     "/api/v1/face-to-face/:id/override-window",
@@ -366,17 +423,27 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(F2fOverrideWindowSchema, request.body);
-      return service.overrideF2fWindow(organizationId, idOf(request), body.reason, body.ifVersion, userId);
+      return service.overrideF2fWindow(
+        organizationId,
+        idOf(request),
+        body.reason,
+        body.ifVersion,
+        userId,
+      );
     },
   );
 
   // ── Level of care (routes 33–35) ─────────────────────────────────────────────────────────────
-  app.post("/api/v1/admissions/:id/level-of-care", { preHandler: [LOC_CHANGE] }, async (request, reply) => {
-    const { organizationId } = actorOf(request);
-    const body = parse(LocChangeSchema, request.body);
-    const res = await service.changeLoc(organizationId, idOf(request), body.newLevel);
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/admissions/:id/level-of-care",
+    { preHandler: [LOC_CHANGE] },
+    async (request, reply) => {
+      const { organizationId } = actorOf(request);
+      const body = parse(LocChangeSchema, request.body);
+      const res = await service.changeLoc(organizationId, idOf(request), body.newLevel);
+      return reply.code(201).send(res);
+    },
+  );
 
   app.get("/api/v1/admissions/:id/level-of-care", { preHandler: [LOC_READ] }, async (request) => {
     const { organizationId } = actorOf(request);
@@ -391,49 +458,68 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   });
 
   // ── Revocation / transfer / discharge (routes 36–40) ─────────────────────────────────────────
-  app.post("/api/v1/admissions/:id/revocation", { preHandler: [REVOCATION_CREATE] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    parse(RevocationCreateSchema, request.body);
-    const res = await service.createRevocation(organizationId, idOf(request), userId);
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/admissions/:id/revocation",
+    { preHandler: [REVOCATION_CREATE] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      parse(RevocationCreateSchema, request.body);
+      const res = await service.createRevocation(organizationId, idOf(request), userId);
+      return reply.code(201).send(res);
+    },
+  );
 
-  app.post("/api/v1/admissions/:id/transfer-out", { preHandler: [TRANSFER_OUT] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    parse(TransferOutSchema, request.body);
-    const res = await service.transferOut(organizationId, idOf(request), userId);
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/admissions/:id/transfer-out",
+    { preHandler: [TRANSFER_OUT] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      parse(TransferOutSchema, request.body);
+      const res = await service.transferOut(organizationId, idOf(request), userId);
+      return reply.code(201).send(res);
+    },
+  );
 
-  app.post("/api/v1/admissions/:id/transfer-in", { preHandler: [TRANSFER_IN] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const body = parse(TransferInSchema, request.body);
-    const res = await service.transferIn(
-      organizationId,
-      idOf(request),
-      { priorBenefitPeriodSequence: body.priorBenefitPeriodSequence, priorElectionStartDate: body.priorElectionStartDate },
-      userId,
-    );
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/admissions/:id/transfer-in",
+    { preHandler: [TRANSFER_IN] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(TransferInSchema, request.body);
+      const res = await service.transferIn(
+        organizationId,
+        idOf(request),
+        {
+          priorBenefitPeriodSequence: body.priorBenefitPeriodSequence,
+          priorElectionStartDate: body.priorElectionStartDate,
+        },
+        userId,
+      );
+      return reply.code(201).send(res);
+    },
+  );
 
   // §6.3: the permission key is derived from `reason` server-side (dischargeReasonGuard).
-  app.post("/api/v1/admissions/:id/discharge", { preHandler: [dischargeReasonGuard()] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const body = parse(DischargeCreateSchema, request.body);
-    const res = await service.discharge(
-      organizationId,
-      idOf(request),
-      {
-        reason: body.reason,
-        dischargeDate: body.dischargeDate,
-        narrative: body.narrative,
-        forCauseReason: body.forCauseReason,
-      },
-      userId,
-    );
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/admissions/:id/discharge",
+    { preHandler: [dischargeReasonGuard()] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(DischargeCreateSchema, request.body);
+      const res = await service.discharge(
+        organizationId,
+        idOf(request),
+        {
+          reason: body.reason,
+          dischargeDate: body.dischargeDate,
+          narrative: body.narrative,
+          forCauseReason: body.forCauseReason,
+        },
+        userId,
+      );
+      return reply.code(201).send(res);
+    },
+  );
 
   app.post(
     "/api/v1/discharges/:id/cosign-for-cause",
@@ -446,12 +532,16 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   );
 
   // ── NOR (routes 41–42) ─────────────────────────────────────────────────────────────────────
-  app.post("/api/v1/admissions/:id/nor", { preHandler: [NOR_ACKNOWLEDGE] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    parse(NorAcknowledgeSchema, request.body);
-    const res = await service.acknowledgeNor(organizationId, idOf(request), userId);
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/admissions/:id/nor",
+    { preHandler: [NOR_ACKNOWLEDGE] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      parse(NorAcknowledgeSchema, request.body);
+      const res = await service.acknowledgeNor(organizationId, idOf(request), userId);
+      return reply.code(201).send(res);
+    },
+  );
 
   app.get("/api/v1/admissions/:id/nor", { preHandler: [NOR_READ] }, async (request) => {
     const { organizationId } = actorOf(request);
@@ -460,11 +550,15 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   });
 
   // ── Compliance windows (routes 43–46) ────────────────────────────────────────────────────────
-  app.get("/api/v1/admissions/:id/compliance-windows", { preHandler: [COMPLIANCE_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const rows = await service.listComplianceWindowsForAdmission(organizationId, idOf(request));
-    return rows === null ? notFound(idOf(request)) : { items: rows };
-  });
+  app.get(
+    "/api/v1/admissions/:id/compliance-windows",
+    { preHandler: [COMPLIANCE_READ] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const rows = await service.listComplianceWindowsForAdmission(organizationId, idOf(request));
+      return rows === null ? notFound(idOf(request)) : { items: rows };
+    },
+  );
 
   app.get("/api/v1/compliance-windows", { preHandler: [COMPLIANCE_READ] }, async (request) => {
     const { organizationId } = actorOf(request);
@@ -472,11 +566,15 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     return service.listComplianceWindows(organizationId, q);
   });
 
-  app.post("/api/v1/compliance-windows/:id/close", { preHandler: [COMPLIANCE_CLOSE] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const body = parse(ComplianceCloseSchema, request.body);
-    return service.closeComplianceWindow(organizationId, idOf(request), body.ifVersion);
-  });
+  app.post(
+    "/api/v1/compliance-windows/:id/close",
+    { preHandler: [COMPLIANCE_CLOSE] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const body = parse(ComplianceCloseSchema, request.body);
+      return service.closeComplianceWindow(organizationId, idOf(request), body.ifVersion);
+    },
+  );
 
   app.post(
     "/api/v1/compliance-windows/:id/override",
@@ -484,7 +582,13 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(ComplianceOverrideSchema, request.body);
-      return service.overrideComplianceWindow(organizationId, idOf(request), body.reason, body.ifVersion, userId);
+      return service.overrideComplianceWindow(
+        organizationId,
+        idOf(request),
+        body.reason,
+        body.ifVersion,
+        userId,
+      );
     },
   );
 }

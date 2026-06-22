@@ -1,3 +1,12 @@
+import {
+  EmptyState,
+  KpiCard,
+  KpiStrip,
+  LoadingSpinner,
+  PageHeader,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/08-encounters — Cosignature Queue (M8 §5.5, Track B / ADR-0030).
 // Spec: docs/ui/screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md — "Use Work Queue."
 // The RN / Clinical Supervisor cosignature work queue: one row per encounter awaiting cosignature,
@@ -8,15 +17,6 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  EmptyState,
-  KpiCard,
-  KpiStrip,
-  LoadingSpinner,
-  PageHeader,
-  WorkQueueLayout,
-  useApiClient,
-} from "@wardenx/ui";
 
 interface EncounterRow {
   id: string;
@@ -82,7 +82,10 @@ export function CosignatureQueue(): JSX.Element {
         ) : loading ? (
           <LoadingSpinner />
         ) : items.length === 0 ? (
-          <EmptyState title="No cosignatures" description="No encounters are awaiting your cosignature." />
+          <EmptyState
+            title="No cosignatures"
+            description="No encounters are awaiting your cosignature."
+          />
         ) : (
           <div style={{ padding: "0 1.5rem 1.5rem" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
@@ -101,7 +104,16 @@ export function CosignatureQueue(): JSX.Element {
                   return (
                     <tr
                       key={e.id}
+                      // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                      role="button"
+                      tabIndex={0}
                       onClick={() => navigate(`/patients/${e.patientId}/encounters/${e.id}`)}
+                      onKeyDown={(ev) => {
+                        if (ev.key === "Enter" || ev.key === " ") {
+                          ev.preventDefault();
+                          navigate(`/patients/${e.patientId}/encounters/${e.id}`);
+                        }
+                      }}
                       style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}
                     >
                       <td style={td}>{e.encounterType}</td>

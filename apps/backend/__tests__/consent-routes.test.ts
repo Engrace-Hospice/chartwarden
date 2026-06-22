@@ -87,7 +87,11 @@ afterEach(() => {
 describe("M39-T07 — consent routes (§4.1–4.2, §4.7 gating, §4.12 pagination)", () => {
   it("GET /consent-types returns the catalog for any holder of consent.read_catalog", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/api/v1/consent-types", headers: h("reader") });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/consent-types",
+      headers: h("reader"),
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().data.length).toBeGreaterThan(0);
     await app.close();
@@ -95,7 +99,11 @@ describe("M39-T07 — consent routes (§4.1–4.2, §4.7 gating, §4.12 paginati
 
   it("denies a patient-consents read without consent.read (403)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: `/api/v1/patients/${PAT}/consents`, headers: h("nobody") });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${PAT}/consents`,
+      headers: h("nobody"),
+    });
     expect(res.statusCode).toBe(403);
     await app.close();
   });

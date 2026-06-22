@@ -42,17 +42,23 @@ const CLINICIAN = "55555555-5555-5555-5555-555555555555";
 describe("M6-T08 — §7.3 D4 written-cert deadline (org-TZ, calendar-day)", () => {
   it("is period_start + 2 calendar days at 23:59:59.999 in the org TZ (default America/Los_Angeles)", () => {
     // 2026-08-01 + 2 = 2026-08-03; end of that day in PDT (UTC-7) is 2026-08-04T06:59:59.999Z.
-    expect(computeWrittenCertDeadline("2026-08-01", "America/Los_Angeles")).toBe("2026-08-04T06:59:59.999Z");
+    expect(computeWrittenCertDeadline("2026-08-01", "America/Los_Angeles")).toBe(
+      "2026-08-04T06:59:59.999Z",
+    );
   });
 
   it("computes the same wall-clock deadline in a different org TZ (America/New_York, UTC-4 in summer)", () => {
     // 2026-08-03 23:59:59.999 EDT (UTC-4) = 2026-08-04T03:59:59.999Z.
-    expect(computeWrittenCertDeadline("2026-08-01", "America/New_York")).toBe("2026-08-04T03:59:59.999Z");
+    expect(computeWrittenCertDeadline("2026-08-01", "America/New_York")).toBe(
+      "2026-08-04T03:59:59.999Z",
+    );
   });
 
   it("crosses a DST fall-back boundary without drift (PST is UTC-8)", () => {
     // 2026-11-01 is the US DST change; period_start 2025-11-01 → deadline day 2025-11-03 is firmly PST.
-    expect(endOfOrgDayInstant("2025-11-03", "America/Los_Angeles")).toBe("2025-11-04T07:59:59.999Z");
+    expect(endOfOrgDayInstant("2025-11-03", "America/Los_Angeles")).toBe(
+      "2025-11-04T07:59:59.999Z",
+    );
   });
 
   it("isWrittenCertOverdue is true only strictly after the deadline instant", () => {
@@ -81,21 +87,46 @@ describe("M6-T08 — §7.4 F2F window (CMS 418.22 prior-to window)", () => {
   it("W-F2F-04: the window monitor reports open / missed / attested", () => {
     const w = computeF2fWindow("2026-09-30", "America/Los_Angeles");
     expect(decideF2fWindowStatus({ today: "2026-09-15", window: w, attested: false })).toBe("open");
-    expect(decideF2fWindowStatus({ today: "2026-09-30", window: w, attested: false })).toBe("missed");
-    expect(decideF2fWindowStatus({ today: "2026-09-30", window: w, attested: true })).toBe("attested");
+    expect(decideF2fWindowStatus({ today: "2026-09-30", window: w, attested: false })).toBe(
+      "missed",
+    );
+    expect(decideF2fWindowStatus({ today: "2026-09-30", window: w, attested: true })).toBe(
+      "attested",
+    );
   });
 });
 
 describe("M6-T08 — §7.3 recert sign decision (W-CTI-03/04)", () => {
   it("period 1 with an attending needs the co-sign and never advances the period", () => {
-    const afterMd = decideRecertSign({ sequence: 1, patientHasAttending: true, hospiceMdSigned: true, attendingSigned: false });
-    expect(afterMd).toEqual({ progress: "awaiting_attending", fullySigned: false, activatesPeriod: false });
-    const afterBoth = decideRecertSign({ sequence: 1, patientHasAttending: true, hospiceMdSigned: true, attendingSigned: true });
+    const afterMd = decideRecertSign({
+      sequence: 1,
+      patientHasAttending: true,
+      hospiceMdSigned: true,
+      attendingSigned: false,
+    });
+    expect(afterMd).toEqual({
+      progress: "awaiting_attending",
+      fullySigned: false,
+      activatesPeriod: false,
+    });
+    const afterBoth = decideRecertSign({
+      sequence: 1,
+      patientHasAttending: true,
+      hospiceMdSigned: true,
+      attendingSigned: true,
+    });
     expect(afterBoth).toEqual({ progress: "signed", fullySigned: true, activatesPeriod: false });
   });
 
   it("a recert (period ≥ 2) is fully signed on the MD signature and advances its period", () => {
-    expect(decideRecertSign({ sequence: 2, patientHasAttending: false, hospiceMdSigned: true, attendingSigned: false })).toEqual({
+    expect(
+      decideRecertSign({
+        sequence: 2,
+        patientHasAttending: false,
+        hospiceMdSigned: true,
+        attendingSigned: false,
+      }),
+    ).toEqual({
       progress: "signed",
       fullySigned: true,
       activatesPeriod: true,
@@ -109,7 +140,13 @@ describe("M6-T08 — §7.3 recert sign decision (W-CTI-03/04)", () => {
 function seedBackend(period: { sequence: number; periodStartDate: string }) {
   return createInMemoryAdmissionBackend({
     records: [
-      { id: ADMISSION, organizationId: ORG, kind: "admission", state: "pending", patientId: "pat_1" },
+      {
+        id: ADMISSION,
+        organizationId: ORG,
+        kind: "admission",
+        state: "pending",
+        patientId: "pat_1",
+      },
       {
         id: PERIOD,
         organizationId: ORG,
@@ -126,14 +163,24 @@ function seedBackend(period: { sequence: number; periodStartDate: string }) {
 describe("M6-T08 — §7.3 slice: mark-late echoes the D4 deadline; recert sign advances the period", () => {
   it("mark-late computes writtenCertDeadlineAt from the period start in org TZ", async () => {
     const { service } = seedBackend({ sequence: 2, periodStartDate: "2026-08-01" });
-    const cti = await service.draftCti(ORG, { electionPeriodId: PERIOD, hospiceMedicalDirectorId: MD_ID, isRecert: true }, "u1");
+    const cti = await service.draftCti(
+      ORG,
+      { electionPeriodId: PERIOD, hospiceMedicalDirectorId: MD_ID, isRecert: true },
+      "u1",
+    );
     const late = await service.markCtiLate(ORG, cti.id, cti.version);
-    expect(late.writtenCertDeadlineAt).toBe(computeWrittenCertDeadline("2026-08-01", "America/Los_Angeles"));
+    expect(late.writtenCertDeadlineAt).toBe(
+      computeWrittenCertDeadline("2026-08-01", "America/Los_Angeles"),
+    );
   });
 
   it("W-CTI-03: signing a recert CTI moves it to signed, advances the period, emits both events", async () => {
     const { service, events } = seedBackend({ sequence: 2, periodStartDate: "2026-08-01" });
-    const cti = await service.draftCti(ORG, { electionPeriodId: PERIOD, hospiceMedicalDirectorId: MD_ID, isRecert: true }, "u1");
+    const cti = await service.draftCti(
+      ORG,
+      { electionPeriodId: PERIOD, hospiceMedicalDirectorId: MD_ID, isRecert: true },
+      "u1",
+    );
     const signed = await service.signCtiHospiceMd(ORG, cti.id, cti.version, "u1");
     expect(signed.state).toBe("signed");
     expect(events).toContain("m6.cti.signed");
@@ -146,7 +193,12 @@ describe("M6-T08 — §7.3 slice: mark-late echoes the D4 deadline; recert sign 
     const { service, events } = seedBackend({ sequence: 1, periodStartDate: "2026-06-20" });
     const cti = await service.draftCti(
       ORG,
-      { electionPeriodId: PERIOD, hospiceMedicalDirectorId: MD_ID, attendingPhysicianId: ATTENDING, isRecert: false },
+      {
+        electionPeriodId: PERIOD,
+        hospiceMedicalDirectorId: MD_ID,
+        attendingPhysicianId: ATTENDING,
+        isRecert: false,
+      },
       "u1",
     );
     const afterMd = await service.signCtiHospiceMd(ORG, cti.id, cti.version, "u1");
@@ -199,7 +251,13 @@ const F2F_SEED = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 function makeServer() {
   const backend = createInMemoryAdmissionBackend({
     records: [
-      { id: ADMISSION, organizationId: ORG, kind: "admission", state: "active", patientId: "pat_1" },
+      {
+        id: ADMISSION,
+        organizationId: ORG,
+        kind: "admission",
+        state: "active",
+        patientId: "pat_1",
+      },
       {
         id: PERIOD,
         organizationId: ORG,
@@ -242,7 +300,11 @@ function makeServer() {
   return { app, backend };
 }
 
-const COMPLIANCE = { "x-test-user": "compliance_1", "x-test-org": ORG, "x-test-roles": "compliance_officer" };
+const COMPLIANCE = {
+  "x-test-user": "compliance_1",
+  "x-test-org": ORG,
+  "x-test-roles": "compliance_officer",
+};
 
 beforeEach(() => {
   resetAuthorizationContract();
@@ -280,7 +342,10 @@ describe("M6-T08 — route layer", () => {
       method: "POST",
       url: `/api/v1/face-to-face/${F2F_SEED}/override-window`,
       headers: COMPLIANCE,
-      payload: { reason: "Documentation supports a same-day override per chart review.", ifVersion: 1 },
+      payload: {
+        reason: "Documentation supports a same-day override per chart review.",
+        ifVersion: 1,
+      },
     });
     expect(res.statusCode).toBe(200);
     expect(backend.events).toContain("m6.f2f.window_overridden");

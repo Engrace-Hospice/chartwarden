@@ -24,11 +24,31 @@ const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Typ
 
 // §2.2 vocab mirrors (string-literal unions; the canonical types live in @wardenx/types).
 const ENCOUNTER_TYPE = [
-  "routine_visit", "admission_visit", "recert_visit", "face_to_face", "telephonic", "lpn_visit",
-  "chha_visit", "msw_assessment", "msw_followup", "chaplain_assessment", "chaplain_visit",
-  "volunteer_visit", "bereavement_contact", "idg_followup",
+  "routine_visit",
+  "admission_visit",
+  "recert_visit",
+  "face_to_face",
+  "telephonic",
+  "lpn_visit",
+  "chha_visit",
+  "msw_assessment",
+  "msw_followup",
+  "chaplain_assessment",
+  "chaplain_visit",
+  "volunteer_visit",
+  "bereavement_contact",
+  "idg_followup",
 ] as const;
-const ENCOUNTER_DISCIPLINE = ["rn", "lpn", "chha", "msw", "chaplain", "volunteer", "md", "np"] as const;
+const ENCOUNTER_DISCIPLINE = [
+  "rn",
+  "lpn",
+  "chha",
+  "msw",
+  "chaplain",
+  "volunteer",
+  "md",
+  "np",
+] as const;
 
 const Text = (min = 1, max = 4000) => Type.String({ minLength: min, maxLength: max });
 
@@ -73,7 +93,18 @@ export const UpdateSelectionsSchema = Type.Object({
 // §2.2 — numeric-direct vitals (the `vitals` row shape; numerics-as-text preserve their unit). "Clinically
 // not indicated" is a first-class value: a non-empty field list carries a documented reason, not a NULL.
 const VITAL_UNIT = [
-  "mmHg", "bpm", "breaths_per_min", "c", "f", "percent_o2", "kg", "lb", "cm", "in", "mg_dl", "mmol_l",
+  "mmHg",
+  "bpm",
+  "breaths_per_min",
+  "c",
+  "f",
+  "percent_o2",
+  "kg",
+  "lb",
+  "cm",
+  "in",
+  "mg_dl",
+  "mmol_l",
 ] as const;
 const PAIN_SCALE = ["nrs_0_10", "flacc", "painad", "verbal_descriptor"] as const;
 const Int = Type.Optional(Type.Integer());

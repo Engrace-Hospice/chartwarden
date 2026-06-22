@@ -10,12 +10,12 @@
 // 60s Valkey cache are T07. The cache is a pure performance layer over this same decision, so it
 // changes nothing about the gate result.
 
-import { type BaaRecordRow, NO_MATCH_RESULT, decideBaaStatus, defaultBaaRequired } from "./gate";
 import type {
   BaaEntityKind,
   BaaStatusProvider,
   BaaStatusResult,
 } from "../interfaces/baa-status-provider";
+import { type BaaRecordRow, NO_MATCH_RESULT, decideBaaStatus, defaultBaaRequired } from "./gate";
 import type { BaaStore } from "./store";
 
 /**

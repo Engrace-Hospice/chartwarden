@@ -4,7 +4,7 @@
 // JSON tree persisted as `hearthnote_selection`); `AssemblyContext` is the resolved patient/visit context
 // (name, date, location, numeric-direct vitals) interpolated into phrase templates. `assembleLayer1`
 // (see ./assemble) is a pure function of (template, selection, context) → byte-identical `narrative`.
-import type { EncounterType, EncounterDiscipline } from "@wardenx/types";
+import type { EncounterDiscipline, EncounterType } from "@wardenx/types";
 
 /** A scalar interpolated into a `${slot}` — strings stay verbatim, numbers are stringified once. */
 export type SlotValue = string | number;

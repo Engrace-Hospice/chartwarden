@@ -8,13 +8,13 @@ import { describe, expect, it } from "vitest";
 import {
   COSIGNATURE_GRAPH,
   COSIGNATURE_SLA_HOURS,
+  type CosignatureState,
   addHours,
   computeCosignatureSlaDeadlines,
   decideCosignatureSlaStage,
   hoursBetween,
   planCosignatureCreation,
   transitionCosignature,
-  type CosignatureState,
 } from "../src/modules/08-encounters/cosignature/index";
 import { EncounterStateError } from "../src/modules/08-encounters/lifecycle/index";
 
@@ -78,9 +78,18 @@ describe("M8-T06 §2.4 cosignature SLA clock", () => {
   });
 
   it("never sweeps a terminal / locked / released request", () => {
-    for (const status of ["pending", "hard_cap_reached", "supervisor_released", "signed"] as const) {
+    for (const status of [
+      "pending",
+      "hard_cap_reached",
+      "supervisor_released",
+      "signed",
+    ] as const) {
       expect(
-        decideCosignatureSlaStage({ routedAtInstant: ROUTED, asOfInstant: addHours(ROUTED, 72), currentStatus: status }),
+        decideCosignatureSlaStage({
+          routedAtInstant: ROUTED,
+          asOfInstant: addHours(ROUTED, 72),
+          currentStatus: status,
+        }),
       ).toBe("none");
     }
   });
@@ -116,21 +125,38 @@ describe("M8-T06 §2.4 cosignature-request state machine", () => {
   });
 
   it("escalate flips to escalated and emits cosignature_escalated", () => {
-    const t = transitionCosignature("routed", { type: "escalate", supervisorMembershipId: SUP, at: "2026-06-22" });
+    const t = transitionCosignature("routed", {
+      type: "escalate",
+      supervisorMembershipId: SUP,
+      at: "2026-06-22",
+    });
     expect(t.to).toBe("escalated");
     expect(outboxEvents(t.effects)).toEqual(["m8.encounter.cosignature_escalated"]);
   });
 
   it("reachHardCap flips to hard_cap_reached and emits the critical event", () => {
-    const t = transitionCosignature("escalated", { type: "reachHardCap", supervisorMembershipId: SUP, at: "2026-06-23" });
+    const t = transitionCosignature("escalated", {
+      type: "reachHardCap",
+      supervisorMembershipId: SUP,
+      at: "2026-06-23",
+    });
     expect(t.to).toBe("hard_cap_reached");
     expect(outboxEvents(t.effects)).toEqual(["m8.encounter.cosignature_hard_cap_reached"]);
   });
 
   it("an event from a state that does not accept it is ILLEGAL_TRANSITION", () => {
-    expectCode(() => transitionCosignature("signed", { type: "acknowledge", at: "2026-06-21" }), "ILLEGAL_TRANSITION");
     expectCode(
-      () => transitionCosignature("routed", { type: "release", isSupervisor: true, reason: "x".repeat(40), at: "2026-06-23" }),
+      () => transitionCosignature("signed", { type: "acknowledge", at: "2026-06-21" }),
+      "ILLEGAL_TRANSITION",
+    );
+    expectCode(
+      () =>
+        transitionCosignature("routed", {
+          type: "release",
+          isSupervisor: true,
+          reason: "x".repeat(40),
+          at: "2026-06-23",
+        }),
       "ILLEGAL_TRANSITION",
     );
   });
@@ -140,7 +166,11 @@ describe("M8-T06 §7.2 — LPN routine visit with 24-hour cosignature", () => {
   it("routed → acknowledged → signed; encounter cosign handled separately (no cosigned outbox here)", () => {
     const ack = transitionCosignature("routed", { type: "acknowledge", at: "2026-06-21" });
     expect(ack.to).toBe("acknowledged");
-    const signed = transitionCosignature(ack.to, { type: "sign", isQualifiedRn: true, at: "2026-06-21" });
+    const signed = transitionCosignature(ack.to, {
+      type: "sign",
+      isQualifiedRn: true,
+      at: "2026-06-21",
+    });
     expect(signed.to).toBe("signed");
     expect(timestampFields(signed.effects)).toEqual(["signed_at"]);
     // The `m8.encounter.cosigned` outbox is the encounter machine's recordCosignature, not the request.
@@ -149,7 +179,12 @@ describe("M8-T06 §7.2 — LPN routine visit with 24-hour cosignature", () => {
 
   it("a non-RN cosignature attempt is rejected NOT_COSIGN_ELIGIBLE", () => {
     expectCode(
-      () => transitionCosignature("acknowledged", { type: "sign", isQualifiedRn: false, at: "2026-06-21" }),
+      () =>
+        transitionCosignature("acknowledged", {
+          type: "sign",
+          isQualifiedRn: false,
+          at: "2026-06-21",
+        }),
       "NOT_COSIGN_ELIGIBLE",
     );
   });
@@ -162,28 +197,51 @@ describe("M8-T06 §7.3 — 48-hour hard cap and supervisor release", () => {
     let state: CosignatureState = "routed";
 
     // T+12h: soft alert (no state change) — driven by the SLA clock decision.
-    expect(decideCosignatureSlaStage({ routedAtInstant: ROUTED, asOfInstant: addHours(ROUTED, 12), currentStatus: state })).toBe(
-      "overdue",
-    );
+    expect(
+      decideCosignatureSlaStage({
+        routedAtInstant: ROUTED,
+        asOfInstant: addHours(ROUTED, 12),
+        currentStatus: state,
+      }),
+    ).toBe("overdue");
 
     // T+24h: escalation.
-    expect(decideCosignatureSlaStage({ routedAtInstant: ROUTED, asOfInstant: addHours(ROUTED, 24), currentStatus: state })).toBe(
-      "escalate",
-    );
-    const esc = transitionCosignature(state, { type: "escalate", supervisorMembershipId: SUP, at: "2026-06-22" });
+    expect(
+      decideCosignatureSlaStage({
+        routedAtInstant: ROUTED,
+        asOfInstant: addHours(ROUTED, 24),
+        currentStatus: state,
+      }),
+    ).toBe("escalate");
+    const esc = transitionCosignature(state, {
+      type: "escalate",
+      supervisorMembershipId: SUP,
+      at: "2026-06-22",
+    });
     state = esc.to;
     expect(state).toBe("escalated");
 
     // T+48h: hard cap; encounter locked.
-    expect(decideCosignatureSlaStage({ routedAtInstant: ROUTED, asOfInstant: addHours(ROUTED, 48), currentStatus: state })).toBe(
-      "hard_cap",
-    );
-    const cap = transitionCosignature(state, { type: "reachHardCap", supervisorMembershipId: SUP, at: "2026-06-23" });
+    expect(
+      decideCosignatureSlaStage({
+        routedAtInstant: ROUTED,
+        asOfInstant: addHours(ROUTED, 48),
+        currentStatus: state,
+      }),
+    ).toBe("hard_cap");
+    const cap = transitionCosignature(state, {
+      type: "reachHardCap",
+      supervisorMembershipId: SUP,
+      at: "2026-06-23",
+    });
     state = cap.to;
     expect(state).toBe("hard_cap_reached");
 
     // Locked: a qualified RN cannot sign until a supervisor releases.
-    expectCode(() => transitionCosignature(state, { type: "sign", isQualifiedRn: true, at: "2026-06-23" }), "COSIGNATURE_LOCKED");
+    expectCode(
+      () => transitionCosignature(state, { type: "sign", isQualifiedRn: true, at: "2026-06-23" }),
+      "COSIGNATURE_LOCKED",
+    );
 
     // Supervisor releases with a documented reason ≥ 40 chars.
     const rel = transitionCosignature(state, {
@@ -194,10 +252,16 @@ describe("M8-T06 §7.3 — 48-hour hard cap and supervisor release", () => {
     });
     state = rel.to;
     expect(state).toBe("supervisor_released");
-    expect(rel.effects.some((e) => e.kind === "set_field" && e.field === "supervisor_released_reason")).toBe(true);
+    expect(
+      rel.effects.some((e) => e.kind === "set_field" && e.field === "supervisor_released_reason"),
+    ).toBe(true);
 
     // Release does NOT cosign — an actual RN signature is still required.
-    const signed = transitionCosignature(state, { type: "sign", isQualifiedRn: true, at: "2026-06-23" });
+    const signed = transitionCosignature(state, {
+      type: "sign",
+      isQualifiedRn: true,
+      at: "2026-06-23",
+    });
     expect(signed.to).toBe("signed");
   });
 

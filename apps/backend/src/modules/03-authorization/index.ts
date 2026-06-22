@@ -61,18 +61,18 @@ export { createDbMembershipRoleStore } from "./membership-role-store";
 
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
+import { createInMemoryAuditExecutor } from "../02-identity/index";
 import {
   type AuthzRouteDeps,
-  createFixedPermissionResolver as _fixedPerms,
   createInMemoryAuditorSessionMinter as _auditorMinter,
   createInMemoryBreakGlassStore as _breakGlass,
-  createInMemoryComplianceNotifier as _notifier,
   createInMemoryEngagementStore as _engagements,
+  createFixedPermissionResolver as _fixedPerms,
+  createInMemoryComplianceNotifier as _notifier,
 } from "./authz-ports";
 import { createDbMembershipRoleStore as _dbMembershipRoles } from "./membership-role-store";
 import { createDbRoleStore as _dbRoleStore } from "./role-store";
 import { registerAuthorizationRoutes as _registerAuthzRoutes } from "./routes/authz-routes";
-import { createInMemoryAuditExecutor } from "../02-identity/index";
 
 /**
  * Mount the M3 authorization REST routes on a server (composition root, via buildServer's

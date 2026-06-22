@@ -1,3 +1,4 @@
+import type { LocalDate } from "@wardenx/types";
 // apps/backend/src/modules/06-admission/state-machines/validation.ts — M6-T04 (§2.4).
 //
 // §2.4 has two kinds of rule: SYNCHRONOUS (run inside the service before any DB write, raise an inline
@@ -6,12 +7,7 @@
 // machines compose, plus the deferred catalog as data (the events the transitions emit). No IO: every
 // fact the rule needs (an M5 patient lookup, an M38 ICD-10 check, an M39 consent read) is resolved by
 // the caller and passed in as a boolean/value — M6 never imports another module's schema (§2.5).
-import {
-  AdmissionStateError,
-  type M6ErrorCode,
-  require_,
-} from "./errors";
-import type { LocalDate } from "@wardenx/types";
+import { AdmissionStateError, type M6ErrorCode, require_ } from "./errors";
 
 // ── §2.4.1 synchronous rule catalog (rule id → the §2.4 failure code it raises) ─────────────────────
 
@@ -94,7 +90,9 @@ export function checkRepresentativeAuthority(input: {
 }
 
 /** R-EL-02: cannot elect a patient already actively elected at another ProviderEntity in this org. */
-export function checkNoConcurrentElection(input: { existingActiveElectionElsewhere: boolean }): void {
+export function checkNoConcurrentElection(input: {
+  existingActiveElectionElsewhere: boolean;
+}): void {
   require_(
     !input.existingActiveElectionElsewhere,
     "PATIENT_ALREADY_ELECTED",
@@ -150,7 +148,9 @@ export function checkAttendingSignature(input: {
 }
 
 /** R-F2F-01: the F2F performer must be a hospice MD or hospice NP (never the attending). */
-export function checkF2fPerformer(input: { performerRole: "hospice_md" | "hospice_np" | "attending" }): void {
+export function checkF2fPerformer(input: {
+  performerRole: "hospice_md" | "hospice_np" | "attending";
+}): void {
   require_(
     input.performerRole === "hospice_md" || input.performerRole === "hospice_np",
     "F2F_INVALID_PERFORMER",
@@ -170,7 +170,8 @@ export function checkF2fWindow(input: {
 }): { withinWindow: boolean } {
   const daysBefore = daysBetween(input.encounterDate, input.periodStart);
   const withinWindow =
-    daysBefore >= F2F_PRIOR_WINDOW.latestDaysBefore && daysBefore <= F2F_PRIOR_WINDOW.earliestDaysBefore;
+    daysBefore >= F2F_PRIOR_WINDOW.latestDaysBefore &&
+    daysBefore <= F2F_PRIOR_WINDOW.earliestDaysBefore;
   if (!withinWindow && !input.hasOverride) {
     throw new AdmissionStateError(
       "F2F_OUTSIDE_WINDOW",

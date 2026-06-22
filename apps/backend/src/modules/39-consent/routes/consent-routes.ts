@@ -1,3 +1,4 @@
+import { requirePermission, requireStepUp } from "@wardenx/auth";
 // apps/backend/src/modules/39-consent/routes/consent-routes.ts — M39-T07 the consent route inventory
 // (M39 spec §4.1–4.2; the §4.7 permission handshake; §4.11 ABAC; §4.12 cursor pagination).
 //
@@ -15,7 +16,6 @@ import type {
   RevokeConsentInput,
 } from "@wardenx/consent";
 import { ConsentRouteError } from "@wardenx/consent";
-import { requirePermission, requireStepUp } from "@wardenx/auth";
 import { UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -84,69 +84,92 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   });
 
   // 6. POST /api/v1/patients/:patientId/consents — create a DRAFT (no step-up; not yet signed).
-  app.post("/api/v1/patients/:patientId/consents", { preHandler: [AUTHOR] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const { patientId } = parse(PatientIdParamsSchema, request.params);
-    const body = parse(CreateDraftBodySchema, request.body);
-    const draft = await service.createDraft(organizationId, {
-      patientId,
-      typeKey: body.typeKey,
-      // The TypeBox union validated these at runtime; the cast re-applies the literal types.
-      grantorKind: body.grantorKind as ConsentGrantorKind,
-      captureMethod: body.captureMethod as ConsentCaptureMethod,
-      scopeDescriptor: body.scopeDescriptor,
-      createdById: userId,
-    });
-    reply.code(201);
-    return { data: draft };
-  });
+  app.post(
+    "/api/v1/patients/:patientId/consents",
+    { preHandler: [AUTHOR] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { patientId } = parse(PatientIdParamsSchema, request.params);
+      const body = parse(CreateDraftBodySchema, request.body);
+      const draft = await service.createDraft(organizationId, {
+        patientId,
+        typeKey: body.typeKey,
+        // The TypeBox union validated these at runtime; the cast re-applies the literal types.
+        grantorKind: body.grantorKind as ConsentGrantorKind,
+        captureMethod: body.captureMethod as ConsentCaptureMethod,
+        scopeDescriptor: body.scopeDescriptor,
+        createdById: userId,
+      });
+      reply.code(201);
+      return { data: draft };
+    },
+  );
 
   // 8. POST /api/v1/consents/:consentId/sign — sign (consent.sign + STEP-UP, §4.1). Emits m39.consent.signed (T08).
-  app.post("/api/v1/consents/:consentId/sign", { preHandler: [SIGN, SIGN_STEP_UP] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { consentId } = parse(ConsentIdParamsSchema, request.params);
-    try {
-      return { data: await service.signConsent(organizationId, consentId, userId, new Date().toISOString()) };
-    } catch (e) {
-      mapError(e);
-    }
-  });
+  app.post(
+    "/api/v1/consents/:consentId/sign",
+    { preHandler: [SIGN, SIGN_STEP_UP] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { consentId } = parse(ConsentIdParamsSchema, request.params);
+      try {
+        return {
+          data: await service.signConsent(
+            organizationId,
+            consentId,
+            userId,
+            new Date().toISOString(),
+          ),
+        };
+      } catch (e) {
+        mapError(e);
+      }
+    },
+  );
 
   // 10. POST /api/v1/consents/:consentId/revoke — revoke (consent.revoke + STEP-UP for staff, §4.1).
-  app.post("/api/v1/consents/:consentId/revoke", { preHandler: [REVOKE, REVOKE_STEP_UP] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { consentId } = parse(ConsentIdParamsSchema, request.params);
-    const body = parse(RevokeBodySchema, request.body);
-    try {
-      return {
-        data: await service.revokeConsent(
-          organizationId,
-          consentId,
-          {
-            actorIsStaff: body.revokedByKind === "staff",
-            revokedByKind: body.revokedByKind as RevokeConsentInput["revokedByKind"],
-            reasonText: body.reasonText,
-            evidenceDocumentId: body.evidenceDocumentId ?? null,
-            revokedById: userId,
-          },
-          new Date().toISOString(),
-        ),
-      };
-    } catch (e) {
-      mapError(e);
-    }
-  });
+  app.post(
+    "/api/v1/consents/:consentId/revoke",
+    { preHandler: [REVOKE, REVOKE_STEP_UP] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { consentId } = parse(ConsentIdParamsSchema, request.params);
+      const body = parse(RevokeBodySchema, request.body);
+      try {
+        return {
+          data: await service.revokeConsent(
+            organizationId,
+            consentId,
+            {
+              actorIsStaff: body.revokedByKind === "staff",
+              revokedByKind: body.revokedByKind as RevokeConsentInput["revokedByKind"],
+              reasonText: body.reasonText,
+              evidenceDocumentId: body.evidenceDocumentId ?? null,
+              revokedById: userId,
+            },
+            new Date().toISOString(),
+          ),
+        };
+      } catch (e) {
+        mapError(e);
+      }
+    },
+  );
 
   // 23. GET /api/v1/consents/eval-audit/by-patient — the consent-DECISION audit, CURSOR-paginated
   // (§4.12; NOT the §164.528 disclosure sink — that is M4's, ADR-0013).
-  app.get("/api/v1/consents/eval-audit/by-patient", { preHandler: [READ_EVAL_AUDIT] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(EvalAuditQuerySchema, request.query);
-    const page = await service.listEvalAudit(
-      organizationId,
-      { patientId: q.patientId },
-      { cursor: q.cursor, pageSize: q.pageSize ?? 50 },
-    );
-    return { data: page.rows, nextCursor: page.nextCursor };
-  });
+  app.get(
+    "/api/v1/consents/eval-audit/by-patient",
+    { preHandler: [READ_EVAL_AUDIT] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(EvalAuditQuerySchema, request.query);
+      const page = await service.listEvalAudit(
+        organizationId,
+        { patientId: q.patientId },
+        { cursor: q.cursor, pageSize: q.pageSize ?? 50 },
+      );
+      return { data: page.rows, nextCursor: page.nextCursor };
+    },
+  );
 }

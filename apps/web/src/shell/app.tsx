@@ -1,11 +1,4 @@
-// apps/web/src/shell — the app shell (M1, ADR-0030). Composes the cross-cutting providers
-// (error boundary, correlation id, API client, session, feature flags, system status) around a
-// react-router router built from the screen registry. The shell reads the registry but never
-// imports a feature module — modules register their screens at composition (apps/web/src/main.tsx).
-import { createElement, useMemo } from "react";
-import type { JSX, ReactNode } from "react";
-import { RouterProvider, createBrowserRouter } from "react-router-dom";
-import type { RouteObject } from "react-router-dom";
+import type { ScreenRegistry } from "@wardenx/types";
 import {
   ApiClientProvider,
   CorrelationIdProvider,
@@ -14,7 +7,14 @@ import {
   SystemStatusProvider,
 } from "@wardenx/ui";
 import type { ApiClient, FeatureFlags, SystemStatusComponent } from "@wardenx/ui";
-import type { ScreenRegistry } from "@wardenx/types";
+// apps/web/src/shell — the app shell (M1, ADR-0030). Composes the cross-cutting providers
+// (error boundary, correlation id, API client, session, feature flags, system status) around a
+// react-router router built from the screen registry. The shell reads the registry but never
+// imports a feature module — modules register their screens at composition (apps/web/src/main.tsx).
+import { createElement, useMemo } from "react";
+import type { JSX, ReactNode } from "react";
+import { RouterProvider, createBrowserRouter } from "react-router-dom";
+import type { RouteObject } from "react-router-dom";
 import { AppLayout } from "./layout";
 import { RoleHome } from "./role-home";
 import type { WebScreen } from "./screen-registry";
@@ -37,7 +37,8 @@ export interface AppShellProps {
 }
 
 function newCorrelationId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+    return crypto.randomUUID();
   return "cid-shell";
 }
 
@@ -63,7 +64,10 @@ export function AppShell({
         element: <AppLayout screens={chromed} overlay={chromeOverlay} />,
         children: [
           { index: true, element: <RoleHome screens={chromed} /> },
-          ...chromed.map((s) => ({ path: s.path.replace(/^\//, ""), element: createElement(s.screen) })),
+          ...chromed.map((s) => ({
+            path: s.path.replace(/^\//, ""),
+            element: createElement(s.screen),
+          })),
         ],
       },
     ];

@@ -12,11 +12,7 @@
 //
 // `audit_event` is HELPER-ONLY: this route file never SELECTs the schema directly; it consumes the
 // typed query port from @wardenx/audit (the only sanctioned reader).
-import {
-  type AuditContext,
-  type AuditExecutor,
-  type AuditQuery,
-} from "@wardenx/audit";
+import type { AuditContext, AuditExecutor, AuditQuery } from "@wardenx/audit";
 import { requirePermission } from "@wardenx/auth";
 import { UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -78,30 +74,22 @@ export function registerAuditRoutes(app: FastifyInstance, deps: AuditRouteDeps):
   }
 
   // --- §4.2 audit-event search (the Compliance / survey / incident query) ------------------
-  app.get(
-    "/api/v1/audit/events",
-    { preHandler: [auditRead] },
-    async (request) => {
-      const { organizationId } = actorOf(request);
-      const q = parse(AuditEventsQuerySchema, request.query);
-      await metaLogIfElevated(request, "GET /api/v1/audit/events");
-      return deps.query.searchEvents(organizationId, q);
-    },
-  );
+  app.get("/api/v1/audit/events", { preHandler: [auditRead] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    const q = parse(AuditEventsQuerySchema, request.query);
+    await metaLogIfElevated(request, "GET /api/v1/audit/events");
+    return deps.query.searchEvents(organizationId, q);
+  });
 
   // --- §4.2 single-event detail (the before/after diff) -----------------------------------
-  app.get(
-    "/api/v1/audit/events/:id",
-    { preHandler: [auditRead] },
-    async (request) => {
-      const { organizationId } = actorOf(request);
-      const { id } = parse(AuditEventParamsSchema, request.params);
-      await metaLogIfElevated(request, "GET /api/v1/audit/events/:id");
-      const event = await deps.query.getEvent(organizationId, id);
-      if (!event) throw new WardenXError("EVENT_NOT_FOUND", "audit event not found", 404);
-      return event;
-    },
-  );
+  app.get("/api/v1/audit/events/:id", { preHandler: [auditRead] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    const { id } = parse(AuditEventParamsSchema, request.params);
+    await metaLogIfElevated(request, "GET /api/v1/audit/events/:id");
+    const event = await deps.query.getEvent(organizationId, id);
+    if (!event) throw new WardenXError("EVENT_NOT_FOUND", "audit event not found", 404);
+    return event;
+  });
 
   // --- §10.2 "who touched this chart" — per-patient internal access history ----------------
   app.get(

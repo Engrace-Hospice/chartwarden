@@ -1,12 +1,3 @@
-// apps/web/src/modules/08-encounters — My Drafts (M8 §5.1, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md — "Use Work Queue."
-// The author's open encounter drafts: one row per in-flight draft with its type · discipline · service
-// date · late-entry tier. A row opens the Encounter Read view (the authoring surface §5.2 fills in as
-// its write path hardens). Reads GET /api/v1/encounters/my-drafts via the typed client; the server
-// scopes to the calling author (ADR-0030 — no authz on the frontend). Imports only leaves (@wardenx/ui).
-import { useEffect, useState } from "react";
-import type { JSX } from "react";
-import { useNavigate } from "react-router-dom";
 import {
   EmptyState,
   KpiCard,
@@ -16,6 +7,15 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
+// apps/web/src/modules/08-encounters — My Drafts (M8 §5.1, Track B / ADR-0030).
+// Spec: docs/ui/screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md — "Use Work Queue."
+// The author's open encounter drafts: one row per in-flight draft with its type · discipline · service
+// date · late-entry tier. A row opens the Encounter Read view (the authoring surface §5.2 fills in as
+// its write path hardens). Reads GET /api/v1/encounters/my-drafts via the typed client; the server
+// scopes to the calling author (ADR-0030 — no authz on the frontend). Imports only leaves (@wardenx/ui).
+import { useEffect, useState } from "react";
+import type { JSX } from "react";
+import { useNavigate } from "react-router-dom";
 
 interface EncounterRow {
   id: string;
@@ -87,7 +87,16 @@ export function MyDrafts(): JSX.Element {
                 {items.map((e) => (
                   <tr
                     key={e.id}
+                    // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                    role="button"
+                    tabIndex={0}
                     onClick={() => navigate(`/patients/${e.patientId}/encounters/${e.id}`)}
+                    onKeyDown={(ev) => {
+                      if (ev.key === "Enter" || ev.key === " ") {
+                        ev.preventDefault();
+                        navigate(`/patients/${e.patientId}/encounters/${e.id}`);
+                      }
+                    }}
                     style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}
                   >
                     <td style={td}>{e.encounterType}</td>

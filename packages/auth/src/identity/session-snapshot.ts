@@ -19,9 +19,9 @@ export async function getIdentitySession(
   auth: IdentityAuth,
   nodeHeaders: IncomingHttpHeaders,
 ): Promise<IdentitySessionSnapshot | null> {
-  const result = (await auth.api.getSession({ headers: fromNodeHeaders(nodeHeaders) })) as
-    | { session?: { id: string; userId: string; activeOrganizationId?: string | null } }
-    | null;
+  const result = (await auth.api.getSession({ headers: fromNodeHeaders(nodeHeaders) })) as {
+    session?: { id: string; userId: string; activeOrganizationId?: string | null };
+  } | null;
   const session = result?.session;
   if (!session) return null;
   return {

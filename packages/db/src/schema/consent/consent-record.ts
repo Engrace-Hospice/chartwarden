@@ -21,14 +21,14 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import {
-  consentTypeKey,
-  consentStatus,
-  consentGrantorKind,
   consentCaptureMethod,
+  consentGrantorKind,
+  consentStatus,
+  consentTypeKey,
 } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 import { consentTypeCatalog } from "./consent-type-catalog";
 
 export const consentRecord = pgTable(

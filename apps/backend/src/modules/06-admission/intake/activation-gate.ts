@@ -7,7 +7,11 @@
 // "Done means" — the gate is verified by re-fetch after out-of-band mutation).
 
 /** The §4.2.2 precondition codes the activation gate reports as unmet. */
-export type ActivationGap = "election_signed" | "nor_acknowledged" | "cti_signed" | "attending_signed";
+export type ActivationGap =
+  | "election_signed"
+  | "nor_acknowledged"
+  | "cti_signed"
+  | "attending_signed";
 
 /** Period-1 bundle facts the gate decides over (loaded org-scoped; never from client input). */
 export interface ActivationFacts {

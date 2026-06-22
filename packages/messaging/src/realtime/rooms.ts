@@ -115,7 +115,8 @@ export function computeRoomSet(input: RoomSetInput): string[] {
   for (const pe of input.onCallProviderEntityIds ?? []) rooms.add(onCallRoom(pe));
   for (const pe of input.billingProviderEntityIds ?? []) rooms.add(billingRoom(pe));
   if (input.isFieldSafetySupervisor) rooms.add(fieldSafetyRoom(input.orgId));
-  if (input.isIdgAttendee) for (const loc of input.defaultLocationIds ?? []) rooms.add(idgRoom(loc));
+  if (input.isIdgAttendee)
+    for (const loc of input.defaultLocationIds ?? []) rooms.add(idgRoom(loc));
 
   return [...rooms].sort();
 }

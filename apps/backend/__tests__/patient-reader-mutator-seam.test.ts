@@ -6,7 +6,11 @@ import type { PatientIdentity } from "@wardenx/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { NotImplementedError } from "../src/bootstrap/seams/providers";
-import { REQUIRED_SEAMS, __resetSeamsForTest, validateSeams } from "../src/bootstrap/seams/registry";
+import {
+  REQUIRED_SEAMS,
+  __resetSeamsForTest,
+  validateSeams,
+} from "../src/bootstrap/seams/registry";
 import { wireModuleSeams } from "../src/index";
 import {
   createInMemoryPatientMutatorStore,
@@ -71,7 +75,15 @@ describe("M5-T08 — PatientReader + PatientMutator close the boot-gate (§4.8, 
     validateSeams();
     const r = getPatientReader();
     expect((await r.findByMrn({ organizationId: ORG, mrn: "MRN-S" }))?.id).toBe(SURVIVOR);
-    expect((await r.findByExternalMrn({ organizationId: ORG, assigningAuthority: "st_anthony", value: "EXT-1" }))?.id).toBe(SURVIVOR);
+    expect(
+      (
+        await r.findByExternalMrn({
+          organizationId: ORG,
+          assigningAuthority: "st_anthony",
+          value: "EXT-1",
+        })
+      )?.id,
+    ).toBe(SURVIVOR);
   });
 
   it("W-M5-18 merge-redirect is transparent — a lookup of a merged patient returns the survivor", async () => {
@@ -86,7 +98,11 @@ describe("M5-T08 — PatientReader + PatientMutator close the boot-gate (§4.8, 
     registerPatientSeams({ readerStore: seededReader() });
     validateSeams();
     // both survivor and merged share ssn? only survivor has ssnLast4; merged redirects → just survivor
-    const results = await getPatientReader().findBySsnLast4AndDob({ organizationId: ORG, ssnLast4: "6789", dateOfBirth: "1990-01-01" });
+    const results = await getPatientReader().findBySsnLast4AndDob({
+      organizationId: ORG,
+      ssnLast4: "6789",
+      dateOfBirth: "1990-01-01",
+    });
     expect(results.map((p) => p.id)).toEqual([SURVIVOR]);
   });
 
@@ -111,7 +127,9 @@ describe("M5-T08 — PatientReader + PatientMutator close the boot-gate (§4.8, 
     expect(result.strippedFields.sort()).toEqual(["mrn", "ssn", "status"]);
     expect(result.appliedFields.sort()).toEqual(["legalLastName", "preferredLanguage"]);
     expect(applied[0]?.fields).toEqual({ legalLastName: "Byron", preferredLanguage: "en" });
-    expect(events).toEqual([{ patientId: SURVIVOR, changed: ["legalLastName", "preferredLanguage"] }]);
+    expect(events).toEqual([
+      { patientId: SURVIVOR, changed: ["legalLastName", "preferredLanguage"] },
+    ]);
   });
 
   it("a pure-stripped patch is a no-op (no demographics applied, no event)", async () => {
@@ -133,7 +151,9 @@ describe("M5-T08 — PatientReader + PatientMutator close the boot-gate (§4.8, 
 
   it("without registration both seams boot FAIL-CLOSED (deny-stubs throw)", () => {
     validateSeams();
-    expect(() => getPatientReader().findByMrn({ organizationId: ORG, mrn: "x" })).toThrow(NotImplementedError);
+    expect(() => getPatientReader().findByMrn({ organizationId: ORG, mrn: "x" })).toThrow(
+      NotImplementedError,
+    );
     expect(() =>
       getPatientMutator().apply({
         organizationId: ORG,

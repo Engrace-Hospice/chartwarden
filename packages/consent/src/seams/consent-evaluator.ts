@@ -13,9 +13,9 @@
 // are FAIL-CLOSED by construction (§4.3.1 / ADR-0014): a flag is `false` (disclose) only when an
 // authoritative backing says so; SUD + family-violence are decided here, HIV/MH/genetic are delegated
 // to M5's PrivacyFlag snapshot (read via PatientReader, wired T06) and default to redact.
-import { type ConsentTypeKey, CONSENT_TYPE_STRUCTURE } from "../interfaces/kinds";
-import { evaluatePostDeathScope } from "../validation/rules";
+import { CONSENT_TYPE_STRUCTURE, type ConsentTypeKey } from "../interfaces/kinds";
 import { hasActiveRecipient } from "../lifecycle/recipient-machine";
+import { evaluatePostDeathScope } from "../validation/rules";
 
 /** The session classes a consent decision may be made under (M2 owns the canonical set; kept as a
  *  permissive union here so the leaf seam stays decoupled from M2's internals). */
@@ -128,7 +128,15 @@ export interface ConsentEvaluator {
       exportRequestId: string;
     };
   }): Promise<
-    Map<string, { allowed: boolean; consentRecordId?: string; expiresAt?: string; denyReason?: ConsentDenyReason }>
+    Map<
+      string,
+      {
+        allowed: boolean;
+        consentRecordId?: string;
+        expiresAt?: string;
+        denyReason?: ConsentDenyReason;
+      }
+    >
   >;
 }
 
@@ -251,7 +259,8 @@ export function createConsentEvaluator(store: ConsentStore): ConsentEvaluator {
       allowed: true,
       consentRecordId: record.id,
       consentVersionAtEval: record.version,
-      expiresAt: record.expiresAtMs !== null ? new Date(record.expiresAtMs).toISOString() : undefined,
+      expiresAt:
+        record.expiresAtMs !== null ? new Date(record.expiresAtMs).toISOString() : undefined,
       scopeDescriptor: record.scopeDescriptor,
     };
   }
@@ -275,7 +284,8 @@ export function createConsentEvaluator(store: ConsentStore): ConsentEvaluator {
     return governing.record.recipients.some((r) => {
       if (r.removedAtMs !== null) return false;
       if (r.expiresAtMs !== null && r.expiresAtMs <= args.asOfMs) return false;
-      if (args.recipientResolvedId && r.recipientResolvedId === args.recipientResolvedId) return true;
+      if (args.recipientResolvedId && r.recipientResolvedId === args.recipientResolvedId)
+        return true;
       if (args.recipientClientId && r.recipientClientId === args.recipientClientId) return true;
       return false;
     });
@@ -336,7 +346,12 @@ export function createConsentEvaluator(store: ConsentStore): ConsentEvaluator {
       const asOfMs = toMs(args.asOf);
       const out = new Map<
         string,
-        { allowed: boolean; consentRecordId?: string; expiresAt?: string; denyReason?: ConsentDenyReason }
+        {
+          allowed: boolean;
+          consentRecordId?: string;
+          expiresAt?: string;
+          denyReason?: ConsentDenyReason;
+        }
       >();
       for (const patientId of args.patientIds) {
         const r = await evaluateOne({
@@ -372,7 +387,8 @@ export function createInMemoryConsentStore(
   const store: ConsentStore = {
     async consentsFor({ organizationId, patientId, typeKey }) {
       return dataset.consents.filter(
-        (c) => c.organizationId === organizationId && c.patientId === patientId && c.typeKey === typeKey,
+        (c) =>
+          c.organizationId === organizationId && c.patientId === patientId && c.typeKey === typeKey,
       );
     },
     async isPatientDeceased({ patientId }) {

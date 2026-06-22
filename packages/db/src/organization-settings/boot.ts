@@ -1,3 +1,4 @@
+import type { NewOrganizationSettingsRegistryEntry } from "../schema/organization-settings-registry";
 // @wardenx/db — Organization-settings registry boot UPSERT (M1 Foundation §3.15.2).
 //
 // Projects the validated ORGANIZATION_SETTINGS_REGISTRY into the rows persisted in the
@@ -6,7 +7,6 @@
 // land with the backend bootstrap (M1-T09/T10), so this helper stays a pure leaf here
 // and is wired then — mirroring the injected-auditor pattern in packages/tenancy.
 import { ORGANIZATION_SETTINGS_REGISTRY } from "./registry";
-import type { NewOrganizationSettingsRegistryEntry } from "../schema/organization-settings-registry";
 
 /** The persisted form of a registry entry — `registry_entry_json` carries the metadata. */
 export function toRegistryRows(

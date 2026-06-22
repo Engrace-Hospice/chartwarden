@@ -14,15 +14,46 @@ export interface CenteredCardLayoutProps {
   children: ReactNode;
   footer?: ReactNode;
 }
-export function CenteredCardLayout({ brand, children, footer }: CenteredCardLayoutProps): JSX.Element {
+export function CenteredCardLayout({
+  brand,
+  children,
+  footer,
+}: CenteredCardLayoutProps): JSX.Element {
   return (
-    <div className="wx-auth-flow" style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: "1.5rem" }}>
-      <div style={{ width: "100%", maxWidth: "24rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-        {brand ? <div className="wx-auth-brand" style={{ textAlign: "center" }}>{brand}</div> : null}
-        <div className="wx-auth-card" style={{ border: "1px solid #e5e7eb", borderRadius: "0.75rem", padding: "1.5rem", background: "#fff" }}>
+    <div
+      className="wx-auth-flow"
+      style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: "1.5rem" }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "24rem",
+          display: "flex",
+          flexDirection: "column",
+          gap: "1rem",
+        }}
+      >
+        {brand ? (
+          <div className="wx-auth-brand" style={{ textAlign: "center" }}>
+            {brand}
+          </div>
+        ) : null}
+        <div
+          className="wx-auth-card"
+          style={{
+            border: "1px solid #e5e7eb",
+            borderRadius: "0.75rem",
+            padding: "1.5rem",
+            background: "#fff",
+          }}
+        >
           {children}
         </div>
-        {footer ? <div className="wx-auth-footer" style={{ textAlign: "center", fontSize: "0.85rem" }}>{footer}</div> : null}
+        {footer ? (
+          <div className="wx-auth-footer" style={{ textAlign: "center", fontSize: "0.85rem" }}>
+            {footer}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -36,15 +67,48 @@ export interface CenteredStatusLayoutProps {
   actions?: ReactNode;
   correlationId?: string;
 }
-export function CenteredStatusLayout({ icon, headline, explanation, actions, correlationId }: CenteredStatusLayoutProps): JSX.Element {
+export function CenteredStatusLayout({
+  icon,
+  headline,
+  explanation,
+  actions,
+  correlationId,
+}: CenteredStatusLayoutProps): JSX.Element {
   return (
-    <div className="wx-system-page" role="status" style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: "1.5rem", textAlign: "center" }}>
-      <div style={{ maxWidth: "28rem", display: "flex", flexDirection: "column", gap: "0.75rem", alignItems: "center" }}>
-        {icon ? <div className="wx-system-icon" style={{ fontSize: "2rem" }}>{icon}</div> : null}
+    <div
+      className="wx-system-page"
+      // biome-ignore lint/a11y/useSemanticElements: role="status" is an ARIA live region with no single semantic-element equivalent.
+      role="status"
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        padding: "1.5rem",
+        textAlign: "center",
+      }}
+    >
+      <div
+        style={{
+          maxWidth: "28rem",
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.75rem",
+          alignItems: "center",
+        }}
+      >
+        {icon ? (
+          <div className="wx-system-icon" style={{ fontSize: "2rem" }}>
+            {icon}
+          </div>
+        ) : null}
         <h1 style={{ margin: 0, fontSize: "1.25rem" }}>{headline}</h1>
         {explanation ? <p style={{ margin: 0, color: "#6b7280" }}>{explanation}</p> : null}
-        {actions ? <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>{actions}</div> : null}
-        {correlationId ? <code style={{ fontSize: "0.75rem", color: "#9ca3af" }}>{correlationId}</code> : null}
+        {actions ? (
+          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>{actions}</div>
+        ) : null}
+        {correlationId ? (
+          <code style={{ fontSize: "0.75rem", color: "#9ca3af" }}>{correlationId}</code>
+        ) : null}
       </div>
     </div>
   );
@@ -58,14 +122,22 @@ export interface WorkQueueLayoutProps {
   table: ReactNode;
   detail?: ReactNode;
 }
-export function WorkQueueLayout({ header, kpis, filters, table, detail }: WorkQueueLayoutProps): JSX.Element {
+export function WorkQueueLayout({
+  header,
+  kpis,
+  filters,
+  table,
+  detail,
+}: WorkQueueLayoutProps): JSX.Element {
   return (
     <div className="wx-work-queue" style={fillColumn}>
       {header}
       {kpis}
       {filters}
       <div style={splitRow}>
-        <div className="wx-work-table" style={{ flex: 1, overflow: "auto" }}>{table}</div>
+        <div className="wx-work-table" style={{ flex: 1, overflow: "auto" }}>
+          {table}
+        </div>
         {detail}
       </div>
     </div>
@@ -80,13 +152,28 @@ export interface DashboardLayoutProps {
   table?: ReactNode;
   aside?: ReactNode;
 }
-export function DashboardLayout({ header, kpis, charts, table, aside }: DashboardLayoutProps): JSX.Element {
+export function DashboardLayout({
+  header,
+  kpis,
+  charts,
+  table,
+  aside,
+}: DashboardLayoutProps): JSX.Element {
   return (
     <div className="wx-dashboard" style={fillColumn}>
       {header}
       {kpis}
       <div style={splitRow}>
-        <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: "1rem", padding: "1rem 1.5rem" }}>
+        <div
+          style={{
+            flex: 1,
+            overflow: "auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: "1rem",
+            padding: "1rem 1.5rem",
+          }}
+        >
           {charts}
           {table}
         </div>
@@ -104,13 +191,24 @@ export interface StepperWorkflowLayoutProps {
   context?: ReactNode;
   footer?: ReactNode;
 }
-export function StepperWorkflowLayout({ header, steps, children, context, footer }: StepperWorkflowLayoutProps): JSX.Element {
+export function StepperWorkflowLayout({
+  header,
+  steps,
+  children,
+  context,
+  footer,
+}: StepperWorkflowLayoutProps): JSX.Element {
   return (
     <div className="wx-stepper" style={fillColumn}>
       {header}
       <div style={splitRow}>
         {steps}
-        <div className="wx-center-workspace" style={{ flex: 1, overflow: "auto", padding: "1.5rem" }}>{children}</div>
+        <div
+          className="wx-center-workspace"
+          style={{ flex: 1, overflow: "auto", padding: "1.5rem" }}
+        >
+          {children}
+        </div>
         {context}
       </div>
       {footer}
@@ -124,7 +222,11 @@ export interface PatientWorkspaceLayoutProps {
   contextHeader?: ReactNode;
   children: ReactNode;
 }
-export function PatientWorkspaceLayout({ banner, contextHeader, children }: PatientWorkspaceLayoutProps): JSX.Element {
+export function PatientWorkspaceLayout({
+  banner,
+  contextHeader,
+  children,
+}: PatientWorkspaceLayoutProps): JSX.Element {
   return (
     <div className="wx-patient-workspace" style={fillColumn}>
       {banner}
@@ -144,10 +246,21 @@ export function ConversationView({ list, children, detail }: ConversationViewPro
   return (
     <div className="wx-conversation" style={fillColumn}>
       <div style={splitRow}>
-        <div className="wx-conversation-list" style={{ width: "18rem", flexShrink: 0, borderRight: "1px solid #e5e7eb", overflow: "auto" }}>
+        <div
+          className="wx-conversation-list"
+          style={{
+            width: "18rem",
+            flexShrink: 0,
+            borderRight: "1px solid #e5e7eb",
+            overflow: "auto",
+          }}
+        >
           {list}
         </div>
-        <div className="wx-conversation-thread" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div
+          className="wx-conversation-thread"
+          style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}
+        >
           {children}
         </div>
         {detail}
@@ -163,12 +276,25 @@ export interface AdminSplitLayoutProps {
   children: ReactNode;
   detail?: ReactNode;
 }
-export function AdminSplitLayout({ header, list, children, detail }: AdminSplitLayoutProps): JSX.Element {
+export function AdminSplitLayout({
+  header,
+  list,
+  children,
+  detail,
+}: AdminSplitLayoutProps): JSX.Element {
   return (
     <div className="wx-admin-split" style={fillColumn}>
       {header}
       <div style={splitRow}>
-        <div className="wx-admin-list" style={{ width: "18rem", flexShrink: 0, borderRight: "1px solid #e5e7eb", overflow: "auto" }}>
+        <div
+          className="wx-admin-list"
+          style={{
+            width: "18rem",
+            flexShrink: 0,
+            borderRight: "1px solid #e5e7eb",
+            overflow: "auto",
+          }}
+        >
           {list}
         </div>
         <div className="wx-admin-matrix" style={{ flex: 1, overflow: "auto", padding: "1.5rem" }}>

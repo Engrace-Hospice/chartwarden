@@ -13,20 +13,20 @@
 // scenario asserts the engine/data contract the provider owns and points at the live suite.
 import { describe, expect, it } from "vitest";
 import {
-  // §7.1 / §7.2 / §7.3 / §7.6 — the merge-aware read surface over the shared backend
-  createInMemoryMdmBackend,
-  createMdmEntityProvider,
-  type SeedCanonical,
-  // §7.5 — the NPPES drift engine + nightly processor
-  detectNppesDrift,
-  runNppesNightlyDelta,
   type NppesNightlyPorts,
+  type SeedCanonical,
   // §7.7 — the focused BAA gate
   createBaaStatusProvider,
   createInMemoryBaaStore,
+  // §7.1 / §7.2 / §7.3 / §7.6 — the merge-aware read surface over the shared backend
+  createInMemoryMdmBackend,
   // §7.8 — D7 tenant-offboarding destruction
   createInMemoryMdmEraseStore,
+  createMdmEntityProvider,
+  // §7.5 — the NPPES drift engine + nightly processor
+  detectNppesDrift,
   eraseTenantMdm,
+  runNppesNightlyDelta,
 } from "../src/index";
 
 const SURVIVOR = "11111111-1111-1111-1111-111111111111";
@@ -151,11 +151,27 @@ describe("§7.4 Tenants cannot write canonical (engine half; DB grant → live s
 describe("§7.5 NPPES drift detection", () => {
   it("a deactivated NPI is flagged and flips the canonical, alerting affected tenants", async () => {
     const known = [
-      { npi: "1234567893", canonicalId: SURVIVOR, status: "active" as const, lastName: "Roe", specialtyTaxonomy: null },
+      {
+        npi: "1234567893",
+        canonicalId: SURVIVOR,
+        status: "active" as const,
+        lastName: "Roe",
+        specialtyTaxonomy: null,
+      },
     ];
     const drift = detectNppesDrift(
       known,
-      new Map([["1234567893", { npi: "1234567893", status: "deactivated" as const, lastName: "Roe", specialtyTaxonomy: null }]]),
+      new Map([
+        [
+          "1234567893",
+          {
+            npi: "1234567893",
+            status: "deactivated" as const,
+            lastName: "Roe",
+            specialtyTaxonomy: null,
+          },
+        ],
+      ]),
     );
     expect(drift[0]?.kind).toBe("deactivated");
 

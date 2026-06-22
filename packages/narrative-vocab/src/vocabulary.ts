@@ -67,7 +67,8 @@ export const VOCABULARY: readonly VocabEntry[] = [
   {
     code: "nv.resp.dyspnea",
     label: "Respiratory — dyspnea on exertion",
-    phrase: "${patient} reports dyspnea on exertion and uses oxygen at ${o2_lpm} L/min via nasal cannula",
+    phrase:
+      "${patient} reports dyspnea on exertion and uses oxygen at ${o2_lpm} L/min via nasal cannula",
     category: "observation",
     bodySystem: "respiratory",
     disciplines: SKILLED,
@@ -94,7 +95,8 @@ export const VOCABULARY: readonly VocabEntry[] = [
   {
     code: "nv.gi.intact",
     label: "Gastrointestinal — appetite adequate, no distress",
-    phrase: "${patient} reports an adequate appetite with no nausea, and the last bowel movement was ${last_bm}",
+    phrase:
+      "${patient} reports an adequate appetite with no nausea, and the last bowel movement was ${last_bm}",
     category: "observation",
     bodySystem: "gastrointestinal",
     disciplines: SKILLED,
@@ -121,7 +123,8 @@ export const VOCABULARY: readonly VocabEntry[] = [
   {
     code: "nv.integ.wound",
     label: "Integumentary — pressure injury present",
-    phrase: "${patient} has a stage ${wound_stage} pressure injury at the ${wound_site}, dressed per orders",
+    phrase:
+      "${patient} has a stage ${wound_stage} pressure injury at the ${wound_site}, dressed per orders",
     category: "observation",
     bodySystem: "integumentary",
     disciplines: NURSING,
@@ -130,7 +133,8 @@ export const VOCABULARY: readonly VocabEntry[] = [
   {
     code: "nv.msk.limited",
     label: "Musculoskeletal — limited mobility",
-    phrase: "${patient} has limited mobility and requires ${assist_level} assistance with transfers",
+    phrase:
+      "${patient} has limited mobility and requires ${assist_level} assistance with transfers",
     category: "observation",
     bodySystem: "musculoskeletal",
     disciplines: SKILLED,
@@ -141,7 +145,8 @@ export const VOCABULARY: readonly VocabEntry[] = [
   {
     code: "nv.sym.pain_controlled",
     label: "Symptom impact — pain controlled on current regimen",
-    phrase: "${patient}'s pain is well controlled at ${pain_score} of 10 on the current medication regimen",
+    phrase:
+      "${patient}'s pain is well controlled at ${pain_score} of 10 on the current medication regimen",
     category: "symptom_impact",
     disciplines: SKILLED,
     encounterTypes: CLINICAL_TYPES,
@@ -149,7 +154,8 @@ export const VOCABULARY: readonly VocabEntry[] = [
   {
     code: "nv.sym.pain_uncontrolled",
     label: "Symptom impact — pain limiting function",
-    phrase: "${patient} reports pain at ${pain_score} of 10 that limits participation in daily activities",
+    phrase:
+      "${patient} reports pain at ${pain_score} of 10 that limits participation in daily activities",
     category: "symptom_impact",
     disciplines: SKILLED,
     encounterTypes: CLINICAL_TYPES,
@@ -167,7 +173,8 @@ export const VOCABULARY: readonly VocabEntry[] = [
   {
     code: "nv.cp.medrec",
     label: "Care plan — medication reconciliation reviewed",
-    phrase: "The medication regimen was reconciled with the caregiver and reviewed against the care plan",
+    phrase:
+      "The medication regimen was reconciled with the caregiver and reviewed against the care plan",
     category: "care_plan_element",
     disciplines: SKILLED,
     encounterTypes: ["admission_visit", "routine_visit", "recert_visit", "face_to_face"],
@@ -175,7 +182,8 @@ export const VOCABULARY: readonly VocabEntry[] = [
   {
     code: "nv.cp.caregiver_taught",
     label: "Care plan — caregiver education provided",
-    phrase: "Caregiver education was provided on ${teaching_topic} with return demonstration verbalized",
+    phrase:
+      "Caregiver education was provided on ${teaching_topic} with return demonstration verbalized",
     category: "care_plan_element",
     disciplines: NURSING,
     encounterTypes: NURSING_TYPES,
@@ -183,7 +191,8 @@ export const VOCABULARY: readonly VocabEntry[] = [
   {
     code: "nv.cp.goals_progress",
     label: "Care plan — progress toward goals",
-    phrase: "Progress toward the care-plan goals was reviewed and ${patient} remains appropriate for hospice",
+    phrase:
+      "Progress toward the care-plan goals was reviewed and ${patient} remains appropriate for hospice",
     category: "care_plan_element",
     disciplines: SKILLED,
     encounterTypes: CLINICAL_TYPES,
@@ -193,7 +202,8 @@ export const VOCABULARY: readonly VocabEntry[] = [
   {
     code: "nv.ps.coping",
     label: "Psychosocial — coping assessment",
-    phrase: "${patient} and family are coping with the prognosis with ${coping_status} support systems in place",
+    phrase:
+      "${patient} and family are coping with the prognosis with ${coping_status} support systems in place",
     category: "psychosocial",
     disciplines: ["msw"],
     encounterTypes: ["msw_assessment", "msw_followup", "telephonic", "idg_followup"],
@@ -211,7 +221,8 @@ export const VOCABULARY: readonly VocabEntry[] = [
   {
     code: "nv.sp.assessment",
     label: "Spiritual — spiritual care assessment",
-    phrase: "A spiritual care assessment was completed and ${patient} identifies as ${faith_tradition}",
+    phrase:
+      "A spiritual care assessment was completed and ${patient} identifies as ${faith_tradition}",
     category: "spiritual",
     disciplines: ["chaplain"],
     encounterTypes: ["chaplain_assessment", "chaplain_visit", "idg_followup"],

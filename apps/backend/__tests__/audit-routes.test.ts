@@ -49,15 +49,77 @@ function seedRecords(): AuditEventRecord[] {
   };
   return [
     // §10.1 write-capture rows (what the encounter trigger emits on a mutation).
-    { ...base, id: EVT(1), createdAt: "2026-06-01T01:00:00.000Z", actorUserId: "rn_1", actorRole: "clinical_rn", eventType: "encounter.insert", resourceKind: "encounter", resourceId: EVT(8), context: { patientId: PATIENT } },
-    { ...base, id: EVT(2), createdAt: "2026-06-01T02:00:00.000Z", actorUserId: "rn_1", actorRole: "clinical_rn", eventType: "encounter.update", resourceKind: "encounter", resourceId: EVT(8), context: { patientId: PATIENT } },
+    {
+      ...base,
+      id: EVT(1),
+      createdAt: "2026-06-01T01:00:00.000Z",
+      actorUserId: "rn_1",
+      actorRole: "clinical_rn",
+      eventType: "encounter.insert",
+      resourceKind: "encounter",
+      resourceId: EVT(8),
+      context: { patientId: PATIENT },
+    },
+    {
+      ...base,
+      id: EVT(2),
+      createdAt: "2026-06-01T02:00:00.000Z",
+      actorUserId: "rn_1",
+      actorRole: "clinical_rn",
+      eventType: "encounter.update",
+      resourceKind: "encounter",
+      resourceId: EVT(8),
+      context: { patientId: PATIENT },
+    },
     // §10.2 access rows for the patient (a chart open + an under-glass access).
-    { ...base, id: EVT(3), createdAt: "2026-06-02T01:00:00.000Z", actorUserId: "rn_1", actorRole: "clinical_rn", eventType: "patient.viewed", resourceKind: "patient", resourceId: PATIENT, context: { patientId: PATIENT, fields: ["name", "dob"] } },
-    { ...base, id: EVT(4), createdAt: "2026-06-02T02:00:00.000Z", actorUserId: "rn_2", actorRole: "clinical_rn", eventType: "m3.breakglass.access", resourceKind: "patient", resourceId: PATIENT, severity: "critical", context: { patientId: PATIENT, breakGlassEventId: "bg_1" } },
+    {
+      ...base,
+      id: EVT(3),
+      createdAt: "2026-06-02T01:00:00.000Z",
+      actorUserId: "rn_1",
+      actorRole: "clinical_rn",
+      eventType: "patient.viewed",
+      resourceKind: "patient",
+      resourceId: PATIENT,
+      context: { patientId: PATIENT, fields: ["name", "dob"] },
+    },
+    {
+      ...base,
+      id: EVT(4),
+      createdAt: "2026-06-02T02:00:00.000Z",
+      actorUserId: "rn_2",
+      actorRole: "clinical_rn",
+      eventType: "m3.breakglass.access",
+      resourceKind: "patient",
+      resourceId: PATIENT,
+      severity: "critical",
+      context: { patientId: PATIENT, breakGlassEventId: "bg_1" },
+    },
     // a different patient's access — must NOT appear in PATIENT's history.
-    { ...base, id: EVT(5), createdAt: "2026-06-02T03:00:00.000Z", actorUserId: "rn_1", actorRole: "clinical_rn", eventType: "patient.viewed", resourceKind: "patient", resourceId: PATIENT_OTHER, context: { patientId: PATIENT_OTHER } },
+    {
+      ...base,
+      id: EVT(5),
+      createdAt: "2026-06-02T03:00:00.000Z",
+      actorUserId: "rn_1",
+      actorRole: "clinical_rn",
+      eventType: "patient.viewed",
+      resourceKind: "patient",
+      resourceId: PATIENT_OTHER,
+      context: { patientId: PATIENT_OTHER },
+    },
     // another org's row — must never be visible to ORG.
-    { ...base, id: EVT(6), createdAt: "2026-06-02T04:00:00.000Z", organizationId: "org_b", actorUserId: "x", actorRole: null, eventType: "patient.viewed", resourceKind: "patient", resourceId: PATIENT, context: { patientId: PATIENT } },
+    {
+      ...base,
+      id: EVT(6),
+      createdAt: "2026-06-02T04:00:00.000Z",
+      organizationId: "org_b",
+      actorUserId: "x",
+      actorRole: null,
+      eventType: "patient.viewed",
+      resourceKind: "patient",
+      resourceId: PATIENT,
+      context: { patientId: PATIENT },
+    },
   ];
 }
 
@@ -109,7 +171,11 @@ describe("M4-T06 audit query route inventory", () => {
 
     it("an actor without audit.read → 403", async () => {
       const { app } = makeServer();
-      const res = await app.inject({ method: "GET", url: "/api/v1/audit/events", headers: CLINICIAN });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/audit/events",
+        headers: CLINICIAN,
+      });
       expect(res.statusCode).toBe(403);
       await app.close();
     });
@@ -137,8 +203,14 @@ describe("M4-T06 audit query route inventory", () => {
 
     it("scopes the search to the actor's org (no cross-tenant leakage)", async () => {
       const { app } = makeServer();
-      const res = await app.inject({ method: "GET", url: "/api/v1/audit/events", headers: COMPLIANCE });
-      const orgs = new Set(res.json().items.map((e: { organizationId: string }) => e.organizationId));
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/audit/events",
+        headers: COMPLIANCE,
+      });
+      const orgs = new Set(
+        res.json().items.map((e: { organizationId: string }) => e.organizationId),
+      );
       expect(orgs).toEqual(new Set([ORG]));
       await app.close();
     });
@@ -187,7 +259,11 @@ describe("M4-T06 audit query route inventory", () => {
   describe("§4.2 single-event detail", () => {
     it("returns the event by id; 404 for a missing id", async () => {
       const { app } = makeServer();
-      const ok = await app.inject({ method: "GET", url: `/api/v1/audit/events/${EVT(1)}`, headers: COMPLIANCE });
+      const ok = await app.inject({
+        method: "GET",
+        url: `/api/v1/audit/events/${EVT(1)}`,
+        headers: COMPLIANCE,
+      });
       expect(ok.statusCode).toBe(200);
       expect(ok.json().id).toBe(EVT(1));
       const missing = await app.inject({

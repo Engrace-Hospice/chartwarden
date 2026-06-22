@@ -1,9 +1,3 @@
-// apps/web/src/modules/38-terminology — Terminology Admin (M38, Track A).
-// Spec: docs/ui/screens/admin/WARDENX_UI_TERMINOLOGY_ADMIN.md — "Use Work Queue."
-// Search concepts within a code system; view a concept's detail. Backed by
-// GET /api/v1/terminology/:system/search via the generated typed client. Imports only leaves.
-import { useState } from "react";
-import type { JSX } from "react";
 import {
   EmptyState,
   FilterBar,
@@ -13,9 +7,27 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
+// apps/web/src/modules/38-terminology — Terminology Admin (M38, Track A).
+// Spec: docs/ui/screens/admin/WARDENX_UI_TERMINOLOGY_ADMIN.md — "Use Work Queue."
+// Search concepts within a code system; view a concept's detail. Backed by
+// GET /api/v1/terminology/:system/search via the generated typed client. Imports only leaves.
+import { useState } from "react";
+import type { JSX } from "react";
 
 // Phase-1 code systems (§7.8: cpt deliberately absent) — UI owns its copy of the wire enum.
-const SYSTEMS = ["icd10cm", "icd10pcs", "snomed", "loinc", "rxnorm", "ndc", "hcpcs", "cvx", "revenue", "carc", "rarc"] as const;
+const SYSTEMS = [
+  "icd10cm",
+  "icd10pcs",
+  "snomed",
+  "loinc",
+  "rxnorm",
+  "ndc",
+  "hcpcs",
+  "cvx",
+  "revenue",
+  "carc",
+  "rarc",
+] as const;
 type System = (typeof SYSTEMS)[number];
 
 interface Concept {
@@ -63,8 +75,18 @@ export function TerminologyAdmin(): JSX.Element {
     <WorkQueueLayout
       header={<PageHeader title="Terminology" />}
       filters={
-        <FilterBar actions={<button type="button" onClick={() => void search()}>Search</button>}>
-          <select aria-label="Code system" value={system} onChange={(e) => setSystem(e.target.value as System)}>
+        <FilterBar
+          actions={
+            <button type="button" onClick={() => void search()}>
+              Search
+            </button>
+          }
+        >
+          <select
+            aria-label="Code system"
+            value={system}
+            onChange={(e) => setSystem(e.target.value as System)}
+          >
             {SYSTEMS.map((s) => (
               <option key={s} value={s}>
                 {s}
@@ -91,7 +113,11 @@ export function TerminologyAdmin(): JSX.Element {
           onSelect={setSelected}
         />
       }
-      detail={selected ? <ConceptDetail concept={selected} onClose={() => setSelected(null)} /> : undefined}
+      detail={
+        selected ? (
+          <ConceptDetail concept={selected} onClose={() => setSelected(null)} />
+        ) : undefined
+      }
     />
   );
 }
@@ -111,8 +137,15 @@ function ConceptTable({
 }): JSX.Element {
   if (error) return <EmptyState title="Unavailable" description={error} />;
   if (loading) return <LoadingSpinner />;
-  if (results === null) return <EmptyState title="Search a code system" description="Pick a system and enter a code or term." />;
-  if (results.length === 0) return <EmptyState title="No concepts" description="No concepts match this search." />;
+  if (results === null)
+    return (
+      <EmptyState
+        title="Search a code system"
+        description="Pick a system and enter a code or term."
+      />
+    );
+  if (results.length === 0)
+    return <EmptyState title="No concepts" description="No concepts match this search." />;
   return (
     <div style={{ padding: "0 1.5rem 1.5rem" }}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
@@ -126,7 +159,24 @@ function ConceptTable({
         </thead>
         <tbody>
           {results.map((c) => (
-            <tr key={`${c.systemId}:${c.code}`} onClick={() => onSelect(c)} style={{ cursor: "pointer", background: c.code === selectedCode ? "#eff6ff" : undefined, borderTop: "1px solid #f3f4f6" }}>
+            <tr
+              key={`${c.systemId}:${c.code}`}
+              // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+              role="button"
+              tabIndex={0}
+              onClick={() => onSelect(c)}
+              onKeyDown={(ev) => {
+                if (ev.key === "Enter" || ev.key === " ") {
+                  ev.preventDefault();
+                  onSelect(c);
+                }
+              }}
+              style={{
+                cursor: "pointer",
+                background: c.code === selectedCode ? "#eff6ff" : undefined,
+                borderTop: "1px solid #f3f4f6",
+              }}
+            >
               <td style={{ ...td, fontFamily: "monospace" }}>{c.code}</td>
               <td style={td}>{c.display}</td>
               <td style={{ ...td, color: statusColor[c.status] }}>{c.status}</td>
@@ -139,7 +189,10 @@ function ConceptTable({
   );
 }
 
-function ConceptDetail({ concept, onClose }: { concept: Concept; onClose: () => void }): JSX.Element {
+function ConceptDetail({
+  concept,
+  onClose,
+}: { concept: Concept; onClose: () => void }): JSX.Element {
   const row = (label: string, value: string) => (
     <div style={{ marginBottom: "0.5rem" }}>
       <div style={{ fontSize: "0.7rem", color: "#6b7280" }}>{label}</div>

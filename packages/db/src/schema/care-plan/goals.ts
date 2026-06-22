@@ -6,10 +6,10 @@
 // (§7.7). RLS + trigger land in migration 0029 (M7-T02).
 import { index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { goalSource, goalStatus } from "../../enums";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 import { carePlans } from "./care-plans";
 import { problems } from "./problems";
 

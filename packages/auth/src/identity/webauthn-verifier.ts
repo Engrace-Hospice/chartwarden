@@ -1,3 +1,8 @@
+import { verifyAuthenticationResponse } from "@simplewebauthn/server";
+import type {
+  AuthenticationResponseJSON,
+  AuthenticatorTransportFuture,
+} from "@simplewebauthn/server";
 // @wardenx/auth · identity — WebAuthn step-up assertion verifier (M2 §4.4, D9).
 //
 // Step-up qualifies on WebAuthn or TOTP only (SMS never). This is the REAL WebAuthn half: it verifies a
@@ -13,8 +18,6 @@
 // the M1-owned `passkey` table is below.
 import { schema } from "@wardenx/db";
 import type { DbClient } from "@wardenx/db";
-import { verifyAuthenticationResponse } from "@simplewebauthn/server";
-import type { AuthenticationResponseJSON, AuthenticatorTransportFuture } from "@simplewebauthn/server";
 import { and, eq } from "drizzle-orm";
 
 /** A stored passkey credential, as the verifier needs it (base64url public key + signature counter). */
@@ -114,7 +117,9 @@ export function createDbPasskeyCredentialStore(db: DbClient): PasskeyCredentialS
           transports: schema.passkey.transports,
         })
         .from(schema.passkey)
-        .where(and(eq(schema.passkey.userId, userId), eq(schema.passkey.credentialId, credentialId)))
+        .where(
+          and(eq(schema.passkey.userId, userId), eq(schema.passkey.credentialId, credentialId)),
+        )
         .limit(1);
       const row = rows[0];
       if (!row) return null;

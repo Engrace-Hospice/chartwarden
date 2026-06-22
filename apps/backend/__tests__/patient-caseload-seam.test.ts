@@ -7,11 +7,15 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { NotImplementedError } from "../src/bootstrap/seams/providers";
-import { REQUIRED_SEAMS, __resetSeamsForTest, validateSeams } from "../src/bootstrap/seams/registry";
+import {
+  REQUIRED_SEAMS,
+  __resetSeamsForTest,
+  validateSeams,
+} from "../src/bootstrap/seams/registry";
 import { wireModuleSeams } from "../src/index";
 import {
-  createInMemoryCaseloadStore as makeStore,
   getCaseloadProvider,
+  createInMemoryCaseloadStore as makeStore,
   registerPatientSeams,
 } from "../src/modules/05-patient/index";
 
@@ -62,7 +66,10 @@ describe("M5-T07 — CaseloadProvider closes the M3 boot-gate (§4.1, §7.5)", (
   it("a different user has an empty caseload (no cross-actor leak)", async () => {
     registerPatientSeams({ caseload: { store: seededStore() } });
     validateSeams();
-    const ids = await getCaseloadProvider().caseloadPatientIds({ organizationId: ORG, userId: "other" });
+    const ids = await getCaseloadProvider().caseloadPatientIds({
+      organizationId: ORG,
+      userId: "other",
+    });
     expect(ids).toEqual([]);
   });
 

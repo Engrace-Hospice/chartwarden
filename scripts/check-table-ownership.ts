@@ -26,12 +26,12 @@
  * CI:    exits 1 on any violation.
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import {
+  HELPER_ONLY_TABLES,
   MODULES,
   MODULE_BY_ID,
-  HELPER_ONLY_TABLES,
   type ModuleDef,
 } from "../architecture/module-manifest";
 
@@ -45,7 +45,11 @@ type TableRef = { constName: string; sqlName: string; file: string };
 
 function listFiles(dir: string, acc: string[] = []): string[] {
   let entries: string[] = [];
-  try { entries = readdirSync(join(REPO_ROOT, dir)); } catch { return acc; }
+  try {
+    entries = readdirSync(join(REPO_ROOT, dir));
+  } catch {
+    return acc;
+  }
   for (const e of entries) {
     const rel = join(dir, e);
     const abs = join(REPO_ROOT, rel);
@@ -66,6 +70,7 @@ function buildTableRegistry(): TableRef[] {
     const src = readFileSync(join(REPO_ROOT, file), "utf8");
     const re = /export\s+const\s+(\w+)\s*=\s*pgTable\(\s*['"]([\w]+)['"]/g;
     let m: RegExpExecArray | null;
+    // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic regex exec() iteration.
     while ((m = re.exec(src))) refs.push({ constName: m[1]!, sqlName: m[2]!, file });
   }
   return refs;
@@ -94,8 +99,8 @@ function scan(): Violation[] {
 
       for (const ref of registry) {
         // crude but effective: a word-boundary reference to the table const
-        const used = new RegExp(`\\b${ref.constName}\\b`).test(src) &&
-                     /from ['"].*schema/.test(src);
+        const used =
+          new RegExp(`\\b${ref.constName}\\b`).test(src) && /from ['"].*schema/.test(src);
         if (!used) continue;
 
         const owner = ownerOf(ref.sqlName);
@@ -146,7 +151,8 @@ function scanEvasions(): Violation[] {
       const isHelperPath = HELPER_PATHS.some((p) => file.startsWith(p));
 
       // (a) raw SQL / PL/pgSQL naming another module's owned table by sql name
-      const inRawSql = /sql`|db\.execute\(|CREATE\s+(OR\s+REPLACE\s+)?FUNCTION|LANGUAGE\s+plpgsql/i.test(src);
+      const inRawSql =
+        /sql`|db\.execute\(|CREATE\s+(OR\s+REPLACE\s+)?FUNCTION|LANGUAGE\s+plpgsql/i.test(src);
       if (inRawSql) {
         for (const [sqlName, ref] of sqlByName) {
           const owner = ownerOf(sqlName);
@@ -162,10 +168,17 @@ function scanEvasions(): Violation[] {
         }
       }
       // (b) withPlatformContext touching a PHI table with no org predicate (heuristic)
-      if (/withPlatformContext\s*\(/.test(src) &&
-          /\b(patient|clinical|encounter|observation)\w*\b/i.test(src) &&
-          !/organization_id\s*=|app\.org_id/.test(src)) {
-        out.push({ module: mod, file, table: "(PHI under withPlatformContext, no org predicate)", owner: undefined });
+      if (
+        /withPlatformContext\s*\(/.test(src) &&
+        /\b(patient|clinical|encounter|observation)\w*\b/i.test(src) &&
+        !/organization_id\s*=|app\.org_id/.test(src)
+      ) {
+        out.push({
+          module: mod,
+          file,
+          table: "(PHI under withPlatformContext, no org predicate)",
+          owner: undefined,
+        });
       }
       // (c) migration INSERT/UPDATE into a helper-only table outside helper paths
       if (!isHelperPath) {
@@ -180,7 +193,9 @@ function scanEvasions(): Violation[] {
 
 const violations = [...scan(), ...scanEvasions()];
 if (violations.length === 0) {
-  console.log("✓ table ownership: no cross-module schema access, raw-SQL, or platform-bypass evasion");
+  console.log(
+    "✓ table ownership: no cross-module schema access, raw-SQL, or platform-bypass evasion",
+  );
   process.exit(0);
 }
 
@@ -188,9 +203,7 @@ console.error(`✗ table ownership: ${violations.length} violation(s)\n`);
 for (const v of violations) {
   const ownerLabel = v.owner ? `Module ${v.owner.id} (${v.owner.name})` : "a helper-only path";
   console.error(
-    `  ${relative(REPO_ROOT, v.file)}\n` +
-    `    Module ${v.module.id} (${v.module.name}) references table '${v.table}', owned by ${ownerLabel}.\n` +
-    `    Fix: access it through the owner's exported repository/service, not its Drizzle schema.\n`
+    `  ${relative(REPO_ROOT, v.file)}\n    Module ${v.module.id} (${v.module.name}) references table '${v.table}', owned by ${ownerLabel}.\n    Fix: access it through the owner's exported repository/service, not its Drizzle schema.\n`,
   );
 }
 process.exit(1);

@@ -6,7 +6,7 @@
 // (consent_record_id, revocation_id, consumer_name); this module is the pure status arbiter the
 // revocation-cascade-retry cron consults — it does NOT perform the dispatch (that is the service +
 // outbox helper, M39-F08).
-import { type ConsentRevocationCascadeStatus } from "../interfaces/kinds";
+import type { ConsentRevocationCascadeStatus } from "../interfaces/kinds";
 import { type Decision, deny, ok } from "./result";
 
 export const CASCADE_MAX_ATTEMPTS = 5;
@@ -22,7 +22,9 @@ export interface CascadeProgress {
 /** Resolve the next cascade status after a sweep that may have collected new consumer ACKs.
  *  All consumers ACKed → completed; budget exhausted with stragglers → partial_failed (alerts M36);
  *  otherwise in_progress (the retry cron will sweep again). */
-export function nextCascadeStatus(progress: CascadeProgress): Decision<ConsentRevocationCascadeStatus> {
+export function nextCascadeStatus(
+  progress: CascadeProgress,
+): Decision<ConsentRevocationCascadeStatus> {
   if (progress.status === "completed" || progress.status === "partial_failed")
     return ok<ConsentRevocationCascadeStatus>(progress.status); // terminal
   const consumerStates = Object.values(progress.consumers);

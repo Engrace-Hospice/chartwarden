@@ -36,14 +36,10 @@ export const externalPhysicians = pgTable(
     primaryAddress: jsonb("primary_address"),
     contactMethods: jsonb("contact_methods").notNull().default({}),
     status: mdmEntityStatus("status").notNull().default("active"),
-    mergedIntoId: uuid("merged_into_id").references(
-      (): AnyPgColumn => externalPhysicians.id,
-      { onDelete: "restrict" },
-    ),
-    mergedFrom: uuid("merged_from")
-      .array()
-      .notNull()
-      .default(sql`'{}'::uuid[]`),
+    mergedIntoId: uuid("merged_into_id").references((): AnyPgColumn => externalPhysicians.id, {
+      onDelete: "restrict",
+    }),
+    mergedFrom: uuid("merged_from").array().notNull().default(sql`'{}'::uuid[]`),
     nppesLastSyncedAt: timestamp("nppes_last_synced_at", { withTimezone: true }),
     nppesProvenance: jsonb("nppes_provenance").$type<{
       lastSyncedAt: string;
@@ -56,9 +52,7 @@ export const externalPhysicians = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    npiUniqueIdx: uniqueIndex("external_physician_npi_idx")
-      .on(t.npi)
-      .where(sql`npi IS NOT NULL`),
+    npiUniqueIdx: uniqueIndex("external_physician_npi_idx").on(t.npi).where(sql`npi IS NOT NULL`),
     nameTrgmIdx: index("external_physician_name_trgm_idx").using(
       "gin",
       sql`(first_name || ' ' || last_name) gin_trgm_ops`,
@@ -70,10 +64,7 @@ export const externalPhysicians = pgTable(
     provenanceSourceIdx: index("idx_external_physician_nppes_provenance_source")
       .on(sql`(nppes_provenance->>'lastSyncSource')`)
       .where(sql`nppes_provenance IS NOT NULL`),
-    npiFormat: check(
-      "external_physician_npi_format",
-      sql`npi IS NULL OR npi ~ '^[0-9]{10}$'`,
-    ),
+    npiFormat: check("external_physician_npi_format", sql`npi IS NULL OR npi ~ '^[0-9]{10}$'`),
     mergedConsistency: check(
       "external_physician_merged_consistency",
       sql`(status = 'merged') = (merged_into_id IS NOT NULL)`,

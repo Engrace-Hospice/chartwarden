@@ -3,15 +3,7 @@
 // ordered event hashes (created behind the `audit_hash_chain_enabled` flag; the integrity verify
 // lands in M4-T11/§3.1 integrity). organization_id is nullable so platform-scope partitions can be
 // sealed; not a PHI table. RLS + grants land in M4-T05.
-import {
-  index,
-  integer,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 
 export const auditSeals = pgTable(

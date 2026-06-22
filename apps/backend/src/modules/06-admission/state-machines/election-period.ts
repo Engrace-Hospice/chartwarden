@@ -5,8 +5,8 @@
 // error envelope is the precise `ELECTION_PERIOD_OVERLAP` not a raw PG exception. Pure transition
 // function over already-resolved facts (CTI signed, admission activated, the §2.4 election validators).
 import type { LocalDate } from "@wardenx/types";
-import { AdmissionStateError, require_ } from "./errors";
 import { type ElectionEndCause, type TransitionResult, result } from "./effects";
+import { AdmissionStateError, require_ } from "./errors";
 import {
   checkCurativeCareAck,
   checkNoConcurrentElection,
@@ -34,9 +34,16 @@ export type ElectionPeriodEvent =
       readonly f2fAttested: boolean;
       readonly effectiveAt: LocalDate;
     }
-  | { readonly type: "complete"; readonly cause: ElectionEndCause; readonly actualEndAt: LocalDate };
+  | {
+      readonly type: "complete";
+      readonly cause: ElectionEndCause;
+      readonly actualEndAt: LocalDate;
+    };
 
-export type ElectionPeriodTransition = TransitionResult<ElectionPeriodState, ElectionPeriodEvent["type"]>;
+export type ElectionPeriodTransition = TransitionResult<
+  ElectionPeriodState,
+  ElectionPeriodEvent["type"]
+>;
 
 /** The legal §2.3.2 transition graph. */
 export const ELECTION_PERIOD_GRAPH: Readonly<
@@ -69,10 +76,19 @@ export function transitionElectionPeriod(
   switch (event.type) {
     case "signElectionStatement": {
       // R-EL-01 / R-EL-02 / R-EL-04 + the no-overlap guard (the DB GIST EXCLUDE mirror).
-      checkRepresentativeAuthority({ signerKind: event.signerKind, hasActiveDpoaConsent: event.hasActiveDpoaConsent });
-      checkNoConcurrentElection({ existingActiveElectionElsewhere: event.existingActiveElectionElsewhere });
+      checkRepresentativeAuthority({
+        signerKind: event.signerKind,
+        hasActiveDpoaConsent: event.hasActiveDpoaConsent,
+      });
+      checkNoConcurrentElection({
+        existingActiveElectionElsewhere: event.existingActiveElectionElsewhere,
+      });
       checkCurativeCareAck({ curativeCareAcknowledgment: event.curativeCareAcknowledgment });
-      require_(!event.wouldOverlap, "ELECTION_PERIOD_OVERLAP", "election period would overlap an existing period");
+      require_(
+        !event.wouldOverlap,
+        "ELECTION_PERIOD_OVERLAP",
+        "election period would overlap an existing period",
+      );
       return result(from, event.type, "signed", [
         { kind: "audit" },
         { kind: "outbox", event: "m6.election.signed" },
@@ -83,7 +99,11 @@ export function transitionElectionPeriod(
       require_(event.certificationSigned, "CERTIFICATION_REQUIRED", "CTI not signed");
       require_(event.admissionActivated, "ILLEGAL_TRANSITION", "admission not yet activated");
       if (event.sequence >= RECERT_SEQUENCE_FLOOR) {
-        require_(event.f2fAttested, "F2F_REQUIRED_FOR_RECERT", "recert period requires an attested F2F");
+        require_(
+          event.f2fAttested,
+          "F2F_REQUIRED_FOR_RECERT",
+          "recert period requires an attested F2F",
+        );
       }
       return result(from, event.type, "active", [
         { kind: "set_timestamp", field: "effective_at", at: event.effectiveAt },

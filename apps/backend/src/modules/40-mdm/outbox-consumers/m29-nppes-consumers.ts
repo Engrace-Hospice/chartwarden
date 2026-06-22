@@ -33,7 +33,10 @@ export interface M29ConsumerDescriptor {
 /** The two §4.7 consumers M40 declares against M29's events (wired live when M29 lands, Wave H). */
 export const M29_NPPES_CONSUMERS: readonly M29ConsumerDescriptor[] = [
   { eventName: "m29.nppes.provider_synced", consumerName: "m40.nppes-provider-synced-applier" },
-  { eventName: "m29.nppes.provider_deactivated", consumerName: "m40.nppes-provider-deactivated-applier" },
+  {
+    eventName: "m29.nppes.provider_deactivated",
+    consumerName: "m40.nppes-provider-deactivated-applier",
+  },
 ] as const;
 
 /** True in Phase 1 — there is no M29 producer, so the consumers run via the T08 nightly fallback. */
@@ -46,7 +49,9 @@ export const M29_CONSUMERS_DEFERRED = true;
  */
 export function createM29NppesConsumerHandlers(ports: NppesConsumerPorts): {
   onProviderSynced(payload: M29ProviderSyncedPayload): Promise<ProviderSyncedDecision>;
-  onProviderDeactivated(payload: M29ProviderDeactivatedPayload): Promise<ProviderDeactivatedOutcome>;
+  onProviderDeactivated(
+    payload: M29ProviderDeactivatedPayload,
+  ): Promise<ProviderDeactivatedOutcome>;
 } {
   return {
     onProviderSynced: (payload) => handleProviderSynced(payload, ports),

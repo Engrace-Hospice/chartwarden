@@ -5,15 +5,7 @@
 // `ipu_bed_assignment_id` (M37) are plain uuid app-validated. One open LOC per admission (partial
 // unique). RLS + the M4 write-audit trigger land in M6-T03 (§3.6–3.7).
 import { sql } from "drizzle-orm";
-import {
-  bigint,
-  index,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { bigint, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { levelOfCare } from "../../enums";
 import { organizations } from "../organizations";
 import { users } from "../users";
@@ -45,9 +37,7 @@ export const levelOfCarePeriods = pgTable(
   },
   (t) => ({
     admEffIdx: index("lcp_adm_effective_idx").on(t.admissionId, t.effectiveAt),
-    admOpenUnique: uniqueIndex("lcp_adm_open_idx")
-      .on(t.admissionId)
-      .where(sql`ended_at IS NULL`),
+    admOpenUnique: uniqueIndex("lcp_adm_open_idx").on(t.admissionId).where(sql`ended_at IS NULL`),
   }),
 );
 

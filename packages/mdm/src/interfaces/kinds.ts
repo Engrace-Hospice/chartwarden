@@ -76,12 +76,7 @@ export type MdmBaaStatus = "executed" | "pending" | "n_a";
 export type FacilityKind = "hospital" | "alf" | "snf" | "ipu" | "clinic" | "other";
 
 /** The canonical `payer` subtype (§3.3). */
-export type PayerKind =
-  | "medicare"
-  | "medicaid"
-  | "medicare_advantage"
-  | "commercial"
-  | "other";
+export type PayerKind = "medicare" | "medicaid" | "medicare_advantage" | "commercial" | "other";
 
 // ── §2.3 the canonical-vs-overlay dividing line, as data ──────────────────────────────────
 

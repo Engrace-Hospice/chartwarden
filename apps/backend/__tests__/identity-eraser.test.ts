@@ -8,14 +8,18 @@
 //     right-to-erasure request would silently no-op).
 import { beforeEach, describe, expect, it } from "vitest";
 import { wireErasers } from "../src/bootstrap/erasers/providers";
-import { __resetErasersForTest, getEraser, validateErasers } from "../src/bootstrap/erasers/registry";
-import { buildServer } from "../src/bootstrap/index";
 import { NotImplementedEraserError } from "../src/bootstrap/erasers/providers";
+import {
+  __resetErasersForTest,
+  getEraser,
+  validateErasers,
+} from "../src/bootstrap/erasers/registry";
+import { buildServer } from "../src/bootstrap/index";
+import { wireModuleErasers, wireModuleSeams } from "../src/index";
 import {
   createInMemoryIdentityEraserStore,
   registerIdentityErasers,
 } from "../src/modules/02-identity/index";
-import { wireModuleErasers, wireModuleSeams } from "../src/index";
 
 const ORG = "org_1";
 

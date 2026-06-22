@@ -1,6 +1,6 @@
+import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/04-audit — M4 screen registration (Track A, ADR-0030).
 import type { ComponentType } from "react";
-import type { ScreenRegistryModule } from "@wardenx/types";
 import { AuditLogViewer } from "./audit-log-viewer";
 
 export const auditScreens: ScreenRegistryModule<ComponentType> = {

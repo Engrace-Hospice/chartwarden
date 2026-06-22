@@ -4,18 +4,11 @@
 // user (FK); cross-module refs (M5 patient, M39 representative consent, M22 document) are plain uuid
 // app-validated; the admission FK is intra-M6. One acknowledgment per admission (unique). RLS + the
 // M4 write-audit trigger land in M6-T03 (§3.6–3.7).
-import {
-  bigint,
-  date,
-  pgTable,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { bigint, date, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { electionSignerKind, norAcknowledgmentMethod } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 import { users } from "../users";
 import { admissions } from "./admissions";
 
@@ -50,5 +43,4 @@ export const noticeOfRightsAcknowledgments = pgTable(
 );
 
 export type NoticeOfRightsAcknowledgment = typeof noticeOfRightsAcknowledgments.$inferSelect;
-export type NewNoticeOfRightsAcknowledgment =
-  typeof noticeOfRightsAcknowledgments.$inferInsert;
+export type NewNoticeOfRightsAcknowledgment = typeof noticeOfRightsAcknowledgments.$inferInsert;

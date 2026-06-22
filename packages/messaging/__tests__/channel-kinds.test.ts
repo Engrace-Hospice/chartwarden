@@ -4,11 +4,7 @@
 // kind exactly once, and each kind's subject requirement + retention class match the §2.3
 // table the schema CHECK (M36-T02) will enforce. This is the app-layer mirror of that CHECK.
 import { describe, expect, it } from "vitest";
-import {
-  CHANNEL_KINDS,
-  CHANNEL_KIND_DESCRIPTORS,
-  type ChannelKind,
-} from "../src/index";
+import { CHANNEL_KINDS, CHANNEL_KIND_DESCRIPTORS, type ChannelKind } from "../src/index";
 
 describe("channel kind discriminator (§2.3)", () => {
   it("has a descriptor for every kind, keyed by its own kind", () => {

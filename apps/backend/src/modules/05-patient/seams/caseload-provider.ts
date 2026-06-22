@@ -1,3 +1,4 @@
+import { abacRegistry, registerPredicate } from "@wardenx/auth";
 // apps/backend/src/modules/05-patient/seams/caseload-provider.ts — M5-T07 the CaseloadProvider seam
 // (M5 spec §4.1, §7.5). CLOSES the M3 boot-gate deny-stub: M3 declared `CaseloadProvider` + the
 // `caseload_membership` ABAC predicate that resolves through it; M5 registers the REAL resolver here
@@ -11,7 +12,6 @@
 // app.org_id). M17's shift cache is a forward additive source: Phase-1 the store answers from
 // `patient_assignment` alone; the union point is the same method when M17 lands.
 import type { CaseloadProvider } from "@wardenx/types";
-import { abacRegistry, registerPredicate } from "@wardenx/auth";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 
 /** The data port the CaseloadProvider composes over (Drizzle over patient_assignment in prod). */

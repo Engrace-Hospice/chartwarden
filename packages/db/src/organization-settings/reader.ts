@@ -6,10 +6,7 @@
 // keys fall back to the registered `defaultValue`. Construct once at boot from the
 // validated registry and reuse per request.
 import { Value } from "@sinclair/typebox/value";
-import {
-  buildOrganizationSettingsRegistry,
-  ORGANIZATION_SETTINGS_REGISTRY,
-} from "./registry";
+import { ORGANIZATION_SETTINGS_REGISTRY, buildOrganizationSettingsRegistry } from "./registry";
 import type { OrganizationSettingEntry } from "./types";
 
 /** A raw `organization.settings` JSONB object as read from the database. */
@@ -62,7 +59,10 @@ export class OrganizationSettingsReader {
    * unknown key. Absent values return the registered `defaultValue`. Present values
    * are validated against the registered TypeBox schema (SettingSchemaError on miss).
    */
-  get<T = unknown>(settings: OrganizationSettings | null | undefined, settingsKey: string): T | null {
+  get<T = unknown>(
+    settings: OrganizationSettings | null | undefined,
+    settingsKey: string,
+  ): T | null {
     const entry = this.byKey.get(settingsKey);
     if (!entry) throw new UnregisteredSettingError(settingsKey);
 

@@ -1,3 +1,4 @@
+import { CenteredCardLayout, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/02-identity — Step-up Re-authentication (M2 Auth, AUTH polish).
 // Spec: docs/ui/screens/core/WARDENX_UI_AUTH.md "step-up" (/step-up). A sensitive action requires a
 // fresh second-factor proof; this re-verifies the CURRENT session (no new sign-in) and the server
@@ -14,7 +15,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { CenteredCardLayout, useApiClient } from "@wardenx/ui";
 
 /** True when this browser can run a WebAuthn assertion ceremony. */
 function webauthnAvailable(): boolean {
@@ -71,6 +71,7 @@ export function StepUp(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally re-runs only on mode change to reset the form.
   useEffect(() => {
     setError(null);
     setCode("");
@@ -91,10 +92,14 @@ export function StepUp(): JSX.Element {
     setError(null);
 
     // 1) Begin a TOTP challenge for the current session.
-    const initiated = await client.POST("/api/v1/sessions/step-up/initiate", { body: { factor: "totp" } });
+    const initiated = await client.POST("/api/v1/sessions/step-up/initiate", {
+      body: { factor: "totp" },
+    });
     if (initiated.error || !initiated.data) {
       setBusy(false);
-      setError("Couldn’t start verification. Make sure an authenticator app is set up on your account.");
+      setError(
+        "Couldn’t start verification. Make sure an authenticator app is set up on your account.",
+      );
       return;
     }
 
@@ -118,10 +123,14 @@ export function StepUp(): JSX.Element {
     setError(null);
 
     // 1) Begin a WebAuthn challenge bound to the current session.
-    const initiated = await client.POST("/api/v1/sessions/step-up/initiate", { body: { factor: "webauthn" } });
+    const initiated = await client.POST("/api/v1/sessions/step-up/initiate", {
+      body: { factor: "webauthn" },
+    });
     if (initiated.error || !initiated.data?.webauthnChallenge) {
       setBusy(false);
-      setError("Couldn’t start passkey verification. You may not have a passkey registered on this account.");
+      setError(
+        "Couldn’t start passkey verification. You may not have a passkey registered on this account.",
+      );
       return;
     }
 
@@ -141,7 +150,9 @@ export function StepUp(): JSX.Element {
       assertion = serializeAssertion(credential);
     } catch {
       setBusy(false);
-      setError("Passkey verification was cancelled or failed. Try again, or use an authenticator code.");
+      setError(
+        "Passkey verification was cancelled or failed. Try again, or use an authenticator code.",
+      );
       return;
     }
 
@@ -160,7 +171,10 @@ export function StepUp(): JSX.Element {
   }
 
   return (
-    <CenteredCardLayout brand={<strong>WardenX</strong>} footer={<a href="/login">Sign in as someone else</a>}>
+    <CenteredCardLayout
+      brand={<strong>WardenX</strong>}
+      footer={<a href="/login">Sign in as someone else</a>}
+    >
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
         <h1 style={{ margin: 0, fontSize: "1.1rem" }}>Confirm it’s you</h1>
         <p style={{ margin: 0, color: "#6b7280", fontSize: "0.85rem" }}>
@@ -174,14 +188,26 @@ export function StepUp(): JSX.Element {
             <button type="button" onClick={verifyPasskey} disabled={busy} style={primaryBtn}>
               {busy ? "Waiting for passkey…" : "Verify with a passkey"}
             </button>
-            {error ? <p style={{ color: "#b91c1c", margin: 0, fontSize: "0.85rem" }}>{error}</p> : null}
+            {error ? (
+              <p style={{ color: "#b91c1c", margin: 0, fontSize: "0.85rem" }}>{error}</p>
+            ) : null}
             <button type="button" onClick={() => setMode("totp")} disabled={busy} style={linkBtn}>
               Use an authenticator code instead
             </button>
           </>
         ) : (
-          <form onSubmit={verifyTotp} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }}>
+          <form
+            onSubmit={verifyTotp}
+            style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
+          >
+            <label
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.25rem",
+                fontSize: "0.85rem",
+              }}
+            >
               Authentication code
               <input
                 inputMode="numeric"
@@ -194,12 +220,19 @@ export function StepUp(): JSX.Element {
                 style={field}
               />
             </label>
-            {error ? <p style={{ color: "#b91c1c", margin: 0, fontSize: "0.85rem" }}>{error}</p> : null}
+            {error ? (
+              <p style={{ color: "#b91c1c", margin: 0, fontSize: "0.85rem" }}>{error}</p>
+            ) : null}
             <button type="submit" disabled={busy || code.length !== 6} style={primaryBtn}>
               {busy ? "Verifying…" : "Verify"}
             </button>
             {hasPasskey ? (
-              <button type="button" onClick={() => setMode("webauthn")} disabled={busy} style={linkBtn}>
+              <button
+                type="button"
+                onClick={() => setMode("webauthn")}
+                disabled={busy}
+                style={linkBtn}
+              >
                 Use a passkey instead
               </button>
             ) : null}

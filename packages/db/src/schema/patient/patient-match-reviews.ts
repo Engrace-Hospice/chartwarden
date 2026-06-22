@@ -3,19 +3,11 @@
 // not a clean miss), it queues a review here for a human to merge / mark not-a-match. PHI-bearing →
 // three-column tenancy rule.
 import { sql } from "drizzle-orm";
-import {
-  index,
-  jsonb,
-  numeric,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { index, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { patientMatchReviewStatus } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 import { users } from "../users";
 import { patients } from "./patients";
 

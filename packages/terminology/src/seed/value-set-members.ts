@@ -28,20 +28,91 @@ export interface PlatformValueSetMemberSeed {
  */
 export const PLATFORM_VALUE_SET_MEMBERS: readonly PlatformValueSetMemberSeed[] = [
   // level_of_care — UB-04 revenue codes (§3.9: "0651 RHC, 0652 CHC, 0655 IRC, 0656 GIP").
-  { valueSetId: "level_of_care", systemId: "revenue", code: "0651", display: "Routine home care (RHC)" },
-  { valueSetId: "level_of_care", systemId: "revenue", code: "0652", display: "Continuous home care (CHC)" },
-  { valueSetId: "level_of_care", systemId: "revenue", code: "0655", display: "Inpatient respite care (IRC)" },
-  { valueSetId: "level_of_care", systemId: "revenue", code: "0656", display: "General inpatient care (GIP)" },
+  {
+    valueSetId: "level_of_care",
+    systemId: "revenue",
+    code: "0651",
+    display: "Routine home care (RHC)",
+  },
+  {
+    valueSetId: "level_of_care",
+    systemId: "revenue",
+    code: "0652",
+    display: "Continuous home care (CHC)",
+  },
+  {
+    valueSetId: "level_of_care",
+    systemId: "revenue",
+    code: "0655",
+    display: "Inpatient respite care (IRC)",
+  },
+  {
+    valueSetId: "level_of_care",
+    systemId: "revenue",
+    code: "0656",
+    display: "General inpatient care (GIP)",
+  },
 
   // place_of_service_q_codes — HCPCS Q-codes Q5001..Q5010 (§3.9).
-  { valueSetId: "place_of_service_q_codes", systemId: "hcpcs", code: "Q5001", display: "Hospice care provided in patient's home/residence" },
-  { valueSetId: "place_of_service_q_codes", systemId: "hcpcs", code: "Q5002", display: "Hospice care provided in assisted living facility" },
-  { valueSetId: "place_of_service_q_codes", systemId: "hcpcs", code: "Q5003", display: "Hospice care provided in nursing long-term care facility (LTC) or non-skilled nursing facility (NF)" },
-  { valueSetId: "place_of_service_q_codes", systemId: "hcpcs", code: "Q5004", display: "Hospice care provided in skilled nursing facility (SNF)" },
-  { valueSetId: "place_of_service_q_codes", systemId: "hcpcs", code: "Q5005", display: "Hospice care provided in inpatient hospital" },
-  { valueSetId: "place_of_service_q_codes", systemId: "hcpcs", code: "Q5006", display: "Hospice care provided in inpatient hospice facility" },
-  { valueSetId: "place_of_service_q_codes", systemId: "hcpcs", code: "Q5007", display: "Hospice care provided in long-term care facility (LTCH)" },
-  { valueSetId: "place_of_service_q_codes", systemId: "hcpcs", code: "Q5008", display: "Hospice care provided in inpatient psychiatric facility" },
-  { valueSetId: "place_of_service_q_codes", systemId: "hcpcs", code: "Q5009", display: "Hospice care provided in place not otherwise specified (NOS)" },
-  { valueSetId: "place_of_service_q_codes", systemId: "hcpcs", code: "Q5010", display: "Hospice home care provided in a hospice facility" },
+  {
+    valueSetId: "place_of_service_q_codes",
+    systemId: "hcpcs",
+    code: "Q5001",
+    display: "Hospice care provided in patient's home/residence",
+  },
+  {
+    valueSetId: "place_of_service_q_codes",
+    systemId: "hcpcs",
+    code: "Q5002",
+    display: "Hospice care provided in assisted living facility",
+  },
+  {
+    valueSetId: "place_of_service_q_codes",
+    systemId: "hcpcs",
+    code: "Q5003",
+    display:
+      "Hospice care provided in nursing long-term care facility (LTC) or non-skilled nursing facility (NF)",
+  },
+  {
+    valueSetId: "place_of_service_q_codes",
+    systemId: "hcpcs",
+    code: "Q5004",
+    display: "Hospice care provided in skilled nursing facility (SNF)",
+  },
+  {
+    valueSetId: "place_of_service_q_codes",
+    systemId: "hcpcs",
+    code: "Q5005",
+    display: "Hospice care provided in inpatient hospital",
+  },
+  {
+    valueSetId: "place_of_service_q_codes",
+    systemId: "hcpcs",
+    code: "Q5006",
+    display: "Hospice care provided in inpatient hospice facility",
+  },
+  {
+    valueSetId: "place_of_service_q_codes",
+    systemId: "hcpcs",
+    code: "Q5007",
+    display: "Hospice care provided in long-term care facility (LTCH)",
+  },
+  {
+    valueSetId: "place_of_service_q_codes",
+    systemId: "hcpcs",
+    code: "Q5008",
+    display: "Hospice care provided in inpatient psychiatric facility",
+  },
+  {
+    valueSetId: "place_of_service_q_codes",
+    systemId: "hcpcs",
+    code: "Q5009",
+    display: "Hospice care provided in place not otherwise specified (NOS)",
+  },
+  {
+    valueSetId: "place_of_service_q_codes",
+    systemId: "hcpcs",
+    code: "Q5010",
+    display: "Hospice home care provided in a hospice facility",
+  },
 ] as const;

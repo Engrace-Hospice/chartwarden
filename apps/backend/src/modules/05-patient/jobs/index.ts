@@ -29,7 +29,12 @@ export interface GeocodeResult {
 /** Ports the geocode processor binds (the geocoder adapter + the Drizzle address writer). */
 export interface GeocodeAddressPorts {
   /** Resolve an address string to coordinates (the geocoder vendor adapter; out of M5's codePath). */
-  geocode(address: { line1: string; city: string; state?: string; postalCode: string }): Promise<GeocodeResult>;
+  geocode(address: {
+    line1: string;
+    city: string;
+    state?: string;
+    postalCode: string;
+  }): Promise<GeocodeResult>;
   /** Write geocoded_lat/lng back onto the address row. */
   writeGeocode(organizationId: string, addressId: string, result: GeocodeResult): Promise<void>;
 }

@@ -41,16 +41,33 @@ describe("M7-T09 §7 workflow acceptance", () => {
     const svc = backend.service;
 
     await svc.finalizeVersion(ORG, planId, versionId, 1, null);
-    const sig1 = (await svc.signVersion(ORG, planId, versionId, 2, "hospice_physician", "2026-06-21T12:00:00Z")) as {
+    const sig1 = (await svc.signVersion(
+      ORG,
+      planId,
+      versionId,
+      2,
+      "hospice_physician",
+      "2026-06-21T12:00:00Z",
+    )) as {
       status: string;
     };
     expect(sig1.status).toBe("in_review"); // quorum not yet met
-    const sig2 = (await svc.signVersion(ORG, planId, versionId, 3, "rn_case_manager", "2026-06-21T12:00:00Z")) as {
+    const sig2 = (await svc.signVersion(
+      ORG,
+      planId,
+      versionId,
+      3,
+      "rn_case_manager",
+      "2026-06-21T12:00:00Z",
+    )) as {
       status: string;
     };
     expect(sig2.status).toBe("signed");
 
-    const plan = (await svc.getCarePlanForPatient(ORG, PATIENT)) as { status: string; activeVersionId: string };
+    const plan = (await svc.getCarePlanForPatient(ORG, PATIENT)) as {
+      status: string;
+      activeVersionId: string;
+    };
     expect(plan.status).toBe("active");
     expect(plan.activeVersionId).toBe(versionId);
   });
@@ -58,7 +75,10 @@ describe("M7-T09 §7 workflow acceptance", () => {
   it("§7.2 — 15-day IDG review: an idg_review version needs the full RN+MSW+chaplain+MD quorum", async () => {
     const { backend, planId } = await planWithProblem();
     const svc = backend.service;
-    const v2 = (await svc.createVersion(ORG, planId, "idg_review", "idg_meeting_1")) as { id: string; version: number };
+    const v2 = (await svc.createVersion(ORG, planId, "idg_review", "idg_meeting_1")) as {
+      id: string;
+      version: number;
+    };
     await svc.finalizeVersion(ORG, planId, v2.id, 1, null);
 
     // The idg_review floor: four distinct slots. Only the last signature completes the quorum.
@@ -66,7 +86,14 @@ describe("M7-T09 §7 workflow acceptance", () => {
     let ifVersion = 2;
     let last: { status: string } = { status: "in_review" };
     for (const role of roles) {
-      last = (await svc.signVersion(ORG, planId, v2.id, ifVersion, role, "2026-07-06T12:00:00Z")) as { status: string };
+      last = (await svc.signVersion(
+        ORG,
+        planId,
+        v2.id,
+        ifVersion,
+        role,
+        "2026-07-06T12:00:00Z",
+      )) as { status: string };
       ifVersion += 1;
     }
     expect(resolveRequiredSignerSet("idg_review")).toHaveLength(4);
@@ -83,7 +110,9 @@ describe("M7-T09 §7 workflow acceptance", () => {
       false,
     );
     // PATCH sets revised_text; the schema never carries original_text, so it stays verbatim.
-    const patched = await svc.patchGoal(ORG, planId, goal.id, 1, { revisedText: "Will walk 20ft assisted in 4 weeks" });
+    const patched = await svc.patchGoal(ORG, planId, goal.id, 1, {
+      revisedText: "Will walk 20ft assisted in 4 weeks",
+    });
     expect(patched.version).toBe(2);
 
     const plan = (await svc.getCarePlanForPatient(ORG, PATIENT)) as {
@@ -104,7 +133,13 @@ describe("M7-T09 §7 workflow acceptance", () => {
       svc.addIntervention(
         ORG,
         planId,
-        { problemId, scopeText: "x", frequencyText: "daily", frequencyValue: "1/day", discipline: "rn" },
+        {
+          problemId,
+          scopeText: "x",
+          frequencyText: "daily",
+          frequencyValue: "1/day",
+          discipline: "rn",
+        },
         aide,
       ),
     ).rejects.toMatchObject({ code: "DISCIPLINE_SCOPE_VIOLATION" });
@@ -115,7 +150,13 @@ describe("M7-T09 §7 workflow acceptance", () => {
     const ok = await svc.addIntervention(
       ORG,
       planId,
-      { problemId, scopeText: "RN pain reassessment", frequencyText: "3x/week", frequencyValue: "3/week", discipline: "rn" },
+      {
+        problemId,
+        scopeText: "RN pain reassessment",
+        frequencyText: "3x/week",
+        frequencyValue: "3/week",
+        discipline: "rn",
+      },
       idgCoord,
     );
     expect(ok.status).toBe("active");
@@ -125,13 +166,23 @@ describe("M7-T09 §7 workflow acceptance", () => {
     const { backend, planId, problemId } = await planWithProblem();
     const svc = backend.service;
     await expect(
-      svc.addGoal(ORG, planId, { problemId, originalText: "Agent wishes comfort care", source: "agent_stated" }, false),
+      svc.addGoal(
+        ORG,
+        planId,
+        { problemId, originalText: "Agent wishes comfort care", source: "agent_stated" },
+        false,
+      ),
     ).rejects.toMatchObject({ code: "DPOA_CONSENT_REQUIRED" });
 
     const ok = await svc.addGoal(
       ORG,
       planId,
-      { problemId, originalText: "Agent wishes comfort care", source: "agent_stated", actingConsentId: "consent_1" },
+      {
+        problemId,
+        originalText: "Agent wishes comfort care",
+        source: "agent_stated",
+        actingConsentId: "consent_1",
+      },
       true,
     );
     expect(ok.status).toBe("not_started");
@@ -141,7 +192,11 @@ describe("M7-T09 §7 workflow acceptance", () => {
     const backend = createInMemoryCarePlanBackend();
     const svc = backend.service;
     const boot = (await svc.bootstrapCarePlan(ORG, PATIENT, ADMISSION)) as { id: string };
-    await svc.addProblem(ORG, boot.id, { description: "Terminal CA", kind: "terminal", source: "clinical" });
+    await svc.addProblem(ORG, boot.id, {
+      description: "Terminal CA",
+      kind: "terminal",
+      source: "clinical",
+    });
     const sud = await svc.addProblem(ORG, boot.id, {
       description: "Opioid use disorder",
       kind: "related",
@@ -149,14 +204,18 @@ describe("M7-T09 §7 workflow acceptance", () => {
       sudRelated: true,
     });
 
-    const denied = (await svc.getCarePlanForPatient(ORG, PATIENT, { sudDisclosureAllowed: false })) as {
+    const denied = (await svc.getCarePlanForPatient(ORG, PATIENT, {
+      sudDisclosureAllowed: false,
+    })) as {
       problems: { id: string }[];
       redacted: boolean;
     };
     expect(denied.problems.some((p) => p.id === sud.id)).toBe(false);
     expect(denied.redacted).toBe(true);
 
-    const allowed = (await svc.getCarePlanForPatient(ORG, PATIENT, { sudDisclosureAllowed: true })) as {
+    const allowed = (await svc.getCarePlanForPatient(ORG, PATIENT, {
+      sudDisclosureAllowed: true,
+    })) as {
       problems: { id: string }[];
       redacted: boolean;
     };
@@ -170,7 +229,9 @@ describe("M7-T09 §7 workflow acceptance", () => {
   it("§7.7 — optimistic concurrency: a stale If-Match version is refused with STALE_VERSION", async () => {
     const { backend, planId, problemId } = await planWithProblem();
     const svc = backend.service;
-    const first = await svc.patchProblem(ORG, planId, problemId, 1, { description: "Terminal CA (staged)" });
+    const first = await svc.patchProblem(ORG, planId, problemId, 1, {
+      description: "Terminal CA (staged)",
+    });
     expect(first.version).toBe(2);
     await expect(
       svc.patchProblem(ORG, planId, problemId, 1, { description: "stale write" }),
@@ -185,7 +246,12 @@ describe("M7-T09 §7 workflow acceptance", () => {
       patientId: PATIENT,
       changes: [{ target: "intervention" as const, op: "add" as const, discipline: "rn" as const }],
     };
-    const baseFacts = { alreadyApplied: false, planActive: true, openDraftVersionId: null, terminalProblemIds: [] as string[] };
+    const baseFacts = {
+      alreadyApplied: false,
+      planActive: true,
+      openDraftVersionId: null,
+      terminalProblemIds: [] as string[],
+    };
 
     const applied = decideIdgDecision(decision, baseFacts);
     expect(applied.kind).toBe("apply");
@@ -197,6 +263,8 @@ describe("M7-T09 §7 workflow acceptance", () => {
 
   it("§6.6 — cross-tenant: Org B cannot read Org A's plan (non-leaking 404)", async () => {
     const { backend, planId } = await planWithProblem();
-    await expect(backend.service.listVersions(ORG_B, planId)).rejects.toMatchObject({ name: "NotFoundError" });
+    await expect(backend.service.listVersions(ORG_B, planId)).rejects.toMatchObject({
+      name: "NotFoundError",
+    });
   });
 });

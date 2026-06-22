@@ -69,20 +69,57 @@ const PERMISSION_SEED = [
 function makeServer() {
   const backend = createInMemoryAdmissionBackend({
     records: [
-      { id: ADMISSION, organizationId: ORG, kind: "admission", state: "active", patientId: "pat_1" },
-      { id: ADMISSION_B, organizationId: ORG_B, kind: "admission", state: "active", patientId: "pat_b" },
-      { id: F2F, organizationId: ORG, kind: "f2f", state: "completed", admissionId: ADMISSION, scheduledClinicianId: "rn_1" },
-      { id: DISCHARGE, organizationId: ORG, kind: "discharge", state: "awaiting_cosign", admissionId: ADMISSION, patientId: "pat_1" },
-      { id: WINDOW, organizationId: ORG, kind: "compliance_window", state: "open", admissionId: ADMISSION, patientId: "pat_1" },
+      {
+        id: ADMISSION,
+        organizationId: ORG,
+        kind: "admission",
+        state: "active",
+        patientId: "pat_1",
+      },
+      {
+        id: ADMISSION_B,
+        organizationId: ORG_B,
+        kind: "admission",
+        state: "active",
+        patientId: "pat_b",
+      },
+      {
+        id: F2F,
+        organizationId: ORG,
+        kind: "f2f",
+        state: "completed",
+        admissionId: ADMISSION,
+        scheduledClinicianId: "rn_1",
+      },
+      {
+        id: DISCHARGE,
+        organizationId: ORG,
+        kind: "discharge",
+        state: "awaiting_cosign",
+        admissionId: ADMISSION,
+        patientId: "pat_1",
+      },
+      {
+        id: WINDOW,
+        organizationId: ORG,
+        kind: "compliance_window",
+        state: "open",
+        admissionId: ADMISSION,
+        patientId: "pat_1",
+      },
     ],
   });
 
   const grantStore = createInMemoryEffectivePermissionStore(
-    PERMISSION_SEED.flatMap((s) => [ORG, ORG_B].map((org) => ({
-      orgId: org,
-      userId: s.userId,
-      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: s.permissions }],
-    }))),
+    PERMISSION_SEED.flatMap((s) =>
+      [ORG, ORG_B].map((org) => ({
+        orgId: org,
+        userId: s.userId,
+        grants: [
+          { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: s.permissions },
+        ],
+      })),
+    ),
   );
   registerEffectivePermissionResolver(grantStore.store);
   registerAdmissionAbacPredicates({ resolver: backend.resolver, isInCaseload: async () => true });
@@ -93,7 +130,11 @@ function makeServer() {
   return { app, backend };
 }
 
-const INTAKE = { "x-test-user": "intake_1", "x-test-org": ORG, "x-test-roles": "intake_coordinator" };
+const INTAKE = {
+  "x-test-user": "intake_1",
+  "x-test-org": ORG,
+  "x-test-roles": "intake_coordinator",
+};
 const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "clinical_rn" };
 const RN_AS_NP = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "np" };
 const MD = { "x-test-user": "md_1", "x-test-org": ORG, "x-test-roles": "medical_director" };
@@ -155,7 +196,11 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
 
   it("GET /admissions/:id resolves a seeded admission for a reader (200)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: `/api/v1/admissions/${ADMISSION}`, headers: RN });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/admissions/${ADMISSION}`,
+      headers: RN,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().id).toBe(ADMISSION);
     await app.close();
@@ -163,7 +208,11 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
 
   it("§6.6 cross-tenant non-leak — an org_a actor cannot read an org_b admission (404)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: `/api/v1/admissions/${ADMISSION_B}`, headers: RN });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/admissions/${ADMISSION_B}`,
+      headers: RN,
+    });
     expect(res.statusCode).toBe(404);
     await app.close();
   });
@@ -174,7 +223,10 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
       method: "POST",
       url: `/api/v1/face-to-face/${F2F}/attest`,
       headers: RN, // has f2f.attest perm but role is clinical_rn → fails f2f.is_hospice_md_or_np
-      payload: { attestationNarrative: "Patient continues to meet hospice eligibility.", ifVersion: 1 },
+      payload: {
+        attestationNarrative: "Patient continues to meet hospice eligibility.",
+        ifVersion: 1,
+      },
     });
     expect(denied.statusCode).toBe(403);
 
@@ -182,7 +234,10 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
       method: "POST",
       url: `/api/v1/face-to-face/${F2F}/attest`,
       headers: RN_AS_NP,
-      payload: { attestationNarrative: "Patient continues to meet hospice eligibility.", ifVersion: 1 },
+      payload: {
+        attestationNarrative: "Patient continues to meet hospice eligibility.",
+        ifVersion: 1,
+      },
     });
     expect(ok.statusCode).toBe(200);
     expect(ok.json().state).toBe("attested");
@@ -196,7 +251,12 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
       method: "POST",
       url: `/api/v1/admissions/${ADMISSION}/discharge`,
       headers: INTAKE,
-      payload: { reason: "for_cause", dischargeDate: "2026-06-20", narrative: " x".repeat(30), forCauseReason: "y".repeat(30) },
+      payload: {
+        reason: "for_cause",
+        dischargeDate: "2026-06-20",
+        narrative: " x".repeat(30),
+        forCauseReason: "y".repeat(30),
+      },
     });
     expect(forCause.statusCode).toBe(403);
 
@@ -204,7 +264,11 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
       method: "POST",
       url: `/api/v1/admissions/${ADMISSION}/discharge`,
       headers: INTAKE,
-      payload: { reason: "death", dischargeDate: "2026-06-20", narrative: "patient expired at home" },
+      payload: {
+        reason: "death",
+        dischargeDate: "2026-06-20",
+        narrative: "patient expired at home",
+      },
     });
     expect(death.statusCode).toBe(201);
     expect(death.json().requiresMedicalDirectorCosign).toBe(false);

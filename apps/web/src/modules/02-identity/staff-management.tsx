@@ -1,3 +1,5 @@
+import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout } from "@wardenx/ui";
+import { useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/02-identity — Staff Management (M2, Track A).
 // Spec: docs/ui/screens/admin/WARDENX_UI_STAFF_MANAGEMENT.md (Work Queue). Manages the org's member
 // roster: invite by email, change a member's status (active/suspended), and revoke a membership — over
@@ -9,8 +11,6 @@
 // see docs/ui/DEFERRED_SCREENS.md.
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
-import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout } from "@wardenx/ui";
-import { useApiClient } from "@wardenx/ui";
 import { authClient } from "./auth-client";
 
 interface Member {
@@ -112,7 +112,8 @@ export function StaffManagement(): JSX.Element {
   // "Locked accounts": the underlying user account is suspended/deactivated (can't sign in), distinct
   // from a suspended *membership*. Surfaced from the joined M1 user.status (FB-T12).
   const locked =
-    members?.filter((m) => m.accountStatus === "suspended" || m.accountStatus === "deactivated").length ?? 0;
+    members?.filter((m) => m.accountStatus === "suspended" || m.accountStatus === "deactivated")
+      .length ?? 0;
 
   return (
     <WorkQueueLayout
@@ -148,11 +149,16 @@ export function StaffManagement(): JSX.Element {
         members === null ? (
           <LoadingSpinner />
         ) : members.length === 0 ? (
-          <EmptyState title="No staff yet" description="Invite a team member above to get started." />
+          <EmptyState
+            title="No staff yet"
+            description="Invite a team member above to get started."
+          />
         ) : (
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
             <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280", borderBottom: "1px solid #e5e7eb" }}>
+              <tr
+                style={{ textAlign: "left", color: "#6b7280", borderBottom: "1px solid #e5e7eb" }}
+              >
                 <th style={th}>Member</th>
                 <th style={th}>Email</th>
                 <th style={th}>Role</th>
@@ -165,20 +171,38 @@ export function StaffManagement(): JSX.Element {
             <tbody>
               {members.map((m) => (
                 <tr key={m.membershipId} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                  <td style={td}><MemberName member={m} /></td>
+                  <td style={td}>
+                    <MemberName member={m} />
+                  </td>
                   <td style={td}>{m.email ?? "—"}</td>
                   <td style={td}>{m.isAdmin ? "Org admin" : "Member"}</td>
                   <td style={td}>{formatLastLogin(m.lastLoginAt)}</td>
                   <td style={td}>{m.defaultLocationIds.length}</td>
-                  <td style={td}><StatusPill status={m.status} /></td>
+                  <td style={td}>
+                    <StatusPill status={m.status} />
+                  </td>
                   <td style={td}>
                     {m.status === "active" ? (
-                      <button type="button" onClick={() => setStatus(m, "suspended")} style={linkBtn}>Suspend</button>
+                      <button
+                        type="button"
+                        onClick={() => setStatus(m, "suspended")}
+                        style={linkBtn}
+                      >
+                        Suspend
+                      </button>
                     ) : m.status === "suspended" ? (
-                      <button type="button" onClick={() => setStatus(m, "active")} style={linkBtn}>Reactivate</button>
+                      <button type="button" onClick={() => setStatus(m, "active")} style={linkBtn}>
+                        Reactivate
+                      </button>
                     ) : null}
                     {m.status !== "revoked" ? (
-                      <button type="button" onClick={() => revoke(m)} style={{ ...linkBtn, color: "#b91c1c" }}>Remove</button>
+                      <button
+                        type="button"
+                        onClick={() => revoke(m)}
+                        style={{ ...linkBtn, color: "#b91c1c" }}
+                      >
+                        Remove
+                      </button>
                     ) : null}
                   </td>
                 </tr>
@@ -209,7 +233,11 @@ function MemberName({ member }: { member: Member }): JSX.Element {
     <span>
       {member.displayName ? primary : <code style={{ fontSize: "0.8rem" }}>{primary}</code>}
       {isLocked ? (
-        <span style={{ marginLeft: "0.5rem", color: "#b45309", fontSize: "0.7rem", fontWeight: 700 }}>LOCKED</span>
+        <span
+          style={{ marginLeft: "0.5rem", color: "#b45309", fontSize: "0.7rem", fontWeight: 700 }}
+        >
+          LOCKED
+        </span>
       ) : null}
     </span>
   );
@@ -224,15 +252,53 @@ function formatLastLogin(iso: string | null): string {
 
 function StatusPill({ status }: { status: Member["status"] }): JSX.Element {
   const color =
-    status === "active" ? "#15803d" : status === "suspended" ? "#b45309" : status === "pending" ? "#1d4ed8" : "#6b7280";
+    status === "active"
+      ? "#15803d"
+      : status === "suspended"
+        ? "#b45309"
+        : status === "pending"
+          ? "#1d4ed8"
+          : "#6b7280";
   return <span style={{ color, fontWeight: 600, textTransform: "capitalize" }}>{status}</span>;
 }
 
 const kpiStrip = { display: "flex", gap: "1rem", padding: "0.75rem 1.5rem" } as const;
-const kpiCard = { padding: "0.75rem 1rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem", minWidth: "7rem" } as const;
-const inviteBar = { display: "flex", gap: "0.5rem", alignItems: "center", padding: "0 1.5rem 0.75rem", flexWrap: "wrap" as const } as const;
-const field = { padding: "0.4rem 0.6rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem", minWidth: "16rem" } as const;
+const kpiCard = {
+  padding: "0.75rem 1rem",
+  border: "1px solid #e5e7eb",
+  borderRadius: "0.5rem",
+  minWidth: "7rem",
+} as const;
+const inviteBar = {
+  display: "flex",
+  gap: "0.5rem",
+  alignItems: "center",
+  padding: "0 1.5rem 0.75rem",
+  flexWrap: "wrap" as const,
+} as const;
+const field = {
+  padding: "0.4rem 0.6rem",
+  border: "1px solid #e5e7eb",
+  borderRadius: "0.5rem",
+  minWidth: "16rem",
+} as const;
 const th = { padding: "0.5rem 1.5rem", fontWeight: 600 } as const;
 const td = { padding: "0.5rem 1.5rem" } as const;
-const primaryBtn = { padding: "0.4rem 0.9rem", border: "none", borderRadius: "0.5rem", background: "#1d4ed8", color: "#fff", cursor: "pointer", fontWeight: 600 } as const;
-const linkBtn = { border: "none", background: "none", color: "#1d4ed8", cursor: "pointer", fontWeight: 600, marginRight: "0.75rem", padding: 0 } as const;
+const primaryBtn = {
+  padding: "0.4rem 0.9rem",
+  border: "none",
+  borderRadius: "0.5rem",
+  background: "#1d4ed8",
+  color: "#fff",
+  cursor: "pointer",
+  fontWeight: 600,
+} as const;
+const linkBtn = {
+  border: "none",
+  background: "none",
+  color: "#1d4ed8",
+  cursor: "pointer",
+  fontWeight: 600,
+  marginRight: "0.75rem",
+  padding: 0,
+} as const;

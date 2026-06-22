@@ -5,21 +5,12 @@
 // minimization; crypto-erased on destruction, §3.6). RLS + the M4 write-audit trigger land in migration
 // 0031 (M8-T03).
 import { sql } from "drizzle-orm";
-import {
-  bigint,
-  check,
-  index,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { bigint, check, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
-import { encounters } from "./encounters";
 import { encounterAddenda } from "./encounter-addenda";
+import { encounters } from "./encounters";
 
 export const hearthnoteSelections = pgTable(
   "hearthnote_selection",

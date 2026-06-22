@@ -47,12 +47,18 @@ describe("M36 transactional email transport (FB-T14)", () => {
 
   it("selector logs in dev (no provider) and stays silent in prod (a link in prod logs is a credential)", async () => {
     const devLines: string[] = [];
-    await selectTransactionalEmailTransport({ isProduction: false, log: (l) => devLines.push(l) }).send(RESET);
+    await selectTransactionalEmailTransport({
+      isProduction: false,
+      log: (l) => devLines.push(l),
+    }).send(RESET);
     expect(devLines).toHaveLength(1);
     expect(devLines[0]).toContain("token=abc123");
 
     const prodLines: string[] = [];
-    await selectTransactionalEmailTransport({ isProduction: true, log: (l) => prodLines.push(l) }).send(RESET);
+    await selectTransactionalEmailTransport({
+      isProduction: true,
+      log: (l) => prodLines.push(l),
+    }).send(RESET);
     expect(prodLines).toHaveLength(0); // prod fallback drops the link rather than log a credential
   });
 });

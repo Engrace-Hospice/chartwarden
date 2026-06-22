@@ -11,8 +11,8 @@
 // in-transaction side-effect list. The 12h/24h/48h clock math is ./sla-clock; this machine consumes its
 // stage decisions as injected events. No IO, no cross-module schema import.
 import type { CosignatureStatus, LocalDate, MembershipId } from "@wardenx/types";
-import { EncounterStateError, require_ } from "../lifecycle/errors";
 import { type EncounterSideEffect, type TransitionResult, result } from "../lifecycle/effects";
+import { EncounterStateError, require_ } from "../lifecycle/errors";
 import { TEXT_MINIMUMS } from "../lifecycle/validation";
 
 /** The §2.4 cosignature-request state (mirrors `cosignature_status`). */
@@ -74,10 +74,7 @@ export const COSIGNATURE_GRAPH: Readonly<
  * `CaseloadProvider`. Mirrors `planDraftCreation` on the encounter aggregate.
  */
 export function planCosignatureCreation(routedAt: LocalDate): ReadonlyArray<EncounterSideEffect> {
-  return [
-    { kind: "set_timestamp", field: "routed_at", at: routedAt },
-    { kind: "audit" },
-  ];
+  return [{ kind: "set_timestamp", field: "routed_at", at: routedAt }, { kind: "audit" }];
 }
 
 /**
