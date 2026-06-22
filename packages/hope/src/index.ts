@@ -9,8 +9,13 @@
 // (`triggers/`), the SFV creation/completion/watchdog machines (`sfv/`), and the recording-boundary
 // guards — author-discipline (RN/NP-only) + capture-window/late-reason + the discharge Section-Q branch
 // (`recording/`). Still pure, IO-free, `@wardenx/types`-only: the services that compose these over
-// Drizzle + the M6/M9/M39 seams land in M10-T06; the per-section TypeBox + CMS pre-submission validation
-// in M10-T04; the iQIES submission workers in M10-T07.
+// Drizzle + the M6/M9/M39 seams land in M10-T06; the iQIES submission workers in M10-T07.
+//
+// M10-T04 adds the CMS HOPE pre-submission validation engine: the required-items-per-RFA matrix
+// (`sections/required-items.ts`), the `hope_validation_finding` descriptor + rule-id catalog
+// (`validation/findings.ts`), the M38 value-set membership port (`validation/value-set-oracle.ts`), and
+// the pure rule engine (`validation/validate-hope-assessment.ts`) that returns one finding per CMS
+// violation (errors block iQIES submission; warnings are advisory). Still pure, `@wardenx/types`-only.
 
 export * from "./rfa";
 export * from "./seams";
@@ -23,3 +28,7 @@ export * from "./triggers/j2051";
 export * from "./sfv/sfv";
 export * from "./recording/discipline";
 export * from "./recording/timepoint-gate";
+export * from "./sections/required-items";
+export * from "./validation/findings";
+export * from "./validation/value-set-oracle";
+export * from "./validation/validate-hope-assessment";
