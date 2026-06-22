@@ -47,12 +47,16 @@ import {
   orderSignatureProviderDenyStub,
   patientMutatorDenyStub,
   patientReaderDenyStub,
+  portalVisitReaderDenyStub,
   reconciliationProviderDenyStub,
   refillInboxProviderDenyStub,
   scaleSeriesProviderDenyStub,
   sessionContextResolverDenyStub,
   signedEncountersReaderDenyStub,
   terminologyProviderDenyStub,
+  visitAssignmentReaderDenyStub,
+  visitMetricsProviderDenyStub,
+  visitReaderDenyStub,
 } from "./providers";
 
 export class SeamError extends Error {
@@ -351,6 +355,38 @@ export const REQUIRED_SEAMS = [
     ownerModule: 14,
     phi: true,
     denyStub: idgScheduleProviderDenyStub,
+  },
+  // M17 (Scheduling & Route Optimization) owned seams (§4.3). All four are READ-only DTO surfaces over M17's
+  // `visit` / `visit_state_history` / `route_segment` rows: `VisitReader` is the visit read path M8 (encounter-
+  // authoring context — closes M8's visit-seeding inert consumer, M8 D9) + M18 (EVV geofence target) + M14 (IDG
+  // packet) consume; `VisitAssignmentReader` is the assignment read path M5 (the §4.5 D11 caseload-contribution
+  // projection) + M19 (on-call triage) + M20 (field-safety live-awareness) consume; `PortalVisitReader` is the M31
+  // portal upcoming-visit read path (lay-language, scrubbed); `VisitMetricsProvider` is the M30/M33 productivity +
+  // quality measures read path — all instead of importing M17's schema. Visit times + addresses are patient-linked
+  // → phi: true; boot-validated and fail-closed until M17 registers the real impls (M17-T05).
+  {
+    key: "VisitReader",
+    ownerModule: 17,
+    phi: true,
+    denyStub: visitReaderDenyStub,
+  },
+  {
+    key: "VisitAssignmentReader",
+    ownerModule: 17,
+    phi: true,
+    denyStub: visitAssignmentReaderDenyStub,
+  },
+  {
+    key: "PortalVisitReader",
+    ownerModule: 17,
+    phi: true,
+    denyStub: portalVisitReaderDenyStub,
+  },
+  {
+    key: "VisitMetricsProvider",
+    ownerModule: 17,
+    phi: true,
+    denyStub: visitMetricsProviderDenyStub,
   },
 ] satisfies readonly RequiredSeam[];
 

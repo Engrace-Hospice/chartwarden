@@ -40,10 +40,14 @@ import type {
   RefillInboxProvider,
   PatientMutator,
   PatientReader,
+  PortalVisitReader,
   ScaleSeriesProvider,
   SeamName,
   SessionContextResolver,
   SignedEncountersReader,
+  VisitAssignmentReader,
+  VisitMetricsProvider,
+  VisitReader,
 } from "../interfaces";
 
 export class NotImplementedError extends Error {
@@ -513,6 +517,62 @@ export const idgScheduleProviderDenyStub: IdgScheduleProvider = {
   },
   getCadenceAdherence() {
     throw new NotImplementedError("IdgScheduleProvider");
+  },
+};
+
+/** M17 — the visit read seam (encounter context / EVV geofence target / IDG since-meeting) M8/M18/M14 consume.
+ * Denies until M17 registers it (M17-T05). */
+export const visitReaderDenyStub: VisitReader = {
+  visitForEncounter() {
+    throw new NotImplementedError("VisitReader");
+  },
+  visitsScheduledForMembershipOnDate() {
+    throw new NotImplementedError("VisitReader");
+  },
+  completedVisitsForPatientSince() {
+    throw new NotImplementedError("VisitReader");
+  },
+};
+
+/** M17 — the assignment read seam (§4.5 D11 caseload contribution / on-call roster / live in_visit) M5/M19/M20
+ * consume. Denies until M17 registers it (M17-T05). */
+export const visitAssignmentReaderDenyStub: VisitAssignmentReader = {
+  activeVisitsForMembershipOnDate() {
+    throw new NotImplementedError("VisitAssignmentReader");
+  },
+  tonightsOnCallRoster() {
+    throw new NotImplementedError("VisitAssignmentReader");
+  },
+  currentVisitForClinician() {
+    throw new NotImplementedError("VisitAssignmentReader");
+  },
+};
+
+/** M17 — the portal upcoming-visit read seam (lay-language, scheduler-internal notes scrubbed) M31 consumes.
+ * Denies until M17 registers it (M17-T05). */
+export const portalVisitReaderDenyStub: PortalVisitReader = {
+  upcomingForPatient() {
+    throw new NotImplementedError("PortalVisitReader");
+  },
+};
+
+/** M17 — the productivity + quality measures read seam (on-time / no-show / reschedule / route / stability)
+ * M30/M33 consume. Denies until M17 registers it (M17-T05). */
+export const visitMetricsProviderDenyStub: VisitMetricsProvider = {
+  getOnTimeVisitRate() {
+    throw new NotImplementedError("VisitMetricsProvider");
+  },
+  getNoShowRate() {
+    throw new NotImplementedError("VisitMetricsProvider");
+  },
+  getRescheduleRate() {
+    throw new NotImplementedError("VisitMetricsProvider");
+  },
+  getRouteEfficiencyForMembership() {
+    throw new NotImplementedError("VisitMetricsProvider");
+  },
+  getScheduleStabilityIndex() {
+    throw new NotImplementedError("VisitMetricsProvider");
   },
 };
 

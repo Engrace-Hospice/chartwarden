@@ -40,6 +40,7 @@ import { registerOrderErasers, registerOrderSeams } from "./modules/11-orders/in
 import { registerDoseSpotErasers, registerDoseSpotSeams } from "./modules/12-dosespot/index";
 import { registerEmarErasers, registerEmarSeams } from "./modules/13-emar/index";
 import { registerIdgErasers, registerIdgSeams } from "./modules/14-idg/index";
+import { registerSchedulingSeams } from "./modules/17-scheduling/index";
 import {
   createDbMessagingProvider,
   mountMessagingRoutes,
@@ -139,6 +140,14 @@ export function wireModuleSeams(
   // 15-day-cadence read path M28 (FHIR) + M30 (cadence-adherence) + M33 consume). Slice/tests keep the
   // in-memory store; the Drizzle-backed store lands with M14's routes/repos (M14-T05+).
   registerIdgSeams();
+  // M17 — the four §4.3 owned READ seams (VisitReader — the visit read path M8 (encounter-authoring context,
+  // which CLOSES M8's visit-seeding inert consumer M8 D9) / M18 (EVV geofence target) / M14 (IDG since-meeting)
+  // consume — + VisitAssignmentReader — the assignment read path M5 (the §4.5 D11 caseload-contribution
+  // projection) / M19 (on-call triage) / M20 (field-safety live-awareness) consume — + PortalVisitReader — the
+  // M31 portal upcoming-visit read path (lay-language, scrubbed) — + VisitMetricsProvider — the M30/M33
+  // productivity + quality measures read path). Slice/tests keep the in-memory store; the Drizzle-backed store
+  // lands with M17's routes/repos (M17-T07+).
+  registerSchedulingSeams();
   // M39 — ConsentEvaluator (§4.3, the disclosure/redaction gate). Production backs it with the Drizzle
   // store over the real M39 consent tables (FB-T03); slice/tests keep the in-memory default.
   registerConsentSeams(deps.db ? { store: createDbConsentStore(deps.db) } : {});

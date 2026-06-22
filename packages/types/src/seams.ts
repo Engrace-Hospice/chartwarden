@@ -28,6 +28,12 @@ import type {
   IdgPacketProvider,
   IdgScheduleProvider,
 } from "./idg";
+import type {
+  PortalVisitReader,
+  VisitAssignmentReader,
+  VisitMetricsProvider,
+  VisitReader,
+} from "./scheduling";
 import type { PatientMutator, PatientReader } from "./patient";
 // @wardenx/types — Boot-registered SEAM contracts (Phase 0 skeleton).
 //
@@ -134,7 +140,21 @@ export type SeamName =
   // schema. M14 owns the meeting/decision/packet lifecycle internally and downstream modules NEVER import its schema.
   | "IdgPacketProvider" // M14 — packet read seam (snapshot by-id + M22 render payload)
   | "IdgDecisionProvider" // M14 — decision read seam (by-care-plan / by-meeting)
-  | "IdgScheduleProvider"; // M14 — schedule read seam (meetings-for-location / cadence-adherence)
+  | "IdgScheduleProvider" // M14 — schedule read seam (meetings-for-location / cadence-adherence)
+  // M17 (Scheduling & Route Optimization) owned seams (§4.3) — also leaf-typed (interfaces in ./scheduling,
+  // this leaf), so they are typed here like M6..M14's seams. All four are READ surfaces over M17's `visit` /
+  // `visit_state_history` / `route_segment` rows: `VisitReader` is the visit read path M8 (encounter-authoring
+  // context — closes M8's visit-seeding inert consumer, M8 D9), M18 (EVV geofence target), M14 (IDG packet
+  // "completed visits since last meeting") consume; `VisitAssignmentReader` is the assignment/roster/live read
+  // path M5 (the §4.5 D11 caseload-contribution projection `patientCaseloadProvider` reads), M19 (on-call
+  // triage), M20 (field-safety live-awareness) consume; `PortalVisitReader` is the M31 portal upcoming-visit
+  // read path (lay-language, scheduler-internal notes scrubbed); `VisitMetricsProvider` is the M30/M33
+  // productivity + quality measures read path — all instead of importing M17's schema. M17 owns the visit
+  // lifecycle internally and downstream modules NEVER import its schema; none is a mutate path.
+  | "VisitReader" // M17 — visit read seam (encounter context / EVV geofence target / IDG since-meeting)
+  | "VisitAssignmentReader" // M17 — assignment read seam (caseload contribution / on-call roster / live in_visit)
+  | "PortalVisitReader" // M17 — portal upcoming-visit read seam (lay-language, scrubbed)
+  | "VisitMetricsProvider"; // M17 — productivity + quality measures read seam (on-time / no-show / reschedule / route / stability)
 
 /**
  * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
@@ -355,6 +375,15 @@ export interface SeamContracts {
   IdgPacketProvider: IdgPacketProvider;
   IdgDecisionProvider: IdgDecisionProvider;
   IdgScheduleProvider: IdgScheduleProvider;
+  // M17's owned seams (§4.3) are LEAF-TYPED too — interfaces live in ./scheduling (this package), so the registry
+  // is statically typed against the real contract. M17 registers the real Drizzle-backed impls over the deny-stubs
+  // (M17-T05); consumers that list `17` in their manifest `dependsOn` (M8/M18/M19/M20/M30/M31/M33) resolve them
+  // through the typed accessors with no schema import edge. All four are READ-only — M17 publishes the visit /
+  // assignment / portal / metrics read projections and never a Drizzle row (visit metadata, never clinical free-text).
+  VisitReader: VisitReader;
+  VisitAssignmentReader: VisitAssignmentReader;
+  PortalVisitReader: PortalVisitReader;
+  VisitMetricsProvider: VisitMetricsProvider;
 }
 
 /**
