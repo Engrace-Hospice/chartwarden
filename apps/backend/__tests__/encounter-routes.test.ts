@@ -45,8 +45,13 @@ const ENC_BY_RN = "a0000000-0000-4000-8000-000000000002";
 const ENC_B = "b0000000-0000-4000-8000-000000000003";
 
 const ALL_AUTHOR = [
-  "encounter.read", "encounter.author", "encounter.finalize", "encounter.sign",
-  "encounter.cosign", "vitals.author", "mileage.author",
+  "encounter.read",
+  "encounter.author",
+  "encounter.finalize",
+  "encounter.sign",
+  "encounter.cosign",
+  "vitals.author",
+  "mileage.author",
 ];
 
 const PERMISSION_SEED = [
@@ -58,9 +63,31 @@ const PERMISSION_SEED = [
 function makeServer() {
   const backend = createInMemoryEncounterBackend({
     encounters: [
-      { id: ENC_BY_LPN, organizationId: ORG, patientId: PATIENT, discipline: "lpn", status: "cosign_pending", authoredByUserId: "lpn_1", cosignature: "routed" },
-      { id: ENC_BY_RN, organizationId: ORG, patientId: PATIENT, discipline: "lpn", status: "cosign_pending", authoredByUserId: "rn_1", cosignature: "routed" },
-      { id: ENC_B, organizationId: ORG_B, patientId: PATIENT, status: "draft", authoredByUserId: "rn_1" },
+      {
+        id: ENC_BY_LPN,
+        organizationId: ORG,
+        patientId: PATIENT,
+        discipline: "lpn",
+        status: "cosign_pending",
+        authoredByUserId: "lpn_1",
+        cosignature: "routed",
+      },
+      {
+        id: ENC_BY_RN,
+        organizationId: ORG,
+        patientId: PATIENT,
+        discipline: "lpn",
+        status: "cosign_pending",
+        authoredByUserId: "rn_1",
+        cosignature: "routed",
+      },
+      {
+        id: ENC_B,
+        organizationId: ORG_B,
+        patientId: PATIENT,
+        status: "draft",
+        authoredByUserId: "rn_1",
+      },
     ],
   });
 
@@ -69,7 +96,9 @@ function makeServer() {
       [ORG, ORG_B].map((org) => ({
         orgId: org,
         userId: s.userId,
-        grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: s.permissions }],
+        grants: [
+          { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: s.permissions },
+        ],
       })),
     ),
   );
@@ -156,14 +185,22 @@ describe("M8-T09 — encounter routes (§4.1, §4.5 RBAC gating)", () => {
 
   it("GET reads are visible to a read-only viewer (200)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: `/api/v1/encounters/${ENC_BY_LPN}`, headers: VIEWER });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${ENC_BY_LPN}`,
+      headers: VIEWER,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().id).toBe(ENC_BY_LPN);
   });
 
   it("a cross-tenant encounter is a non-leaking 404", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: `/api/v1/encounters/${ENC_B}`, headers: RN });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${ENC_B}`,
+      headers: RN,
+    });
     expect(res.statusCode).toBe(404);
   });
 });
@@ -175,11 +212,22 @@ describe("M8-T09 — finalize → sign happy path (§2.3)", () => {
       method: "POST",
       url: "/api/v1/encounters",
       headers: RN,
-      payload: { patientId: PATIENT, admissionId: ADMISSION, encounterType: "routine_visit", discipline: "rn", serviceDate: "2026-06-20" },
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "routine_visit",
+        discipline: "rn",
+        serviceDate: "2026-06-20",
+      },
     });
     const id = draft.json().id as string;
 
-    const finalize = await app.inject({ method: "POST", url: `/api/v1/encounters/${id}/finalize`, headers: RN, payload: {} });
+    const finalize = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/finalize`,
+      headers: RN,
+      payload: {},
+    });
     expect(finalize.statusCode).toBe(200);
     expect(finalize.json().status).toBe("finalized");
 
@@ -199,10 +247,21 @@ describe("M8-T09 — finalize → sign happy path (§2.3)", () => {
       method: "POST",
       url: "/api/v1/encounters",
       headers: RN,
-      payload: { patientId: PATIENT, admissionId: ADMISSION, encounterType: "routine_visit", discipline: "rn", serviceDate: "2026-06-20" },
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "routine_visit",
+        discipline: "rn",
+        serviceDate: "2026-06-20",
+      },
     });
     const id = draft.json().id as string;
-    await app.inject({ method: "POST", url: `/api/v1/encounters/${id}/finalize`, headers: RN, payload: {} });
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/finalize`,
+      headers: RN,
+      payload: {},
+    });
 
     const sign = await app.inject({
       method: "POST",
@@ -222,7 +281,13 @@ describe("M8-T09 — §7.7 optimistic concurrency on selections PATCH", () => {
       method: "POST",
       url: "/api/v1/encounters",
       headers: RN,
-      payload: { patientId: PATIENT, admissionId: ADMISSION, encounterType: "routine_visit", discipline: "rn", serviceDate: "2026-06-20" },
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "routine_visit",
+        discipline: "rn",
+        serviceDate: "2026-06-20",
+      },
     });
     const id = draft.json().id as string;
 

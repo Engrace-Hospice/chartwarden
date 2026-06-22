@@ -48,22 +48,40 @@ export interface VitalsCapturePlan {
   readonly effects: readonly EncounterSideEffect[];
 }
 
-const isNum = (v: number | null | undefined): v is number => typeof v === "number" && Number.isFinite(v);
-const isText = (v: string | null | undefined): v is string => typeof v === "string" && v.trim().length > 0;
+const isNum = (v: number | null | undefined): v is number =>
+  typeof v === "number" && Number.isFinite(v);
+const isText = (v: string | null | undefined): v is string =>
+  typeof v === "string" && v.trim().length > 0;
 
 /** §3.3 `vitals_*` CHECK envelopes mirrored as guards (precise 422 before the write). */
 export function validateVitals(input: VitalsInput): void {
   if (isNum(input.bpSystolic)) {
-    require_(input.bpSystolic >= 40 && input.bpSystolic <= 260, "VITALS_OUT_OF_RANGE", "bp_systolic out of range (40–260)");
+    require_(
+      input.bpSystolic >= 40 && input.bpSystolic <= 260,
+      "VITALS_OUT_OF_RANGE",
+      "bp_systolic out of range (40–260)",
+    );
   }
   if (isNum(input.bpDiastolic)) {
-    require_(input.bpDiastolic >= 20 && input.bpDiastolic <= 180, "VITALS_OUT_OF_RANGE", "bp_diastolic out of range (20–180)");
+    require_(
+      input.bpDiastolic >= 20 && input.bpDiastolic <= 180,
+      "VITALS_OUT_OF_RANGE",
+      "bp_diastolic out of range (20–180)",
+    );
   }
   if (isNum(input.spo2)) {
-    require_(input.spo2 >= 50 && input.spo2 <= 100, "VITALS_OUT_OF_RANGE", "spo2 out of range (50–100)");
+    require_(
+      input.spo2 >= 50 && input.spo2 <= 100,
+      "VITALS_OUT_OF_RANGE",
+      "spo2 out of range (50–100)",
+    );
   }
   if (isNum(input.painScore)) {
-    require_(input.painScore >= 0 && input.painScore <= 10, "VITALS_OUT_OF_RANGE", "pain_score out of range (0–10)");
+    require_(
+      input.painScore >= 0 && input.painScore <= 10,
+      "VITALS_OUT_OF_RANGE",
+      "pain_score out of range (0–10)",
+    );
   }
   const cniFields = input.clinicallyNotIndicatedFields ?? [];
   if (cniFields.length > 0) {
@@ -76,7 +94,10 @@ export function validateVitals(input: VitalsInput): void {
 }
 
 /** Convert a numeric-as-text weight to kilograms (lb→kg), or null when unparseable. */
-function toKg(weight: string | null | undefined, unit: VitalUnit | null | undefined): number | null {
+function toKg(
+  weight: string | null | undefined,
+  unit: VitalUnit | null | undefined,
+): number | null {
   if (!isText(weight)) return null;
   const n = Number(weight);
   if (!Number.isFinite(n) || n <= 0) return null;
@@ -84,7 +105,10 @@ function toKg(weight: string | null | undefined, unit: VitalUnit | null | undefi
 }
 
 /** Convert a numeric-as-text height to metres (in→m, cm→m), or null when unparseable. */
-function toMetres(height: string | null | undefined, unit: VitalUnit | null | undefined): number | null {
+function toMetres(
+  height: string | null | undefined,
+  unit: VitalUnit | null | undefined,
+): number | null {
   if (!isText(height)) return null;
   const n = Number(height);
   if (!Number.isFinite(n) || n <= 0) return null;
@@ -103,10 +127,14 @@ export function computeBmi(input: VitalsInput): string | null {
 /** Derive the abnormal-vital flags that decorate `m8.vitals.captured` (clinical envelopes, advisory). */
 export function deriveAbnormalFlags(input: VitalsInput): string[] {
   const flags: string[] = [];
-  if (isNum(input.bpSystolic) && (input.bpSystolic >= 140 || input.bpSystolic < 90)) flags.push("bp_systolic");
-  if (isNum(input.bpDiastolic) && (input.bpDiastolic >= 90 || input.bpDiastolic < 60)) flags.push("bp_diastolic");
-  if (isNum(input.heartRate) && (input.heartRate > 100 || input.heartRate < 60)) flags.push("heart_rate");
-  if (isNum(input.respiratoryRate) && (input.respiratoryRate > 20 || input.respiratoryRate < 12)) flags.push("respiratory_rate");
+  if (isNum(input.bpSystolic) && (input.bpSystolic >= 140 || input.bpSystolic < 90))
+    flags.push("bp_systolic");
+  if (isNum(input.bpDiastolic) && (input.bpDiastolic >= 90 || input.bpDiastolic < 60))
+    flags.push("bp_diastolic");
+  if (isNum(input.heartRate) && (input.heartRate > 100 || input.heartRate < 60))
+    flags.push("heart_rate");
+  if (isNum(input.respiratoryRate) && (input.respiratoryRate > 20 || input.respiratoryRate < 12))
+    flags.push("respiratory_rate");
   if (isNum(input.spo2) && input.spo2 < 92) flags.push("spo2");
   if (isNum(input.painScore) && input.painScore >= 7) flags.push("pain_score");
   return flags;

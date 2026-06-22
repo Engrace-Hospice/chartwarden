@@ -20,7 +20,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m39.consent.created",
     moduleOwner: "m39",
-    description: "A consent draft was created (route 6). Internal — drafts carry no regulatory force.",
+    description:
+      "A consent draft was created (route 6). Internal — drafts carry no regulatory force.",
     payloadSchema: Type.Object({ ...core, consentRecordId: Type.String(), typeKey }),
     declaredConsumers: [],
     isOutboxOnly: true,
@@ -45,7 +46,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m39.consent.supersedes",
     moduleOwner: "m39",
-    description: "A new consent superseded a prior one (route 9). Re-render + snapshot + cache rebind.",
+    description:
+      "A new consent superseded a prior one (route 9). Re-render + snapshot + cache rebind.",
     payloadSchema: Type.Object({
       ...core,
       newConsentRecordId: Type.String(),
@@ -76,14 +78,20 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m39.consent.expired",
     moduleOwner: "m39",
     description: "A consent passed its expires_at and ticked to expired (consent-expiration cron).",
-    payloadSchema: Type.Object({ ...core, consentRecordId: Type.String(), typeKey, expiredAt: Type.String() }),
+    payloadSchema: Type.Object({
+      ...core,
+      consentRecordId: Type.String(),
+      typeKey,
+      expiredAt: Type.String(),
+    }),
     declaredConsumers: ["m5", "m22", "m36"],
     isOutboxOnly: true,
   },
   {
     eventName: "m39.consent.expiring_soon",
     moduleOwner: "m39",
-    description: "A consent entered the 90/30/14/7/1-day reminder window (expiration-reminder cron). Drives the M36 alert.",
+    description:
+      "A consent entered the 90/30/14/7/1-day reminder window (expiration-reminder cron). Drives the M36 alert.",
     payloadSchema: Type.Object({
       ...core,
       consentRecordId: Type.String(),
@@ -111,7 +119,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m39.consent.renewed",
     moduleOwner: "m39",
-    description: "A consent was renewed (route 20) — a new record pointing at the expired/revoked prior (D13).",
+    description:
+      "A consent was renewed (route 20) — a new record pointing at the expired/revoked prior (D13).",
     payloadSchema: Type.Object({
       ...core,
       newConsentRecordId: Type.String(),
@@ -125,7 +134,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m39.consent.recipient_added",
     moduleOwner: "m39",
-    description: "A recipient was added to a per-recipient consent (route 12; D6 — no supersession).",
+    description:
+      "A recipient was added to a per-recipient consent (route 12; D6 — no supersession).",
     payloadSchema: Type.Object({
       ...core,
       consentRecordId: Type.String(),
@@ -152,7 +162,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m39.consent.dpoa.agent_appointed",
     moduleOwner: "m39",
-    description: "A DPOA agent was appointed (route 15). Banner + signing-authority attribution refresh.",
+    description:
+      "A DPOA agent was appointed (route 15). Banner + signing-authority attribution refresh.",
     payloadSchema: Type.Object({
       ...core,
       consentRecordId: Type.String(),
@@ -166,7 +177,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m39.consent.dpoa.agent_removed",
     moduleOwner: "m39",
-    description: "A DPOA agent was removed (route 16). Re-routes signing authority to patient/alternate.",
+    description:
+      "A DPOA agent was removed (route 16). Re-routes signing authority to patient/alternate.",
     payloadSchema: Type.Object({
       ...core,
       consentRecordId: Type.String(),
@@ -179,7 +191,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m39.consent.delegated_access.granted",
     moduleOwner: "m39",
-    description: "A delegated_access projection row was granted (family_caregiver_access sign/supersede, D10).",
+    description:
+      "A delegated_access projection row was granted (family_caregiver_access sign/supersede, D10).",
     payloadSchema: Type.Object({
       ...core,
       delegatedAccessId: Type.String(),

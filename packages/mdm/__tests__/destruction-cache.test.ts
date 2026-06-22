@@ -35,7 +35,10 @@ describe("eraseTenantMdm (§7.8 D7 tenant offboarding)", () => {
   });
 
   it("is idempotent — a second erase of the same org removes nothing", async () => {
-    const { store } = createInMemoryMdmEraseStore({ overlaysByOrg: { org_a: 4 }, baaByOrg: { org_a: 1 } });
+    const { store } = createInMemoryMdmEraseStore({
+      overlaysByOrg: { org_a: 4 },
+      baaByOrg: { org_a: 1 },
+    });
     expect((await eraseTenantMdm("org_a", store)).erased).toBe(5);
     expect((await eraseTenantMdm("org_a", store)).erased).toBe(0);
   });
@@ -56,7 +59,9 @@ describe("cache key grammar (§4.8)", () => {
 
   it("invalidation channels follow the §4.8 grammar", () => {
     expect(canonicalChangedChannel("payer", "p1")).toBe("mdm.canonical_changed:payer:p1");
-    expect(overlayChangedChannel("physician", "x", "org_a")).toBe("mdm.overlay_changed:physician:x:org_a");
+    expect(overlayChangedChannel("physician", "x", "org_a")).toBe(
+      "mdm.overlay_changed:physician:x:org_a",
+    );
   });
 
   it("BAA key buckets asOf to the minute so retries within 60s share a key", () => {

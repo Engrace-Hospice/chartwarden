@@ -30,11 +30,27 @@ function makeProvider() {
   const { store } = createInMemoryTerminologyStore({
     concepts: [
       // E11.9 active 2022→ then deprecated, end-dated 2024-09-30 (two coexisting rows, §7.2).
-      icd({ code: "E11.9", display: "Type 2 diabetes", effectiveDate: "2022-10-01", endDate: "2024-09-30", status: "deprecated" }),
-      icd({ code: "E11.9", display: "Type 2 diabetes", effectiveDate: "2021-10-01", endDate: "2022-09-30", status: "active" }),
+      icd({
+        code: "E11.9",
+        display: "Type 2 diabetes",
+        effectiveDate: "2022-10-01",
+        endDate: "2024-09-30",
+        status: "deprecated",
+      }),
+      icd({
+        code: "E11.9",
+        display: "Type 2 diabetes",
+        effectiveDate: "2021-10-01",
+        endDate: "2022-09-30",
+        status: "active",
+      }),
       icd({ code: "G93.41", display: "Metabolic encephalopathy", effectiveDate: "2022-10-01" }),
       // E11.8 — active, open-ended, NOT a platform member: a valid tenant-extension target (§7.6).
-      icd({ code: "E11.8", display: "Type 2 diabetes w/ complications", effectiveDate: "2024-10-01" }),
+      icd({
+        code: "E11.8",
+        display: "Type 2 diabetes w/ complications",
+        effectiveDate: "2024-10-01",
+      }),
     ],
     deprecations: [
       {
@@ -47,7 +63,13 @@ function makeProvider() {
       },
     ],
     valueSetMembers: [
-      { valueSetId: "hospice_terminal_dx", systemId: "icd10cm", code: "G93.41", display: "Metabolic encephalopathy", annotations: {} },
+      {
+        valueSetId: "hospice_terminal_dx",
+        systemId: "icd10cm",
+        code: "G93.41",
+        display: "Metabolic encephalopathy",
+        annotations: {},
+      },
     ],
     codeSystemMeta: { icd10cm: { url: "http://hl7.org/fhir/sid/icd-10-cm", version: "2024" } },
     valueSetUrls: { hospice_terminal_dx: "urn:wardenx:valueset:hospice_terminal_dx" },
@@ -80,7 +102,11 @@ describe("M38-T05 — createTerminologyProvider over the as-of engine (§4.5)", 
     expect((await p.lookup("icd10cm", "G93.41", new Date("2023-01-01")))?.display).toBe(
       "Metabolic encephalopathy",
     );
-    const batch = await p.lookupBatch("icd10cm", ["E11.9", "G93.41", "missing"], new Date("2023-01-01"));
+    const batch = await p.lookupBatch(
+      "icd10cm",
+      ["E11.9", "G93.41", "missing"],
+      new Date("2023-01-01"),
+    );
     expect(batch.get("E11.9")?.status).toBe("deprecated");
     expect(batch.get("G93.41")?.code).toBe("G93.41");
     expect(batch.has("missing")).toBe(false);
@@ -125,7 +151,9 @@ describe("M38-T05 — createTerminologyProvider over the as-of engine (§4.5)", 
       p.expand("hospice_terminal_dx", { includeTenantExtensions: true, orgId: "org_1" }),
     );
     expect(withTenant.map((m) => m.code).sort()).toEqual(["E11.8", "G93.41"]);
-    expect(await p.isMemberOf("hospice_terminal_dx", "icd10cm", "E11.8", { orgId: "org_1" })).toEqual({
+    expect(
+      await p.isMemberOf("hospice_terminal_dx", "icd10cm", "E11.8", { orgId: "org_1" }),
+    ).toEqual({
       isMember: true,
       source: "tenant_extension",
     });

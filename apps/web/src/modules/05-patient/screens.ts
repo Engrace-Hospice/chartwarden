@@ -1,6 +1,6 @@
+import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/05-patient — M5 screen registration (Track A, ADR-0030).
 import type { ComponentType } from "react";
-import type { ScreenRegistryModule } from "@wardenx/types";
 import { GlobalSearchResults } from "./global-search";
 import { PatientChart } from "./patient-chart";
 import { PatientListCensus } from "./patient-list-census";

@@ -17,8 +17,11 @@ import {
   validateAlertPayloadCatalog,
 } from "../src/index";
 
-const entry = (over: Partial<AlertPayloadEntry> & Pick<AlertPayloadEntry, "payloadType">): AlertPayloadEntry => ({
-  moduleOwner: (/^(m\d+)\./.exec(over.payloadType)?.[1] ?? "m11") as AlertPayloadEntry["moduleOwner"],
+const entry = (
+  over: Partial<AlertPayloadEntry> & Pick<AlertPayloadEntry, "payloadType">,
+): AlertPayloadEntry => ({
+  moduleOwner: (/^(m\d+)\./.exec(over.payloadType)?.[1] ??
+    "m11") as AlertPayloadEntry["moduleOwner"],
   severity: "HIGH",
   defaultChannels: ["socket_push", "inbox"],
   defaultRecipientResolver: "ordering_provider",
@@ -33,7 +36,11 @@ const M11: ModuleAlertContribution = [
   entry({ payloadType: "m11.lab_results.overdue", severity: "MEDIUM" }),
 ];
 const M22: ModuleAlertContribution = [
-  entry({ payloadType: "m22.document.rendered_critical_results", moduleOwner: "m22", severity: "CRITICAL" }),
+  entry({
+    payloadType: "m22.document.rendered_critical_results",
+    moduleOwner: "m22",
+    severity: "CRITICAL",
+  }),
 ];
 
 describe("M36-T05 alert payload catalog — aggregation (§3.12)", () => {
@@ -71,7 +78,9 @@ describe("M36-T05 alert payload catalog — boot gate (§3.12)", () => {
   });
 
   it("rejects a payload type whose owner ≠ its mN. prefix", () => {
-    const bad: ModuleAlertContribution = [entry({ payloadType: "m11.foo.bar", moduleOwner: "m22" })];
+    const bad: ModuleAlertContribution = [
+      entry({ payloadType: "m11.foo.bar", moduleOwner: "m22" }),
+    ];
     const v = validateAlertPayloadCatalog([bad]);
     expect(v).toHaveLength(1);
     expect(v[0]!.type).toBe("wrong_namespace");
@@ -79,7 +88,9 @@ describe("M36-T05 alert payload catalog — boot gate (§3.12)", () => {
   });
 
   it("rejects a payload type that does not follow mN.<resource>.<verb>", () => {
-    const bad: ModuleAlertContribution = [entry({ payloadType: "lab_results.critical", moduleOwner: "m11" })];
+    const bad: ModuleAlertContribution = [
+      entry({ payloadType: "lab_results.critical", moduleOwner: "m11" }),
+    ];
     expect(validateAlertPayloadCatalog([bad])[0]!.type).toBe("wrong_namespace");
   });
 
@@ -96,7 +107,10 @@ describe("M36-T05 alert payload catalog — boot gate (§3.12)", () => {
   });
 
   it("flags a duplicate payload type within the validate pass", () => {
-    const dupe: ModuleAlertContribution = [entry({ payloadType: "m11.x.y" }), entry({ payloadType: "m11.x.y" })];
+    const dupe: ModuleAlertContribution = [
+      entry({ payloadType: "m11.x.y" }),
+      entry({ payloadType: "m11.x.y" }),
+    ];
     // collision throws first at build; the registry catches it via assertValid → throws
     expect(() => assertAlertPayloadCatalogValid([dupe])).toThrow(AlertPayloadCollisionError);
   });
@@ -113,7 +127,9 @@ describe("M36-T05 Foundation Registry — runtime registration without import ed
     expect(registry.rows()).toHaveLength(3);
     expect(registry.has("m11.lab_results.critical")).toBe(true);
     expect(registry.has("m99.nope.nope")).toBe(false);
-    expect(isRegisteredPayloadType("m22.document.rendered_critical_results", registry.contributions())).toBe(true);
+    expect(
+      isRegisteredPayloadType("m22.document.rendered_critical_results", registry.contributions()),
+    ).toBe(true);
   });
 
   it("each registry is isolated (a fresh registry per boot/test)", () => {

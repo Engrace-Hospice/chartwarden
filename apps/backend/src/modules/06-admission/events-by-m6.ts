@@ -21,7 +21,11 @@ const levelOfCare = Type.Union([
 ]);
 
 /** Compliance-window severity (`info` = D15 external signals). */
-const windowSeverity = Type.Union([Type.Literal("warning"), Type.Literal("alert"), Type.Literal("info")]);
+const windowSeverity = Type.Union([
+  Type.Literal("warning"),
+  Type.Literal("alert"),
+  Type.Literal("info"),
+]);
 
 /** Optional provenance marker the AdmissionEventApplier stamps on applier-reused events (§4.4). */
 const applierSource = Type.Optional(Type.Literal("m29_proposal_accept"));
@@ -31,7 +35,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.referral.received",
     moduleOwner: "m6",
-    description: "A referral was received (route 1) — M36 resolves recipients + dispatches (ADR-0024).",
+    description:
+      "A referral was received (route 1) — M36 resolves recipients + dispatches (ADR-0024).",
     payloadSchema: Type.Object({
       referralId: Type.String({ minLength: 1 }),
       source: Type.String({ minLength: 1 }),
@@ -43,7 +48,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.referral.accepted",
     moduleOwner: "m6",
-    description: "A referral was accepted (route 6); seeds the draft admission + election form prep.",
+    description:
+      "A referral was accepted (route 6); seeds the draft admission + election form prep.",
     payloadSchema: Type.Object({
       referralId: Type.String({ minLength: 1 }),
       patientId: Type.String({ minLength: 1 }),
@@ -55,7 +61,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.referral.declined",
     moduleOwner: "m6",
-    description: "The hospice declined the referral (route 7; clinical/geographic/capacity reasons — D16).",
+    description:
+      "The hospice declined the referral (route 7; clinical/geographic/capacity reasons — D16).",
     payloadSchema: Type.Object({
       referralId: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
@@ -66,7 +73,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.referral.withdrawn",
     moduleOwner: "m6",
-    description: "The referring party/upstream system canceled the referral before a decision (D16; applier).",
+    description:
+      "The referring party/upstream system canceled the referral before a decision (D16; applier).",
     payloadSchema: Type.Object({
       referralId: Type.String({ minLength: 1 }),
       organizationId: Type.String({ minLength: 1 }),
@@ -81,7 +89,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.admission.draft_created",
     moduleOwner: "m6",
-    description: "The `admission.draft_from_referral` job created a draft admission + draft period 1.",
+    description:
+      "The `admission.draft_from_referral` job created a draft admission + draft period 1.",
     payloadSchema: Type.Object({
       admissionId: Type.String({ minLength: 1 }),
       patientId: Type.String({ minLength: 1 }),
@@ -101,8 +110,21 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       currentElectionPeriodId: Type.String({ minLength: 1 }),
     }),
     declaredConsumers: [
-      "m5", "m7", "m8", "m11", "m14", "m16", "m22", "m23",
-      "m26", "m27", "m28", "m30", "m33", "m36", "m37",
+      "m5",
+      "m7",
+      "m8",
+      "m11",
+      "m14",
+      "m16",
+      "m22",
+      "m23",
+      "m26",
+      "m27",
+      "m28",
+      "m30",
+      "m33",
+      "m36",
+      "m37",
     ],
     isOutboxOnly: true,
   },
@@ -139,7 +161,17 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       dischargeDate: Type.String({ minLength: 1 }),
     }),
     declaredConsumers: [
-      "m14", "m16", "m22", "m23", "m26", "m27", "m28", "m30", "m33", "m36", "m37",
+      "m14",
+      "m16",
+      "m22",
+      "m23",
+      "m26",
+      "m27",
+      "m28",
+      "m30",
+      "m33",
+      "m36",
+      "m37",
     ],
     isOutboxOnly: true,
   },
@@ -349,7 +381,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.discharge.death",
     moduleOwner: "m6",
-    description: "Discharge reason was death (route 39 / recordExternalDeath) — seeds bereavement (D6).",
+    description:
+      "Discharge reason was death (route 39 / recordExternalDeath) — seeds bereavement (D6).",
     payloadSchema: Type.Object({
       dischargeEventId: Type.String({ minLength: 1 }),
       admissionId: Type.String({ minLength: 1 }),
@@ -387,7 +420,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.compliance.window.opened",
     moduleOwner: "m6",
-    description: "A compliance window opened (trigger/job/applier); `severity='info'` = D15 external signal.",
+    description:
+      "A compliance window opened (trigger/job/applier); `severity='info'` = D15 external signal.",
     payloadSchema: Type.Object({
       complianceWindowId: Type.String({ minLength: 1 }),
       admissionId: Type.String({ minLength: 1 }),
@@ -437,7 +471,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.bereavement.eligible",
     moduleOwner: "m6",
-    description: "Post-rule check on `m6.discharge.death` cleared bereavement onboarding (W-DC-01).",
+    description:
+      "Post-rule check on `m6.discharge.death` cleared bereavement onboarding (W-DC-01).",
     payloadSchema: Type.Object({
       admissionId: Type.String({ minLength: 1 }),
       patientId: Type.String({ minLength: 1 }),

@@ -2,15 +2,15 @@
 // enforcement (§7.6) + geocode job (§4.5) + outbox event catalog (§4.6).
 import { describe, expect, it } from "vitest";
 import {
+  type GeocodeAddressPorts,
   M5_OUTBOX_EVENTS,
+  type PrivacySnapshotPorts,
   SudConsentRequiredError,
   applyConsentChanged,
   assertSudReadAllowed,
   isSudReadAllowed,
   recomputePrivacyFlags,
   runGeocodeAddress,
-  type GeocodeAddressPorts,
-  type PrivacySnapshotPorts,
 } from "../src/modules/05-patient/index";
 
 describe("§7.6 SUD flag enforcement", () => {
@@ -56,7 +56,11 @@ describe("§4.5 geocode job", () => {
       writeGeocode: async (_o, addressId, r) => void written.push({ addressId, lat: r.lat }),
     };
     const result = await runGeocodeAddress(
-      { organizationId: "org_a", addressId: "addr-1", address: { line1: "10 SW Main", city: "Portland", state: "OR", postalCode: "97201" } },
+      {
+        organizationId: "org_a",
+        addressId: "addr-1",
+        address: { line1: "10 SW Main", city: "Portland", state: "OR", postalCode: "97201" },
+      },
       ports,
     );
     expect(result.resolved).toBe(true);
@@ -69,7 +73,11 @@ describe("§4.5 geocode job", () => {
       writeGeocode: async () => undefined,
     };
     const result = await runGeocodeAddress(
-      { organizationId: "org_a", addressId: "addr-2", address: { line1: "nowhere", city: "?", postalCode: "00000" } },
+      {
+        organizationId: "org_a",
+        addressId: "addr-2",
+        address: { line1: "nowhere", city: "?", postalCode: "00000" },
+      },
       ports,
     );
     expect(result.resolved).toBe(false);

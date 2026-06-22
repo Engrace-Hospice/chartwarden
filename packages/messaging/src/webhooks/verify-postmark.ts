@@ -31,7 +31,7 @@ export interface PostmarkVerifyRequest {
 export function verifyPostmarkWebhook(req: PostmarkVerifyRequest): void {
   if (!req.sourceIpAllowed) throw new WebhookError(403, "FORBIDDEN_SOURCE");
 
-  const auth = req.headers["authorization"] ?? "";
+  const auth = req.headers.authorization ?? "";
   if (!auth.startsWith("Bearer ")) throw new WebhookError(401, "MISSING_BEARER_TOKEN");
 
   const provided = Buffer.from(auth.slice(7));

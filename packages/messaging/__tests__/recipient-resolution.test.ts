@@ -4,10 +4,10 @@
 // refuses an unregistered resolver (§2.5). Fakes stand in for the M5/M19/M2 seams.
 import { describe, expect, it, vi } from "vitest";
 import {
+  type RecipientSourcePorts,
+  UnknownRecipientResolverError,
   createRecipientResolverRegistry,
   resolveRecipients,
-  UnknownRecipientResolverError,
-  type RecipientSourcePorts,
 } from "../src/index";
 
 function fakePorts(over: Partial<RecipientSourcePorts> = {}): RecipientSourcePorts {
@@ -91,7 +91,9 @@ describe("recipient resolution (§2.1.3 / §4.6)", () => {
   it("tenant_admins + broadcast hit the org-scoped ports", async () => {
     const ports = fakePorts();
     const registry = createRecipientResolverRegistry(ports);
-    expect(await resolveRecipients(registry, "tenant_admins", "org-1", {}, {})).toEqual(["u-admin"]);
+    expect(await resolveRecipients(registry, "tenant_admins", "org-1", {}, {})).toEqual([
+      "u-admin",
+    ]);
     expect(await resolveRecipients(registry, "broadcast", "org-1", {}, {})).toEqual(["u-a", "u-b"]);
   });
 
@@ -104,9 +106,9 @@ describe("recipient resolution (§2.1.3 / §4.6)", () => {
 
   it("throws on an unregistered resolver (§2.5 — never a silent empty fan-out)", async () => {
     const registry = createRecipientResolverRegistry(fakePorts());
-    await expect(resolveRecipients(registry, "does_not_exist", "org-1", {}, {})).rejects.toBeInstanceOf(
-      UnknownRecipientResolverError,
-    );
+    await expect(
+      resolveRecipients(registry, "does_not_exist", "org-1", {}, {}),
+    ).rejects.toBeInstanceOf(UnknownRecipientResolverError);
   });
 
   it("the registry is open — a composition resolver (ADR-0024) can be registered onto it", async () => {

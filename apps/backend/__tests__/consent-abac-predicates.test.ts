@@ -6,10 +6,13 @@
 // makes `sud_consent_present` true; a patient with no consent makes the predicates fail-closed.
 import { abacRegistry } from "@wardenx/auth";
 import { type StoredConsent, createInMemoryConsentStore } from "@wardenx/consent";
+import { createConsentEvaluator } from "@wardenx/consent";
 import { beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
-import { createConsentEvaluator } from "@wardenx/consent";
-import { M39_ABAC_PREDICATES, registerConsentAbacPredicates } from "../src/modules/39-consent/index";
+import {
+  M39_ABAC_PREDICATES,
+  registerConsentAbacPredicates,
+} from "../src/modules/39-consent/index";
 
 const ORG = "org-1";
 const PAT = "pat-1";
@@ -54,28 +57,36 @@ describe("M39-T07 — the 11 ABAC predicate resolvers (§4.8)", () => {
       },
     ]);
     registerConsentAbacPredicates();
-    const allowed = await abacRegistry.evaluate("sud_consent_present", {
-      organizationId: ORG,
-      userId: "u1",
-      roles: [],
-      providerEntityIds: [],
-      locationIds: [],
-      attributes: { sessionClass: "staff" },
-    }, { patientId: PAT });
+    const allowed = await abacRegistry.evaluate(
+      "sud_consent_present",
+      {
+        organizationId: ORG,
+        userId: "u1",
+        roles: [],
+        providerEntityIds: [],
+        locationIds: [],
+        attributes: { sessionClass: "staff" },
+      },
+      { patientId: PAT },
+    );
     expect(allowed).toBe(true);
   });
 
   it("fail-closed: a predicate denies when no consent is on file", async () => {
     seedEvaluator([]);
     registerConsentAbacPredicates();
-    const allowed = await abacRegistry.evaluate("hipaa_release_active", {
-      organizationId: ORG,
-      userId: "u1",
-      roles: [],
-      providerEntityIds: [],
-      locationIds: [],
-      attributes: {},
-    }, { patientId: PAT });
+    const allowed = await abacRegistry.evaluate(
+      "hipaa_release_active",
+      {
+        organizationId: ORG,
+        userId: "u1",
+        roles: [],
+        providerEntityIds: [],
+        locationIds: [],
+        attributes: {},
+      },
+      { patientId: PAT },
+    );
     expect(allowed).toBe(false);
   });
 });

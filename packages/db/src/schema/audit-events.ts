@@ -7,12 +7,7 @@
 // Drizzle does not emit partition DDL — `id` is therefore not a PK and there is no
 // unique index here; the partitions + indexes are created in the M1-T04 migration.
 import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import {
-  auditActorKind,
-  auditOutcome,
-  auditRetentionClass,
-  auditSeverity,
-} from "../enums";
+import { auditActorKind, auditOutcome, auditRetentionClass, auditSeverity } from "../enums";
 import { organizations } from "./organizations";
 import { users } from "./users";
 

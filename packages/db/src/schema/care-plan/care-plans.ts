@@ -9,9 +9,9 @@
 import { sql } from "drizzle-orm";
 import { index, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { carePlanStatus } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 
 export const carePlans = pgTable(
   "care_plan",

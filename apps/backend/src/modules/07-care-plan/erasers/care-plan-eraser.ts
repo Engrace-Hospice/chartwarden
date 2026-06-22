@@ -53,7 +53,13 @@ export function createInMemoryCarePlanEraseStore(seed: Partial<CarePlanEraseCoun
   store: CarePlanEraseStore;
   tombstoned: string[];
 } {
-  const zero: CarePlanEraseCounts = { versions: 0, signatures: 0, problems: 0, goals: 0, interventions: 0 };
+  const zero: CarePlanEraseCounts = {
+    versions: 0,
+    signatures: 0,
+    problems: 0,
+    goals: 0,
+    interventions: 0,
+  };
   const counts: CarePlanEraseCounts = { ...zero, ...seed };
   const tombstoned: string[] = [];
   let used = false;

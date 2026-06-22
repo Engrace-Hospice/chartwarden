@@ -45,12 +45,16 @@ function expectCode(fn: () => unknown, code: string): void {
 
 describe("M8-T10 — vitals authoring (§2.2)", () => {
   it("derives BMI from metric weight + height (kg/m², 1 d.p.)", () => {
-    expect(computeBmi({ weight: "70", weightUnit: "kg", height: "175", heightUnit: "cm" })).toBe("22.9");
+    expect(computeBmi({ weight: "70", weightUnit: "kg", height: "175", heightUnit: "cm" })).toBe(
+      "22.9",
+    );
   });
 
   it("derives BMI from imperial weight + height", () => {
     // 154 lb ≈ 69.85 kg; 69 in ≈ 1.7526 m → ~22.7
-    expect(computeBmi({ weight: "154", weightUnit: "lb", height: "69", heightUnit: "in" })).toBe("22.7");
+    expect(computeBmi({ weight: "154", weightUnit: "lb", height: "69", heightUnit: "in" })).toBe(
+      "22.7",
+    );
   });
 
   it("returns null BMI when height or weight is absent", () => {
@@ -59,7 +63,9 @@ describe("M8-T10 — vitals authoring (§2.2)", () => {
 
   it("flags abnormal vitals for the m8.vitals.captured payload", () => {
     const flags = deriveAbnormalFlags({ bpSystolic: 150, spo2: 88, painScore: 8, heartRate: 110 });
-    expect(flags).toEqual(expect.arrayContaining(["bp_systolic", "spo2", "pain_score", "heart_rate"]));
+    expect(flags).toEqual(
+      expect.arrayContaining(["bp_systolic", "spo2", "pain_score", "heart_rate"]),
+    );
   });
 
   it("captures the field roster + audit/outbox effects on a valid set", () => {
@@ -75,7 +81,11 @@ describe("M8-T10 — vitals authoring (§2.2)", () => {
 
   it("requires a reason ≥ 20 chars when a CNI field list is present (§2.2)", () => {
     expectCode(
-      () => planVitalsCapture({ clinicallyNotIndicatedFields: ["weight"], clinicallyNotIndicatedReason: "n/a" }),
+      () =>
+        planVitalsCapture({
+          clinicallyNotIndicatedFields: ["weight"],
+          clinicallyNotIndicatedReason: "n/a",
+        }),
       "VITALS_CNI_REASON_REQUIRED",
     );
     expect(() =>
@@ -93,7 +103,9 @@ describe("M8-T10 — mileage authoring (§2.2 D10)", () => {
   });
 
   it("uses the explicit figure for route_calc", () => {
-    expect(resolveMiles({ source: "route_calc", milesDriven: "18.4", routeProposedMiles: "18.4" })).toBe("18.4");
+    expect(
+      resolveMiles({ source: "route_calc", milesDriven: "18.4", routeProposedMiles: "18.4" }),
+    ).toBe("18.4");
   });
 
   it("rejects a reversed odometer pair", () => {
@@ -105,11 +117,20 @@ describe("M8-T10 — mileage authoring (§2.2 D10)", () => {
 
   it("requires a ≥ 20-char reason for a manual override", () => {
     expectCode(
-      () => planMileageCapture({ source: "manual_override", milesDriven: "30", manualOverrideReason: "rt" }),
+      () =>
+        planMileageCapture({
+          source: "manual_override",
+          milesDriven: "30",
+          manualOverrideReason: "rt",
+        }),
       "MILEAGE_OVERRIDE_REASON_REQUIRED",
     );
     expect(() =>
-      planMileageCapture({ source: "manual_override", milesDriven: "30", manualOverrideReason: "odometer broken; estimated from prior route" }),
+      planMileageCapture({
+        source: "manual_override",
+        milesDriven: "30",
+        manualOverrideReason: "odometer broken; estimated from prior route",
+      }),
     ).not.toThrow();
   });
 });
@@ -137,7 +158,10 @@ describe("M8-T10 — F2F dual-write coordination (§7.4, D1)", () => {
   });
 
   it("aborts BOTH sides when the M6 id is absent (F2F_DUAL_WRITE_REQUIRED)", () => {
-    expectCode(() => planF2fDualWrite({ ...base, faceToFaceEncounterId: null }), "F2F_DUAL_WRITE_REQUIRED");
+    expectCode(
+      () => planF2fDualWrite({ ...base, faceToFaceEncounterId: null }),
+      "F2F_DUAL_WRITE_REQUIRED",
+    );
   });
 
   it("aborts BOTH sides when step-up is stale (no attestation produced)", () => {
@@ -153,8 +177,12 @@ const ADMISSION = "33333333-3333-4333-8333-333333333333";
 const F2F_ID = "f0000000-0000-4000-8000-000000000099";
 
 const AUTHOR_KEYS = [
-  "encounter.read", "encounter.author", "encounter.finalize", "encounter.sign",
-  "vitals.author", "mileage.author",
+  "encounter.read",
+  "encounter.author",
+  "encounter.finalize",
+  "encounter.sign",
+  "vitals.author",
+  "mileage.author",
 ];
 
 function headerAuth(request: FastifyRequest): void {
@@ -212,7 +240,13 @@ describe("M8-T10 — §7.1 RN routine visit happy path", () => {
       method: "POST",
       url: "/api/v1/encounters",
       headers: RN,
-      payload: { patientId: PATIENT, admissionId: ADMISSION, encounterType: "routine_visit", discipline: "rn", serviceDate: "2026-06-20" },
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "routine_visit",
+        discipline: "rn",
+        serviceDate: "2026-06-20",
+      },
     });
     expect(created.statusCode).toBe(201);
     const id = created.json().id as string;
@@ -221,7 +255,16 @@ describe("M8-T10 — §7.1 RN routine visit happy path", () => {
       method: "POST",
       url: `/api/v1/encounters/${id}/vitals`,
       headers: RN,
-      payload: { bpSystolic: 142, bpDiastolic: 88, spo2: 97, painScore: 2, weight: "70", weightUnit: "kg", height: "175", heightUnit: "cm" },
+      payload: {
+        bpSystolic: 142,
+        bpDiastolic: 88,
+        spo2: 97,
+        painScore: 2,
+        weight: "70",
+        weightUnit: "kg",
+        height: "175",
+        heightUnit: "cm",
+      },
     });
     expect(vitals.statusCode).toBe(201);
     expect(vitals.json().bmi).toBe("22.9");
@@ -244,7 +287,11 @@ describe("M8-T10 — §7.1 RN routine visit happy path", () => {
     });
     expect(link.statusCode).toBe(201);
 
-    const finalize = await app.inject({ method: "POST", url: `/api/v1/encounters/${id}/finalize`, headers: RN });
+    const finalize = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/finalize`,
+      headers: RN,
+    });
     expect(finalize.statusCode).toBe(200);
     expect(finalize.json().status).toBe("finalized");
 
@@ -257,7 +304,10 @@ describe("M8-T10 — §7.1 RN routine visit happy path", () => {
     expect(sign.statusCode).toBe(200);
     expect(sign.json().status).toBe("signed");
 
-    const events = backend.inspect.events().filter((e) => e.encounterId === id).map((e) => e.event);
+    const events = backend.inspect
+      .events()
+      .filter((e) => e.encounterId === id)
+      .map((e) => e.event);
     expect(events).toContain("m8.encounter.signed");
     expect(events).toContain("m8.vitals.captured");
     expect(events).toContain("m8.mileage.captured");
@@ -275,8 +325,12 @@ describe("M8-T10 — §7.4 MD/NP F2F dual-write with M6 (D1)", () => {
       url: "/api/v1/encounters",
       headers: MD,
       payload: {
-        patientId: PATIENT, admissionId: ADMISSION, encounterType: "face_to_face", discipline: "md",
-        serviceDate: "2026-06-20", faceToFaceEncounterId: F2F_ID,
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "face_to_face",
+        discipline: "md",
+        serviceDate: "2026-06-20",
+        faceToFaceEncounterId: F2F_ID,
       },
     });
     expect(created.statusCode).toBe(201);
@@ -292,12 +346,20 @@ describe("M8-T10 — §7.4 MD/NP F2F dual-write with M6 (D1)", () => {
     expect(sign.statusCode).toBe(200);
     expect(sign.json().status).toBe("signed");
 
-    const signedEvents = backend.inspect.events().filter((e) => e.encounterId === id).map((e) => e.event);
+    const signedEvents = backend.inspect
+      .events()
+      .filter((e) => e.encounterId === id)
+      .map((e) => e.event);
     expect(signedEvents).toContain("m8.encounter.signed");
 
     const attestations = backend.inspect.f2fAttestations();
     expect(attestations).toEqual([
-      { kind: "create_f2f_attestation", encounterId: id, faceToFaceEncounterId: F2F_ID, status: "attested" },
+      {
+        kind: "create_f2f_attestation",
+        encounterId: id,
+        faceToFaceEncounterId: F2F_ID,
+        status: "attested",
+      },
     ]);
   });
 
@@ -308,7 +370,13 @@ describe("M8-T10 — §7.4 MD/NP F2F dual-write with M6 (D1)", () => {
       method: "POST",
       url: "/api/v1/encounters",
       headers: MD,
-      payload: { patientId: PATIENT, admissionId: ADMISSION, encounterType: "face_to_face", discipline: "md", serviceDate: "2026-06-20" },
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "face_to_face",
+        discipline: "md",
+        serviceDate: "2026-06-20",
+      },
     });
     const id = created.json().id as string;
     await app.inject({ method: "POST", url: `/api/v1/encounters/${id}/finalize`, headers: MD });

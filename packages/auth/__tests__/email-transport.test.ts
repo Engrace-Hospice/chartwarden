@@ -11,7 +11,9 @@ import {
 
 describe("email transport seam", () => {
   it("no-op transport drops the message without throwing", async () => {
-    await expect(createNoopEmailTransport().send({ to: "a@b.test", subject: "x", text: "y" })).resolves.toBeUndefined();
+    await expect(
+      createNoopEmailTransport().send({ to: "a@b.test", subject: "x", text: "y" }),
+    ).resolves.toBeUndefined();
   });
 
   it("console transport logs the recipient, subject, and body (the link)", async () => {

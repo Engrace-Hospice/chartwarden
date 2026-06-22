@@ -13,8 +13,7 @@ import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
 
 // --- format registration (TypeBox Value does not validate `format` until registered) ----------
-const UUID_RE =
-  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 if (!FormatRegistry.Has("uuid")) {
   FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
 }
@@ -42,11 +41,7 @@ export const AuditEventSchema = Type.Object({
   eventType: Type.String(),
   resourceKind: Type.String(),
   resourceId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
-  outcome: Type.Union([
-    Type.Literal("success"),
-    Type.Literal("failure"),
-    Type.Literal("denied"),
-  ]),
+  outcome: Type.Union([Type.Literal("success"), Type.Literal("failure"), Type.Literal("denied")]),
   severity: Type.Union([Type.Literal("info"), Type.Literal("warn"), Type.Literal("critical")]),
   before: Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()]),
   after: Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()]),

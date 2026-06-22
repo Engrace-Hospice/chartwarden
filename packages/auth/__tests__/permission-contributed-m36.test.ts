@@ -12,9 +12,9 @@
 import { describe, expect, it } from "vitest";
 import {
   CONTRIBUTED_PERMISSIONS,
+  M4_CONTRIBUTED_PERMISSIONS,
   M36_CONTRIBUTED_PERMISSIONS,
   M38_CONTRIBUTED_PERMISSIONS,
-  M4_CONTRIBUTED_PERMISSIONS,
   PERMISSIONS,
   allPermissionMirrorRows,
   m36ContributedPermissionMirrorRows,
@@ -80,8 +80,7 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
     const rows = m36ContributedPermissionMirrorRows();
     expect(rows.map((r) => r.key).sort()).toEqual(Object.keys(M36_CONTRIBUTED_PERMISSIONS).sort());
     for (const row of rows) {
-      const def =
-        M36_CONTRIBUTED_PERMISSIONS[row.key as keyof typeof M36_CONTRIBUTED_PERMISSIONS];
+      const def = M36_CONTRIBUTED_PERMISSIONS[row.key as keyof typeof M36_CONTRIBUTED_PERMISSIONS];
       expect(row.defaultAbac).toBe(def.abac);
       expect(row.resource).toBe(def.resource);
       expect(row.action).toBe(def.action);

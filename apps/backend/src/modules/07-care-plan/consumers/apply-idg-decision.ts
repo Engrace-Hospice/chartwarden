@@ -100,7 +100,10 @@ export type IdgRefusalReason =
  * rejection); the surviving changes become {@link PlannedElementMutation}s applied to an open-or-fresh
  * draft `idg_review` version.
  */
-export function decideIdgDecision(payload: IdgDecisionPayload, facts: IdgApplyFacts): IdgApplyAction {
+export function decideIdgDecision(
+  payload: IdgDecisionPayload,
+  facts: IdgApplyFacts,
+): IdgApplyAction {
   // D4 — a version already records this decision: a redelivery is a no-op (idempotent on idgDecisionId).
   if (facts.alreadyApplied) return { kind: "idempotent_skip" };
 
@@ -119,14 +122,21 @@ export function decideIdgDecision(payload: IdgDecisionPayload, facts: IdgApplyFa
       return { kind: "refuse", reason: "missing_element_id" };
     }
     // T4 — a `discontinue` of a terminal problem is rejected (needs the RN + physician co-sign path).
-    if (change.target === "problem" && change.op === "discontinue" && id !== undefined && terminal.has(id)) {
+    if (
+      change.target === "problem" &&
+      change.op === "discontinue" &&
+      id !== undefined &&
+      terminal.has(id)
+    ) {
       return { kind: "refuse", reason: "terminal_problem_discontinue" };
     }
     mutations.push({
       target: change.target,
       op: change.op,
       ...(id !== undefined ? { elementId: id } : {}),
-      ...(change.target === "intervention" && change.discipline ? { discipline: change.discipline } : {}),
+      ...(change.target === "intervention" && change.discipline
+        ? { discipline: change.discipline }
+        : {}),
     });
   }
 

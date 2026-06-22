@@ -9,7 +9,10 @@ describe("toSessionContextRecord (AUTH-T05b)", () => {
   it("maps a session row to a context record (roles/membership deferred to M3)", () => {
     const at = new Date("2026-01-02T03:04:05Z");
     expect(
-      toSessionContextRecord({ userId: "u1", activeOrganizationId: "org1", lastStepUpAt: at, lastStepUpFactor: "totp" }, "s1"),
+      toSessionContextRecord(
+        { userId: "u1", activeOrganizationId: "org1", lastStepUpAt: at, lastStepUpFactor: "totp" },
+        "s1",
+      ),
     ).toEqual({
       sessionId: "s1",
       userId: "u1",

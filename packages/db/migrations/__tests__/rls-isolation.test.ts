@@ -70,7 +70,12 @@ describe("M1-T04 migration: RLS + append-only (static)", () => {
   });
 
   it("creates the four database roles", () => {
-    for (const role of ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"]) {
+    for (const role of [
+      "wardenx_app",
+      "wardenx_admin",
+      "wardenx_readonly",
+      "wardenx_audit_writer",
+    ]) {
       expect(rls).toContain(`CREATE ROLE ${role} NOLOGIN`);
     }
   });
@@ -82,7 +87,7 @@ describe("M1-T04 migration: RLS + append-only (static)", () => {
 
   it("isolates the only NULL-org branch to the read-only global-flag policy", () => {
     // The global-read policy is SELECT-only and lives apart from any writable policy.
-    expect(globalRead).toContain('FOR SELECT TO wardenx_app');
+    expect(globalRead).toContain("FOR SELECT TO wardenx_app");
     expect(globalRead).not.toMatch(/WITH\s+CHECK/i);
     expect(globalRead).not.toMatch(/FOR\s+ALL/i);
   });

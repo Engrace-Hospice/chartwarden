@@ -12,8 +12,8 @@
 import { describe, expect, it } from "vitest";
 import {
   CONTRIBUTED_PERMISSIONS,
-  M38_CONTRIBUTED_PERMISSIONS,
   M4_CONTRIBUTED_PERMISSIONS,
+  M38_CONTRIBUTED_PERMISSIONS,
   PERMISSIONS,
   allPermissionMirrorRows,
   m38ContributedPermissionMirrorRows,
@@ -63,8 +63,7 @@ describe("M38-T06 terminology permission keys (§4.4 handshake)", () => {
     const rows = m38ContributedPermissionMirrorRows();
     expect(rows.map((r) => r.key).sort()).toEqual(Object.keys(M38_CONTRIBUTED_PERMISSIONS).sort());
     for (const row of rows) {
-      const def =
-        M38_CONTRIBUTED_PERMISSIONS[row.key as keyof typeof M38_CONTRIBUTED_PERMISSIONS];
+      const def = M38_CONTRIBUTED_PERMISSIONS[row.key as keyof typeof M38_CONTRIBUTED_PERMISSIONS];
       expect(row.defaultAbac).toBe(def.abac);
       expect(row.resource).toBe(def.resource);
       expect(row.action).toBe(def.action);

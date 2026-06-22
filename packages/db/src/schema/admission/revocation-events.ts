@@ -3,15 +3,7 @@
 // the admission FK). Cross-module refs (M39 representative consent, M22 document) are plain uuid
 // app-validated; admission + election_period FKs are intra-M6. One revocation per period (unique).
 // RLS + the M4 write-audit trigger land in M6-T03 (§3.6–3.7).
-import {
-  bigint,
-  date,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { bigint, date, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { electionSignerKind, revocationReason } from "../../enums";
 import { organizations } from "../organizations";
 import { admissions } from "./admissions";

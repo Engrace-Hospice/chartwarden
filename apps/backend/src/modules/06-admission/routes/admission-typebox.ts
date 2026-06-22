@@ -10,7 +10,10 @@ import { ValidationError } from "@wardenx/types";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 if (!FormatRegistry.Has("date")) {
-  FormatRegistry.Set("date", (v) => typeof v === "string" && DATE_RE.test(v) && !Number.isNaN(Date.parse(v)));
+  FormatRegistry.Set(
+    "date",
+    (v) => typeof v === "string" && DATE_RE.test(v) && !Number.isNaN(Date.parse(v)),
+  );
 }
 if (!FormatRegistry.Has("date-time")) {
   FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
@@ -188,7 +191,10 @@ export const F2fAttestSchema = Type.Object({
   ifVersion: Version(),
 });
 
-export const F2fOverrideWindowSchema = Type.Object({ reason: Reason(20, 1000), ifVersion: Version() });
+export const F2fOverrideWindowSchema = Type.Object({
+  reason: Reason(20, 1000),
+  ifVersion: Version(),
+});
 
 // ── Level of care (routes 33–35) ─────────────────────────────────────────────────────────────────
 export const LocChangeSchema = Type.Object({
@@ -267,7 +273,10 @@ export const ComplianceListQuerySchema = Type.Object({
 });
 
 export const ComplianceCloseSchema = Type.Object({ ifVersion: Version() });
-export const ComplianceOverrideSchema = Type.Object({ reason: Reason(20, 1000), ifVersion: Version() });
+export const ComplianceOverrideSchema = Type.Object({
+  reason: Reason(20, 1000),
+  ifVersion: Version(),
+});
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

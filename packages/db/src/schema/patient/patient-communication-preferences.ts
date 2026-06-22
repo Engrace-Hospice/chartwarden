@@ -2,9 +2,9 @@
 // preferred language/channel, interpreter need, accessible format, do-not-contact/mail flags.
 // PHI-bearing → three-column tenancy rule.
 import { boolean, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 import { patients } from "./patients";
 
 export const patientCommunicationPreferences = pgTable("patient_communication_preference", {
@@ -27,7 +27,5 @@ export const patientCommunicationPreferences = pgTable("patient_communication_pr
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export type PatientCommunicationPreference =
-  typeof patientCommunicationPreferences.$inferSelect;
-export type NewPatientCommunicationPreference =
-  typeof patientCommunicationPreferences.$inferInsert;
+export type PatientCommunicationPreference = typeof patientCommunicationPreferences.$inferSelect;
+export type NewPatientCommunicationPreference = typeof patientCommunicationPreferences.$inferInsert;

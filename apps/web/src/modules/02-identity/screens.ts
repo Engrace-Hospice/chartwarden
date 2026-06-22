@@ -1,8 +1,8 @@
+import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/02-identity — M2 screen registration (Track A, ADR-0030).
 // Declares this module's screens for the M1 shell registry. Typed against the @wardenx/types
 // contract (no shell import); the composition root (apps/web/src/main.tsx) registers it.
 import type { ComponentType } from "react";
-import type { ScreenRegistryModule } from "@wardenx/types";
 import { AcceptInvitation } from "./accept-invitation";
 import { ForgotPassword } from "./forgot-password";
 import { MfaChallenge } from "./mfa-challenge";

@@ -1,3 +1,4 @@
+import { passkey } from "@better-auth/passkey";
 // @wardenx/auth · identity — Better Auth integration (M2-T01; M2 spec §1, §3.1).
 //
 // This file is the ONE place `better-auth` may be imported (vendor-adapter mandate,
@@ -20,13 +21,9 @@
 import { schema } from "@wardenx/db";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { passkey } from "@better-auth/passkey";
 import { haveIBeenPwned, magicLink, twoFactor } from "better-auth/plugins";
+import { type EmailTransport, createNoopEmailTransport } from "./email-transport";
 import { argon2idHash, argon2idVerify } from "./password-hash";
-import {
-  type EmailTransport,
-  createNoopEmailTransport,
-} from "./email-transport";
 import { type EncryptableAdapter, withTwoFactorEncryption } from "./two-factor-adapter";
 import { loadTwoFactorKey } from "./two-factor-crypto";
 
@@ -108,9 +105,11 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
     // (options) => Adapter; the wrapper decorates the inner Drizzle adapter per request.
     database: ((options: unknown) =>
       withTwoFactorEncryption(
-        (drizzleAdapter(db, { provider: "pg", schema: m1Schema }) as unknown as (o: unknown) => EncryptableAdapter)(
-          options,
-        ),
+        (
+          drizzleAdapter(db, { provider: "pg", schema: m1Schema }) as unknown as (
+            o: unknown,
+          ) => EncryptableAdapter
+        )(options),
         () => loadTwoFactorKey(),
       )) as never,
     emailAndPassword: {
@@ -153,7 +152,9 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
       // above seals/opens the values); ADR-0034. SMS fallback never qualifies as step-up.
       twoFactor({
         issuer: "WardenX",
-        schema: { twoFactor: { fields: { secret: "secretEncrypted", backupCodes: "backupCodesEncrypted" } } },
+        schema: {
+          twoFactor: { fields: { secret: "secretEncrypted", backupCodes: "backupCodesEncrypted" } },
+        },
       }),
       passkey({
         rpName: "WardenX",

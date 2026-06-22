@@ -36,10 +36,7 @@ export const facilities = pgTable(
     mergedIntoId: uuid("merged_into_id").references((): AnyPgColumn => facilities.id, {
       onDelete: "restrict",
     }),
-    mergedFrom: uuid("merged_from")
-      .array()
-      .notNull()
-      .default(sql`'{}'::uuid[]`),
+    mergedFrom: uuid("merged_from").array().notNull().default(sql`'{}'::uuid[]`),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -55,10 +52,7 @@ export const facilities = pgTable(
       "gin",
       t.sendingFacilityCodes,
     ),
-    ccnFormat: check(
-      "facility_ccn_format",
-      sql`ccn IS NULL OR ccn ~ '^[0-9A-Z]{6,10}$'`,
-    ),
+    ccnFormat: check("facility_ccn_format", sql`ccn IS NULL OR ccn ~ '^[0-9A-Z]{6,10}$'`),
     mergedConsistency: check(
       "facility_merged_consistency",
       sql`(status = 'merged') = (merged_into_id IS NOT NULL)`,

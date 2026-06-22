@@ -16,13 +16,17 @@ const KEY_LEN = 32;
 const MIN_LEN = 1 + NONCE_LEN + TAG_LEN; // header + tag, even with empty ciphertext
 
 /** Load the 32-byte AES key from TWO_FACTOR_ENCRYPTION_KEY (base64). Fail-closed. */
-export function loadTwoFactorKey(raw: string | undefined = process.env.TWO_FACTOR_ENCRYPTION_KEY): Buffer {
+export function loadTwoFactorKey(
+  raw: string | undefined = process.env.TWO_FACTOR_ENCRYPTION_KEY,
+): Buffer {
   if (!raw) {
     throw new Error("TWO_FACTOR_ENCRYPTION_KEY is required (2FA secret encryption — fail-closed)");
   }
   const key = Buffer.from(raw, "base64");
   if (key.length !== KEY_LEN) {
-    throw new Error(`TWO_FACTOR_ENCRYPTION_KEY must decode to ${KEY_LEN} bytes (got ${key.length})`);
+    throw new Error(
+      `TWO_FACTOR_ENCRYPTION_KEY must decode to ${KEY_LEN} bytes (got ${key.length})`,
+    );
   }
   return key;
 }
@@ -53,7 +57,11 @@ export function open(sealed: string, key: Buffer): string {
 export function isSealed(value: string): boolean {
   try {
     const buf = Buffer.from(value, "base64");
-    return buf.length >= MIN_LEN && buf[0] === VERSION && timingSafeEqual(buf.subarray(0, 1), Buffer.from([VERSION]));
+    return (
+      buf.length >= MIN_LEN &&
+      buf[0] === VERSION &&
+      timingSafeEqual(buf.subarray(0, 1), Buffer.from([VERSION]))
+    );
   } catch {
     return false;
   }

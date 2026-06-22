@@ -34,10 +34,7 @@ export const certificationsOfTerminalIllness = pgTable(
     attendingMdId: uuid("attending_md_id"), // M40 physician (app-validated)
     attendingMdSignedAt: timestamp("attending_md_signed_at", { withTimezone: true }),
     terminalDiagnosisIcd10: text("terminal_diagnosis_icd10").notNull(),
-    relatedConditionsIcd10: text("related_conditions_icd10")
-      .array()
-      .notNull()
-      .default(sql`'{}'`),
+    relatedConditionsIcd10: text("related_conditions_icd10").array().notNull().default(sql`'{}'`),
     narrative: text("narrative").notNull(),
     periodStart: date("period_start").notNull(),
     periodEnd: date("period_end").notNull(),
@@ -58,7 +55,5 @@ export const certificationsOfTerminalIllness = pgTable(
   }),
 );
 
-export type CertificationOfTerminalIllness =
-  typeof certificationsOfTerminalIllness.$inferSelect;
-export type NewCertificationOfTerminalIllness =
-  typeof certificationsOfTerminalIllness.$inferInsert;
+export type CertificationOfTerminalIllness = typeof certificationsOfTerminalIllness.$inferSelect;
+export type NewCertificationOfTerminalIllness = typeof certificationsOfTerminalIllness.$inferInsert;

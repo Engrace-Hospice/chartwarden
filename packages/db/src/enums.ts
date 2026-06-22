@@ -310,11 +310,7 @@ export const messageBodyKind = pgEnum("message_body_kind", ["plain", "markdown",
 export const messageStatus = pgEnum("message_status", ["sent", "edited", "deleted"]);
 
 // `message_receipt_status` — per-recipient receipt state (§3.4).
-export const messageReceiptStatus = pgEnum("message_receipt_status", [
-  "delivered",
-  "read",
-  "ack",
-]);
+export const messageReceiptStatus = pgEnum("message_receipt_status", ["delivered", "read", "ack"]);
 
 // `presence_status` — Socket.IO-driven user presence (§3.5).
 export const presenceStatus = pgEnum("presence_status", ["online", "away", "offline"]);
@@ -967,7 +963,11 @@ export const goalStatus = pgEnum("goal_status", [
 ]);
 
 /** `intervention_status` — the §3.2 intervention lifecycle (§2.2.3). */
-export const interventionStatus = pgEnum("intervention_status", ["active", "discontinued", "completed"]);
+export const interventionStatus = pgEnum("intervention_status", [
+  "active",
+  "discontinued",
+  "completed",
+]);
 
 /** `intervention_discipline` — the discipline that owns a care-plan intervention (§3.2). */
 export const interventionDiscipline = pgEnum("intervention_discipline", [
@@ -1108,7 +1108,11 @@ export const layer2EligibilityReason = pgEnum("layer2_eligibility_reason", [
 ]);
 
 /** `layer2_passage_decision` — a clinician's per-passage decision on a Layer-2 modification (§2.6). */
-export const layer2PassageDecision = pgEnum("layer2_passage_decision", ["accept", "edit", "reject"]);
+export const layer2PassageDecision = pgEnum("layer2_passage_decision", [
+  "accept",
+  "edit",
+  "reject",
+]);
 
 /** `assembled_output_kind` — whether an assembled-output row is a primary or addendum finalize (§3.3). */
 export const assembledOutputKind = pgEnum("assembled_output_kind", [

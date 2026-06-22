@@ -35,7 +35,11 @@ export function createDbClient(opts: CreateDbClientOptions): DbClientHandle {
   if (!opts.connectionString) {
     throw new Error("createDbClient: connectionString (DATABASE_URL) is required");
   }
-  const pool = new Pool({ connectionString: opts.connectionString, max: opts.max ?? 10, ...opts.pool });
+  const pool = new Pool({
+    connectionString: opts.connectionString,
+    max: opts.max ?? 10,
+    ...opts.pool,
+  });
   const db = drizzle(pool, { schema });
   return { db, pool, close: () => pool.end() };
 }

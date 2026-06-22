@@ -1,3 +1,4 @@
+import { resetAuthorizationContract, resetRbacEngine } from "@wardenx/auth";
 // apps/backend/__tests__/mdm-routes-mount.test.ts — FB-T02 composition-root mount glue.
 //
 // Proves `mountMdmRoutes(app, db)` wires the M40 MDM surface onto the host behind the same
@@ -7,7 +8,6 @@
 // Postgres. The deep store reads/writes are covered by the route inventory tests over the in-memory
 // backend (mdm-routes.test.ts) and by the live RLS suite (rls-isolation.live.test.ts).
 import type { DbClient } from "@wardenx/db";
-import { resetAuthorizationContract, resetRbacEngine } from "@wardenx/auth";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { mountMdmRoutes } from "../src/modules/40-mdm/index";

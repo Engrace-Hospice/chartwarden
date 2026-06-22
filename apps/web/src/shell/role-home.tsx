@@ -40,13 +40,35 @@ export function RoleHome({ screens }: { screens: WebScreenDescriptor[] }): JSX.E
       ) : (
         ordered.map(([group, items]) => (
           <section key={group} style={{ marginTop: "1.5rem" }}>
-            <h2 style={{ fontSize: "0.8rem", textTransform: "uppercase", color: "#6b7280", margin: "0 0 0.5rem" }}>{group}</h2>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(14rem, 1fr))", gap: "0.75rem" }}>
+            <h2
+              style={{
+                fontSize: "0.8rem",
+                textTransform: "uppercase",
+                color: "#6b7280",
+                margin: "0 0 0.5rem",
+              }}
+            >
+              {group}
+            </h2>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(14rem, 1fr))",
+                gap: "0.75rem",
+              }}
+            >
               {items.map((s) => (
                 <Link
                   key={s.id}
                   to={s.path}
-                  style={{ display: "block", padding: "1rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem", textDecoration: "none", color: "#111827" }}
+                  style={{
+                    display: "block",
+                    padding: "1rem",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "0.5rem",
+                    textDecoration: "none",
+                    color: "#111827",
+                  }}
                 >
                   <div style={{ fontWeight: 600 }}>{s.title}</div>
                 </Link>

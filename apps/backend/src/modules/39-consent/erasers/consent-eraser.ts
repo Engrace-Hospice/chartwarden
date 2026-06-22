@@ -9,8 +9,8 @@
 // (@wardenx/consent); this is the thin DataEraser shell over an injected store (in-memory by default).
 import {
   type ConsentEraseStore,
-  eraseConsentForSubject,
   createInMemoryConsentEraseStore,
+  eraseConsentForSubject,
 } from "@wardenx/consent";
 import type { DataEraser } from "@wardenx/types";
 import { registerEraser } from "../../../bootstrap/index";

@@ -20,6 +20,11 @@
 // is gated at the route (`ai.full`) — the pgvector HNSW kNN lands in the Drizzle store.
 
 import { WardenXError } from "@wardenx/types";
+import {
+  type TenantExtensionRefusal,
+  classifyTenantExtension,
+  unionTenantExtensions,
+} from "../extensions";
 import type {
   CodeSystemId,
   ExpansionMember,
@@ -36,11 +41,6 @@ import type {
   TerminologyProvider,
   ValidateResult,
 } from "../interfaces/provider";
-import {
-  classifyTenantExtension,
-  type TenantExtensionRefusal,
-  unionTenantExtensions,
-} from "../extensions";
 import { normalizeAsOf, resolveAsOf, resolveBatchAsOf, toValidateResult } from "../resolution";
 import type { TerminologyStore } from "./store";
 
@@ -189,9 +189,7 @@ export function createTerminologyProvider(store: TerminologyStore): TerminologyP
         store.valueSetMembers(valueSetId, { asOfIso }),
         store.valueSetMeta(valueSetId),
       ]);
-      const tenant = opts.orgId
-        ? await store.tenantExtensionMembers(opts.orgId, valueSetId)
-        : [];
+      const tenant = opts.orgId ? await store.tenantExtensionMembers(opts.orgId, valueSetId) : [];
       const contains = [...members, ...tenant]
         .map((m) => ({ system: m.systemId, code: m.code, display: m.display }))
         // Stable (system, code) order so the projection is byte-identical for the same

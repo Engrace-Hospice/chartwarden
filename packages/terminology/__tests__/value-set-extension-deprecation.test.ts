@@ -29,15 +29,33 @@ import {
 // ── §7.5 value-set expansion ──────────────────────────────────────────────────────────
 describe("computeExpansion — materialized projection of members (§7.5, §2.1.2)", () => {
   const members: ValueSetMemberRow[] = [
-    { valueSetId: "hospice_terminal_dx", systemId: "icd10cm", code: "G93.41", memberEffective: "2022-10-01", memberEnd: null },
-    { valueSetId: "hospice_terminal_dx", systemId: "icd10cm", code: "C34.90", memberEffective: "2020-01-01", memberEnd: "2024-09-30" },
+    {
+      valueSetId: "hospice_terminal_dx",
+      systemId: "icd10cm",
+      code: "G93.41",
+      memberEffective: "2022-10-01",
+      memberEnd: null,
+    },
+    {
+      valueSetId: "hospice_terminal_dx",
+      systemId: "icd10cm",
+      code: "C34.90",
+      memberEffective: "2020-01-01",
+      memberEnd: "2024-09-30",
+    },
   ];
 
   it("projects each member's effective range into an expansion row, code-sorted & deterministic", () => {
     const rows = computeExpansion(members);
     expect(rows.map((r) => r.code)).toEqual(["C34.90", "G93.41"]);
-    expect(rows.find((r) => r.code === "C34.90")).toMatchObject({ asOfLower: "2020-01-01", asOfUpper: "2024-09-30" });
-    expect(rows.find((r) => r.code === "G93.41")).toMatchObject({ asOfLower: "2022-10-01", asOfUpper: null });
+    expect(rows.find((r) => r.code === "C34.90")).toMatchObject({
+      asOfLower: "2020-01-01",
+      asOfUpper: "2024-09-30",
+    });
+    expect(rows.find((r) => r.code === "G93.41")).toMatchObject({
+      asOfLower: "2022-10-01",
+      asOfUpper: null,
+    });
     // Re-running is idempotent regardless of input order (§2.5 expansion freshness).
     expect(computeExpansion([...members].reverse())).toEqual(rows);
   });
@@ -50,8 +68,20 @@ describe("computeExpansion — materialized projection of members (§7.5, §2.1.
 
 describe("isMemberAtAsOf — the precomputed B-tree lookup honors asOf (§7.5, §2.4.1 inclusive upper)", () => {
   const rows = computeExpansion([
-    { valueSetId: "vs", systemId: "icd10cm", code: "C34.90", memberEffective: "2020-01-01", memberEnd: "2024-09-30" },
-    { valueSetId: "vs", systemId: "icd10cm", code: "G93.41", memberEffective: "2022-10-01", memberEnd: null },
+    {
+      valueSetId: "vs",
+      systemId: "icd10cm",
+      code: "C34.90",
+      memberEffective: "2020-01-01",
+      memberEnd: "2024-09-30",
+    },
+    {
+      valueSetId: "vs",
+      systemId: "icd10cm",
+      code: "G93.41",
+      memberEffective: "2022-10-01",
+      memberEnd: null,
+    },
   ]);
 
   it("is a member inside the range and on the inclusive end-date boundary", () => {
@@ -71,13 +101,31 @@ describe("isMemberAtAsOf — the precomputed B-tree lookup honors asOf (§7.5, �
 
   it("§7.5 a newly loaded member is a member at its effective date once expansion is recomputed", () => {
     const before = computeExpansion([
-      { valueSetId: "vs", systemId: "icd10cm", code: "C34.90", memberEffective: "2020-01-01", memberEnd: null },
+      {
+        valueSetId: "vs",
+        systemId: "icd10cm",
+        code: "C34.90",
+        memberEffective: "2020-01-01",
+        memberEnd: null,
+      },
     ]);
     expect(isMemberAtAsOf(before, "icd10cm", "J96.01", "2025-01-01")).toBe(false);
     // A new version adds J96.01; the loader recomputes the expansion (§2.1.2) → now a member.
     const after = computeExpansion([
-      { valueSetId: "vs", systemId: "icd10cm", code: "C34.90", memberEffective: "2020-01-01", memberEnd: null },
-      { valueSetId: "vs", systemId: "icd10cm", code: "J96.01", memberEffective: "2025-01-01", memberEnd: null },
+      {
+        valueSetId: "vs",
+        systemId: "icd10cm",
+        code: "C34.90",
+        memberEffective: "2020-01-01",
+        memberEnd: null,
+      },
+      {
+        valueSetId: "vs",
+        systemId: "icd10cm",
+        code: "J96.01",
+        memberEffective: "2025-01-01",
+        memberEnd: null,
+      },
     ]);
     expect(isMemberAtAsOf(after, "icd10cm", "J96.01", "2025-01-01")).toBe(true);
   });
@@ -108,51 +156,80 @@ describe("isExpansionStale — the §2.5 freshness invariant (§7.5 staleness ga
 // ── §7.6 tenant value-set extensions: add-only, never weaken ────────────────────────────
 describe("classifyTenantExtension — add-time gate (§7.6, §7.10)", () => {
   const active: ResolvedConcept<"icd10cm"> = {
-    systemId: "icd10cm", code: "E11.8", display: "active", status: "active",
-    effectiveDate: "2024-10-01", endDate: null, properties: { isBillableLeaf: true, chapter: null, parentCode: null },
+    systemId: "icd10cm",
+    code: "E11.8",
+    display: "active",
+    status: "active",
+    effectiveDate: "2024-10-01",
+    endDate: null,
+    properties: { isBillableLeaf: true, chapter: null, parentCode: null },
   };
 
   it("OK: an active, non-member code may be added", () => {
-    expect(classifyTenantExtension({ resolved: active, isPlatformMember: false })).toEqual({ outcome: "ok" });
+    expect(classifyTenantExtension({ resolved: active, isPlatformMember: false })).toEqual({
+      outcome: "ok",
+    });
   });
 
   it("REDUNDANT: an active code already in the platform set is a no-op (§7.10 → 409)", () => {
-    expect(classifyTenantExtension({ resolved: active, isPlatformMember: true })).toEqual({ outcome: "redundant" });
+    expect(classifyTenantExtension({ resolved: active, isPlatformMember: true })).toEqual({
+      outcome: "redundant",
+    });
   });
 
   it("INVALID_CODE: an unknown code that resolves to nothing today (§7.10 → 422)", () => {
     expect(classifyTenantExtension({ resolved: null, isPlatformMember: false })).toEqual({
-      outcome: "invalid_code", reason: "unresolved",
+      outcome: "invalid_code",
+      reason: "unresolved",
     });
   });
 
   it("INVALID_CODE: a deprecated code is refused even if not yet a member — we can't pin a retiring code", () => {
     expect(
-      classifyTenantExtension({ resolved: { ...active, status: "deprecated" }, isPlatformMember: false }),
+      classifyTenantExtension({
+        resolved: { ...active, status: "deprecated" },
+        isPlatformMember: false,
+      }),
     ).toEqual({ outcome: "invalid_code", reason: "deprecated" });
   });
 
   it("INVALID_CODE: a retired code is refused", () => {
     expect(
-      classifyTenantExtension({ resolved: { ...active, status: "retired" }, isPlatformMember: false }),
+      classifyTenantExtension({
+        resolved: { ...active, status: "retired" },
+        isPlatformMember: false,
+      }),
     ).toEqual({ outcome: "invalid_code", reason: "retired" });
   });
 
   it("validity wins over membership: a deprecated code that is also a platform member is INVALID_CODE", () => {
     expect(
-      classifyTenantExtension({ resolved: { ...active, status: "deprecated" }, isPlatformMember: true }),
+      classifyTenantExtension({
+        resolved: { ...active, status: "deprecated" },
+        isPlatformMember: true,
+      }),
     ).toEqual({ outcome: "invalid_code", reason: "deprecated" });
   });
 });
 
 describe("unionTenantExtensions — read-time union, add-only (§7.6, §2.4.3)", () => {
   const platform: ExpansionMember[] = [
-    { systemId: "icd10cm", code: "G93.41", display: "platform display", annotations: { is_terminal: true } },
+    {
+      systemId: "icd10cm",
+      code: "G93.41",
+      display: "platform display",
+      annotations: { is_terminal: true },
+    },
   ];
 
   it("appends a tenant add after the platform members", () => {
     const tenant: ExpansionMember[] = [
-      { systemId: "icd10cm", code: "E11.8", display: "tenant add", annotations: { source: "tenant_extension" } },
+      {
+        systemId: "icd10cm",
+        code: "E11.8",
+        display: "tenant add",
+        annotations: { source: "tenant_extension" },
+      },
     ];
     const union = unionTenantExtensions(platform, tenant);
     expect(union.map((m) => m.code)).toEqual(["G93.41", "E11.8"]);
@@ -160,7 +237,12 @@ describe("unionTenantExtensions — read-time union, add-only (§7.6, §2.4.3)",
 
   it("a tenant row duplicating a platform (system, code) NEVER shadows it — platform annotations stand", () => {
     const tenant: ExpansionMember[] = [
-      { systemId: "icd10cm", code: "G93.41", display: "tenant relabel attempt", annotations: { is_terminal: false } },
+      {
+        systemId: "icd10cm",
+        code: "G93.41",
+        display: "tenant relabel attempt",
+        annotations: { is_terminal: false },
+      },
     ];
     const union = unionTenantExtensions(platform, tenant);
     expect(union).toHaveLength(1);
@@ -180,12 +262,20 @@ describe("unionTenantExtensions — read-time union, add-only (§7.6, §2.4.3)",
 describe("buildRemediationReport — per-deprecated-code rollup (§7.3)", () => {
   const deprecations: ({ systemId: "icd10cm" } & DeprecationMappingResponse)[] = [
     {
-      systemId: "icd10cm", deprecatedCode: "I50.20", deprecationEffective: "2024-10-01",
-      successorCodes: ["I50.21", "I50.22"], mappingKind: "narrower", guidance: "Use the systolic-specific code.",
+      systemId: "icd10cm",
+      deprecatedCode: "I50.20",
+      deprecationEffective: "2024-10-01",
+      successorCodes: ["I50.21", "I50.22"],
+      mappingKind: "narrower",
+      guidance: "Use the systolic-specific code.",
     },
     {
-      systemId: "icd10cm", deprecatedCode: "R51", deprecationEffective: "2024-10-01",
-      successorCodes: ["R51.9"], mappingKind: "equivalent", guidance: null,
+      systemId: "icd10cm",
+      deprecatedCode: "R51",
+      deprecationEffective: "2024-10-01",
+      successorCodes: ["R51.9"],
+      mappingKind: "equivalent",
+      guidance: null,
     },
   ];
 
@@ -216,7 +306,10 @@ describe("buildRemediationReport — per-deprecated-code rollup (§7.3)", () => 
 
   it("caps the sample to sampleSize while keeping the full affected count", () => {
     const many: TenantCodeRecord[] = Array.from({ length: 100 }, (_v, i) => ({
-      recordId: `r${i}`, recordType: "problem_list", systemId: "icd10cm" as const, code: "I50.20",
+      recordId: `r${i}`,
+      recordType: "problem_list",
+      systemId: "icd10cm" as const,
+      code: "I50.20",
     }));
     const report = buildRemediationReport(many, deprecations, { sampleSize: 5 });
     expect(report.lines[0].affectedCount).toBe(100);
@@ -229,7 +322,9 @@ describe("buildRemediationReport — per-deprecated-code rollup (§7.3)", () => 
       { recordId: "x", recordType: "problem_list", systemId: "icd10cm", code: "I50.21" },
     ];
     expect(buildRemediationReport(clean, deprecations)).toEqual({
-      totalAffected: 0, affectedCodeCount: 0, lines: [],
+      totalAffected: 0,
+      affectedCodeCount: 0,
+      lines: [],
     });
   });
 });
@@ -252,7 +347,10 @@ describe("DeprecationMappingKind — all five kinds round-trip (§9.1)", () => {
       guidance: kind === "see_other" ? "See the cross-reference note." : null,
     }));
     const records: TenantCodeRecord[] = KINDS.map((_kind, i) => ({
-      recordId: `r${i}`, recordType: "problem_list", systemId: "icd10cm" as const, code: `D${i}`,
+      recordId: `r${i}`,
+      recordType: "problem_list",
+      systemId: "icd10cm" as const,
+      code: `D${i}`,
     }));
 
     const report = buildRemediationReport(records, deps);
@@ -265,11 +363,18 @@ describe("DeprecationMappingKind — all five kinds round-trip (§9.1)", () => {
 
   it("survives a JSON serialize/parse round-trip (alert-payload safety)", () => {
     const deps: ({ systemId: "icd10cm" } & DeprecationMappingResponse)[] = KINDS.map((kind, i) => ({
-      systemId: "icd10cm", deprecatedCode: `D${i}`, deprecationEffective: "2024-10-01",
-      successorCodes: [`S${i}`], mappingKind: kind, guidance: null,
+      systemId: "icd10cm",
+      deprecatedCode: `D${i}`,
+      deprecationEffective: "2024-10-01",
+      successorCodes: [`S${i}`],
+      mappingKind: kind,
+      guidance: null,
     }));
     const records: TenantCodeRecord[] = KINDS.map((_kind, i) => ({
-      recordId: `r${i}`, recordType: "claim_line", systemId: "icd10cm" as const, code: `D${i}`,
+      recordId: `r${i}`,
+      recordType: "claim_line",
+      systemId: "icd10cm" as const,
+      code: `D${i}`,
     }));
     const report = buildRemediationReport(records, deps);
     expect(JSON.parse(JSON.stringify(report))).toEqual(report);

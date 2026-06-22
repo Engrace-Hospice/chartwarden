@@ -24,7 +24,9 @@ const MIN_LEN = 1 + NONCE_LEN + TAG_LEN; // header + tag, even with an empty cip
 const DEK_INFO_PREFIX = "wardenx-message-dek:"; // HKDF `info` label, org-bound
 
 /** Load the 32-byte master KEK from MESSAGING_ENCRYPTION_KEY (base64). Fail-closed. */
-export function loadMessagingKek(raw: string | undefined = process.env.MESSAGING_ENCRYPTION_KEY): Buffer {
+export function loadMessagingKek(
+  raw: string | undefined = process.env.MESSAGING_ENCRYPTION_KEY,
+): Buffer {
   if (!raw) {
     throw new Error("MESSAGING_ENCRYPTION_KEY is required (message body encryption — fail-closed)");
   }
@@ -54,7 +56,8 @@ export function sealMessageBody(plaintext: string, dek: Buffer): Buffer {
 /** Decrypt a bytea envelope. Throws on a wrong DEK, tamper (GCM auth fail), or bad format/version. */
 export function openMessageBody(cipher: Buffer, dek: Buffer): string {
   if (cipher.length < MIN_LEN) throw new Error("message body-crypto: malformed ciphertext");
-  if (cipher[0] !== VERSION) throw new Error(`message body-crypto: unsupported version ${cipher[0]}`);
+  if (cipher[0] !== VERSION)
+    throw new Error(`message body-crypto: unsupported version ${cipher[0]}`);
   const nonce = cipher.subarray(1, 1 + NONCE_LEN);
   const tag = cipher.subarray(cipher.length - TAG_LEN);
   const ct = cipher.subarray(1 + NONCE_LEN, cipher.length - TAG_LEN);

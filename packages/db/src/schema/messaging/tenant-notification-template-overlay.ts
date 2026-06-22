@@ -31,6 +31,7 @@ export const tenantNotificationTemplateOverlay = pgTable(
   }),
 );
 
-export type TenantNotificationTemplateOverlay = typeof tenantNotificationTemplateOverlay.$inferSelect;
+export type TenantNotificationTemplateOverlay =
+  typeof tenantNotificationTemplateOverlay.$inferSelect;
 export type NewTenantNotificationTemplateOverlay =
   typeof tenantNotificationTemplateOverlay.$inferInsert;

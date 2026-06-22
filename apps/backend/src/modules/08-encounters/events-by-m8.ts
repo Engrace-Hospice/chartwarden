@@ -36,7 +36,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m8.encounter.created",
     moduleOwner: "m8",
-    description: "A draft encounter was created (route 1, or seeded by M17 visit-scheduling / M16 reuse).",
+    description:
+      "A draft encounter was created (route 1, or seeded by M17 visit-scheduling / M16 reuse).",
     payloadSchema: Type.Object({
       encounterId: Type.String({ minLength: 1 }),
       patientId: Type.String({ minLength: 1 }),
@@ -66,7 +67,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m8.encounter.signed",
     moduleOwner: "m8",
-    description: "Sign succeeded — the LOCKED clinical-record trigger half the clinical phase keys off.",
+    description:
+      "Sign succeeded — the LOCKED clinical-record trigger half the clinical phase keys off.",
     payloadSchema: Type.Object({
       encounterId: Type.String({ minLength: 1 }),
       patientId: Type.String({ minLength: 1 }),
@@ -110,7 +112,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m8.encounter.cosigned",
     moduleOwner: "m8",
-    description: "Cosign succeeded — `BillableEncounterReader` flips to billable for the held visit (§7.2).",
+    description:
+      "Cosign succeeded — `BillableEncounterReader` flips to billable for the held visit (§7.2).",
     payloadSchema: Type.Object({
       encounterId: Type.String({ minLength: 1 }),
       cosignedByMembershipId: Type.String({ minLength: 1 }),
@@ -122,7 +125,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m8.encounter.addendum_signed",
     moduleOwner: "m8",
-    description: "An addendum on a signed encounter was signed (D2); M22 re-renders the PDF appended.",
+    description:
+      "An addendum on a signed encounter was signed (D2); M22 re-renders the PDF appended.",
     payloadSchema: Type.Object({
       encounterId: Type.String({ minLength: 1 }),
       addendumId: Type.String({ minLength: 1 }),
@@ -173,7 +177,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m8.encounter.cosignature_hard_cap_reached",
     moduleOwner: "m8",
-    description: "The 48h cosignature hard cap was reached; the supervisor must release/sign (critical).",
+    description:
+      "The 48h cosignature hard cap was reached; the supervisor must release/sign (critical).",
     payloadSchema: Type.Object({
       encounterId: Type.String({ minLength: 1 }),
       routedToMembershipId: Type.String({ minLength: 1 }),
@@ -199,7 +204,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m8.encounter.administrative_override",
     moduleOwner: "m8",
-    description: "An administrative (>14d) override was applied — director permission + step-up (critical).",
+    description:
+      "An administrative (>14d) override was applied — director permission + step-up (critical).",
     payloadSchema: Type.Object({
       encounterId: Type.String({ minLength: 1 }),
       overrideBy: Type.String({ minLength: 1 }),
@@ -212,7 +218,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m8.encounter.voided",
     moduleOwner: "m8",
-    description: "A draft encounter was voided (admin-only terminal state; never flows to `signed`).",
+    description:
+      "A draft encounter was voided (admin-only terminal state; never flows to `signed`).",
     payloadSchema: Type.Object({
       encounterId: Type.String({ minLength: 1 }),
       voidedBy: Type.String({ minLength: 1 }),
@@ -224,7 +231,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m8.encounter.orphan_recorded",
     moduleOwner: "m8",
-    description: "A signed encounter with NULL `visit_id` (ad-hoc/retroactive) — M17 reconciliation (D2).",
+    description:
+      "A signed encounter with NULL `visit_id` (ad-hoc/retroactive) — M17 reconciliation (D2).",
     payloadSchema: Type.Object({
       encounterId: Type.String({ minLength: 1 }),
       patientId: Type.String({ minLength: 1 }),
@@ -238,7 +246,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m8.hearthnote.layer2_enhanced",
     moduleOwner: "m8",
-    description: "A Layer-2 LLM enhancement call completed; carries token + hard-block/soft-warn counts.",
+    description:
+      "A Layer-2 LLM enhancement call completed; carries token + hard-block/soft-warn counts.",
     payloadSchema: Type.Object({
       encounterId: Type.String({ minLength: 1 }),
       modificationId: Type.String({ minLength: 1 }),
@@ -269,7 +278,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m8.mileage.captured",
     moduleOwner: "m8",
-    description: "Mileage was committed for an encounter; payroll/AP reads the authoritative miles (D10).",
+    description:
+      "Mileage was committed for an encounter; payroll/AP reads the authoritative miles (D10).",
     payloadSchema: Type.Object({
       encounterId: Type.String({ minLength: 1 }),
       milesDriven: Type.String({ minLength: 1 }),

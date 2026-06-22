@@ -1,7 +1,7 @@
+import { ENCOUNTER_DISCIPLINE_RULES, type EncounterType } from "@wardenx/types";
 // packages/hearthnote/__tests__/templates.test.ts — M8-T05 (spec §2.6, architecture §10.5.2).
 // The default template registry: one template per legal pair, spec-mandated required sections.
 import { describe, expect, it } from "vitest";
-import { ENCOUNTER_DISCIPLINE_RULES, type EncounterType } from "@wardenx/types";
 import { TEMPLATES, requiredSectionIds, resolveTemplate } from "../src/index";
 
 describe("template registry", () => {
@@ -33,7 +33,9 @@ describe("template registry", () => {
 
   it("recert_visit pins PPS / ESAS / prognosis / recert summary", () => {
     const required = requiredSectionIds(resolveTemplate("recert_visit", "rn")!);
-    expect(required).toEqual(expect.arrayContaining(["pps", "esas", "prognosis", "recert_summary"]));
+    expect(required).toEqual(
+      expect.arrayContaining(["pps", "esas", "prognosis", "recert_summary"]),
+    );
   });
 
   it("face_to_face requires the attestation section", () => {

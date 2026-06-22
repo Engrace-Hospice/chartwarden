@@ -11,7 +11,7 @@
  * (see ADR-0032), so `@fastify/swagger` sees nothing. Until routes are wired
  * (deferred backend follow-up), the scan + an enrichment registry are the contract.
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
@@ -69,7 +69,9 @@ export function scanRoutes(repoRoot: string = process.cwd()): ScannedRoute[] {
       routes.push({ method, path, module: moduleOf(rel), file: rel });
     }
   }
-  routes.sort((a, b) => (a.path === b.path ? a.method.localeCompare(b.method) : a.path.localeCompare(b.path)));
+  routes.sort((a, b) =>
+    a.path === b.path ? a.method.localeCompare(b.method) : a.path.localeCompare(b.path),
+  );
   return routes;
 }
 

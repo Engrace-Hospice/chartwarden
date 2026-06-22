@@ -52,8 +52,8 @@ export {
 
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
-import { registerConsentRoutes as _registerConsentRoutes } from "./routes/consent-routes";
 import { createDbConsentRouteService as _createDbConsentRouteService } from "./consent-store-db";
+import { registerConsentRoutes as _registerConsentRoutes } from "./routes/consent-routes";
 
 /**
  * Mount the M39 consent REST routes (catalog / patient consents / record / decision audit + the

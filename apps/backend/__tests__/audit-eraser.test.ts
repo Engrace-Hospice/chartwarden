@@ -1,3 +1,4 @@
+import { type EraseInput, createInMemoryEraserPorts } from "@wardenx/audit";
 // apps/backend/__tests__/audit-eraser.test.ts — M4-T08 the `audit_event` data eraser.
 //
 // Proves M4 registers a REAL eraser for the `audit_event` data class over the Phase-0 deny-stub,
@@ -7,15 +8,18 @@
 //   • a right-to-erasure refuses a live patient's Part 2 audit rows (W-M4-09) while erasing the
 //     subject's ordinary rows — it never silently destroys protected SUD history.
 import { beforeEach, describe, expect, it } from "vitest";
-import { createInMemoryEraserPorts, type EraseInput } from "@wardenx/audit";
 import { wireErasers } from "../src/bootstrap/erasers/providers";
-import { __resetErasersForTest, getEraser, validateErasers } from "../src/bootstrap/erasers/registry";
+import {
+  __resetErasersForTest,
+  getEraser,
+  validateErasers,
+} from "../src/bootstrap/erasers/registry";
 import { buildServer } from "../src/bootstrap/index";
+import { wireModuleErasers, wireModuleSeams } from "../src/index";
 import {
   createInMemoryAuditEraserStore,
   registerAuditErasers,
 } from "../src/modules/04-audit/index";
-import { wireModuleErasers, wireModuleSeams } from "../src/index";
 
 const ORG = "org_1";
 

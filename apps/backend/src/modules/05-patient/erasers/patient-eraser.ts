@@ -56,9 +56,18 @@ export function createInMemoryPatientEraseStore(seed: Partial<PatientEraseCounts
   tombstoned: string[];
 } {
   const zero: PatientEraseCounts = {
-    addresses: 0, identifiers: 0, payers: 0, caregiverLinks: 0, emergencyContacts: 0,
-    assignments: 0, communicationPreferences: 0, privacySnapshots: 0, amendments: 0,
-    nameAliases: 0, phones: 0, emails: 0,
+    addresses: 0,
+    identifiers: 0,
+    payers: 0,
+    caregiverLinks: 0,
+    emergencyContacts: 0,
+    assignments: 0,
+    communicationPreferences: 0,
+    privacySnapshots: 0,
+    amendments: 0,
+    nameAliases: 0,
+    phones: 0,
+    emails: 0,
   };
   const counts: PatientEraseCounts = { ...zero, ...seed };
   const tombstoned: string[] = [];

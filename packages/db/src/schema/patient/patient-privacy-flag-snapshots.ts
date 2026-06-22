@@ -4,9 +4,9 @@
 // read-enforcement reads THIS (fast path) rather than re-deriving from consent each read. One row per
 // patient (patient_id PK). PHI-bearing → three-column tenancy rule.
 import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 import { patients } from "./patients";
 
 export const patientPrivacyFlagSnapshots = pgTable(

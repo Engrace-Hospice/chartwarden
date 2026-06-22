@@ -1,13 +1,3 @@
-// @wardenx/types — Boot-registered SEAM contracts (Phase 0 skeleton).
-//
-// Per ADR-0005 D1, cross-module consumption via a boot-registered seam needs NO
-// dependsOn import edge: the INTERFACE lives here in a leaf package, and the
-// IMPLEMENTATION is injected at boot and validated by validateSeams(). This file is
-// the leaf-typed home for those interfaces. Phase 1 fills in real method shapes per
-// each producer module's published seam contract; Phase 0 ships the minimal shape the
-// bootstrap registry needs to compile and self-validate.
-import type { StepUpFactor } from "./policy/step-up-policy";
-import type { PatientMutator, PatientReader } from "./patient";
 import type {
   AdmissionCensusReader,
   AdmissionStatusReader,
@@ -24,6 +14,16 @@ import type {
   MileagePayrollReader,
   SignedEncountersReader,
 } from "./encounter";
+import type { PatientMutator, PatientReader } from "./patient";
+// @wardenx/types — Boot-registered SEAM contracts (Phase 0 skeleton).
+//
+// Per ADR-0005 D1, cross-module consumption via a boot-registered seam needs NO
+// dependsOn import edge: the INTERFACE lives here in a leaf package, and the
+// IMPLEMENTATION is injected at boot and validated by validateSeams(). This file is
+// the leaf-typed home for those interfaces. Phase 1 fills in real method shapes per
+// each producer module's published seam contract; Phase 0 ships the minimal shape the
+// bootstrap registry needs to compile and self-validate.
+import type { StepUpFactor } from "./policy/step-up-policy";
 
 /** Opaque tenant scope every seam call carries (resolved by withOrgContext). */
 export interface OrgScope {

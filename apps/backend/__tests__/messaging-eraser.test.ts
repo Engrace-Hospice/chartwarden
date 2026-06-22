@@ -1,3 +1,4 @@
+import { DekDestroyedError, createInMemoryMessagingEraseStore } from "@wardenx/messaging";
 // apps/backend/__tests__/messaging-eraser.test.ts — M36-T10 the `messages` data eraser
 // (spec §7.8 / §11 D9).
 //
@@ -11,15 +12,15 @@
 //   • the composition-root wireModuleErasers hook makes validateErasers() pass during a real
 //     buildServer() boot (the deny-stub would otherwise have stood).
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  DekDestroyedError,
-  createInMemoryMessagingEraseStore,
-} from "@wardenx/messaging";
 import { wireErasers } from "../src/bootstrap/erasers/providers";
-import { __resetErasersForTest, getEraser, validateErasers } from "../src/bootstrap/erasers/registry";
+import {
+  __resetErasersForTest,
+  getEraser,
+  validateErasers,
+} from "../src/bootstrap/erasers/registry";
 import { buildServer } from "../src/bootstrap/index";
-import { registerMessagingErasers } from "../src/modules/36-messaging/index";
 import { wireModuleErasers, wireModuleSeams } from "../src/index";
+import { registerMessagingErasers } from "../src/modules/36-messaging/index";
 
 const ORG = "org_1";
 const OTHER_ORG = "org_2";

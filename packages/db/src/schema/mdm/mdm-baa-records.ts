@@ -33,9 +33,7 @@ export const mdmBaaRecords = pgTable(
       t.entityKind,
       t.canonicalId,
     ),
-    expiresIdx: index("mdm_baa_expires_idx")
-      .on(t.expiresOn)
-      .where(sql`expires_on IS NOT NULL`),
+    expiresIdx: index("mdm_baa_expires_idx").on(t.expiresOn).where(sql`expires_on IS NOT NULL`),
   }),
 );
 

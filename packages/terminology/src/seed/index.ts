@@ -20,8 +20,8 @@ export {
   type PlatformValueSetMemberSeed,
 } from "./value-set-members";
 
-import { PLATFORM_VALUE_SETS } from "./value-sets";
 import { PLATFORM_VALUE_SET_MEMBERS } from "./value-set-members";
+import { PLATFORM_VALUE_SETS } from "./value-sets";
 
 /** Canonical FHIR-style url for a platform value set (§7.9 metadata). */
 export function platformValueSetUrl(valueSetId: string): string {

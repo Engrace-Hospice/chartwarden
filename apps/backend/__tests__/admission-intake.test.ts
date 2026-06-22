@@ -61,7 +61,11 @@ const WIZARD_KEYS = [
 function makeServer() {
   const backend = createInMemoryAdmissionBackend();
   const grantStore = createInMemoryEffectivePermissionStore([
-    { orgId: ORG, userId: "sup_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: WIZARD_KEYS }] },
+    {
+      orgId: ORG,
+      userId: "sup_1",
+      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: WIZARD_KEYS }],
+    },
   ]);
   registerEffectivePermissionResolver(grantStore.store);
   registerAdmissionAbacPredicates({ resolver: backend.resolver, isInCaseload: async () => true });
@@ -74,7 +78,10 @@ function makeServer() {
 
 const SUP = { "x-test-user": "sup_1", "x-test-org": ORG, "x-test-roles": "intake_supervisor" };
 
-async function createReferral(app: ReturnType<typeof makeServer>["app"], externalReferralId?: string) {
+async function createReferral(
+  app: ReturnType<typeof makeServer>["app"],
+  externalReferralId?: string,
+) {
   return app.inject({
     method: "POST",
     url: "/api/v1/referrals",
@@ -109,8 +116,15 @@ async function acceptedAdmission(app: ReturnType<typeof makeServer>["app"]): Pro
 }
 
 /** Complete election + CTI + NOR for an admission so its activation gate is green. */
-async function completeBundle(app: ReturnType<typeof makeServer>["app"], admissionId: string): Promise<void> {
-  const periods = await app.inject({ method: "GET", url: `/api/v1/admissions/${admissionId}/election-periods`, headers: SUP });
+async function completeBundle(
+  app: ReturnType<typeof makeServer>["app"],
+  admissionId: string,
+): Promise<void> {
+  const periods = await app.inject({
+    method: "GET",
+    url: `/api/v1/admissions/${admissionId}/election-periods`,
+    headers: SUP,
+  });
   const periodId = periods.json().items[0].id as string;
 
   const stmt = await app.inject({
@@ -129,7 +143,11 @@ async function completeBundle(app: ReturnType<typeof makeServer>["app"], admissi
     method: "POST",
     url: `/api/v1/election-statements/${stmt.json().id}/sign`,
     headers: SUP,
-    payload: { signingPatientName: "Jane Roe", signingRole: "patient", ifVersion: stmt.json().version },
+    payload: {
+      signingPatientName: "Jane Roe",
+      signingRole: "patient",
+      ifVersion: stmt.json().version,
+    },
   });
 
   const cti = await app.inject({
@@ -149,13 +167,21 @@ async function completeBundle(app: ReturnType<typeof makeServer>["app"], admissi
     method: "POST",
     url: `/api/v1/cti/${cti.json().id}/sign-hospice-md`,
     headers: SUP,
-    payload: { signingPhysicianName: "Dr. Director", signingPhysicianNpi: "1234567893", ifVersion: cti.json().version },
+    payload: {
+      signingPhysicianName: "Dr. Director",
+      signingPhysicianNpi: "1234567893",
+      ifVersion: cti.json().version,
+    },
   });
   await app.inject({
     method: "POST",
     url: `/api/v1/cti/${cti.json().id}/sign-attending`,
     headers: SUP,
-    payload: { signingPhysicianName: "Dr. Attending", signingPhysicianNpi: "1234567893", ifVersion: mdSigned.json().version },
+    payload: {
+      signingPhysicianName: "Dr. Attending",
+      signingPhysicianNpi: "1234567893",
+      ifVersion: mdSigned.json().version,
+    },
   });
 
   await app.inject({
@@ -240,9 +266,17 @@ describe("M6-T07 — §7.1 receive & triage referral", () => {
     expect(backend.events).toContain("m6.admission.draft_created");
 
     // The job created a pending draft admission with a draft period-1.
-    const adm = await app.inject({ method: "GET", url: `/api/v1/admissions/${admissionId}`, headers: SUP });
+    const adm = await app.inject({
+      method: "GET",
+      url: `/api/v1/admissions/${admissionId}`,
+      headers: SUP,
+    });
     expect(adm.json().state).toBe("pending");
-    const periods = await app.inject({ method: "GET", url: `/api/v1/admissions/${admissionId}/election-periods`, headers: SUP });
+    const periods = await app.inject({
+      method: "GET",
+      url: `/api/v1/admissions/${admissionId}/election-periods`,
+      headers: SUP,
+    });
     expect(periods.json().items).toHaveLength(1);
     await app.close();
   });
@@ -288,7 +322,11 @@ describe("M6-T07 — §7.2 admission wizard + R-AC-01 activation gate", () => {
   it("W-AD-01: a fresh draft admission's activation gate lists all preconditions missing", async () => {
     const { app } = makeServer();
     const admissionId = await acceptedAdmission(app);
-    const adm = await app.inject({ method: "GET", url: `/api/v1/admissions/${admissionId}`, headers: SUP });
+    const adm = await app.inject({
+      method: "GET",
+      url: `/api/v1/admissions/${admissionId}`,
+      headers: SUP,
+    });
     expect(adm.json().activationGate.ready).toBe(false);
     expect(adm.json().activationGate.missing).toEqual([
       "election_signed",
@@ -305,7 +343,11 @@ describe("M6-T07 — §7.2 admission wizard + R-AC-01 activation gate", () => {
     await completeBundle(app, admissionId);
 
     // Route 10 reads server-truth: the gate is now ready (W-AD-05 checklist == server preconditions).
-    const gated = await app.inject({ method: "GET", url: `/api/v1/admissions/${admissionId}`, headers: SUP });
+    const gated = await app.inject({
+      method: "GET",
+      url: `/api/v1/admissions/${admissionId}`,
+      headers: SUP,
+    });
     expect(gated.json().activationGate).toEqual({ ready: true, missing: [] });
     expect(backend.events).toContain("m6.election.signed");
     expect(backend.events).toContain("m6.cti.signed");
@@ -330,28 +372,79 @@ describe("M6-T07 — §7.2 admission wizard + R-AC-01 activation gate", () => {
 
     // Re-run the whole bundle EXCEPT NOR by using a fresh admission and skipping the NOR step.
     const adm2 = await acceptedAdmission(app);
-    const periods = await app.inject({ method: "GET", url: `/api/v1/admissions/${adm2}/election-periods`, headers: SUP });
+    const periods = await app.inject({
+      method: "GET",
+      url: `/api/v1/admissions/${adm2}/election-periods`,
+      headers: SUP,
+    });
     const periodId = periods.json().items[0].id as string;
     const stmt = await app.inject({
       method: "POST",
       url: `/api/v1/admissions/${adm2}/election-statements`,
       headers: SUP,
-      payload: { electionPeriodId: periodId, effectiveDate: "2026-06-20", primaryDiagnosisIcd10: "C50.9", electedProviderEntityId: PROVIDER, waiverAcknowledged: true },
+      payload: {
+        electionPeriodId: periodId,
+        effectiveDate: "2026-06-20",
+        primaryDiagnosisIcd10: "C50.9",
+        electedProviderEntityId: PROVIDER,
+        waiverAcknowledged: true,
+      },
     });
-    await app.inject({ method: "POST", url: `/api/v1/election-statements/${stmt.json().id}/sign`, headers: SUP, payload: { signingPatientName: "Jane Roe", signingRole: "patient", ifVersion: stmt.json().version } });
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/election-statements/${stmt.json().id}/sign`,
+      headers: SUP,
+      payload: {
+        signingPatientName: "Jane Roe",
+        signingRole: "patient",
+        ifVersion: stmt.json().version,
+      },
+    });
     const cti = await app.inject({
       method: "POST",
       url: `/api/v1/election-periods/${periodId}/cti`,
       headers: SUP,
-      payload: { hospiceMedicalDirectorId: MD_ID, attendingPhysicianId: ATTENDING, prognosisStatement: "p", narrative: "n", clinicalFindings: {}, isRecert: false },
+      payload: {
+        hospiceMedicalDirectorId: MD_ID,
+        attendingPhysicianId: ATTENDING,
+        prognosisStatement: "p",
+        narrative: "n",
+        clinicalFindings: {},
+        isRecert: false,
+      },
     });
-    const mdSigned = await app.inject({ method: "POST", url: `/api/v1/cti/${cti.json().id}/sign-hospice-md`, headers: SUP, payload: { signingPhysicianName: "Dr. D", signingPhysicianNpi: "1234567893", ifVersion: cti.json().version } });
-    await app.inject({ method: "POST", url: `/api/v1/cti/${cti.json().id}/sign-attending`, headers: SUP, payload: { signingPhysicianName: "Dr. A", signingPhysicianNpi: "1234567893", ifVersion: mdSigned.json().version } });
+    const mdSigned = await app.inject({
+      method: "POST",
+      url: `/api/v1/cti/${cti.json().id}/sign-hospice-md`,
+      headers: SUP,
+      payload: {
+        signingPhysicianName: "Dr. D",
+        signingPhysicianNpi: "1234567893",
+        ifVersion: cti.json().version,
+      },
+    });
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/cti/${cti.json().id}/sign-attending`,
+      headers: SUP,
+      payload: {
+        signingPhysicianName: "Dr. A",
+        signingPhysicianNpi: "1234567893",
+        ifVersion: mdSigned.json().version,
+      },
+    });
 
-    const res = await app.inject({ method: "POST", url: `/api/v1/admissions/${adm2}/activate`, headers: SUP, payload: { ifVersion: 1 } });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${adm2}/activate`,
+      headers: SUP,
+      payload: { ifVersion: 1 },
+    });
     expect(res.statusCode).toBe(412);
     expect(res.json().error.code).toBe("PRECONDITION_FAILED");
-    expect(res.json().error.details.map((d: { field: string }) => d.field)).toEqual(["nor_acknowledged"]);
+    expect(res.json().error.details.map((d: { field: string }) => d.field)).toEqual([
+      "nor_acknowledged",
+    ]);
     await app.close();
   });
 });

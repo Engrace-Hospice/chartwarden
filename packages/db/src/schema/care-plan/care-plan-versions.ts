@@ -5,12 +5,21 @@
 // draft. draftedByMembershipId references M1 `membership` (the identity spine). `patientUnderstandingText`
 // is patient-quoted free-text → denylisted in the M4 write-audit trigger (§3.5). RLS + trigger land in
 // migration 0029 (M7-T02).
-import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { carePlanVersionKind, carePlanVersionStatus } from "../../enums";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 import { carePlans } from "./care-plans";
 
 export const carePlanVersions = pgTable(

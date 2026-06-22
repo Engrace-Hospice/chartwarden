@@ -9,6 +9,7 @@
 // gives isolation. The clock is injectable (`now`) and ids are a deterministic counter so route
 // tests are reproducible.
 
+import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
 import type {
   AlertCategory,
   AlertRecipientResolver,
@@ -35,7 +36,6 @@ import type {
 } from "../interfaces/route-service";
 import type { QuietHoursConfig, RoutingMap } from "../resolution";
 import { PLATFORM_DEFAULT_ALERT_RULES, SYSTEM_LOCKED_EVENT_TYPES } from "../seed";
-import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
 
 // ── value-level mirrors of the §3.2 enum unions (for routing-map validation) ────────────────
 const ALERT_CATEGORIES: readonly AlertCategory[] = [
@@ -140,7 +140,11 @@ export interface InMemoryMessagingServiceOptions {
   readonly seed?: InMemoryMessagingSeed;
 }
 
-const DEFAULT_QUIET_HOURS: QuietHoursConfig = { tz: "UTC", ranges: [], severityOverride: "critical" };
+const DEFAULT_QUIET_HOURS: QuietHoursConfig = {
+  tz: "UTC",
+  ranges: [],
+  severityOverride: "critical",
+};
 
 /** Build the in-memory MessagingRouteService slice that backs the M36 route inventory. */
 export function createInMemoryMessagingService(
@@ -240,7 +244,10 @@ export function createInMemoryMessagingService(
         createdAt: m.createdAt,
         parentMessageId: m.parentMessageId,
       }));
-      return { messages: page, nextCursor: rows.length > limit ? rows[limit]!.messageId : undefined };
+      return {
+        messages: page,
+        nextCursor: rows.length > limit ? rows[limit]!.messageId : undefined,
+      };
     },
 
     async sendMessage(orgId, input) {
@@ -267,7 +274,8 @@ export function createInMemoryMessagingService(
 
     async editMessage(orgId, input) {
       const m = messages.get(input.messageId);
-      if (!m || m.orgId !== orgId || m.deletedAt) throw new NotFoundError("message", input.messageId);
+      if (!m || m.orgId !== orgId || m.deletedAt)
+        throw new NotFoundError("message", input.messageId);
       if (m.authorUserId !== input.userId) {
         throw new ForbiddenError("only the author may edit a message");
       }
@@ -278,7 +286,8 @@ export function createInMemoryMessagingService(
 
     async deleteMessage(orgId, input) {
       const m = messages.get(input.messageId);
-      if (!m || m.orgId !== orgId || m.deletedAt) throw new NotFoundError("message", input.messageId);
+      if (!m || m.orgId !== orgId || m.deletedAt)
+        throw new NotFoundError("message", input.messageId);
       if (m.authorUserId !== input.userId) {
         throw new ForbiddenError("only the author may delete a message");
       }
@@ -585,16 +594,14 @@ function resolveRuleBase(
   orgId: string,
   ruleId: string,
   overrides: Map<string, AlertRuleOverrideRow>,
-):
-  | {
-      eventType: string;
-      category: AlertCategory;
-      severityFloor: AlertSeverity;
-      recipientResolver: AlertRecipientResolver;
-      systemLocked: boolean;
-      enabled: boolean;
-    }
-  | null {
+): {
+  eventType: string;
+  category: AlertCategory;
+  severityFloor: AlertSeverity;
+  recipientResolver: AlertRecipientResolver;
+  systemLocked: boolean;
+  enabled: boolean;
+} | null {
   if (ruleId.startsWith("platform:")) {
     const eventType = ruleId.slice("platform:".length);
     const seed = PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === eventType);

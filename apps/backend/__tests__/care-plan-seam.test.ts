@@ -51,19 +51,68 @@ const elements: CarePlanElementsRecord = {
     },
   ],
   goals: [
-    { goalId: "goal-pain", problemId: "prob-pain", text: "Pain <=3/10", source: "patient_stated", status: "in_progress" },
-    { goalId: "goal-sud", problemId: "prob-sud", text: "Abstinence", source: "clinical", status: "not_started" },
-    { goalId: "goal-orphan", problemId: "prob-resolved", text: "n/a", source: "clinical", status: "met" },
+    {
+      goalId: "goal-pain",
+      problemId: "prob-pain",
+      text: "Pain <=3/10",
+      source: "patient_stated",
+      status: "in_progress",
+    },
+    {
+      goalId: "goal-sud",
+      problemId: "prob-sud",
+      text: "Abstinence",
+      source: "clinical",
+      status: "not_started",
+    },
+    {
+      goalId: "goal-orphan",
+      problemId: "prob-resolved",
+      text: "n/a",
+      source: "clinical",
+      status: "met",
+    },
   ],
   interventions: [
-    { interventionId: "iv-rn", problemId: "prob-pain", scopeText: "Assess pain", frequencyText: "3x/week", discipline: "rn", status: "active" },
-    { interventionId: "iv-msw", problemId: "prob-pain", scopeText: "Counsel", frequencyText: "1x/week", discipline: "msw", status: "active" },
-    { interventionId: "iv-rn-dc", problemId: "prob-pain", scopeText: "old", frequencyText: "prn", discipline: "rn", status: "discontinued" },
-    { interventionId: "iv-rn-sud", problemId: "prob-sud", scopeText: "Monitor", frequencyText: "daily", discipline: "rn", status: "active" },
+    {
+      interventionId: "iv-rn",
+      problemId: "prob-pain",
+      scopeText: "Assess pain",
+      frequencyText: "3x/week",
+      discipline: "rn",
+      status: "active",
+    },
+    {
+      interventionId: "iv-msw",
+      problemId: "prob-pain",
+      scopeText: "Counsel",
+      frequencyText: "1x/week",
+      discipline: "msw",
+      status: "active",
+    },
+    {
+      interventionId: "iv-rn-dc",
+      problemId: "prob-pain",
+      scopeText: "old",
+      frequencyText: "prn",
+      discipline: "rn",
+      status: "discontinued",
+    },
+    {
+      interventionId: "iv-rn-sud",
+      problemId: "prob-sud",
+      scopeText: "Monitor",
+      frequencyText: "daily",
+      discipline: "rn",
+      status: "active",
+    },
   ],
 };
 
-function store(over: Partial<CarePlanElementsRecord> = {}, clocks: readonly CarePlanClockRecord[] = []) {
+function store(
+  over: Partial<CarePlanElementsRecord> = {},
+  clocks: readonly CarePlanClockRecord[] = [],
+) {
   return createInMemoryCarePlanReaderStore({ elements: [{ ...elements, ...over }], clocks }).store;
 }
 
@@ -100,7 +149,9 @@ describe("CarePlanReader.relevantElementsForEncounter (§7.8)", () => {
 
   it("returns null when the patient has no active care plan", async () => {
     const reader = createCarePlanReader(createInMemoryCarePlanReaderStore().store);
-    expect(await reader.relevantElementsForEncounter("nobody", "rn_routine_visit", "rn")).toBeNull();
+    expect(
+      await reader.relevantElementsForEncounter("nobody", "rn_routine_visit", "rn"),
+    ).toBeNull();
   });
 });
 
@@ -147,7 +198,13 @@ describe("CarePlanReader.isReviewOverdue (§2.6 / §7.8)", () => {
 
   it("evaluateCarePlanOverdue is pure over its injected now (no signed version ⇒ review gate inert)", () => {
     const out = evaluateCarePlanOverdue(
-      { planId: PLAN, patientId: PAT, hasSignedInitialVersion: false, initialDueAt: "2026-01-06T05:00:00.000Z", nextReviewDueAt: null },
+      {
+        planId: PLAN,
+        patientId: PAT,
+        hasSignedInitialVersion: false,
+        initialDueAt: "2026-01-06T05:00:00.000Z",
+        nextReviewDueAt: null,
+      },
       "2026-01-04T00:00:00.000Z",
     );
     expect(out.overdue).toBe(false);

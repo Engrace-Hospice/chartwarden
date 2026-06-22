@@ -4,7 +4,7 @@
 // (M40-T08); this log is what §7.5 drift detection and §7.12/§7.13 fallback reasoning read.
 // Platform-operational, org-less (NON_ORG_SCOPED allowlist). RLS/audit land in M40-T03 (§3.6).
 // Not PHI.
-import { integer, jsonb, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { mdmNppesSyncMode } from "../../enums";
 
 export const nppesSyncLog = pgTable(

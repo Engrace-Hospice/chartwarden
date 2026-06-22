@@ -15,6 +15,7 @@
 // is the backstop; the slice default (createInMemoryMessagingService) keeps it all in memory so
 // the route inventory is integration-testable with no live infra.
 
+import type { QuietHoursConfig, RoutingMap } from "../resolution";
 import type {
   AlertCategory,
   AlertRecipientResolver,
@@ -27,7 +28,6 @@ import type {
   MessageBodyKind,
 } from "./kinds";
 import type { AttachmentInput, ResolvedMessage } from "./provider";
-import type { QuietHoursConfig, RoutingMap } from "../resolution";
 
 /** A channel as listed in the sidebar (§4.2 GET /channels) — no message bodies. */
 export interface ChannelSummary {

@@ -104,9 +104,7 @@ export function sanitizeForOutOfBand(input: {
 
   // Generic short, derived ONLY from the discriminator/category — never from payload/body.
   const baseShort =
-    alertOrMessage.kind === "message"
-      ? MESSAGE_SHORT
-      : CATEGORY_SHORT[alertOrMessage.category];
+    alertOrMessage.kind === "message" ? MESSAGE_SHORT : CATEGORY_SHORT[alertOrMessage.category];
 
   const short =
     channel === "voice" ? VOICE_SCRIPT : channel === "sms" ? clampForSms(baseShort) : baseShort;

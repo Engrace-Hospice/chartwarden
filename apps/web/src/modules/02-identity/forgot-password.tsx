@@ -1,3 +1,4 @@
+import { CenteredCardLayout } from "@wardenx/ui";
 // apps/web/src/modules/02-identity — Forgot Password (M2 Auth, AUTH polish).
 // Spec: docs/ui/screens/core/WARDENX_UI_AUTH.md "password reset" (step 1, /forgot). Enter the account
 // email; Better Auth mints a single-use reset token and (via M36, a follow-up) emails the link, which
@@ -5,7 +6,6 @@
 // email exists — no account-enumeration leak (M2 §3.1 / §7.5 no-leak).
 import { useState } from "react";
 import type { FormEvent, JSX } from "react";
-import { CenteredCardLayout } from "@wardenx/ui";
 import { authClient } from "./auth-client";
 
 export function ForgotPassword(): JSX.Element {
@@ -25,22 +25,35 @@ export function ForgotPassword(): JSX.Element {
   }
 
   return (
-    <CenteredCardLayout brand={<strong>WardenX</strong>} footer={<a href="/login">Back to sign in</a>}>
+    <CenteredCardLayout
+      brand={<strong>WardenX</strong>}
+      footer={<a href="/login">Back to sign in</a>}
+    >
       {sent ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           <h1 style={{ margin: 0, fontSize: "1.1rem" }}>Check your email</h1>
           <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
-            If an account exists for <strong>{email}</strong>, we’ve sent a link to reset your password. The
-            link expires shortly for your security.
+            If an account exists for <strong>{email}</strong>, we’ve sent a link to reset your
+            password. The link expires shortly for your security.
           </p>
         </div>
       ) : (
-        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        <form
+          onSubmit={submit}
+          style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
+        >
           <h1 style={{ margin: 0, fontSize: "1.1rem" }}>Reset your password</h1>
           <p style={{ margin: 0, color: "#6b7280", fontSize: "0.85rem" }}>
             Enter your email and we’ll send you a link to set a new password.
           </p>
-          <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }}>
+          <label
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.25rem",
+              fontSize: "0.85rem",
+            }}
+          >
             Email
             <input
               type="email"
@@ -60,7 +73,11 @@ export function ForgotPassword(): JSX.Element {
   );
 }
 
-const field = { padding: "0.5rem 0.625rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem" } as const;
+const field = {
+  padding: "0.5rem 0.625rem",
+  border: "1px solid #e5e7eb",
+  borderRadius: "0.5rem",
+} as const;
 const primaryBtn = {
   padding: "0.625rem 1rem",
   border: "none",

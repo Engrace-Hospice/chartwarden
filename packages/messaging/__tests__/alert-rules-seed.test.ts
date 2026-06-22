@@ -63,7 +63,9 @@ describe("M36-T05 §7.4 system_locked floors", () => {
   });
 
   it("validateAlertRuleSeed catches a missing system_locked floor", () => {
-    const missing = PLATFORM_DEFAULT_ALERT_RULES.filter((r) => r.eventType !== "system.backup_failure");
+    const missing = PLATFORM_DEFAULT_ALERT_RULES.filter(
+      (r) => r.eventType !== "system.backup_failure",
+    );
     expect(validateAlertRuleSeed(missing).map((x) => x.type)).toContain("missing_system_locked");
   });
 });

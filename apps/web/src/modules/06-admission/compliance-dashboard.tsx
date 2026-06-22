@@ -1,10 +1,3 @@
-// apps/web/src/modules/06-admission — Compliance Dashboard (M6 §5.2.11, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_ELECTION_CERTIFICATION.md — "Use Dashboard."
-// Org-wide compliance windows (F2F / recert / NOR / late-CTI) read from GET /api/v1/compliance-windows
-// via the generated typed client; a row deep-links to the owning admission's Compliance tab. The
-// server enforces every scope (ADR-0030 — no authz on the frontend). Imports only leaves (@wardenx/ui).
-import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
 import {
   DashboardLayout,
   EmptyState,
@@ -15,6 +8,13 @@ import {
   PageHeader,
   useApiClient,
 } from "@wardenx/ui";
+// apps/web/src/modules/06-admission — Compliance Dashboard (M6 §5.2.11, Track B / ADR-0030).
+// Spec: docs/ui/screens/clinical/WARDENX_UI_ELECTION_CERTIFICATION.md — "Use Dashboard."
+// Org-wide compliance windows (F2F / recert / NOR / late-CTI) read from GET /api/v1/compliance-windows
+// via the generated typed client; a row deep-links to the owning admission's Compliance tab. The
+// server enforces every scope (ADR-0030 — no authz on the frontend). Imports only leaves (@wardenx/ui).
+import { useCallback, useEffect, useState } from "react";
+import type { JSX } from "react";
 
 interface WindowRow {
   id: string;
@@ -34,7 +34,9 @@ export function ComplianceDashboard(): JSX.Element {
     setError(null);
     const query: { state?: string; limit?: number } = { limit: 100 };
     if (state) query.state = state;
-    const { data, error: err } = await client.GET("/api/v1/compliance-windows", { params: { query } });
+    const { data, error: err } = await client.GET("/api/v1/compliance-windows", {
+      params: { query },
+    });
     if (err) {
       setError("Could not load compliance windows.");
       setLoading(false);
@@ -63,8 +65,18 @@ export function ComplianceDashboard(): JSX.Element {
         </KpiStrip>
       }
       charts={
-        <FilterBar actions={<button type="button" onClick={() => setState("")}>Clear</button>}>
-          <select aria-label="Window state" value={state} onChange={(e) => setState(e.target.value)}>
+        <FilterBar
+          actions={
+            <button type="button" onClick={() => setState("")}>
+              Clear
+            </button>
+          }
+        >
+          <select
+            aria-label="Window state"
+            value={state}
+            onChange={(e) => setState(e.target.value)}
+          >
             <option value="">Any state</option>
             <option value="open">open</option>
             <option value="overdue">overdue</option>
@@ -89,7 +101,12 @@ function WindowTable({
   if (error) return <EmptyState title="Unavailable" description={error} />;
   if (loading && items.length === 0) return <LoadingSpinner />;
   if (items.length === 0)
-    return <EmptyState title="No compliance windows" description="No windows match the current filter." />;
+    return (
+      <EmptyState
+        title="No compliance windows"
+        description="No windows match the current filter."
+      />
+    );
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
       <thead>
@@ -102,7 +119,9 @@ function WindowTable({
         {items.map((w) => (
           <tr key={w.id} style={{ borderTop: "1px solid #f3f4f6" }}>
             <td style={td}>{w.id}</td>
-            <td style={{ ...td, color: w.state === "overdue" ? "#b91c1c" : undefined }}>{w.state}</td>
+            <td style={{ ...td, color: w.state === "overdue" ? "#b91c1c" : undefined }}>
+              {w.state}
+            </td>
           </tr>
         ))}
       </tbody>

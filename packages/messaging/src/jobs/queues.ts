@@ -68,7 +68,8 @@ export const MESSAGING_QUEUE_PARAMETERS: { readonly [K in MessagingQueueName]: Q
     backoff: { type: "fixed", baseMs: 500 },
     concurrency: 100,
     dlq: "messaging.send_in_app.dlq",
-    idempotency: "notification_delivery.id — already-delivered rows skipped (emit is fire-and-forget)",
+    idempotency:
+      "notification_delivery.id — already-delivered rows skipped (emit is fire-and-forget)",
   },
   "messaging.send_push": {
     name: "messaging.send_push",
@@ -86,7 +87,8 @@ export const MESSAGING_QUEUE_PARAMETERS: { readonly [K in MessagingQueueName]: Q
     backoff: { type: "exponential", baseMs: 5000, factor: 2, capMs: 300000 },
     concurrency: 10,
     dlq: "messaging.send_sms.dlq",
-    idempotency: "vendor_message_id (Twilio SID) — skip re-send if SID already stored; honour 429 Retry-After",
+    idempotency:
+      "vendor_message_id (Twilio SID) — skip re-send if SID already stored; honour 429 Retry-After",
   },
   "messaging.send_voice": {
     name: "messaging.send_voice",
@@ -114,7 +116,8 @@ export const MESSAGING_QUEUE_PARAMETERS: { readonly [K in MessagingQueueName]: Q
     backoff: { type: "fixed", baseMs: 10000 },
     concurrency: 10,
     dlq: "messaging.channel_sync.dlq",
-    idempotency: "(orgId, channelKind, subjectId) — BullMQ deduplication key dedupes duplicate sync jobs",
+    idempotency:
+      "(orgId, channelKind, subjectId) — BullMQ deduplication key dedupes duplicate sync jobs",
   },
   "messaging.endpoint_health": {
     name: "messaging.endpoint_health",
@@ -159,7 +162,8 @@ export const MESSAGING_QUEUE_PARAMETERS: { readonly [K in MessagingQueueName]: Q
     backoff: { type: "fixed", baseMs: 300000 },
     concurrency: 3,
     dlq: "messaging.hash_verify.dlq",
-    idempotency: "(messageId, verifyRunId); destroyed-DEK (offboarded tenant) decode is skipped, not a mismatch",
+    idempotency:
+      "(messageId, verifyRunId); destroyed-DEK (offboarded tenant) decode is skipped, not a mismatch",
   },
 };
 

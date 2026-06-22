@@ -5,12 +5,7 @@
 // and the boot wiring (registerEncounterSeams replaces the deny-stubs; validateSeams passes; the
 // deny-stubs deny loudly). It also asserts M8 CONSUMES M7's CarePlanReader through the registry.
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  __resetSeamsForTest,
-  getSeam,
-  registerSeam,
-  validateSeams,
-} from "../src/bootstrap/index";
+import { __resetSeamsForTest, getSeam, registerSeam, validateSeams } from "../src/bootstrap/index";
 import {
   type EncounterReaderSeed,
   type StoredEncounterFacts,
@@ -66,9 +61,9 @@ describe("deriveBillability (§2.4 / D3 / D4 / D12)", () => {
   });
 
   it("a significant late entry with an unattested override is not billable (late_entry_unattested)", () => {
-    expect(
-      deriveBillability({ ...rnSigned, lateEntryTier: "significant_late_entry" }).reason,
-    ).toBe("late_entry_unattested");
+    expect(deriveBillability({ ...rnSigned, lateEntryTier: "significant_late_entry" }).reason).toBe(
+      "late_entry_unattested",
+    );
     // attested ⇒ billable again.
     expect(
       deriveBillability({
@@ -111,18 +106,20 @@ describe("SignedEncountersReader (§4.7)", () => {
         lateEntryTier: "normal" as const,
         status: "signed" as const,
       },
-      { ...{
-        encounterId: "enc-new",
-        patientId: PAT,
-        admissionId: ADM,
-        encounterType: "routine_visit" as const,
-        discipline: "rn" as const,
-        serviceDate: "2026-02-01",
-        signedAt: "2026-02-01T12:00:00.000Z",
-        signedByMembershipId: NURSE,
-        lateEntryTier: "normal" as const,
-        status: "signed" as const,
-      } },
+      {
+        ...{
+          encounterId: "enc-new",
+          patientId: PAT,
+          admissionId: ADM,
+          encounterType: "routine_visit" as const,
+          discipline: "rn" as const,
+          serviceDate: "2026-02-01",
+          signedAt: "2026-02-01T12:00:00.000Z",
+          signedByMembershipId: NURSE,
+          lateEntryTier: "normal" as const,
+          status: "signed" as const,
+        },
+      },
     ];
     registerEncounterSeams({ store: store({ digests }) });
     const reader = getSeam("SignedEncountersReader");
@@ -144,12 +141,27 @@ describe("MileagePayrollReader (§4.5 D10 / §4.7)", () => {
 
   it("returns a clinician's mileage rows within the service-date window", async () => {
     const mileage = [
-      { mileageId: "m1", encounterId: "enc-rn", clinicianMembershipId: NURSE, serviceDate: "2026-01-10", milesDriven: 12 },
-      { mileageId: "m2", encounterId: "enc-old", clinicianMembershipId: NURSE, serviceDate: "2026-02-20", milesDriven: 8 },
+      {
+        mileageId: "m1",
+        encounterId: "enc-rn",
+        clinicianMembershipId: NURSE,
+        serviceDate: "2026-01-10",
+        milesDriven: 12,
+      },
+      {
+        mileageId: "m2",
+        encounterId: "enc-old",
+        clinicianMembershipId: NURSE,
+        serviceDate: "2026-02-20",
+        milesDriven: 8,
+      },
     ];
     registerEncounterSeams({ store: store({ mileage }) });
     const reader = getSeam("MileagePayrollReader");
-    const out = await reader.mileageForPayrollPeriod(NURSE, { from: "2026-01-01", to: "2026-01-31" });
+    const out = await reader.mileageForPayrollPeriod(NURSE, {
+      from: "2026-01-01",
+      to: "2026-01-31",
+    });
     expect(out.map((r) => r.mileageId)).toEqual(["m1"]);
   });
 });
@@ -182,15 +194,19 @@ describe("boot wiring (registerEncounterSeams)", () => {
   it("registers all four owned seams so validateSeams passes and they resolve as real impls", async () => {
     registerEncounterSeams({ store: store() });
     expect(() => validateSeams()).not.toThrow();
-    expect((await getSeam("BillableEncounterReader").billability(["enc-rn"]))[0]?.billable).toBe(true);
+    expect((await getSeam("BillableEncounterReader").billability(["enc-rn"]))[0]?.billable).toBe(
+      true,
+    );
   });
 
   it("falls back to fail-closed deny-stubs when M8 does not register (deny loudly)", () => {
     validateSeams();
-    expect(() => getSeam("BillableEncounterReader").billability(["enc-rn"])).toThrow(/not implemented/);
-    expect(() => getSeam("MileagePayrollReader").mileageForPayrollPeriod(NURSE, { from: "a", to: "b" })).toThrow(
+    expect(() => getSeam("BillableEncounterReader").billability(["enc-rn"])).toThrow(
       /not implemented/,
     );
+    expect(() =>
+      getSeam("MileagePayrollReader").mileageForPayrollPeriod(NURSE, { from: "a", to: "b" }),
+    ).toThrow(/not implemented/);
     expect(() => getSeam("EncounterCreator").createDraftEncounter).not.toThrow(); // property access ok
   });
 

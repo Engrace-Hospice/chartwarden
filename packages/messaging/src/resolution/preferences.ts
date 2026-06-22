@@ -7,11 +7,7 @@
 // its tests) stay deterministic. The DB-backed dispatcher (M36-T08) loads the rows and feeds
 // these in; T04 owns only the decision logic.
 
-import type {
-  AlertCategory,
-  AlertSeverity,
-  NotificationChannel,
-} from "../interfaces/kinds";
+import type { AlertCategory, AlertSeverity, NotificationChannel } from "../interfaces/kinds";
 
 /** In-app is the always-available floor (§2.1 principle 1): every alert delivery starts with
  *  an in-app emit, and out-of-band channels are additive, never replacements. */

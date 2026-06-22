@@ -11,7 +11,12 @@
 // No clock/RNG/I/O in this module — the clock is an injected `now()` port so a run's effects (the
 // 25h fallback gate, the sync-log stamp) are deterministic and assertable.
 
-import { type NppesDriftEvent, type NppesFreshRecord, type NppesKnownPhysician, detectNppesDrift } from "./drift";
+import {
+  type NppesDriftEvent,
+  type NppesFreshRecord,
+  type NppesKnownPhysician,
+  detectNppesDrift,
+} from "./drift";
 import { M29_FALLBACK_THRESHOLD_HOURS } from "./queues";
 
 const MS_PER_HOUR = 3_600_000;
@@ -72,7 +77,13 @@ export async function runNppesNightlyDelta(ports: NppesNightlyPorts): Promise<Np
     const hoursSince = (ports.now().getTime() - last.getTime()) / MS_PER_HOUR;
     if (hoursSince < M29_FALLBACK_THRESHOLD_HOURS) {
       // M29 ran recently → the nightly is a no-op fallback. Don't double-sync (§7.11 coordination).
-      return { ran: false, skippedReason: "m29_recent", driftCount: 0, deactivations: 0, outcome: "skipped" };
+      return {
+        ran: false,
+        skippedReason: "m29_recent",
+        driftCount: 0,
+        deactivations: 0,
+        outcome: "skipped",
+      };
     }
   }
 
@@ -88,7 +99,8 @@ export async function runNppesNightlyDelta(ports: NppesNightlyPorts): Promise<Np
       deactivations += 1;
       // Page every tenant who cares (is_preferred or active patient) — the §7.5 morning brief.
       const orgs = await ports.tenantsToAlert(event.canonicalId);
-      for (const orgId of orgs) await ports.emitDeactivationAlert(orgId, event.canonicalId, event.npi);
+      for (const orgId of orgs)
+        await ports.emitDeactivationAlert(orgId, event.canonicalId, event.npi);
     } else if (event.kind === "attribute_changed") {
       const fresh = freshByNpi.get(event.npi);
       if (fresh !== undefined) await ports.applyAttributeUpdate(event, fresh);

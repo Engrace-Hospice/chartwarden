@@ -53,12 +53,22 @@ describe("M8-T12 §7 workflow acceptance", () => {
     // Seed a cosign-pending encounter already at the 48h hard cap (the SLA-clock escalation has its own suite).
     const backend = createInMemoryEncounterBackend({
       encounters: [
-        { id: "e0000000-0000-4000-8000-0000000000aa", organizationId: ORG, patientId: PATIENT, discipline: "lpn", status: "cosign_pending", authoredByUserId: "lpn_1", cosignature: "hard_cap_reached" },
+        {
+          id: "e0000000-0000-4000-8000-0000000000aa",
+          organizationId: ORG,
+          patientId: PATIENT,
+          discipline: "lpn",
+          status: "cosign_pending",
+          authoredByUserId: "lpn_1",
+          cosignature: "hard_cap_reached",
+        },
       ],
     });
     const id = "e0000000-0000-4000-8000-0000000000aa";
     // A cosigner cannot sign while hard-capped — the encounter is locked.
-    await expect(backend.service.cosignSign(ORG, id, { isQualifiedRn: true, at: PAST })).rejects.toThrow();
+    await expect(
+      backend.service.cosignSign(ORG, id, { isQualifiedRn: true, at: PAST }),
+    ).rejects.toThrow();
     const released = await backend.service.supervisorRelease(ORG, id, {
       isSupervisor: true,
       reason: "Primary cosigner on leave; covering supervisor reviewed and released per policy.",

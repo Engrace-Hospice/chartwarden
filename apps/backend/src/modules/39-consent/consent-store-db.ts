@@ -1,3 +1,19 @@
+import {
+  type ConsentCaptureMethod,
+  type ConsentCatalogView,
+  type ConsentEvaluator,
+  type ConsentGrantorKind,
+  type ConsentRecordView,
+  type ConsentRouteService,
+  type ConsentStore,
+  type ConsentTypeKey,
+  type CursorPage,
+  type EvalAuditRow,
+  type RecipientResolvedKind,
+  type StoredConsent,
+  type StoredRecipient,
+  createConsentEvaluator,
+} from "@wardenx/consent";
 // apps/backend/src/modules/39-consent — PRODUCTION consent data adapters over Drizzle (FB-T03).
 //
 // The `ConsentEvaluator` seam (packages/consent) is PURE ORCHESTRATION over a `ConsentStore` data
@@ -22,22 +38,6 @@
 // cannot honor without corrupting the append-only invariants — they fail clear with a 501 pointing at
 // the M39 consent-flow surface (T09), exactly as FB-T02 deferred the canonical-mutating MDM writes.
 import { type DbClient, schema } from "@wardenx/db";
-import {
-  type ConsentCaptureMethod,
-  type ConsentCatalogView,
-  type ConsentEvaluator,
-  type ConsentGrantorKind,
-  type ConsentRecordView,
-  type ConsentRouteService,
-  type ConsentStore,
-  type ConsentTypeKey,
-  type CursorPage,
-  type EvalAuditRow,
-  type RecipientResolvedKind,
-  type StoredConsent,
-  type StoredRecipient,
-  createConsentEvaluator,
-} from "@wardenx/consent";
 import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
 import { type SQL, and, desc, eq, inArray, sql } from "drizzle-orm";
@@ -98,7 +98,9 @@ export function createDbConsentStore(db: DbClient): ConsentStore {
           .where(and(eq(CRR.organizationId, organizationId), inArray(CRR.consentRecordId, ids)));
         const byConsent = new Map<string, StoredRecipient[]>();
         for (const r of recips) {
-          const list = byConsent.get(r.consentRecordId) ?? byConsent.set(r.consentRecordId, []).get(r.consentRecordId)!;
+          const list =
+            byConsent.get(r.consentRecordId) ??
+            byConsent.set(r.consentRecordId, []).get(r.consentRecordId)!;
           list.push({
             recipientResolvedKind: resolvedKindOf(r.recipientKind),
             recipientResolvedId: r.recipientEntityId ?? undefined,
@@ -292,7 +294,8 @@ export function createDbConsentRouteService(db: DbClient): ConsentRouteService {
           callerModule: r.callerModule,
           evaluatedAt: r.evaluatedAt.toISOString(),
         }));
-        const nextCursor = hasMore && pageRows.length > 0 ? encodeCursor(pageRows[pageRows.length - 1]!) : null;
+        const nextCursor =
+          hasMore && pageRows.length > 0 ? encodeCursor(pageRows[pageRows.length - 1]!) : null;
         return { rows: pageRows, nextCursor };
       });
     },

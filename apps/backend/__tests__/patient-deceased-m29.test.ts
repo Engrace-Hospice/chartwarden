@@ -1,16 +1,16 @@
+import { describe, expect, it } from "vitest";
 // apps/backend/__tests__/patient-deceased-m29.test.ts — M5-T11 deceased cascade (§7.8) + the M29
 // proposal-accept consumer as a forward-seam/deny-stub (§4.10, W-M5-17 SSN ignore).
 import {
   DECEASED_CASCADE_TARGETS,
+  type DeceasedCascadePorts,
   InvalidDeceasedDateError,
   M29_PROPOSAL_CONSUMER,
   M29_PROPOSAL_CONSUMER_DEFERRED,
+  type ProposalAcceptedPayload,
   decideProposalApply,
   recordDeath,
-  type DeceasedCascadePorts,
-  type ProposalAcceptedPayload,
 } from "../src/modules/05-patient/index";
-import { describe, expect, it } from "vitest";
 
 describe("§7.8 record-death cascade", () => {
   function ports() {
@@ -40,7 +40,15 @@ describe("§7.8 record-death cascade", () => {
   it("rejects a future deceased_date", async () => {
     const { p } = ports();
     await expect(
-      recordDeath({ organizationId: "org_a", patientId: "p1", deceasedDate: "2027-01-01", today: "2026-06-20" }, p),
+      recordDeath(
+        {
+          organizationId: "org_a",
+          patientId: "p1",
+          deceasedDate: "2027-01-01",
+          today: "2026-06-20",
+        },
+        p,
+      ),
     ).rejects.toBeInstanceOf(InvalidDeceasedDateError);
   });
 });
@@ -86,7 +94,9 @@ describe("§4.10 M29 proposal-accept consumer (forward-seam / deny-stub)", () =>
   });
 
   it("new_patient → create; demographic update with no match → skip (D10 no auto-create)", () => {
-    expect(decideProposalApply({ ...base, resourceKind: "new_patient" }).action).toBe("create_patient");
+    expect(decideProposalApply({ ...base, resourceKind: "new_patient" }).action).toBe(
+      "create_patient",
+    );
     expect(decideProposalApply({ ...base, matchedPatientId: null }).action).toBe("skip");
   });
 });

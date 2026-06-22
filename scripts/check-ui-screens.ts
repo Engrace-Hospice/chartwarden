@@ -22,7 +22,7 @@
  * CI:    exits 1 on any violation.
  */
 
-import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const REPO_ROOT = process.cwd();
@@ -64,7 +64,8 @@ for (const e of indexEntries) {
 for (const f of screenFiles)
   if (!indexSet.has(f)) fail("index-missing", `${f} exists but is not listed in the screen index`);
 for (const e of indexEntries)
-  if (!existsSync(join(REPO_ROOT, UI_DIR, e))) fail("index-orphan", `index lists '${e}' but no such file exists`);
+  if (!existsSync(join(REPO_ROOT, UI_DIR, e)))
+    fail("index-orphan", `index lists '${e}' but no such file exists`);
 
 // ---- build the set of patterns DEFINED in the glossary ----
 const glossarySrc = read(GLOSSARY_FILE);
@@ -73,7 +74,10 @@ const defined = new Set<string>();
 for (const m of glossarySrc.matchAll(/^###\s+(.+?)\s+\*\*\[/gm)) defined.add(m[1]!.trim());
 // modifiers: bold tokens inside the Tier-3 modifier table
 const tier3 = glossarySrc.slice(glossarySrc.indexOf("## Tier 3 — Modifiers"));
-const tier3Body = tier3.slice(0, tier3.indexOf("\n## ", 1) >= 0 ? tier3.indexOf("\n## ", 1) : undefined);
+const tier3Body = tier3.slice(
+  0,
+  tier3.indexOf("\n## ", 1) >= 0 ? tier3.indexOf("\n## ", 1) : undefined,
+);
 for (const line of tier3Body.split("\n")) {
   if (!line.startsWith("| **")) continue;
   for (const m of line.matchAll(/\*\*([^*]+)\*\*/g)) defined.add(m[1]!.trim());
@@ -91,11 +95,17 @@ for (const f of screenFiles) {
     continue;
   }
   if (useLines.length > 1)
-    fail("multi-pattern", `${f} declares ${useLines.length} 'Use ...' lines — expected exactly one`);
+    fail(
+      "multi-pattern",
+      `${f} declares ${useLines.length} 'Use ...' lines — expected exactly one`,
+    );
 
   for (const token of useLines[0]![1]!.split("+").map((s) => s.trim())) {
     if (!defined.has(token))
-      fail("undefined-pattern", `${f} references layout pattern '${token}', not defined in the glossary`);
+      fail(
+        "undefined-pattern",
+        `${f} references layout pattern '${token}', not defined in the glossary`,
+      );
   }
 }
 

@@ -65,10 +65,12 @@ export function createAccountingScopePredicate(
  * `registry` for isolation (the shared registry is a single-owner singleton — re-registering a
  * name throws). Returns nothing; the predicate is resolved by name through `requireAbac`.
  */
-export function registerAccountingScopePredicate(options: {
-  readonly probe?: AccountingPermissionProbe;
-  readonly registry?: Pick<PredicateRegistry, "register">;
-} = {}): void {
+export function registerAccountingScopePredicate(
+  options: {
+    readonly probe?: AccountingPermissionProbe;
+    readonly registry?: Pick<PredicateRegistry, "register">;
+  } = {},
+): void {
   const predicate = createAccountingScopePredicate(options.probe);
   if (options.registry) {
     options.registry.register(AUDIT_ACCOUNTING_SCOPE_PREDICATE, predicate);

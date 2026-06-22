@@ -59,11 +59,13 @@ export async function eraseTenantMdm(
 }
 
 /** An in-memory {@link MdmEraseStore} for the slice/tests, seeded with per-class counts to remove. */
-export function createInMemoryMdmEraseStore(seed: {
-  overlaysByOrg?: Readonly<Record<string, number>>;
-  provisionalsByOrg?: Readonly<Record<string, number>>;
-  baaByOrg?: Readonly<Record<string, number>>;
-} = {}): { store: MdmEraseStore } {
+export function createInMemoryMdmEraseStore(
+  seed: {
+    overlaysByOrg?: Readonly<Record<string, number>>;
+    provisionalsByOrg?: Readonly<Record<string, number>>;
+    baaByOrg?: Readonly<Record<string, number>>;
+  } = {},
+): { store: MdmEraseStore } {
   const overlays = new Map(Object.entries(seed.overlaysByOrg ?? {}));
   const provisionals = new Map(Object.entries(seed.provisionalsByOrg ?? {}));
   const baa = new Map(Object.entries(seed.baaByOrg ?? {}));

@@ -1,3 +1,5 @@
+import { requirePermission } from "@wardenx/auth";
+import { requireStepUp } from "@wardenx/auth";
 // apps/backend/src/modules/40-mdm/routes/mdm-routes.ts — M40-T07 the MDM route inventory
 // (M40 spec §4.1–4.2; the §4.4 permission handshake; §7.6 merge approval & re-pointing).
 //
@@ -19,8 +21,6 @@
 // resolves of the duplicate id keep returning the survivor via the redirect throughout (the T04
 // engine over the post-merge store).
 import type { MdmEntityKind, MdmEntityProvider, MdmResolved, MdmRouteService } from "@wardenx/mdm";
-import { requirePermission } from "@wardenx/auth";
-import { requireStepUp } from "@wardenx/auth";
 import { UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -125,43 +125,51 @@ export function registerMdmRoutes(app: FastifyInstance, deps: MdmRouteDeps): voi
   });
 
   // --- §4.2 get-or-create — match by identifier; write provisional if no match -----------------
-  app.post("/api/v1/mdm/:kind/get-or-create", { preHandler: [perKind("propose")] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { kind } = parse(KindParamsSchema, request.params);
-    const body = parse(GetOrCreateBodySchema, request.body);
-    return provider.getOrCreate(
-      organizationId,
-      kind as MdmEntityKind,
-      { identifierType: body.identifierType, identifierValue: body.identifierValue },
-      userId,
-    );
-  });
+  app.post(
+    "/api/v1/mdm/:kind/get-or-create",
+    { preHandler: [perKind("propose")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { kind } = parse(KindParamsSchema, request.params);
+      const body = parse(GetOrCreateBodySchema, request.body);
+      return provider.getOrCreate(
+        organizationId,
+        kind as MdmEntityKind,
+        { identifierType: body.identifierType, identifierValue: body.identifierValue },
+        userId,
+      );
+    },
+  );
 
   // --- §4.2 upsert this tenant's overlay (Phase-1: physician overlay only) ----------------------
-  app.patch("/api/v1/mdm/:kind/:id/overlay", { preHandler: [perKind("overlay")] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { kind, id } = parse(KindIdParamsSchema, request.params);
-    if (kind !== "physician") {
-      // Only the physician kind ships a Phase-1 overlay table (manifest §3.4); others have nowhere
-      // to write an overlay yet — a clear 422 rather than a silent no-op.
-      throw new WardenXError("NOT_SUPPORTED", `${kind} has no tenant overlay in Phase 1`, 422);
-    }
-    const b = parse(OverlayBodySchema, request.body);
-    const { applied } = await service.upsertPhysicianOverlay(
-      organizationId,
-      id,
-      {
-        preferredContactPhone: b.preferredContactPhone ?? null,
-        preferredContactEmail: b.preferredContactEmail ?? null,
-        relationshipNotes: b.relationshipNotes ?? null,
-        doNotRefer: b.doNotRefer ?? false,
-        isPreferred: b.isPreferred ?? false,
-        preferredRank: b.preferredRank ?? null,
-      },
-      userId,
-    );
-    return { applied };
-  });
+  app.patch(
+    "/api/v1/mdm/:kind/:id/overlay",
+    { preHandler: [perKind("overlay")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { kind, id } = parse(KindIdParamsSchema, request.params);
+      if (kind !== "physician") {
+        // Only the physician kind ships a Phase-1 overlay table (manifest §3.4); others have nowhere
+        // to write an overlay yet — a clear 422 rather than a silent no-op.
+        throw new WardenXError("NOT_SUPPORTED", `${kind} has no tenant overlay in Phase 1`, 422);
+      }
+      const b = parse(OverlayBodySchema, request.body);
+      const { applied } = await service.upsertPhysicianOverlay(
+        organizationId,
+        id,
+        {
+          preferredContactPhone: b.preferredContactPhone ?? null,
+          preferredContactEmail: b.preferredContactEmail ?? null,
+          relationshipNotes: b.relationshipNotes ?? null,
+          doNotRefer: b.doNotRefer ?? false,
+          isPreferred: b.isPreferred ?? false,
+          preferredRank: b.preferredRank ?? null,
+        },
+        userId,
+      );
+      return { applied };
+    },
+  );
 
   // --- §4.2 parent/child for the entity (canonical, public — no overlay) ------------------------
   app.get(
@@ -170,7 +178,10 @@ export function registerMdmRoutes(app: FastifyInstance, deps: MdmRouteDeps): voi
     async (request) => {
       const { kind, id } = parse(KindIdParamsSchema, request.params);
       const k = kind as MdmEntityKind;
-      const [parent, children] = await Promise.all([provider.parentOf(k, id), provider.childrenOf(k, id)]);
+      const [parent, children] = await Promise.all([
+        provider.parentOf(k, id),
+        provider.childrenOf(k, id),
+      ]);
       return { parent, children };
     },
   );
@@ -189,12 +200,16 @@ export function registerMdmRoutes(app: FastifyInstance, deps: MdmRouteDeps): voi
   });
 
   // --- §4.2 manual license entry (Phase-1) -----------------------------------------------------
-  app.post("/api/v1/mdm/license/manual", { preHandler: [LICENSE_MANAGE] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const b = parse(LicenseBodySchema, request.body);
-    await service.recordLicense(organizationId, b, userId);
-    return reply.code(201).send({ recorded: true });
-  });
+  app.post(
+    "/api/v1/mdm/license/manual",
+    { preHandler: [LICENSE_MANAGE] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const b = parse(LicenseBodySchema, request.body);
+      await service.recordLicense(organizationId, b, userId);
+      return reply.code(201).send({ recorded: true });
+    },
+  );
 
   // --- §4.2 platform-ops: pending merges -------------------------------------------------------
   app.get("/api/v1/admin/mdm/merge-requests", { preHandler: [MERGE_READ] }, async () => {

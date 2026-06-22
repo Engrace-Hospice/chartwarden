@@ -7,8 +7,8 @@
 // bytes (architecture §10.5.2 "Properties"). The convenience `assemble` resolves the template and enforces
 // the D11 vocab-version pin + the legal-pair guard, raising typed errors the M8 service maps to HTTP.
 import { VOCAB_VERSION, getVocabEntry } from "@wardenx/narrative-vocab";
-import type { HearthnoteTemplate } from "../templates/types";
 import { resolveTemplate } from "../templates/registry";
+import type { HearthnoteTemplate } from "../templates/types";
 import { templateKey } from "../templates/types";
 import { finishSentence, interpolate, joinSentences } from "./grammar";
 import type {

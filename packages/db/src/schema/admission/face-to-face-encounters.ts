@@ -17,9 +17,9 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { f2fEncounterLocation, f2fEncounterStatus, f2fPerformerRole } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 import { users } from "../users";
 import { electionPeriods } from "./election-periods";
 

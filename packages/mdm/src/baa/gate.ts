@@ -10,12 +10,12 @@
 // gate CLOSED at transmit-time (`asOf` = the actual transmission moment), so a job queued before
 // expiry but processed after it is correctly refused.
 
-import { MDM_ENTITY_KIND_DESCRIPTORS } from "../interfaces/kinds";
 import type {
   BaaEntityKind,
   BaaStatusKind,
   BaaStatusResult,
 } from "../interfaces/baa-status-provider";
+import { MDM_ENTITY_KIND_DESCRIPTORS } from "../interfaces/kinds";
 
 /** The minimal `mdm_baa_record` projection the gate needs (§3.5). Dates are ISO yyyy-mm-dd. */
 export interface BaaRecordRow {

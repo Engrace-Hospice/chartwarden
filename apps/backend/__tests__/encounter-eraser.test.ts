@@ -5,14 +5,18 @@
 // well-formed (namespace + uniqueness) — and disjoint from M5/M6/M7's data classes.
 import { ACTION_CATALOG, M8_ACTION_CATALOG, validateActionCatalog } from "@wardenx/audit";
 import { beforeEach, describe, expect, it } from "vitest";
-import { __resetErasersForTest, getEraser, validateErasers } from "../src/bootstrap/erasers/registry";
-import { buildServer } from "../src/bootstrap/index";
 import {
-  createInMemoryEncounterEraseStore as makeEraseStore,
+  __resetErasersForTest,
+  getEraser,
+  validateErasers,
+} from "../src/bootstrap/erasers/registry";
+import { buildServer } from "../src/bootstrap/index";
+import { wireModuleErasers, wireModuleSeams } from "../src/index";
+import {
   eraseEncounterRecord,
+  createInMemoryEncounterEraseStore as makeEraseStore,
   registerEncounterErasers,
 } from "../src/modules/08-encounters/index";
-import { wireModuleErasers, wireModuleSeams } from "../src/index";
 
 describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
   beforeEach(() => __resetErasersForTest());
@@ -52,7 +56,10 @@ describe("M8-T12 — encounter_record eraser (§3.6, D7/D8)", () => {
     // bootSeams() wires the Phase-0 deny-stubs AND the module erasers before validateErasers() — so
     // encounter_record (and every required class) resolves at boot. The default in-memory store erases
     // nothing for an unseeded patient, but the real impl must not throw.
-    const app = buildServer({ registerModuleSeams: wireModuleSeams, registerModuleErasers: wireModuleErasers });
+    const app = buildServer({
+      registerModuleSeams: wireModuleSeams,
+      registerModuleErasers: wireModuleErasers,
+    });
     expect(() => validateErasers()).not.toThrow();
     const r = await getEraser("encounter_record").erase({ orgId: "org_a" }, "pat_unseeded");
     expect(r.erased).toBe(0);
@@ -74,12 +81,24 @@ describe("M8-T12 — m8 audit action catalog (§8.1)", () => {
 
   it("the reason carriers scrub narrative free text", () => {
     const byAction = new Map(M8_ACTION_CATALOG.map((e) => [e.action, e]));
-    expect(byAction.get("m8.encounter.cosignature_supervisor_released")?.denylistCategories).toContain("narrative_free_text");
-    expect(byAction.get("m8.encounter.significant_late_entry_overridden")?.denylistCategories).toContain("narrative_free_text");
-    expect(byAction.get("m8.encounter.administrative_late_override")?.denylistCategories).toContain("narrative_free_text");
-    expect(byAction.get("m8.encounter.voided")?.denylistCategories).toContain("narrative_free_text");
-    expect(byAction.get("m8.encounter.addendum_created")?.denylistCategories).toContain("narrative_free_text");
-    expect(byAction.get("m8.encounter.evv_missing_documented")?.denylistCategories).toContain("narrative_free_text");
+    expect(
+      byAction.get("m8.encounter.cosignature_supervisor_released")?.denylistCategories,
+    ).toContain("narrative_free_text");
+    expect(
+      byAction.get("m8.encounter.significant_late_entry_overridden")?.denylistCategories,
+    ).toContain("narrative_free_text");
+    expect(byAction.get("m8.encounter.administrative_late_override")?.denylistCategories).toContain(
+      "narrative_free_text",
+    );
+    expect(byAction.get("m8.encounter.voided")?.denylistCategories).toContain(
+      "narrative_free_text",
+    );
+    expect(byAction.get("m8.encounter.addendum_created")?.denylistCategories).toContain(
+      "narrative_free_text",
+    );
+    expect(byAction.get("m8.encounter.evv_missing_documented")?.denylistCategories).toContain(
+      "narrative_free_text",
+    );
   });
 
   it("the consolidated catalog stays valid with m8 merged in (no namespace/dup violation)", () => {

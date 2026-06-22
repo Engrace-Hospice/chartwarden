@@ -25,7 +25,13 @@ describe("ConsentRouteService lifecycle (§2.2.1 over the route slice)", () => {
     const revoked = service.revokeConsent(
       ORG,
       draft.id,
-      { actorIsStaff: true, revokedByKind: "staff", reasonText: "x".repeat(40), evidenceDocumentId: "d1", revokedById: "u1" },
+      {
+        actorIsStaff: true,
+        revokedByKind: "staff",
+        reasonText: "x".repeat(40),
+        evidenceDocumentId: "d1",
+        revokedById: "u1",
+      },
       new Date().toISOString(),
     );
     expect(revoked.status).toBe("revoked");
@@ -48,7 +54,13 @@ describe("ConsentRouteService lifecycle (§2.2.1 over the route slice)", () => {
       service.revokeConsent(
         ORG,
         d.id,
-        { actorIsStaff: true, revokedByKind: "staff", reasonText: "too short", evidenceDocumentId: "d1", revokedById: "u1" },
+        {
+          actorIsStaff: true,
+          revokedByKind: "staff",
+          reasonText: "too short",
+          evidenceDocumentId: "d1",
+          revokedById: "u1",
+        },
         new Date().toISOString(),
       ),
     ).toThrow();
@@ -90,10 +102,18 @@ describe("§4.12 cursor pagination", () => {
     expect(p1.rows.map((r) => r.id)).toEqual(["ea-5", "ea-4"]);
     expect(p1.nextCursor).toBeTypeOf("string");
 
-    const p2 = service.listEvalAudit(ORG, { patientId: PAT }, { cursor: p1.nextCursor!, pageSize: 2 });
+    const p2 = service.listEvalAudit(
+      ORG,
+      { patientId: PAT },
+      { cursor: p1.nextCursor!, pageSize: 2 },
+    );
     expect(p2.rows.map((r) => r.id)).toEqual(["ea-3", "ea-2"]);
 
-    const p3 = service.listEvalAudit(ORG, { patientId: PAT }, { cursor: p2.nextCursor!, pageSize: 2 });
+    const p3 = service.listEvalAudit(
+      ORG,
+      { patientId: PAT },
+      { cursor: p2.nextCursor!, pageSize: 2 },
+    );
     expect(p3.rows.map((r) => r.id)).toEqual(["ea-1"]);
     expect(p3.nextCursor).toBeNull();
   });

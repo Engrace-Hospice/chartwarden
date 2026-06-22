@@ -3,7 +3,7 @@
 // Worker/Queue construction lives in the composition root once a Valkey connection + the M36 alert
 // emitter exist); M39 owns the policy + the pure decision engines the workers call. Same
 // M1-owns-mechanism / module-owns-policy split as the M38/M40 jobs.
-import { type ConsentReminderKind } from "../interfaces/kinds";
+import type { ConsentReminderKind } from "../interfaces/kinds";
 
 /** The eight §4.9 queues (BullMQ on Valkey). */
 export const M39_QUEUES = {
@@ -44,7 +44,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * `expiration-reminder` cron fires the most-urgent not-yet-fired window (idempotent on the reminder
  * row's idempotency key); this pure helper just decides which windows are due.
  */
-export function dueReminders(input: { expiresAtMs: number | null; nowMs: number }): ConsentReminderKind[] {
+export function dueReminders(input: {
+  expiresAtMs: number | null;
+  nowMs: number;
+}): ConsentReminderKind[] {
   if (input.expiresAtMs === null) return []; // indefinite consents never remind
   const remainingMs = input.expiresAtMs - input.nowMs;
   if (remainingMs <= 0) return []; // already expired → the expiration cron handles it, not reminders
@@ -52,7 +55,10 @@ export function dueReminders(input: { expiresAtMs: number | null; nowMs: number 
 }
 
 /** The single MOST-URGENT reminder window currently open (the one the cron fires this tick). */
-export function mostUrgentReminder(input: { expiresAtMs: number | null; nowMs: number }): ConsentReminderKind | null {
+export function mostUrgentReminder(input: {
+  expiresAtMs: number | null;
+  nowMs: number;
+}): ConsentReminderKind | null {
   const due = dueReminders(input);
   return due.length > 0 ? due[due.length - 1]! : null; // last = smallest day threshold = most urgent
 }
@@ -63,10 +69,16 @@ export function shouldExpire(input: {
   expiresAtMs: number | null;
   nowMs: number;
 }): boolean {
-  return input.status === "active" && input.expiresAtMs !== null && input.expiresAtMs <= input.nowMs;
+  return (
+    input.status === "active" && input.expiresAtMs !== null && input.expiresAtMs <= input.nowMs
+  );
 }
 
 /** §4.9 draft housekeeping: a draft older than 30 days is discarded (NOT a retention commitment). */
-export function isDraftStale(input: { status: string; createdAtMs: number; nowMs: number }): boolean {
+export function isDraftStale(input: {
+  status: string;
+  createdAtMs: number;
+  nowMs: number;
+}): boolean {
   return input.status === "draft" && input.nowMs - input.createdAtMs > 30 * DAY_MS;
 }

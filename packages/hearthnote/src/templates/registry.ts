@@ -94,7 +94,14 @@ function baseSectionIds(discipline: EncounterDiscipline): readonly string[] {
     case "lpn":
     case "md":
     case "np":
-      return ["chief_concern", "vitals_review", "assessment", "symptom_management", "interventions", "plan"];
+      return [
+        "chief_concern",
+        "vitals_review",
+        "assessment",
+        "symptom_management",
+        "interventions",
+        "plan",
+      ];
     case "chha":
       return ["chief_concern", "adl", "plan"];
     case "msw":

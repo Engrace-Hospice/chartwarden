@@ -21,21 +21,21 @@ import type {
 } from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
 import {
-  checkGoalReferencesProblem,
-  checkInterventionFrequency,
-  checkInterventionReferencesProblem,
-  checkOptimisticConcurrency,
-  checkPatientStatedGoalVerbatim,
-} from "../lifecycle/validation";
-import { CarePlanStateError } from "../lifecycle/errors";
-import { decideRecordSignature, resolveRequiredSignerSet } from "../lifecycle/required-signer-set";
-import {
   type AuthoringDisciplineScope,
   assertDisciplineScope,
   filterAnchoredToVisible,
   filterVisibleProblems,
   redactedSudProblemIds,
 } from "../authoring/index";
+import { CarePlanStateError } from "../lifecycle/errors";
+import { decideRecordSignature, resolveRequiredSignerSet } from "../lifecycle/required-signer-set";
+import {
+  checkGoalReferencesProblem,
+  checkInterventionFrequency,
+  checkInterventionReferencesProblem,
+  checkOptimisticConcurrency,
+  checkPatientStatedGoalVerbatim,
+} from "../lifecycle/validation";
 
 /** The per-caller §7.6 consent context a read carries (decided upstream by `sud_disclosure_allowed`). */
 export interface CarePlanViewer {
@@ -150,23 +150,90 @@ export interface CarePlanAbacResolver {
 export interface CarePlanRouteService {
   bootstrapCarePlan(org: string, patientId: string, admissionId: string): Promise<unknown>;
   /** Per-caller read (§7.6): pass `viewer` to omit SUD problems the caller may not see (fail-closed). */
-  getCarePlanForPatient(org: string, patientId: string, viewer?: CarePlanViewer): Promise<unknown | null>;
+  getCarePlanForPatient(
+    org: string,
+    patientId: string,
+    viewer?: CarePlanViewer,
+  ): Promise<unknown | null>;
   getSummary(org: string, planId: string, viewer?: CarePlanViewer): Promise<unknown>;
   listVersions(org: string, planId: string): Promise<unknown>;
   getVersion(org: string, planId: string, versionId: string): Promise<unknown | null>;
-  createVersion(org: string, planId: string, kind: CarePlanVersionKind, idgMeetingId: string | null): Promise<unknown>;
-  finalizeVersion(org: string, planId: string, versionId: string, ifVersion: number, set: RequiredSignerSet | null): Promise<unknown>;
-  signVersion(org: string, planId: string, versionId: string, ifVersion: number, signerRole: CarePlanSignerRole, at: string): Promise<unknown>;
-  returnVersionToDraft(org: string, planId: string, versionId: string, ifVersion: number): Promise<unknown>;
+  createVersion(
+    org: string,
+    planId: string,
+    kind: CarePlanVersionKind,
+    idgMeetingId: string | null,
+  ): Promise<unknown>;
+  finalizeVersion(
+    org: string,
+    planId: string,
+    versionId: string,
+    ifVersion: number,
+    set: RequiredSignerSet | null,
+  ): Promise<unknown>;
+  signVersion(
+    org: string,
+    planId: string,
+    versionId: string,
+    ifVersion: number,
+    signerRole: CarePlanSignerRole,
+    at: string,
+  ): Promise<unknown>;
+  returnVersionToDraft(
+    org: string,
+    planId: string,
+    versionId: string,
+    ifVersion: number,
+  ): Promise<unknown>;
   addProblem(org: string, planId: string, body: CreateProblemInput): Promise<ElementResult>;
-  patchProblem(org: string, planId: string, problemId: string, ifVersion: number, body: PatchProblemInput): Promise<ElementResult>;
-  resolveProblem(org: string, planId: string, problemId: string, ifVersion: number, note: string): Promise<ElementResult>;
-  addGoal(org: string, planId: string, body: CreateGoalInput, dpoaConsentActive: boolean): Promise<ElementResult>;
-  patchGoal(org: string, planId: string, goalId: string, ifVersion: number, body: PatchGoalInput): Promise<ElementResult>;
+  patchProblem(
+    org: string,
+    planId: string,
+    problemId: string,
+    ifVersion: number,
+    body: PatchProblemInput,
+  ): Promise<ElementResult>;
+  resolveProblem(
+    org: string,
+    planId: string,
+    problemId: string,
+    ifVersion: number,
+    note: string,
+  ): Promise<ElementResult>;
+  addGoal(
+    org: string,
+    planId: string,
+    body: CreateGoalInput,
+    dpoaConsentActive: boolean,
+  ): Promise<ElementResult>;
+  patchGoal(
+    org: string,
+    planId: string,
+    goalId: string,
+    ifVersion: number,
+    body: PatchGoalInput,
+  ): Promise<ElementResult>;
   /** §7.4: pass `authoring` to enforce `discipline_scope` server-side (403 unless caller's discipline matches). */
-  addIntervention(org: string, planId: string, body: CreateInterventionInput, authoring?: AuthoringDisciplineScope): Promise<ElementResult>;
-  patchIntervention(org: string, planId: string, interventionId: string, ifVersion: number, body: PatchInterventionInput): Promise<ElementResult>;
-  discontinueIntervention(org: string, planId: string, interventionId: string, ifVersion: number, reason: string): Promise<ElementResult>;
+  addIntervention(
+    org: string,
+    planId: string,
+    body: CreateInterventionInput,
+    authoring?: AuthoringDisciplineScope,
+  ): Promise<ElementResult>;
+  patchIntervention(
+    org: string,
+    planId: string,
+    interventionId: string,
+    ifVersion: number,
+    body: PatchInterventionInput,
+  ): Promise<ElementResult>;
+  discontinueIntervention(
+    org: string,
+    planId: string,
+    interventionId: string,
+    ifVersion: number,
+    reason: string,
+  ): Promise<ElementResult>;
 }
 
 export interface CreateProblemInput {
@@ -352,7 +419,9 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
         (p) => p.organizationId === org && p.patientId === patientId,
       );
       if (!row) return null;
-      const planVersions = [...versions.values()].filter((v) => v.planId === row.id).map(versionDto);
+      const planVersions = [...versions.values()]
+        .filter((v) => v.planId === row.id)
+        .map(versionDto);
       // §7.6 per-caller SUD redaction: omit SUD problems (and their dependent goals/interventions)
       // unless `viewer.sudDisclosureAllowed`. No viewer ⇒ full set (system/internal read path).
       const allowSud = viewer?.sudDisclosureAllowed ?? true;
@@ -394,7 +463,11 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
       const activeInterventions = filterAnchoredToVisible(
         [...interventions.values()].filter((i) => i.planId === p.id && i.status === "active"),
         hiddenIds,
-      ).map((i) => ({ layText: i.scopeText, discipline: i.discipline, frequencyText: i.frequencyText }));
+      ).map((i) => ({
+        layText: i.scopeText,
+        discipline: i.discipline,
+        frequencyText: i.frequencyText,
+      }));
       return {
         planId: p.id,
         versionId: p.activeVersionId,
@@ -445,13 +518,19 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
       const v = version(org, planId, versionId);
       checkOptimisticConcurrency(ifVersion, v.version);
       if (v.status !== "draft") {
-        throw new CarePlanStateError("ILLEGAL_TRANSITION", `version cannot finalize from '${v.status}'`);
+        throw new CarePlanStateError(
+          "ILLEGAL_TRANSITION",
+          `version cannot finalize from '${v.status}'`,
+        );
       }
       if (set) {
         // A tenant may TIGHTEN the floor (add slots) but never loosen below it (§11 D5).
         const floor = resolveRequiredSignerSet(v.kind);
         if (set.length < floor.length) {
-          throw new CarePlanStateError("REQUIRED_SIGNER_SET_UNMET", "the Required Signer Set may not loosen the floor quorum");
+          throw new CarePlanStateError(
+            "REQUIRED_SIGNER_SET_UNMET",
+            "the Required Signer Set may not loosen the floor quorum",
+          );
         }
         v.requiredSignerSet = set;
       }
@@ -464,7 +543,10 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
       const v = version(org, planId, versionId);
       checkOptimisticConcurrency(ifVersion, v.version);
       if (v.status !== "in_review") {
-        throw new CarePlanStateError("ILLEGAL_TRANSITION", `version cannot be signed from '${v.status}'`);
+        throw new CarePlanStateError(
+          "ILLEGAL_TRANSITION",
+          `version cannot be signed from '${v.status}'`,
+        );
       }
       const alreadySigned = v.signatures.map((s) => s.signerRole);
       const decision = decideRecordSignature(v.requiredSignerSet, alreadySigned, signerRole);
@@ -485,7 +567,10 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
       const v = version(org, planId, versionId);
       checkOptimisticConcurrency(ifVersion, v.version);
       if (v.status !== "in_review") {
-        throw new CarePlanStateError("ILLEGAL_TRANSITION", `version cannot return to draft from '${v.status}'`);
+        throw new CarePlanStateError(
+          "ILLEGAL_TRANSITION",
+          `version cannot return to draft from '${v.status}'`,
+        );
       }
       v.status = "draft";
       v.signatures = []; // returning for edits clears prior signatures (D8)
@@ -544,7 +629,10 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
         mutatingOriginalText: false,
       });
       if (body.source === "agent_stated" && !dpoaConsentActive) {
-        throw new CarePlanStateError("DPOA_CONSENT_REQUIRED", "an agent-stated goal requires an active dpoa_healthcare consent");
+        throw new CarePlanStateError(
+          "DPOA_CONSENT_REQUIRED",
+          "an agent-stated goal requires an active dpoa_healthcare consent",
+        );
       }
       const id = mintId("goal");
       goals.set(id, {

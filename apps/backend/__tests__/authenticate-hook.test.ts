@@ -27,7 +27,13 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
     const { req, ctx } = reqWith();
     const hook = createSessionAuthenticate({
       getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
-      getResolver: () => resolverReturning({ userId: "u1", membershipId: "m1", organizationId: "org1", roles: ["rn"] }),
+      getResolver: () =>
+        resolverReturning({
+          userId: "u1",
+          membershipId: "m1",
+          organizationId: "org1",
+          roles: ["rn"],
+        }),
     });
     await hook(req);
     expect(ctx).toEqual({ userId: "u1", organizationId: "org1", roles: ["rn"] });

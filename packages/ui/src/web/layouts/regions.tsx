@@ -17,14 +17,27 @@ export function PageHeader({ title, breadcrumb, actions, children }: PageHeaderP
   return (
     <header
       className="wx-page-header"
-      style={{ display: "flex", flexDirection: "column", gap: "0.5rem", padding: "1rem 1.5rem", borderBottom: HAIRLINE }}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.5rem",
+        padding: "1rem 1.5rem",
+        borderBottom: HAIRLINE,
+      }}
     >
       {breadcrumb ? (
         <div className="wx-breadcrumb" style={{ fontSize: "0.8rem", color: "#6b7280" }}>
           {breadcrumb}
         </div>
       ) : null}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "1rem",
+        }}
+      >
         <h1 className="wx-page-title" style={{ margin: 0, fontSize: "1.25rem" }}>
           {title}
         </h1>
@@ -64,9 +77,20 @@ export function KpiCard({ label, value, onSelect }: KpiCardProps): JSX.Element {
       <div style={{ fontSize: "1.5rem", fontWeight: 600 }}>{value}</div>
     </>
   );
-  const style = { minWidth: "10rem", padding: "0.75rem 1rem", border: HAIRLINE, borderRadius: "0.5rem", textAlign: "left" as const };
+  const style = {
+    minWidth: "10rem",
+    padding: "0.75rem 1rem",
+    border: HAIRLINE,
+    borderRadius: "0.5rem",
+    textAlign: "left" as const,
+  };
   return onSelect ? (
-    <button type="button" className="wx-kpi-card" onClick={onSelect} style={{ ...style, background: "#fff", cursor: "pointer" }}>
+    <button
+      type="button"
+      className="wx-kpi-card"
+      onClick={onSelect}
+      style={{ ...style, background: "#fff", cursor: "pointer" }}
+    >
       {body}
     </button>
   ) : (
@@ -77,11 +101,21 @@ export function KpiCard({ label, value, onSelect }: KpiCardProps): JSX.Element {
 }
 
 /** Filter Bar — inline filter/search controls above a table. */
-export function FilterBar({ children, actions }: { children: ReactNode; actions?: ReactNode }): JSX.Element {
+export function FilterBar({
+  children,
+  actions,
+}: { children: ReactNode; actions?: ReactNode }): JSX.Element {
   return (
     <div
       className="wx-filter-bar"
-      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", padding: "0.75rem 1.5rem", borderBottom: HAIRLINE }}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "1rem",
+        padding: "0.75rem 1.5rem",
+        borderBottom: HAIRLINE,
+      }}
     >
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>{children}</div>
       {actions ? <div style={{ display: "flex", gap: "0.5rem" }}>{actions}</div> : null}
@@ -90,12 +124,21 @@ export function FilterBar({ children, actions }: { children: ReactNode; actions?
 }
 
 /** Left Nav Rail — navigation within a screen (steps, settings sidebar, worksheet tree). */
-export function LeftNavRail({ children, ariaLabel = "Section navigation" }: { children: ReactNode; ariaLabel?: string }): JSX.Element {
+export function LeftNavRail({
+  children,
+  ariaLabel = "Section navigation",
+}: { children: ReactNode; ariaLabel?: string }): JSX.Element {
   return (
     <nav
       className="wx-left-rail"
       aria-label={ariaLabel}
-      style={{ width: "16rem", flexShrink: 0, borderRight: HAIRLINE, overflowY: "auto", padding: "1rem" }}
+      style={{
+        width: "16rem",
+        flexShrink: 0,
+        borderRight: HAIRLINE,
+        overflowY: "auto",
+        padding: "1rem",
+      }}
     >
       {children}
     </nav>
@@ -109,18 +152,41 @@ export interface RightDetailPanelProps {
   onClose?: () => void;
   children: ReactNode;
 }
-export function RightDetailPanel({ open = true, title, onClose, children }: RightDetailPanelProps): JSX.Element | null {
+export function RightDetailPanel({
+  open = true,
+  title,
+  onClose,
+  children,
+}: RightDetailPanelProps): JSX.Element | null {
   if (!open) return null;
   return (
     <aside
       className="wx-right-panel"
-      style={{ width: "24rem", flexShrink: 0, borderLeft: HAIRLINE, overflowY: "auto", padding: "1rem" }}
+      style={{
+        width: "24rem",
+        flexShrink: 0,
+        borderLeft: HAIRLINE,
+        overflowY: "auto",
+        padding: "1rem",
+      }}
     >
       {(title || onClose) && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: "0.75rem",
+          }}
+        >
           <div style={{ fontWeight: 600 }}>{title}</div>
           {onClose ? (
-            <button type="button" onClick={onClose} aria-label="Close detail panel" style={{ cursor: "pointer" }}>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close detail panel"
+              style={{ cursor: "pointer" }}
+            >
               ×
             </button>
           ) : null}
@@ -136,7 +202,16 @@ export function StickyFooterActions({ children }: { children: ReactNode }): JSX.
   return (
     <footer
       className="wx-sticky-footer"
-      style={{ position: "sticky", bottom: 0, display: "flex", justifyContent: "flex-end", gap: "0.5rem", padding: "0.75rem 1.5rem", borderTop: HAIRLINE, background: "#fff" }}
+      style={{
+        position: "sticky",
+        bottom: 0,
+        display: "flex",
+        justifyContent: "flex-end",
+        gap: "0.5rem",
+        padding: "0.75rem 1.5rem",
+        borderTop: HAIRLINE,
+        background: "#fff",
+      }}
     >
       {children}
     </footer>
@@ -152,7 +227,14 @@ export interface PatientBannerProps {
   allergies?: ReactNode;
   benefitPeriod?: ReactNode;
 }
-export function PatientBanner({ name, mrn, dob, codeStatus, allergies, benefitPeriod }: PatientBannerProps): JSX.Element {
+export function PatientBanner({
+  name,
+  mrn,
+  dob,
+  codeStatus,
+  allergies,
+  benefitPeriod,
+}: PatientBannerProps): JSX.Element {
   const field = (label: string, value: ReactNode): ReactNode =>
     value ? (
       <span className="wx-banner-field">
@@ -163,7 +245,18 @@ export function PatientBanner({ name, mrn, dob, codeStatus, allergies, benefitPe
   return (
     <div
       className="wx-patient-banner"
-      style={{ position: "sticky", top: 0, zIndex: 1, display: "flex", flexWrap: "wrap", gap: "1rem", alignItems: "center", padding: "0.5rem 1.5rem", background: "#f9fafb", borderBottom: HAIRLINE }}
+      style={{
+        position: "sticky",
+        top: 0,
+        zIndex: 1,
+        display: "flex",
+        flexWrap: "wrap",
+        gap: "1rem",
+        alignItems: "center",
+        padding: "0.5rem 1.5rem",
+        background: "#f9fafb",
+        borderBottom: HAIRLINE,
+      }}
     >
       <strong className="wx-banner-name">{name}</strong>
       {field("MRN", mrn)}

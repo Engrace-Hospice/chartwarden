@@ -12,13 +12,13 @@
 import { Type } from "@sinclair/typebox";
 import { describe, expect, it } from "vitest";
 import {
-  buildOrganizationSettingsRegistry,
   MissingRequiredSettingError,
   ORGANIZATION_SETTINGS_REGISTRY,
   OrganizationSettingsCollisionError,
   OrganizationSettingsReader,
   SettingSchemaError,
   UnregisteredSettingError,
+  buildOrganizationSettingsRegistry,
 } from "../index";
 import type { ModuleSettingsContribution } from "../types";
 
@@ -37,7 +37,9 @@ describe("buildOrganizationSettingsRegistry — collision rejection (W-M1-08, ap
   it("rejects two modules declaring the same settingsKey", () => {
     const a: ModuleSettingsContribution = [entry({ settingsKey: "dup", registeredByModule: "m1" })];
     const b: ModuleSettingsContribution = [entry({ settingsKey: "dup", registeredByModule: "m2" })];
-    expect(() => buildOrganizationSettingsRegistry([a, b])).toThrow(OrganizationSettingsCollisionError);
+    expect(() => buildOrganizationSettingsRegistry([a, b])).toThrow(
+      OrganizationSettingsCollisionError,
+    );
   });
 
   it("names both colliding modules in the error", () => {
@@ -78,7 +80,11 @@ describe("OrganizationSettingsReader — registered-keys discipline (§3.15)", (
     new Map([
       [
         "mrn",
-        entry({ settingsKey: "mrn", typeBoxSchema: Type.String({ minLength: 1 }), defaultValue: null }),
+        entry({
+          settingsKey: "mrn",
+          typeBoxSchema: Type.String({ minLength: 1 }),
+          defaultValue: null,
+        }),
       ],
       [
         "retention_days",
@@ -101,7 +107,9 @@ describe("OrganizationSettingsReader — registered-keys discipline (§3.15)", (
   });
 
   it("rejects a present value that violates its schema", () => {
-    expect(() => reader.get({ retention_days: "thirty" }, "retention_days")).toThrow(SettingSchemaError);
+    expect(() => reader.get({ retention_days: "thirty" }, "retention_days")).toThrow(
+      SettingSchemaError,
+    );
   });
 
   it("require() throws when a value is absent with a null default", () => {

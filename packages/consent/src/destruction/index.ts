@@ -12,7 +12,7 @@
 // consent_eval_audit is NEVER deleted here (INSERT-only, trg_cea_immutable) — M4's audit-partition
 // retention owns its destruction (M39-F04). The engine reports `{erased, retained}`; the DataEraser
 // wrapper returns the interface's `{erased}` (the certified retained counts are surfaced to M4).
-import { type ConsentTypeKey } from "../interfaces/kinds";
+import type { ConsentTypeKey } from "../interfaces/kinds";
 
 export interface ConsentEraseRow {
   readonly id: string;
@@ -32,7 +32,11 @@ export interface ConsentEraseStore {
   consentSummary(organizationId: string, patientId: string): Promise<ConsentSubjectSummary>;
   /** Delete the named consent subtrees (record + recipients + dpoa + revocations + reminders +
    *  renewal-cycles + delegated-access + document-link); return the total rows removed. */
-  deleteConsents(organizationId: string, patientId: string, consentRecordIds: readonly string[]): Promise<number>;
+  deleteConsents(
+    organizationId: string,
+    patientId: string,
+    consentRecordIds: readonly string[],
+  ): Promise<number>;
 }
 
 export interface ConsentEraseResult {
@@ -68,7 +72,8 @@ export async function eraseConsentForSubject(
     deletable.push(row.id);
   }
 
-  const erased = deletable.length > 0 ? await store.deleteConsents(organizationId, patientId, deletable) : 0;
+  const erased =
+    deletable.length > 0 ? await store.deleteConsents(organizationId, patientId, deletable) : 0;
   return { erased, retained };
 }
 
@@ -85,7 +90,9 @@ export function createInMemoryConsentEraseStore(
   const key = (o: string, p: string) => `${o}:${p}`;
   const store: ConsentEraseStore = {
     async consentSummary(organizationId, patientId) {
-      return data.subjects.get(key(organizationId, patientId)) ?? { patientDeceased: false, rows: [] };
+      return (
+        data.subjects.get(key(organizationId, patientId)) ?? { patientDeceased: false, rows: [] }
+      );
     },
     async deleteConsents(organizationId, patientId, ids) {
       const k = key(organizationId, patientId);

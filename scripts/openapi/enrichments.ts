@@ -34,12 +34,12 @@ import {
   PatientPrivacyFlagsResponseSchema,
   PatientSummarySchema,
 } from "../../apps/backend/src/modules/05-patient/routes/patient-typebox";
-import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
-import { SearchQuerySchema as TerminologySearchQuerySchema } from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
 import {
   ListMessagesQuerySchema,
   SendMessageBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/messaging-typebox";
+import { SearchQuerySchema as TerminologySearchQuerySchema } from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
+import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
 
 // M36 service view shapes (packages/messaging/src/interfaces/route-service.ts + provider.ts). The
 // routes return TS service results (not TypeBox), so the response shapes are declared here for the client.
@@ -96,7 +96,11 @@ const TerminologySearchResponseSchema = Type.Object({
 // fields; the server may send richer per-kind canonical fields).
 const MdmResolvedSummarySchema = Type.Object({
   id: Type.String(),
-  status: Type.Union([Type.Literal("active"), Type.Literal("deactivated"), Type.Literal("provisional")]),
+  status: Type.Union([
+    Type.Literal("active"),
+    Type.Literal("deactivated"),
+    Type.Literal("provisional"),
+  ]),
   canonical: Type.Object({
     id: Type.String(),
     identifierType: Type.String(),
@@ -268,10 +272,17 @@ const CarePlanSummaryResponseSchema = Type.Object({
   versionId: Type.Union([Type.String(), Type.Null()]),
   activeProblems: Type.Array(Type.Object({ description: Type.String(), kind: Type.String() })),
   patientStatedGoals: Type.Array(
-    Type.Object({ text: Type.String(), measurableOutcome: Type.Union([Type.String(), Type.Null()]) }),
+    Type.Object({
+      text: Type.String(),
+      measurableOutcome: Type.Union([Type.String(), Type.Null()]),
+    }),
   ),
   activeInterventions: Type.Array(
-    Type.Object({ layText: Type.String(), discipline: Type.String(), frequencyText: Type.String() }),
+    Type.Object({
+      layText: Type.String(),
+      discipline: Type.String(),
+      frequencyText: Type.String(),
+    }),
   ),
   redacted: Type.Boolean(),
 });
@@ -299,7 +310,9 @@ const EncounterViewDtoSchema = Type.Object({
   cosignedAt: Type.Union([Type.String(), Type.Null()]),
 });
 const EncounterListResponseSchema = Type.Object({ encounters: Type.Array(EncounterViewDtoSchema) });
-const CosignatureReadResponseSchema = Type.Object({ status: Type.Union([Type.String(), Type.Null()]) });
+const CosignatureReadResponseSchema = Type.Object({
+  status: Type.Union([Type.String(), Type.Null()]),
+});
 
 export interface RouteEnrichment {
   /** JSON request body schema (a TypeBox schema reused from the route's validator). */
@@ -340,14 +353,16 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: AdmissionListResponseSchema,
   },
   "GET /api/v1/compliance-windows": {
-    summary: "Org-wide compliance window dashboard (cursor-paginated; optional state filter, §5.2.11)",
+    summary:
+      "Org-wide compliance window dashboard (cursor-paginated; optional state filter, §5.2.11)",
     query: ComplianceListQuerySchema,
     response: AdmissionPageResponseSchema,
   },
   // M7 Care Plan / IPOC (Track B — Care Plan View / Version History / Summary, M7-T09). Read responses
   // only; the write routes keep their route-level TypeBox request bodies (already in the contract).
   "GET /api/v1/patients/:patientId/care-plan": {
-    summary: "A patient's care plan — problems/goals/interventions + versions; §7.6 SUD-redacted per caller (§5.2)",
+    summary:
+      "A patient's care plan — problems/goals/interventions + versions; §7.6 SUD-redacted per caller (§5.2)",
     response: CarePlanReadResponseSchema,
   },
   "GET /api/v1/care-plans/:planId/versions": {
@@ -355,13 +370,15 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: CarePlanVersionsResponseSchema,
   },
   "GET /api/v1/care-plans/:planId/summary": {
-    summary: "Patient/family-friendly care-plan summary; SUD content excluded unless consent matches (§5.2)",
+    summary:
+      "Patient/family-friendly care-plan summary; SUD content excluded unless consent matches (§5.2)",
     response: CarePlanSummaryResponseSchema,
   },
   // M8 Encounters & Visit Notes (Track B — Encounter Read / Cosignature Queue / My Drafts, M8-T12). Read
   // responses only; the write routes keep their route-level TypeBox request bodies (not yet in the contract).
   "GET /api/v1/encounters/:encounterId": {
-    summary: "Read one encounter (selections + signatures + addenda; §7.6 SUD-redacted per caller, §5.2)",
+    summary:
+      "Read one encounter (selections + signatures + addenda; §7.6 SUD-redacted per caller, §5.2)",
     response: EncounterViewDtoSchema,
   },
   "GET /api/v1/encounters/cosignature-queue": {
@@ -469,9 +486,12 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   },
   // M2 Identity — Staff Management (Track A): org member roster + invitations + lifecycle.
   "GET /api/v1/orgs/:id/members": {
-    summary: "List an org's members; optional ?q narrows by user identity (member.manage, §6; FB-T11)",
+    summary:
+      "List an org's members; optional ?q narrows by user identity (member.manage, §6; FB-T11)",
     query: Type.Object({
-      q: Type.Optional(Type.String({ description: "Narrow the roster by the wrapped user's identity" })),
+      q: Type.Optional(
+        Type.String({ description: "Narrow the roster by the wrapped user's identity" }),
+      ),
     }),
     response: Type.Object({
       members: Type.Array(MembershipViewSchema),
@@ -488,7 +508,8 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     }),
   },
   "PATCH /api/v1/orgs/:id/members/:mId": {
-    summary: "Change a member's status (active|suspended) or default locations; last-admin guarded (§6)",
+    summary:
+      "Change a member's status (active|suspended) or default locations; last-admin guarded (§6)",
     body: Type.Object({
       status: Type.Optional(Type.Union([Type.Literal("active"), Type.Literal("suspended")])),
       defaultLocationIds: Type.Optional(Type.Array(Type.String())),
@@ -545,7 +566,10 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "Patient identifiers — ssn/state_id masked to last4 (§3.3/§2.2)",
     response: PatientIdentifiersResponseSchema,
   },
-  "POST /api/v1/patients": { body: AdmitBodySchema, summary: "Admit a patient (§7.1 duplicate-check)" },
+  "POST /api/v1/patients": {
+    body: AdmitBodySchema,
+    summary: "Admit a patient (§7.1 duplicate-check)",
+  },
   "GET /api/v1/patients/:id/addresses": {
     summary: "Patient address history — D5 append-only; current + closed rows (§3.3)",
     response: PatientAddressesResponseSchema,
@@ -563,7 +587,8 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: PatientCareTeamResponseSchema,
   },
   "GET /api/v1/patients/:id/privacy-flags": {
-    summary: "Patient privacy flags — active restrictions snapshot; SUD §7.6 fail-closed (§3.5/D10)",
+    summary:
+      "Patient privacy flags — active restrictions snapshot; SUD §7.6 fail-closed (§3.5/D10)",
     response: PatientPrivacyFlagsResponseSchema,
   },
   "POST /api/v1/patients/:id/amendments": {

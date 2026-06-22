@@ -5,8 +5,8 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
 import { CONSENT_TYPE_KEYS } from "@wardenx/consent";
+import { ValidationError } from "@wardenx/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -45,9 +45,13 @@ export const CreateDraftBodySchema = Type.Object({
 
 export const RevokeBodySchema = Type.Object({
   revokedByKind: Type.Union(
-    ["patient_self_via_portal", "staff", "dpoa_agent", "court_order", "platform_admin_break_glass"].map((k) =>
-      Type.Literal(k),
-    ),
+    [
+      "patient_self_via_portal",
+      "staff",
+      "dpoa_agent",
+      "court_order",
+      "platform_admin_break_glass",
+    ].map((k) => Type.Literal(k)),
   ),
   reasonText: Type.String({ default: "" }),
   evidenceDocumentId: Type.Optional(Type.String({ format: "uuid" })),

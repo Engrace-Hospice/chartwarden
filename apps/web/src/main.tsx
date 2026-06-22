@@ -1,9 +1,9 @@
+import { createApiClient } from "@wardenx/ui";
 // apps/web/src/main.tsx — the web app COMPOSITION ROOT (outside every module codePath, like
 // apps/backend/src/index.ts). It is the one place allowed to import feature module web-slices and
 // register their screens; the M1 shell stays pure. F0 registers nothing yet — Track A/B add modules.
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { createApiClient } from "@wardenx/ui";
 import { ScreenLock, identityScreens } from "./modules/02-identity";
 import { authorizationScreens } from "./modules/03-authorization";
 import { auditScreens } from "./modules/04-audit";

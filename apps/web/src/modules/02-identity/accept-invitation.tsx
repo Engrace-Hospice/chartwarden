@@ -1,3 +1,4 @@
+import { CenteredCardLayout, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/02-identity — Accept Invitation (M2 Auth, Track A).
 // Spec: docs/ui/screens/core/WARDENX_UI_AUTH.md "Accept invitation" (/invite/:token).
 // This builds the token-consume step (POST /api/v1/invitations/accept → membership). The remaining
@@ -6,7 +7,6 @@
 import { useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { CenteredCardLayout, useApiClient } from "@wardenx/ui";
 
 export function AcceptInvitation(): JSX.Element {
   const client = useApiClient();
@@ -25,7 +25,9 @@ export function AcceptInvitation(): JSX.Element {
     const { error } = await client.POST("/api/v1/invitations/accept", { body: { token } });
     if (error) {
       setStatus("error");
-      setMessage("This invitation is invalid or has expired. Request a new one from your administrator.");
+      setMessage(
+        "This invitation is invalid or has expired. Request a new one from your administrator.",
+      );
       return;
     }
     setStatus("accepted");
@@ -44,8 +46,8 @@ export function AcceptInvitation(): JSX.Element {
       ) : (
         <>
           <p style={{ color: "#6b7280" }}>
-            Accept this invitation to activate your membership. You will then set a password and enroll
-            multi-factor authentication.
+            Accept this invitation to activate your membership. You will then set a password and
+            enroll multi-factor authentication.
           </p>
           {status === "error" ? <p style={{ color: "#b91c1c" }}>{message}</p> : null}
           <button type="button" onClick={accept} disabled={status === "working"} style={primaryBtn}>

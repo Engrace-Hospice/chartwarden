@@ -61,8 +61,24 @@ const VIEW_COLUMNS = {
   status: P.status,
 } as const;
 
-function toView(r: { id: string; organizationId: string; mrn: string; lastName: string; firstName: string; dob: string; status: string }): PatientView {
-  return { id: r.id, organizationId: r.organizationId, mrn: r.mrn, lastName: r.lastName, firstName: r.firstName, dob: r.dob, status: r.status };
+function toView(r: {
+  id: string;
+  organizationId: string;
+  mrn: string;
+  lastName: string;
+  firstName: string;
+  dob: string;
+  status: string;
+}): PatientView {
+  return {
+    id: r.id,
+    organizationId: r.organizationId,
+    mrn: r.mrn,
+    lastName: r.lastName,
+    firstName: r.firstName,
+    dob: r.dob,
+    status: r.status,
+  };
 }
 
 /** Opaque ascending cursor over (lastName, firstName, id). */
@@ -93,7 +109,9 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
           ) as SQL)
         : undefined,
       // ascending (lastName, firstName, id) strictly after the cursor row
-      c ? (sql`(${P.legalLastName}, ${P.legalFirstName}, ${P.id}) > (${c[0]}, ${c[1]}, ${c[2]}::uuid)` as SQL) : undefined,
+      c
+        ? (sql`(${P.legalLastName}, ${P.legalFirstName}, ${P.id}) > (${c[0]}, ${c[1]}, ${c[2]}::uuid)` as SQL)
+        : undefined,
     );
     return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
       const rows = await tx
@@ -120,7 +138,10 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
   // §3.3 Demographics tab: legal name parts + DOB + the USCDI SOGI/race/ethnicity/marital codes
   // (M38 value-set labels resolved on the client) + preferred language (a left-join on the
   // one-row-per-patient comm preference) + name aliases. RLS scopes everything to app.org_id.
-  const getDemographics = async (organizationId: string, id: string): Promise<DemographicsView | null> =>
+  const getDemographics = async (
+    organizationId: string,
+    id: string,
+  ): Promise<DemographicsView | null> =>
     withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
       const rows = await tx
         .select({
@@ -148,7 +169,13 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
       const r = rows[0];
       if (!r) return null;
       const aliases = await tx
-        .select({ kind: ALIAS.kind, fullName: ALIAS.fullName, firstName: ALIAS.firstName, middleName: ALIAS.middleName, lastName: ALIAS.lastName })
+        .select({
+          kind: ALIAS.kind,
+          fullName: ALIAS.fullName,
+          firstName: ALIAS.firstName,
+          middleName: ALIAS.middleName,
+          lastName: ALIAS.lastName,
+        })
         .from(ALIAS)
         .where(eq(ALIAS.patientId, id))
         .orderBy(asc(ALIAS.kind));
@@ -169,19 +196,36 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
         raceCodes: r.raceCodes ?? [],
         ethnicityCodes: r.ethnicityCodes ?? [],
         preferredLanguageCode: r.preferredLanguageCode ?? null,
-        aliases: aliases.map((a) => ({ kind: a.kind, fullName: a.fullName ?? null, firstName: a.firstName ?? null, middleName: a.middleName ?? null, lastName: a.lastName ?? null })),
+        aliases: aliases.map((a) => ({
+          kind: a.kind,
+          fullName: a.fullName ?? null,
+          firstName: a.firstName ?? null,
+          middleName: a.middleName ?? null,
+          lastName: a.lastName ?? null,
+        })),
       };
     });
 
   // §3.3/§2.2 Identifiers tab. MASKED BY CONSTRUCTION: ssn/state_id rows return `value: null` and only
   // the `value_last4` tail — the `value_encrypted` ciphertext is NEVER selected here, so no decryption
   // and no leak. Full reveal is a separate `phi.read_ssn`-gated read (M5 SSN decryption follow-up).
-  const getIdentifiers = async (organizationId: string, id: string): Promise<IdentifierView[] | null> =>
+  const getIdentifiers = async (
+    organizationId: string,
+    id: string,
+  ): Promise<IdentifierView[] | null> =>
     withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
       const exists = await tx.select({ id: P.id }).from(P).where(eq(P.id, id)).limit(1);
       if (!exists[0]) return null;
       const rows = await tx
-        .select({ id: ID.id, kind: ID.kind, value: ID.value, valueLast4: ID.valueLast4, issuer: ID.issuer, effectiveFrom: ID.effectiveFrom, effectiveTo: ID.effectiveTo })
+        .select({
+          id: ID.id,
+          kind: ID.kind,
+          value: ID.value,
+          valueLast4: ID.valueLast4,
+          issuer: ID.issuer,
+          effectiveFrom: ID.effectiveFrom,
+          effectiveTo: ID.effectiveTo,
+        })
         .from(ID)
         .where(eq(ID.patientId, id))
         .orderBy(asc(ID.kind), asc(ID.effectiveFrom));
@@ -220,9 +264,13 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
       })
       .returning({ id: P.id })) as Array<{ id: string }>;
     const patientId = inserted[0]!.id;
-    await tx.insert(ID).values({ patientId, organizationId, kind: "mrn", value: mrn, effectiveFrom: today });
+    await tx
+      .insert(ID)
+      .values({ patientId, organizationId, kind: "mrn", value: mrn, effectiveFrom: today });
     if (input.mbi) {
-      await tx.insert(ID).values({ patientId, organizationId, kind: "mbi", value: input.mbi, effectiveFrom: today });
+      await tx
+        .insert(ID)
+        .values({ patientId, organizationId, kind: "mbi", value: input.mbi, effectiveFrom: today });
     }
     return patientId;
   }
@@ -239,20 +287,36 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
       const incoming = normalizeSubject(input);
       if (!input.bypassMatchReview) {
         const candRows = await tx
-          .select({ id: P.id, lastName: P.legalLastName, firstName: P.legalFirstName, dob: P.dob, mbi: ID.value })
+          .select({
+            id: P.id,
+            lastName: P.legalLastName,
+            firstName: P.legalFirstName,
+            dob: P.dob,
+            mbi: ID.value,
+          })
           .from(P)
           .leftJoin(ID, and(eq(ID.patientId, P.id), eq(ID.kind, "mbi")));
         const candidates: MatchCandidate[] = candRows.map((r) => ({
-          ...normalizeSubject({ lastName: r.lastName, firstName: r.firstName, dob: r.dob, mbi: r.mbi }),
+          ...normalizeSubject({
+            lastName: r.lastName,
+            firstName: r.firstName,
+            dob: r.dob,
+            mbi: r.mbi,
+          }),
           id: r.id,
         }));
         const result = runMatch(incoming, candidates);
         if (result.outcome === "hard_block") {
-          return { outcome: "hard_block", existingPatientId: result.existingPatientId, matchedOn: String(result.matchedOn) };
+          return {
+            outcome: "hard_block",
+            existingPatientId: result.existingPatientId,
+            matchedOn: String(result.matchedOn),
+          };
         }
         const patientId = await insertPatient(tx, organizationId, input);
         // soft_review match-review rows (patient_match_review) are a follow-up — return no ids for now.
-        if (result.outcome === "soft_review") return { outcome: "soft_review", patientId, matchReviewIds: [] };
+        if (result.outcome === "soft_review")
+          return { outcome: "soft_review", patientId, matchReviewIds: [] };
         return { outcome: "created", patientId };
       }
       return { outcome: "created", patientId: await insertPatient(tx, organizationId, input) };
@@ -263,7 +327,10 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
   // §3.3 / D5: the append-only address history. `current` (effective_to IS NULL) rows render as the
   // live addresses; closed rows render as history. RLS scopes by app.org_id. 404 (null) when the
   // patient is absent / out of org (§7.5 no-leak), mirroring getIdentifiers.
-  const listAddresses = async (organizationId: string, patientId: string): Promise<AddressView[] | null> =>
+  const listAddresses = async (
+    organizationId: string,
+    patientId: string,
+  ): Promise<AddressView[] | null> =>
     withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
       const exists = await tx.select({ id: P.id }).from(P).where(eq(P.id, patientId)).limit(1);
       if (!exists[0]) return null;
@@ -311,7 +378,10 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
   // names an M40 canonical Payer — the display NAME is resolved on the client via the MDM client/seam
   // (no cross-module schema import here). RLS scopes by app.org_id; 404 (null) when the patient is
   // absent / out of org (§7.5 no-leak), mirroring listAddresses. Active coverages first, then by rank.
-  const listPayers = async (organizationId: string, patientId: string): Promise<PatientPayerView[] | null> =>
+  const listPayers = async (
+    organizationId: string,
+    patientId: string,
+  ): Promise<PatientPayerView[] | null> =>
     withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
       const exists = await tx.select({ id: P.id }).from(P).where(eq(P.id, patientId)).limit(1);
       if (!exists[0]) return null;
@@ -351,7 +421,10 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
   // `clinicianUserId` — the staff NAME crosses into M2, so the client resolves it through the M2
   // roster (no cross-module schema import here), mirroring the §3.4 payer → M40 client-edge resolution.
   // 404 (null) when the patient is absent / out of org (§7.5 no-leak), like listAddresses/listPayers.
-  const getCareTeam = async (organizationId: string, patientId: string): Promise<CareTeamView | null> =>
+  const getCareTeam = async (
+    organizationId: string,
+    patientId: string,
+  ): Promise<CareTeamView | null> =>
     withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
       const exists = await tx.select({ id: P.id }).from(P).where(eq(P.id, patientId)).limit(1);
       if (!exists[0]) return null;
@@ -442,7 +515,10 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
   // is non-disclosable here (the snapshot's flag is the source until the M39 consent-present signal is
   // wired live). RLS scopes by app.org_id; 404 (null) when the patient is absent / out of org
   // (§7.5 no-leak), mirroring listAddresses/listPayers/getCareTeam.
-  const getPrivacyFlags = async (organizationId: string, patientId: string): Promise<PrivacyFlagsView | null> =>
+  const getPrivacyFlags = async (
+    organizationId: string,
+    patientId: string,
+  ): Promise<PrivacyFlagsView | null> =>
     withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
       const exists = await tx.select({ id: P.id }).from(P).where(eq(P.id, patientId)).limit(1);
       if (!exists[0]) return null;
@@ -480,7 +556,9 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
         await tx
           .update(ADDR)
           .set({ effectiveTo: today })
-          .where(and(eq(ADDR.patientId, patientId), eq(ADDR.isPrimary, true), isNull(ADDR.effectiveTo)));
+          .where(
+            and(eq(ADDR.patientId, patientId), eq(ADDR.isPrimary, true), isNull(ADDR.effectiveTo)),
+          );
       }
       const inserted = (await tx
         .insert(ADDR)
@@ -522,8 +600,16 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
           status: "pending",
           slaDueAt,
         })
-        .returning({ id: schema.patientAmendmentRequests.id, slaDueAt: schema.patientAmendmentRequests.slaDueAt })) as Array<{ id: string; slaDueAt: Date }>;
-      return { id: inserted[0]!.id, patientId, status: "pending" as const, slaDueAt: inserted[0]!.slaDueAt.toISOString() };
+        .returning({
+          id: schema.patientAmendmentRequests.id,
+          slaDueAt: schema.patientAmendmentRequests.slaDueAt,
+        })) as Array<{ id: string; slaDueAt: Date }>;
+      return {
+        id: inserted[0]!.id,
+        patientId,
+        status: "pending" as const,
+        slaDueAt: inserted[0]!.slaDueAt.toISOString(),
+      };
     });
 
   // §7.7: accept/deny an amendment (a denial requires a reason).
@@ -536,7 +622,10 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
     withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
       if (!decision.accept && !decision.denialReason) throw new Error("denial requires a reason");
       const rows = (await tx
-        .select({ patientId: schema.patientAmendmentRequests.patientId, slaDueAt: schema.patientAmendmentRequests.slaDueAt })
+        .select({
+          patientId: schema.patientAmendmentRequests.patientId,
+          slaDueAt: schema.patientAmendmentRequests.slaDueAt,
+        })
         .from(schema.patientAmendmentRequests)
         .where(eq(schema.patientAmendmentRequests.id, amendmentId))
         .limit(1)) as Array<{ patientId: string; slaDueAt: Date }>;
@@ -547,10 +636,28 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
         .update(schema.patientAmendmentRequests)
         .set({ status, denialReason: decision.denialReason ?? null })
         .where(eq(schema.patientAmendmentRequests.id, amendmentId));
-      return { id: amendmentId, patientId: row.patientId, status, slaDueAt: row.slaDueAt.toISOString() };
+      return {
+        id: amendmentId,
+        patientId: row.patientId,
+        status,
+        slaDueAt: row.slaDueAt.toISOString(),
+      };
     });
 
   // `writes` (in-memory) is no longer needed — all writes are real now.
 
-  return { list, getPatient, getDemographics, getIdentifiers, listAddresses, listPayers, getCareTeam, getPrivacyFlags, admit, addAddress, submitAmendment, decideAmendment };
+  return {
+    list,
+    getPatient,
+    getDemographics,
+    getIdentifiers,
+    listAddresses,
+    listPayers,
+    getCareTeam,
+    getPrivacyFlags,
+    admit,
+    addAddress,
+    submitAmendment,
+    decideAmendment,
+  };
 }

@@ -137,9 +137,7 @@ export type {
   DeliveryEndpointInput,
   AlertInboxItem,
 } from "./interfaces/route-service";
-export {
-  createInMemoryMessagingService,
-} from "./store/in-memory-service";
+export { createInMemoryMessagingService } from "./store/in-memory-service";
 export type {
   InMemoryMessagingSeed,
   InMemoryMessagingServiceOptions,

@@ -1,3 +1,4 @@
+import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/08-encounters — M8 screen registration (Track B, ADR-0030).
 // The §5 Encounters screens that have a backing M8 read route on the generated client: the
 // patient-scoped Encounter Read (§5.2), the Cosignature Queue (§5.5), and the author's My Drafts
@@ -5,7 +6,6 @@
 // enforcement point (no frontend authz). The authoring / finalize-Layer-2 / sign write surfaces
 // (§5.2–5.4) fill in as their write paths harden.
 import type { ComponentType } from "react";
-import type { ScreenRegistryModule } from "@wardenx/types";
 import { CosignatureQueue } from "./cosignature-queue";
 import { EncounterRead } from "./encounter-read";
 import { MyDrafts } from "./my-drafts";

@@ -5,7 +5,16 @@
 // (code, version_id) keeps versions coexisting (§7.2). Platform-shared reference
 // (NON_ORG_SCOPED); writes only via `terminology_loader`. Not PHI.
 import { sql } from "drizzle-orm";
-import { date, index, jsonb, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  date,
+  index,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { conceptStatus } from "../../enums";
 import { codeSystemVersions } from "./code-system-versions";
 

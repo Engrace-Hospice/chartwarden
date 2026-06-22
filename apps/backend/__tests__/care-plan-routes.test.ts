@@ -43,7 +43,14 @@ const ADMISSION = "33333333-3333-4333-8333-333333333333";
 const PERMISSION_SEED = [
   {
     userId: "rn_1",
-    permissions: ["care_plan.read", "care_plan.read_summary", "care_plan.bootstrap", "care_plan.author", "care_plan.finalize", "care_plan.sign"],
+    permissions: [
+      "care_plan.read",
+      "care_plan.read_summary",
+      "care_plan.bootstrap",
+      "care_plan.author",
+      "care_plan.finalize",
+      "care_plan.sign",
+    ],
   },
   { userId: "viewer_1", permissions: ["care_plan.read"] },
 ];
@@ -61,7 +68,9 @@ function makeServer() {
       [ORG, ORG_B].map((org) => ({
         orgId: org,
         userId: s.userId,
-        grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: s.permissions }],
+        grants: [
+          { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: s.permissions },
+        ],
       })),
     ),
   );
@@ -313,7 +322,9 @@ describe("M7-T05 — version sign-off quorum (§2.3 / D5)", () => {
     expect(sig2.statusCode).toBe(201);
     expect(sig2.json().status).toBe("signed");
 
-    const plan = (await backend.service.getCarePlanForPatient(ORG, PATIENT_NEW)) as { status: string };
+    const plan = (await backend.service.getCarePlanForPatient(ORG, PATIENT_NEW)) as {
+      status: string;
+    };
     expect(plan.status).toBe("active");
   });
 });

@@ -9,7 +9,10 @@ import { ValidationError } from "@wardenx/types";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 if (!FormatRegistry.Has("date")) {
-  FormatRegistry.Set("date", (v) => typeof v === "string" && DATE_RE.test(v) && !Number.isNaN(Date.parse(v)));
+  FormatRegistry.Set(
+    "date",
+    (v) => typeof v === "string" && DATE_RE.test(v) && !Number.isNaN(Date.parse(v)),
+  );
 }
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -30,7 +33,9 @@ const AddressSchema = Type.Object({
 
 export const IdParamsSchema = Type.Object({ id: Type.String({ format: "uuid" }) });
 // The slice service uses non-uuid synthetic ids (pat_1); routes accept a loose id param.
-export const LooseIdParamsSchema = Type.Object({ id: Type.String({ minLength: 1, maxLength: 64 }) });
+export const LooseIdParamsSchema = Type.Object({
+  id: Type.String({ minLength: 1, maxLength: 64 }),
+});
 
 // POST /api/v1/patients (§4.2 capture contract)
 export const AdmitBodySchema = Type.Object({
@@ -60,12 +65,18 @@ export const AddressBodySchema = AddressSchema;
 
 // POST /api/v1/patients/:id/amendments (§4.2; §7.7)
 export const AmendmentBodySchema = Type.Object({
-  scope: Type.Union([Type.Literal("demographic"), Type.Literal("clinical"), Type.Literal("narrative")]),
+  scope: Type.Union([
+    Type.Literal("demographic"),
+    Type.Literal("clinical"),
+    Type.Literal("narrative"),
+  ]),
   rationale: Type.String({ minLength: 1, maxLength: 2000 }),
 });
 
 // POST /api/v1/amendments/:id/deny
-export const DenyBodySchema = Type.Object({ denialReason: Type.String({ minLength: 1, maxLength: 500 }) });
+export const DenyBodySchema = Type.Object({
+  denialReason: Type.String({ minLength: 1, maxLength: 500 }),
+});
 
 // GET /api/v1/patients (§4.2 census/list — cursor-paginated). A patient summary row.
 export const PatientSummarySchema = Type.Object({

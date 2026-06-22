@@ -12,7 +12,9 @@ const pluginIds = (auth.options.plugins ?? []).map((p) => p.id);
 
 describe("createIdentityAuth — plugin wiring (AUTH-T05)", () => {
   it("wires 2FA, passkey, magic-link, and the HIBP breach check", () => {
-    expect(pluginIds).toEqual(expect.arrayContaining(["two-factor", "passkey", "magic-link", "have-i-been-pwned"]));
+    expect(pluginIds).toEqual(
+      expect.arrayContaining(["two-factor", "passkey", "magic-link", "have-i-been-pwned"]),
+    );
   });
 
   it("does NOT use Better Auth's organization plugin (WardenX owns its org/membership model)", () => {

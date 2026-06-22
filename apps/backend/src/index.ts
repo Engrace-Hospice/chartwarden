@@ -15,13 +15,25 @@ import {
 import type { SessionContextStore } from "@wardenx/auth";
 import { type DbClient, createDbClient } from "@wardenx/db";
 import { buildServer, createSessionAuthenticate, getSeam } from "./bootstrap/index";
-import { assertAuditActionCatalog, mountAuditRoutes, registerAuditErasers } from "./modules/04-audit/index";
 import {
   mountIdentityRoutes,
   registerIdentityErasers,
   registerIdentitySeams,
 } from "./modules/02-identity/index";
 import { mountAuthorizationRoutes } from "./modules/03-authorization/index";
+import {
+  assertAuditActionCatalog,
+  mountAuditRoutes,
+  registerAuditErasers,
+} from "./modules/04-audit/index";
+import {
+  mountPatientRoutes,
+  registerPatientErasers,
+  registerPatientSeams,
+} from "./modules/05-patient/index";
+import { registerAdmissionErasers, registerAdmissionSeams } from "./modules/06-admission/index";
+import { registerCarePlanErasers, registerCarePlanSeams } from "./modules/07-care-plan/index";
+import { registerEncounterErasers, registerEncounterSeams } from "./modules/08-encounters/index";
 import {
   createDbMessagingProvider,
   mountMessagingRoutes,
@@ -36,27 +48,19 @@ import {
   registerTerminologySeams,
 } from "./modules/38-terminology/index";
 import {
-  createDbBaaStore,
-  createDbMdmStore,
-  mountMdmRoutes,
-  registerMdmErasers,
-  registerMdmSeams,
-} from "./modules/40-mdm/index";
-import {
-  mountPatientRoutes,
-  registerPatientErasers,
-  registerPatientSeams,
-} from "./modules/05-patient/index";
-import { registerAdmissionErasers, registerAdmissionSeams } from "./modules/06-admission/index";
-import { registerCarePlanErasers, registerCarePlanSeams } from "./modules/07-care-plan/index";
-import { registerEncounterErasers, registerEncounterSeams } from "./modules/08-encounters/index";
-import {
   createDbConsentStore,
   mountConsentRoutes,
   registerConsentAbacPredicates,
   registerConsentErasers,
   registerConsentSeams,
 } from "./modules/39-consent/index";
+import {
+  createDbBaaStore,
+  createDbMdmStore,
+  mountMdmRoutes,
+  registerMdmErasers,
+  registerMdmSeams,
+} from "./modules/40-mdm/index";
 
 export { buildServer };
 export * from "./bootstrap/index";
@@ -151,7 +155,9 @@ if ((import.meta as { main?: boolean }).main) {
     isProduction: process.env.NODE_ENV === "production",
   });
   const auth = dbHandle
-    ? createIdentityAuth(dbHandle.db as Parameters<typeof createIdentityAuth>[0], { emailTransport })
+    ? createIdentityAuth(dbHandle.db as Parameters<typeof createIdentityAuth>[0], {
+        emailTransport,
+      })
     : undefined;
   const authenticate = auth
     ? createSessionAuthenticate({

@@ -7,25 +7,25 @@ import { describe, expect, it, vi } from "vitest";
 import {
   COMPOSITION_RESOLVER_NAMES,
   COMPOSITION_RESOLVER_ROLE_KEYS,
+  type CompositionResolverPorts,
+  type CrossModuleComposerPorts,
+  MissingTemplateVariableError,
+  type NotificationTemplateRow,
+  PLATFORM_NOTIFICATION_TEMPLATES,
+  TemplateOverlayMismatchError,
+  type TenantTemplateOverlayRow,
+  UnknownNotificationTemplateError,
+  UnregisteredComposedPayloadError,
   composeAndDispatch,
   createInMemoryCrossModuleComposer,
   createRecipientResolverRegistry,
-  MissingTemplateVariableError,
-  PLATFORM_NOTIFICATION_TEMPLATES,
   registerCompositionResolvers,
   renderTemplate,
   resolveRecipients,
   resolveTemplate,
   sanitizeForOutOfBand,
-  TemplateOverlayMismatchError,
   toNewNotificationTemplateRows,
-  UnknownNotificationTemplateError,
-  UnregisteredComposedPayloadError,
   validateNotificationTemplateSeed,
-  type CompositionResolverPorts,
-  type CrossModuleComposerPorts,
-  type NotificationTemplateRow,
-  type TenantTemplateOverlayRow,
 } from "../src/index";
 
 const FLOOR: NotificationTemplateRow = {
@@ -33,7 +33,8 @@ const FLOOR: NotificationTemplateRow = {
   templateKey: "m6.referral.declined",
   version: 1,
   titleTemplate: "Referral was not accepted",
-  bodyTemplate: "Referral for {{patientName}} was declined by {{actorName}}. Reason: {{declineReason}}.",
+  bodyTemplate:
+    "Referral for {{patientName}} was declined by {{actorName}}. Reason: {{declineReason}}.",
   payloadSchema: { type: "object", required: ["patientName", "actorName", "declineReason"] },
   defaultPayloadType: "m6.referral.declined",
   defaultRecipientResolver: "intake_supervisor",
@@ -84,13 +85,15 @@ describe("template render (§4.11 step 2)", () => {
       declineReason: "out of service area",
     });
     expect(title).toBe("Referral was not accepted");
-    expect(body).toBe("Referral for Jane Doe was declined by Dr. Smith. Reason: out of service area.");
+    expect(body).toBe(
+      "Referral for Jane Doe was declined by Dr. Smith. Reason: out of service area.",
+    );
   });
 
   it("throws when a required placeholder is missing from the payload", () => {
-    expect(() =>
-      renderTemplate(resolveTemplate(FLOOR), { patientName: "Jane Doe" }),
-    ).toThrow(MissingTemplateVariableError);
+    expect(() => renderTemplate(resolveTemplate(FLOOR), { patientName: "Jane Doe" })).toThrow(
+      MissingTemplateVariableError,
+    );
   });
 
   it("leaves an un-provided non-required placeholder literal rather than blanking it", () => {
@@ -129,9 +132,9 @@ describe("ADR-0024 composition resolvers (§4.11)", () => {
     });
     registerCompositionResolvers(registry, compositionPorts());
     // built-in still present:
-    expect(await resolveRecipients(registry, "care_team", "org-1", {}, { patientId: "p" })).toEqual([
-      "u-ct",
-    ]);
+    expect(await resolveRecipients(registry, "care_team", "org-1", {}, { patientId: "p" })).toEqual(
+      ["u-ct"],
+    );
     // all four ADR-0024 names registered:
     for (const name of COMPOSITION_RESOLVER_NAMES) expect(registry.has(name)).toBe(true);
   });
@@ -149,7 +152,13 @@ describe("ADR-0024 composition resolvers (§4.11)", () => {
       }),
       ports,
     );
-    const out = await resolveRecipients(registry, "ordering_provider", "org-1", {}, { orderId: "o-9" });
+    const out = await resolveRecipients(
+      registry,
+      "ordering_provider",
+      "org-1",
+      {},
+      { orderId: "o-9" },
+    );
     expect(out).toEqual(["u-ordering"]);
     expect(ports.orderingProviderForOrder).toHaveBeenCalledWith("org-1", "o-9");
   });

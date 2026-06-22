@@ -127,7 +127,9 @@ describe("resolveAsOf — §7.1 as-of honored, §7.2 versions coexist", () => {
   });
 
   it("returns null for an empty candidate set", () => {
-    expect(resolveAsOf([] as ConceptCandidate<"icd10cm">[], new Date("2024-01-01T00:00:00Z"))).toBeNull();
+    expect(
+      resolveAsOf([] as ConceptCandidate<"icd10cm">[], new Date("2024-01-01T00:00:00Z")),
+    ).toBeNull();
   });
 
   it("picks the most-recently-effective row when versions overlap, regardless of input order", () => {
@@ -137,12 +139,19 @@ describe("resolveAsOf — §7.1 as-of honored, §7.2 versions coexist", () => {
     ];
     expect(resolveAsOf(overlap, new Date("2025-01-01T00:00:00Z"))?.display).toBe("v2024");
     // reversed input — selection is order-independent
-    expect(resolveAsOf([...overlap].reverse(), new Date("2025-01-01T00:00:00Z"))?.display).toBe("v2024");
+    expect(resolveAsOf([...overlap].reverse(), new Date("2025-01-01T00:00:00Z"))?.display).toBe(
+      "v2024",
+    );
   });
 
   it("breaks an effectiveDate tie toward the later (or open) endDate", () => {
     const tie: ConceptCandidate<"icd10cm">[] = [
-      icd({ code: "E11.9", display: "ends-soon", effectiveDate: "2024-01-01", endDate: "2024-06-30" }),
+      icd({
+        code: "E11.9",
+        display: "ends-soon",
+        effectiveDate: "2024-01-01",
+        endDate: "2024-06-30",
+      }),
       icd({ code: "E11.9", display: "open", effectiveDate: "2024-01-01", endDate: null }),
     ];
     expect(resolveAsOf(tie, new Date("2024-03-01T00:00:00Z"))?.display).toBe("open");

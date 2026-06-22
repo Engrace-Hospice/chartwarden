@@ -16,9 +16,9 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { admissionStatus } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 import { referrals } from "./referrals";
 
 export const admissions = pgTable(

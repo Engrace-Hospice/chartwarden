@@ -7,8 +7,8 @@
 import { describe, expect, it } from "vitest";
 import {
   SESSION_POLICY,
-  type SessionClassName,
   STEP_UP_POLICY,
+  type SessionClassName,
   type StepUpFactor,
 } from "../src/index";
 
@@ -42,7 +42,9 @@ describe("SESSION_POLICY (§2.2.4 / D1)", () => {
 
   it("screen-lock applies to staff + auditor only (not the magic-link classes)", () => {
     expect([...SESSION_POLICY.screenLockClasses].sort()).toEqual(["auditor", "staff"]);
-    expect(SESSION_POLICY.screenLockClasses).not.toContain<SessionClassName>("external_collaborator");
+    expect(SESSION_POLICY.screenLockClasses).not.toContain<SessionClassName>(
+      "external_collaborator",
+    );
     expect(SESSION_POLICY.screenLockClasses).not.toContain<SessionClassName>("funeral_home");
   });
 
@@ -68,7 +70,12 @@ describe("SESSION_POLICY (§2.2.4 / D1)", () => {
   });
 
   it("covers exactly the four session classes", () => {
-    const classes: SessionClassName[] = ["staff", "auditor", "external_collaborator", "funeral_home"];
+    const classes: SessionClassName[] = [
+      "staff",
+      "auditor",
+      "external_collaborator",
+      "funeral_home",
+    ];
     expect(Object.keys(SESSION_POLICY.byClass).sort()).toEqual([...classes].sort());
   });
 });

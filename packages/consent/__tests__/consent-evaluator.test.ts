@@ -38,15 +38,26 @@ describe("ConsentEvaluator.evaluate (§4.3)", () => {
   const ctx = { sessionContext: { sessionClass: "staff" as const }, callerModule: "m5" };
 
   it("denies with no_active_consent_on_file when none exists", async () => {
-    const r = await evalWith([]).evaluate({ organizationId: ORG, patientId: PAT, consentType: "hipaa_release", ...ctx });
+    const r = await evalWith([]).evaluate({
+      organizationId: ORG,
+      patientId: PAT,
+      consentType: "hipaa_release",
+      ...ctx,
+    });
     expect(r.allowed).toBe(false);
     expect(r.denyReason).toBe("no_active_consent_on_file");
   });
 
   it("allows on an active record and returns id + version", async () => {
-    const r = await evalWith([consent({ recipients: [{ removedAtMs: null, expiresAtMs: null, recipientResolvedId: "x" }] })]).evaluate(
-      { organizationId: ORG, patientId: PAT, consentType: "hipaa_release", asOf: new Date(5000).toISOString(), ...ctx },
-    );
+    const r = await evalWith([
+      consent({ recipients: [{ removedAtMs: null, expiresAtMs: null, recipientResolvedId: "x" }] }),
+    ]).evaluate({
+      organizationId: ORG,
+      patientId: PAT,
+      consentType: "hipaa_release",
+      asOf: new Date(5000).toISOString(),
+      ...ctx,
+    });
     expect(r.allowed).toBe(true);
     expect(r.consentRecordId).toBe("c1");
     expect(r.consentVersionAtEval).toBe(1);
@@ -65,7 +76,9 @@ describe("ConsentEvaluator.evaluate (§4.3)", () => {
   });
 
   it("a per-recipient consent with zero active recipients denies no_active_recipient_matches", async () => {
-    const r = await evalWith([consent({ typeKey: "42_cfr_part_2_release", recipients: [] })]).evaluate({
+    const r = await evalWith([
+      consent({ typeKey: "42_cfr_part_2_release", recipients: [] }),
+    ]).evaluate({
       organizationId: ORG,
       patientId: PAT,
       consentType: "42_cfr_part_2_release",
@@ -91,7 +104,12 @@ describe("ConsentEvaluator.evaluate (§4.3)", () => {
 
 describe("ConsentEvaluator.evaluateForDisclosure (§4.3.1 fail-closed)", () => {
   it("redacts everything when no Part 2 release names the recipient", async () => {
-    const r = await evalWith([]).evaluateForDisclosure({ organizationId: ORG, patientId: PAT, recipientResolvedId: "r1", callerModule: "m28" });
+    const r = await evalWith([]).evaluateForDisclosure({
+      organizationId: ORG,
+      patientId: PAT,
+      recipientResolvedId: "r1",
+      callerModule: "m28",
+    });
     expect(r.redactSudContent).toBe(true);
     expect(r.redactHivContent).toBe(true);
     expect(r.redactMentalHealthContent).toBe(true);
@@ -101,8 +119,17 @@ describe("ConsentEvaluator.evaluateForDisclosure (§4.3.1 fail-closed)", () => {
 
   it("discloses SUD only when an active Part 2 release names the recipient (HIV/MH/genetic still redacted)", async () => {
     const r = await evalWith([
-      consent({ typeKey: "42_cfr_part_2_release", recipients: [{ removedAtMs: null, expiresAtMs: null, recipientResolvedId: "r1" }] }),
-    ]).evaluateForDisclosure({ organizationId: ORG, patientId: PAT, recipientResolvedId: "r1", asOf: new Date(5000).toISOString(), callerModule: "m28" });
+      consent({
+        typeKey: "42_cfr_part_2_release",
+        recipients: [{ removedAtMs: null, expiresAtMs: null, recipientResolvedId: "r1" }],
+      }),
+    ]).evaluateForDisclosure({
+      organizationId: ORG,
+      patientId: PAT,
+      recipientResolvedId: "r1",
+      asOf: new Date(5000).toISOString(),
+      callerModule: "m28",
+    });
     expect(r.redactSudContent).toBe(false);
     expect(r.redactHivContent).toBe(true); // delegated to M5 → default redact
   });
@@ -111,7 +138,9 @@ describe("ConsentEvaluator.evaluateForDisclosure (§4.3.1 fail-closed)", () => {
 describe("ConsentEvaluator.evaluateBulk (§4.3 / M39-F15)", () => {
   it("returns a per-patient verdict map", async () => {
     // portal_access is categorical (not per-recipient), so an active record alone is sufficient.
-    const r = await evalWith([consent({ patientId: "pat-2", typeKey: "portal_access", recipients: [] })]).evaluateBulk({
+    const r = await evalWith([
+      consent({ patientId: "pat-2", typeKey: "portal_access", recipients: [] }),
+    ]).evaluateBulk({
       organizationId: ORG,
       patientIds: ["pat-1", "pat-2"],
       consentType: "portal_access",

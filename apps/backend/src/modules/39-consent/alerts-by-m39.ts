@@ -23,9 +23,14 @@ export const M39_ALERT_PAYLOADS: ModuleAlertContribution = [
     severity: "HIGH", // platform floor at the 14/7-day window; the 1-day cron tightens to CRITICAL
     defaultChannels: ["inbox", "email"],
     defaultRecipientResolver: "consent_management_steward",
-    payloadSchema: Type.Object({ ...consentRef, expiresAt: Type.String(), reminderKind: Type.String() }),
+    payloadSchema: Type.Object({
+      ...consentRef,
+      expiresAt: Type.String(),
+      reminderKind: Type.String(),
+    }),
     requiresResponseTracking: false,
-    description: "A consent is approaching expiry (90/30/14/7/1-day cadence, D9). Routine compliance reminder.",
+    description:
+      "A consent is approaching expiry (90/30/14/7/1-day cadence, D9). Routine compliance reminder.",
   },
   {
     payloadType: "m39.consent.revoked_cascade_failed",
@@ -33,9 +38,14 @@ export const M39_ALERT_PAYLOADS: ModuleAlertContribution = [
     severity: "CRITICAL",
     defaultChannels: ["inbox", "socket_push", "email"],
     defaultRecipientResolver: "consent_management_steward",
-    payloadSchema: Type.Object({ ...consentRef, revocationId: Type.String(), failedConsumers: Type.Array(Type.String()) }),
+    payloadSchema: Type.Object({
+      ...consentRef,
+      revocationId: Type.String(),
+      failedConsumers: Type.Array(Type.String()),
+    }),
     requiresResponseTracking: true,
-    description: "A revocation cascade exhausted its retry budget with un-ACKed consumers (§2.2.3 partial_failed).",
+    description:
+      "A revocation cascade exhausted its retry budget with un-ACKed consumers (§2.2.3 partial_failed).",
   },
   {
     payloadType: "m39.consent.dpoa_agent_appointed",
@@ -43,7 +53,11 @@ export const M39_ALERT_PAYLOADS: ModuleAlertContribution = [
     severity: "MEDIUM",
     defaultChannels: ["inbox"],
     defaultRecipientResolver: "consent_management_steward",
-    payloadSchema: Type.Object({ ...consentRef, dpoaAgentId: Type.String(), agentName: Type.String() }),
+    payloadSchema: Type.Object({
+      ...consentRef,
+      dpoaAgentId: Type.String(),
+      agentName: Type.String(),
+    }),
     requiresResponseTracking: false,
     description: "A DPOA agent was appointed — informational banner on the M7 care-plan UI.",
   },
@@ -53,9 +67,14 @@ export const M39_ALERT_PAYLOADS: ModuleAlertContribution = [
     severity: "HIGH",
     defaultChannels: ["inbox", "email"],
     defaultRecipientResolver: "consent_management_steward",
-    payloadSchema: Type.Object({ ...consentRef, recipientResolvedKind: Type.String(), recipientResolvedId: Type.Optional(Type.String()) }),
+    payloadSchema: Type.Object({
+      ...consentRef,
+      recipientResolvedKind: Type.String(),
+      recipientResolvedId: Type.Optional(Type.String()),
+    }),
     requiresResponseTracking: true,
-    description: "M22/M28 attempted a disclosure to a recipient no consent names — M39 routes the compliance alert.",
+    description:
+      "M22/M28 attempted a disclosure to a recipient no consent names — M39 routes the compliance alert.",
   },
   {
     payloadType: "m39.consent.renewal_overdue",
@@ -63,8 +82,13 @@ export const M39_ALERT_PAYLOADS: ModuleAlertContribution = [
     severity: "HIGH", // 7-day past expiry floor; the 30-day cron tightens to CRITICAL
     defaultChannels: ["inbox", "email"],
     defaultRecipientResolver: "consent_management_steward",
-    payloadSchema: Type.Object({ ...consentRef, expiresAt: Type.String(), daysOverdue: Type.Integer() }),
+    payloadSchema: Type.Object({
+      ...consentRef,
+      expiresAt: Type.String(),
+      daysOverdue: Type.Integer(),
+    }),
     requiresResponseTracking: true,
-    description: "A compliance-critical consent (42 CFR Part 2 / HIPAA / DPOA) expired without renewal.",
+    description:
+      "A compliance-critical consent (42 CFR Part 2 / HIPAA / DPOA) expired without renewal.",
   },
 ];

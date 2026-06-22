@@ -16,13 +16,13 @@
 //
 // No clock/RNG/I/O in this module — the engines are deterministic, so a run's effects are assertable.
 import { type ExpansionRow, type ValueSetMemberRow, computeExpansion } from "../expansion/index";
+import type { CodeSystemId } from "../interfaces/kinds";
+import type { DeprecationMappingResponse } from "../interfaces/provider";
 import {
   type RemediationReport,
   type TenantCodeRecord,
   buildRemediationReport,
 } from "../remediation/index";
-import type { CodeSystemId } from "../interfaces/kinds";
-import type { DeprecationMappingResponse } from "../interfaces/provider";
 
 // --- refresh expansions (terminology.refresh_expansions, §4.3 / §7.5) -------------------------
 

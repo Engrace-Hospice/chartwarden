@@ -47,7 +47,10 @@ export class SudConsentRequiredError extends Error {
  * patients and consented SUD patients pass. The ABAC predicate `sud_consent_present` resolves through
  * this same decision (registered when M39 lands; until then the snapshot's flag is the source).
  */
-export function isSudReadAllowed(flags: readonly PrivacyFlag[], sudConsentPresent: boolean): boolean {
+export function isSudReadAllowed(
+  flags: readonly PrivacyFlag[],
+  sudConsentPresent: boolean,
+): boolean {
   if (!flags.includes("sud")) return true; // not SUD-restricted → no gate
   return sudConsentPresent;
 }
@@ -72,8 +75,16 @@ export interface M39ConsentChangedPayload {
 
 /** Ports the recompute consumer binds (Drizzle snapshot write + outbox emit) when M39 wires it. */
 export interface PrivacySnapshotPorts {
-  writeSnapshot(organizationId: string, patientId: string, flags: readonly PrivacyFlag[]): Promise<void>;
-  emitPrivacyFlagChanged(organizationId: string, patientId: string, flags: readonly PrivacyFlag[]): Promise<void>;
+  writeSnapshot(
+    organizationId: string,
+    patientId: string,
+    flags: readonly PrivacyFlag[],
+  ): Promise<void>;
+  emitPrivacyFlagChanged(
+    organizationId: string,
+    patientId: string,
+    flags: readonly PrivacyFlag[],
+  ): Promise<void>;
 }
 
 /** Apply an `m39.consent.changed` event: recompute the snapshot + emit `m5.patient.privacy_flag_changed`

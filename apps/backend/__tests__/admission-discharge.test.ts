@@ -77,15 +77,23 @@ describe("M6-T09 — §6.3 discharge reason → permission key derivation", () =
 
 describe("M6-T09 — §6.3 per-reason narrative gates", () => {
   it("for_cause requires a forCauseReason ≥ 20 chars (NARRATIVE_REQUIRED_FOR_CAUSE)", () => {
-    expect(checkDischargeNarrative("for_cause", "y".repeat(40), undefined)?.code).toBe("NARRATIVE_REQUIRED_FOR_CAUSE");
-    expect(checkDischargeNarrative("for_cause", "y".repeat(40), "too short")?.code).toBe("NARRATIVE_REQUIRED_FOR_CAUSE");
+    expect(checkDischargeNarrative("for_cause", "y".repeat(40), undefined)?.code).toBe(
+      "NARRATIVE_REQUIRED_FOR_CAUSE",
+    );
+    expect(checkDischargeNarrative("for_cause", "y".repeat(40), "too short")?.code).toBe(
+      "NARRATIVE_REQUIRED_FOR_CAUSE",
+    );
     expect(checkDischargeNarrative("for_cause", "y".repeat(40), "z".repeat(20))).toBeNull();
   });
 
   it("no_longer_terminal needs ≥20 chars and other ≥40 (DISCHARGE_NARRATIVE_TOO_SHORT)", () => {
-    expect(checkDischargeNarrative("no_longer_terminal", "x".repeat(19))?.code).toBe("DISCHARGE_NARRATIVE_TOO_SHORT");
+    expect(checkDischargeNarrative("no_longer_terminal", "x".repeat(19))?.code).toBe(
+      "DISCHARGE_NARRATIVE_TOO_SHORT",
+    );
     expect(checkDischargeNarrative("no_longer_terminal", "x".repeat(20))).toBeNull();
-    expect(checkDischargeNarrative("other", "x".repeat(39))?.code).toBe("DISCHARGE_NARRATIVE_TOO_SHORT");
+    expect(checkDischargeNarrative("other", "x".repeat(39))?.code).toBe(
+      "DISCHARGE_NARRATIVE_TOO_SHORT",
+    );
     expect(checkDischargeNarrative("other", "x".repeat(40))).toBeNull();
   });
 
@@ -99,16 +107,40 @@ describe("M6-T09 — §6.3 per-reason narrative gates", () => {
 
 describe("M6-T09 — §7.6 W-DC-01 bereavement eligibility rule (D6)", () => {
   it("eligible when death + active election ≥ 1 day + opt-out NOT set", () => {
-    expect(decideBereavementEligibility({ reason: "death", daysOnActiveElectionBeforeDeath: 45, bereavementOptOut: false }).eligible).toBe(true);
+    expect(
+      decideBereavementEligibility({
+        reason: "death",
+        daysOnActiveElectionBeforeDeath: 45,
+        bereavementOptOut: false,
+      }).eligible,
+    ).toBe(true);
   });
   it("suppressed by the M5 opt-out flag", () => {
-    expect(decideBereavementEligibility({ reason: "death", daysOnActiveElectionBeforeDeath: 45, bereavementOptOut: true }).eligible).toBe(false);
+    expect(
+      decideBereavementEligibility({
+        reason: "death",
+        daysOnActiveElectionBeforeDeath: 45,
+        bereavementOptOut: true,
+      }).eligible,
+    ).toBe(false);
   });
   it("suppressed when the election was shorter than one day", () => {
-    expect(decideBereavementEligibility({ reason: "death", daysOnActiveElectionBeforeDeath: 0, bereavementOptOut: false }).eligible).toBe(false);
+    expect(
+      decideBereavementEligibility({
+        reason: "death",
+        daysOnActiveElectionBeforeDeath: 0,
+        bereavementOptOut: false,
+      }).eligible,
+    ).toBe(false);
   });
   it("never fires for a non-death discharge", () => {
-    expect(decideBereavementEligibility({ reason: "for_cause", daysOnActiveElectionBeforeDeath: 45, bereavementOptOut: false }).eligible).toBe(false);
+    expect(
+      decideBereavementEligibility({
+        reason: "for_cause",
+        daysOnActiveElectionBeforeDeath: 45,
+        bereavementOptOut: false,
+      }).eligible,
+    ).toBe(false);
   });
 });
 
@@ -139,7 +171,10 @@ describe("M6-T09 — §7.6 W-DC-02 for-cause cosign cascade", () => {
 
 describe("M6-T09 — §7.6 W-DC-03 transfer-in inherited period sequencing (D9)", () => {
   it("inherits the carried sequence as the active period and opens the next pending period", () => {
-    const plan = planTransferIn({ priorBenefitPeriodSequence: 3, priorElectionStartDate: "2026-04-01" });
+    const plan = planTransferIn({
+      priorBenefitPeriodSequence: 3,
+      priorElectionStartDate: "2026-04-01",
+    });
     expect(plan.inherited).toEqual({ sequence: 3, state: "active", ctiRequired: false });
     expect(plan.next).toEqual({ sequence: 4, state: "pending", ctiRequired: true });
   });
@@ -150,9 +185,26 @@ describe("M6-T09 — §7.6 W-DC-03 transfer-in inherited period sequencing (D9)"
 function seedAdmission(opts: { bereavementOptOut?: boolean; periodStart?: string } = {}) {
   return createInMemoryAdmissionBackend({
     records: [
-      { id: ADMISSION, organizationId: ORG, kind: "admission", state: "active", patientId: "pat_1", bereavementOptOut: opts.bereavementOptOut },
+      {
+        id: ADMISSION,
+        organizationId: ORG,
+        kind: "admission",
+        state: "active",
+        patientId: "pat_1",
+        bereavementOptOut: opts.bereavementOptOut,
+      },
       ...(opts.periodStart
-        ? [{ id: PERIOD, organizationId: ORG, kind: "election_period", state: "active", admissionId: ADMISSION, sequence: 1, periodStartDate: opts.periodStart }]
+        ? [
+            {
+              id: PERIOD,
+              organizationId: ORG,
+              kind: "election_period",
+              state: "active",
+              admissionId: ADMISSION,
+              sequence: 1,
+              periodStartDate: opts.periodStart,
+            },
+          ]
         : []),
     ],
   });
@@ -161,16 +213,36 @@ function seedAdmission(opts: { bereavementOptOut?: boolean; periodStart?: string
 describe("M6-T09 — slice: discharge cascades (§7.6)", () => {
   it("W-DC-01: death routes the admission to bereavement and fires the bereavement-eligible event", async () => {
     const { service, events } = seedAdmission({ periodStart: "2026-01-30" });
-    const res = await service.discharge(ORG, ADMISSION, { reason: "death", dischargeDate: "2026-03-15", narrative: "patient expired at home" }, "u1");
+    const res = await service.discharge(
+      ORG,
+      ADMISSION,
+      { reason: "death", dischargeDate: "2026-03-15", narrative: "patient expired at home" },
+      "u1",
+    );
     expect(res.requiresMedicalDirectorCosign).toBe(false);
-    expect(events).toEqual(expect.arrayContaining(["m6.discharge.created", "m6.admission.discharged", "m6.discharge.death", "m6.bereavement.eligible"]));
+    expect(events).toEqual(
+      expect.arrayContaining([
+        "m6.discharge.created",
+        "m6.admission.discharged",
+        "m6.discharge.death",
+        "m6.bereavement.eligible",
+      ]),
+    );
     const adm = await service.getAdmission(ORG, ADMISSION);
     expect(adm?.state).toBe("bereavement");
   });
 
   it("W-DC-01: the M5 opt-out flag suppresses the bereavement-eligible event", async () => {
-    const { service, events } = seedAdmission({ bereavementOptOut: true, periodStart: "2026-01-30" });
-    await service.discharge(ORG, ADMISSION, { reason: "death", dischargeDate: "2026-03-15", narrative: "patient expired at home" }, "u1");
+    const { service, events } = seedAdmission({
+      bereavementOptOut: true,
+      periodStart: "2026-01-30",
+    });
+    await service.discharge(
+      ORG,
+      ADMISSION,
+      { reason: "death", dischargeDate: "2026-03-15", narrative: "patient expired at home" },
+      "u1",
+    );
     expect(events).toContain("m6.discharge.death");
     expect(events).not.toContain("m6.bereavement.eligible");
   });
@@ -180,7 +252,12 @@ describe("M6-T09 — slice: discharge cascades (§7.6)", () => {
     const filed = await service.discharge(
       ORG,
       ADMISSION,
-      { reason: "for_cause", dischargeDate: "2026-06-20", narrative: "for-cause per 418.26", forCauseReason: "z".repeat(30) },
+      {
+        reason: "for_cause",
+        dischargeDate: "2026-06-20",
+        narrative: "for-cause per 418.26",
+        forCauseReason: "z".repeat(30),
+      },
       "u1",
     );
     expect(filed.requiresMedicalDirectorCosign).toBe(true);
@@ -199,13 +276,23 @@ describe("M6-T09 — slice: discharge cascades (§7.6)", () => {
   it("§6.3: a too-short no_longer_terminal narrative is rejected (DISCHARGE_NARRATIVE_TOO_SHORT)", async () => {
     const { service } = seedAdmission();
     await expect(
-      service.discharge(ORG, ADMISSION, { reason: "no_longer_terminal", dischargeDate: "2026-06-20", narrative: "too short" }, "u1"),
+      service.discharge(
+        ORG,
+        ADMISSION,
+        { reason: "no_longer_terminal", dischargeDate: "2026-06-20", narrative: "too short" },
+        "u1",
+      ),
     ).rejects.toMatchObject({ code: "DISCHARGE_NARRATIVE_TOO_SHORT", statusCode: 422 });
   });
 
   it("W-DC-03: transfer-in creates the inherited active + next pending periods (no counter restart)", async () => {
     const { service, events } = seedAdmission();
-    const res = await service.transferIn(ORG, ADMISSION, { priorBenefitPeriodSequence: 3, priorElectionStartDate: "2026-04-01" }, "u1");
+    const res = await service.transferIn(
+      ORG,
+      ADMISSION,
+      { priorBenefitPeriodSequence: 3, priorElectionStartDate: "2026-04-01" },
+      "u1",
+    );
     expect(res.currentElectionPeriodSequence).toBe(3);
     expect(events).toContain("m6.transfer.created");
     const periods = await service.listElectionPeriods(ORG, ADMISSION);
@@ -215,11 +302,15 @@ describe("M6-T09 — slice: discharge cascades (§7.6)", () => {
   it("revocation and transfer-out discharge the admission; LOC change emits m6.loc.changed", async () => {
     const rev = seedAdmission();
     await rev.service.createRevocation(ORG, ADMISSION, "u1");
-    expect(rev.events).toEqual(expect.arrayContaining(["m6.revocation.created", "m6.admission.discharged"]));
+    expect(rev.events).toEqual(
+      expect.arrayContaining(["m6.revocation.created", "m6.admission.discharged"]),
+    );
 
     const xfer = seedAdmission();
     await xfer.service.transferOut(ORG, ADMISSION, "u1");
-    expect(xfer.events).toEqual(expect.arrayContaining(["m6.transfer.created", "m6.admission.discharged"]));
+    expect(xfer.events).toEqual(
+      expect.arrayContaining(["m6.transfer.created", "m6.admission.discharged"]),
+    );
 
     const loc = seedAdmission();
     await loc.service.changeLoc(ORG, ADMISSION, "gip");
@@ -241,7 +332,15 @@ function headerAuth(request: FastifyRequest): void {
 
 function makeServer() {
   const backend = createInMemoryAdmissionBackend({
-    records: [{ id: ADMISSION, organizationId: ORG, kind: "admission", state: "active", patientId: "pat_1" }],
+    records: [
+      {
+        id: ADMISSION,
+        organizationId: ORG,
+        kind: "admission",
+        state: "active",
+        patientId: "pat_1",
+      },
+    ],
   });
   const grantStore = createInMemoryEffectivePermissionStore([
     {
@@ -252,7 +351,11 @@ function makeServer() {
           roleKey: "seed",
           enabled: true,
           expiresAt: null,
-          permissionKeys: ["discharge.no_longer_terminal", "discharge.for_cause", "discharge.death"],
+          permissionKeys: [
+            "discharge.no_longer_terminal",
+            "discharge.for_cause",
+            "discharge.death",
+          ],
         },
       ],
     },
@@ -284,7 +387,11 @@ describe("M6-T09 — route layer (§6.3)", () => {
       method: "POST",
       url: `/api/v1/admissions/${ADMISSION}/discharge`,
       headers: MD,
-      payload: { reason: "no_longer_terminal", dischargeDate: "2026-06-20", narrative: "too short!" },
+      payload: {
+        reason: "no_longer_terminal",
+        dischargeDate: "2026-06-20",
+        narrative: "too short!",
+      },
     });
     expect(res.statusCode).toBe(422);
     expect(res.json().error.code).toBe("DISCHARGE_NARRATIVE_TOO_SHORT");
@@ -297,7 +404,11 @@ describe("M6-T09 — route layer (§6.3)", () => {
       method: "POST",
       url: `/api/v1/admissions/${ADMISSION}/discharge`,
       headers: MD,
-      payload: { reason: "for_cause", dischargeDate: "2026-06-20", narrative: "for-cause discharge per 418.26" },
+      payload: {
+        reason: "for_cause",
+        dischargeDate: "2026-06-20",
+        narrative: "for-cause discharge per 418.26",
+      },
     });
     expect(res.statusCode).toBe(412);
     expect(res.json().error.code).toBe("NARRATIVE_REQUIRED_FOR_CAUSE");

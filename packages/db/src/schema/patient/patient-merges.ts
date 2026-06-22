@@ -3,9 +3,9 @@
 // reversibility (`unmerged_at`). PHI-bearing → three-column tenancy rule. No self-merge.
 import { sql } from "drizzle-orm";
 import { check, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 import { users } from "../users";
 import { patients } from "./patients";
 

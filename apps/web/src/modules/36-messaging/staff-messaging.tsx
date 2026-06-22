@@ -1,10 +1,10 @@
+import { ConversationView, EmptyState, LoadingSpinner, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/36-messaging — Internal Staff Secure Messaging (M36, Track A).
 // Spec: docs/ui/screens/core/WARDENX_UI_STAFF_MESSAGING.md — "Use Conversation View."
 // Channel list | message thread + composer. Backed by GET /messaging/channels,
 // GET/POST /messaging/channels/:id/messages via the generated typed client. Imports only leaves.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { ConversationView, EmptyState, LoadingSpinner, useApiClient } from "@wardenx/ui";
 
 interface ChannelSummary {
   channelId: string;
@@ -54,13 +54,29 @@ export function StaffMessaging(): JSX.Element {
     <ConversationView
       list={<ChannelList channels={channels} activeId={activeId} onSelect={setActiveId} />}
     >
-      {activeId ? <Thread channelId={activeId} /> : <EmptyState title="No channel selected" description="Pick a channel to view its messages." />}
+      {activeId ? (
+        <Thread channelId={activeId} />
+      ) : (
+        <EmptyState
+          title="No channel selected"
+          description="Pick a channel to view its messages."
+        />
+      )}
     </ConversationView>
   );
 }
 
-function ChannelList({ channels, activeId, onSelect }: { channels: ChannelSummary[]; activeId: string | null; onSelect: (id: string) => void }): JSX.Element {
-  if (channels.length === 0) return <EmptyState title="No channels" description="You’re not a member of any channel yet." />;
+function ChannelList({
+  channels,
+  activeId,
+  onSelect,
+}: {
+  channels: ChannelSummary[];
+  activeId: string | null;
+  onSelect: (id: string) => void;
+}): JSX.Element {
+  if (channels.length === 0)
+    return <EmptyState title="No channels" description="You’re not a member of any channel yet." />;
   return (
     <ul style={{ listStyle: "none", margin: 0, padding: "0.5rem" }}>
       {channels.map((c) => (
@@ -68,11 +84,32 @@ function ChannelList({ channels, activeId, onSelect }: { channels: ChannelSummar
           <button
             type="button"
             onClick={() => onSelect(c.channelId)}
-            style={{ width: "100%", textAlign: "left", padding: "0.5rem 0.625rem", border: "none", borderRadius: "0.375rem", cursor: "pointer", background: c.channelId === activeId ? "#eff6ff" : "transparent", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+            style={{
+              width: "100%",
+              textAlign: "left",
+              padding: "0.5rem 0.625rem",
+              border: "none",
+              borderRadius: "0.375rem",
+              cursor: "pointer",
+              background: c.channelId === activeId ? "#eff6ff" : "transparent",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
           >
             <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>{channelLabel(c)}</span>
             {c.unreadCount > 0 ? (
-              <span style={{ fontSize: "0.7rem", background: "#1d4ed8", color: "#fff", borderRadius: "999px", padding: "0 0.4rem" }}>{c.unreadCount}</span>
+              <span
+                style={{
+                  fontSize: "0.7rem",
+                  background: "#1d4ed8",
+                  color: "#fff",
+                  borderRadius: "999px",
+                  padding: "0 0.4rem",
+                }}
+              >
+                {c.unreadCount}
+              </span>
             ) : null}
           </button>
         </li>
@@ -116,7 +153,16 @@ function Thread({ channelId }: { channelId: string }): JSX.Element {
 
   return (
     <>
-      <div style={{ flex: 1, overflow: "auto", padding: "1rem 1.5rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      <div
+        style={{
+          flex: 1,
+          overflow: "auto",
+          padding: "1rem 1.5rem",
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.75rem",
+        }}
+      >
         {messages === null ? (
           <LoadingSpinner />
         ) : messages.length === 0 ? (
@@ -132,7 +178,14 @@ function Thread({ channelId }: { channelId: string }): JSX.Element {
           ))
         )}
       </div>
-      <div style={{ borderTop: "1px solid #e5e7eb", padding: "0.75rem 1.5rem", display: "flex", gap: "0.5rem" }}>
+      <div
+        style={{
+          borderTop: "1px solid #e5e7eb",
+          padding: "0.75rem 1.5rem",
+          display: "flex",
+          gap: "0.5rem",
+        }}
+      >
         <input
           aria-label="Message"
           placeholder="Write a message…"
@@ -141,7 +194,12 @@ function Thread({ channelId }: { channelId: string }): JSX.Element {
           onKeyDown={(e) => {
             if (e.key === "Enter") void send();
           }}
-          style={{ flex: 1, padding: "0.5rem 0.75rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem" }}
+          style={{
+            flex: 1,
+            padding: "0.5rem 0.75rem",
+            border: "1px solid #e5e7eb",
+            borderRadius: "0.5rem",
+          }}
         />
         <button type="button" onClick={() => void send()} disabled={sending || !draft.trim()}>
           {sending ? "Sending…" : "Send"}

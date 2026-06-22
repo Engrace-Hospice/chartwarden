@@ -1,3 +1,13 @@
+import {
+  type HashVerifySampleRow,
+  MESSAGING_QUEUES,
+  MESSAGING_QUEUE_PARAMETERS,
+  type RetentionCandidate,
+  buildDlqAuditRecord,
+  createInMemoryHashVerifyPorts,
+  planRetentionDestruction,
+  runHashVerify,
+} from "@wardenx/messaging";
 // M36-T08 — messaging job processors + queue parameters (M36 spec §4.4 / §4.4.1 / §8.1.2).
 //
 // Accept: every §4.4 queue declares full §4.4.1 parameters with a `.dlq`; hash_verify partitions a
@@ -5,16 +15,6 @@
 // (M36-F03); retention planning withholds legal-hold rows (M36-F10); a DLQ landing hashes its
 // payload and opens `pending` (OPS-035 no silent drain).
 import { describe, expect, it } from "vitest";
-import {
-  MESSAGING_QUEUES,
-  MESSAGING_QUEUE_PARAMETERS,
-  buildDlqAuditRecord,
-  createInMemoryHashVerifyPorts,
-  planRetentionDestruction,
-  runHashVerify,
-  type HashVerifySampleRow,
-  type RetentionCandidate,
-} from "@wardenx/messaging";
 
 const RUN = "run_1";
 const AT = "2026-06-15T04:00:00Z";
@@ -54,7 +54,9 @@ describe("M36-T08 runHashVerify (§8.1.2 / M36-F03)", () => {
   });
 
   it("emits m36.integrity.hash_mismatch on divergence", async () => {
-    const { ports, mismatches } = createInMemoryHashVerifyPorts({ recomputed: { m1: "DIFFERENT" } });
+    const { ports, mismatches } = createInMemoryHashVerifyPorts({
+      recomputed: { m1: "DIFFERENT" },
+    });
     const result = await runHashVerify(RUN, AT, [row("m1", "h1")], ports);
     expect(result.mismatched).toBe(1);
     expect(mismatches()).toEqual([
@@ -97,8 +99,20 @@ describe("M36-T08 runHashVerify (§8.1.2 / M36-F03)", () => {
 describe("M36-T08 planRetentionDestruction (§4.4 / M36-F10)", () => {
   it("withholds legal-hold rows from destruction", () => {
     const candidates: RetentionCandidate[] = [
-      { messageId: "m1", channelId: "c1", retentionClass: "care_related", windowEnd: AT, legalHold: false },
-      { messageId: "m2", channelId: "c1", retentionClass: "care_related", windowEnd: AT, legalHold: true },
+      {
+        messageId: "m1",
+        channelId: "c1",
+        retentionClass: "care_related",
+        windowEnd: AT,
+        legalHold: false,
+      },
+      {
+        messageId: "m2",
+        channelId: "c1",
+        retentionClass: "care_related",
+        windowEnd: AT,
+        legalHold: true,
+      },
     ];
     const plan = planRetentionDestruction(candidates);
     expect(plan.toDestroy.map((c) => c.messageId)).toEqual(["m1"]);

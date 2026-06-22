@@ -1,3 +1,8 @@
+import {
+  type StoredConsent,
+  createConsentEvaluator,
+  createInMemoryConsentStore,
+} from "@wardenx/consent";
 // apps/backend/__tests__/consent-events.test.ts — M39-T08 outbox/alerts/consumers (§4.5/§4.6/§4.10).
 //
 // Covers: (1) the M5 privacy-flag-snapshot recompute integration — M39's signed/revoked Part 2
@@ -5,10 +10,13 @@
 // cross-module SUD chain end-to-end; (2) the §4.10 alert payloads validate against M36's Foundation
 // registry (collision-free, well-namespaced under m39.); (3) the D13 post-death expiry decision.
 import { createAlertPayloadRegistry } from "@wardenx/messaging";
-import { type StoredConsent, createConsentEvaluator, createInMemoryConsentStore } from "@wardenx/consent";
-// M5's privacy-flag recompute consumer + the §7.6 SUD read gate (M5-T10; inert until M39 — wired here).
-import { applyConsentChanged, isSudReadAllowed, recomputePrivacyFlags } from "../src/modules/05-patient/privacy/index";
 import { describe, expect, it } from "vitest";
+// M5's privacy-flag recompute consumer + the §7.6 SUD read gate (M5-T10; inert until M39 — wired here).
+import {
+  applyConsentChanged,
+  isSudReadAllowed,
+  recomputePrivacyFlags,
+} from "../src/modules/05-patient/privacy/index";
 import {
   M39_ALERT_PAYLOADS,
   consentChangeToPrivacyPayload,
@@ -62,7 +70,12 @@ describe("M39-T08 — m39.consent.* → M5 privacy_flag_snapshot recompute (§4.
 
   it("non-SUD consent types drive no M5 privacy signal (HIV/MH/genetic are M5-delegated)", () => {
     expect(
-      consentChangeToPrivacyPayload({ organizationId: ORG, patientId: PAT, typeKey: "hipaa_release", action: "signed" }),
+      consentChangeToPrivacyPayload({
+        organizationId: ORG,
+        patientId: PAT,
+        typeKey: "hipaa_release",
+        action: "signed",
+      }),
     ).toBeNull();
   });
 
@@ -78,31 +91,61 @@ describe("M39-T11 — the SUD-redaction chain end-to-end (M39 evaluator ↔ M5 �
 
   function part2Consent(recipients: StoredConsent["recipients"]): StoredConsent {
     return {
-      id: "c-part2", organizationId: ORG2, patientId: PT, typeKey: "42_cfr_part_2_release",
-      status: "active", version: 0, effectiveAtMs: 0, expiresAtMs: null, survivesDeath: false,
-      scopeDescriptor: {}, recipients,
+      id: "c-part2",
+      organizationId: ORG2,
+      patientId: PT,
+      typeKey: "42_cfr_part_2_release",
+      status: "active",
+      version: 0,
+      effectiveAtMs: 0,
+      expiresAtMs: null,
+      survivesDeath: false,
+      scopeDescriptor: {},
+      recipients,
     };
   }
 
   it("named recipient discloses SUD; unlisted is redacted; revoke re-restricts M5's §7.6 read gate", async () => {
     // 1. M39 evaluator: a Part 2 release naming `rx` discloses SUD to rx, redacts the vendor.
     const { store } = createInMemoryConsentStore({
-      consents: [part2Consent([{ removedAtMs: null, expiresAtMs: null, recipientResolvedId: "rx" }])],
+      consents: [
+        part2Consent([{ removedAtMs: null, expiresAtMs: null, recipientResolvedId: "rx" }]),
+      ],
       deceasedPatientIds: new Set(),
     });
     const evaluator = createConsentEvaluator(store);
-    const rx = await evaluator.evaluateForDisclosure({ organizationId: ORG2, patientId: PT, recipientResolvedId: "rx", callerModule: "m28" });
+    const rx = await evaluator.evaluateForDisclosure({
+      organizationId: ORG2,
+      patientId: PT,
+      recipientResolvedId: "rx",
+      callerModule: "m28",
+    });
     expect(rx.redactSudContent).toBe(false);
-    const vendor = await evaluator.evaluateForDisclosure({ organizationId: ORG2, patientId: PT, recipientResolvedId: "vendor", callerModule: "m28" });
+    const vendor = await evaluator.evaluateForDisclosure({
+      organizationId: ORG2,
+      patientId: PT,
+      recipientResolvedId: "vendor",
+      callerModule: "m28",
+    });
     expect(vendor.redactSudContent).toBe(true);
 
     // 2. M5 §7.6 read gate: with an active SUD consent present, a SUD-flagged read is allowed.
-    const signed = consentChangeToPrivacyPayload({ organizationId: ORG2, patientId: PT, typeKey: "42_cfr_part_2_release", action: "signed" });
+    const signed = consentChangeToPrivacyPayload({
+      organizationId: ORG2,
+      patientId: PT,
+      typeKey: "42_cfr_part_2_release",
+      action: "signed",
+    });
     const signedFlags = recomputePrivacyFlags(signed!.signals);
     expect(isSudReadAllowed(signedFlags, /*sudConsentPresent*/ true)).toBe(true);
 
     // 3. Revoke → M5 recomputes the snapshot → the sud flag returns → the §7.6 gate closes without consent.
-    const revoked = consentChangeToPrivacyPayload({ organizationId: ORG2, patientId: PT, typeKey: "42_cfr_part_2_release", action: "revoked" });
+    const revoked = consentChangeToPrivacyPayload({
+      organizationId: ORG2,
+      patientId: PT,
+      typeKey: "42_cfr_part_2_release",
+      action: "revoked",
+    });
     const revokedFlags = recomputePrivacyFlags(revoked!.signals);
     expect(revokedFlags).toContain("sud");
     expect(isSudReadAllowed(revokedFlags, /*sudConsentPresent*/ false)).toBe(false);

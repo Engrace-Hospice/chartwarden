@@ -7,11 +7,20 @@
 // monthly; the Drizzle definition is logical (composite PK incl. the partition key), the actual
 // PARTITION BY + monthly partitions are emitted by the T03 migration (§3.4/§3.6). PHI-bearing
 // (patient_id) → the three-column tenancy rule. No write-audit trigger (it IS the audit table).
-import { boolean, index, integer, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { consentTypeKey } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 
 export const consentEvalAudit = pgTable(
   "consent_eval_audit",

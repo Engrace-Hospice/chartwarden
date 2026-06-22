@@ -3,11 +3,11 @@
 // hard-block/soft-warn counts, and the clinician's per-passage accept/edit/reject decisions. PHI-bearing
 // → three-column tenancy rule (denormalized from the parent assembled output). RLS + the M4 write-audit
 // trigger land in migration 0031 (M8-T03).
-import { pgTable, index, integer, jsonb, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
+import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 import { hearthnoteAssembledOutputs } from "./hearthnote-assembled-outputs";
 
 export const hearthnoteLlmModifications = pgTable(

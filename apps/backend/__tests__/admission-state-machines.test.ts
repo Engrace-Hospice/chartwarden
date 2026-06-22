@@ -22,7 +22,9 @@ import {
 
 /** Pull the first side effect of a given kind (test helper). */
 function outboxEvents(effects: ReadonlyArray<{ kind: string }>): string[] {
-  return effects.filter((e): e is { kind: "outbox"; event: string } => e.kind === "outbox").map((e) => e.event);
+  return effects
+    .filter((e): e is { kind: "outbox"; event: string } => e.kind === "outbox")
+    .map((e) => e.event);
 }
 
 describe("calendar helper (§2.4)", () => {
@@ -46,11 +48,14 @@ describe("Admission state machine (§2.3.1)", () => {
   });
 
   it("rejects an illegal event from a state (nothing matches on a string)", () => {
-    expect(() => transitionAdmission("closed", { type: "placeOnHold", reason: "x" } as never)).toThrow(
-      AdmissionStateError,
-    );
+    expect(() =>
+      transitionAdmission("closed", { type: "placeOnHold", reason: "x" } as never),
+    ).toThrow(AdmissionStateError);
     try {
-      transitionAdmission("active", { type: "acknowledgeNoticeOfRights", alreadyAcknowledged: false } as never);
+      transitionAdmission("active", {
+        type: "acknowledgeNoticeOfRights",
+        alreadyAcknowledged: false,
+      } as never);
     } catch (e) {
       expect((e as AdmissionStateError).code).toBe("ILLEGAL_TRANSITION");
     }
@@ -74,7 +79,11 @@ describe("Admission state machine (§2.3.1)", () => {
       expect.arrayContaining(["m6.admission.activated", "m6.election.period_started"]),
     );
 
-    const noNor = () => transitionAdmission("notice_of_rights_acknowledged", { ...base, noticeOfRightsAcknowledged: false });
+    const noNor = () =>
+      transitionAdmission("notice_of_rights_acknowledged", {
+        ...base,
+        noticeOfRightsAcknowledged: false,
+      });
     expect(noNor).toThrow(/notice of rights/i);
     try {
       transitionAdmission("notice_of_rights_acknowledged", { ...base, certificationSigned: false });
@@ -101,7 +110,9 @@ describe("Admission state machine (§2.3.1)", () => {
       at: "2026-06-21",
     };
     expect(() => transitionAdmission("notice_of_rights_acknowledged", base)).toThrow(/overdue/i);
-    expect(transitionAdmission("notice_of_rights_acknowledged", { ...base, donOverride: true }).to).toBe("active");
+    expect(
+      transitionAdmission("notice_of_rights_acknowledged", { ...base, donOverride: true }).to,
+    ).toBe("active");
   });
 
   it("executeDischarge: death → bereavement + bereavement.eligible; non-death → discharged", () => {
@@ -203,12 +214,20 @@ describe("ElectionPeriod state machine (§2.3.2)", () => {
 
   it("R-EL-01 representative signer needs an active DPOA consent", () => {
     try {
-      transitionElectionPeriod("pending", { ...sign, signerKind: "representative", hasActiveDpoaConsent: false });
+      transitionElectionPeriod("pending", {
+        ...sign,
+        signerKind: "representative",
+        hasActiveDpoaConsent: false,
+      });
     } catch (e) {
       expect((e as AdmissionStateError).code).toBe("REPRESENTATIVE_AUTHORITY_MISSING");
     }
     expect(
-      transitionElectionPeriod("pending", { ...sign, signerKind: "representative", hasActiveDpoaConsent: true }).to,
+      transitionElectionPeriod("pending", {
+        ...sign,
+        signerKind: "representative",
+        hasActiveDpoaConsent: true,
+      }).to,
     ).toBe("signed");
   });
 
@@ -278,8 +297,12 @@ describe("CTI state machine (§2.3.3)", () => {
       periodStart: "2026-06-21",
     };
     expect(transitionCertification("awaiting_hospice_md", sig).to).toBe("awaiting_attending");
-    expect(transitionCertification("awaiting_hospice_md", { ...sig, patientHasAttending: false }).to).toBe("signed");
-    expect(transitionCertification("awaiting_hospice_md", { ...sig, sequence: 2 }).to).toBe("signed");
+    expect(
+      transitionCertification("awaiting_hospice_md", { ...sig, patientHasAttending: false }).to,
+    ).toBe("signed");
+    expect(transitionCertification("awaiting_hospice_md", { ...sig, sequence: 2 }).to).toBe(
+      "signed",
+    );
   });
 
   it("late hospice-MD sign sets signed_late + requires a late_reason (R-CTI-01)", () => {
@@ -296,7 +319,10 @@ describe("CTI state machine (§2.3.3)", () => {
     } catch (e) {
       expect((e as AdmissionStateError).code).toBe("CTI_LATE_REASON_REQUIRED");
     }
-    const ok = transitionCertification("awaiting_hospice_md", { ...late, lateReason: "delayed signature" });
+    const ok = transitionCertification("awaiting_hospice_md", {
+      ...late,
+      lateReason: "delayed signature",
+    });
     expect(ok.effects.some((e) => e.kind === "set_flag" && e.field === "signed_late")).toBe(true);
     expect(outboxEvents(ok.effects)).toContain("m6.cti.late_flagged");
   });
@@ -319,27 +345,41 @@ describe("CTI state machine (§2.3.3)", () => {
   it("void requires permission AND period not yet active", () => {
     expect(CERTIFICATION_GRAPH.signed).toContain("void");
     try {
-      transitionCertification("signed", { type: "void", hasVoidPermission: false, periodNotYetActive: true });
+      transitionCertification("signed", {
+        type: "void",
+        hasVoidPermission: false,
+        periodNotYetActive: true,
+      });
     } catch (e) {
       expect((e as AdmissionStateError).code).toBe("CTI_VOID_FORBIDDEN");
     }
-    expect(transitionCertification("signed", { type: "void", hasVoidPermission: true, periodNotYetActive: true }).to).toBe(
-      "voided",
-    );
+    expect(
+      transitionCertification("signed", {
+        type: "void",
+        hasVoidPermission: true,
+        periodNotYetActive: true,
+      }).to,
+    ).toBe("voided");
   });
 });
 
 describe("F2F state machine (§2.3.4)", () => {
   it("checkF2fWindow: in [start-30d, start-1d] is within window; outside w/o override throws", () => {
-    expect(checkF2fWindow({ periodStart: "2026-07-01", encounterDate: "2026-06-15", hasOverride: false }).withinWindow).toBe(
-      true,
-    );
+    expect(
+      checkF2fWindow({ periodStart: "2026-07-01", encounterDate: "2026-06-15", hasOverride: false })
+        .withinWindow,
+    ).toBe(true);
     expect(() =>
-      checkF2fWindow({ periodStart: "2026-07-01", encounterDate: "2026-07-05", hasOverride: false }),
+      checkF2fWindow({
+        periodStart: "2026-07-01",
+        encounterDate: "2026-07-05",
+        hasOverride: false,
+      }),
     ).toThrow(/window/i);
     // out of window but overridden → recorded as not-within-window, no throw
     expect(
-      checkF2fWindow({ periodStart: "2026-07-01", encounterDate: "2026-05-01", hasOverride: true }).withinWindow,
+      checkF2fWindow({ periodStart: "2026-07-01", encounterDate: "2026-05-01", hasOverride: true })
+        .withinWindow,
     ).toBe(false);
   });
 
@@ -377,12 +417,20 @@ describe("F2F state machine (§2.3.4)", () => {
 
   it("window override needs the Medical Director role + a ≥20-char reason (R-F2F-03)", () => {
     try {
-      transitionFaceToFace("completed", { type: "requestWindowOverride", isMedicalDirector: false, reason: "x".repeat(25) });
+      transitionFaceToFace("completed", {
+        type: "requestWindowOverride",
+        isMedicalDirector: false,
+        reason: "x".repeat(25),
+      });
     } catch (e) {
       expect((e as AdmissionStateError).code).toBe("F2F_OVERRIDE_FORBIDDEN");
     }
     try {
-      transitionFaceToFace("completed", { type: "requestWindowOverride", isMedicalDirector: true, reason: "short" });
+      transitionFaceToFace("completed", {
+        type: "requestWindowOverride",
+        isMedicalDirector: true,
+        reason: "short",
+      });
     } catch (e) {
       expect((e as AdmissionStateError).code).toBe("F2F_OVERRIDE_REASON_TOO_SHORT");
     }
@@ -443,27 +491,39 @@ describe("LevelOfCarePeriod state machine (§2.3.5)", () => {
   });
 
   it("assigning → active on bed confirm; active → ended", () => {
-    expect(transitionLevelOfCare("assigning", { type: "ipuConfirmBedAssignment", bedVerified: true }).to).toBe("active");
-    expect(transitionLevelOfCare("active", { type: "end", endedAt: "2026-06-21" }).to).toBe("ended");
+    expect(
+      transitionLevelOfCare("assigning", { type: "ipuConfirmBedAssignment", bedVerified: true }).to,
+    ).toBe("active");
+    expect(transitionLevelOfCare("active", { type: "end", endedAt: "2026-06-21" }).to).toBe(
+      "ended",
+    );
   });
 });
 
 describe("Revocation / Transfer / Discharge commands (§2.3.6)", () => {
   it("revocation closes the period + ends LCP; effective<signed is rejected (R-RV-01)", () => {
-    const ok = planRevocation({ electionPeriodActive: true, signedAt: "2026-06-20", effectiveAt: "2026-06-21" });
+    const ok = planRevocation({
+      electionPeriodActive: true,
+      signedAt: "2026-06-20",
+      effectiveAt: "2026-06-21",
+    });
     expect(outboxEvents(ok.effects)).toContain("m6.revocation.created");
     expect(ok.effects.some((e) => e.kind === "end_election_period")).toBe(true);
     try {
-      planRevocation({ electionPeriodActive: true, signedAt: "2026-06-21", effectiveAt: "2026-06-20" });
+      planRevocation({
+        electionPeriodActive: true,
+        signedAt: "2026-06-21",
+        effectiveAt: "2026-06-20",
+      });
     } catch (e) {
       expect((e as AdmissionStateError).code).toBe("REVOCATION_EFFECTIVE_BEFORE_SIGNED");
     }
   });
 
   it("only one transfer per period (R-XFR-01); transfer-in validates source CCN (R-XFR-02)", () => {
-    expect(outboxEvents(planTransferOut({ transferAlreadyDoneThisPeriod: false }).effects)).toContain(
-      "m6.transfer.created",
-    );
+    expect(
+      outboxEvents(planTransferOut({ transferAlreadyDoneThisPeriod: false }).effects),
+    ).toContain("m6.transfer.created");
     try {
       planTransferOut({ transferAlreadyDoneThisPeriod: true });
     } catch (e) {
@@ -484,7 +544,9 @@ describe("Revocation / Transfer / Discharge commands (§2.3.6)", () => {
       today: "2026-06-21",
       deathCertifierCredentialed: true,
     });
-    expect(outboxEvents(death.effects)).toEqual(expect.arrayContaining(["m6.discharge.death", "m6.bereavement.eligible"]));
+    expect(outboxEvents(death.effects)).toEqual(
+      expect.arrayContaining(["m6.discharge.death", "m6.bereavement.eligible"]),
+    );
   });
 });
 

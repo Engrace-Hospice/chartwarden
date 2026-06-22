@@ -10,10 +10,15 @@
 // the injected `AdminMembershipReader` (the M3-owned `createDbAdminMembershipReader`).
 import type { DbClient } from "@wardenx/db";
 import { schema } from "@wardenx/db";
-import type { AdminMembershipReader } from "@wardenx/types";
 import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
+import type { AdminMembershipReader } from "@wardenx/types";
 import { and, eq, sql } from "drizzle-orm";
-import type { AccountStatus, MembershipRecord, MembershipRepository, MembershipStatus } from "./identity-ports";
+import type {
+  AccountStatus,
+  MembershipRecord,
+  MembershipRepository,
+  MembershipStatus,
+} from "./identity-ports";
 
 // The wrapped user's display name / email / account status come from the M1-owned `user` table, and
 // `lastLoginAt` from the most recent M1-owned `session` row — both joined in here (FB-T12). M2 reads
@@ -63,7 +68,9 @@ function toRecord(row: MembershipDbRow, adminIds: ReadonlySet<string>): Membersh
     organizationName: row.organizationName,
     status: row.status,
     isAdmin: adminIds.has(row.membershipId),
-    defaultLocationIds: Array.isArray(row.defaultLocationIds) ? (row.defaultLocationIds as string[]) : [],
+    defaultLocationIds: Array.isArray(row.defaultLocationIds)
+      ? (row.defaultLocationIds as string[])
+      : [],
     displayName: row.displayName,
     email: row.email,
     accountStatus: row.accountStatus,
@@ -96,7 +103,10 @@ export function createDbMembershipRepository(
       const rows = (await tx
         .select(MEMBERSHIP_COLUMNS)
         .from(schema.memberships)
-        .innerJoin(schema.organizations, eq(schema.organizations.id, schema.memberships.organizationId))
+        .innerJoin(
+          schema.organizations,
+          eq(schema.organizations.id, schema.memberships.organizationId),
+        )
         .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
         .where(where)) as MembershipDbRow[];
       const adminIds = await admin.adminMembershipIds(orgId);
@@ -112,7 +122,10 @@ export function createDbMembershipRepository(
       const rows = (await tx
         .select(MEMBERSHIP_COLUMNS)
         .from(schema.memberships)
-        .innerJoin(schema.organizations, eq(schema.organizations.id, schema.memberships.organizationId))
+        .innerJoin(
+          schema.organizations,
+          eq(schema.organizations.id, schema.memberships.organizationId),
+        )
         .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
         .where(eq(schema.memberships.id, membershipId))
         .limit(1)) as MembershipDbRow[];
@@ -133,7 +146,10 @@ export function createDbMembershipRepository(
       const rows = (await db
         .select(MEMBERSHIP_COLUMNS)
         .from(schema.memberships)
-        .innerJoin(schema.organizations, eq(schema.organizations.id, schema.memberships.organizationId))
+        .innerJoin(
+          schema.organizations,
+          eq(schema.organizations.id, schema.memberships.organizationId),
+        )
         .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
         .where(eq(schema.memberships.userId, userId))) as MembershipDbRow[];
       // Admin status is per-org; resolve each org's admin set once.
@@ -154,7 +170,10 @@ export function createDbMembershipRepository(
       const existing = await oneById(membershipId);
       if (!existing) throw new Error(`membership ${membershipId} not found`);
       await withOrgContext(db, ctx(existing.organizationId), (tx) =>
-        tx.update(schema.memberships).set({ status }).where(eq(schema.memberships.id, membershipId)),
+        tx
+          .update(schema.memberships)
+          .set({ status })
+          .where(eq(schema.memberships.id, membershipId)),
       );
       return { ...existing, status };
     },

@@ -5,10 +5,10 @@
 // RLS + the M4 write-audit trigger land in migration 0029 (M7-T02).
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { carePlanSignerRole } from "../../enums";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 import { carePlanVersions } from "./care-plan-versions";
 
 export const carePlanSignatures = pgTable(

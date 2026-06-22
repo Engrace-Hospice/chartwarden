@@ -197,7 +197,11 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
 
 /** The event types of the three `system_locked` platform rules (§7.4) — the always-on floor a
  *  tenant can neither disable nor loosen: SOS, NOE late-risk, backup-failure. */
-export const SYSTEM_LOCKED_EVENT_TYPES = ["field_safety.sos", "noe.late_risk", "system.backup_failure"] as const;
+export const SYSTEM_LOCKED_EVENT_TYPES = [
+  "field_safety.sos",
+  "noe.late_risk",
+  "system.backup_failure",
+] as const;
 
 /** Row shape the boot slice UPSERTs into `alert_rule` (mirrors the Drizzle columns, §3.6).
  *  Structural (no `@wardenx/db` import) so the package stays a leaf; `organizationId` is null for

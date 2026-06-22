@@ -2,8 +2,8 @@
 // Proves the composition-root mount mechanism: module REST routes mount behind the same auth/security
 // chain as the foundation routes, and the hook is opt-in (absent → only foundation routes are served).
 import { requireRequestContext } from "@wardenx/tenancy";
-import { buildServer } from "../src/bootstrap/index";
 import { afterEach, describe, expect, it } from "vitest";
+import { buildServer } from "../src/bootstrap/index";
 
 describe("buildServer registerModuleRoutes hook", () => {
   let app: Awaited<ReturnType<typeof buildServer>> | null = null;

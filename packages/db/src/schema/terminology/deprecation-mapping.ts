@@ -16,10 +16,7 @@ export const deprecationMapping = pgTable(
     systemId: codeSystemId("system_id").notNull(),
     deprecatedCode: text("deprecated_code").notNull(),
     deprecationEffective: date("deprecation_effective").notNull(),
-    successorCodes: text("successor_codes")
-      .array()
-      .notNull()
-      .default(sql`'{}'::text[]`),
+    successorCodes: text("successor_codes").array().notNull().default(sql`'{}'::text[]`),
     mappingKind: deprecationMappingKind("mapping_kind").notNull(),
     guidance: text("guidance"),
     createdInVersionId: uuid("created_in_version_id")

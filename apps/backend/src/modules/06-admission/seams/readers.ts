@@ -44,10 +44,7 @@ const LEVELS_OF_CARE: readonly LevelOfCare[] = [
 ];
 
 /** Inclusive whole-day overlap between a LOC period and a query range (0 when they do not overlap). */
-function overlapDays(
-  period: LevelOfCarePeriodSummary,
-  range: DateRange,
-): number {
+function overlapDays(period: LevelOfCarePeriodSummary, range: DateRange): number {
   const start = period.effectiveAt > range.from ? period.effectiveAt : range.from;
   const periodEnd = period.endedAt ?? range.to;
   const end = periodEnd < range.to ? periodEnd : range.to;

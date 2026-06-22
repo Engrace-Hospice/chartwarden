@@ -30,7 +30,8 @@ export class EncounterNotFoundError extends Error {
  * (D4). Otherwise it is billable. The caller (M23/M24) queries this over signed encounters.
  */
 export function deriveBillability(f: StoredEncounterFacts): EncounterBillability {
-  if (f.status === "voided") return { encounterId: f.encounterId, billable: false, reason: "voided" };
+  if (f.status === "voided")
+    return { encounterId: f.encounterId, billable: false, reason: "voided" };
   if (f.discipline === "volunteer" || f.encounterType === "volunteer_visit") {
     return { encounterId: f.encounterId, billable: false, reason: "volunteer_non_billable" };
   }
@@ -38,7 +39,8 @@ export function deriveBillability(f: StoredEncounterFacts): EncounterBillability
     return { encounterId: f.encounterId, billable: false, reason: "awaiting_cosignature" };
   }
   if (
-    (f.lateEntryTier === "significant_late_entry" || f.lateEntryTier === "administrative_override") &&
+    (f.lateEntryTier === "significant_late_entry" ||
+      f.lateEntryTier === "administrative_override") &&
     !f.lateEntryAttested
   ) {
     return { encounterId: f.encounterId, billable: false, reason: "late_entry_unattested" };
@@ -47,7 +49,9 @@ export function deriveBillability(f: StoredEncounterFacts): EncounterBillability
 }
 
 /** §4.7 BillableEncounterReader — per-encounter claim-line eligibility for M23/M24. */
-export function createBillableEncounterReader(store: EncounterReaderStore): BillableEncounterReader {
+export function createBillableEncounterReader(
+  store: EncounterReaderStore,
+): BillableEncounterReader {
   return {
     async billability(encounterIds) {
       const facts = await store.encounterFacts(encounterIds);

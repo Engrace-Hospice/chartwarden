@@ -18,7 +18,12 @@ export interface ProposedPatientCandidate {
   readonly administrativeSex?: string;
   readonly maritalStatus?: string;
   readonly preferredLanguage?: string;
-  readonly addresses?: ReadonlyArray<{ streetAddress: string; city: string; state?: string; zipOrPostalCode?: string }>;
+  readonly addresses?: ReadonlyArray<{
+    streetAddress: string;
+    city: string;
+    state?: string;
+    zipOrPostalCode?: string;
+  }>;
   readonly phoneHome?: string;
   readonly phoneMobile?: string;
   readonly email?: string;
@@ -42,12 +47,19 @@ export interface ProposalAcceptedPayload {
 
 /** The decision: apply a demographic patch to a matched patient, or create a new chart. */
 export type ProposalDecision =
-  | { readonly action: "apply_demographics"; readonly patientId: string; readonly patch: PatientMutationPatch }
+  | {
+      readonly action: "apply_demographics";
+      readonly patientId: string;
+      readonly patch: PatientMutationPatch;
+    }
   | { readonly action: "create_patient"; readonly candidate: ProposedPatientCandidate }
   | { readonly action: "skip"; readonly reason: string };
 
 /** Map a candidate's first name to the patch demographic fields (§4.10 / D12 — SSN never mapped). */
-function candidateToPatch(c: ProposedPatientCandidate, appliedFields: readonly string[] | null): PatientMutationPatch {
+function candidateToPatch(
+  c: ProposedPatientCandidate,
+  appliedFields: readonly string[] | null,
+): PatientMutationPatch {
   const name = c.names?.[0];
   const addr = c.addresses?.[0];
   const full: PatientMutationPatch = {
@@ -59,7 +71,12 @@ function candidateToPatch(c: ProposedPatientCandidate, appliedFields: readonly s
     maritalStatus: c.maritalStatus,
     preferredLanguage: c.preferredLanguage,
     address: addr
-      ? { line1: addr.streetAddress, city: addr.city, state: addr.state, postal: addr.zipOrPostalCode }
+      ? {
+          line1: addr.streetAddress,
+          city: addr.city,
+          state: addr.state,
+          postal: addr.zipOrPostalCode,
+        }
       : undefined,
     phoneHome: c.phoneHome,
     phoneMobile: c.phoneMobile,

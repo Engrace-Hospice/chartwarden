@@ -13,7 +13,7 @@
 
 // The shared tenancy/patient/admission id aliases are owned by `./admission` (single definition site);
 // import for internal use here (not re-exported) so the package surface stays unambiguous.
-import type { PatientId, AdmissionId, OrgId, ProviderEntityId } from "./admission";
+import type { AdmissionId, OrgId, PatientId, ProviderEntityId } from "./admission";
 
 export type CarePlanId = string;
 export type CarePlanVersionId = string;
@@ -199,8 +199,16 @@ export interface IdgDecisionPayload {
 
 /** A single element mutation inside an {@link IdgDecisionPayload}. */
 export type IdgDecisionChange =
-  | { readonly target: "problem"; readonly op: "add" | "update" | "discontinue"; readonly problemId?: ProblemId }
-  | { readonly target: "goal"; readonly op: "add" | "update" | "discontinue"; readonly goalId?: GoalId }
+  | {
+      readonly target: "problem";
+      readonly op: "add" | "update" | "discontinue";
+      readonly problemId?: ProblemId;
+    }
+  | {
+      readonly target: "goal";
+      readonly op: "add" | "update" | "discontinue";
+      readonly goalId?: GoalId;
+    }
   | {
       readonly target: "intervention";
       readonly op: "add" | "update" | "discontinue";

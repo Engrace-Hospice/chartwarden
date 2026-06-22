@@ -1,6 +1,6 @@
+import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/40-mdm — M40 screen registration (Track A, ADR-0030).
 import type { ComponentType } from "react";
-import type { ScreenRegistryModule } from "@wardenx/types";
 import { MdmConsole } from "./mdm-console";
 
 export const mdmScreens: ScreenRegistryModule<ComponentType> = {

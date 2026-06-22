@@ -118,7 +118,7 @@ export function registerMessagingWebhookRoutes(
   // --- Postmark event (bounce/delivery) callback (§4.9 / INT-016) ---------------------------
   app.post("/webhooks/postmark/event", async (request, reply) => {
     const headers = headerMap(request);
-    assertReplayWindow(headers["date"]); // Postmark sends the ISO-8601 `Date` header
+    assertReplayWindow(headers.date); // Postmark sends the ISO-8601 `Date` header
     verifyPostmarkWebhook({
       headers,
       expectedToken: await deps.resolvePostmarkToken(),

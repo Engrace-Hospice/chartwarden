@@ -13,17 +13,13 @@
 //   3. Vacation forwarding (§2.6 / §7.6) redirects a recipient's OUT-OF-BAND notifications to
 //      their backup (single hop, bounded), recording a `forwarded` row for the original.
 
-import type {
-  AlertCategory,
-  AlertSeverity,
-  NotificationChannel,
-} from "../interfaces/kinds";
+import type { AlertCategory, AlertSeverity, NotificationChannel } from "../interfaces/kinds";
 import {
   FLOOR_CHANNEL,
+  type RecipientPreferences,
   isVacationActive,
   preferredOutOfBandChannels,
   suppressedByQuietHours,
-  type RecipientPreferences,
 } from "./preferences";
 
 /** The immutable alert facts every delivery row denormalizes (§3.6 M36-F06d): category +

@@ -17,19 +17,6 @@ import type {
 } from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
 import {
-  checkEncounterDisciplinePair,
-  checkMutableForEdit,
-  checkParentNotVoided,
-  checkServiceDateNotFuture,
-  checkVersion,
-} from "../lifecycle/validation";
-import { transitionEncounter } from "../lifecycle/encounter";
-import { type AddendumState, transitionAddendum } from "../lifecycle/addendum";
-import {
-  type CosignatureState,
-  transitionCosignature,
-} from "../cosignature/index";
-import {
   type F2fAttestationWrite,
   type MileageInput,
   type VitalsInput,
@@ -37,6 +24,16 @@ import {
   planMileageCapture,
   planVitalsCapture,
 } from "../authoring/index";
+import { type CosignatureState, transitionCosignature } from "../cosignature/index";
+import { type AddendumState, transitionAddendum } from "../lifecycle/addendum";
+import { transitionEncounter } from "../lifecycle/encounter";
+import {
+  checkEncounterDisciplinePair,
+  checkMutableForEdit,
+  checkParentNotVoided,
+  checkServiceDateNotFuture,
+  checkVersion,
+} from "../lifecycle/validation";
 
 /** The §4.6 owner facts the `cosigner_role_match` predicate resolves for one encounter (RLS-backstopped). */
 export interface EncounterAbacFacts {
@@ -108,37 +105,131 @@ export interface EncounterView {
 
 /** The route service the §4.1 handlers compose over. Every method is org-scoped (RLS in prod). */
 export interface EncounterRouteService {
-  createDraft(organizationId: string, actorUserId: string, args: CreateEncounterArgs): Promise<CreatedEncounter>;
+  createDraft(
+    organizationId: string,
+    actorUserId: string,
+    args: CreateEncounterArgs,
+  ): Promise<CreatedEncounter>;
   getEncounter(organizationId: string, encounterId: string): Promise<EncounterView>;
-  updateSelections(organizationId: string, encounterId: string, ifVersion: number): Promise<{ version: number; layer1Preview: string }>;
-  captureVitals(organizationId: string, encounterId: string, input: VitalsInput): Promise<VitalsResult>;
-  editVitals(organizationId: string, encounterId: string, vitalsId: string, input: VitalsInput): Promise<VitalsResult>;
-  captureMileage(organizationId: string, encounterId: string, input: MileageInput): Promise<MileageResult>;
-  editMileage(organizationId: string, encounterId: string, input: MileageInput): Promise<MileageResult>;
+  updateSelections(
+    organizationId: string,
+    encounterId: string,
+    ifVersion: number,
+  ): Promise<{ version: number; layer1Preview: string }>;
+  captureVitals(
+    organizationId: string,
+    encounterId: string,
+    input: VitalsInput,
+  ): Promise<VitalsResult>;
+  editVitals(
+    organizationId: string,
+    encounterId: string,
+    vitalsId: string,
+    input: VitalsInput,
+  ): Promise<VitalsResult>;
+  captureMileage(
+    organizationId: string,
+    encounterId: string,
+    input: MileageInput,
+  ): Promise<MileageResult>;
+  editMileage(
+    organizationId: string,
+    encounterId: string,
+    input: MileageInput,
+  ): Promise<MileageResult>;
   addCarePlanLink(organizationId: string, encounterId: string): Promise<{ linkId: string }>;
   removeCarePlanLink(organizationId: string, encounterId: string, linkId: string): Promise<void>;
-  documentEvvMissing(organizationId: string, encounterId: string): Promise<{ evvBracketState: string }>;
-  finalize(organizationId: string, encounterId: string, at: LocalDate): Promise<{ status: "finalized"; version: number }>;
-  enhanceHearthnote(organizationId: string, encounterId: string): Promise<{ modificationId: string }>;
-  recordModificationDecision(organizationId: string, encounterId: string, modId: string): Promise<{ modificationId: string }>;
-  sign(organizationId: string, encounterId: string, args: { stepUpFresh: boolean; at: LocalDate }): Promise<{ status: "signed" | "cosign_pending"; signedAt: string; cosignatureRequestId: string | null }>;
-  lateEntryOverride(organizationId: string, encounterId: string): Promise<{ status: EncounterStatus }>;
-  administrativeOverride(organizationId: string, encounterId: string): Promise<{ status: EncounterStatus }>;
-  voidEncounter(organizationId: string, encounterId: string, args: { isAdmin: boolean; reason: string; at: LocalDate }): Promise<{ status: "voided" }>;
-  getCosignature(organizationId: string, encounterId: string): Promise<{ status: CosignatureState | null }>;
-  cosignAcknowledge(organizationId: string, encounterId: string, at: LocalDate): Promise<{ status: CosignatureState }>;
-  cosignSign(organizationId: string, encounterId: string, args: { isQualifiedRn: boolean; at: LocalDate }): Promise<{ status: EncounterStatus; cosignedAt: string }>;
-  supervisorRelease(organizationId: string, encounterId: string, args: { isSupervisor: boolean; reason: string; at: LocalDate }): Promise<{ status: CosignatureState }>;
-  createAddendum(organizationId: string, encounterId: string): Promise<{ id: string; status: "draft" }>;
-  updateAddendumSelections(organizationId: string, encounterId: string, addendumId: string): Promise<{ version: number }>;
-  finalizeAddendum(organizationId: string, encounterId: string, addendumId: string): Promise<{ status: "finalized" }>;
-  signAddendum(organizationId: string, encounterId: string, addendumId: string, args: { stepUpFresh: boolean; at: LocalDate }): Promise<{ status: "signed"; signedAt: string }>;
+  documentEvvMissing(
+    organizationId: string,
+    encounterId: string,
+  ): Promise<{ evvBracketState: string }>;
+  finalize(
+    organizationId: string,
+    encounterId: string,
+    at: LocalDate,
+  ): Promise<{ status: "finalized"; version: number }>;
+  enhanceHearthnote(
+    organizationId: string,
+    encounterId: string,
+  ): Promise<{ modificationId: string }>;
+  recordModificationDecision(
+    organizationId: string,
+    encounterId: string,
+    modId: string,
+  ): Promise<{ modificationId: string }>;
+  sign(
+    organizationId: string,
+    encounterId: string,
+    args: { stepUpFresh: boolean; at: LocalDate },
+  ): Promise<{
+    status: "signed" | "cosign_pending";
+    signedAt: string;
+    cosignatureRequestId: string | null;
+  }>;
+  lateEntryOverride(
+    organizationId: string,
+    encounterId: string,
+  ): Promise<{ status: EncounterStatus }>;
+  administrativeOverride(
+    organizationId: string,
+    encounterId: string,
+  ): Promise<{ status: EncounterStatus }>;
+  voidEncounter(
+    organizationId: string,
+    encounterId: string,
+    args: { isAdmin: boolean; reason: string; at: LocalDate },
+  ): Promise<{ status: "voided" }>;
+  getCosignature(
+    organizationId: string,
+    encounterId: string,
+  ): Promise<{ status: CosignatureState | null }>;
+  cosignAcknowledge(
+    organizationId: string,
+    encounterId: string,
+    at: LocalDate,
+  ): Promise<{ status: CosignatureState }>;
+  cosignSign(
+    organizationId: string,
+    encounterId: string,
+    args: { isQualifiedRn: boolean; at: LocalDate },
+  ): Promise<{ status: EncounterStatus; cosignedAt: string }>;
+  supervisorRelease(
+    organizationId: string,
+    encounterId: string,
+    args: { isSupervisor: boolean; reason: string; at: LocalDate },
+  ): Promise<{ status: CosignatureState }>;
+  createAddendum(
+    organizationId: string,
+    encounterId: string,
+  ): Promise<{ id: string; status: "draft" }>;
+  updateAddendumSelections(
+    organizationId: string,
+    encounterId: string,
+    addendumId: string,
+  ): Promise<{ version: number }>;
+  finalizeAddendum(
+    organizationId: string,
+    encounterId: string,
+    addendumId: string,
+  ): Promise<{ status: "finalized" }>;
+  signAddendum(
+    organizationId: string,
+    encounterId: string,
+    addendumId: string,
+    args: { stepUpFresh: boolean; at: LocalDate },
+  ): Promise<{ status: "signed"; signedAt: string }>;
   listEncounters(organizationId: string): Promise<{ encounters: EncounterView[] }>;
   cosignatureQueue(organizationId: string): Promise<{ encounters: EncounterView[] }>;
   myDrafts(organizationId: string, actorUserId: string): Promise<{ encounters: EncounterView[] }>;
-  billable(organizationId: string, encounterIds: readonly string[]): Promise<{ billability: { encounterId: string; billable: boolean }[] }>;
+  billable(
+    organizationId: string,
+    encounterIds: readonly string[],
+  ): Promise<{ billability: { encounterId: string; billable: boolean }[] }>;
   signedSince(organizationId: string, since: string): Promise<{ encounters: EncounterView[] }>;
-  renderPayload(organizationId: string, encounterId: string): Promise<{ encounterId: string; final: string }>;
+  renderPayload(
+    organizationId: string,
+    encounterId: string,
+  ): Promise<{ encounterId: string; final: string }>;
 }
 
 // ── in-memory record + slice ────────────────────────────────────────────────────────────────────────
@@ -168,7 +259,9 @@ interface EncounterRecord {
 
 /** Deterministic, I/O-free seed for the in-memory route service (slice + smoke tests). */
 export interface EncounterRouteSeed {
-  readonly encounters?: ReadonlyArray<Partial<EncounterRecord> & { id: string; organizationId: string; patientId: string }>;
+  readonly encounters?: ReadonlyArray<
+    Partial<EncounterRecord> & { id: string; organizationId: string; patientId: string }
+  >;
 }
 
 /** Pads `n` to a uuid-shaped id so created ids round-trip through uuid-validated bodies (M6/M8 slice). */
@@ -248,8 +341,12 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
   const events: { event: string; encounterId: string }[] = [];
   /** The M6 attestation writes the F2F dual-write requested (the cross-module side of D1, for tests). */
   const f2fAttestations: F2fAttestationWrite[] = [];
-  const recordOutbox = (encounterId: string, effects: ReadonlyArray<{ kind: string; event?: string }>): void => {
-    for (const e of effects) if (e.kind === "outbox" && e.event) events.push({ event: e.event, encounterId });
+  const recordOutbox = (
+    encounterId: string,
+    effects: ReadonlyArray<{ kind: string; event?: string }>,
+  ): void => {
+    for (const e of effects)
+      if (e.kind === "outbox" && e.event) events.push({ event: e.event, encounterId });
   };
 
   /** Load an encounter scoped to the tenant; a missing/cross-tenant id is a non-leaking 404. */
@@ -264,7 +361,10 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
   const service: EncounterRouteService = {
     async createDraft(organizationId, actorUserId, args) {
       // §2.7 service guards that run before any write (the rest land with authoring in M8-T10).
-      checkEncounterDisciplinePair({ encounterType: args.encounterType, discipline: args.discipline });
+      checkEncounterDisciplinePair({
+        encounterType: args.encounterType,
+        discipline: args.discipline,
+      });
       checkServiceDateNotFuture({ serviceDate: args.serviceDate, today: now().slice(0, 10) });
       const id = uuidFromCounter("e", ++created);
       byId.set(id, {
@@ -317,7 +417,12 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       const vitalsId = subId();
       r.vitals.set(vitalsId, input);
       recordOutbox(r.id, plan.effects);
-      return { vitalsId, fieldsCaptured: plan.fieldsCaptured, abnormalFlags: plan.abnormalFlags, bmi: plan.bmi };
+      return {
+        vitalsId,
+        fieldsCaptured: plan.fieldsCaptured,
+        abnormalFlags: plan.abnormalFlags,
+        bmi: plan.bmi,
+      };
     },
     async editVitals(organizationId, encounterId, vitalsId, input) {
       const r = load(organizationId, encounterId);
@@ -326,7 +431,12 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       const plan = planVitalsCapture(input);
       r.vitals.set(vitalsId, input);
       recordOutbox(r.id, plan.effects);
-      return { vitalsId, fieldsCaptured: plan.fieldsCaptured, abnormalFlags: plan.abnormalFlags, bmi: plan.bmi };
+      return {
+        vitalsId,
+        fieldsCaptured: plan.fieldsCaptured,
+        abnormalFlags: plan.abnormalFlags,
+        bmi: plan.bmi,
+      };
     },
     async captureMileage(organizationId, encounterId, input) {
       const r = load(organizationId, encounterId);
@@ -457,7 +567,11 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
     },
     async cosignSign(organizationId, encounterId, args) {
       const r = load(organizationId, encounterId);
-      const ct = transitionCosignature(r.cosignature ?? "routed", { type: "sign", isQualifiedRn: args.isQualifiedRn, at: args.at });
+      const ct = transitionCosignature(r.cosignature ?? "routed", {
+        type: "sign",
+        isQualifiedRn: args.isQualifiedRn,
+        at: args.at,
+      });
       r.cosignature = ct.to;
       const et = transitionEncounter(r.status, { type: "recordCosignature", at: args.at });
       r.status = et.to;
@@ -495,7 +609,11 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       const r = load(organizationId, encounterId);
       const a = r.addenda.get(addendumId);
       if (!a) throw new NotFoundError("addendum");
-      const t = transitionAddendum(a.status, { type: "finalize", gatePreviewPassed: true, at: now().slice(0, 10) });
+      const t = transitionAddendum(a.status, {
+        type: "finalize",
+        gatePreviewPassed: true,
+        at: now().slice(0, 10),
+      });
       a.status = t.to;
       return { status: "finalized" };
     },
@@ -503,13 +621,22 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       const r = load(organizationId, encounterId);
       const a = r.addenda.get(addendumId);
       if (!a) throw new NotFoundError("addendum");
-      const t = transitionAddendum(a.status, { type: "sign", gatePassed: true, stepUpFresh: args.stepUpFresh, at: args.at });
+      const t = transitionAddendum(a.status, {
+        type: "sign",
+        gatePassed: true,
+        stepUpFresh: args.stepUpFresh,
+        at: args.at,
+      });
       a.status = t.to;
       return { status: "signed", signedAt: now() };
     },
 
     async listEncounters(organizationId) {
-      return { encounters: [...byId.values()].filter((r) => r.organizationId === organizationId).map(toView) };
+      return {
+        encounters: [...byId.values()]
+          .filter((r) => r.organizationId === organizationId)
+          .map(toView),
+      };
     },
     async cosignatureQueue(organizationId) {
       return {
@@ -521,7 +648,12 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
     async myDrafts(organizationId, actorUserId) {
       return {
         encounters: [...byId.values()]
-          .filter((r) => r.organizationId === organizationId && r.status === "draft" && r.authoredByUserId === actorUserId)
+          .filter(
+            (r) =>
+              r.organizationId === organizationId &&
+              r.status === "draft" &&
+              r.authoredByUserId === actorUserId,
+          )
           .map(toView),
       };
     },
@@ -530,13 +662,19 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       return {
         billability: [...byId.values()]
           .filter((r) => r.organizationId === organizationId && wanted.has(r.id))
-          .map((r) => ({ encounterId: r.id, billable: r.status === "signed" || r.status === "cosigned" })),
+          .map((r) => ({
+            encounterId: r.id,
+            billable: r.status === "signed" || r.status === "cosigned",
+          })),
       };
     },
     async signedSince(organizationId, since) {
       return {
         encounters: [...byId.values()]
-          .filter((r) => r.organizationId === organizationId && r.signedAt !== null && r.signedAt >= since)
+          .filter(
+            (r) =>
+              r.organizationId === organizationId && r.signedAt !== null && r.signedAt >= since,
+          )
           .map(toView),
       };
     },

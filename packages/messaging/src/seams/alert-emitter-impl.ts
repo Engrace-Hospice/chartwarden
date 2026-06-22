@@ -13,18 +13,14 @@
 // evaluated fresh. This file only feeds the engine and counts the result.
 
 import type { AlertEmitter } from "../interfaces/alert-emitter";
-import type {
-  AlertCategory,
-  AlertSeverity,
-  NotificationChannel,
-} from "../interfaces/kinds";
+import type { AlertCategory, AlertSeverity, NotificationChannel } from "../interfaces/kinds";
 import {
-  createRecipientResolverRegistry,
-  planFanOut,
   type PlannedDelivery,
   type RecipientPreferences,
   type RecipientSourcePorts,
   type ResolverArgs,
+  createRecipientResolverRegistry,
+  planFanOut,
   resolveRecipients,
   severityAtLeast,
 } from "../resolution";

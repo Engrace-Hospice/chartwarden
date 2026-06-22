@@ -16,7 +16,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { mdmMergeProposer, mdmMergeStatus, mdmEntityKind } from "../../enums";
+import { mdmEntityKind, mdmMergeProposer, mdmMergeStatus } from "../../enums";
 import { users } from "../users";
 
 export const mergeRequests = pgTable(

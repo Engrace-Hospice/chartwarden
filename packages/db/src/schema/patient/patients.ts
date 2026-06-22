@@ -18,9 +18,9 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { patientStatus } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 
 export const patients = pgTable(
   "patient",

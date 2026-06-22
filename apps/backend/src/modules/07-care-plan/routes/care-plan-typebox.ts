@@ -39,14 +39,37 @@ const Text = (max = 4000) => Type.String({ minLength: 1, maxLength: max });
 const Version = () => Type.Integer({ minimum: 1 });
 
 const PROBLEM_KIND = ["terminal", "related", "unrelated"] as const;
-const PROBLEM_SOURCE = ["clinical", "patient_reported", "family_reported", "history", "intake_extraction"] as const;
+const PROBLEM_SOURCE = [
+  "clinical",
+  "patient_reported",
+  "family_reported",
+  "history",
+  "intake_extraction",
+] as const;
 const GOAL_SOURCE = ["clinical", "patient_stated", "family_stated", "agent_stated"] as const;
 const INTERVENTION_DISCIPLINE = [
-  "rn", "lpn", "chha", "msw", "chaplain", "md_np", "pt", "ot", "st", "volunteer", "music_therapy", "dietitian", "bereavement",
+  "rn",
+  "lpn",
+  "chha",
+  "msw",
+  "chaplain",
+  "md_np",
+  "pt",
+  "ot",
+  "st",
+  "volunteer",
+  "music_therapy",
+  "dietitian",
+  "bereavement",
 ] as const;
 const VERSION_KIND = ["initial", "idg_review", "interim_revision", "discharge"] as const;
 const SIGNER_ROLE = [
-  "rn_case_manager", "hospice_physician", "nurse_practitioner", "msw", "chaplain", "medical_director",
+  "rn_case_manager",
+  "hospice_physician",
+  "nurse_practitioner",
+  "msw",
+  "chaplain",
+  "medical_director",
 ] as const;
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
@@ -108,7 +131,9 @@ export const CreateGoalSchema = Type.Object({
 export const PatchGoalSchema = Type.Object({
   revisedText: Type.Optional(Type.String({ maxLength: 4000 })),
   measurableOutcome: Type.Optional(Type.String({ maxLength: 4000 })),
-  status: Type.Optional(lit(["not_started", "in_progress", "met", "not_met", "revised", "discontinued"] as const)),
+  status: Type.Optional(
+    lit(["not_started", "in_progress", "met", "not_met", "revised", "discontinued"] as const),
+  ),
   targetAt: Type.Optional(Type.String({ format: "date-time" })),
 });
 

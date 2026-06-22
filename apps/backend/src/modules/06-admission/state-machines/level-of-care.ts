@@ -4,8 +4,8 @@
 // exists ONLY for IRC/GIP to gap the round-trip to M37 for an IPU bed; RHC/CHC go straight to `active`
 // (§2.3.5). GIP needs uncontrolled-symptom / end-of-life documentation (R-LCP-01). Pure transition.
 import type { LevelOfCare, LocalDate } from "@wardenx/types";
-import { AdmissionStateError, require_ } from "./errors";
 import { type TransitionResult, result } from "./effects";
+import { AdmissionStateError, require_ } from "./errors";
 import { TEXT_MINIMUMS } from "./validation";
 
 /** The §2.3.5 LCP states (`pending` is the synthetic pre-create sentinel for `requestAssign`). */
@@ -55,10 +55,22 @@ export function transitionLevelOfCare(
 
   switch (event.type) {
     case "requestAssign": {
-      require_(event.admissionActiveOrOnHold, "ILLEGAL_TRANSITION", "admission is not active or on hold");
-      require_(!event.wouldOverlap, "LEVEL_OF_CARE_OVERLAP", "level-of-care period would overlap an existing period");
+      require_(
+        event.admissionActiveOrOnHold,
+        "ILLEGAL_TRANSITION",
+        "admission is not active or on hold",
+      );
+      require_(
+        !event.wouldOverlap,
+        "LEVEL_OF_CARE_OVERLAP",
+        "level-of-care period would overlap an existing period",
+      );
       if (needsIpuBed(event.level)) {
-        require_(event.facilityId !== null, "IPU_FACILITY_REQUIRED", "IRC/GIP requires a facility_id");
+        require_(
+          event.facilityId !== null,
+          "IPU_FACILITY_REQUIRED",
+          "IRC/GIP requires a facility_id",
+        );
       }
       if (event.level === "general_inpatient_care") {
         require_(
@@ -78,7 +90,11 @@ export function transitionLevelOfCare(
       return result(from, event.type, to, effects);
     }
     case "ipuConfirmBedAssignment": {
-      require_(event.bedVerified, "IPU_FACILITY_REQUIRED", "IPU bed could not be verified with M37");
+      require_(
+        event.bedVerified,
+        "IPU_FACILITY_REQUIRED",
+        "IPU bed could not be verified with M37",
+      );
       return result(from, event.type, "active", [
         { kind: "set_flag", field: "ipu_bed_assignment_id" },
         { kind: "audit" },

@@ -1,3 +1,4 @@
+import { createInMemoryTerminologyStore } from "@wardenx/terminology";
 // apps/backend/__tests__/terminology-eraser.test.ts — M38-T10 the `terminology_tenant_extensions`
 // data eraser (spec §11 D8).
 //
@@ -9,12 +10,15 @@
 //   • a tenant-offboarding erase removes the org's extensions and reports the count; another org's
 //     extensions are untouched (no cross-tenant deletion through the eraser).
 import { beforeEach, describe, expect, it } from "vitest";
-import { createInMemoryTerminologyStore } from "@wardenx/terminology";
 import { wireErasers } from "../src/bootstrap/erasers/providers";
-import { __resetErasersForTest, getEraser, validateErasers } from "../src/bootstrap/erasers/registry";
+import {
+  __resetErasersForTest,
+  getEraser,
+  validateErasers,
+} from "../src/bootstrap/erasers/registry";
 import { buildServer } from "../src/bootstrap/index";
-import { registerTerminologyErasers } from "../src/modules/38-terminology/index";
 import { wireModuleErasers, wireModuleSeams } from "../src/index";
+import { registerTerminologyErasers } from "../src/modules/38-terminology/index";
 
 const ORG = "org_1";
 const OTHER_ORG = "org_2";

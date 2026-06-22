@@ -12,8 +12,8 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
 import { CODE_SYSTEM_IDS } from "@wardenx/terminology";
+import { ValidationError } from "@wardenx/types";
 
 // --- format registration (TypeBox Value does not validate `format` until registered) ----------
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;

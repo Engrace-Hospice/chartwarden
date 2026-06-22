@@ -84,7 +84,9 @@ describe("M36-T06 §7.2 — sanitizeForOutOfBand carries no PHI for any category
         });
         const hay = haystack(out);
         for (const token of PHI_TOKENS) {
-          expect(hay, `${category}/${channel} leaked '${token}'`).not.toContain(token.toLowerCase());
+          expect(hay, `${category}/${channel} leaked '${token}'`).not.toContain(
+            token.toLowerCase(),
+          );
         }
         // structurally: only the three allowlisted fields, all content-free.
         expect(Object.keys(out).sort()).toEqual(["deepLink", "notificationDeliveryId", "short"]);
@@ -107,7 +109,11 @@ describe("M36-T06 §7.2 — sanitizeForOutOfBand carries no PHI for any category
       for (const token of PHI_TOKENS) {
         expect(hay, `message/${channel} leaked '${token}'`).not.toContain(token.toLowerCase());
       }
-      expect(out.short).toBe(channel === "voice" ? "WardenX field safety alert. Please open the app." : "You have a new message");
+      expect(out.short).toBe(
+        channel === "voice"
+          ? "WardenX field safety alert. Please open the app."
+          : "You have a new message",
+      );
       // trailing-slash baseUrl is normalized (no double slash).
       expect(out.deepLink).toBe("https://app.wardenx.example/n/nd-msg-9");
     }

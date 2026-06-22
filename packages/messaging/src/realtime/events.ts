@@ -8,7 +8,12 @@
 // Every server→client event carries a `correlationId`. This module is types + name constants only —
 // the Socket.IO emit happens in the wiring layer (M1 infra); the package imports no socket.io.
 
-import type { AlertCategory, AlertSeverity, NotificationChannel, PresenceStatus } from "../interfaces/kinds";
+import type {
+  AlertCategory,
+  AlertSeverity,
+  NotificationChannel,
+  PresenceStatus,
+} from "../interfaces/kinds";
 
 /** The server→client event names (§4.3). */
 export const MESSAGING_SERVER_EVENTS = {

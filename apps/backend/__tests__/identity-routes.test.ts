@@ -406,10 +406,18 @@ describe("M2-T06 identity route inventory", () => {
         defaultLocationIds: [],
       });
 
-      const res = await app.inject({ method: "GET", url: "/api/v1/orgs/org_a/members", headers: ADMIN });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/orgs/org_a/members",
+        headers: ADMIN,
+      });
       expect(res.statusCode).toBe(200);
       const body = res.json() as {
-        members: Array<{ displayName: string | null; email: string | null; lastLoginAt: string | null }>;
+        members: Array<{
+          displayName: string | null;
+          email: string | null;
+          lastLoginAt: string | null;
+        }>;
         pendingInvitations: number;
       };
       expect(body.members[0]!.displayName).toBe("Robin Nightingale");
@@ -422,11 +430,25 @@ describe("M2-T06 identity route inventory", () => {
     it("FB-T12 — ?q also matches the joined display name / email", async () => {
       const { app } = makeServer({
         seed: [
-          membership({ membershipId: "rn_1", userId: "rn_user", displayName: "Robin Nightingale", email: "robin@engrace.test" }),
-          membership({ membershipId: "md_1", userId: "md_user", displayName: "Dana Marlow", email: "dana@engrace.test" }),
+          membership({
+            membershipId: "rn_1",
+            userId: "rn_user",
+            displayName: "Robin Nightingale",
+            email: "robin@engrace.test",
+          }),
+          membership({
+            membershipId: "md_1",
+            userId: "md_user",
+            displayName: "Dana Marlow",
+            email: "dana@engrace.test",
+          }),
         ],
       });
-      const res = await app.inject({ method: "GET", url: "/api/v1/orgs/org_a/members?q=nightingale", headers: ADMIN });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/orgs/org_a/members?q=nightingale",
+        headers: ADMIN,
+      });
       expect(res.statusCode).toBe(200);
       const members = res.json().members as Array<{ membershipId: string }>;
       expect(members.map((m) => m.membershipId)).toEqual(["rn_1"]);

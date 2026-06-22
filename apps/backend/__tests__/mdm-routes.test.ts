@@ -15,9 +15,9 @@ import {
   resetRbacEngine,
 } from "@wardenx/auth";
 import {
+  type SeedCanonical,
   createInMemoryMdmBackend,
   createMdmEntityProvider,
-  type SeedCanonical,
 } from "@wardenx/mdm";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -104,8 +104,16 @@ function makeServer() {
 }
 
 const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "clinical_rn" };
-const INTAKE = { "x-test-user": "intake_1", "x-test-org": ORG, "x-test-roles": "intake_coordinator" };
-const COMPLIANCE = { "x-test-user": "compliance_1", "x-test-org": ORG, "x-test-roles": "compliance" };
+const INTAKE = {
+  "x-test-user": "intake_1",
+  "x-test-org": ORG,
+  "x-test-roles": "intake_coordinator",
+};
+const COMPLIANCE = {
+  "x-test-user": "compliance_1",
+  "x-test-org": ORG,
+  "x-test-roles": "compliance",
+};
 const OPS = { "x-test-user": "ops_1", "x-test-org": ORG, "x-test-roles": "platform_ops" };
 
 beforeEach(() => {
@@ -120,7 +128,11 @@ afterEach(() => {
 describe("M40-T07 — MDM routes (§4.1–4.2, §4.4 gating)", () => {
   it("GET /:kind/:id resolves a physician for a reader", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: `/api/v1/mdm/physician/${PHYS}`, headers: RN });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/mdm/physician/${PHYS}`,
+      headers: RN,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().id).toBe(PHYS);
     await app.close();
@@ -129,7 +141,11 @@ describe("M40-T07 — MDM routes (§4.1–4.2, §4.4 gating)", () => {
   it("denies a read without the per-kind read key (403)", async () => {
     const { app } = makeServer();
     // compliance_1 has baa keys but NOT mdm.physician.read
-    const res = await app.inject({ method: "GET", url: `/api/v1/mdm/physician/${PHYS}`, headers: COMPLIANCE });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/mdm/physician/${PHYS}`,
+      headers: COMPLIANCE,
+    });
     expect(res.statusCode).toBe(403);
     await app.close();
   });
@@ -212,9 +228,17 @@ describe("M40-T07 — MDM routes (§4.1–4.2, §4.4 gating)", () => {
 
   it("merge list is platform-ops only; a tenant role is denied", async () => {
     const { app } = makeServer();
-    const denied = await app.inject({ method: "GET", url: "/api/v1/admin/mdm/merge-requests", headers: INTAKE });
+    const denied = await app.inject({
+      method: "GET",
+      url: "/api/v1/admin/mdm/merge-requests",
+      headers: INTAKE,
+    });
     expect(denied.statusCode).toBe(403);
-    const ok = await app.inject({ method: "GET", url: "/api/v1/admin/mdm/merge-requests", headers: OPS });
+    const ok = await app.inject({
+      method: "GET",
+      url: "/api/v1/admin/mdm/merge-requests",
+      headers: OPS,
+    });
     expect(ok.statusCode).toBe(200);
     expect(ok.json().mergeRequests).toHaveLength(1);
     await app.close();

@@ -1,3 +1,10 @@
+import {
+  DetailPageLayout,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/07-care-plan — Care Plan View (M7 §5.2, Track B / ADR-0030).
 // Spec: docs/ui/screens/clinical/WARDENX_UI_CARE_PLAN.md — "Use Patient Workspace + Documentation Workspace."
 // The active IPOC for a patient: a problems list (terminal first, then related, then unrelated) | the
@@ -9,13 +16,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  DetailPageLayout,
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-} from "@wardenx/ui";
 
 interface Version {
   id: string;
@@ -148,7 +148,15 @@ export function CarePlanView(): JSX.Element {
         </PageHeader>
       }
       aside={
-        <aside style={{ width: "18rem", flexShrink: 0, borderLeft: "1px solid #e5e7eb", padding: "1.5rem", overflow: "auto" }}>
+        <aside
+          style={{
+            width: "18rem",
+            flexShrink: 0,
+            borderLeft: "1px solid #e5e7eb",
+            padding: "1.5rem",
+            overflow: "auto",
+          }}
+        >
           <h3 style={h3}>Review & signers</h3>
           {activeVersion ? (
             <>
@@ -179,7 +187,9 @@ export function CarePlanView(): JSX.Element {
               Open draft (v{draftVersion.sequence})
             </button>
           ) : null}
-          <div style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <div
+            style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}
+          >
             <button type="button" onClick={() => navigate(`/care-plans/${plan.id}/versions`)}>
               Version history
             </button>
@@ -210,7 +220,8 @@ export function CarePlanView(): JSX.Element {
                       textAlign: "left",
                       padding: "0.5rem",
                       border: "none",
-                      borderLeft: p.id === selectedProblemId ? "3px solid #2563eb" : "3px solid transparent",
+                      borderLeft:
+                        p.id === selectedProblemId ? "3px solid #2563eb" : "3px solid transparent",
                       background: p.id === selectedProblemId ? "#eff6ff" : "transparent",
                       cursor: "pointer",
                       fontSize: "0.85rem",
@@ -241,7 +252,9 @@ export function CarePlanView(): JSX.Element {
                   {g.revisedText ?? g.originalText}
                 </p>
                 {g.revisedText && g.source !== "clinical" ? (
-                  <p style={meta}>Original ({g.source}): {g.originalText}</p>
+                  <p style={meta}>
+                    Original ({g.source}): {g.originalText}
+                  </p>
                 ) : null}
                 <p style={meta}>Status: {g.status}</p>
               </div>
@@ -266,9 +279,19 @@ export function CarePlanView(): JSX.Element {
   );
 }
 
-const h3 = { fontSize: "0.8rem", textTransform: "uppercase", color: "#6b7280", margin: "0 0 0.5rem" } as const;
+const h3 = {
+  fontSize: "0.8rem",
+  textTransform: "uppercase",
+  color: "#6b7280",
+  margin: "0 0 0.5rem",
+} as const;
 const meta = { fontSize: "0.75rem", color: "#6b7280", margin: "0.25rem 0" } as const;
-const card = { border: "1px solid #f3f4f6", borderRadius: "0.375rem", padding: "0.75rem", marginBottom: "0.5rem" } as const;
+const card = {
+  border: "1px solid #f3f4f6",
+  borderRadius: "0.375rem",
+  padding: "0.75rem",
+  marginBottom: "0.5rem",
+} as const;
 const chip = {
   display: "inline-block",
   background: "#f3f4f6",

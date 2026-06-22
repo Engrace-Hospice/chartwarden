@@ -1,3 +1,5 @@
+import { schema } from "@wardenx/db";
+import type { DbClient } from "@wardenx/db";
 // @wardenx/auth · identity — DB-backed SessionContextStore (M2, AUTH-T05b, ADR-0033).
 //
 // Reads the M1 `session` table (where Better Auth writes the session + its additionalFields:
@@ -7,9 +9,12 @@
 // tables. `membershipId`/`roles` are enriched through an injected `ActorEnrichmentReader` (the M3-owned
 // path: membership_role ⋈ role under RLS) when one is supplied; absent it (slice/tests), they stay empty
 // and M3's effective-permission resolver still performs authorization independently (keyed userId+orgId).
-import type { ActorEnrichment, ActorEnrichmentReader, OrgScope, StepUpFactor } from "@wardenx/types";
-import { schema } from "@wardenx/db";
-import type { DbClient } from "@wardenx/db";
+import type {
+  ActorEnrichment,
+  ActorEnrichmentReader,
+  OrgScope,
+  StepUpFactor,
+} from "@wardenx/types";
 import { eq } from "drizzle-orm";
 import type { SessionContextRecord, SessionContextStore } from "./session-seam";
 

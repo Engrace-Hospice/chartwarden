@@ -8,10 +8,10 @@
 // optimistic-locked transaction; the route's ABAC predicate `signer_role_match` is the same check at
 // the edge (D — checked at sign-attempt time, not route load).
 import {
-  REQUIRED_SIGNER_SET_IDG_REVIEW,
-  REQUIRED_SIGNER_SET_INITIAL,
   type CarePlanSignerRole,
   type CarePlanVersionKind,
+  REQUIRED_SIGNER_SET_IDG_REVIEW,
+  REQUIRED_SIGNER_SET_INITIAL,
   type RequiredSignerSet,
   type RequiredSignerSlot,
 } from "@wardenx/types";
@@ -37,7 +37,10 @@ export function roleSatisfiesSlot(slot: RequiredSignerSlot, role: CarePlanSigner
  * counted toward at most one slot, so a role that could satisfy two slots (via a union) never
  * double-counts. Returns the count of slots still unmet.
  */
-function unmetSlotCount(set: RequiredSignerSet, signedRoles: ReadonlyArray<CarePlanSignerRole>): number {
+function unmetSlotCount(
+  set: RequiredSignerSet,
+  signedRoles: ReadonlyArray<CarePlanSignerRole>,
+): number {
   const remaining = [...signedRoles];
   let unmet = 0;
   for (const slot of set) {
@@ -54,7 +57,10 @@ function unmetSlotCount(set: RequiredSignerSet, signedRoles: ReadonlyArray<CareP
 }
 
 /** Whether the collected `signedRoles` fully satisfy the `set` (every required slot filled). */
-export function isQuorumMet(set: RequiredSignerSet, signedRoles: ReadonlyArray<CarePlanSignerRole>): boolean {
+export function isQuorumMet(
+  set: RequiredSignerSet,
+  signedRoles: ReadonlyArray<CarePlanSignerRole>,
+): boolean {
   return unmetSlotCount(set, signedRoles) === 0;
 }
 

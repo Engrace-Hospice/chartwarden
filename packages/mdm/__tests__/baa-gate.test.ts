@@ -4,7 +4,7 @@
 // asOf → executed; the §7.10 time-travel case (active at attempt-time, expired at transmit-time) →
 // expired + gated CLOSED; pending and never-executed → their distinct statuses. Pure data in / out.
 import { describe, expect, it } from "vitest";
-import { decideBaaStatus, defaultBaaRequired, type BaaRecordRow } from "../src/index";
+import { type BaaRecordRow, decideBaaStatus, defaultBaaRequired } from "../src/index";
 
 const executed = (id: string, executedOn: string, expiresOn: string | null): BaaRecordRow => ({
   id,
@@ -15,7 +15,11 @@ const executed = (id: string, executedOn: string, expiresOn: string | null): Baa
 
 describe("decideBaaStatus (§7.7, §4.6.2)", () => {
   it("kind that needs no BAA → n_a, disclosure allowed (isActive:true)", () => {
-    const r = decideBaaStatus({ requiredByPolicy: false, records: [], asOf: new Date("2026-06-19") });
+    const r = decideBaaStatus({
+      requiredByPolicy: false,
+      records: [],
+      asOf: new Date("2026-06-19"),
+    });
     expect(r).toEqual({
       isActive: true,
       status: "n_a",
@@ -80,7 +84,11 @@ describe("decideBaaStatus (§7.7, §4.6.2)", () => {
   });
 
   it("no record at all → missing", () => {
-    const r = decideBaaStatus({ requiredByPolicy: true, records: [], asOf: new Date("2026-06-19") });
+    const r = decideBaaStatus({
+      requiredByPolicy: true,
+      records: [],
+      asOf: new Date("2026-06-19"),
+    });
     expect(r).toEqual({
       isActive: false,
       status: "missing",

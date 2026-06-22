@@ -1,3 +1,4 @@
+import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/05-patient — Global Search Results (cross-cutting; M5 owns it, M5→M2 edge).
 // Spec: docs/ui/screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md — "Use Work Queue."
 // FB-T11 (partial): the live facets are the M5 **patient** facet (GET /api/v1/patients?q=) and the
@@ -10,7 +11,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@wardenx/ui";
 import { authClient } from "../02-identity/auth-client";
 
 type Facet = "all" | "patient" | "staff";
@@ -29,10 +29,7 @@ interface StaffHit {
   status: string;
   isAdmin: boolean;
 }
-type Selection =
-  | { kind: "patient"; hit: PatientHit }
-  | { kind: "staff"; hit: StaffHit }
-  | null;
+type Selection = { kind: "patient"; hit: PatientHit } | { kind: "staff"; hit: StaffHit } | null;
 
 // Facets the merged data layer can't serve yet — shown so the scope is honest, not fabricated.
 const FUTURE_FACETS = [
@@ -48,7 +45,9 @@ function readRecent(): string[] {
   try {
     const raw = window.localStorage.getItem(RECENT_KEY);
     const parsed = raw ? (JSON.parse(raw) as unknown) : [];
-    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string").slice(0, 6) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((v): v is string => typeof v === "string").slice(0, 6)
+      : [];
   } catch {
     return [];
   }
@@ -159,7 +158,8 @@ export function GlobalSearchResults(): JSX.Element {
   const showPatients = facet === "all" || facet === "patient";
   const showStaff = facet === "all" || facet === "staff";
   const hasQuery = urlQuery.length > 0;
-  const total = (showPatients ? patients?.length ?? 0 : 0) + (showStaff ? staff?.length ?? 0 : 0);
+  const total =
+    (showPatients ? (patients?.length ?? 0) : 0) + (showStaff ? (staff?.length ?? 0) : 0);
 
   return (
     <WorkQueueLayout
@@ -229,12 +229,15 @@ export function GlobalSearchResults(): JSX.Element {
   );
 }
 
-function EmptyQuery({ recent, onPick }: { recent: string[]; onPick: (t: string) => void }): JSX.Element {
+function EmptyQuery({
+  recent,
+  onPick,
+}: { recent: string[]; onPick: (t: string) => void }): JSX.Element {
   return (
     <div style={{ padding: "1.5rem" }}>
       <p style={{ color: "#6b7280", marginTop: 0 }}>
-        Search patients by name or MRN, and staff in your organization. Results are scoped to what you
-        are permitted to see.
+        Search patients by name or MRN, and staff in your organization. Results are scoped to what
+        you are permitted to see.
       </p>
       {recent.length > 0 ? (
         <section style={{ marginTop: "1rem" }}>
@@ -319,7 +322,8 @@ function StaffGroup({
         </ul>
       ) : (
         <p style={mutedNote}>
-          No staff matches. Name &amp; email search arrives with the staff-roster enrichment (FB-T12).
+          No staff matches. Name &amp; email search arrives with the staff-roster enrichment
+          (FB-T12).
         </p>
       )}
     </section>
@@ -330,9 +334,14 @@ function FutureFacets(): JSX.Element {
   return (
     <section style={{ borderTop: "1px dashed #e5e7eb", paddingTop: "0.75rem" }}>
       {FUTURE_FACETS.map((f) => (
-        <div key={f.label} style={{ display: "flex", justifyContent: "space-between", padding: "0.35rem 0" }}>
+        <div
+          key={f.label}
+          style={{ display: "flex", justifyContent: "space-between", padding: "0.35rem 0" }}
+        >
           <span style={{ color: "#9ca3af" }}>{f.label}</span>
-          <span style={{ color: "#9ca3af", fontSize: "0.8rem" }}>available when {f.blocked} ships</span>
+          <span style={{ color: "#9ca3af", fontSize: "0.8rem" }}>
+            available when {f.blocked} ships
+          </span>
         </div>
       ))}
     </section>
@@ -395,16 +404,87 @@ function Field({ label, value }: { label: string; value: string }): JSX.Element 
   );
 }
 
-const controls = { display: "flex", gap: "0.75rem", alignItems: "center", padding: "0 1.5rem 0.75rem", flexWrap: "wrap" as const } as const;
-const field = { flex: 1, padding: "0.45rem 0.7rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem", minWidth: "16rem" } as const;
-const primaryBtn = { padding: "0.45rem 0.9rem", border: "none", borderRadius: "0.5rem", background: "#1d4ed8", color: "#fff", cursor: "pointer", fontWeight: 600 } as const;
-const facetOn = { padding: "0.35rem 0.75rem", border: "1px solid #1d4ed8", borderRadius: "0.5rem", background: "#1d4ed8", color: "#fff", cursor: "pointer", fontSize: "0.85rem" } as const;
-const facetOff = { padding: "0.35rem 0.75rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem", background: "#fff", color: "#374151", cursor: "pointer", fontSize: "0.85rem" } as const;
-const groupHead = { fontSize: "0.8rem", textTransform: "uppercase" as const, color: "#6b7280", margin: "0 0 0.5rem" } as const;
-const list = { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column" as const, gap: "0.25rem" } as const;
-const rowBtn = { display: "flex", flexDirection: "column" as const, alignItems: "flex-start", width: "100%", textAlign: "left" as const, padding: "0.5rem 0.6rem", border: "1px solid #f3f4f6", borderRadius: "0.5rem", background: "#fff", cursor: "pointer" } as const;
+const controls = {
+  display: "flex",
+  gap: "0.75rem",
+  alignItems: "center",
+  padding: "0 1.5rem 0.75rem",
+  flexWrap: "wrap" as const,
+} as const;
+const field = {
+  flex: 1,
+  padding: "0.45rem 0.7rem",
+  border: "1px solid #e5e7eb",
+  borderRadius: "0.5rem",
+  minWidth: "16rem",
+} as const;
+const primaryBtn = {
+  padding: "0.45rem 0.9rem",
+  border: "none",
+  borderRadius: "0.5rem",
+  background: "#1d4ed8",
+  color: "#fff",
+  cursor: "pointer",
+  fontWeight: 600,
+} as const;
+const facetOn = {
+  padding: "0.35rem 0.75rem",
+  border: "1px solid #1d4ed8",
+  borderRadius: "0.5rem",
+  background: "#1d4ed8",
+  color: "#fff",
+  cursor: "pointer",
+  fontSize: "0.85rem",
+} as const;
+const facetOff = {
+  padding: "0.35rem 0.75rem",
+  border: "1px solid #e5e7eb",
+  borderRadius: "0.5rem",
+  background: "#fff",
+  color: "#374151",
+  cursor: "pointer",
+  fontSize: "0.85rem",
+} as const;
+const groupHead = {
+  fontSize: "0.8rem",
+  textTransform: "uppercase" as const,
+  color: "#6b7280",
+  margin: "0 0 0.5rem",
+} as const;
+const list = {
+  listStyle: "none",
+  margin: 0,
+  padding: 0,
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.25rem",
+} as const;
+const rowBtn = {
+  display: "flex",
+  flexDirection: "column" as const,
+  alignItems: "flex-start",
+  width: "100%",
+  textAlign: "left" as const,
+  padding: "0.5rem 0.6rem",
+  border: "1px solid #f3f4f6",
+  borderRadius: "0.5rem",
+  background: "#fff",
+  cursor: "pointer",
+} as const;
 const meta = { color: "#6b7280", fontSize: "0.8rem" } as const;
 const mutedNote = { color: "#9ca3af", margin: "0.25rem 0", fontSize: "0.85rem" } as const;
-const chip = { padding: "0.3rem 0.7rem", border: "1px solid #e5e7eb", borderRadius: "999px", background: "#f9fafb", cursor: "pointer", fontSize: "0.85rem" } as const;
-const preview = { width: "20rem", borderLeft: "1px solid #e5e7eb", padding: "1.25rem", overflow: "auto" } as const;
+const chip = {
+  padding: "0.3rem 0.7rem",
+  border: "1px solid #e5e7eb",
+  borderRadius: "999px",
+  background: "#f9fafb",
+  cursor: "pointer",
+  fontSize: "0.85rem",
+} as const;
+const preview = {
+  width: "20rem",
+  borderLeft: "1px solid #e5e7eb",
+  padding: "1.25rem",
+  overflow: "auto",
+} as const;
 const dl = { margin: "0 0 1rem" } as const;

@@ -9,7 +9,11 @@ import { createInMemoryAlertEmitter } from "@wardenx/messaging";
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { NotImplementedError } from "../src/bootstrap/seams/providers";
-import { REQUIRED_SEAMS, __resetSeamsForTest, validateSeams } from "../src/bootstrap/seams/registry";
+import {
+  REQUIRED_SEAMS,
+  __resetSeamsForTest,
+  validateSeams,
+} from "../src/bootstrap/seams/registry";
 import { wireModuleSeams } from "../src/index";
 import {
   getAlertEmitter,
@@ -76,16 +80,18 @@ describe("M36-T06 — AlertEmitter registers over the M1 deny-stub (§4.6)", () 
 
   it("without registration both seams boot FAIL-CLOSED (generic deny-stub throws on any call)", () => {
     validateSeams(); // no module registered → deny-stub defaults applied
-    expect(() => getAlertEmitter().emit("org-1", {
-      eventType: "x",
-      payload: {},
-      severity: "info",
-      correlationId: "c",
-    })).toThrow(NotImplementedError);
+    expect(() =>
+      getAlertEmitter().emit("org-1", {
+        eventType: "x",
+        payload: {},
+        severity: "info",
+        correlationId: "c",
+      }),
+    ).toThrow(NotImplementedError);
     // MessagingProvider stays a deny-stub even after a real boot (its impl lands T07/T08).
-    expect(() => getMessagingProvider().openChannel("org-1", { kind: "dm", creatorUserId: "u1" })).toThrow(
-      NotImplementedError,
-    );
+    expect(() =>
+      getMessagingProvider().openChannel("org-1", { kind: "dm", creatorUserId: "u1" }),
+    ).toThrow(NotImplementedError);
   });
 
   it("the composition-root wireModuleSeams hook registers M36's seam during buildServer() boot", async () => {

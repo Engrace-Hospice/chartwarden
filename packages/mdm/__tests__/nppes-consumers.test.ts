@@ -7,13 +7,13 @@
 // Phase-1 deny-stub (M29 is Wave H).
 import { describe, expect, it } from "vitest";
 import {
+  type M29ProviderSyncedPayload,
+  type NppesCanonicalPhysician,
+  type NppesConsumerPorts,
   decideProviderDeactivated,
   decideProviderSynced,
   handleProviderDeactivated,
   handleProviderSynced,
-  type M29ProviderSyncedPayload,
-  type NppesCanonicalPhysician,
-  type NppesConsumerPorts,
 } from "../src/index";
 
 const CANON: NppesCanonicalPhysician = {
@@ -54,7 +54,8 @@ function makePorts(canonical: NppesCanonicalPhysician | null, alertOrgs: string[
     findCanonicalByNpi: async () => canonical,
     applyCanonicalUpdate: async (id, u) => void updates.push([id, u as Record<string, unknown>]),
     applyDeactivation: async (id) => void deactivated.push(id),
-    emitCanonicalUpdated: async (e) => void events.push({ id: e.id, changedFields: e.changedFields }),
+    emitCanonicalUpdated: async (e) =>
+      void events.push({ id: e.id, changedFields: e.changedFields }),
     tenantsToAlert: async () => alertOrgs,
     emitDeactivationAlert: async (orgId, id) => void alerts.push([orgId, id]),
     writeDeactivationObservedAudit: async (npi) => void audits.push(npi),
@@ -93,7 +94,15 @@ describe("decideProviderSynced (§4.7.1, §7.11)", () => {
 
   it("a field changed at NPPES but NOT in changedFields is ignored (trusts M29's diff)", () => {
     const d = decideProviderSynced(
-      syncedPayload({ changedFields: ["lastName"], provider: { firstName: "DIFFERENT", lastName: "NEW_NAME", credentials: "MD", specialtyTaxonomy: "207Q00000X" } }),
+      syncedPayload({
+        changedFields: ["lastName"],
+        provider: {
+          firstName: "DIFFERENT",
+          lastName: "NEW_NAME",
+          credentials: "MD",
+          specialtyTaxonomy: "207Q00000X",
+        },
+      }),
       CANON,
     );
     expect(d.appliedChanges).toEqual(["lastName"]); // firstName not applied
@@ -123,18 +132,31 @@ describe("provider_deactivated (§4.7.2)", () => {
   it("active canonical → deactivated, alerts affected tenants", async () => {
     const { ports, deactivated, alerts } = makePorts(CANON, ["org_a", "org_b"]);
     const outcome = await handleProviderDeactivated(
-      { npi: "1234567893", deactivationDate: "2026-06-18", deactivationReason: "DECEASED", detectedAt: "2026-06-19" },
+      {
+        npi: "1234567893",
+        deactivationDate: "2026-06-18",
+        deactivationReason: "DECEASED",
+        detectedAt: "2026-06-19",
+      },
       ports,
     );
     expect(outcome).toBe("deactivated_canonical");
     expect(deactivated).toEqual(["c-1"]);
-    expect(alerts).toEqual([["org_a", "c-1"], ["org_b", "c-1"]]);
+    expect(alerts).toEqual([
+      ["org_a", "c-1"],
+      ["org_b", "c-1"],
+    ]);
   });
 
   it("no canonical → observe-only audit, no deactivation", async () => {
     const { ports, deactivated, audits } = makePorts(null);
     const outcome = await handleProviderDeactivated(
-      { npi: "9999999999", deactivationDate: "2026-06-18", deactivationReason: "DECEASED", detectedAt: "2026-06-19" },
+      {
+        npi: "9999999999",
+        deactivationDate: "2026-06-18",
+        deactivationReason: "DECEASED",
+        detectedAt: "2026-06-19",
+      },
       ports,
     );
     expect(outcome).toBe("no_canonical_observed");
@@ -143,6 +165,8 @@ describe("provider_deactivated (§4.7.2)", () => {
   });
 
   it("already deactivated → idempotent no-op", () => {
-    expect(decideProviderDeactivated({ ...CANON, status: "deactivated" })).toBe("already_deactivated");
+    expect(decideProviderDeactivated({ ...CANON, status: "deactivated" })).toBe(
+      "already_deactivated",
+    );
   });
 });

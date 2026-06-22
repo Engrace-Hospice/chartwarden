@@ -5,8 +5,8 @@
 // period 1 + an attending physician on file (§2.3.3). Pure transition over already-resolved facts
 // (the M38 ICD-10 check, the M40 NPI match, the §2.4 CTI validators).
 import type { LocalDate } from "@wardenx/types";
-import { AdmissionStateError, require_ } from "./errors";
 import { type TransitionResult, result } from "./effects";
+import { AdmissionStateError, require_ } from "./errors";
 import {
   CTI_SUBMIT_WINDOW,
   TEXT_MINIMUMS,
@@ -43,11 +43,22 @@ export type CertificationEvent =
       readonly periodStart: LocalDate;
       readonly lateReason?: string;
     }
-  | { readonly type: "signByAttending"; readonly signerNpiMatchesAttending: boolean; readonly withinFourteenDays: boolean }
+  | {
+      readonly type: "signByAttending";
+      readonly signerNpiMatchesAttending: boolean;
+      readonly withinFourteenDays: boolean;
+    }
   | { readonly type: "createNew" }
-  | { readonly type: "void"; readonly hasVoidPermission: boolean; readonly periodNotYetActive: boolean };
+  | {
+      readonly type: "void";
+      readonly hasVoidPermission: boolean;
+      readonly periodNotYetActive: boolean;
+    };
 
-export type CertificationTransition = TransitionResult<CertificationState, CertificationEvent["type"]>;
+export type CertificationTransition = TransitionResult<
+  CertificationState,
+  CertificationEvent["type"]
+>;
 
 /** The legal §2.3.3 transition graph. */
 export const CERTIFICATION_GRAPH: Readonly<
@@ -70,10 +81,7 @@ export function transitionCertification(
   event: CertificationEvent,
 ): CertificationTransition {
   if (!CERTIFICATION_GRAPH[from].includes(event.type)) {
-    throw new AdmissionStateError(
-      "ILLEGAL_TRANSITION",
-      `CTI cannot ${event.type} from '${from}'`,
-    );
+    throw new AdmissionStateError("ILLEGAL_TRANSITION", `CTI cannot ${event.type} from '${from}'`);
   }
 
   switch (event.type) {
@@ -83,7 +91,10 @@ export function transitionCertification(
         "CTI_NARRATIVE_TOO_SHORT",
         `CTI narrative must be ≥ ${TEXT_MINIMUMS.ctiNarrative} characters`,
       );
-      checkTerminalDxAllowable({ isValidIcd10: event.isValidIcd10, isHospiceAllowable: event.isHospiceAllowable });
+      checkTerminalDxAllowable({
+        isValidIcd10: event.isValidIcd10,
+        isHospiceAllowable: event.isHospiceAllowable,
+      });
       const offset = daysBetween(event.today, event.periodStart);
       require_(
         offset >= -CTI_SUBMIT_WINDOW.backDays && offset <= CTI_SUBMIT_WINDOW.forwardDays,
@@ -96,7 +107,11 @@ export function transitionCertification(
       ]);
     }
     case "signByHospiceMd": {
-      require_(event.signerMatchesHospiceMd, "CTI_SIGNER_MISMATCH", "signing user does not match hospice_md_id");
+      require_(
+        event.signerMatchesHospiceMd,
+        "CTI_SIGNER_MISMATCH",
+        "signing user does not match hospice_md_id",
+      );
       // R-CTI-01: signed after period_start → signed_late=true AND a late_reason is required.
       const signedLate = daysBetween(event.periodStart, event.hospiceMdSignedAt) > 0;
       if (signedLate) {
@@ -111,18 +126,31 @@ export function transitionCertification(
         { kind: "set_timestamp", field: "hospice_md_signed_at", at: event.hospiceMdSignedAt },
         { kind: "audit" },
         ...(signedLate
-          ? ([{ kind: "set_flag", field: "signed_late" }, { kind: "outbox", event: "m6.cti.late_flagged" }] as CertificationTransition["effects"])
+          ? ([
+              { kind: "set_flag", field: "signed_late" },
+              { kind: "outbox", event: "m6.cti.late_flagged" },
+            ] as CertificationTransition["effects"])
           : []),
       ];
       return result(from, event.type, goesToAttending ? "awaiting_attending" : "signed", [
         ...effects,
-        ...(goesToAttending ? [] : ([{ kind: "outbox", event: "m6.cti.signed" }] as CertificationTransition["effects"])),
+        ...(goesToAttending
+          ? []
+          : ([{ kind: "outbox", event: "m6.cti.signed" }] as CertificationTransition["effects"])),
       ]);
     }
     case "signByAttending": {
       // R-CTI-03: the attending's NPI must match (verified via M40); signed within 14d of the MD sig.
-      checkAttendingSignature({ sequence: 1, patientHasAttending: true, attendingSigned: event.signerNpiMatchesAttending });
-      require_(event.withinFourteenDays, "ATTENDING_SIGNATURE_REQUIRED", "attending signature is outside the 14-day window");
+      checkAttendingSignature({
+        sequence: 1,
+        patientHasAttending: true,
+        attendingSigned: event.signerNpiMatchesAttending,
+      });
+      require_(
+        event.withinFourteenDays,
+        "ATTENDING_SIGNATURE_REQUIRED",
+        "attending signature is outside the 14-day window",
+      );
       return result(from, event.type, "signed", [
         { kind: "audit" },
         { kind: "outbox", event: "m6.cti.signed" },
@@ -134,7 +162,11 @@ export function transitionCertification(
     }
     case "void": {
       require_(event.hasVoidPermission, "CTI_VOID_FORBIDDEN", "actor lacks cti.void");
-      require_(event.periodNotYetActive, "CTI_VOID_FORBIDDEN", "cannot void a CTI whose election period is already active");
+      require_(
+        event.periodNotYetActive,
+        "CTI_VOID_FORBIDDEN",
+        "cannot void a CTI whose election period is already active",
+      );
       return result(from, event.type, "voided", [
         { kind: "audit" },
         { kind: "outbox", event: "m6.cti.voided" },

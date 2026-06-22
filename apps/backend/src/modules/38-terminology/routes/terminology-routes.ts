@@ -1,3 +1,4 @@
+import { requirePermission } from "@wardenx/auth";
 // apps/backend/src/modules/38-terminology/routes/terminology-routes.ts — M38-T06 the terminology
 // route inventory (M38 spec §4.1–4.2; the §4.4 permission handshake; §7.4 canonical lockdown).
 //
@@ -20,12 +21,7 @@
 // injects the Drizzle/Valkey-backed store, whose org-scoped extension writes run inside
 // `withOrgContext` so RLS on `app.org_id` is the backstop. Org binding is always server-side: the
 // actor's org/user come from `request.context`, never the body.
-import type {
-  CodeSystemId,
-  ExpansionMember,
-  TerminologyProvider,
-} from "@wardenx/terminology";
-import { requirePermission } from "@wardenx/auth";
+import type { CodeSystemId, ExpansionMember, TerminologyProvider } from "@wardenx/terminology";
 import { UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -108,38 +104,30 @@ export function registerTerminologyRoutes(app: FastifyInstance, deps: Terminolog
   }
 
   // --- §4.2 binary validate (code, asOf) — the hot path on claim lines / problem lists --------
-  app.get(
-    "/api/v1/terminology/:system/validate",
-    { preHandler: [READ] },
-    async (request) => {
-      const { system } = parse(ValidateParamsSchema, request.params);
-      const { code, asOf } = parse(ValidateQuerySchema, request.query);
-      const result = await provider.validate(system as CodeSystemId, code, asOfDate(asOf));
-      return { ...result, asOf: asOf ?? null };
-    },
-  );
+  app.get("/api/v1/terminology/:system/validate", { preHandler: [READ] }, async (request) => {
+    const { system } = parse(ValidateParamsSchema, request.params);
+    const { code, asOf } = parse(ValidateQuerySchema, request.query);
+    const result = await provider.validate(system as CodeSystemId, code, asOfDate(asOf));
+    return { ...result, asOf: asOf ?? null };
+  });
 
   // --- §4.2 search (exact / fuzzy / semantic) — defined before /:code so the suffix wins ------
   // §7.7 (M38-T09): semantic mode is gated on the `ai.full` capability (Phase 2, default OFF);
   // exact/fuzzy are always available. The pgvector HNSW kNN itself lives in the Drizzle store.
-  app.get(
-    "/api/v1/terminology/:system/search",
-    { preHandler: [READ] },
-    async (request) => {
-      const { system } = parse(SearchParamsSchema, request.params);
-      const q = parse(SearchQuerySchema, request.query);
-      const mode = q.mode ?? "fuzzy";
-      if (mode === "semantic") await assertSemanticEnabled(request);
-      const results = await provider.searchByText(system as CodeSystemId, q.q, {
-        mode,
-        asOf: asOfDate(q.asOf),
-        limit: q.limit ?? 10,
-        billableOnly: q.billableOnly ?? false,
-        inValueSet: q.inValueSet,
-      });
-      return { results, mode, asOf: q.asOf ?? null };
-    },
-  );
+  app.get("/api/v1/terminology/:system/search", { preHandler: [READ] }, async (request) => {
+    const { system } = parse(SearchParamsSchema, request.params);
+    const q = parse(SearchQuerySchema, request.query);
+    const mode = q.mode ?? "fuzzy";
+    if (mode === "semantic") await assertSemanticEnabled(request);
+    const results = await provider.searchByText(system as CodeSystemId, q.q, {
+      mode,
+      asOf: asOfDate(q.asOf),
+      limit: q.limit ?? 10,
+      billableOnly: q.billableOnly ?? false,
+      inValueSet: q.inValueSet,
+    });
+    return { results, mode, asOf: q.asOf ?? null };
+  });
 
   // --- §4.2 deprecation successor mapping (defined before /:code so the suffix wins) ----------
   app.get(
@@ -153,41 +141,33 @@ export function registerTerminologyRoutes(app: FastifyInstance, deps: Terminolog
   );
 
   // --- §4.2 lookup full concept (system-specific properties) ---------------------------------
-  app.get(
-    "/api/v1/terminology/:system/:code",
-    { preHandler: [READ] },
-    async (request) => {
-      const { system, code } = parse(LookupParamsSchema, request.params);
-      const { asOf } = parse(LookupQuerySchema, request.query);
-      const concept = await provider.lookup(system as CodeSystemId, code, asOfDate(asOf));
-      if (!concept) throw notFound("concept");
-      return concept;
-    },
-  );
+  app.get("/api/v1/terminology/:system/:code", { preHandler: [READ] }, async (request) => {
+    const { system, code } = parse(LookupParamsSchema, request.params);
+    const { asOf } = parse(LookupQuerySchema, request.query);
+    const concept = await provider.lookup(system as CodeSystemId, code, asOfDate(asOf));
+    if (!concept) throw notFound("concept");
+    return concept;
+  });
 
   // --- §4.2 expanded membership at asOf (paginated; union with tenant extensions) ------------
-  app.get(
-    "/api/v1/terminology/value-sets/:id/expand",
-    { preHandler: [READ] },
-    async (request) => {
-      const { id } = parse(ExpandParamsSchema, request.params);
-      const q = parse(ExpandQuerySchema, request.query);
-      const includeTenantExtensions = q.includeTenantExtensions ?? true;
-      // orgId is only needed (and only meaningful) when unioning the actor's tenant extensions.
-      const orgId = includeTenantExtensions ? request.context.organizationId || undefined : undefined;
-      const items: ExpansionMember[] = [];
-      for await (const member of provider.expand(id, {
-        asOf: asOfDate(q.asOf),
-        system: q.system as CodeSystemId | undefined,
-        includeTenantExtensions,
-        orgId,
-      })) {
-        items.push(member);
-      }
-      // The precomputed-expansion cursor lands with the Drizzle store (T07); the slice returns all.
-      return { items, nextCursor: null };
-    },
-  );
+  app.get("/api/v1/terminology/value-sets/:id/expand", { preHandler: [READ] }, async (request) => {
+    const { id } = parse(ExpandParamsSchema, request.params);
+    const q = parse(ExpandQuerySchema, request.query);
+    const includeTenantExtensions = q.includeTenantExtensions ?? true;
+    // orgId is only needed (and only meaningful) when unioning the actor's tenant extensions.
+    const orgId = includeTenantExtensions ? request.context.organizationId || undefined : undefined;
+    const items: ExpansionMember[] = [];
+    for await (const member of provider.expand(id, {
+      asOf: asOfDate(q.asOf),
+      system: q.system as CodeSystemId | undefined,
+      includeTenantExtensions,
+      orgId,
+    })) {
+      items.push(member);
+    }
+    // The precomputed-expansion cursor lands with the Drizzle store (T07); the slice returns all.
+    return { items, nextCursor: null };
+  });
 
   // --- §4.2 (system, code, asOf) → membership with provenance ---------------------------------
   app.get(
@@ -221,7 +201,9 @@ export function registerTerminologyRoutes(app: FastifyInstance, deps: Terminolog
       );
       // The DB write-audit trigger on value_set_tenant_extension (M38-T03) records the mutation;
       // the never-weaken / already-extended validation (422/409) lands with the Drizzle store (T07).
-      return reply.code(201).send({ extensionId, valueSetId: id, system: body.system, code: body.code });
+      return reply
+        .code(201)
+        .send({ extensionId, valueSetId: id, system: body.system, code: body.code });
     },
   );
 

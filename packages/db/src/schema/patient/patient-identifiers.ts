@@ -18,9 +18,9 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { patientIdentifierKind } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 import { patients } from "./patients";
 
 /** Envelope-encrypted identifier value, stored as PostgreSQL bytea (§2.2 ssn/state_id). */

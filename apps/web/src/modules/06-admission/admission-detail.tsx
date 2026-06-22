@@ -1,3 +1,11 @@
+import {
+  DetailPageLayout,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  RightDetailPanel,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/06-admission — Admission Detail (M6 §5.2.4 + §5.2.5 activation gate, Track B).
 // Spec: docs/ui/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md — "Use Detail Page."
 // Reads the admission aggregate from GET /api/v1/admissions/:id (which carries the R-AC-01 activation
@@ -7,14 +15,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import {
-  DetailPageLayout,
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  RightDetailPanel,
-  useApiClient,
-} from "@wardenx/ui";
 
 interface SummaryRow {
   id: string;
@@ -70,11 +70,14 @@ export function AdmissionDetail(): JSX.Element {
   }, [load]);
 
   if (loading) return <LoadingSpinner />;
-  if (error || !admission) return <EmptyState title="Unavailable" description={error ?? "Not found."} />;
+  if (error || !admission)
+    return <EmptyState title="Unavailable" description={error ?? "Not found."} />;
 
   return (
     <DetailPageLayout
-      header={<PageHeader title={`Admission ${admission.id}`} breadcrumb={`State: ${admission.state}`} />}
+      header={
+        <PageHeader title={`Admission ${admission.id}`} breadcrumb={`State: ${admission.state}`} />
+      }
       aside={
         <RightDetailPanel title="Activation gate">
           <ActivationChecklist gate={admission.activationGate} />
@@ -91,7 +94,9 @@ export function AdmissionDetail(): JSX.Element {
   );
 }
 
-function ActivationChecklist({ gate }: { gate: AdmissionDetailView["activationGate"] }): JSX.Element {
+function ActivationChecklist({
+  gate,
+}: { gate: AdmissionDetailView["activationGate"] }): JSX.Element {
   return (
     <div>
       <p style={{ fontSize: "0.85rem", color: gate.ready ? "#15803d" : "#b45309" }}>
@@ -101,8 +106,13 @@ function ActivationChecklist({ gate }: { gate: AdmissionDetailView["activationGa
         {GATE_ROWS.map((row) => {
           const missing = gate.missing.includes(row.code);
           return (
-            <li key={row.code} style={{ padding: "0.35rem 0", color: missing ? "#b91c1c" : "#15803d" }}>
-              <span aria-hidden style={{ marginRight: "0.5rem" }}>{missing ? "✗" : "✓"}</span>
+            <li
+              key={row.code}
+              style={{ padding: "0.35rem 0", color: missing ? "#b91c1c" : "#15803d" }}
+            >
+              <span aria-hidden style={{ marginRight: "0.5rem" }}>
+                {missing ? "✗" : "✓"}
+              </span>
               {row.label}
             </li>
           );

@@ -16,9 +16,9 @@
 // outbox-consumers/ (not events-by-m8.ts) so the arch:gaps event-catalog scan does not treat the
 // consumed `m17.visit.scheduled` name as an M8-produced event.
 import type {
+  VisitScheduledPayload,
   VisitSeedingAction,
   VisitSeedingFacts,
-  VisitScheduledPayload,
 } from "../consumers/seed-visit-encounter";
 import { decideVisitSeeding } from "../consumers/seed-visit-encounter";
 

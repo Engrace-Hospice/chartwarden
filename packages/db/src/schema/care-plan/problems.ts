@@ -7,10 +7,10 @@
 import { sql } from "drizzle-orm";
 import { boolean, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { problemKind, problemSource, problemStatus } from "../../enums";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 import { carePlans } from "./care-plans";
 
 export const problems = pgTable(

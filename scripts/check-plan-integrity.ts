@@ -44,7 +44,9 @@ if (tryGit("rev-parse --is-inside-work-tree") !== "true") {
 }
 
 if (process.env.ALLOW_PLAN_EDITS) {
-  console.log("⚠ check-plan-integrity: ALLOW_PLAN_EDITS set — plan edits permitted (human override).");
+  console.log(
+    "⚠ check-plan-integrity: ALLOW_PLAN_EDITS set — plan edits permitted (human override).",
+  );
   process.exit(0);
 }
 

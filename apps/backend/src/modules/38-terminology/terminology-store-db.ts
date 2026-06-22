@@ -13,6 +13,7 @@
 // stay impossible here — there is no INSERT/UPDATE/DELETE path to a platform table (§7.4 lockdown,
 // enforced in depth by the absent `wardenx_app` grant on those tables).
 import { type DbClient, schema } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import {
   type CodeSystemId,
   type CodeSystemMeta,
@@ -26,7 +27,6 @@ import {
   normalizeAsOf,
   resolveBatchAsOf,
 } from "@wardenx/terminology";
-import { withOrgContext } from "@wardenx/tenancy";
 import { type SQL, and, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 
@@ -50,19 +50,47 @@ function conceptCols(system: CodeSystemId): ConceptCols | null {
   switch (system) {
     case "icd10cm": {
       const t = schema.conceptIcd10cm;
-      return { table: t, code: t.code, display: t.display, status: t.status, effective: t.effectiveDate, end: t.endDate };
+      return {
+        table: t,
+        code: t.code,
+        display: t.display,
+        status: t.status,
+        effective: t.effectiveDate,
+        end: t.endDate,
+      };
     }
     case "snomed": {
       const t = schema.conceptSnomed;
-      return { table: t, code: t.code, display: t.display, status: t.status, effective: t.effectiveDate, end: t.endDate };
+      return {
+        table: t,
+        code: t.code,
+        display: t.display,
+        status: t.status,
+        effective: t.effectiveDate,
+        end: t.endDate,
+      };
     }
     case "loinc": {
       const t = schema.conceptLoinc;
-      return { table: t, code: t.code, display: t.display, status: t.status, effective: t.effectiveDate, end: t.endDate };
+      return {
+        table: t,
+        code: t.code,
+        display: t.display,
+        status: t.status,
+        effective: t.effectiveDate,
+        end: t.endDate,
+      };
     }
     case "rxnorm": {
       const t = schema.conceptRxnorm;
-      return { table: t, code: t.code, display: t.display, status: t.status, effective: t.effectiveDate, end: t.endDate };
+      return {
+        table: t,
+        code: t.code,
+        display: t.display,
+        status: t.status,
+        effective: t.effectiveDate,
+        end: t.endDate,
+      };
     }
     default:
       return null;
@@ -110,13 +138,45 @@ function mapConcept(system: CodeSystemId, r: AnyConceptRow): ResolvedConcept<Cod
   } as const;
   switch (system) {
     case "icd10cm":
-      return { ...base, properties: { isBillableLeaf: r.isBillableLeaf ?? false, chapter: r.chapter ?? null, parentCode: r.parentCode ?? null } };
+      return {
+        ...base,
+        properties: {
+          isBillableLeaf: r.isBillableLeaf ?? false,
+          chapter: r.chapter ?? null,
+          parentCode: r.parentCode ?? null,
+        },
+      };
     case "snomed":
-      return { ...base, properties: { fullySpecifiedName: r.fullySpecifiedName ?? "", semanticTag: r.semanticTag ?? null, hierarchyPath: r.hierarchyPath ?? [] } };
+      return {
+        ...base,
+        properties: {
+          fullySpecifiedName: r.fullySpecifiedName ?? "",
+          semanticTag: r.semanticTag ?? null,
+          hierarchyPath: r.hierarchyPath ?? [],
+        },
+      };
     case "loinc":
-      return { ...base, properties: { component: r.component ?? null, property: r.property ?? null, time: r.time ?? null, system: r.system ?? null, scale: r.scale ?? null, method: r.method ?? null, shortName: r.shortName ?? null } };
+      return {
+        ...base,
+        properties: {
+          component: r.component ?? null,
+          property: r.property ?? null,
+          time: r.time ?? null,
+          system: r.system ?? null,
+          scale: r.scale ?? null,
+          method: r.method ?? null,
+          shortName: r.shortName ?? null,
+        },
+      };
     case "rxnorm":
-      return { ...base, properties: { tty: r.tty ?? "", ingredientRxcui: r.ingredientRxcui ?? null, ndcs: r.ndcs ?? [] } };
+      return {
+        ...base,
+        properties: {
+          tty: r.tty ?? "",
+          ingredientRxcui: r.ingredientRxcui ?? null,
+          ndcs: r.ndcs ?? [],
+        },
+      };
     default:
       return { ...base, properties: {} as ResolvedConcept<CodeSystemId>["properties"] };
   }
@@ -155,14 +215,20 @@ export function createDbTerminologyStore(db: DbClient): TerminologyStore {
     async conceptVersions<S extends CodeSystemId>(system: S, code: string) {
       const cols = conceptCols(system);
       if (!cols) return [];
-      const rows = (await db.select().from(cols.table).where(eq(cols.code, code))) as unknown as AnyConceptRow[];
+      const rows = (await db
+        .select()
+        .from(cols.table)
+        .where(eq(cols.code, code))) as unknown as AnyConceptRow[];
       return rows.map((r) => mapConcept(system, r)) as ConceptCandidate<S>[];
     },
 
     async conceptVersionsBatch<S extends CodeSystemId>(system: S, codes: readonly string[]) {
       const cols = conceptCols(system);
       if (!cols || codes.length === 0) return [];
-      const rows = (await db.select().from(cols.table).where(inArray(cols.code, [...codes]))) as unknown as AnyConceptRow[];
+      const rows = (await db
+        .select()
+        .from(cols.table)
+        .where(inArray(cols.code, [...codes]))) as unknown as AnyConceptRow[];
       return rows.map((r) => mapConcept(system, r)) as ConceptCandidate<S>[];
     },
 
@@ -217,7 +283,9 @@ export function createDbTerminologyStore(db: DbClient): TerminologyStore {
         tx
           .select({ systemId: X.systemId, code: X.code, reason: X.reason })
           .from(X)
-          .where(and(eq(X.valueSetId, valueSetId), eq(X.organizationId, orgId), isNull(X.removedAt))),
+          .where(
+            and(eq(X.valueSetId, valueSetId), eq(X.organizationId, orgId), isNull(X.removedAt)),
+          ),
       );
       const displays = await resolveDisplays(rows, normalizeAsOf());
       return rows.map((r) => ({
@@ -250,20 +318,24 @@ export function createDbTerminologyStore(db: DbClient): TerminologyStore {
 
     async insertTenantExtension(input: TenantExtensionInput) {
       const X = schema.valueSetTenantExtension;
-      return withOrgContext(db, { organizationId: input.orgId, userId: input.actorUserId }, async (tx) => {
-        const inserted = (await tx
-          .insert(X)
-          .values({
-            valueSetId: input.valueSetId,
-            organizationId: input.orgId,
-            systemId: input.system,
-            code: input.code,
-            reason: input.reason,
-            addedBy: input.actorUserId,
-          })
-          .returning({ id: X.id })) as Array<{ id: string }>;
-        return { extensionId: inserted[0]!.id };
-      });
+      return withOrgContext(
+        db,
+        { organizationId: input.orgId, userId: input.actorUserId },
+        async (tx) => {
+          const inserted = (await tx
+            .insert(X)
+            .values({
+              valueSetId: input.valueSetId,
+              organizationId: input.orgId,
+              systemId: input.system,
+              code: input.code,
+              reason: input.reason,
+              addedBy: input.actorUserId,
+            })
+            .returning({ id: X.id })) as Array<{ id: string }>;
+          return { extensionId: inserted[0]!.id };
+        },
+      );
     },
 
     async deleteTenantExtension(orgId, extensionId, actorUserId) {
@@ -281,7 +353,10 @@ export function createDbTerminologyStore(db: DbClient): TerminologyStore {
       const X = schema.valueSetTenantExtension;
       // D8 tenant offboarding (§11): hard-delete every extension this org owns; canonical untouched.
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
-        const removed = (await tx.delete(X).where(eq(X.organizationId, orgId)).returning({ id: X.id })) as Array<{ id: string }>;
+        const removed = (await tx
+          .delete(X)
+          .where(eq(X.organizationId, orgId))
+          .returning({ id: X.id })) as Array<{ id: string }>;
         return { erased: removed.length };
       });
     },

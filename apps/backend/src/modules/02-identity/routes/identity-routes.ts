@@ -27,7 +27,12 @@
 // an admin route additionally asserts the session's bound org === the path org, so a token
 // replay with an altered org cannot act cross-tenant (§7.12).
 import type { AuditContext, AuditExecutor } from "@wardenx/audit";
-import { requireAbac, requirePermission, requireSession, resolveActorPermissions } from "@wardenx/auth";
+import {
+  requireAbac,
+  requirePermission,
+  requireSession,
+  resolveActorPermissions,
+} from "@wardenx/auth";
 import { UnauthorizedError, ValidationError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {

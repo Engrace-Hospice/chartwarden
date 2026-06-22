@@ -55,8 +55,12 @@ describe("M8-T07 §2.5 late-entry tier clock", () => {
     expect(computeLateEntryTier({ serviceDate: SERVICE, asOfDate: plusDays(0) })).toBe("normal");
     expect(computeLateEntryTier({ serviceDate: SERVICE, asOfDate: plusDays(1) })).toBe("normal");
     // 24h–72h → late_entry (days 2–3).
-    expect(computeLateEntryTier({ serviceDate: SERVICE, asOfDate: plusDays(2) })).toBe("late_entry");
-    expect(computeLateEntryTier({ serviceDate: SERVICE, asOfDate: plusDays(3) })).toBe("late_entry");
+    expect(computeLateEntryTier({ serviceDate: SERVICE, asOfDate: plusDays(2) })).toBe(
+      "late_entry",
+    );
+    expect(computeLateEntryTier({ serviceDate: SERVICE, asOfDate: plusDays(3) })).toBe(
+      "late_entry",
+    );
     // 72h–14d → significant_late_entry (days 4–14).
     expect(computeLateEntryTier({ serviceDate: SERVICE, asOfDate: plusDays(4) })).toBe(
       "significant_late_entry",
@@ -180,7 +184,8 @@ describe("M8-T07 §7.5 — significant late entry (3–14 days)", () => {
     const effects = decideSignificantLateOverride({
       tier: "significant_late_entry",
       isSupervisor: true,
-      reason: "Visit notes were captured on paper at the bedside; transcribed once back in network range.",
+      reason:
+        "Visit notes were captured on paper at the bedside; transcribed once back in network range.",
       stepUpFresh: true,
     });
     expect(setFields(effects)).toEqual([
@@ -203,7 +208,8 @@ describe("M8-T07 §7.5 — significant late entry (3–14 days)", () => {
     const ok = {
       tier: "significant_late_entry" as const,
       isSupervisor: true,
-      reason: "Documented late after returning from an out-of-network rural visit; transcribed promptly.",
+      reason:
+        "Documented late after returning from an out-of-network rural visit; transcribed promptly.",
       stepUpFresh: true,
     };
     expectCode(
@@ -281,7 +287,11 @@ describe("M8-T07 §7.6 — administrative override (>14 days)", () => {
       "ADMINISTRATIVE_OVERRIDE_NOT_PERMITTED",
     );
     expectCode(
-      () => decideAdministrativeLateOverride({ ...ok, reason: "only forty-ish characters, well under one hundred." }),
+      () =>
+        decideAdministrativeLateOverride({
+          ...ok,
+          reason: "only forty-ish characters, well under one hundred.",
+        }),
       "ADMINISTRATIVE_OVERRIDE_REASON_TOO_SHORT",
     );
     expectCode(

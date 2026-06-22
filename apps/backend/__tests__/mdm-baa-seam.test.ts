@@ -8,7 +8,11 @@ import { type BaaStatusProvider, createInMemoryBaaStore } from "@wardenx/mdm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { NotImplementedError } from "../src/bootstrap/seams/providers";
-import { REQUIRED_SEAMS, __resetSeamsForTest, validateSeams } from "../src/bootstrap/seams/registry";
+import {
+  REQUIRED_SEAMS,
+  __resetSeamsForTest,
+  validateSeams,
+} from "../src/bootstrap/seams/registry";
 import { wireModuleSeams } from "../src/index";
 import { getBaaStatusProvider, registerMdmSeams } from "../src/modules/40-mdm/index";
 
@@ -19,9 +23,7 @@ const ST_ANTHONY = "33333333-3333-3333-3333-333333333333";
 // tenant has an executed BAA expiring 2027-12-31.
 function store(expiresOn = "2027-12-31") {
   return createInMemoryBaaStore({
-    facilities: [
-      { facilityId: ST_ANTHONY, sendingFacilityCodes: ["ST_ANTHONY", "STANTHONY_LAB"] },
-    ],
+    facilities: [{ facilityId: ST_ANTHONY, sendingFacilityCodes: ["ST_ANTHONY", "STANTHONY_LAB"] }],
     required: [{ orgId: ORG, kind: "facility", required: true }],
     records: [
       {
@@ -123,7 +125,12 @@ describe("M40-T06 — BaaStatusProvider registers over the M1 deny-stub (§4.6)"
     validateSeams();
     const provider = getBaaStatusProvider();
     expect(() =>
-      provider.baaStatusByMdmEntity({ orgId: ORG, kind: "facility", id: ST_ANTHONY, asOf: new Date() }),
+      provider.baaStatusByMdmEntity({
+        orgId: ORG,
+        kind: "facility",
+        id: ST_ANTHONY,
+        asOf: new Date(),
+      }),
     ).toThrow(NotImplementedError);
   });
 

@@ -4,8 +4,8 @@
 // M4 audit job ports. Each adapter records what the processor asked it to do so a run's effects are
 // assertable; the production Drizzle/Valkey/loader adapters bind the identical port shapes at boot.
 import type { ExpansionRow, ValueSetMemberRow } from "../expansion/index";
-import type { RemediationReport, TenantCodeRecord } from "../remediation/index";
 import type { CodeSystemId } from "../interfaces/kinds";
+import type { RemediationReport, TenantCodeRecord } from "../remediation/index";
 import type {
   RefreshExpansionsPorts,
   ScanDeprecation,

@@ -102,7 +102,11 @@ export function decideProviderSynced(
     lastSyncRunId: payload.syncRunId,
     lastChangedFields: appliedChanges,
   };
-  return { outcome: "updated_canonical", appliedChanges, updates: { ...updates, nppesProvenance: provenance } };
+  return {
+    outcome: "updated_canonical",
+    appliedChanges,
+    updates: { ...updates, nppesProvenance: provenance },
+  };
 }
 
 /** The decision `decideProviderDeactivated` returns (§4.7.2). */
@@ -131,7 +135,10 @@ export interface NppesConsumerPorts {
   /** Look up the physician canonical by NPI (D10; via platform context in production). */
   findCanonicalByNpi(npi: string): Promise<NppesCanonicalPhysician | null>;
   /** Apply a canonical patch via `mdm_canonical_writer` (M40-T03). */
-  applyCanonicalUpdate(canonicalId: string, updates: Readonly<Record<string, unknown>>): Promise<void>;
+  applyCanonicalUpdate(
+    canonicalId: string,
+    updates: Readonly<Record<string, unknown>>,
+  ): Promise<void>;
   /** Flip a canonical physician to `deactivated`. */
   applyDeactivation(canonicalId: string): Promise<void>;
   /** Emit `m40.canonical_updated` so downstream consumers refresh caches (§7.11). */
@@ -157,7 +164,11 @@ export async function handleProviderSynced(
   const decision = decideProviderSynced(payload, canonical);
   if (decision.outcome === "updated_canonical" && canonical !== null) {
     await ports.applyCanonicalUpdate(canonical.id, decision.updates);
-    await ports.emitCanonicalUpdated({ kind: "physician", id: canonical.id, changedFields: decision.appliedChanges });
+    await ports.emitCanonicalUpdated({
+      kind: "physician",
+      id: canonical.id,
+      changedFields: decision.appliedChanges,
+    });
   }
   return decision;
 }

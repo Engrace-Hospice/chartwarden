@@ -3,20 +3,11 @@
 // parent encounter). Numeric measurements stored as text to preserve units/precision; range CHECKs guard
 // physiologic plausibility. RLS + the M4 write-audit trigger land in migration 0031 (M8-T03).
 import { sql } from "drizzle-orm";
-import {
-  check,
-  index,
-  integer,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { check, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { painScale, vitalUnit } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 import { encounters } from "./encounters";
 
 export const vitals = pgTable(

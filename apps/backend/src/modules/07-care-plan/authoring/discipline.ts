@@ -78,7 +78,10 @@ export function groupInterventionsByDiscipline<T extends DisciplineTaggedEntry>(
     if (bucket) bucket.push(entry);
     else byDiscipline.set(entry.discipline, [entry]);
   }
-  return [...byDiscipline.entries()].map(([discipline, grouped]) => ({ discipline, entries: grouped }));
+  return [...byDiscipline.entries()].map(([discipline, grouped]) => ({
+    discipline,
+    entries: grouped,
+  }));
 }
 
 /**

@@ -5,15 +5,8 @@
 // any tenant — so it carries NO organization_id by design (allow-listed in check-tenancy's
 // NON_ORG_SCOPED, like M38's code_system). Seeded idempotently in M39-T09 / the migration §3.4.
 // RLS dual-grant + the platform-shared role land in M39-T03 (§3.5).
-import {
-  boolean,
-  index,
-  integer,
-  pgTable,
-  text,
-  timestamp,
-} from "drizzle-orm/pg-core";
-import { consentTypeKey, consentScopeDiscriminator } from "../../enums";
+import { boolean, index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { consentScopeDiscriminator, consentTypeKey } from "../../enums";
 
 export const consentTypeCatalog = pgTable(
   "consent_type_catalog",

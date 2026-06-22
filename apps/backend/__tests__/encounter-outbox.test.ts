@@ -5,19 +5,15 @@
 // decision core (idempotent skip, active-service guard, the seed happy path), and asserts the
 // `EvvBracketResolver` forward seam is registered fail-closed (denies until M18 lands in Wave F).
 import { Value } from "@sinclair/typebox/value";
-import { afterEach, describe, expect, it } from "vitest";
 import { M8_EVENT_NAMES } from "@wardenx/types";
+import { afterEach, describe, expect, it } from "vitest";
+import { __resetSeamsForTest, getSeam, validateSeams } from "../src/bootstrap/index";
 import {
-  __resetSeamsForTest,
-  getSeam,
-  validateSeams,
-} from "../src/bootstrap/index";
-import {
-  type VisitScheduledPayload,
-  type VisitSeedingFacts,
   M8_OUTBOX_EVENTS,
   M8_VISIT_SCHEDULED_CONSUMER,
   M8_VISIT_SCHEDULED_CONSUMER_DEFERRED,
+  type VisitScheduledPayload,
+  type VisitSeedingFacts,
   decideVisitScheduled,
   decideVisitSeeding,
 } from "../src/modules/08-encounters/index";
@@ -201,7 +197,9 @@ describe("decideVisitSeeding (M17 visit-scheduling consumer, §4.7 / line 65)", 
 
   it("the deferred binding re-export delegates to the pure decider", () => {
     const facts: VisitSeedingFacts = { alreadySeeded: false, patientOnService: true };
-    expect(decideVisitScheduled(visitPayload(), facts)).toEqual(decideVisitSeeding(visitPayload(), facts));
+    expect(decideVisitScheduled(visitPayload(), facts)).toEqual(
+      decideVisitSeeding(visitPayload(), facts),
+    );
   });
 });
 

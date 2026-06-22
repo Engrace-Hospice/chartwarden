@@ -4,9 +4,9 @@
 // cross-module FK). RLS + the M4 write-audit trigger land in migration 0031 (M8-T03).
 import { sql } from "drizzle-orm";
 import { check, index, pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 import { encounters } from "./encounters";
 
 export const encounterCarePlanLinks = pgTable(
