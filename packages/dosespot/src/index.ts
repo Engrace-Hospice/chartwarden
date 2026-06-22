@@ -11,11 +11,17 @@
 // `@wardenx/orders` precedent) rather than the `@wardenx/domain` leaf because it reads the local
 // `MED_CLASS_CATALOG`. IO-free, `@wardenx/types`-only.
 //
+// M12-T04 lands the pure refill-inbox workflow domain (`refill/`): the §2.7 D9 refill-request state machine
+// (pending → approved | denied | expired; approve mints a NEW `medication_order` with `derived_from_refill_id`
+// and reuses the `lifecycle/` sign path), the controlled-substance refill-rule matrix (Schedule II
+// non-refillable; III/IV/V ≤5; tenant tighten-only), and the 48h/72h SLA clock. IO-free, `@wardenx/types`-only.
+//
 // Later tasks add: the per-class TypeBox `data` schemas + cross-field validators + transmission mappers +
-// EPCS rules (`classes/<class>/`, M12-T04+); the refill-inbox workflow (M12-T04); the EPCS architecture
+// EPCS rules (`classes/<class>/`, M12-T05+); the EPCS architecture
 // (`epcs/`, M12-T05); the DoseSpot adapter + webhook security (`client/`, `webhook/`, `credentials/`,
 // M12-T06); the `MedicationOrderProvider`/`RefillInboxProvider` seam impls (`seams.ts`, M12-T07); the typed
 // M36 alert builders (`alerts.ts`) + `m12.*` outbox payload assemblers (`outbox.ts`) (M12-T08).
 
 export * from "./classes/catalog";
 export * from "./lifecycle";
+export * from "./refill";
