@@ -141,7 +141,7 @@
       "routes": false,
       "enriched": false,
       "screens": false,
-      "tests": false,
+      "tests": true,
       "adapter": false,
       "liveInfra": false
     },

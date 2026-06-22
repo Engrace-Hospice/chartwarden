@@ -4,11 +4,22 @@
 // wiring home (`seams.ts`, D10). The cross-module enum/seam/outbox/alert CONTRACTS live in the leaf
 // `@wardenx/types` (`hope.ts`).
 //
-// Later M10 tasks add the pure domain logic the services compose: the timepoint window calculator +
-// scheduling (M10-T03), the per-section TypeBox `data` shapes + the server-authoritative J2051 evaluator
-// (`sections/`), the CMS pre-submission validation (`validation/`), the M36 alert builders (M10-T06),
-// and the iQIES submission workers (M10-T07). The seam implementations + their M1-registry wiring land
-// in M10-T05; routes in M10-T06.
+// M10-T03 adds the pure timepoint engine + SFV domain logic the recording/scheduling services compose:
+// the org-TZ window calculator + schedule planner (`scheduling/`), the server-authoritative J2051 trigger
+// (`triggers/`), the SFV creation/completion/watchdog machines (`sfv/`), and the recording-boundary
+// guards — author-discipline (RN/NP-only) + capture-window/late-reason + the discharge Section-Q branch
+// (`recording/`). Still pure, IO-free, `@wardenx/types`-only: the services that compose these over
+// Drizzle + the M6/M9/M39 seams land in M10-T06; the per-section TypeBox + CMS pre-submission validation
+// in M10-T04; the iQIES submission workers in M10-T07.
 
 export * from "./rfa";
 export * from "./seams";
+export * from "./errors";
+export * from "./scheduling/time";
+export * from "./scheduling/alert-cadence";
+export * from "./scheduling/window-calculator";
+export * from "./scheduling/schedule-plan";
+export * from "./triggers/j2051";
+export * from "./sfv/sfv";
+export * from "./recording/discipline";
+export * from "./recording/timepoint-gate";
