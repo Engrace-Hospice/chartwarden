@@ -340,3 +340,37 @@ export * from "./dosespot/refill-requests";
 export * from "./dosespot/dosespot-webhook-events";
 export * from "./dosespot/dosespot-prescribers";
 export * from "./dosespot/epcs-signing-attempts";
+
+// ---------------------------------------------------------------------------
+// M13 owns 12 tables (M13-T02): the central `administration_record` (one row per recorded medication
+// administration — the §2.1 six modes via the discriminated `mode` + per-mode TypeBox `data`; the §2.2 D6
+// committed→{pending_caregiver_review}→superseded/voided lifecycle; free-text in denylisted top-level columns
+// AND nested `data` json-paths, §3.6 D12) + scheduled_dose (the §2.3 D2 materialized slots from M12's
+// sigStructured) + prn_administration (the §2.4 D3 PRN wrapper + effectiveness-reassessment M9 reads) +
+// missed_dose (the §2.5 D4 lapsed-slot pairing) + administration_witness (the §2.6 D7 controlled-substance
+// double-witness + §7.4 token digest) + comfort_kit_deployment / comfort_kit_drawdown (the §2.7 D5 kit
+// lifecycle + replenishment events to M21) + medication_reconciliation_worksheet / _decision (the §2.8 D17
+// admission/transfer/discharge/recert reconciliation) + barcode_scan_event (BCMA five-rights capture) +
+// administration_offline_queue (the §2.10 D18 server-side idempotency ledger) + administration_policy
+// (per-tenant grace/reassessment/state-override config). The six patient-bearing tables (administration_record /
+// scheduled_dose / prn_administration / missed_dose / comfort_kit_deployment / medication_reconciliation_worksheet)
+// carry the three-column tenancy rule (organization_id + provider_entity_id + location_id NOT NULL, denormalized
+// from the admission); the other six are org-scoped via their parent. Cross-module refs (M5 patient, M6 admission,
+// M12 medication_order — resolved through the seam, NEVER imported — M8 encounter, M9 assessment, M21 supply, M22
+// document) are plain uuid app-validated, NOT cross-module FKs (M13 dependsOn [12,36,38]); `administration_record`
+// is PARTITION BY RANGE (administered_at) monthly, so every reference TO it carries NO single-column SQL FK and the
+// offline (device_id, local_id) idempotency is enforced at the app layer (PG cannot enforce cross-partition unique
+// without the partition key). The partition conversion + RLS + grants + M4 write-audit triggers land in the RLS
+// migration (M13-T02, §3.3/§3.5/§3.6).
+export * from "./emar/administration-records";
+export * from "./emar/scheduled-doses";
+export * from "./emar/prn-administrations";
+export * from "./emar/missed-doses";
+export * from "./emar/administration-witnesses";
+export * from "./emar/comfort-kit-deployments";
+export * from "./emar/comfort-kit-drawdowns";
+export * from "./emar/medication-reconciliation-worksheets";
+export * from "./emar/medication-reconciliation-decisions";
+export * from "./emar/barcode-scan-events";
+export * from "./emar/administration-offline-queue";
+export * from "./emar/administration-policy";
