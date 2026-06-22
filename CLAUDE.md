@@ -72,6 +72,12 @@ the prose docs in `docs/architecture/`.
   progress. Regenerate with `bun run status:matrix`; `arch:fitness` runs it in `--check` mode
   (`arch:status-matrix`) to keep `audit/implementation-status/` fresh and to hard-fail on orphan
   (unowned) schema/migration tables. Writes `audit/implementation-status/IMPLEMENTATION_STATUS.md` (+ `.json`).
+- `scripts/report-ui-parity.ts` — **UI implementation-parity report**: bridges the documented
+  screen-spec corpus (`docs/ui`) and the implemented web surface (registered `screens.ts`), so a
+  green `docs:ui` is not mistaken for "the UI is built". Regenerate with `bun run ui:parity`;
+  `arch:fitness` runs it in `--check` mode (`arch:ui-parity`) to keep `audit/ui-parity/` fresh and
+  to hard-fail on duplicate screen id/path, an unknown `requiredPermission`, or a `screens.ts` not
+  wired into `main.tsx`. Writes `audit/ui-parity/UI_PARITY.md` (+ `.json`).
 
 ### Governance & history
 
