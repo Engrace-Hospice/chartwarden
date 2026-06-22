@@ -367,8 +367,8 @@ exports.MODULES = [
   {
     id: 9,
     name: "Clinical Assessments Suite",
-    codePaths: ["packages/assessments", "apps/backend/src/modules/09-assessments"],
-    dependsOn: [38],
+    codePaths: ["packages/assessments", "apps/backend/src/modules/09-assessments", "apps/web/src/modules/09-assessments"],
+    dependsOn: [1, 38], // +1: M9 registers its §4.7/D7 LatestAssessmentProvider + ScaleSeriesProvider seams via the M1-owned bootstrap registry (M9-T04); +web: Track B in-task screens (ADR-0030), land in M9-T07
     ownedTables: [
       "clinical_assessment",
       "assessment_cosignature",
@@ -380,8 +380,8 @@ exports.MODULES = [
   {
     id: 10,
     name: "HOPE Engine",
-    codePaths: ["packages/hope", "packages/iqies-client", "apps/backend/src/modules/10-hope"],
-    dependsOn: [9, 36, 38], // +iqies-client ADR-0028
+    codePaths: ["packages/hope", "packages/iqies-client", "apps/backend/src/modules/10-hope", "apps/web/src/modules/10-hope"],
+    dependsOn: [1, 9, 36, 38], // +M1: registers HOPE seams into the M1-owned bootstrap registry (M10-T05); +iqies-client ADR-0028; +web: Track B in-task screens (ADR-0030), land in M10-T08
     ownedTables: [
       "hope_timepoint_schedule",
       "hope_assessment",
@@ -394,8 +394,8 @@ exports.MODULES = [
   {
     id: 11,
     name: "Orders",
-    codePaths: ["apps/backend/src/modules/11-orders"],
-    dependsOn: [6, 36, 38, 40],
+    codePaths: ["packages/orders", "apps/backend/src/modules/11-orders", "apps/web/src/modules/11-orders"],
+    dependsOn: [1, 6, 36, 38, 40], // +M1: the bootstrap seam registry (registerSeam/getSeam) M11's backend module wires its §2.8/§4.3 owned seams into (M11-T05; M6..M10 seam-task precedent); +packages/orders: §3.1 M11-owned feature pkg (kinds/catalog/seams/alerts), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M11-T08
     ownedTables: [
       "order_record",
       "order_signature",
@@ -409,8 +409,12 @@ exports.MODULES = [
   {
     id: 12,
     name: "DoseSpot Integration",
-    codePaths: ["packages/dosespot", "apps/backend/src/modules/12-dosespot"],
-    dependsOn: [5, 11, 38, 40],
+    codePaths: [
+      "packages/dosespot",
+      "apps/backend/src/modules/12-dosespot",
+      "apps/web/src/modules/12-dosespot",
+    ], // +web: Track B in-task screens (ADR-0030), land in M12-T09
+    dependsOn: [1, 5, 11, 38, 40], // +M1: the bootstrap seam registry (registerSeam/getSeam) M12's backend module wires its §2.10 D17 owned seams (MedicationOrderProvider/RefillInboxProvider) into (M12-T07; M6..M11 seam-task precedent)
     ownedTables: [
       "dosespot_prescriber",
       "dosespot_webhook_event",
@@ -423,8 +427,12 @@ exports.MODULES = [
   {
     id: 13,
     name: "eMAR & Med Administration",
-    codePaths: ["apps/backend/src/modules/13-emar"],
-    dependsOn: [12, 36, 38],
+    codePaths: [
+      "packages/emar",
+      "apps/backend/src/modules/13-emar",
+      "apps/web/src/modules/13-emar",
+    ], // +packages/emar: §3.1 M13-owned feature pkg (mode catalog → lifecycle/schedule-parser/five-rights), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M13-T10
+    dependsOn: [1, 12, 36, 38], // +M1: the bootstrap seam registry (registerSeam/getSeam) M13's backend module wires its §2.12 D16 owned seams (MedicationAdministrationProvider/ReconciliationProvider) into (M13-T07; M6..M12 seam-task precedent)
     ownedTables: [
       "administration_offline_queue",
       "administration_policy",

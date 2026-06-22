@@ -16,6 +16,11 @@
     "06-admission",
     "07-care-plan",
     "08-encounters",
+    "09-assessments",
+    "10-hope",
+    "11-orders",
+    "12-dosespot",
+    "13-emar",
     "36-messaging",
     "38-terminology",
     "40-mdm"
@@ -188,6 +193,258 @@
       "id": "encounter.my-drafts",
       "path": "/work/drafts",
       "permission": "encounter.author"
+    },
+    {
+      "module": "09-assessments",
+      "moduleId": 9,
+      "id": "assessment.timeline",
+      "path": "/patients/:patientId/assessments",
+      "permission": "assessment.read"
+    },
+    {
+      "module": "09-assessments",
+      "moduleId": 9,
+      "id": "assessment.scale-trend",
+      "path": "/patients/:patientId/scales/:scaleType",
+      "permission": "assessment.read_trend"
+    },
+    {
+      "module": "09-assessments",
+      "moduleId": 9,
+      "id": "assessment.changes",
+      "path": "/patients/:patientId/assessments/changes",
+      "permission": "assessment.read"
+    },
+    {
+      "module": "09-assessments",
+      "moduleId": 9,
+      "id": "assessment.summary",
+      "path": "/patients/:patientId/assessments/summary",
+      "permission": "assessment.read_summary"
+    },
+    {
+      "module": "09-assessments",
+      "moduleId": 9,
+      "id": "assessment.scale-licenses",
+      "path": "/admin/scales/licenses",
+      "permission": "assessment.license_read"
+    },
+    {
+      "module": "09-assessments",
+      "moduleId": 9,
+      "id": "assessment.scale-policies",
+      "path": "/admin/scales/policies",
+      "permission": "assessment.policy_read"
+    },
+    {
+      "module": "10-hope",
+      "moduleId": 10,
+      "id": "hope.dashboard",
+      "path": "/hope",
+      "permission": "hope.schedule.read"
+    },
+    {
+      "module": "10-hope",
+      "moduleId": 10,
+      "id": "hope.patient-timeline",
+      "path": "/patients/:patientId/hope",
+      "permission": "hope.timepoint.read"
+    },
+    {
+      "module": "10-hope",
+      "moduleId": 10,
+      "id": "hope.sfv-worklist",
+      "path": "/hope/sfv",
+      "permission": "hope.sfv.read"
+    },
+    {
+      "module": "10-hope",
+      "moduleId": 10,
+      "id": "hope.assessment-detail",
+      "path": "/hope/assessments/:id",
+      "permission": "hope.timepoint.read"
+    },
+    {
+      "module": "10-hope",
+      "moduleId": 10,
+      "id": "hope.submission-worklist",
+      "path": "/hope/submissions",
+      "permission": "hope.submission.read"
+    },
+    {
+      "module": "10-hope",
+      "moduleId": 10,
+      "id": "hope.submission-detail",
+      "path": "/hope/submissions/:id",
+      "permission": "hope.submission.read"
+    },
+    {
+      "module": "10-hope",
+      "moduleId": 10,
+      "id": "hope.compliance",
+      "path": "/hope/compliance",
+      "permission": "hope.dashboard.read"
+    },
+    {
+      "module": "11-orders",
+      "moduleId": 11,
+      "id": "orders.sign-inbox",
+      "path": "/orders",
+      "permission": "orders.read"
+    },
+    {
+      "module": "11-orders",
+      "moduleId": 11,
+      "id": "orders.patient-list",
+      "path": "/patients/:patientId/orders",
+      "permission": "orders.read"
+    },
+    {
+      "module": "11-orders",
+      "moduleId": 11,
+      "id": "orders.detail",
+      "path": "/orders/:id",
+      "permission": "orders.read"
+    },
+    {
+      "module": "11-orders",
+      "moduleId": 11,
+      "id": "orders.verbal-expiring",
+      "path": "/orders/verbal-expiring",
+      "permission": "orders.read"
+    },
+    {
+      "module": "11-orders",
+      "moduleId": 11,
+      "id": "orders.cosign-pending",
+      "path": "/orders/cosign-pending",
+      "permission": "orders.read"
+    },
+    {
+      "module": "11-orders",
+      "moduleId": 11,
+      "id": "orders.results-review",
+      "path": "/orders/results-pending-review",
+      "permission": "orders.read"
+    },
+    {
+      "module": "11-orders",
+      "moduleId": 11,
+      "id": "orders.standing",
+      "path": "/standing-orders",
+      "permission": "orders.read"
+    },
+    {
+      "module": "12-dosespot",
+      "moduleId": 12,
+      "id": "prescribing.patient-medications",
+      "path": "/patients/:patientId/medications",
+      "permission": "prescribing.read"
+    },
+    {
+      "module": "12-dosespot",
+      "moduleId": 12,
+      "id": "prescribing.medication-detail",
+      "path": "/medication-orders/:id",
+      "permission": "prescribing.read"
+    },
+    {
+      "module": "12-dosespot",
+      "moduleId": 12,
+      "id": "prescribing.sign-inbox",
+      "path": "/prescribing/sign-inbox",
+      "permission": "prescribing.read"
+    },
+    {
+      "module": "12-dosespot",
+      "moduleId": 12,
+      "id": "prescribing.verbal-orders",
+      "path": "/prescribing/verbal-orders",
+      "permission": "prescribing.read"
+    },
+    {
+      "module": "12-dosespot",
+      "moduleId": 12,
+      "id": "prescribing.refill-inbox",
+      "path": "/refills",
+      "permission": "prescribing.read"
+    },
+    {
+      "module": "12-dosespot",
+      "moduleId": 12,
+      "id": "prescribing.refill-detail",
+      "path": "/refills/:id",
+      "permission": "prescribing.read"
+    },
+    {
+      "module": "12-dosespot",
+      "moduleId": 12,
+      "id": "prescribing.reconciliation",
+      "path": "/patients/:patientId/medications/reconciliation",
+      "permission": "prescribing.history.read"
+    },
+    {
+      "module": "12-dosespot",
+      "moduleId": 12,
+      "id": "prescribing.prescriber-roster",
+      "path": "/admin/prescribers",
+      "permission": "prescribing.admin.roster"
+    },
+    {
+      "module": "12-dosespot",
+      "moduleId": 12,
+      "id": "prescribing.policy",
+      "path": "/admin/prescribing-policy",
+      "permission": "prescribing.admin.policy"
+    },
+    {
+      "module": "13-emar",
+      "moduleId": 13,
+      "id": "emar.patient-emar",
+      "path": "/patients/:patientId/emar",
+      "permission": "administration.read"
+    },
+    {
+      "module": "13-emar",
+      "moduleId": 13,
+      "id": "emar.administration-detail",
+      "path": "/patients/:patientId/administrations/:id",
+      "permission": "administration.read"
+    },
+    {
+      "module": "13-emar",
+      "moduleId": 13,
+      "id": "emar.iv-session",
+      "path": "/patients/:patientId/iv-sessions/:sessionId",
+      "permission": "administration.read"
+    },
+    {
+      "module": "13-emar",
+      "moduleId": 13,
+      "id": "emar.missed-doses",
+      "path": "/patients/:patientId/missed-doses",
+      "permission": "administration.read_missed"
+    },
+    {
+      "module": "13-emar",
+      "moduleId": 13,
+      "id": "emar.reconciliation-worksheet",
+      "path": "/patients/:patientId/reconciliation/:worksheetId",
+      "permission": "reconciliation.read"
+    },
+    {
+      "module": "13-emar",
+      "moduleId": 13,
+      "id": "emar.comfort-kit",
+      "path": "/patients/:patientId/comfort-kit/:deploymentId",
+      "permission": "comfort_kit.read"
+    },
+    {
+      "module": "13-emar",
+      "moduleId": 13,
+      "id": "emar.administration-policy",
+      "path": "/admin/administration-policy",
+      "permission": "administration.admin.policy"
     },
     {
       "module": "36-messaging",

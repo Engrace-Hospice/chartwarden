@@ -30,12 +30,23 @@ import {
   encounterCreatorDenyStub,
   evvBracketResolverDenyStub,
   faceToFaceReaderDenyStub,
+  hopeJ2051ProviderDenyStub,
+  hopeSubmissionProviderDenyStub,
+  hopeTimepointProviderDenyStub,
+  latestAssessmentProviderDenyStub,
   levelOfCareReaderDenyStub,
   mdmEntityProviderDenyStub,
+  medicationAdministrationProviderDenyStub,
+  medicationOrderProviderDenyStub,
   messagingProviderDenyStub,
   mileagePayrollReaderDenyStub,
+  orderProviderDenyStub,
+  orderSignatureProviderDenyStub,
   patientMutatorDenyStub,
   patientReaderDenyStub,
+  reconciliationProviderDenyStub,
+  refillInboxProviderDenyStub,
+  scaleSeriesProviderDenyStub,
   sessionContextResolverDenyStub,
   signedEncountersReaderDenyStub,
   terminologyProviderDenyStub,
@@ -213,6 +224,105 @@ export const REQUIRED_SEAMS = [
     ownerModule: 18,
     phi: true,
     denyStub: evvBracketResolverDenyStub,
+  },
+  // M9 (Clinical Assessments) owned seams (§4.7 / D7). Leaf-typed read-only DTO surfaces over M9's PHI
+  // tables (the latest active scale capture + the windowed scored series/delta), consumed by M7 (CTI/IDG
+  // latest), M10 (HOPE prognosis), M14 (IDG deltas), M28 (FHIR Observation), M32 (AI trajectory) instead
+  // of importing M9's schema. PHI read surfaces (patient-linked scores) → phi: true; boot-validated and
+  // fail-closed until M9 registers the real Drizzle-backed impls (M9-T04).
+  {
+    key: "LatestAssessmentProvider",
+    ownerModule: 9,
+    phi: true,
+    denyStub: latestAssessmentProviderDenyStub,
+  },
+  {
+    key: "ScaleSeriesProvider",
+    ownerModule: 9,
+    phi: true,
+    denyStub: scaleSeriesProviderDenyStub,
+  },
+  // M10 (HOPE Engine) owned seams (§2 / D10). Leaf-typed read-only DTO surfaces over M10's PHI tables (the
+  // timepoint schedule + completion state, the J2051 trigger/SFV obligations, the per-PE submission batch
+  // status), consumed by M14 (open HOPE windows on the IDG packet), M22 (per-admission HOPE timeline PDF),
+  // M30 (HQRP on-time / acceptance / Timely-Follow-Up measures), M32 (AI symptom-trajectory + decline
+  // prediction) instead of importing M10's schema. PHI read surfaces (patient-linked timepoints/triggers/
+  // submissions) → phi: true; boot-validated and fail-closed until M10 registers the real impls (M10-T05).
+  {
+    key: "HopeTimepointProvider",
+    ownerModule: 10,
+    phi: true,
+    denyStub: hopeTimepointProviderDenyStub,
+  },
+  {
+    key: "HopeJ2051Provider",
+    ownerModule: 10,
+    phi: true,
+    denyStub: hopeJ2051ProviderDenyStub,
+  },
+  {
+    key: "HopeSubmissionProvider",
+    ownerModule: 10,
+    phi: true,
+    denyStub: hopeSubmissionProviderDenyStub,
+  },
+  // M11 (Orders) owned seams (§2.8 D14 / §4.3). `OrderSignatureProvider` is the polymorphic clinical-
+  // signature WRITE primitive (sign / record-verbal / cosign / discontinue) M12 routes medication-order
+  // signatures through (no SQL FK across `order_signature.target_kind`, D4); `OrderProvider` is the read-
+  // side counterpart M14 (orders since last IDG), M23 ("covering order" claim rule), M30 (completion +
+  // verbal-timeliness measures), and M7 (intervention → order back-ref) consume instead of importing M11's
+  // schema. Both touch patient-linked clinical orders → phi: true; boot-validated and fail-closed until M11
+  // registers the real impls (M11-T05).
+  {
+    key: "OrderSignatureProvider",
+    ownerModule: 11,
+    phi: true,
+    denyStub: orderSignatureProviderDenyStub,
+  },
+  {
+    key: "OrderProvider",
+    ownerModule: 11,
+    phi: true,
+    denyStub: orderProviderDenyStub,
+  },
+  // M12 (DoseSpot Integration) owned seams (§2.10 D17). Both are READ-only DTO surfaces over M12's
+  // `medication_order` / `refill_request` tables: `MedicationOrderProvider` is the medication-order read path
+  // M13 (eMAR administration context), M14 (IDG packet), M19/M30/M33 (derived signals + cost + quality), M28
+  // (FHIR `MedicationRequest`), M31 (portal summary) consume; `RefillInboxProvider` is the refill-inbox read
+  // path the prescriber inbox UI, M19 (on-call), and M33 (SLA dashboards) consume — all instead of importing
+  // M12's schema. Both touch patient-linked medication records → phi: true; boot-validated and fail-closed
+  // until M12 registers the real impls (M12-T07).
+  {
+    key: "MedicationOrderProvider",
+    ownerModule: 12,
+    phi: true,
+    denyStub: medicationOrderProviderDenyStub,
+  },
+  {
+    key: "RefillInboxProvider",
+    ownerModule: 12,
+    phi: true,
+    denyStub: refillInboxProviderDenyStub,
+  },
+  // M13 (eMAR & Med Administration) owned seams (§2.12 D16). Both are READ-only DTO surfaces over M13's
+  // `administration_record` / `medication_reconciliation_*` tables: `MedicationAdministrationProvider` is the
+  // administration read path M14 (IDG "administrations since last meeting"), M28 (FHIR `MedicationAdministration`),
+  // M30 (PRN-effectiveness / missed-dose / comfort-kit-timeliness measures), M31 (portal summary), M33 (dashboards),
+  // M37 (IPU IV-pump overlay) consume; `ReconciliationProvider` is the reconciliation-worksheet read path M14
+  // (IDG packet) + M30 (timeliness measure) consume — all instead of importing M13's schema. Both touch
+  // patient-linked clinical records → phi: true; boot-validated and fail-closed until M13 registers the real
+  // impls (M13-T07).
+  {
+    key: "MedicationAdministrationProvider",
+    ownerModule: 13,
+    phi: true,
+    denyStub: medicationAdministrationProviderDenyStub,
+  },
+  {
+    key: "ReconciliationProvider",
+    ownerModule: 13,
+    phi: true,
+    denyStub: reconciliationProviderDenyStub,
   },
 ] satisfies readonly RequiredSeam[];
 

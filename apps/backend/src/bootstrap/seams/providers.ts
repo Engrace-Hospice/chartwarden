@@ -23,10 +23,21 @@ import type {
   EncounterCreator,
   EvvBracketResolver,
   FaceToFaceReader,
+  HopeJ2051Provider,
+  HopeSubmissionProvider,
+  HopeTimepointProvider,
+  LatestAssessmentProvider,
   LevelOfCareReader,
+  MedicationAdministrationProvider,
+  MedicationOrderProvider,
   MileagePayrollReader,
+  OrderProvider,
+  OrderSignatureProvider,
+  ReconciliationProvider,
+  RefillInboxProvider,
   PatientMutator,
   PatientReader,
+  ScaleSeriesProvider,
   SeamName,
   SessionContextResolver,
   SignedEncountersReader,
@@ -251,6 +262,221 @@ export const encounterCreatorDenyStub: EncounterCreator = {
 export const evvBracketResolverDenyStub: EvvBracketResolver = {
   resolveBracket() {
     throw new NotImplementedError("EvvBracketResolver");
+  },
+};
+
+// M9 (Clinical Assessments) owned seams (§4.7 / D7). LEAF-TYPED (interfaces in @wardenx/types) like
+// M6/M7/M8's readers, so each gets a concrete typed deny-stub. Denies LOUDLY until M9 registers the real
+// impls (M9-T04).
+
+/** M9 — latest-active-per-scale read (CTI draft, IDG packet, HOPE context). Denies until M9 registers it. */
+export const latestAssessmentProviderDenyStub: LatestAssessmentProvider = {
+  latest() {
+    throw new NotImplementedError("LatestAssessmentProvider");
+  },
+  latestBatch() {
+    throw new NotImplementedError("LatestAssessmentProvider");
+  },
+};
+
+/** M9 — windowed scored series + latest-vs-window delta (IDG/FHIR/AI). Denies until M9 registers it. */
+export const scaleSeriesProviderDenyStub: ScaleSeriesProvider = {
+  series() {
+    throw new NotImplementedError("ScaleSeriesProvider");
+  },
+  delta() {
+    throw new NotImplementedError("ScaleSeriesProvider");
+  },
+};
+
+// M10 (HOPE Engine) owned seams (§2 / D10). LEAF-TYPED (interfaces in @wardenx/types) like M6/M7/M8/M9's
+// readers, so each gets a concrete typed deny-stub. Denies LOUDLY until M10 registers the real impls
+// (M10-T05).
+
+/** M10 — open/all timepoint windows + completion state (IDG, PDF timeline, HQRP, AI). Denies until M10 registers it. */
+export const hopeTimepointProviderDenyStub: HopeTimepointProvider = {
+  openTimepoints() {
+    throw new NotImplementedError("HopeTimepointProvider");
+  },
+  forAdmission() {
+    throw new NotImplementedError("HopeTimepointProvider");
+  },
+};
+
+/** M10 — J2051 trigger history + open SFV obligations (HQRP Timely-Follow-Up, AI trajectory). Denies until M10 registers it. */
+export const hopeJ2051ProviderDenyStub: HopeJ2051Provider = {
+  history() {
+    throw new NotImplementedError("HopeJ2051Provider");
+  },
+  openSfvs() {
+    throw new NotImplementedError("HopeJ2051Provider");
+  },
+};
+
+/** M10 — per-PE submission batch status (HQRP acceptance posture, submission dashboards). Denies until M10 registers it. */
+export const hopeSubmissionProviderDenyStub: HopeSubmissionProvider = {
+  latestForProviderEntity() {
+    throw new NotImplementedError("HopeSubmissionProvider");
+  },
+  submission() {
+    throw new NotImplementedError("HopeSubmissionProvider");
+  },
+};
+
+// M11 (Orders) owned seams (§2.8 D14 / §4.3). LEAF-TYPED (interfaces in @wardenx/types) like M6..M10's
+// seams, so each gets a concrete typed deny-stub. Denies LOUDLY until M11 registers the real impls (M11-T05).
+
+/** M11 — the polymorphic signature-write primitive (sign / verbal / cosign / discontinue; M12 med-orders).
+ * Denies until M11 registers it; a fail-closed signature surface NEVER silently records a clinical signature. */
+export const orderSignatureProviderDenyStub: OrderSignatureProvider = {
+  signOrderTarget() {
+    throw new NotImplementedError("OrderSignatureProvider");
+  },
+  recordVerbalOrder() {
+    throw new NotImplementedError("OrderSignatureProvider");
+  },
+  cosignOrder() {
+    throw new NotImplementedError("OrderSignatureProvider");
+  },
+  discontinueOrder() {
+    throw new NotImplementedError("OrderSignatureProvider");
+  },
+};
+
+/** M11 — the order read seam (active / by-patient / since / verbal-timeliness / discontinuation). Denies
+ * until M11 registers it (M14/M23/M30/M7 resolve the real impl). */
+export const orderProviderDenyStub: OrderProvider = {
+  findActiveOrder() {
+    throw new NotImplementedError("OrderProvider");
+  },
+  listByPatient() {
+    throw new NotImplementedError("OrderProvider");
+  },
+  listByAdmission() {
+    throw new NotImplementedError("OrderProvider");
+  },
+  getOrdersSince() {
+    throw new NotImplementedError("OrderProvider");
+  },
+  getDiscontinuationReason() {
+    throw new NotImplementedError("OrderProvider");
+  },
+  getVerbalOrderTimeliness() {
+    throw new NotImplementedError("OrderProvider");
+  },
+  findByTriggeringAssessment() {
+    throw new NotImplementedError("OrderProvider");
+  },
+  findByCarePlanIntervention() {
+    throw new NotImplementedError("OrderProvider");
+  },
+};
+
+// M12 (DoseSpot Integration) owned seams (§2.10 D17). LEAF-TYPED (interfaces in @wardenx/types) like M6..M11's
+// seams, so each gets a concrete typed deny-stub. Both are READ-only surfaces over M12's `medication_order` /
+// `refill_request` tables; deny LOUDLY until M12 registers the real impls (M12-T07).
+
+/** M12 — the medication-order read seam (active / since / admin-context / controlled flag / cost / portal /
+ * FHIR) M13/M14/M19/M28/M30/M31/M33 consume. Denies until M12 registers it (no silent empty medication list). */
+export const medicationOrderProviderDenyStub: MedicationOrderProvider = {
+  getActiveMedications() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  getMedicationsSince() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  getMedicationOrder() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  listForAdmission() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  getAdministrationContext() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  getControlledSubstanceFlag() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  getComfortKitDeploymentTimeline() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  getCostBasisSummary() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  getPortalMedicationSummary() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  asFhirMedicationRequest() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+};
+
+/** M12 — the refill-inbox read seam (pending-by-prescriber / pending-by-patient / by-id) the prescriber
+ * inbox UI, M19 (on-call), and M33 (SLA dashboards) consume. Denies until M12 registers it. */
+export const refillInboxProviderDenyStub: RefillInboxProvider = {
+  getPendingRefillsForPrescriber() {
+    throw new NotImplementedError("RefillInboxProvider");
+  },
+  getPendingRefillsForPatient() {
+    throw new NotImplementedError("RefillInboxProvider");
+  },
+  getRefillRequestById() {
+    throw new NotImplementedError("RefillInboxProvider");
+  },
+};
+
+// M13 (eMAR & Med Administration) owned seams (§2.12 D16). LEAF-TYPED (interfaces in @wardenx/types) like
+// M6..M12's seams, so each gets a concrete typed deny-stub. Both are READ-only surfaces over M13's
+// `administration_record` / `medication_reconciliation_*` tables; deny LOUDLY until M13 registers the real
+// impls (M13-T07).
+
+/** M13 — the medication-administration read seam (by-id / by-patient / by-order / since / PRN-effectiveness /
+ * comfort-kit timeline / missed-dose / portal summary / IV session / FHIR) M14/M28/M30/M31/M33/M37 consume.
+ * Denies until M13 registers it (no silent empty administration history). */
+export const medicationAdministrationProviderDenyStub: MedicationAdministrationProvider = {
+  getAdministration() {
+    throw new NotImplementedError("MedicationAdministrationProvider");
+  },
+  getAdministrationsForPatient() {
+    throw new NotImplementedError("MedicationAdministrationProvider");
+  },
+  getAdministrationsForOrder() {
+    throw new NotImplementedError("MedicationAdministrationProvider");
+  },
+  getAdministrationsSince() {
+    throw new NotImplementedError("MedicationAdministrationProvider");
+  },
+  getPrnEffectivenessSummary() {
+    throw new NotImplementedError("MedicationAdministrationProvider");
+  },
+  getComfortKitDeploymentTimeline() {
+    throw new NotImplementedError("MedicationAdministrationProvider");
+  },
+  getMissedDoseSummary() {
+    throw new NotImplementedError("MedicationAdministrationProvider");
+  },
+  getPortalAdministrationSummary() {
+    throw new NotImplementedError("MedicationAdministrationProvider");
+  },
+  getIvContinuousSession() {
+    throw new NotImplementedError("MedicationAdministrationProvider");
+  },
+  asFhirMedicationAdministration() {
+    throw new NotImplementedError("MedicationAdministrationProvider");
+  },
+};
+
+/** M13 — the reconciliation-worksheet read seam (worksheet by-id / by-admission / reconciliation-timeliness)
+ * M14 (IDG packet) and M30 (timeliness measure) consume. Denies until M13 registers it. */
+export const reconciliationProviderDenyStub: ReconciliationProvider = {
+  getWorksheet() {
+    throw new NotImplementedError("ReconciliationProvider");
+  },
+  getWorksheetsForAdmission() {
+    throw new NotImplementedError("ReconciliationProvider");
+  },
+  getReconciliationTimelinessByAdmission() {
+    throw new NotImplementedError("ReconciliationProvider");
   },
 };
 

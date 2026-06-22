@@ -67,6 +67,9 @@
     "packages/assessments": {
       "name": "@wardenx/assessments",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
     },
     "packages/audit": {
       "name": "@wardenx/audit",
@@ -118,6 +121,16 @@
     "packages/dosespot": {
       "name": "@wardenx/dosespot",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
+    },
+    "packages/emar": {
+      "name": "@wardenx/emar",
+      "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
     },
     "packages/evv-aggregators": {
       "name": "@wardenx/evv-aggregators",
@@ -146,6 +159,9 @@
     "packages/hope": {
       "name": "@wardenx/hope",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
     },
     "packages/inpatient": {
       "name": "@wardenx/inpatient",
@@ -158,6 +174,9 @@
     "packages/iqies-client": {
       "name": "@wardenx/iqies-client",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
     },
     "packages/mdm": {
       "name": "@wardenx/mdm",
@@ -176,6 +195,13 @@
     },
     "packages/narrative-vocab": {
       "name": "@wardenx/narrative-vocab",
+      "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
+    },
+    "packages/orders": {
+      "name": "@wardenx/orders",
       "version": "0.0.0",
       "dependencies": {
         "@wardenx/types": "workspace:*",
@@ -589,6 +615,8 @@
 
     "@wardenx/dosespot": ["@wardenx/dosespot@workspace:packages/dosespot"],
 
+    "@wardenx/emar": ["@wardenx/emar@workspace:packages/emar"],
+
     "@wardenx/evv-aggregators": ["@wardenx/evv-aggregators@workspace:packages/evv-aggregators"],
 
     "@wardenx/fhir": ["@wardenx/fhir@workspace:packages/fhir"],
@@ -614,6 +642,8 @@
     "@wardenx/messaging": ["@wardenx/messaging@workspace:packages/messaging"],
 
     "@wardenx/narrative-vocab": ["@wardenx/narrative-vocab@workspace:packages/narrative-vocab"],
+
+    "@wardenx/orders": ["@wardenx/orders@workspace:packages/orders"],
 
     "@wardenx/portal": ["@wardenx/portal@workspace:apps/portal"],
 

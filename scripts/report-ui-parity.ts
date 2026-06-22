@@ -59,7 +59,9 @@ for (const f of [
   "packages/auth/src/permissions/catalog.ts",
   "packages/auth/src/permissions/contributed.ts",
 ])
-  for (const m of read(f).matchAll(/"([a-z_]+\.[a-z_]+)"/g)) catalog.add(m[1]!);
+  // Keys are 2- or 3-segment (`assessment.read`, `hope.schedule.read`); capture an optional third segment
+  // so 3-segment contributed keys (M10 HOPE, M38 terminology, …) resolve as valid requiredPermissions.
+  for (const m of read(f).matchAll(/"([a-z_]+\.[a-z_]+(?:\.[a-z_]+)?)"/g)) catalog.add(m[1]!);
 
 // ---- implemented surface: registered web screens -------------------------------------------
 const mainTsx = read("apps/web/src/main.tsx");

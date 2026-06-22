@@ -38,6 +38,24 @@ import {
   ListMessagesQuerySchema,
   SendMessageBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/messaging-typebox";
+import { OrderListQuerySchema } from "../../apps/backend/src/modules/11-orders/routes/orders-typebox";
+import {
+  AdministrationListQuerySchema as EmarAdministrationListQuerySchema,
+  AdministrationListResponseSchema,
+  AdministrationPolicyViewSchema,
+  AdministrationViewSchema,
+  DeploymentListResponseSchema,
+  DeploymentQuerySchema as EmarDeploymentQuerySchema,
+  DeploymentViewSchema,
+  IvSessionViewSchema,
+  MissedDoseListResponseSchema,
+  MissedDoseQuerySchema as EmarMissedDoseQuerySchema,
+  ScheduledDoseListResponseSchema,
+  ScheduledDoseQuerySchema as EmarScheduledDoseQuerySchema,
+  WorksheetListResponseSchema,
+  WorksheetQuerySchema as EmarWorksheetQuerySchema,
+  WorksheetViewSchema,
+} from "../../apps/backend/src/modules/13-emar/routes/emar-typebox";
 import { SearchQuerySchema as TerminologySearchQuerySchema } from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
 import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
 
@@ -314,6 +332,314 @@ const CosignatureReadResponseSchema = Type.Object({
   status: Type.Union([Type.String(), Type.Null()]),
 });
 
+// M9 Clinical Assessments Suite (Track B — Assessment Timeline / Per-scale Trend / Significant-change
+// Inbox / Assessment Summary / Scale-license Registry / Scale-policy Editor, M9-T07). Read responses
+// only; the write routes keep their route-level TypeBox request bodies (already in the contract). The
+// UI reads only the fields it renders; the server may send richer rows. SUD-flagged rows are redacted
+// SERVER-side (§7.6) — `redacted: true` is the only signal the client sees. Mirrors AssessmentRouteService's
+// AssessmentView / SignificantChangeView / ScaleLicenseView / ScalePolicyView + ScaleSeries projections
+// (apps/backend/src/modules/09-assessments/routes/service.ts).
+const AssessmentViewDtoSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  scaleType: Type.String(),
+  score: Type.Union([Type.Number(), Type.Null()]),
+  scoreInterpretation: Type.Union([Type.String(), Type.Null()]),
+  capturedAt: Type.String(),
+  capturedByDiscipline: Type.String(),
+  cosignRequired: Type.Boolean(),
+  cosignedAt: Type.Union([Type.String(), Type.Null()]),
+  sudContext: Type.Boolean(),
+  status: Type.String(),
+  redacted: Type.Boolean(),
+  version: Type.Integer(),
+});
+const AssessmentListResponseSchema = Type.Object({ assessments: Type.Array(AssessmentViewDtoSchema) });
+const AssessmentSummaryResponseSchema = Type.Object({
+  patientId: Type.String(),
+  latest: Type.Array(AssessmentViewDtoSchema),
+});
+const ScaleSeriesResponseSchema = Type.Object({
+  scaleType: Type.String(),
+  patientId: Type.String(),
+  from: Type.String(),
+  to: Type.String(),
+  points: Type.Array(
+    Type.Object({
+      assessmentId: Type.String(),
+      capturedAt: Type.String(),
+      score: Type.Union([Type.Number(), Type.Null()]),
+      scoreInterpretation: Type.Union([Type.String(), Type.Null()]),
+      significantChange: Type.Boolean(),
+    }),
+  ),
+});
+const SignificantChangeListResponseSchema = Type.Object({
+  events: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      assessmentId: Type.String(),
+      priorAssessmentId: Type.Union([Type.String(), Type.Null()]),
+      ruleId: Type.String(),
+      status: Type.String(),
+      severity: Type.String(),
+    }),
+  ),
+});
+const ScaleLicenseListResponseSchema = Type.Object({
+  licenses: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      scaleType: Type.String(),
+      vendor: Type.String(),
+      effectiveDate: Type.String(),
+      expiresAt: Type.String(),
+      seats: Type.Union([Type.Integer(), Type.Null()]),
+      status: Type.String(),
+    }),
+  ),
+});
+const ScalePolicyListResponseSchema = Type.Object({
+  policies: Type.Array(Type.Object({ scaleType: Type.String(), enabled: Type.Boolean() })),
+});
+// The per-scale series window (§4.1 `/scales/:scaleType/series` — from/to ISO instants, the trend window).
+const ScaleSeriesQuerySchema = Type.Object({ from: Type.String(), to: Type.String() });
+
+// ── M10 HOPE Engine read DTOs (Track B, M10-T08) ───────────────────────────────────────────────────
+// Mirror HopeRouteService's view projections (apps/backend/src/modules/10-hope/routes/service.ts). The UI
+// reads only the fields it renders; the server is authoritative for J2051/late/snapshot. The §4.10 iQIES
+// submission lifecycle surfaces as read-only status here; the recording modal (writes) keeps its route-level
+// TypeBox request bodies (already in the contract).
+const HopeScheduleViewSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  rfaKind: Type.String(),
+  status: Type.String(),
+  windowOpensAt: Type.String(),
+  windowClosesAt: Type.String(),
+  lateDeadlineAt: Type.String(),
+  generatedBy: Type.String(),
+  completedByAssessmentId: Type.Union([Type.String(), Type.Null()]),
+});
+const HopeAssessmentViewSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  rfaKind: Type.String(),
+  status: Type.String(),
+  targetDate: Type.String(),
+  authorDiscipline: Type.String(),
+  j2051MaxSeverity: Type.Union([Type.String(), Type.Null()]),
+  j2051TriggerFired: Type.Boolean(),
+  wasLate: Type.Boolean(),
+  signedAt: Type.Union([Type.String(), Type.Null()]),
+  signedBy: Type.Union([Type.String(), Type.Null()]),
+  correctsAssessmentId: Type.Union([Type.String(), Type.Null()]),
+  supersededByAssessmentId: Type.Union([Type.String(), Type.Null()]),
+  snapshot: Type.Union([Type.Record(Type.String(), Type.Union([Type.Number(), Type.Null()])), Type.Null()]),
+  version: Type.Integer(),
+});
+const HopeSfvViewSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  triggeringAssessmentId: Type.String(),
+  status: Type.String(),
+  triggeredAt: Type.String(),
+  dueAt: Type.String(),
+  completingAssessmentId: Type.Union([Type.String(), Type.Null()]),
+});
+const HopeSubmissionViewSchema = Type.Object({
+  id: Type.String(),
+  providerEntityId: Type.String(),
+  submissionPeriod: Type.String(),
+  status: Type.String(),
+  itemCount: Type.Integer(),
+  acceptedCount: Type.Integer(),
+  rejectedCount: Type.Integer(),
+  transmittedAt: Type.Union([Type.String(), Type.Null()]),
+  acceptedAt: Type.Union([Type.String(), Type.Null()]),
+});
+const HopeComplianceViewSchema = Type.Object({
+  providerEntityId: Type.Union([Type.String(), Type.Null()]),
+  hopeOnTimeRate: Type.Number(),
+  sfvOnTimeRate: Type.Number(),
+  submissionAcceptanceRate: Type.Number(),
+});
+const HopeValidationResponseSchema = Type.Object({
+  assessmentId: Type.String(),
+  findings: Type.Array(
+    Type.Object({ ruleId: Type.String(), severity: Type.String(), message: Type.String() }),
+  ),
+});
+const HopeScheduleListResponseSchema = Type.Object({ schedules: Type.Array(HopeScheduleViewSchema) });
+const HopeAssessmentListResponseSchema = Type.Object({
+  assessments: Type.Array(HopeAssessmentViewSchema),
+});
+const HopeSfvListResponseSchema = Type.Object({ sfvs: Type.Array(HopeSfvViewSchema) });
+const HopeSubmissionListResponseSchema = Type.Object({
+  submissions: Type.Array(HopeSubmissionViewSchema),
+});
+const HopeScheduleListQuerySchema = Type.Object({
+  patientId: Type.Optional(Type.String()),
+  status: Type.Optional(Type.String()),
+  rfaKind: Type.Optional(Type.String()),
+});
+const HopeSfvWorklistQuerySchema = Type.Object({ state: Type.Optional(Type.String()) });
+const HopeSubmissionListQuerySchema = Type.Object({ providerEntityId: Type.Optional(Type.String()) });
+const HopeDashboardQuerySchema = Type.Object({ providerEntityId: Type.Optional(Type.String()) });
+
+// ── M11 Orders read DTOs (Track B, M11-T08) ────────────────────────────────────────────────────────
+// Mirror OrderRouteService's view projections (apps/backend/src/modules/11-orders/routes/service.ts —
+// OrderView / StandingOrderView / VerbalPolicyView). The UI reads only the fields it renders; the server is
+// authoritative for the §2.2 D2 lifecycle status, the §2.3 verbal deadline, and the transmission/results
+// state. The write surfaces (draft modal, sign step-up, cosign, discontinue, standing-order admin) keep
+// their route-level TypeBox request bodies (already in the contract); only the read responses are enriched.
+const OrderViewSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  kind: Type.String(),
+  status: Type.String(),
+  priority: Type.String(),
+  version: Type.Integer(),
+  drafterMembershipId: Type.String(),
+  drafterDiscipline: Type.String(),
+  orderingPhysicianMdmId: Type.String(),
+  cosignRequired: Type.Boolean(),
+  cosignStatus: Type.Union([Type.Literal("pending"), Type.Literal("attached"), Type.Null()]),
+  transmissionStatus: Type.String(),
+  resultsStatus: Type.String(),
+  verbalDeadlineAt: Type.Union([Type.String(), Type.Null()]),
+  discontinuationReason: Type.Union([Type.String(), Type.Null()]),
+  replacesOrderId: Type.Union([Type.String(), Type.Null()]),
+  triggeringAssessmentId: Type.Union([Type.String(), Type.Null()]),
+  triggeringHopeAssessmentId: Type.Union([Type.String(), Type.Null()]),
+  signedAt: Type.Union([Type.String(), Type.Null()]),
+  signedBy: Type.Union([Type.String(), Type.Null()]),
+  completedAt: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String(),
+});
+const StandingOrderViewSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  kind: Type.String(),
+  cadence: Type.String(),
+  status: Type.String(),
+  nextSpawnAt: Type.Union([Type.String(), Type.Null()]),
+  spawnCount: Type.Integer(),
+  maxSpawns: Type.Union([Type.Integer(), Type.Null()]),
+});
+const VerbalPolicyViewSchema = Type.Object({
+  windowHours: Type.Integer(),
+  businessHoursOnly: Type.Boolean(),
+  lpnCosignRequiredKinds: Type.Array(Type.String()),
+  npCosignRequiredKinds: Type.Array(Type.String()),
+  platformFloorWindowHours: Type.Integer(),
+  policyVersion: Type.String(),
+});
+const OrderListResponseSchema = Type.Object({ orders: Type.Array(OrderViewSchema) });
+const StandingOrderListResponseSchema = Type.Object({
+  standingOrders: Type.Array(StandingOrderViewSchema),
+});
+
+// ── M12 DoseSpot prescribing read DTOs (Track B, M12-T09) ──────────────────────────────────────────
+// Mirror MedicationOrderRouteService's view projections (apps/backend/src/modules/12-dosespot/routes/
+// service.ts — MedicationOrderView / RefillRequestView / PrescriberRosterView / RefillInboxPolicyView /
+// ControlledSubstancePolicyView). The UI reads only the fields it renders; the SERVER is authoritative for
+// the §2.2 D2 medication-order lifecycle status, the §2.7 D9 refill state, the controlled-substance / EPCS
+// posture, and every scope (RLS + ABAC). The write surfaces (the prescribe modal, the sign / sign-controlled
+// step-up, verbal / cosign / discontinue / correct / refill-decide / roster / policy mutations) keep their
+// route-level TypeBox request bodies (already in the contract); only the read responses are enriched.
+const MedicationOrderViewSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  medClass: Type.String(),
+  status: Type.String(),
+  drugName: Type.String(),
+  strength: Type.String(),
+  doseForm: Type.String(),
+  route: Type.String(),
+  rxnormRxcui: Type.Union([Type.String(), Type.Null()]),
+  ndc: Type.Union([Type.String(), Type.Null()]),
+  version: Type.Integer(),
+  prescriberMembershipId: Type.String(),
+  prescriberDiscipline: Type.String(),
+  prescribingPhysicianMdmId: Type.String(),
+  dispensingPharmacyMdmId: Type.Union([Type.String(), Type.Null()]),
+  isControlledSubstance: Type.Boolean(),
+  deaSchedule: Type.Union([Type.String(), Type.Null()]),
+  cosignRequired: Type.Boolean(),
+  cosignStatus: Type.Union([Type.Literal("pending"), Type.Literal("attached"), Type.Null()]),
+  refillsRemaining: Type.Integer(),
+  derivedFromRefillId: Type.Union([Type.String(), Type.Null()]),
+  replacesMedicationOrderId: Type.Union([Type.String(), Type.Null()]),
+  signedAt: Type.Union([Type.String(), Type.Null()]),
+  signedBy: Type.Union([Type.String(), Type.Null()]),
+  transmittedAt: Type.Union([Type.String(), Type.Null()]),
+  discontinuedAt: Type.Union([Type.String(), Type.Null()]),
+  discontinuationReason: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String(),
+});
+const RefillRequestViewSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  sourceMedicationOrderId: Type.String(),
+  status: Type.String(),
+  requestedAt: Type.String(),
+  prescriberMembershipId: Type.Union([Type.String(), Type.Null()]),
+  resultingMedicationOrderId: Type.Union([Type.String(), Type.Null()]),
+});
+const PrescriberRosterViewSchema = Type.Object({
+  membershipId: Type.String(),
+  enrolled: Type.Boolean(),
+  deaAuthorizedSchedules: Type.Array(Type.String()),
+  ial2Status: Type.String(),
+});
+const RefillInboxPolicyViewSchema = Type.Object({
+  slaWarnHours: Type.Integer(),
+  slaCriticalHours: Type.Integer(),
+  platformFloorWarnHours: Type.Integer(),
+  platformFloorCriticalHours: Type.Integer(),
+});
+const ControlledSubstancePolicyViewSchema = Type.Object({
+  scheduleIiMaxRefills: Type.Integer(),
+  scheduleIiiToVMaxRefills: Type.Integer(),
+  epcsCertificationStatus: Type.String(),
+});
+const MedicationOrderListResponseSchema = Type.Object({
+  orders: Type.Array(MedicationOrderViewSchema),
+});
+const MedicationOrderListQuerySchema = Type.Object({
+  patientId: Type.Optional(Type.String()),
+  prescriberId: Type.Optional(Type.String()),
+  medClass: Type.Optional(Type.String()),
+  status: Type.Optional(Type.String()),
+});
+const MedicationHistoryListResponseSchema = Type.Object({
+  records: Type.Array(
+    Type.Object({ id: Type.String(), drugName: Type.String(), source: Type.String() }),
+  ),
+});
+const RefillListResponseSchema = Type.Object({ refills: Type.Array(RefillRequestViewSchema) });
+const PrescriberRosterListResponseSchema = Type.Object({
+  prescribers: Type.Array(PrescriberRosterViewSchema),
+});
+const TransmissionStatusResponseSchema = Type.Object({
+  orderId: Type.String(),
+  status: Type.String(),
+  retryHistory: Type.Array(
+    Type.Object({
+      attempt: Type.Integer(),
+      at: Type.String(),
+      errorClass: Type.Union([Type.String(), Type.Null()]),
+    }),
+  ),
+});
+
 export interface RouteEnrichment {
   /** JSON request body schema (a TypeBox schema reused from the route's validator). */
   body?: TSchema;
@@ -392,6 +718,219 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/encounters/:encounterId/cosignature": {
     summary: "Read an encounter's cosignature-request state (§5.5)",
     response: CosignatureReadResponseSchema,
+  },
+  // M9 Clinical Assessments Suite (Track B — Timeline / Trend / Change Inbox / Summary / License
+  // Registry / Policy Editor, M9-T07). Read responses only; the write routes keep their route-level
+  // TypeBox request bodies (already in the contract). SUD redaction is server-side (§7.6).
+  "GET /api/v1/patients/:patientId/assessments": {
+    summary: "Patient assessment timeline — every captured scale, newest first; §7.6 SUD-redacted per caller (§5.2)",
+    response: AssessmentListResponseSchema,
+  },
+  "GET /api/v1/patients/:patientId/assessments/summary": {
+    summary: "Assessment summary — latest value per scale family across all scales; SUD-redacted per caller (§5.2)",
+    response: AssessmentSummaryResponseSchema,
+  },
+  "GET /api/v1/patients/:patientId/scales/:scaleType/series": {
+    summary: "Per-scale scored series over a [from,to] window with significant-change markers (§5.2)",
+    query: ScaleSeriesQuerySchema,
+    response: ScaleSeriesResponseSchema,
+  },
+  "GET /api/v1/patients/:patientId/significant-changes": {
+    summary: "Per-patient significant-change worklist — open/escalated changes with ack state (§5.2)",
+    response: SignificantChangeListResponseSchema,
+  },
+  "GET /api/v1/admin/scales/licenses": {
+    summary: "Scale-license registry — one row per (org × scale) with status/expiry (§5.2)",
+    response: ScaleLicenseListResponseSchema,
+  },
+  "GET /api/v1/admin/scales/policies": {
+    summary: "Scale-policy editor — enable/disable state per scale (§5.2)",
+    response: ScalePolicyListResponseSchema,
+  },
+  // M10 HOPE Engine (Track B — Timepoint Dashboard / Patient Timeline / SFV Worklist / Assessment Detail /
+  // Submission Worklist + Detail / HQRP Compliance Dashboard, M10-T08). Read responses only; the recording
+  // modal, sign/correct, skip, retry, assemble, and admin-regenerate write routes keep their route-level
+  // TypeBox request bodies (already in the contract). The server is authoritative for J2051/late/snapshot.
+  "GET /api/v1/hope/schedules": {
+    summary: "HOPE timepoint dashboard — open/closing/late/expired schedules (§5.1/§5.2)",
+    query: HopeScheduleListQuerySchema,
+    response: HopeScheduleListResponseSchema,
+  },
+  "GET /api/v1/hope/schedules/:id": {
+    summary: "HOPE schedule detail with derived window state (§5.2)",
+    response: HopeScheduleViewSchema,
+  },
+  "GET /api/v1/patients/:patientId/hope/assessments": {
+    summary: "Patient HOPE timeline — Admission → HUV1 → HUV2 → SFV(s) → Discharge (§5.1/§5.2)",
+    response: HopeAssessmentListResponseSchema,
+  },
+  "GET /api/v1/hope/assessments/:id": {
+    summary: "HOPE assessment detail — snapshot, J2051 trigger outcome, submission status (§5.2)",
+    response: HopeAssessmentViewSchema,
+  },
+  "GET /api/v1/hope/assessments/:id/validation": {
+    summary: "On-demand pre-submission validation findings for one HOPE assessment (§5.2)",
+    response: HopeValidationResponseSchema,
+  },
+  "GET /api/v1/hope/sfv": {
+    summary: "SFV worklist — open/overdue/missed symptom-follow-up visits across the org (§5.1/§5.2)",
+    query: HopeSfvWorklistQuerySchema,
+    response: HopeSfvListResponseSchema,
+  },
+  "GET /api/v1/hope/sfv/:id": {
+    summary: "SFV detail — triggering symptoms + 2-calendar-day countdown (§5.2)",
+    response: HopeSfvViewSchema,
+  },
+  "GET /api/v1/hope/submissions": {
+    summary: "HOPE submission worklist — batches per ProviderEntity, per-period (§5.1/§5.2)",
+    query: HopeSubmissionListQuerySchema,
+    response: HopeSubmissionListResponseSchema,
+  },
+  "GET /api/v1/hope/submissions/:id": {
+    summary: "HOPE submission detail — per-item outcomes, rejection findings, retry control (§5.2)",
+    response: HopeSubmissionViewSchema,
+  },
+  "GET /api/v1/hope/dashboard/compliance": {
+    summary: "HQRP compliance dashboard — on-time / SFV on-time / submission acceptance rates (§5.2)",
+    query: HopeDashboardQuerySchema,
+    response: HopeComplianceViewSchema,
+  },
+  // M11 Orders (Track B — Patient Orders / Signature Inbox / Verbal-Expiring / Cosign / Results-Review /
+  // Standing-Order admin, M11-T08). Read responses only; the write routes keep their route-level TypeBox
+  // request bodies (already in the contract). The server is authoritative for the §2.2 D2 lifecycle.
+  "GET /api/v1/orders": {
+    summary: "List orders by patient / admission / kind / status (§4.1; ABAC caseload_or_scope)",
+    query: OrderListQuerySchema,
+    response: OrderListResponseSchema,
+  },
+  "GET /api/v1/orders/:id": {
+    summary: "Order detail — lifecycle status, signatures, verbal deadline, transmission/results state (§4.1)",
+    response: OrderViewSchema,
+  },
+  "GET /api/v1/orders/pending-signature": {
+    summary: "Physician pending-signature inbox — orders in pending_signature (§4.1 / §5.2)",
+    response: OrderListResponseSchema,
+  },
+  "GET /api/v1/orders/verbal-expiring": {
+    summary: "RN verbal-expiring queue — verbal_pending orders with a live 48h countdown (§4.1 / §5.2 D3)",
+    response: OrderListResponseSchema,
+  },
+  "GET /api/v1/orders/cosign-pending": {
+    summary: "RN cosign-pending queue — orders awaiting an RN/supervisor cosignature (§4.1 / §5.2 §2.5)",
+    response: OrderListResponseSchema,
+  },
+  "GET /api/v1/orders/results-pending-review": {
+    summary: "Lab orders with results received awaiting clinician Mark-reviewed (§4.1 / §5.2 D17)",
+    response: OrderListResponseSchema,
+  },
+  "GET /api/v1/standing-orders": {
+    summary: "Standing-order templates — cadence, next-spawn, spawn count (§4.1 / §5.2 D5)",
+    response: StandingOrderListResponseSchema,
+  },
+  "GET /api/v1/standing-orders/:id": {
+    summary: "Standing-order template detail + spawn history (§4.1 / §5.2 D5)",
+    response: StandingOrderViewSchema,
+  },
+  "GET /api/v1/admin/orders/verbal-policy": {
+    summary: "Org verbal-order policy — window hours, cosign kinds, platform floor (§4.1 / §2.3 D3)",
+    response: VerbalPolicyViewSchema,
+  },
+  // M12 DoseSpot prescribing (Track B — Patient Medications / Medication Detail / Sign Inbox / Verbal-Orders
+  // Queue / Refill Inbox + Detail / Medication Reconciliation / Prescriber Roster / Prescribing Policy,
+  // M12-T09). Read responses only; the write routes keep their route-level TypeBox request bodies (already in
+  // the contract). The server is authoritative for the §2.2 D2 lifecycle, the §2.7 D9 refill state, and the
+  // controlled-substance / EPCS posture (`dosespot.epcs` OFF in Phase 1).
+  "GET /api/v1/medication-orders": {
+    summary: "List medication orders by patient / prescriber / med-class / status (§4.1; ABAC caseload_or_scope)",
+    query: MedicationOrderListQuerySchema,
+    response: MedicationOrderListResponseSchema,
+  },
+  "GET /api/v1/medication-orders/:id": {
+    summary: "Medication-order detail — lifecycle status, signatures, controlled/EPCS posture, refills (§4.1)",
+    response: MedicationOrderViewSchema,
+  },
+  "GET /api/v1/medication-orders/:id/transmission": {
+    summary: "DoseSpot transmission status incl. retry history (§4.1 / §2.6)",
+    response: TransmissionStatusResponseSchema,
+  },
+  "GET /api/v1/patients/:patientId/medications/active": {
+    summary: "Active medications for a patient (chart medication list; §4.1 / §6.1)",
+    response: MedicationOrderListResponseSchema,
+  },
+  "GET /api/v1/patients/:patientId/medications/history": {
+    summary: "Medication-history records for a patient (DoseSpot MedHx; §4.1 / §6.1 reconciliation)",
+    response: MedicationHistoryListResponseSchema,
+  },
+  "GET /api/v1/refills": {
+    summary: "Refill inbox — pending refills the caller may decide (§4.1; ABAC refill_inbox_scope)",
+    response: RefillListResponseSchema,
+  },
+  "GET /api/v1/refills/:id": {
+    summary: "Refill detail — source order + request fields for approve/deny (§4.1; ABAC refill_inbox_scope)",
+    response: RefillRequestViewSchema,
+  },
+  "GET /api/v1/admin/dosespot-prescribers": {
+    summary: "Per-tenant DoseSpot prescriber roster — DEA schedules, IAL2 status, enrollment (§4.1 / §6.1)",
+    response: PrescriberRosterListResponseSchema,
+  },
+  "GET /api/v1/admin/refill-inbox-policy": {
+    summary: "Refill-inbox SLA policy — warn/critical hours + platform floors (§4.1 / §2.7 D9)",
+    response: RefillInboxPolicyViewSchema,
+  },
+  "GET /api/v1/admin/controlled-substance-policy": {
+    summary: "Controlled-substance policy — refill caps + EPCS certification status (§4.1 / 21 CFR 1306.22 / D18)",
+    response: ControlledSubstancePolicyViewSchema,
+  },
+  // M13 eMAR administration (Track B — Patient eMAR / Administration Detail / IV Continuous Session /
+  // Missed-Dose Inbox / Reconciliation Worksheet / Comfort Kit View / Administration Policy, M13-T10). Read
+  // responses only; the record / witness-attest / caregiver-cosign / reconcile-decide / comfort-kit / policy
+  // write routes keep their route-level TypeBox request bodies (already in the contract). The server is
+  // authoritative for the §2.2 lifecycle, the §2.5 late-entry tier, the §2.9 BCMA match result, and the §7.2
+  // SUD read gate (SUD-flagged rows skipped without a Part 2 release).
+  "GET /api/v1/administrations": {
+    summary: "List a patient's administrations — eMAR projection + caregiver-attested cosign rows (§4.1 / §6.1)",
+    query: EmarAdministrationListQuerySchema,
+    response: AdministrationListResponseSchema,
+  },
+  "GET /api/v1/administrations/:id": {
+    summary: "Administration detail — lifecycle, late-entry tier, witness pair, BCMA match (§4.1 / §6.1 #11)",
+    response: AdministrationViewSchema,
+  },
+  "GET /api/v1/administrations/iv-sessions/:sessionId": {
+    summary: "IV continuous session — the ordered start→rate_change→stop segment sequence (§4.1 / §6.1 #5)",
+    response: IvSessionViewSchema,
+  },
+  "GET /api/v1/scheduled-doses": {
+    summary: "Scheduled-dose timeline for a patient (the eMAR next-24h projection; §4.1 / §6.1 #1)",
+    query: EmarScheduledDoseQuerySchema,
+    response: ScheduledDoseListResponseSchema,
+  },
+  "GET /api/v1/missed-doses": {
+    summary: "Missed-dose inbox — unacknowledged misses for a patient (§4.1 / §6.1 #8)",
+    query: EmarMissedDoseQuerySchema,
+    response: MissedDoseListResponseSchema,
+  },
+  "GET /api/v1/reconciliation/worksheets": {
+    summary: "Reconciliation worksheets for a patient (admission/transfer/discharge/recert; §4.1 / §6.1 #6)",
+    query: EmarWorksheetQuerySchema,
+    response: WorksheetListResponseSchema,
+  },
+  "GET /api/v1/reconciliation/worksheets/:id": {
+    summary: "Reconciliation worksheet — per-line sources + decisions + finalize readiness (§4.1 / §6.1 #6)",
+    response: WorksheetViewSchema,
+  },
+  "GET /api/v1/comfort-kits/deployments": {
+    summary: "Comfort-kit deployments for a patient (drawdown + disposal status; §4.1 / §6.1 #7)",
+    query: EmarDeploymentQuerySchema,
+    response: DeploymentListResponseSchema,
+  },
+  "GET /api/v1/comfort-kits/deployments/:id": {
+    summary: "Comfort-kit deployment detail — remaining quantity + replenishment + disposal (§4.1 / §6.1 #7)",
+    response: DeploymentViewSchema,
+  },
+  "GET /api/v1/admin/administration-policy": {
+    summary: "Tenant administration policy — grace window, PRN reassessment defaults (§4.1 / §6.1 #12)",
+    response: AdministrationPolicyViewSchema,
   },
   // M36 Messaging (Track A — Staff Messaging + Notifications)
   "GET /api/v1/messaging/channels": {

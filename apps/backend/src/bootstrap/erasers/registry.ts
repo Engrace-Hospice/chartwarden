@@ -55,6 +55,42 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // the HearthNote ciphertext (tenant DEK, §3.6), deletes the encounter satellites, and tombstones the
   // `encounter` root for FK integrity (D8); the `subjectId` is the patient.
   "encounter_record",
+  // M9-T07: a patient's assessment record (assessment_cosignature/significant_change_event + the
+  // clinical_assessment rows, both active and superseded). M9 registers the REAL eraser via the
+  // composition-root hook over this deny-stub — under an M4 destruction certificate (§8.4) it deletes the
+  // child rows then the assessment rows outright (no root tombstone); the org-level scale_license/scale_policy
+  // tables are tenant config, not patient data, and stay untouched. The `subjectId` is the patient.
+  "clinical_assessment",
+  // M10-T08: a patient's HOPE record (hope_timepoint_schedule/symptom_follow_up_visit/hope_validation_finding
+  // + the partitioned hope_assessment rows, both signed and superseded). M10 registers the REAL eraser via the
+  // composition-root hook over this deny-stub — under an M4 destruction certificate (§8.4) it refuses when
+  // submitted assessments are still inside the CMS 10-year retention horizon (unless a legal-hold override is
+  // supplied), then drops/row-deletes the assessment rows and deletes the child rows; hope_submission rows
+  // survive as compliance evidence (envelope content purged by M4's MinIO worker). The `subjectId` is the patient.
+  "hope_record",
+  // M11-T08: a patient's orders record (order_signature/verbal_order/standing_order_instance/
+  // order_discontinuation child rows + the partitioned order_record rows + the patient's standing_order
+  // templates). M11 registers the REAL eraser via the composition-root hook over this deny-stub — under an M4
+  // destruction certificate (§7.7 / D12) it drops/row-deletes the order_record rows and cascade-deletes the
+  // child rows; the cert's retentionAsOf enforces M4's standard `compliance` 7-year floor. The org-scoped
+  // order_verbal_policy is tenant config, not patient data, and stays untouched. The `subjectId` is the patient.
+  "order_record",
+  // M12-T09: a patient's medication-order record (medication_order_transmission/refill_request/
+  // epcs_signing_attempt child rows + the partitioned medication_order rows). M12 registers the REAL eraser via
+  // the composition-root hook over this deny-stub — under an M4 destruction certificate (§7.7 / D15) it
+  // drops/row-deletes the medication_order rows and cascade-deletes the child rows; the cert's retentionAsOf
+  // enforces M4's standard `compliance` retention floor. The org-scoped dosespot_prescriber/
+  // dosespot_webhook_event/refill_inbox_policy/controlled_substance_policy are tenant config / encrypted
+  // webhook receipts, not patient data, and stay untouched. The `subjectId` is the patient.
+  "medication_order_record",
+  // M13-T10: a patient's eMAR record (prn_administration/administration_witness/barcode_scan_event child rows +
+  // the partitioned administration_record rows + scheduled_dose/missed_dose + comfort_kit_deployment/drawdown +
+  // medication_reconciliation_worksheet/decision + administration_offline_queue). M13 registers the REAL eraser
+  // via the composition-root hook over this deny-stub — under an M4 destruction certificate (§7.7) it
+  // drops/row-deletes the administration_record rows and cascade-deletes the child + satellite rows; the cert's
+  // retentionAsOf enforces M4's standard `compliance` retention floor. The org-scoped administration_policy is
+  // tenant config, not patient data, and stays untouched. The `subjectId` is the patient.
+  "emar_record",
 ];
 
 export function registerEraser(dataClass: DataClass, eraser: DataEraser): void {

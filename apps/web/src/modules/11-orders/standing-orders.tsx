@@ -1,0 +1,101 @@
+// apps/web/src/modules/11-orders — standing-order admin (M11 §4.1/§5 §2.4 D5, Track B / ADR-0030).
+// Spec: docs/ui/screens/clinical/WARDENX_UI_ORDERS.md — "Use Work Queue" (Standing orders). A signed template
+// spawns instances on cadence (spawned instances do NOT re-require signature — the template is the signature
+// anchor, D5). This worklist lists every standing-order template with its cadence, status (active/paused/
+// discontinued), next-spawn time, and spawn count. The create / pause / resume / discontinue / PRN-spawn write
+// actions fill in as their write surfaces harden. Reads GET /api/v1/standing-orders via the typed client; the
+// server enforces every scope (ADR-0030 — no frontend authz). Leaves only (@wardenx/ui).
+import { useCallback, useEffect, useState } from "react";
+import type { JSX } from "react";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  useApiClient,
+  WorkQueueLayout,
+} from "@wardenx/ui";
+
+interface StandingOrderRow {
+  id: string;
+  patientId: string;
+  kind: string;
+  cadence: string;
+  status: string;
+  nextSpawnAt: string | null;
+  spawnCount: number;
+  maxSpawns: number | null;
+}
+
+const statusColor: Record<string, string | undefined> = {
+  active: "#15803d",
+  paused: "#b45309",
+  discontinued: "#6b7280",
+};
+
+export function StandingOrders(): JSX.Element {
+  const client = useApiClient();
+  const [items, setItems] = useState<StandingOrderRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const { data, error: err } = await client.GET("/api/v1/standing-orders", {});
+    if (err) {
+      setError("Could not load standing orders.");
+      setLoading(false);
+      return;
+    }
+    setItems((data?.standingOrders ?? []) as StandingOrderRow[]);
+    setLoading(false);
+  }, [client]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return (
+    <WorkQueueLayout
+      header={<PageHeader title="Standing Orders" />}
+      table={
+        error ? (
+          <EmptyState title="Unavailable" description={error} />
+        ) : loading && items.length === 0 ? (
+          <LoadingSpinner />
+        ) : items.length === 0 ? (
+          <EmptyState title="No standing orders" description="No standing-order templates are defined." />
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+            <thead>
+              <tr style={{ textAlign: "left", color: "#6b7280" }}>
+                <th style={th}>Kind</th>
+                <th style={th}>Cadence</th>
+                <th style={th}>Status</th>
+                <th style={th}>Next spawn</th>
+                <th style={th}>Spawns</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((s) => (
+                <tr key={s.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+                  <td style={td}>{s.kind}</td>
+                  <td style={td}>{s.cadence}</td>
+                  <td style={{ ...td, color: statusColor[s.status] }}>{s.status}</td>
+                  <td style={td}>{s.nextSpawnAt ? s.nextSpawnAt.slice(0, 16).replace("T", " ") : "—"}</td>
+                  <td style={td}>
+                    {s.spawnCount}
+                    {s.maxSpawns != null ? ` / ${s.maxSpawns}` : ""}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )
+      }
+    />
+  );
+}
+
+const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
+const td = { padding: "0.5rem 0.5rem" } as const;

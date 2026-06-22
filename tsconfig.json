@@ -51,6 +51,9 @@
       "path": "./packages/dosespot"
     },
     {
+      "path": "./packages/emar"
+    },
+    {
       "path": "./packages/evv-aggregators"
     },
     {
@@ -88,6 +91,9 @@
     },
     {
       "path": "./packages/narrative-vocab"
+    },
+    {
+      "path": "./packages/orders"
     },
     {
       "path": "./packages/quality"

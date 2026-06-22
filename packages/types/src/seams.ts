@@ -14,6 +14,15 @@ import type {
   MileagePayrollReader,
   SignedEncountersReader,
 } from "./encounter";
+import type { LatestAssessmentProvider, ScaleSeriesProvider } from "./assessment";
+import type {
+  HopeJ2051Provider,
+  HopeSubmissionProvider,
+  HopeTimepointProvider,
+} from "./hope";
+import type { OrderProvider, OrderSignatureProvider } from "./orders";
+import type { MedicationOrderProvider, RefillInboxProvider } from "./dosespot";
+import type { MedicationAdministrationProvider, ReconciliationProvider } from "./emar";
 import type { PatientMutator, PatientReader } from "./patient";
 // @wardenx/types — Boot-registered SEAM contracts (Phase 0 skeleton).
 //
@@ -70,7 +79,47 @@ export type SeamName =
   // M18 (EVV) forward seam M8 CONSUMES (§4.7 / D9) — leaf-typed (interface in ./encounter), so it is
   // typed here like M6/M7's readers. Registered with a fail-closed deny-stub until M18 lands (Wave F);
   // M8 resolves it with NO `dependsOn` edge to M18 (the leaf interface, not @wardenx/evv).
-  | "EvvBracketResolver"; // M18 — authoritative EVV bracket for an encounter's visit at finalize (D9)
+  | "EvvBracketResolver" // M18 — authoritative EVV bracket for an encounter's visit at finalize (D9)
+  // M9 (Clinical Assessments) owned seams (§4.7 / D7) — also leaf-typed (interfaces in ./assessment), so
+  // they are typed here like M6/M7/M8's readers. M7 (CTI/IDG latest PPS/FAST/ESAS-r), M10 (HOPE prognosis),
+  // M14 (IDG packet deltas), M28 (FHIR Observation series), M32 (AI symptom-trajectory) consume them
+  // instead of importing M9's schema.
+  | "LatestAssessmentProvider" // M9 — hot latest-active-per-scale read (CTI draft, IDG packet, HOPE context)
+  | "ScaleSeriesProvider" // M9 — windowed scored series + latest-vs-window delta (IDG, FHIR, AI trajectory)
+  // M10 (HOPE Engine) owned seams (§2 / D10) — also leaf-typed (interfaces in ./hope), so they are typed
+  // here like M6/M7/M8/M9's readers. M14 (open HOPE windows on the IDG packet), M22 (per-admission HOPE
+  // timeline PDF), M30 (HQRP on-time / acceptance / Timely-Follow-Up measures), M32 (AI symptom-trajectory +
+  // decline-prediction) consume them instead of importing M10's schema.
+  | "HopeTimepointProvider" // M10 — open/all timepoint windows + completion state (IDG, PDF timeline, HQRP, AI)
+  | "HopeJ2051Provider" // M10 — J2051 trigger history + open SFV obligations (HQRP Timely-Follow-Up, AI trajectory)
+  | "HopeSubmissionProvider" // M10 — per-PE submission batch status (HQRP acceptance posture, submission dashboards)
+  // M11 (Orders) owned seams (§2.8 D14 / §4.3) — also leaf-typed (interfaces in ./orders), so they are typed
+  // here like M6/M7/M8/M9/M10's seams. M12 (the polymorphic medication-order signature primitive), M14 (IDG
+  // "orders since last IDG"), M23 (the claim "every billed line has a covering order" rule), M30 (order-
+  // completion + verbal-order-timeliness HQRP measures), M7 (care-plan intervention → order back-ref) consume
+  // them instead of importing M11's schema. `OrderSignatureProvider` is the one MUTATE seam (M12 writes med-
+  // order signatures through it); `OrderProvider` is the read-side counterpart.
+  | "OrderSignatureProvider" // M11 — polymorphic clinical-signature primitive (sign / verbal / cosign / discontinue)
+  | "OrderProvider" // M11 — order read seam (active / by-patient / since / verbal-timeliness / discontinuation)
+  // M12 (DoseSpot Integration) owned seams (§2.10 D17) — also leaf-typed (interfaces in ./dosespot, this leaf),
+  // so they are typed here like M6..M11's seams. Both are READ-only surfaces: `MedicationOrderProvider` is the
+  // medication-order read path M13 (eMAR administration context), M14 (IDG packet), M19/M30/M33 (derived
+  // signals + cost basis + quality), M28 (FHIR `MedicationRequest`), M31 (portal summary) consume; M12 owns the
+  // `medication_order` table + the prescribing workflow and downstream modules NEVER import its schema.
+  // `RefillInboxProvider` is the refill-request read path the prescriber inbox UI, M19 (on-call "any pending
+  // refills tonight?"), and M33 (SLA dashboards) consume over `refill_request`.
+  | "MedicationOrderProvider" // M12 — medication-order read seam (active / since / admin-context / controlled flag / cost / portal / FHIR)
+  | "RefillInboxProvider" // M12 — refill-inbox read seam (pending-by-prescriber / pending-by-patient / by-id)
+  // M13 (eMAR & Med Administration) owned seams (§2.12 D16) — also leaf-typed (interfaces in ./emar, this leaf),
+  // so they are typed here like M6..M12's seams. Both are READ-only surfaces over M13's `administration_record` /
+  // `medication_reconciliation_*` tables: `MedicationAdministrationProvider` is the administration read path M14
+  // (IDG "administrations since last meeting"), M28 (FHIR `MedicationAdministration`), M30 (PRN-effectiveness /
+  // missed-dose / comfort-kit-timeliness measures), M31 (portal lay-language summary, SUD-redacted), M33
+  // (dashboards), and M37 (IPU IV-pump overlay) consume; `ReconciliationProvider` is the reconciliation-worksheet
+  // read path M14 (IDG packet) and M30 (reconciliation-timeliness measure) consume — all instead of importing
+  // M13's schema. M13 owns the recording + reconciliation workflows and downstream modules NEVER import its schema.
+  | "MedicationAdministrationProvider" // M13 — administration read seam (by-id / by-patient / by-order / since / measure inputs / portal / IV session / FHIR)
+  | "ReconciliationProvider"; // M13 — reconciliation read seam (worksheet by-id / by-admission / timeliness)
 
 /**
  * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
@@ -248,6 +297,41 @@ export interface SeamContracts {
   // registry is statically typed against the real contract. M18 registers the real resolver over the
   // deny-stub when it lands (Wave F); M8 resolves it through the typed accessor with no schema import.
   EvvBracketResolver: EvvBracketResolver;
+  // M9's owned seams (§4.7 / D7) are LEAF-TYPED too — interfaces live in ./assessment (this package), so
+  // the registry is statically typed against the real contract. M9 registers the real Drizzle-backed
+  // impls over the deny-stubs (M9-T04); consumers that list `9` in their manifest `dependsOn` resolve
+  // them through the typed accessors with no schema import edge.
+  LatestAssessmentProvider: LatestAssessmentProvider;
+  ScaleSeriesProvider: ScaleSeriesProvider;
+  // M10's owned seams (§2 / D10) are LEAF-TYPED too — interfaces live in ./hope (this package), so the
+  // registry is statically typed against the real contract. M10 registers the real Drizzle-backed impls
+  // over the deny-stubs (M10-T05); consumers that list `10` in their manifest `dependsOn` resolve them
+  // through the typed accessors with no schema import edge.
+  HopeTimepointProvider: HopeTimepointProvider;
+  HopeJ2051Provider: HopeJ2051Provider;
+  HopeSubmissionProvider: HopeSubmissionProvider;
+  // M11's owned seams (§2.8 D14 / §4.3) are LEAF-TYPED too — interfaces live in ./orders (this package), so
+  // the registry is statically typed against the real contract. M11 registers the real Drizzle-backed impls
+  // over the deny-stubs (M11-T05); consumers that list `11` in their manifest `dependsOn` (M12/M14/M23/M30/M7)
+  // resolve them through the typed accessors with no schema import edge. `OrderSignatureProvider` is the
+  // polymorphic signature-write primitive M12 routes medication-order signatures through (no SQL FK across
+  // `order_signature.target_kind`, D4); `OrderProvider` is the read-side counterpart.
+  OrderSignatureProvider: OrderSignatureProvider;
+  OrderProvider: OrderProvider;
+  // M12's owned seams (§2.10 D17) are LEAF-TYPED too — interfaces live in ./dosespot (this package), so the
+  // registry is statically typed against the real contract. M12 registers the real Drizzle-backed impls over
+  // the deny-stubs (M12-T07); consumers that list `12` in their manifest `dependsOn` (M13/M14/M19/M28/M31/M33)
+  // resolve them through the typed accessors with no schema import edge. Both are READ-only — M12 publishes the
+  // medication-order + refill-inbox read projections; never a Drizzle row and never the free-text PHI (D14).
+  MedicationOrderProvider: MedicationOrderProvider;
+  RefillInboxProvider: RefillInboxProvider;
+  // M13's owned seams (§2.12 D16) are LEAF-TYPED too — interfaces live in ./emar (this package), so the registry
+  // is statically typed against the real contract. M13 registers the real Drizzle-backed impls over the deny-stubs
+  // (M13-T07); consumers that list `13` in their manifest `dependsOn` (M14/M28/M30/M31/M33/M37) resolve them through
+  // the typed accessors with no schema import edge. Both are READ-only — M13 publishes the administration +
+  // reconciliation read projections; never a Drizzle row and never the free-text PHI (D12).
+  MedicationAdministrationProvider: MedicationAdministrationProvider;
+  ReconciliationProvider: ReconciliationProvider;
 }
 
 /**
@@ -328,4 +412,59 @@ export type DataClass =
   // `subjectId` is the patient being destroyed — M8 owns its own encounter satellites, distinct from
   // M5's patient spine and M6/M7's admission/care-plan subtrees (the spec's §3.6 `clinical_record`
   // mention is reconciled to this disjoint class so the M5 eraser is never double-registered).
-  | "encounter_record";
+  | "encounter_record"
+  // M9 (Clinical Assessments Suite) per-patient assessment record: the assessment subtree M9 owns — the
+  // `assessment_cosignature` and `significant_change_event` child rows plus the `clinical_assessment` rows
+  // themselves (BOTH `active` and `superseded`, so the correction-supersede chain is erased at both ends).
+  // Erased by M9's registered eraser (M9-T07) under an M4 destruction certificate (§8.4); unlike the
+  // M5/M6/M7/M8 root-tombstone erasers, M9 has no satellite root to keep — the assessment rows are the leaf
+  // clinical facts, so they are deleted outright. The org-level `scale_license` / `scale_policy` tables are
+  // NEVER touched — they are tenant configuration, not patient data (§8.4 #3). `subjectId` is the patient
+  // being destroyed; disjoint from M5's `clinical_record` (patient spine) and M6/M7/M8's subtrees.
+  | "clinical_assessment"
+  // M10 (HOPE Engine) per-patient HOPE record: the timepoint subtree M10 owns — the
+  // `hope_timepoint_schedule`, `symptom_follow_up_visit`, `hope_validation_finding` child rows plus the
+  // partitioned `hope_assessment` rows (both `signed` and `superseded`, so the correction-supersede chain is
+  // erased at both ends). Erased by M10's registered eraser (M10-T08) under an M4 destruction certificate
+  // (§8.4): the `hope_assessment` rows are dropped at partition granularity when a partition is wholly erasable
+  // and row-deleted otherwise. Submitted assessments carry the CMS 10-year extended retention — erasing them
+  // before that horizon is REFUSED unless a legal-hold override is supplied (§8.4 #1). `hope_submission` /
+  // `hope_submission_item` rows SURVIVE (the envelope SHA-256 is operational/compliance evidence); their
+  // per-patient envelope content in MinIO is purged by M4's envelope-purge worker, not this eraser (§8.4).
+  // `subjectId` is the patient being destroyed; disjoint from M9's `clinical_assessment` (clinical-scale rows)
+  // and M5/M6/M7/M8's subtrees.
+  | "hope_record"
+  // M11 (Orders) per-patient orders record: the orders subtree M11 owns — the monthly-partitioned
+  // `order_record` rows plus the cascaded `order_signature`, `verbal_order`, `standing_order_instance`, and
+  // `order_discontinuation` child rows, and the patient's `standing_order` templates. Erased by M11's
+  // registered eraser (M11-T08) under an M4 destruction certificate (§7.7 / D12): the `order_record` rows are
+  // dropped at partition granularity when a partition is wholly erasable and row-deleted otherwise; the cert's
+  // `retentionAsOf` boundary enforces M4's standard `compliance` 7-year retention floor (no CMS extended-
+  // retention block, unlike M10). The ORG-scoped `order_verbal_policy` is tenant configuration, not patient
+  // data, and is NEVER touched (§7.7 #4). `subjectId` is the patient being destroyed; disjoint from M10's
+  // `hope_record` and M5/M6/M7/M8/M9's subtrees.
+  | "order_record"
+  // M12 (DoseSpot Integration) per-patient medication-order record: the prescribing subtree M12 owns — the
+  // monthly-partitioned `medication_order` rows plus the cascaded `medication_order_transmission`,
+  // `refill_request` (whose source order matches), and `epcs_signing_attempt` child rows. Erased by M12's
+  // registered eraser (M12-T09) under an M4 destruction certificate (§7.7 / D15): the `medication_order` rows
+  // are dropped at partition granularity when a partition is wholly erasable and row-deleted otherwise; the
+  // cert's `retentionAsOf` boundary enforces M4's standard `compliance` retention floor. The ORG-scoped
+  // `dosespot_prescriber`, `dosespot_webhook_event`, `refill_inbox_policy`, and `controlled_substance_policy`
+  // are tenant configuration / encrypted webhook receipts, not patient data, and are NEVER touched (§7.7 #5).
+  // `subjectId` is the patient being destroyed; disjoint from M11's `order_record` (clinical orders) and the
+  // M5/M6/M7/M8/M9/M10 subtrees.
+  | "medication_order_record"
+  // M13 (eMAR & Med Administration) per-patient eMAR record: the administration subtree M13 owns — the
+  // monthly-partitioned `administration_record` rows (partitioned by `administered_at`) plus the cascaded
+  // `prn_administration`, `administration_witness`, and `barcode_scan_event` child rows, the patient's
+  // `scheduled_dose` / `missed_dose` rows, the `comfort_kit_deployment` / `comfort_kit_drawdown` rows, the
+  // `medication_reconciliation_worksheet` / `medication_reconciliation_decision` rows, and the
+  // `administration_offline_queue` rows. Erased by M13's registered eraser (M13-T10) under an M4 destruction
+  // certificate (§7.7): the `administration_record` rows are dropped at partition granularity when a partition
+  // is wholly erasable and row-deleted otherwise; the cert's `retentionAsOf` boundary enforces M4's standard
+  // `compliance` retention floor (no CMS extended-retention block, like M11/M12). The ORG-scoped
+  // `administration_policy` is tenant configuration, not patient data, and is NEVER touched (§7.7 #7).
+  // `subjectId` is the patient being destroyed; disjoint from M12's `medication_order_record` (prescribing
+  // subtree) and the M5/M6/M7/M8/M9/M10/M11 subtrees.
+  | "emar_record";

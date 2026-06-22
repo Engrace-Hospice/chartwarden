@@ -1119,3 +1119,506 @@ export const assembledOutputKind = pgEnum("assembled_output_kind", [
   "primary_finalize",
   "addendum_finalize",
 ]);
+
+// ── Module 9 (Clinical Assessments Suite) §3.2 ────────────────────────────────────────────────
+// The 14-scale shared-base `clinical_assessment` table keys on `scale_type`; per-scale `data` shape +
+// scoring live in `packages/assessments/src/scales/<scale>/` (D1). Enum values mirror the leaf type
+// surface in `@wardenx/types` (`assessment.ts`); the §3.3 tables (M9-T02) compile against the final
+// enum set (ADR-0022 D1.3: one pgEnum definition site, no later ALTER-then-redeclare).
+
+/** `scale_type` — the 14 §1.1 validated instruments a `clinical_assessment` row may carry (D1). */
+export const scaleType = pgEnum("scale_type", [
+  "pps",
+  "kps",
+  "fast",
+  "painad",
+  "flacc",
+  "esas_r",
+  "nyha",
+  "meld",
+  "bode",
+  "flacker",
+  "gds",
+  "braden",
+  "morse",
+  "aims",
+]);
+
+/** `assessment_status` — the §2.2.1 lifecycle: a correction supersedes its target (append-only, D9). */
+export const assessmentStatus = pgEnum("assessment_status", ["active", "superseded"]);
+
+/** `assessment_acting_as` — whether the reporter is the patient or an attributed representative (DPOA). */
+export const assessmentActingAs = pgEnum("assessment_acting_as", ["self", "patient_representative"]);
+
+/** `significant_change_rule_id` — the §2.4 threshold-crossing rules the detector evaluates (D2). */
+export const significantChangeRuleId = pgEnum("significant_change_rule_id", [
+  "pps_drop_20_in_14d",
+  "kps_drop_20_in_14d",
+  "esas_total_increase_20_in_7d",
+  "esas_symptom_ge_7",
+  "painad_ge_4",
+  "nyha_class_iv",
+  "braden_le_12",
+  "morse_ge_51",
+  "meld_ge_30",
+  "fast_progression_30d",
+  "gds_progression_30d",
+  "flacker_increase",
+  "aims_emergent_dyskinesia",
+]);
+
+/** `significant_change_status` — the §2.2.2 ack lifecycle for a detected change (open → ack/escalated). */
+export const significantChangeStatus = pgEnum("significant_change_status", [
+  "open",
+  "acknowledged",
+  "escalated",
+]);
+
+/** `scale_license_status` — the §2.2.3 per-tenant licensure state for a proprietary scale (D3). */
+export const scaleLicenseStatus = pgEnum("scale_license_status", [
+  "active",
+  "pending_renewal",
+  "expired",
+]);
+
+// ── Module 10 (HOPE Engine) §3.2 ──────────────────────────────────────────────────────────────
+// The shared `hope_assessment` row keys on `rfa_kind` and carries a per-section TypeBox-typed `data`
+// jsonb (D1/D11 — single jsonb, no annual ALTER TABLE churn). Enum values mirror the leaf type surface
+// in `@wardenx/types` (`hope.ts`); the §3.3 tables (M10-T02) compile against the final enum set
+// (ADR-0022 D1.3: one pgEnum definition site, no later ALTER-then-redeclare).
+
+/** `hope_rfa_kind` — the five §2 Reasons-For-Assessment a HOPE timepoint/assessment may carry. */
+export const hopeRfaKind = pgEnum("hope_rfa_kind", [
+  "01_admission",
+  "02_huv1",
+  "03_huv2",
+  "04_sfv",
+  "05_discharge",
+]);
+
+/** `hope_discharge_reason` — the Discharge-RFA branch discriminator (D9; null for non-discharge RFAs). */
+export const hopeDischargeReason = pgEnum("hope_discharge_reason", [
+  "death",
+  "revocation",
+  "transfer_to_hospice",
+  "live_discharge",
+]);
+
+/** `hope_assessment_status` — the §2.2.2 lifecycle: draft → signed → (correction) superseded. */
+export const hopeAssessmentStatus = pgEnum("hope_assessment_status", [
+  "draft",
+  "signed",
+  "superseded",
+]);
+
+/** `hope_schedule_status` — the §2.2.1 timepoint-window lifecycle (open → completed/expired/skipped). */
+export const hopeScheduleStatus = pgEnum("hope_schedule_status", [
+  "open",
+  "completed",
+  "expired",
+  "skipped",
+]);
+
+/** `hope_sfv_status` — the §2.2.3 Symptom-Follow-Up-Visit lifecycle (open → completed/overdue → missed). */
+export const hopeSfvStatus = pgEnum("hope_sfv_status", [
+  "open",
+  "completed",
+  "overdue",
+  "missed",
+]);
+
+/** `hope_submission_status` — the §2.2.4 iQIES submission-batch lifecycle. */
+export const hopeSubmissionStatus = pgEnum("hope_submission_status", [
+  "queued",
+  "in_flight",
+  "accepted",
+  "rejected",
+  "partially_accepted",
+]);
+
+/** `hope_submission_item_status` — the per-assessment outcome within a submission batch. */
+export const hopeSubmissionItemStatus = pgEnum("hope_submission_item_status", [
+  "accepted",
+  "rejected",
+  "pending",
+]);
+
+/** `hope_validation_severity` — a §3 `hope_validation_finding`'s blocking class (error vs warning). */
+export const hopeValidationSeverity = pgEnum("hope_validation_severity", [
+  "error",
+  "warning",
+]);
+
+/** `j2051_severity` — the CMS-defined four-level symptom-impact item (D4; drives the 2-day SFV trigger). */
+export const j2051Severity = pgEnum("j2051_severity", [
+  "none",
+  "mild",
+  "moderate",
+  "severe",
+]);
+
+/** `hope_schedule_generated_by` — provenance of a timepoint schedule row (§2 `generated_by`). */
+export const hopeScheduleGeneratedBy = pgEnum("hope_schedule_generated_by", [
+  "auto_admission",
+  "auto_discharge",
+  "sfv_trigger",
+  "manual_admin",
+]);
+
+// ── Module 11 (Orders) §3.2 ───────────────────────────────────────────────────────────────────
+// The shared `order_record` row keys on `kind` and carries a per-kind TypeBox-typed `data` jsonb
+// (D1 — single jsonb, no per-kind ALTER TABLE churn). `transmission_status` / `results_status` are
+// the §2.2 orthogonal lab-only observed states (never lifecycle states). Enum values mirror the leaf
+// type surface in `@wardenx/types` (`orders.ts`); the §3.3 tables (M11-T02) compile against the final
+// enum set (ADR-0022 D1.3: one pgEnum definition site, no later ALTER-then-redeclare).
+
+/** `order_kind` — the eight §2.1 non-medication order kinds. */
+export const orderKind = pgEnum("order_kind", [
+  "lab",
+  "dme",
+  "level_of_care_change",
+  "recertification",
+  "comfort_kit",
+  "supply",
+  "ancillary_service",
+  "idg_requested",
+]);
+
+/** `order_status` — the §2.2 D2 lifecycle (draft → … → active → completed/discontinued). */
+export const orderStatus = pgEnum("order_status", [
+  "draft",
+  "pending_signature",
+  "verbal_pending",
+  "active",
+  "completed",
+  "discontinued",
+  "expired_unsigned",
+]);
+
+/** `order_priority` — the §2.1 lab/dispatch priority (ORC-7 / OBR-5 in the §4.4 ORM payload). */
+export const orderPriority = pgEnum("order_priority", ["routine", "stat", "asap"]);
+
+/** `order_signature_target_kind` — the §2.8 D14 polymorphic-signature discriminator (M11 order vs M12 med order). */
+export const orderSignatureTargetKind = pgEnum("order_signature_target_kind", [
+  "order",
+  "medication_order",
+]);
+
+/** `order_signature_kind` — the §2.5 polymorphic `order_signature.signature_kind`. */
+export const orderSignatureKind = pgEnum("order_signature_kind", [
+  "signature",
+  "cosignature",
+  "verbal_attestation",
+]);
+
+/** `verbal_order_status` — the §2.3 D3 verbal-order timer lifecycle. */
+export const verbalOrderStatus = pgEnum("verbal_order_status", [
+  "pending",
+  "signed_in_time",
+  "expired_unsigned",
+]);
+
+/** `standing_order_cadence` — the §2.4 D5 template spawn cadence. */
+export const standingOrderCadence = pgEnum("standing_order_cadence", [
+  "daily",
+  "weekly",
+  "biweekly",
+  "monthly",
+  "prn",
+]);
+
+/** `standing_order_status` — the §2.4 D5 standing-order template lifecycle. */
+export const standingOrderStatus = pgEnum("standing_order_status", [
+  "active",
+  "paused",
+  "expired",
+  "discontinued",
+]);
+
+/** `standing_order_spawned_by` — provenance of a §2.4 `standing_order_instance` (worker vs PRN request). */
+export const standingOrderSpawnedBy = pgEnum("standing_order_spawned_by", [
+  "system",
+  "clinician_request",
+]);
+
+/** `order_discontinuation_reason` — the §2.6 D13 discontinuation reasons (operator + auto-cascade). */
+export const orderDiscontinuationReason = pgEnum("order_discontinuation_reason", [
+  "clinical_judgement",
+  "patient_request",
+  "adverse_event",
+  "replaced_by_corrected_order",
+  "admission_discharged",
+  "level_of_care_change",
+  "standing_order_discontinued",
+  "corrected_replacement",
+  "expired_verbal",
+]);
+
+/** `order_transmission_status` — the §2.2 / §4.10 orthogonal lab-wire dispatch state (M29-driven). */
+export const orderTransmissionStatus = pgEnum("order_transmission_status", [
+  "not_required",
+  "pending",
+  "pending_retry",
+  "transmitted",
+  "failed",
+]);
+
+/** `order_results_status` — the §2.2 / §4.10 orthogonal lab-results-received state (M29-driven). */
+export const orderResultsStatus = pgEnum("order_results_status", [
+  "not_expected",
+  "awaiting_results",
+  "partial_results_received",
+  "results_received",
+  "results_overdue",
+]);
+
+// ── Module 12 (DoseSpot Integration) §3.2 ──────────────────────────────────────────────────────
+// The prescribing surface. `medication_order_status` is the §2.2 D2 lifecycle (note the EPCS-only
+// `epcs_identity_pending` branch + the `queued_for_transmission`/`transmitted`/`ack_received` wire
+// states). `dosespot_send_state` is the orthogonal transmission observed-state (mirrors M11's lab
+// dispatch split). Values mirror the leaf type surface in `@wardenx/types` (`dosespot.ts`); the §3.3
+// tables (M12-T02) compile against this final set (ADR-0022 D1.3: one definition site, no ALTER-redeclare).
+
+/** `medication_order_status` — the §2.2 D2 medication-order lifecycle (incl. EPCS + transmission states). */
+export const medicationOrderStatus = pgEnum("medication_order_status", [
+  "draft",
+  "pending_signature",
+  "verbal_pending",
+  "epcs_identity_pending",
+  "signed",
+  "queued_for_transmission",
+  "transmitted",
+  "ack_received",
+  "nack_received",
+  "active",
+  "completed",
+  "discontinued",
+  "transmission_failed",
+  "expired_unsigned",
+]);
+
+/** `med_class` — the §2.1 medication taxonomy (standard / controlled / compounded). */
+export const medClass = pgEnum("med_class", ["standard", "controlled_substance", "compounded"]);
+
+/** `dea_schedule` — the §2.4 DEA controlled-substance schedules subject to the EPCS gate. */
+export const deaSchedule = pgEnum("dea_schedule", ["II", "III", "IV", "V"]);
+
+/** `dosespot_send_state` — the §2.2 / §4.10 orthogonal NewRx-transmission observed state. */
+export const dosespotSendState = pgEnum("dosespot_send_state", [
+  "not_required",
+  "queued",
+  "in_flight",
+  "transmitted",
+  "acked",
+  "nacked",
+  "failed",
+]);
+
+/** `refill_request_status` — the §2.7 D9 refill-inbox lifecycle. */
+export const refillRequestStatus = pgEnum("refill_request_status", [
+  "pending",
+  "approved",
+  "denied",
+  "expired",
+]);
+
+/** `refill_response_channel` — the §2.7 channel a refill decision is communicated back through. */
+export const refillResponseChannel = pgEnum("refill_response_channel", [
+  "electronic_via_dosespot",
+  "phone",
+  "fax",
+  "in_person",
+]);
+
+/** `medication_history_source` — the §2.8 provenance of a medication-history record. */
+export const medicationHistorySource = pgEnum("medication_history_source", [
+  "dosespot_medhx",
+  "manual_entry",
+  "reconciliation_carryforward",
+]);
+
+/** `dosespot_webhook_event_type` — the §2.5 / §7.4 D7 typed inbound webhook taxonomy. */
+export const dosespotWebhookEventType = pgEnum("dosespot_webhook_event_type", [
+  "script_status_update",
+  "refill_request",
+  "medication_history_result",
+  "patient_mismatch",
+  "prescriber_status_changed",
+]);
+
+/** `ial2_status` — the §2.4 §1311.115 IAL2 identity-proofing status for an EPCS prescriber. */
+export const ial2Status = pgEnum("ial2_status", [
+  "not_started",
+  "in_progress",
+  "verified",
+  "expired",
+  "revoked",
+]);
+
+/** `epcs_certification_status` — the §2.4 D18 per-tenant EPCS certification gate (Drummond / ADR-006). */
+export const epcsCertificationStatus = pgEnum("epcs_certification_status", [
+  "not_certified",
+  "audit_in_progress",
+  "certified",
+  "revoked",
+]);
+
+/** `epcs_signing_attempt_outcome` — the §2.4 §1311.205 record-of-application outcome per signing attempt. */
+export const epcsSigningAttemptOutcome = pgEnum("epcs_signing_attempt_outcome", [
+  "pending",
+  "succeeded",
+  "failed_2fa",
+  "failed_timeout",
+  "failed_validation",
+]);
+
+/** `epcs_second_factor_type` — the §2.4 §1311.116 second-factor used at controlled-substance signing. */
+export const epcsSecondFactorType = pgEnum("epcs_second_factor_type", [
+  "totp",
+  "passkey",
+  "push_confirm",
+]);
+
+/** `medication_order_discontinuation_reason` — the §2.2 / §2.12 discontinuation reasons (operator + cascade). */
+export const medicationOrderDiscontinuationReason = pgEnum(
+  "medication_order_discontinuation_reason",
+  [
+    "clinical_judgement",
+    "patient_request",
+    "adverse_event",
+    "replaced_by_corrected_order",
+    "admission_discharged",
+    "pharmacy_nack",
+    "corrected_replacement",
+    "expired_verbal",
+    "transmission_failed",
+    "no_refills_no_renewal",
+  ],
+);
+
+// ── Module 13 (eMAR & Med Administration) §3.2 enums (M13-T01) ─────────────────────────────────────────
+
+/** `administration_mode` — the §2.1 six administration modes (single-dose + the five IV-continuous segments). */
+export const administrationMode = pgEnum("administration_mode", [
+  "single_dose",
+  "iv_continuous_start",
+  "iv_continuous_rate_change",
+  "iv_continuous_pause",
+  "iv_continuous_resume",
+  "iv_continuous_stop",
+]);
+
+/** `administration_status` — the §2.2 D6 PERSISTED lifecycle states (the transient `committing` /
+ * synthetic `pending_offline_sync` states are never written). */
+export const administrationStatus = pgEnum("administration_status", [
+  "committed",
+  "pending_caregiver_review",
+  "superseded",
+  "voided",
+]);
+
+/** `administration_actor_kind` — who recorded the administration (§2.2 / §2.9). */
+export const administrationActorKind = pgEnum("administration_actor_kind", [
+  "clinician",
+  "caregiver_attested",
+  "system_iv_session_event", // reserved for M37 pump-emitted events at IPU lock
+]);
+
+/** `administration_late_entry_tier` — the §2.5 D8 late-entry tier resolved at write. */
+export const administrationLateEntryTier = pgEnum("administration_late_entry_tier", [
+  "normal",
+  "late",
+  "significant_late",
+  "administrative_override",
+]);
+
+/** `scheduled_dose_status` — the §2.3 D2 materialized-schedule row state. */
+export const scheduledDoseStatus = pgEnum("scheduled_dose_status", [
+  "pending",
+  "administered",
+  "missed",
+  "cancelled",
+  "intentionally_held",
+]);
+
+/** `scheduled_dose_cancellation_reason` — why a future scheduled dose was cancelled (§2.3). */
+export const scheduledDoseCancellationReason = pgEnum("scheduled_dose_cancellation_reason", [
+  "order_discontinued",
+  "admission_discharged",
+  "corrected_replacement",
+  "tenant_policy",
+]);
+
+/** `missed_dose_kind` — how the missed dose arose (§2.5 D4). */
+export const missedDoseKind = pgEnum("missed_dose_kind", [
+  "detected_by_sweep",
+  "intentionally_held",
+  "patient_refused",
+]);
+
+/** `administration_witness_kind` — controlled-substance witness presence mode (§2.6 D7). */
+export const administrationWitnessKind = pgEnum("administration_witness_kind", [
+  "co_present",
+  "telephonic", // reserved for the Phase-2 telehealth-witness workflow
+]);
+
+/** `administration_witnesses_scope` — what the witness attested (§2.6). */
+export const administrationWitnessesScope = pgEnum("administration_witnesses_scope", [
+  "administration_only",
+  "wastage_only",
+  "administration_and_wastage",
+]);
+
+/** `prn_requested_by_kind` — the PRN trigger provenance (§2.4 D3). */
+export const prnRequestedByKind = pgEnum("prn_requested_by_kind", [
+  "clinician_observed",
+  "patient_request",
+  "caregiver_request",
+  "scheduled_reassessment_protocol",
+]);
+
+/** `reconciliation_trigger_kind` — the M6 event that opened the worksheet (§2.8 D17). */
+export const reconciliationTriggerKind = pgEnum("reconciliation_trigger_kind", [
+  "admission",
+  "transfer_in",
+  "discharge",
+  "recertification",
+]);
+
+/** `reconciliation_worksheet_status` — the §2.8 worksheet lifecycle. */
+export const reconciliationWorksheetStatus = pgEnum("reconciliation_worksheet_status", [
+  "pending",
+  "in_progress",
+  "finalized",
+  "voided",
+]);
+
+/** `reconciliation_decision_kind` — the per-line reconciliation decision (§2.8). */
+export const reconciliationDecisionKind = pgEnum("reconciliation_decision_kind", [
+  "carry_forward",
+  "discontinue",
+  "hold",
+  "new_order",
+  "document_only",
+]);
+
+/** `comfort_kit_disposal_status` — the §2.7 D5 deployment disposal lifecycle. */
+export const comfortKitDisposalStatus = pgEnum("comfort_kit_disposal_status", [
+  "deployed",
+  "return_required",
+  "returned",
+  "disposed_unreturned",
+]);
+
+/** `comfort_kit_replenishment_urgency` — the §2.7 replenishment-needed urgency. */
+export const comfortKitReplenishmentUrgency = pgEnum("comfort_kit_replenishment_urgency", [
+  "routine",
+  "urgent",
+]);
+
+/** `offline_sync_status` — the §2.10 D18 server-side offline-queue ingest state. */
+export const offlineSyncStatus = pgEnum("offline_sync_status", [
+  "pending",
+  "synced",
+  "rejected",
+]);

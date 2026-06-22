@@ -995,4 +995,642 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       expect(r.rows[0].after.encounter_type).toBe("routine_visit"); // structured column passes through
     });
   });
+
+  // ── M9 Clinical Assessments — org-scoped RLS, partition+correction trigger, audit scrub (§9.4 / §3.4–3.6)
+  // 0032/0033 (M9) applied above. Proves on REAL Postgres: clinical_assessment is tenant-isolated on
+  // app.org_id even with app authorization stubbed open (§9.3 layer-independence); the RANGE-partitioned
+  // parent's correction-supersede trigger fires under RLS and CANNOT reach across tenants (§9.4 bullet 3);
+  // wardenx_app has NO DELETE (append-only — a correction supersedes, never deletes, §3.6); scale_license
+  // is org-scoped config (§9.4 bullet 4); the M4 write-audit trigger scrubs the `data`/`correction_reason`
+  // denylist (§3.1/§8.1) while the structured `scale_type` passes through.
+  describe("M9 Clinical Assessments — cross-tenant isolation, correction trigger, audit scrub (§9.4 / §3.4–3.6)", () => {
+    const PE_A9 = "e9a00000-0000-0000-0000-0000000000a1";
+    const PE_B9 = "e9b00000-0000-0000-0000-0000000000b1";
+    const LOC_A9 = "e9a00000-0000-0000-0000-0000000000a2";
+    const LOC_B9 = "e9b00000-0000-0000-0000-0000000000b2";
+    const USER_A9 = "e9a00000-0000-0000-0000-0000000000a3";
+    const USER_B9 = "e9b00000-0000-0000-0000-0000000000b3";
+    const MEM_A9 = "e9a00000-0000-0000-0000-0000000000a4";
+    const MEM_B9 = "e9b00000-0000-0000-0000-0000000000b4";
+    const ASMT_A9 = "e9a00000-0000-0000-0000-0000000000a5";
+    const ASMT_B9 = "e9b00000-0000-0000-0000-0000000000b5";
+    const LIC_A9 = "e9a00000-0000-0000-0000-0000000000a6";
+    // captured_at: a stable instant inside the current month (a partition guaranteed to exist post-migration);
+    // the DEFERRABLE composite self-FK pairs (corrects_assessment_id, captured_at) so a correction must reuse
+    // its target's captured_at — both rows therefore share this value.
+    const CAP = "(date_trunc('month', now()) + interval '10 days')";
+    const ACOLS =
+      "(id,organization_id,provider_entity_id,location_id,patient_id,admission_id,scale_type,scale_version,data,score,captured_at,captured_by_membership_id,captured_by_discipline,status,version)";
+
+    beforeAll(async () => {
+      await db.query(
+        `INSERT INTO provider_entity (id,organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
+           VALUES ($1,$2,'CCN-M9A','M9 A','NPI-M9A','enc','12-31'),
+                  ($3,$4,'CCN-M9B','M9 B','NPI-M9B','enc','12-31')`,
+        [PE_A9, ORG_A, PE_B9, ORG_B],
+      );
+      await db.query(
+        `INSERT INTO location (id,provider_entity_id,name,address_line1,city,state,postal_code,timezone)
+           VALUES ($1,$2,'L9A','1 St','Town','OR','97000','America/Los_Angeles'),
+                  ($3,$4,'L9B','1 St','Town','OR','97000','America/Los_Angeles')`,
+        [LOC_A9, PE_A9, LOC_B9, PE_B9],
+      );
+      await db.query(`INSERT INTO "user" (id,email) VALUES ($1,'m9a@x.test'),($2,'m9b@x.test')`, [
+        USER_A9,
+        USER_B9,
+      ]);
+      await db.query(
+        `INSERT INTO membership (id,user_id,organization_id,status)
+           VALUES ($1,$2,$3,'active'),($4,$5,$6,'active')`,
+        [MEM_A9, USER_A9, ORG_A, MEM_B9, USER_B9, ORG_B],
+      );
+      // One active PPS capture per org (superuser → RLS bypassed). data jsonb carries a free-text note so
+      // the audit scrub is observable; both rows share CAP so an in-org correction's composite FK resolves.
+      await db.query(
+        `INSERT INTO clinical_assessment ${ACOLS} VALUES
+           ($1,$2,$3,$4,gen_random_uuid(),gen_random_uuid(),'pps','pps_v2_2001','{"note":"free text PHI"}'::jsonb,60,${CAP},$5,'rn','active',1),
+           ($6,$7,$8,$9,gen_random_uuid(),gen_random_uuid(),'pps','pps_v2_2001','{"note":"free text PHI"}'::jsonb,60,${CAP},$10,'rn','active',1)`,
+        [ASMT_A9, ORG_A, PE_A9, LOC_A9, MEM_A9, ASMT_B9, ORG_B, PE_B9, LOC_B9, MEM_B9],
+      );
+      // One active scale_license per org (PPS is a licensed scale, D3).
+      await db.query(
+        `INSERT INTO scale_license (id,organization_id,scale_type,license_holder,effective_date,expires_at,status,recorded_by_membership_id)
+           VALUES ($1,$2,'pps','Victoria Hospice',current_date,current_date + 365,'active',$3)`,
+        [LIC_A9, ORG_A, MEM_A9],
+      );
+    });
+
+    it("§9.4 Org A sees ONLY its own clinical_assessment (RLS blocks cross-tenant reads, auth stubbed open)", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM clinical_assessment WHERE id=$1", [ASMT_A9]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM clinical_assessment WHERE id=$1", [ASMT_A9]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§3.5 Org B cannot INSERT a clinical_assessment into Org A (WITH CHECK blocks the cross-tenant write)", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO clinical_assessment ${ACOLS} VALUES
+               (gen_random_uuid(),$1,$2,$3,gen_random_uuid(),gen_random_uuid(),'pps','pps_v2_2001','{}'::jsonb,60,${CAP},$4,'rn','active',1)`,
+            [ORG_A, PE_A9, LOC_A9, MEM_A9],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§3.6 clinical_assessment has NO DELETE grant for wardenx_app (corrections supersede, never delete)", async () => {
+      await expect(
+        withOrg(ORG_A, () => db.query("DELETE FROM clinical_assessment WHERE id=$1", [ASMT_A9])),
+      ).rejects.toThrow();
+    });
+
+    it("§3.4 the correction-supersede trigger flips the prior Org-A row to superseded (D9, under RLS)", async () => {
+      // Insert a correction that reuses the target's patient/admission/captured_at (composite self-FK) under
+      // Org A's RLS context; the AFTER-INSERT trigger flips the target row to 'superseded' in the same TX (D9).
+      await withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO clinical_assessment
+             (id,organization_id,provider_entity_id,location_id,patient_id,admission_id,scale_type,scale_version,data,score,captured_at,captured_by_membership_id,captured_by_discipline,status,version,corrects_assessment_id,correction_reason)
+           SELECT gen_random_uuid(),organization_id,provider_entity_id,location_id,patient_id,admission_id,scale_type,scale_version,
+                  '{"note":"corrected"}'::jsonb,70,captured_at,$2,'rn','active',1,id,'transcription correction of the PPS score'
+             FROM clinical_assessment WHERE id=$1`,
+          [ASMT_A9, MEM_A9],
+        ),
+      );
+      const r = await withOrg(ORG_A, () =>
+        db.query("SELECT status FROM clinical_assessment WHERE id=$1", [ASMT_A9]),
+      );
+      expect(r.rows[0].status).toBe("superseded");
+    });
+
+    it("§9.4 a correction from Org A cannot supersede an Org B row (never reaches across tenants)", async () => {
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            `INSERT INTO clinical_assessment
+               (id,organization_id,provider_entity_id,location_id,patient_id,admission_id,scale_type,scale_version,data,score,captured_at,captured_by_membership_id,captured_by_discipline,status,version,corrects_assessment_id,correction_reason)
+             VALUES (gen_random_uuid(),$1,$2,$3,gen_random_uuid(),gen_random_uuid(),'pps','pps_v2_2001','{}'::jsonb,70,${CAP},$4,'rn','active',1,$5,'attempted cross-tenant correction')`,
+            [ORG_A, PE_A9, LOC_A9, MEM_A9, ASMT_B9],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§9.4 scale_license is org-scoped — Org A sees its PPS license, Org B sees none", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM scale_license WHERE id=$1", [LIC_A9]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM scale_license WHERE id=$1", [LIC_A9]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§8.1 the M4 write-audit trigger fired for the assessment write and scrubbed the data/free-text denylist", async () => {
+      const r = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='clinical_assessment' AND event_type='clinical_assessment.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.data).toBe("<changed>"); // §8.1 free-text PHI (jsonb payload) scrub
+      expect(r.rows[0].after.scale_type).toBe("pps"); // structured column passes through
+    });
+  });
+
+  // ── M10 HOPE Engine — org-scoped RLS, partition+correction trigger, audit scrub (§9.4 / §3.4–3.6)
+  // 0034/0035 (M10) applied above. Proves on REAL Postgres: hope_assessment is tenant-isolated on app.org_id
+  // even with app authorization stubbed open (§9.3 layer-independence); the RANGE-partitioned (target_date)
+  // parent's correction-supersede trigger fires under RLS and CANNOT reach across tenants (§9.4 bullet 4);
+  // wardenx_app has NO DELETE (append-only — a correction supersedes, never deletes, §3.6); the
+  // hope_timepoint_schedule child is org-scoped; the M4 write-audit trigger scrubs the
+  // data/clinical_context_snapshot/late_completion_reason_code denylist (§3.1/§8.1) while the structured
+  // rfa_kind passes through.
+  describe("M10 HOPE Engine — cross-tenant isolation, correction trigger, audit scrub (§9.4 / §3.4–3.6)", () => {
+    const PE_A10 = "ea000000-0000-0000-0000-0000000000a1";
+    const PE_B10 = "eb000000-0000-0000-0000-0000000000b1";
+    const LOC_A10 = "ea000000-0000-0000-0000-0000000000a2";
+    const LOC_B10 = "eb000000-0000-0000-0000-0000000000b2";
+    const USER_A10 = "ea000000-0000-0000-0000-0000000000a3";
+    const USER_B10 = "eb000000-0000-0000-0000-0000000000b3";
+    const MEM_A10 = "ea000000-0000-0000-0000-0000000000a4";
+    const MEM_B10 = "eb000000-0000-0000-0000-0000000000b4";
+    const ASMT_A10 = "ea000000-0000-0000-0000-0000000000a5";
+    const ASMT_B10 = "eb000000-0000-0000-0000-0000000000b5";
+    const SCHED_A10 = "ea000000-0000-0000-0000-0000000000a6";
+    // target_date: a stable instant inside the current month (a partition guaranteed to exist post-migration);
+    // the DEFERRABLE composite self-FK pairs (corrects_assessment_id, target_date) so a correction must reuse
+    // its target's target_date — both rows therefore share this value.
+    const TGT = "(date_trunc('month', now()) + interval '10 days')";
+    const HCOLS =
+      "(id,organization_id,provider_entity_id,location_id,patient_id,admission_id,rfa_kind,data,target_date,created_by_membership_id,status)";
+
+    beforeAll(async () => {
+      await db.query(
+        `INSERT INTO provider_entity (id,organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
+           VALUES ($1,$2,'CCN-M10A','M10 A','NPI-M10A','enc','12-31'),
+                  ($3,$4,'CCN-M10B','M10 B','NPI-M10B','enc','12-31')`,
+        [PE_A10, ORG_A, PE_B10, ORG_B],
+      );
+      await db.query(
+        `INSERT INTO location (id,provider_entity_id,name,address_line1,city,state,postal_code,timezone)
+           VALUES ($1,$2,'L10A','1 St','Town','OR','97000','America/Los_Angeles'),
+                  ($3,$4,'L10B','1 St','Town','OR','97000','America/Los_Angeles')`,
+        [LOC_A10, PE_A10, LOC_B10, PE_B10],
+      );
+      await db.query(`INSERT INTO "user" (id,email) VALUES ($1,'m10a@x.test'),($2,'m10b@x.test')`, [
+        USER_A10,
+        USER_B10,
+      ]);
+      await db.query(
+        `INSERT INTO membership (id,user_id,organization_id,status)
+           VALUES ($1,$2,$3,'active'),($4,$5,$6,'active')`,
+        [MEM_A10, USER_A10, ORG_A, MEM_B10, USER_B10, ORG_B],
+      );
+      // One signed Admission RFA per org (superuser → RLS bypassed). data jsonb carries a free-text note so
+      // the audit scrub is observable; both rows share TGT so an in-org correction's composite FK resolves.
+      await db.query(
+        `INSERT INTO hope_assessment ${HCOLS} VALUES
+           ($1,$2,$3,$4,gen_random_uuid(),gen_random_uuid(),'01_admission','{"note":"free text PHI"}'::jsonb,${TGT},$5,'signed'),
+           ($6,$7,$8,$9,gen_random_uuid(),gen_random_uuid(),'01_admission','{"note":"free text PHI"}'::jsonb,${TGT},$10,'signed')`,
+        [ASMT_A10, ORG_A, PE_A10, LOC_A10, MEM_A10, ASMT_B10, ORG_B, PE_B10, LOC_B10, MEM_B10],
+      );
+      // One open schedule for Org A (the dashboard hot read).
+      await db.query(
+        `INSERT INTO hope_timepoint_schedule
+           (id,organization_id,provider_entity_id,location_id,patient_id,admission_id,rfa_kind,window_opens_at,window_closes_at,late_deadline_at,alert_cadence,status,generated_by)
+         VALUES ($1,$2,$3,$4,gen_random_uuid(),gen_random_uuid(),'02_huv1',now(),now()+interval '9 days',now()+interval '16 days','{}'::jsonb,'open','auto_admission')`,
+        [SCHED_A10, ORG_A, PE_A10, LOC_A10],
+      );
+    });
+
+    it("§9.4 Org A sees ONLY its own hope_assessment (RLS blocks cross-tenant reads, auth stubbed open)", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM hope_assessment WHERE id=$1", [ASMT_A10]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM hope_assessment WHERE id=$1", [ASMT_A10]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§3.5 Org B cannot INSERT a hope_assessment into Org A (WITH CHECK blocks the cross-tenant write)", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO hope_assessment ${HCOLS} VALUES
+               (gen_random_uuid(),$1,$2,$3,gen_random_uuid(),gen_random_uuid(),'01_admission','{}'::jsonb,${TGT},$4,'draft')`,
+            [ORG_A, PE_A10, LOC_A10, MEM_A10],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§3.6 hope_assessment has NO DELETE grant for wardenx_app (corrections supersede, never delete)", async () => {
+      await expect(
+        withOrg(ORG_A, () => db.query("DELETE FROM hope_assessment WHERE id=$1", [ASMT_A10])),
+      ).rejects.toThrow();
+    });
+
+    it("§3.4 the correction-supersede trigger flips the prior Org-A row to superseded (under RLS)", async () => {
+      // Insert a correction that reuses the target's patient/admission/target_date (composite self-FK) under
+      // Org A's RLS context; the AFTER-INSERT trigger flips the target row to 'superseded' in the same TX.
+      await withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO hope_assessment
+             (id,organization_id,provider_entity_id,location_id,patient_id,admission_id,rfa_kind,data,target_date,created_by_membership_id,status,corrects_assessment_id)
+           SELECT gen_random_uuid(),organization_id,provider_entity_id,location_id,patient_id,admission_id,rfa_kind,
+                  '{"note":"corrected"}'::jsonb,target_date,$2,'signed',id
+             FROM hope_assessment WHERE id=$1`,
+          [ASMT_A10, MEM_A10],
+        ),
+      );
+      const r = await withOrg(ORG_A, () =>
+        db.query("SELECT status FROM hope_assessment WHERE id=$1", [ASMT_A10]),
+      );
+      expect(r.rows[0].status).toBe("superseded");
+    });
+
+    it("§9.4 a correction from Org A cannot supersede an Org B row (defense-in-depth org-match guard)", async () => {
+      // The supersede trigger's `AND organization_id = NEW.organization_id` guard means a correction inserted
+      // under Org A pointing at Org B's row updates ZERO rows — Org B's row is never reached. (The composite
+      // self-FK does not deny the insert: Postgres RI checks bypass RLS, so the cross-tenant FK resolves; the
+      // org-match guard is the real defense-in-depth, plus the service-layer org-match, §9.4 bullet 4.)
+      await withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO hope_assessment
+             (id,organization_id,provider_entity_id,location_id,patient_id,admission_id,rfa_kind,data,target_date,created_by_membership_id,status,corrects_assessment_id)
+           VALUES (gen_random_uuid(),$1,$2,$3,gen_random_uuid(),gen_random_uuid(),'01_admission','{}'::jsonb,${TGT},$4,'signed',$5)`,
+          [ORG_A, PE_A10, LOC_A10, MEM_A10, ASMT_B10],
+        ),
+      );
+      // Org B's row is untouched — still signed, never flipped to superseded by Org A's cross-tenant attempt.
+      const r = await db.query("SELECT status FROM hope_assessment WHERE id=$1", [ASMT_B10]);
+      expect(r.rows[0].status).toBe("signed");
+    });
+
+    it("§9.4 hope_timepoint_schedule is org-scoped — Org A sees its open schedule, Org B sees none", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM hope_timepoint_schedule WHERE id=$1", [SCHED_A10]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM hope_timepoint_schedule WHERE id=$1", [SCHED_A10]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§8.1 the M4 write-audit trigger fired for the assessment write and scrubbed the data denylist", async () => {
+      const r = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='hope_assessment' AND event_type='hope_assessment.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.data).toBe("<changed>"); // §8.1 free-text PHI (jsonb payload) scrub
+      expect(r.rows[0].after.rfa_kind).toBe("01_admission"); // structured column passes through
+    });
+  });
+
+  // ── M11 Orders — org-scoped RLS, append-only no-DELETE, audit scrub (§7.7 / §3.4–3.7 / §9.3)
+  // 0036/0037 (M11) applied above. Proves on REAL Postgres: order_record is tenant-isolated on app.org_id
+  // even with app authorization stubbed open (§9.3 layer-independence); the WITH CHECK blocks a cross-tenant
+  // write; wardenx_app has NO DELETE (orders supersede via correction / discontinue, never delete — §3.6);
+  // the monthly-partitioned (created_at) parent's M4 write-audit trigger scrubs the data/indication_text
+  // denylist (D11 / §8.1) while the structured kind column passes through; the order_signature child is
+  // org-scoped.
+  describe("M11 Orders — cross-tenant isolation, no-DELETE, audit scrub (§7.7 / §3.4–3.7 / §9.3)", () => {
+    const PE_A11 = "ea000000-0000-0000-0000-0000000000c1";
+    const PE_B11 = "eb000000-0000-0000-0000-0000000000d1";
+    const LOC_A11 = "ea000000-0000-0000-0000-0000000000c2";
+    const LOC_B11 = "eb000000-0000-0000-0000-0000000000d2";
+    const USER_A11 = "ea000000-0000-0000-0000-0000000000c3";
+    const USER_B11 = "eb000000-0000-0000-0000-0000000000d3";
+    const MEM_A11 = "ea000000-0000-0000-0000-0000000000c4";
+    const MEM_B11 = "eb000000-0000-0000-0000-0000000000d4";
+    const ORD_A11 = "ea000000-0000-0000-0000-0000000000c5";
+    const ORD_B11 = "eb000000-0000-0000-0000-0000000000d5";
+    const SIG_A11 = "ea000000-0000-0000-0000-0000000000c6";
+    const OCOLS =
+      "(id,organization_id,provider_entity_id,location_id,patient_id,admission_id,kind,kind_version,data,drafter_membership_id,drafter_discipline,ordering_physician_mdm_id)";
+
+    beforeAll(async () => {
+      await db.query(
+        `INSERT INTO provider_entity (id,organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
+           VALUES ($1,$2,'CCN-M11A','M11 A','NPI-M11A','enc','12-31'),
+                  ($3,$4,'CCN-M11B','M11 B','NPI-M11B','enc','12-31')`,
+        [PE_A11, ORG_A, PE_B11, ORG_B],
+      );
+      await db.query(
+        `INSERT INTO location (id,provider_entity_id,name,address_line1,city,state,postal_code,timezone)
+           VALUES ($1,$2,'L11A','1 St','Town','OR','97000','America/Los_Angeles'),
+                  ($3,$4,'L11B','1 St','Town','OR','97000','America/Los_Angeles')`,
+        [LOC_A11, PE_A11, LOC_B11, PE_B11],
+      );
+      await db.query(`INSERT INTO "user" (id,email) VALUES ($1,'m11a@x.test'),($2,'m11b@x.test')`, [
+        USER_A11,
+        USER_B11,
+      ]);
+      await db.query(
+        `INSERT INTO membership (id,user_id,organization_id,status)
+           VALUES ($1,$2,$3,'active'),($4,$5,$6,'active')`,
+        [MEM_A11, USER_A11, ORG_A, MEM_B11, USER_B11, ORG_B],
+      );
+      // One draft order per org (superuser → RLS bypassed). data jsonb carries a free-text note so the audit
+      // scrub is observable; created_at defaults to now() → the current monthly partition (exists post-migration).
+      await db.query(
+        `INSERT INTO order_record ${OCOLS} VALUES
+           ($1,$2,$3,$4,gen_random_uuid(),gen_random_uuid(),'lab','v1','{"note":"free text PHI"}'::jsonb,$5,'rn_case_manager',gen_random_uuid()),
+           ($6,$7,$8,$9,gen_random_uuid(),gen_random_uuid(),'lab','v1','{"note":"free text PHI"}'::jsonb,$10,'rn_case_manager',gen_random_uuid())`,
+        [ORD_A11, ORG_A, PE_A11, LOC_A11, MEM_A11, ORD_B11, ORG_B, PE_B11, LOC_B11, MEM_B11],
+      );
+      // One signature on Org A's order (the polymorphic order_signature child; target_kind='order').
+      await db.query(
+        `INSERT INTO order_signature
+           (id,organization_id,provider_entity_id,location_id,target_kind,target_id,signature_kind,signer_membership_id,signer_discipline)
+         VALUES ($1,$2,$3,$4,'order',$5,'signature',$6,'md')`,
+        [SIG_A11, ORG_A, PE_A11, LOC_A11, ORD_A11, MEM_A11],
+      );
+    });
+
+    it("§9.3 Org A sees ONLY its own order_record (RLS blocks cross-tenant reads, auth stubbed open)", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM order_record WHERE id=$1", [ORD_A11]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM order_record WHERE id=$1", [ORD_A11]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§3.5 Org B cannot INSERT an order_record into Org A (WITH CHECK blocks the cross-tenant write)", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO order_record ${OCOLS} VALUES
+               (gen_random_uuid(),$1,$2,$3,gen_random_uuid(),gen_random_uuid(),'lab','v1','{}'::jsonb,$4,'rn_case_manager',gen_random_uuid())`,
+            [ORG_A, PE_A11, LOC_A11, MEM_A11],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§3.6 order_record has NO DELETE grant for wardenx_app (orders supersede/discontinue, never delete)", async () => {
+      await expect(
+        withOrg(ORG_A, () => db.query("DELETE FROM order_record WHERE id=$1", [ORD_A11])),
+      ).rejects.toThrow();
+    });
+
+    it("§3.4 order_signature is org-scoped — Org A sees its signature, Org B sees none", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM order_signature WHERE id=$1", [SIG_A11]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM order_signature WHERE id=$1", [SIG_A11]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§8.1 the M4 write-audit trigger fired for the order write and scrubbed the data denylist", async () => {
+      const r = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='order_record' AND event_type='order_record.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.data).toBe("<changed>"); // §8.1 free-text PHI (jsonb payload) scrub
+      expect(r.rows[0].after.kind).toBe("lab"); // structured column passes through
+    });
+  });
+
+  // ── M12 DoseSpot Prescribing — org-scoped RLS, append-only no-DELETE, audit scrub (§3.5 / §3.6 / §7.6 / §9.4)
+  // 0038/0039 (M12) applied above. Proves on REAL Postgres: medication_order is tenant-isolated on app.org_id
+  // even with app authorization stubbed open (§9.4 layer-independence); the WITH CHECK blocks a cross-tenant
+  // write; wardenx_app has NO DELETE (orders are append + status-transition, never deleted — §3.6); the
+  // monthly-partitioned (created_at) parent's M4 write-audit trigger scrubs the whole `data` jsonb (all
+  // clinician free-text — sig_free_text / indication / notes — lives inside the per-class payload, §7.6) while
+  // the structured med_class column passes through; the refill_request child is org-scoped and scrubs its
+  // pharmacy_notes / denial_reason free-text.
+  describe("M12 DoseSpot — cross-tenant isolation, no-DELETE, audit scrub (§3.5 / §3.6 / §7.6 / §9.4)", () => {
+    const PE_A12 = "ea000000-0000-0000-0000-0000000000e1";
+    const PE_B12 = "eb000000-0000-0000-0000-0000000000f1";
+    const LOC_A12 = "ea000000-0000-0000-0000-0000000000e2";
+    const LOC_B12 = "eb000000-0000-0000-0000-0000000000f2";
+    const USER_A12 = "ea000000-0000-0000-0000-0000000000e3";
+    const USER_B12 = "eb000000-0000-0000-0000-0000000000f3";
+    const MEM_A12 = "ea000000-0000-0000-0000-0000000000e4";
+    const MEM_B12 = "eb000000-0000-0000-0000-0000000000f4";
+    const MO_A12 = "ea000000-0000-0000-0000-0000000000e5";
+    const MO_B12 = "eb000000-0000-0000-0000-0000000000f5";
+    const RF_A12 = "ea000000-0000-0000-0000-0000000000e6";
+    const MCOLS =
+      "(id,organization_id,provider_entity_id,location_id,patient_id,admission_id,med_class,drug_name,strength,dose_form,route,data,prescriber_membership_id,prescribing_physician_mdm_id)";
+
+    beforeAll(async () => {
+      await db.query(
+        `INSERT INTO provider_entity (id,organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
+           VALUES ($1,$2,'CCN-M12A','M12 A','NPI-M12A','enc','12-31'),
+                  ($3,$4,'CCN-M12B','M12 B','NPI-M12B','enc','12-31')`,
+        [PE_A12, ORG_A, PE_B12, ORG_B],
+      );
+      await db.query(
+        `INSERT INTO location (id,provider_entity_id,name,address_line1,city,state,postal_code,timezone)
+           VALUES ($1,$2,'L12A','1 St','Town','OR','97000','America/Los_Angeles'),
+                  ($3,$4,'L12B','1 St','Town','OR','97000','America/Los_Angeles')`,
+        [LOC_A12, PE_A12, LOC_B12, PE_B12],
+      );
+      await db.query(`INSERT INTO "user" (id,email) VALUES ($1,'m12a@x.test'),($2,'m12b@x.test')`, [
+        USER_A12,
+        USER_B12,
+      ]);
+      await db.query(
+        `INSERT INTO membership (id,user_id,organization_id,status)
+           VALUES ($1,$2,$3,'active'),($4,$5,$6,'active')`,
+        [MEM_A12, USER_A12, ORG_A, MEM_B12, USER_B12, ORG_B],
+      );
+      // One draft medication_order per org (superuser → RLS bypassed). data jsonb carries a free-text sig so
+      // the audit scrub is observable; created_at defaults to now() → the current monthly partition (created
+      // by create_medication_order_partition for current_month-1..+1 post-migration).
+      await db.query(
+        `INSERT INTO medication_order ${MCOLS} VALUES
+           ($1,$2,$3,$4,gen_random_uuid(),gen_random_uuid(),'standard','Aspirin','81 mg','tablet','oral','{"sigFreeText":"1 tablet by mouth daily — free text PHI"}'::jsonb,$5,gen_random_uuid()),
+           ($6,$7,$8,$9,gen_random_uuid(),gen_random_uuid(),'standard','Aspirin','81 mg','tablet','oral','{"sigFreeText":"1 tablet by mouth daily — free text PHI"}'::jsonb,$10,gen_random_uuid())`,
+        [MO_A12, ORG_A, PE_A12, LOC_A12, MEM_A12, MO_B12, ORG_B, PE_B12, LOC_B12, MEM_B12],
+      );
+      // One pending refill_request on Org A's order (the §2.7 inbox child). pharmacy_notes is free-text PHI.
+      await db.query(
+        `INSERT INTO refill_request
+           (id,organization_id,provider_entity_id,location_id,source_medication_order_id,patient_id,dosespot_event_id,pharmacy_notes,received_at,status)
+         VALUES ($1,$2,$3,$4,$5,gen_random_uuid(),'DS-EVT-A12','call pharmacy re: dose — free text PHI',now(),'pending')`,
+        [RF_A12, ORG_A, PE_A12, LOC_A12, MO_A12],
+      );
+    });
+
+    it("§3.5 Org A sees ONLY its own medication_order (RLS blocks cross-tenant reads, auth stubbed open)", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM medication_order WHERE id=$1", [MO_A12]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM medication_order WHERE id=$1", [MO_A12]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§3.5 Org B cannot INSERT a medication_order into Org A (WITH CHECK blocks the cross-tenant write)", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO medication_order ${MCOLS} VALUES
+               (gen_random_uuid(),$1,$2,$3,gen_random_uuid(),gen_random_uuid(),'standard','X','1 mg','tablet','oral','{}'::jsonb,$4,gen_random_uuid())`,
+            [ORG_A, PE_A12, LOC_A12, MEM_A12],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§3.6 medication_order has NO DELETE grant for wardenx_app (orders supersede/discontinue, never delete)", async () => {
+      await expect(
+        withOrg(ORG_A, () => db.query("DELETE FROM medication_order WHERE id=$1", [MO_A12])),
+      ).rejects.toThrow();
+    });
+
+    it("§3.5 refill_request is org-scoped — Org A sees its refill, Org B sees none", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM refill_request WHERE id=$1", [RF_A12]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM refill_request WHERE id=$1", [RF_A12]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§7.6 the M4 write-audit trigger fired for the medication_order write and scrubbed the data denylist", async () => {
+      const r = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='medication_order' AND event_type='medication_order.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.data).toBe("<changed>"); // §7.6 whole `data` jsonb (free-text PHI) scrub
+      expect(r.rows[0].after.med_class).toBe("standard"); // structured column passes through
+    });
+
+    it("§7.6 the refill_request write-audit trigger scrubbed pharmacy_notes (free-text PHI)", async () => {
+      const r = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='refill_request' AND event_type='refill_request.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.pharmacy_notes).toBe("<changed>"); // §7.6 free-text PHI scrub
+      expect(r.rows[0].after.status).toBe("pending"); // structured column passes through
+    });
+  });
+
+  // ── M13 eMAR & Med Administration — org-scoped RLS, append-only no-DELETE, audit scrub (§3.5 / §3.6 / §9.4)
+  // 0040/0041 (M13) applied above. Proves on REAL Postgres: administration_record is tenant-isolated on
+  // app.org_id even with app authorization stubbed open (§9.4 layer-independence); the WITH CHECK blocks a
+  // cross-tenant write; wardenx_app has NO DELETE (administrations supersede via correction / void, never delete
+  // — §3.6); the RANGE-partitioned (administered_at) parent's M4 write-audit trigger scrubs BOTH the top-level
+  // free-text columns (notes / refusal_reason / …) AND the nested per-mode `data` json-paths (sig_free_text /
+  // titrationReason / …, §3.6 D12) while the structured `mode` column passes through; the scheduled_dose child is
+  // org-scoped.
+  describe("M13 eMAR — cross-tenant isolation, no-DELETE, nested audit scrub (§3.5 / §3.6 / §9.4)", () => {
+    const PE_A13 = "ea000000-0000-0000-0000-000000000091";
+    const PE_B13 = "eb000000-0000-0000-0000-0000000000a1";
+    const LOC_A13 = "ea000000-0000-0000-0000-000000000092";
+    const LOC_B13 = "eb000000-0000-0000-0000-0000000000a2";
+    const AR_A13 = "ea000000-0000-0000-0000-000000000095";
+    const AR_B13 = "eb000000-0000-0000-0000-0000000000a5";
+    const SD_A13 = "ea000000-0000-0000-0000-000000000096";
+    const ACOLS =
+      "(id,organization_id,provider_entity_id,location_id,patient_id,admission_id,medication_order_id,mode,data,drug_name_snapshot,route_snapshot,administered_at,actor_kind,administering_clinician_membership_id,notes)";
+
+    beforeAll(async () => {
+      await db.query(
+        `INSERT INTO provider_entity (id,organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
+           VALUES ($1,$2,'CCN-M13A','M13 A','NPI-M13A','enc','12-31'),
+                  ($3,$4,'CCN-M13B','M13 B','NPI-M13B','enc','12-31')`,
+        [PE_A13, ORG_A, PE_B13, ORG_B],
+      );
+      await db.query(
+        `INSERT INTO location (id,provider_entity_id,name,address_line1,city,state,postal_code,timezone)
+           VALUES ($1,$2,'L13A','1 St','Town','OR','97000','America/Los_Angeles'),
+                  ($3,$4,'L13B','1 St','Town','OR','97000','America/Los_Angeles')`,
+        [LOC_A13, PE_A13, LOC_B13, PE_B13],
+      );
+      // One committed administration per org (superuser → RLS bypassed). The top-level notes column AND the
+      // nested data.sig_free_text json-path are both free-text PHI so the §3.6 D12 scrub is observable on each.
+      await db.query(
+        `INSERT INTO administration_record ${ACOLS} VALUES
+           ($1,$2,$3,$4,gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),'single_dose','{"sig_free_text":"give half — free text PHI"}'::jsonb,'Morphine','PO',now(),'clinician',gen_random_uuid(),'bedside note — free text PHI'),
+           ($5,$6,$7,$8,gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),'single_dose','{"sig_free_text":"give half — free text PHI"}'::jsonb,'Morphine','PO',now(),'clinician',gen_random_uuid(),'bedside note — free text PHI')`,
+        [AR_A13, ORG_A, PE_A13, LOC_A13, AR_B13, ORG_B, PE_B13, LOC_B13],
+      );
+      // One scheduled_dose on Org A (the §2.3 materialized-dose child; org-scoped).
+      await db.query(
+        `INSERT INTO scheduled_dose
+           (id,organization_id,provider_entity_id,location_id,patient_id,admission_id,medication_order_id,due_at,grace_window_minutes,expected_dose_amount,expected_dose_unit,expected_route,materialization_sequence)
+         VALUES ($1,$2,$3,$4,gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),now(),60,5,'mg','PO',1)`,
+        [SD_A13, ORG_A, PE_A13, LOC_A13],
+      );
+    });
+
+    it("§3.5 Org A sees ONLY its own administration_record (RLS blocks cross-tenant reads, auth stubbed open)", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM administration_record WHERE id=$1", [AR_A13]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM administration_record WHERE id=$1", [AR_A13]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§3.5 Org B cannot INSERT an administration_record into Org A (WITH CHECK blocks the cross-tenant write)", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO administration_record ${ACOLS} VALUES
+               (gen_random_uuid(),$1,$2,$3,gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),'single_dose','{}'::jsonb,'X','PO',now(),'clinician',gen_random_uuid(),NULL)`,
+            [ORG_A, PE_A13, LOC_A13],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§3.6 administration_record has NO DELETE grant for wardenx_app (administrations supersede/void, never delete)", async () => {
+      await expect(
+        withOrg(ORG_A, () => db.query("DELETE FROM administration_record WHERE id=$1", [AR_A13])),
+      ).rejects.toThrow();
+    });
+
+    it("§3.5 scheduled_dose is org-scoped — Org A sees its dose, Org B sees none", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM scheduled_dose WHERE id=$1", [SD_A13]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM scheduled_dose WHERE id=$1", [SD_A13]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§3.6 the M4 write-audit trigger scrubbed BOTH the top-level notes AND the nested data.sig_free_text", async () => {
+      const r = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='administration_record' AND event_type='administration_record.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.notes).toBe("<changed>"); // §3.6 top-level free-text PHI scrub
+      expect(r.rows[0].after.data.sig_free_text).toBe("<changed>"); // §3.6 D12 nested json-path scrub
+      expect(r.rows[0].after.mode).toBe("single_dose"); // structured column passes through
+    });
+  });
 });

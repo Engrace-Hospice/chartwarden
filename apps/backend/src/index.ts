@@ -34,6 +34,11 @@ import {
 import { registerAdmissionErasers, registerAdmissionSeams } from "./modules/06-admission/index";
 import { registerCarePlanErasers, registerCarePlanSeams } from "./modules/07-care-plan/index";
 import { registerEncounterErasers, registerEncounterSeams } from "./modules/08-encounters/index";
+import { registerAssessmentErasers, registerAssessmentSeams } from "./modules/09-assessments/index";
+import { registerHopeErasers, registerHopeSeams } from "./modules/10-hope/index";
+import { registerOrderErasers, registerOrderSeams } from "./modules/11-orders/index";
+import { registerDoseSpotErasers, registerDoseSpotSeams } from "./modules/12-dosespot/index";
+import { registerEmarErasers, registerEmarSeams } from "./modules/13-emar/index";
 import {
   createDbMessagingProvider,
   mountMessagingRoutes,
@@ -102,6 +107,31 @@ export function wireModuleSeams(
   // (registered just above) for the encounter authoring picker + the overdue sign-gate. Slice/tests keep
   // the in-memory store; the Drizzle-backed store lands with M8's routes/repos (M8-T09+).
   registerEncounterSeams();
+  // M9 — the two §4.7 / D7 owned seams (LatestAssessmentProvider + ScaleSeriesProvider) M7/M10/M14/M28/M32
+  // consume for latest-scale reads + trend series/deltas. Slice/tests keep the in-memory store; the
+  // Drizzle-backed store lands with M9's routes/repos (M9-T05+).
+  registerAssessmentSeams();
+  // M10 — the three §2 / D10 owned seams (HopeTimepointProvider + HopeJ2051Provider + HopeSubmissionProvider)
+  // M14/M22/M30/M32 consume for open HOPE windows, J2051 trigger/SFV obligations, and per-PE submission
+  // status. Slice/tests keep the in-memory store; the Drizzle-backed store lands with M10's routes/repos
+  // (M10-T06+).
+  registerHopeSeams();
+  // M11 — the two §2.8 D14 / §4.3 owned seams (OrderSignatureProvider — the polymorphic clinical-signature
+  // WRITE primitive M12 routes medication-order signatures through, D4 — + OrderProvider — the read-side
+  // counterpart M14/M23/M30/M7 consume). Slice/tests keep the in-memory store; the Drizzle-backed store lands
+  // with M11's routes/repos (M11-T06+).
+  registerOrderSeams();
+  // M12 — the two §2.10 D17 owned READ seams (MedicationOrderProvider — the medication-order read path M13
+  // (eMAR administration context) / M14 / M19 / M28 (FHIR) / M30 / M31 (portal) / M33 consume — + RefillInboxProvider
+  // — the refill-inbox read path the prescriber UI + M19/M33 consume). Slice/tests keep the in-memory store;
+  // the Drizzle-backed store lands with M12's routes/repos (M12-T08+).
+  registerDoseSpotSeams();
+  // M13 — the two §2.12 D16 owned READ seams (MedicationAdministrationProvider — the administration read path M14
+  // (IDG "administrations since last meeting") / M28 (FHIR) / M30 (PRN-effectiveness / missed-dose /
+  // comfort-kit-timeliness measures) / M31 (portal summary) / M33 (dashboards) / M37 (IPU IV-pump overlay)
+  // consume — + ReconciliationProvider — the reconciliation-worksheet read path M14/M30 consume). Slice/tests
+  // keep the in-memory store; the Drizzle-backed store lands with M13's routes/repos (M13-T08+).
+  registerEmarSeams();
   // M39 — ConsentEvaluator (§4.3, the disclosure/redaction gate). Production backs it with the Drizzle
   // store over the real M39 consent tables (FB-T03); slice/tests keep the in-memory default.
   registerConsentSeams(deps.db ? { store: createDbConsentStore(deps.db) } : {});
@@ -127,6 +157,11 @@ export function wireModuleErasers(): void {
   registerAdmissionErasers(); // M6-T12 — `admission_record` (admission-subtree destruction-cert callback; D7/D8)
   registerCarePlanErasers(); // M7-T09 — `care_plan_record` (care-plan-subtree destruction-cert callback; D7/D8)
   registerEncounterErasers(); // M8-T12 — `encounter_record` (encounter-subtree destruction-cert callback; DEK crypto-erase §3.6; D7/D8)
+  registerAssessmentErasers(); // M9-T07 — `clinical_assessment` (assessment-subtree destruction-cert callback; §8.4; D7/D8)
+  registerHopeErasers(); // M10-T08 — `hope_record` (HOPE-timepoint-subtree destruction-cert callback; CMS 10-year retention block; §8.4; D7/D8)
+  registerOrderErasers(); // M11-T08 — `order_record` (orders-subtree destruction-cert callback; partition-drop; §7.7; D12; D7/D8)
+  registerDoseSpotErasers(); // M12-T09 — `medication_order_record` (prescribing-subtree destruction-cert callback; partition-drop; §7.7; D15; D7/D8)
+  registerEmarErasers(); // M13-T10 — `emar_record` (eMAR-subtree destruction-cert callback; partition-drop; §7.7; D7/D8)
   // Phase-1 data-class owners append here as they land.
 }
 
