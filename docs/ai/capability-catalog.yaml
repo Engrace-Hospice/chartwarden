@@ -1,0 +1,113 @@
+# WardenX AI capability catalog.
+# Source of truth required by docs/architecture/WARDENX_AI_GOVERNANCE_v0.2.md section 4.1.
+# All entries are disabled until their owning module and governance lifecycle state explicitly advance.
+
+capabilities:
+  - id: hearthnote-layer-2
+    name: HearthNote Layer 2
+    module: 8
+    risk_class: high
+    lifecycle_state: proposed
+    enabled_by_default: false
+    kill_switch_flag: ai.hearthnote_layer2_kill
+    doc: docs/ai/capabilities/hearthnote-layer-2.md
+
+  - id: hearthnote-idg-aggregation-layer-2
+    name: HearthNote IDG aggregation Layer 2
+    module: 14
+    risk_class: high
+    lifecycle_state: proposed
+    enabled_by_default: false
+    kill_switch_flag: ai.hearthnote_idg_aggregation_layer2_kill
+    doc: docs/ai/capabilities/hearthnote-idg-aggregation-layer-2.md
+
+  - id: doclens-classifier
+    name: DocLens classifier
+    module: 22
+    risk_class: medium
+    lifecycle_state: proposed
+    enabled_by_default: false
+    kill_switch_flag: ai.doclens_classifier_kill
+    doc: docs/ai/capabilities/doclens-classifier.md
+
+  - id: doclens-extractor
+    name: DocLens extractor
+    module: 22
+    risk_class: high
+    lifecycle_state: proposed
+    enabled_by_default: false
+    kill_switch_flag: ai.doclens_extractor_kill
+    doc: docs/ai/capabilities/doclens-extractor.md
+
+  - id: doclens-vision-verification
+    name: DocLens vision verification
+    module: 22
+    risk_class: high
+    lifecycle_state: proposed
+    enabled_by_default: false
+    kill_switch_flag: ai.doclens_vision_verification_kill
+    doc: docs/ai/capabilities/doclens-vision-verification.md
+
+  - id: ai-copilot-clinical
+    name: AI Copilot - clinical
+    module: 32
+    risk_class: high
+    lifecycle_state: proposed
+    enabled_by_default: false
+    kill_switch_flag: ai.copilot_clinical_kill
+    doc: docs/ai/capabilities/ai-copilot-clinical.md
+
+  - id: ai-copilot-administrative
+    name: AI Copilot - administrative
+    module: 32
+    risk_class: medium
+    lifecycle_state: proposed
+    enabled_by_default: false
+    kill_switch_flag: ai.copilot_administrative_kill
+    doc: docs/ai/capabilities/ai-copilot-administrative.md
+
+  - id: semantic-search
+    name: Semantic search
+    module: 32
+    co_owner_module: 22
+    risk_class: medium
+    lifecycle_state: proposed
+    enabled_by_default: false
+    kill_switch_flag: ai.semantic_search_kill
+    doc: docs/ai/capabilities/semantic-search.md
+
+  - id: embeddings-generation
+    name: Embeddings generation
+    module: 32
+    risk_class: low
+    lifecycle_state: proposed
+    enabled_by_default: false
+    kill_switch_flag: ai.embeddings_generation_kill
+    doc: docs/ai/capabilities/embeddings-generation.md
+
+  - id: mortality-decline-prediction
+    name: Mortality / decline prediction
+    module: 32
+    risk_class: high
+    lifecycle_state: proposed
+    enabled_by_default: false
+    kill_switch_flag: ai.mortality_decline_prediction_kill
+    doc: docs/ai/capabilities/mortality-decline-prediction.md
+
+  - id: falls-risk-prediction
+    name: Falls risk prediction
+    module: 32
+    risk_class: high
+    lifecycle_state: proposed
+    enabled_by_default: false
+    kill_switch_flag: ai.falls_risk_prediction_kill
+    doc: docs/ai/capabilities/falls-risk-prediction.md
+
+  - id: aggregate-cap-projection
+    name: Aggregate cap projection
+    module: 26
+    risk_class: medium
+    lifecycle_state: proposed
+    enabled_by_default: false
+    kill_switch_flag: ai.aggregate_cap_projection_kill
+    doc: docs/ai/capabilities/aggregate-cap-projection.md

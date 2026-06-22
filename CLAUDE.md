@@ -1,7 +1,9 @@
 # WardenX — Repository Guide
 
 Multi-tenant hospice EHR SaaS. This repo is the **specification corpus + architecture-fitness
-kit + a buildable monorepo skeleton** (Phase 0 — structure + CI gates, no business logic yet).
+kit + staged implementation monorepo**: Phase 0 gates/scaffold are in place, and landed Phase 1
+waves include real implementation for M2-M8, M36, M38, M39, and M40. Later-wave modules remain
+explicit placeholders until their plans land.
 Use this guide to locate authoritative documents.
 
 > **Building/extending the code?** Start at [`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md)
