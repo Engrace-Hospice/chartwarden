@@ -1899,4 +1899,228 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       expect(r.rows[0].after.to_state).toBe("published"); // structural column passes through
     });
   });
+
+  // 0046/0047 (M18 EVV) applied above. Proves on REAL Postgres the §9.3 RLS isolation + §9.4 layer-independence
+  // across ALL SIX owned tables (D14/§3.5): `evv_event` (the only PHI-bearing table — PARTITION BY RANGE
+  // event_at, D12; carries patient_id + the provider_entity_id/location_id spine) plus the five org-scoped
+  // satellites (`evv_geofence_evaluation`, `evv_geofence_policy`, `evv_device`, `evv_missing_resolution`,
+  // `evv_aggregator_submission`). Every table is tenant-isolated on app.org_id even with app authorization
+  // stubbed wide open (§9.4 "disable application-layer ABAC; RLS still blocks cross-tenant"); the WITH CHECK
+  // blocks a cross-tenant write; a cross-tenant UPDATE affects ZERO rows; wardenx_app has NO DELETE on any of
+  // the six (events append-only via the §3.2 immutability trigger, the rest destruction-by-eraseFn only);
+  // `evv_event` UPDATE is narrowed to the two supersede markers by the append-only trigger (correction-of-record
+  // is an APPEND, never an in-place edit, D2); and the M4 write-audit trigger scrubs the §3.6 denylist (GPS
+  // coordinate ciphers, accuracy, free-text resolution/rejection reasons) while structural columns pass through.
+  // The §9.4 IN-tenant cross-caseload half (RLS off, ABAC still blocks) is the in-memory acceptance suite's job
+  // (apps/backend/__tests__/evv-workflow-acceptance.test.ts) — the two layers each independently block.
+  describe("M18 EVV — cross-tenant isolation, no-DELETE, append-only events, PHI-column audit scrub (§3.5 / §3.6 / §9.3 / §9.4)", () => {
+    const PE_A18 = "ec000000-0000-0000-0000-0000000000a1";
+    const PE_B18 = "ed000000-0000-0000-0000-0000000000b1";
+    const LOC_A18 = "ec000000-0000-0000-0000-0000000000a2";
+    const LOC_B18 = "ed000000-0000-0000-0000-0000000000b2";
+    const USER_A18 = "ec000000-0000-0000-0000-0000000000a3";
+    const USER_B18 = "ed000000-0000-0000-0000-0000000000b3";
+    const MEM_A18 = "ec000000-0000-0000-0000-0000000000a4";
+    const MEM_B18 = "ed000000-0000-0000-0000-0000000000b4";
+    const DEV_A18 = "ec000000-0000-0000-0000-0000000000a5";
+    const DEV_B18 = "ed000000-0000-0000-0000-0000000000b5";
+    const EVT_A18 = "ec000000-0000-0000-0000-0000000000a6";
+    const EVT_B18 = "ed000000-0000-0000-0000-0000000000b6";
+    const GEVAL_A18 = "ec000000-0000-0000-0000-0000000000a7";
+    const POL_A18 = "ec000000-0000-0000-0000-0000000000a8";
+    const MR_A18 = "ec000000-0000-0000-0000-0000000000a9";
+    const SUB_A18 = "ec000000-0000-0000-0000-0000000000aa";
+    const VIS_A18 = "ec000000-0000-0000-0000-0000000000ab"; // synthetic M17 visit anchor (app-validated; no FK)
+
+    // The six owned tables, used by the parametrized cross-tenant + no-DELETE loops below.
+    const OWNED_TABLES = [
+      "evv_event",
+      "evv_geofence_evaluation",
+      "evv_geofence_policy",
+      "evv_device",
+      "evv_missing_resolution",
+      "evv_aggregator_submission",
+    ] as const;
+    // The Org-A row id per owned table (so the cross-tenant SELECT loop is one query shape per table).
+    const A_ROW: Record<(typeof OWNED_TABLES)[number], string> = {
+      evv_event: EVT_A18,
+      evv_geofence_evaluation: GEVAL_A18,
+      evv_geofence_policy: POL_A18,
+      evv_device: DEV_A18,
+      evv_missing_resolution: MR_A18,
+      evv_aggregator_submission: SUB_A18,
+    };
+
+    /** Seed a full EVV chain for one org (superuser → RLS bypassed): device → event → geofence-eval, plus the
+     * org-scoped policy / missing-resolution / aggregator-submission rows. The free-text + coordinate-cipher
+     * columns carry sentinel PHI so the §3.6 audit scrub is observable. */
+    async function seedEvvChain(
+      org: string,
+      pe: string,
+      loc: string,
+      mem: string,
+      dev: string,
+      evt: string,
+    ) {
+      await db.query(
+        `INSERT INTO evv_device (id,organization_id,membership_id,platform,device_key_fingerprint,m2_device_attestation_id,status)
+           VALUES ($1,$2,$3,'ios','key-fingerprint-secret — denylisted',gen_random_uuid(),'approved')`,
+        [dev, org, mem],
+      );
+      await db.query(
+        `INSERT INTO evv_event
+           (id,organization_id,provider_entity_id,location_id,visit_id,patient_id,kind,service_type_code,
+            posting_membership_id,posting_discipline_at_recording,evv_device_id,captured_at,event_at,
+            coords_cipher,coords_dek_version,accuracy_m,gps_quality,device_attestation_id_at_record)
+           VALUES ($1,$2,$3,$4,$5,gen_random_uuid(),'check_in','T1019',$6,'rn',$7,now(),now(),
+            'COORDS-CIPHER — free-text PHI',1,12.5,'high',gen_random_uuid())`,
+        [evt, org, pe, loc, VIS_A18, mem, dev],
+      );
+      await db.query(
+        `INSERT INTO evv_geofence_evaluation
+           (id,organization_id,evv_event_id,applied_policy_id,applied_policy_scope,applied_radius_m,
+            applied_max_accuracy_m,patient_address_coords_cipher,device_coords_cipher,computed_distance_m,decision)
+           VALUES ($1,$2,$3,gen_random_uuid(),'tenant',100,50,
+            'BASELINE-CIPHER — free-text PHI','DEVICE-CIPHER — free-text PHI',42.0,'pass')`,
+        [org === ORG_A ? GEVAL_A18 : "ed000000-0000-0000-0000-0000000000b7", org, evt],
+      );
+      await db.query(
+        `INSERT INTO evv_geofence_policy
+           (id,organization_id,scope,radius_m,max_accuracy_m,effective_from,override_reason,set_by_membership_id)
+           VALUES ($1,$2,'tenant',100,40,now()::date,'tenant tighten — narrowed for dense urban routes',$3)`,
+        [org === ORG_A ? POL_A18 : "ed000000-0000-0000-0000-0000000000b8", org, mem],
+      );
+      await db.query(
+        `INSERT INTO evv_missing_resolution
+           (id,organization_id,visit_id,kind,detected_by_source,status,resolution_reason)
+           VALUES ($1,$2,$3,'missing_checkout','cron_late_check_sweep','open','resolution narrative — free-text PHI')`,
+        [org === ORG_A ? MR_A18 : "ed000000-0000-0000-0000-0000000000b9", org, VIS_A18],
+      );
+      await db.query(
+        `INSERT INTO evv_aggregator_submission
+           (id,organization_id,visit_id,state_code,aggregator_vendor,status,aggregator_rejection_code,aggregator_rejection_reason)
+           VALUES ($1,$2,$3,'TX','sandata','rejected','E102','rejection narrative — free-text PHI')`,
+        [org === ORG_A ? SUB_A18 : "ed000000-0000-0000-0000-0000000000ba", org, VIS_A18],
+      );
+    }
+
+    beforeAll(async () => {
+      await db.query(
+        `INSERT INTO provider_entity (id,organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
+           VALUES ($1,$2,'CCN-M18A','M18 A','NPI-M18A','enc','12-31'),
+                  ($3,$4,'CCN-M18B','M18 B','NPI-M18B','enc','12-31')`,
+        [PE_A18, ORG_A, PE_B18, ORG_B],
+      );
+      await db.query(
+        `INSERT INTO location (id,provider_entity_id,name,address_line1,city,state,postal_code,timezone)
+           VALUES ($1,$2,'L18A','1 St','Town','OR','97000','America/Los_Angeles'),
+                  ($3,$4,'L18B','1 St','Town','OR','97000','America/Los_Angeles')`,
+        [LOC_A18, PE_A18, LOC_B18, PE_B18],
+      );
+      await db.query(`INSERT INTO "user" (id,email) VALUES ($1,'m18a@x.test'),($2,'m18b@x.test')`, [
+        USER_A18,
+        USER_B18,
+      ]);
+      await db.query(
+        `INSERT INTO membership (id,user_id,organization_id,status)
+           VALUES ($1,$2,$3,'active'),($4,$5,$6,'active')`,
+        [MEM_A18, USER_A18, ORG_A, MEM_B18, USER_B18, ORG_B],
+      );
+      await seedEvvChain(ORG_A, PE_A18, LOC_A18, MEM_A18, DEV_A18, EVT_A18);
+      await seedEvvChain(ORG_B, PE_B18, LOC_B18, MEM_B18, DEV_B18, EVT_B18);
+    });
+
+    it("§9.3 Org A sees its own row but Org B sees ZERO across all six owned tables (RLS, auth stubbed open)", async () => {
+      for (const table of OWNED_TABLES) {
+        const a = await withOrg(ORG_A, () =>
+          db.query(`SELECT count(*)::int AS n FROM ${table} WHERE id=$1`, [A_ROW[table]]),
+        );
+        const b = await withOrg(ORG_B, () =>
+          db.query(`SELECT count(*)::int AS n FROM ${table} WHERE id=$1`, [A_ROW[table]]),
+        );
+        expect(a.rows[0].n, `Org A reads its own ${table}`).toBe(1);
+        expect(b.rows[0].n, `Org B is blocked from ${table}`).toBe(0);
+      }
+    });
+
+    it("§3.5 Org B cannot INSERT an evv_event into Org A (WITH CHECK blocks the cross-tenant write)", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO evv_event
+               (id,organization_id,provider_entity_id,location_id,visit_id,patient_id,kind,service_type_code,
+                posting_membership_id,posting_discipline_at_recording,evv_device_id,captured_at,event_at,
+                coords_cipher,coords_dek_version,accuracy_m,gps_quality,device_attestation_id_at_record)
+               VALUES (gen_random_uuid(),$1,$2,$3,$4,gen_random_uuid(),'check_out','T1019',$5,'rn',$6,now(),now(),
+                'x',1,9.0,'high',gen_random_uuid())`,
+            [ORG_A, PE_A18, LOC_A18, VIS_A18, MEM_A18, DEV_A18],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§9.3 a cross-tenant UPDATE affects ZERO rows — Org B cannot mutate Org A's aggregator submission", async () => {
+      const r = await withOrg(ORG_B, () =>
+        db.query("UPDATE evv_aggregator_submission SET status='cancelled' WHERE id=$1", [SUB_A18]),
+      );
+      expect(r.rowCount).toBe(0);
+      // And Org A's row is untouched (still 'rejected').
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT status FROM evv_aggregator_submission WHERE id=$1", [SUB_A18]),
+      );
+      expect(a.rows[0].status).toBe("rejected");
+    });
+
+    it("§3.6 wardenx_app has NO DELETE grant on any of the six owned tables (eraseFn-only destruction)", async () => {
+      for (const table of OWNED_TABLES) {
+        await expect(
+          withOrg(ORG_A, () => db.query(`DELETE FROM ${table} WHERE id=$1`, [A_ROW[table]])),
+          `DELETE on ${table} must be refused`,
+        ).rejects.toThrow();
+      }
+    });
+
+    it("§3.2/D2 evv_event is append-only — a non-supersede UPDATE is refused; the supersede markers may change", async () => {
+      // Mutating a substantive column is blocked by the immutability trigger (correction-of-record is an APPEND).
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query("UPDATE evv_event SET coords_cipher='tampered' WHERE id=$1", [EVT_A18]),
+        ),
+      ).rejects.toThrow(/EVV_EVENT_APPEND_ONLY_IMMUTABLE_COLUMN/);
+      // The two supersede markers (the §2.3 correction-of-record stamp) are the only permitted UPDATE.
+      const ok = await withOrg(ORG_A, () =>
+        db.query("UPDATE evv_event SET superseded_at=now() WHERE id=$1", [EVT_A18]),
+      );
+      expect(ok.rowCount).toBe(1);
+    });
+
+    it("§3.6 the M4 audit trigger scrubbed evv_event coordinate cipher + accuracy; structural columns pass through", async () => {
+      const r = await db.query(
+        "SELECT after, retention_class FROM audit_event WHERE resource_kind='evv_event' AND event_type='evv_event.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.coords_cipher).toBe("<changed>"); // §3.6 / D10 coordinate-cipher scrub
+      expect(r.rows[0].after.accuracy_m).toBe("<changed>"); // §3.6 denylisted
+      expect(r.rows[0].after.kind).toBe("check_in"); // structural passes through
+      expect(r.rows[0].after.gps_quality).toBe("high"); // structural passes through
+      expect(r.rows[0].retention_class).toBe("compliance"); // §3.7 evv_record retention class
+    });
+
+    it("§3.6 the M4 audit trigger scrubbed the evv_missing_resolution + aggregator-submission free-text reasons", async () => {
+      const mr = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='evv_missing_resolution' AND event_type='evv_missing_resolution.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(mr.rows[0].after.resolution_reason).toBe("<changed>"); // §3.6 free-text scrub
+      expect(mr.rows[0].after.status).toBe("open"); // structural passes through
+      const sub = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='evv_aggregator_submission' AND event_type='evv_aggregator_submission.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(sub.rows[0].after.aggregator_rejection_reason).toBe("<changed>"); // §3.6 free-text scrub
+      expect(sub.rows[0].after.aggregator_rejection_code).toBe("E102"); // structural passes through
+      expect(sub.rows[0].after.status).toBe("rejected"); // structural passes through
+    });
+  });
 });
