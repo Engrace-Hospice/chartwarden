@@ -142,7 +142,7 @@
       "enriched": false,
       "screens": false,
       "tests": true,
-      "adapter": false,
+      "adapter": true,
       "liveInfra": false
     },
     {

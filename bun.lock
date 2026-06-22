@@ -164,6 +164,9 @@
     "packages/iqies-client": {
       "name": "@wardenx/iqies-client",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
     },
     "packages/mdm": {
       "name": "@wardenx/mdm",

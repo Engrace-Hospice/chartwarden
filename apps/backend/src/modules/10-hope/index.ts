@@ -70,3 +70,28 @@ export {
   planHopeWindowWatchdog,
   planSfvWatchdog,
 } from "./jobs/index";
+// M10-T07 — the §4.10 iQIES submission worker loop: the pure assemble / submit-readiness / transmit /
+// reconcile / correction-RFA processors over the `hope:submission` queue (the adapter call + MinIO put +
+// SHA-256 are the boot-bound driver's only IO; the @wardenx/iqies-client adapter is the D6 boundary).
+export {
+  type AssemblableAssessment,
+  type AssembleSubmissionsPlan,
+  type CorrectionContext,
+  type CorrectionRfaPlan,
+  type PlannedSubmission,
+  type PlannedSubmissionEvent,
+  type PlannedSubmissionFinding,
+  type PlannedSubmissionItem,
+  type ReconcileItemOutcome,
+  type ReconcileItemTransition,
+  type ReconcilePlan,
+  type SubmissionItemValidation,
+  type SubmitReadiness,
+  type TransmitResultPlan,
+  buildSubmissionEnvelope,
+  decideSubmitReadiness,
+  planAssembleSubmissions,
+  planCorrectionRfa,
+  planReconcile,
+  planTransmitResult,
+} from "./jobs/submission";
