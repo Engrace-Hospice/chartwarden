@@ -24,6 +24,12 @@
 // controlled-substance-discrepancy detector) and the §2.5/§2.7 D14 admission-discharge / patient-deceased
 // cascade (`cascade/`: cancel future pending scheduled doses without retro-marking misses, emit
 // `m13.comfort_kit.return_required` for active deployments, and the 30-day return-overdue sweep). All PURE.
+//
+// M13-T06 lands the §2.8 D17 medication-reconciliation worksheet (`reconciliation/`: open-from-M6-trigger with
+// the per-trigger-kind `due_at`, the per-line decision → M12-handshake-event mapping, the all-lines-decided
+// finalization, and the 24h-pre-deadline / overdue timeliness sweep) and the §2.11 D11 IV-continuous session
+// (`iv/`: the `start → (rate_change | pause→resume)* → stop` ordering graph, the titration safety bounds, the
+// controlled-witness/wastage flags the §2.2 commit consumes, and the `getIvContinuousSession` projection). All PURE.
 
 export * from "./modes/catalog";
 export * from "./lifecycle";
@@ -33,3 +39,5 @@ export * from "./prn";
 export * from "./witness";
 export * from "./comfort-kit";
 export * from "./cascade";
+export * from "./reconciliation";
+export * from "./iv";

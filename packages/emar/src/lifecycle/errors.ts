@@ -51,6 +51,17 @@ export const M13_ERROR_STATUS = {
   WITNESS_TOKEN_EXPIRED: 401,
   // §7.4 — the witness-attestation token was minted for a different (patient, order, clinician) scope.
   WITNESS_TOKEN_SCOPE_MISMATCH: 401,
+  // §2.8 D17 — a per-line reconciliation decision is illegal for the line's source (e.g. `new_order` on an
+  // already-active M12 order).
+  RECONCILIATION_DECISION_INVALID: 422,
+  // §2.8 D17 — finalization was attempted while one or more worksheet lines are still undecided.
+  RECONCILIATION_NOT_FINALIZABLE: 422,
+  // §2.8 D17 — a worksheet lifecycle event was attempted from a terminal/illegal status (already finalized/voided).
+  ILLEGAL_RECONCILIATION_TRANSITION: 409,
+  // §2.11 D11 — an IV-continuous segment was recorded out of sequence (e.g. `rate_change` before `start`).
+  ILLEGAL_IV_SESSION_TRANSITION: 409,
+  // §2.11 D11 — an `iv_continuous_rate_change` `newRate` fell outside the order's `[minRate, maxRate]` bounds.
+  IV_RATE_OUT_OF_RANGE: 422,
 } as const;
 
 /** A machine-readable M13 administration-lifecycle failure code (§2.2 / §5.11). */
