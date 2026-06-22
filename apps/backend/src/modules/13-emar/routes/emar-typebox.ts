@@ -200,6 +200,95 @@ export const DeploymentQuerySchema = Type.Object({
   patient: Type.String({ format: "uuid" }),
 });
 
+// ── read responses (§4.1 / §6.1; M13-T10 Track-B screens) ───────────────────────────────────────────────
+// The GET handlers return the service view DTOs (apps/backend/.../routes/service.ts), not route-level TypeBox.
+// These schemas mirror those views so the generated client (`packages/ui/src/core/api`) types the read
+// surfaces; enum-bearing fields stay `Type.String()` (display-only on the client) to avoid mirror drift with
+// the §3.2 pgEnums. The server is authoritative for the §2.2 lifecycle, the §2.5 late-entry tier, and the
+// §2.9 BCMA match result. `null`-able row fields use the explicit string|null union.
+const Nullable = (s: TSchema): TSchema => Type.Union([s, Type.Null()]);
+
+export const AdministrationViewSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  medicationOrderId: Type.String(),
+  mode: ADMINISTRATION_MODE,
+  status: Type.String(),
+  actorKind: Type.String(),
+  administeredAt: Type.String(),
+  recordedAt: Type.String(),
+  lateEntryTier: Type.String(),
+  administeringClinicianMembershipId: Nullable(Type.String()),
+  witnessMembershipId: Nullable(Type.String()),
+  encounterId: Nullable(Type.String()),
+  scheduledDoseId: Nullable(Type.String()),
+  comfortKitDeploymentId: Nullable(Type.String()),
+  ivSessionId: Nullable(Type.String()),
+  isControlledSubstance: Type.Boolean(),
+  isComfortKitDrawdown: Type.Boolean(),
+  requiresRnReview: Type.Boolean(),
+  supersededById: Nullable(Type.String()),
+  barcodeMatchResult: Nullable(Type.String()),
+});
+export const AdministrationListResponseSchema = Type.Array(AdministrationViewSchema);
+
+export const ScheduledDoseViewSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  medicationOrderId: Type.String(),
+  dueAt: Type.String(),
+  status: Type.String(),
+});
+export const ScheduledDoseListResponseSchema = Type.Array(ScheduledDoseViewSchema);
+
+export const MissedDoseViewSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  scheduledDoseId: Type.String(),
+  medicationOrderId: Type.String(),
+  dueAt: Type.String(),
+  acknowledgedAt: Nullable(Type.String()),
+});
+export const MissedDoseListResponseSchema = Type.Array(MissedDoseViewSchema);
+
+const ReconciliationDecisionViewSchema = Type.Object({
+  lineId: Type.String(),
+  lineKind: Type.String(),
+  sourceId: Type.String(),
+  decision: Type.String(),
+});
+export const WorksheetViewSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  triggerKind: Type.String(),
+  status: Type.String(),
+  lineCount: Type.Integer(),
+  decisions: Type.Array(ReconciliationDecisionViewSchema),
+});
+export const WorksheetListResponseSchema = Type.Array(WorksheetViewSchema);
+
+export const DeploymentViewSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  disposalStatus: Type.String(),
+});
+export const DeploymentListResponseSchema = Type.Array(DeploymentViewSchema);
+
+export const IvSessionViewSchema = Type.Object({
+  sessionId: Type.String(),
+  medicationOrderId: Type.String(),
+  segments: Type.Array(Type.Object({ kind: ADMINISTRATION_MODE, recordedAt: Type.String() })),
+});
+
+export const AdministrationPolicyViewSchema = Type.Object({
+  graceWindowMinutes: Type.Integer(),
+  prnMinimumIntervalMinutes: Type.Integer(),
+  emarPdfOnCommit: Type.Boolean(),
+});
+
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   const converted = Value.Convert(schema, raw ?? {});

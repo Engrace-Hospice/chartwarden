@@ -12,10 +12,34 @@
         "tags": [
           "13-emar"
         ],
+        "summary": "Tenant administration policy — grace window, PRN reassessment defaults (§4.1 / §6.1 #12)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "graceWindowMinutes",
+                    "prnMinimumIntervalMinutes",
+                    "emarPdfOnCommit"
+                  ],
+                  "properties": {
+                    "graceWindowMinutes": {
+                      "type": "integer"
+                    },
+                    "prnMinimumIntervalMinutes": {
+                      "type": "integer"
+                    },
+                    "emarPdfOnCommit": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -779,10 +803,218 @@
         "tags": [
           "13-emar"
         ],
-        "parameters": [],
+        "summary": "List a patient's administrations — eMAR projection + caregiver-attested cosign rows (§4.1 / §6.1)",
+        "parameters": [
+          {
+            "name": "patient",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "patientId",
+                      "admissionId",
+                      "medicationOrderId",
+                      "mode",
+                      "status",
+                      "actorKind",
+                      "administeredAt",
+                      "recordedAt",
+                      "lateEntryTier",
+                      "administeringClinicianMembershipId",
+                      "witnessMembershipId",
+                      "encounterId",
+                      "scheduledDoseId",
+                      "comfortKitDeploymentId",
+                      "ivSessionId",
+                      "isControlledSubstance",
+                      "isComfortKitDrawdown",
+                      "requiresRnReview",
+                      "supersededById",
+                      "barcodeMatchResult"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "patientId": {
+                        "type": "string"
+                      },
+                      "admissionId": {
+                        "type": "string"
+                      },
+                      "medicationOrderId": {
+                        "type": "string"
+                      },
+                      "mode": {
+                        "anyOf": [
+                          {
+                            "const": "single_dose",
+                            "type": "string"
+                          },
+                          {
+                            "const": "iv_continuous_start",
+                            "type": "string"
+                          },
+                          {
+                            "const": "iv_continuous_rate_change",
+                            "type": "string"
+                          },
+                          {
+                            "const": "iv_continuous_pause",
+                            "type": "string"
+                          },
+                          {
+                            "const": "iv_continuous_resume",
+                            "type": "string"
+                          },
+                          {
+                            "const": "iv_continuous_stop",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "actorKind": {
+                        "type": "string"
+                      },
+                      "administeredAt": {
+                        "type": "string"
+                      },
+                      "recordedAt": {
+                        "type": "string"
+                      },
+                      "lateEntryTier": {
+                        "type": "string"
+                      },
+                      "administeringClinicianMembershipId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "witnessMembershipId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "encounterId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "scheduledDoseId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "comfortKitDeploymentId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "ivSessionId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "isControlledSubstance": {
+                        "type": "boolean"
+                      },
+                      "isComfortKitDrawdown": {
+                        "type": "boolean"
+                      },
+                      "requiresRnReview": {
+                        "type": "boolean"
+                      },
+                      "supersededById": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "barcodeMatchResult": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -817,6 +1049,7 @@
         "tags": [
           "13-emar"
         ],
+        "summary": "Administration detail — lifecycle, late-entry tier, witness pair, BCMA match (§4.1 / §6.1 #11)",
         "parameters": [
           {
             "name": "id",
@@ -829,7 +1062,183 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "admissionId",
+                    "medicationOrderId",
+                    "mode",
+                    "status",
+                    "actorKind",
+                    "administeredAt",
+                    "recordedAt",
+                    "lateEntryTier",
+                    "administeringClinicianMembershipId",
+                    "witnessMembershipId",
+                    "encounterId",
+                    "scheduledDoseId",
+                    "comfortKitDeploymentId",
+                    "ivSessionId",
+                    "isControlledSubstance",
+                    "isComfortKitDrawdown",
+                    "requiresRnReview",
+                    "supersededById",
+                    "barcodeMatchResult"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "medicationOrderId": {
+                      "type": "string"
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "const": "single_dose",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_start",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_rate_change",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_pause",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_resume",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_stop",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "actorKind": {
+                      "type": "string"
+                    },
+                    "administeredAt": {
+                      "type": "string"
+                    },
+                    "recordedAt": {
+                      "type": "string"
+                    },
+                    "lateEntryTier": {
+                      "type": "string"
+                    },
+                    "administeringClinicianMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "witnessMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "encounterId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "scheduledDoseId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "comfortKitDeploymentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "ivSessionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "isControlledSubstance": {
+                      "type": "boolean"
+                    },
+                    "isComfortKitDrawdown": {
+                      "type": "boolean"
+                    },
+                    "requiresRnReview": {
+                      "type": "boolean"
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "barcodeMatchResult": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -982,6 +1391,7 @@
         "tags": [
           "13-emar"
         ],
+        "summary": "IV continuous session — the ordered start→rate_change→stop segment sequence (§4.1 / §6.1 #5)",
         "parameters": [
           {
             "name": "sessionId",
@@ -994,7 +1404,70 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "sessionId",
+                    "medicationOrderId",
+                    "segments"
+                  ],
+                  "properties": {
+                    "sessionId": {
+                      "type": "string"
+                    },
+                    "medicationOrderId": {
+                      "type": "string"
+                    },
+                    "segments": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "recordedAt"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "const": "single_dose",
+                                "type": "string"
+                              },
+                              {
+                                "const": "iv_continuous_start",
+                                "type": "string"
+                              },
+                              {
+                                "const": "iv_continuous_rate_change",
+                                "type": "string"
+                              },
+                              {
+                                "const": "iv_continuous_pause",
+                                "type": "string"
+                              },
+                              {
+                                "const": "iv_continuous_resume",
+                                "type": "string"
+                              },
+                              {
+                                "const": "iv_continuous_stop",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "recordedAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -3658,10 +4131,51 @@
         "tags": [
           "13-emar"
         ],
-        "parameters": [],
+        "summary": "Comfort-kit deployments for a patient (drawdown + disposal status; §4.1 / §6.1 #7)",
+        "parameters": [
+          {
+            "name": "patient",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "patientId",
+                      "admissionId",
+                      "disposalStatus"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "patientId": {
+                        "type": "string"
+                      },
+                      "admissionId": {
+                        "type": "string"
+                      },
+                      "disposalStatus": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -3678,6 +4192,7 @@
         "tags": [
           "13-emar"
         ],
+        "summary": "Comfort-kit deployment detail — remaining quantity + replenishment + disposal (§4.1 / §6.1 #7)",
         "parameters": [
           {
             "name": "id",
@@ -3690,7 +4205,34 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "admissionId",
+                    "disposalStatus"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "disposalStatus": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -8898,10 +9440,75 @@
         "tags": [
           "13-emar"
         ],
-        "parameters": [],
+        "summary": "Missed-dose inbox — unacknowledged misses for a patient (§4.1 / §6.1 #8)",
+        "parameters": [
+          {
+            "name": "patient",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "patientId",
+                      "scheduledDoseId",
+                      "medicationOrderId",
+                      "dueAt",
+                      "acknowledgedAt"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "patientId": {
+                        "type": "string"
+                      },
+                      "scheduledDoseId": {
+                        "type": "string"
+                      },
+                      "medicationOrderId": {
+                        "type": "string"
+                      },
+                      "dueAt": {
+                        "type": "string"
+                      },
+                      "acknowledgedAt": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -14152,10 +14759,86 @@
         "tags": [
           "13-emar"
         ],
-        "parameters": [],
+        "summary": "Reconciliation worksheets for a patient (admission/transfer/discharge/recert; §4.1 / §6.1 #6)",
+        "parameters": [
+          {
+            "name": "patient",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "patientId",
+                      "admissionId",
+                      "triggerKind",
+                      "status",
+                      "lineCount",
+                      "decisions"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "patientId": {
+                        "type": "string"
+                      },
+                      "admissionId": {
+                        "type": "string"
+                      },
+                      "triggerKind": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "lineCount": {
+                        "type": "integer"
+                      },
+                      "decisions": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": [
+                            "lineId",
+                            "lineKind",
+                            "sourceId",
+                            "decision"
+                          ],
+                          "properties": {
+                            "lineId": {
+                              "type": "string"
+                            },
+                            "lineKind": {
+                              "type": "string"
+                            },
+                            "sourceId": {
+                              "type": "string"
+                            },
+                            "decision": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -14172,6 +14855,7 @@
         "tags": [
           "13-emar"
         ],
+        "summary": "Reconciliation worksheet — per-line sources + decisions + finalize readiness (§4.1 / §6.1 #6)",
         "parameters": [
           {
             "name": "id",
@@ -14184,7 +14868,69 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "admissionId",
+                    "triggerKind",
+                    "status",
+                    "lineCount",
+                    "decisions"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "triggerKind": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "lineCount": {
+                      "type": "integer"
+                    },
+                    "decisions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "lineId",
+                          "lineKind",
+                          "sourceId",
+                          "decision"
+                        ],
+                        "properties": {
+                          "lineId": {
+                            "type": "string"
+                          },
+                          "lineKind": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "decision": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -15015,10 +15761,73 @@
         "tags": [
           "13-emar"
         ],
-        "parameters": [],
+        "summary": "Scheduled-dose timeline for a patient (the eMAR next-24h projection; §4.1 / §6.1 #1)",
+        "parameters": [
+          {
+            "name": "patient",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "patientId",
+                      "medicationOrderId",
+                      "dueAt",
+                      "status"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "patientId": {
+                        "type": "string"
+                      },
+                      "medicationOrderId": {
+                        "type": "string"
+                      },
+                      "dueAt": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"

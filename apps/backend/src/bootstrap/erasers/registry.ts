@@ -83,6 +83,14 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // dosespot_webhook_event/refill_inbox_policy/controlled_substance_policy are tenant config / encrypted
   // webhook receipts, not patient data, and stay untouched. The `subjectId` is the patient.
   "medication_order_record",
+  // M13-T10: a patient's eMAR record (prn_administration/administration_witness/barcode_scan_event child rows +
+  // the partitioned administration_record rows + scheduled_dose/missed_dose + comfort_kit_deployment/drawdown +
+  // medication_reconciliation_worksheet/decision + administration_offline_queue). M13 registers the REAL eraser
+  // via the composition-root hook over this deny-stub — under an M4 destruction certificate (§7.7) it
+  // drops/row-deletes the administration_record rows and cascade-deletes the child + satellite rows; the cert's
+  // retentionAsOf enforces M4's standard `compliance` retention floor. The org-scoped administration_policy is
+  // tenant config, not patient data, and stays untouched. The `subjectId` is the patient.
+  "emar_record",
 ];
 
 export function registerEraser(dataClass: DataClass, eraser: DataEraser): void {

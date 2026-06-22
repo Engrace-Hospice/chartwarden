@@ -39,6 +39,23 @@ import {
   SendMessageBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/messaging-typebox";
 import { OrderListQuerySchema } from "../../apps/backend/src/modules/11-orders/routes/orders-typebox";
+import {
+  AdministrationListQuerySchema as EmarAdministrationListQuerySchema,
+  AdministrationListResponseSchema,
+  AdministrationPolicyViewSchema,
+  AdministrationViewSchema,
+  DeploymentListResponseSchema,
+  DeploymentQuerySchema as EmarDeploymentQuerySchema,
+  DeploymentViewSchema,
+  IvSessionViewSchema,
+  MissedDoseListResponseSchema,
+  MissedDoseQuerySchema as EmarMissedDoseQuerySchema,
+  ScheduledDoseListResponseSchema,
+  ScheduledDoseQuerySchema as EmarScheduledDoseQuerySchema,
+  WorksheetListResponseSchema,
+  WorksheetQuerySchema as EmarWorksheetQuerySchema,
+  WorksheetViewSchema,
+} from "../../apps/backend/src/modules/13-emar/routes/emar-typebox";
 import { SearchQuerySchema as TerminologySearchQuerySchema } from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
 import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
 
@@ -863,6 +880,57 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/admin/controlled-substance-policy": {
     summary: "Controlled-substance policy — refill caps + EPCS certification status (§4.1 / 21 CFR 1306.22 / D18)",
     response: ControlledSubstancePolicyViewSchema,
+  },
+  // M13 eMAR administration (Track B — Patient eMAR / Administration Detail / IV Continuous Session /
+  // Missed-Dose Inbox / Reconciliation Worksheet / Comfort Kit View / Administration Policy, M13-T10). Read
+  // responses only; the record / witness-attest / caregiver-cosign / reconcile-decide / comfort-kit / policy
+  // write routes keep their route-level TypeBox request bodies (already in the contract). The server is
+  // authoritative for the §2.2 lifecycle, the §2.5 late-entry tier, the §2.9 BCMA match result, and the §7.2
+  // SUD read gate (SUD-flagged rows skipped without a Part 2 release).
+  "GET /api/v1/administrations": {
+    summary: "List a patient's administrations — eMAR projection + caregiver-attested cosign rows (§4.1 / §6.1)",
+    query: EmarAdministrationListQuerySchema,
+    response: AdministrationListResponseSchema,
+  },
+  "GET /api/v1/administrations/:id": {
+    summary: "Administration detail — lifecycle, late-entry tier, witness pair, BCMA match (§4.1 / §6.1 #11)",
+    response: AdministrationViewSchema,
+  },
+  "GET /api/v1/administrations/iv-sessions/:sessionId": {
+    summary: "IV continuous session — the ordered start→rate_change→stop segment sequence (§4.1 / §6.1 #5)",
+    response: IvSessionViewSchema,
+  },
+  "GET /api/v1/scheduled-doses": {
+    summary: "Scheduled-dose timeline for a patient (the eMAR next-24h projection; §4.1 / §6.1 #1)",
+    query: EmarScheduledDoseQuerySchema,
+    response: ScheduledDoseListResponseSchema,
+  },
+  "GET /api/v1/missed-doses": {
+    summary: "Missed-dose inbox — unacknowledged misses for a patient (§4.1 / §6.1 #8)",
+    query: EmarMissedDoseQuerySchema,
+    response: MissedDoseListResponseSchema,
+  },
+  "GET /api/v1/reconciliation/worksheets": {
+    summary: "Reconciliation worksheets for a patient (admission/transfer/discharge/recert; §4.1 / §6.1 #6)",
+    query: EmarWorksheetQuerySchema,
+    response: WorksheetListResponseSchema,
+  },
+  "GET /api/v1/reconciliation/worksheets/:id": {
+    summary: "Reconciliation worksheet — per-line sources + decisions + finalize readiness (§4.1 / §6.1 #6)",
+    response: WorksheetViewSchema,
+  },
+  "GET /api/v1/comfort-kits/deployments": {
+    summary: "Comfort-kit deployments for a patient (drawdown + disposal status; §4.1 / §6.1 #7)",
+    query: EmarDeploymentQuerySchema,
+    response: DeploymentListResponseSchema,
+  },
+  "GET /api/v1/comfort-kits/deployments/:id": {
+    summary: "Comfort-kit deployment detail — remaining quantity + replenishment + disposal (§4.1 / §6.1 #7)",
+    response: DeploymentViewSchema,
+  },
+  "GET /api/v1/admin/administration-policy": {
+    summary: "Tenant administration policy — grace window, PRN reassessment defaults (§4.1 / §6.1 #12)",
+    response: AdministrationPolicyViewSchema,
   },
   // M36 Messaging (Track A — Staff Messaging + Notifications)
   "GET /api/v1/messaging/channels": {

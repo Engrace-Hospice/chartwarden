@@ -20,6 +20,7 @@
     "10-hope",
     "11-orders",
     "12-dosespot",
+    "13-emar",
     "36-messaging",
     "38-terminology",
     "40-mdm"
@@ -395,6 +396,55 @@
       "id": "prescribing.policy",
       "path": "/admin/prescribing-policy",
       "permission": "prescribing.admin.policy"
+    },
+    {
+      "module": "13-emar",
+      "moduleId": 13,
+      "id": "emar.patient-emar",
+      "path": "/patients/:patientId/emar",
+      "permission": "administration.read"
+    },
+    {
+      "module": "13-emar",
+      "moduleId": 13,
+      "id": "emar.administration-detail",
+      "path": "/patients/:patientId/administrations/:id",
+      "permission": "administration.read"
+    },
+    {
+      "module": "13-emar",
+      "moduleId": 13,
+      "id": "emar.iv-session",
+      "path": "/patients/:patientId/iv-sessions/:sessionId",
+      "permission": "administration.read"
+    },
+    {
+      "module": "13-emar",
+      "moduleId": 13,
+      "id": "emar.missed-doses",
+      "path": "/patients/:patientId/missed-doses",
+      "permission": "administration.read_missed"
+    },
+    {
+      "module": "13-emar",
+      "moduleId": 13,
+      "id": "emar.reconciliation-worksheet",
+      "path": "/patients/:patientId/reconciliation/:worksheetId",
+      "permission": "reconciliation.read"
+    },
+    {
+      "module": "13-emar",
+      "moduleId": 13,
+      "id": "emar.comfort-kit",
+      "path": "/patients/:patientId/comfort-kit/:deploymentId",
+      "permission": "comfort_kit.read"
+    },
+    {
+      "module": "13-emar",
+      "moduleId": 13,
+      "id": "emar.administration-policy",
+      "path": "/admin/administration-policy",
+      "permission": "administration.admin.policy"
     },
     {
       "module": "36-messaging",

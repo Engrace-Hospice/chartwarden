@@ -454,4 +454,17 @@ export type DataClass =
   // are tenant configuration / encrypted webhook receipts, not patient data, and are NEVER touched (§7.7 #5).
   // `subjectId` is the patient being destroyed; disjoint from M11's `order_record` (clinical orders) and the
   // M5/M6/M7/M8/M9/M10 subtrees.
-  | "medication_order_record";
+  | "medication_order_record"
+  // M13 (eMAR & Med Administration) per-patient eMAR record: the administration subtree M13 owns — the
+  // monthly-partitioned `administration_record` rows (partitioned by `administered_at`) plus the cascaded
+  // `prn_administration`, `administration_witness`, and `barcode_scan_event` child rows, the patient's
+  // `scheduled_dose` / `missed_dose` rows, the `comfort_kit_deployment` / `comfort_kit_drawdown` rows, the
+  // `medication_reconciliation_worksheet` / `medication_reconciliation_decision` rows, and the
+  // `administration_offline_queue` rows. Erased by M13's registered eraser (M13-T10) under an M4 destruction
+  // certificate (§7.7): the `administration_record` rows are dropped at partition granularity when a partition
+  // is wholly erasable and row-deleted otherwise; the cert's `retentionAsOf` boundary enforces M4's standard
+  // `compliance` retention floor (no CMS extended-retention block, like M11/M12). The ORG-scoped
+  // `administration_policy` is tenant configuration, not patient data, and is NEVER touched (§7.7 #7).
+  // `subjectId` is the patient being destroyed; disjoint from M12's `medication_order_record` (prescribing
+  // subtree) and the M5/M6/M7/M8/M9/M10/M11 subtrees.
+  | "emar_record";

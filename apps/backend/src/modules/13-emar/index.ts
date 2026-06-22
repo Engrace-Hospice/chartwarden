@@ -78,3 +78,31 @@ export {
   M13_OUTBOX_SUBSCRIPTIONS,
   decideReconciliationTrigger,
 } from "./consumers/index";
+// M13-T10 — the `emar_record` destruction-cert eraser (§7.7). Registered over the Phase-0 deny-stub via the
+// composition root's wireModuleErasers() (apps/backend/src/index.ts).
+export {
+  type EmarEraseCounts,
+  type EmarEraseOptions,
+  type EmarEraserDeps,
+  type EmarEraseStore,
+  type InMemoryEmarEraseSeed,
+  createEmarEraser,
+  createInMemoryEmarEraseStore,
+  eraseEmarRecord,
+  registerEmarErasers,
+} from "./erasers/emar-eraser";
+// M13-T10 — the M22 eMAR/reconciliation-PDF (Wave F) + M28 FHIR `MedicationAdministration` (Wave H) forward
+// seams (DENY-STUBS). No M1 seam-registry entry, no `dependsOn` edge — M13 only shapes the payloads the
+// consumers will pull when they lock; the deny-stubs fail closed until then.
+export {
+  type AdministrationPdfKind,
+  type AdministrationPdfRenderer,
+  type AdministrationPdfRenderPayload,
+  type AdministrationPdfResult,
+  denyStubAdministrationPdfRenderer,
+} from "./seams/m22-administration-pdf";
+export {
+  type FhirMedicationAdministrationPublisher,
+  type FhirMedicationAdministrationPublishResult,
+  denyStubFhirMedicationAdministrationPublisher,
+} from "./seams/m28-fhir-medication-administration";

@@ -11,6 +11,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Tenant administration policy — grace window, PRN reassessment defaults (§4.1 / §6.1 #12) */
         get: operations["getApiV1AdminAdministrationpolicy"];
         put: operations["putApiV1AdminAdministrationpolicy"];
         post?: never;
@@ -321,6 +322,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List a patient's administrations — eMAR projection + caregiver-attested cosign rows (§4.1 / §6.1) */
         get: operations["getApiV1Administrations"];
         put?: never;
         post: operations["postApiV1Administrations"];
@@ -337,6 +339,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Administration detail — lifecycle, late-entry tier, witness pair, BCMA match (§4.1 / §6.1 #11) */
         get: operations["getApiV1AdministrationsById"];
         put?: never;
         post?: never;
@@ -433,6 +436,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** IV continuous session — the ordered start→rate_change→stop segment sequence (§4.1 / §6.1 #5) */
         get: operations["getApiV1AdministrationsIvsessionsBySessionId"];
         put?: never;
         post?: never;
@@ -1309,6 +1313,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Comfort-kit deployments for a patient (drawdown + disposal status; §4.1 / §6.1 #7) */
         get: operations["getApiV1ComfortkitsDeployments"];
         put?: never;
         post?: never;
@@ -1325,6 +1330,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Comfort-kit deployment detail — remaining quantity + replenishment + disposal (§4.1 / §6.1 #7) */
         get: operations["getApiV1ComfortkitsDeploymentsById"];
         put?: never;
         post?: never;
@@ -3139,6 +3145,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Missed-dose inbox — unacknowledged misses for a patient (§4.1 / §6.1 #8) */
         get: operations["getApiV1Misseddoses"];
         put?: never;
         post?: never;
@@ -3953,6 +3960,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Reconciliation worksheets for a patient (admission/transfer/discharge/recert; §4.1 / §6.1 #6) */
         get: operations["getApiV1ReconciliationWorksheets"];
         put?: never;
         post?: never;
@@ -3969,6 +3977,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Reconciliation worksheet — per-line sources + decisions + finalize readiness (§4.1 / §6.1 #6) */
         get: operations["getApiV1ReconciliationWorksheetsById"];
         put?: never;
         post?: never;
@@ -4261,6 +4270,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Scheduled-dose timeline for a patient (the eMAR next-24h projection; §4.1 / §6.1 #1) */
         get: operations["getApiV1Scheduleddoses"];
         put?: never;
         post?: never;
@@ -4750,7 +4760,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        graceWindowMinutes: number;
+                        prnMinimumIntervalMinutes: number;
+                        emarPdfOnCommit: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -5284,7 +5300,11 @@ export interface operations {
     };
     getApiV1Administrations: {
         parameters: {
-            query?: never;
+            query: {
+                patient: string;
+                since?: string;
+                until?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -5296,7 +5316,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        medicationOrderId: string;
+                        mode: "single_dose" | "iv_continuous_start" | "iv_continuous_rate_change" | "iv_continuous_pause" | "iv_continuous_resume" | "iv_continuous_stop";
+                        status: string;
+                        actorKind: string;
+                        administeredAt: string;
+                        recordedAt: string;
+                        lateEntryTier: string;
+                        administeringClinicianMembershipId: string | null;
+                        witnessMembershipId: string | null;
+                        encounterId: string | null;
+                        scheduledDoseId: string | null;
+                        comfortKitDeploymentId: string | null;
+                        ivSessionId: string | null;
+                        isControlledSubstance: boolean;
+                        isComfortKitDrawdown: boolean;
+                        requiresRnReview: boolean;
+                        supersededById: string | null;
+                        barcodeMatchResult: string | null;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -5338,7 +5382,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        medicationOrderId: string;
+                        mode: "single_dose" | "iv_continuous_start" | "iv_continuous_rate_change" | "iv_continuous_pause" | "iv_continuous_resume" | "iv_continuous_stop";
+                        status: string;
+                        actorKind: string;
+                        administeredAt: string;
+                        recordedAt: string;
+                        lateEntryTier: string;
+                        administeringClinicianMembershipId: string | null;
+                        witnessMembershipId: string | null;
+                        encounterId: string | null;
+                        scheduledDoseId: string | null;
+                        comfortKitDeploymentId: string | null;
+                        ivSessionId: string | null;
+                        isControlledSubstance: boolean;
+                        isComfortKitDrawdown: boolean;
+                        requiresRnReview: boolean;
+                        supersededById: string | null;
+                        barcodeMatchResult: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -5468,7 +5536,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        sessionId: string;
+                        medicationOrderId: string;
+                        segments: {
+                            kind: "single_dose" | "iv_continuous_start" | "iv_continuous_rate_change" | "iv_continuous_pause" | "iv_continuous_resume" | "iv_continuous_stop";
+                            recordedAt: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -6943,7 +7020,9 @@ export interface operations {
     };
     getApiV1ComfortkitsDeployments: {
         parameters: {
-            query?: never;
+            query: {
+                patient: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -6955,7 +7034,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        disposalStatus: string;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -6977,7 +7063,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        disposalStatus: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -9922,7 +10015,10 @@ export interface operations {
     };
     getApiV1Misseddoses: {
         parameters: {
-            query?: never;
+            query: {
+                patient: string;
+                since?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9934,7 +10030,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        scheduledDoseId: string;
+                        medicationOrderId: string;
+                        dueAt: string;
+                        acknowledgedAt: string | null;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -11785,7 +11890,9 @@ export interface operations {
     };
     getApiV1ReconciliationWorksheets: {
         parameters: {
-            query?: never;
+            query: {
+                patient: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -11797,7 +11904,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        triggerKind: string;
+                        status: string;
+                        lineCount: number;
+                        decisions: {
+                            lineId: string;
+                            lineKind: string;
+                            sourceId: string;
+                            decision: string;
+                        }[];
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -11819,7 +11941,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        triggerKind: string;
+                        status: string;
+                        lineCount: number;
+                        decisions: {
+                            lineId: string;
+                            lineKind: string;
+                            sourceId: string;
+                            decision: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -12328,7 +12465,11 @@ export interface operations {
     };
     getApiV1Scheduleddoses: {
         parameters: {
-            query?: never;
+            query: {
+                patient: string;
+                from?: string;
+                to?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -12340,7 +12481,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        medicationOrderId: string;
+                        dueAt: string;
+                        status: string;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
