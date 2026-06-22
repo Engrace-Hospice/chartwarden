@@ -26,6 +26,8 @@ export type {
   LatestAssessmentProvider,
   LevelOfCareReader,
   MileagePayrollReader,
+  OrderProvider,
+  OrderSignatureProvider,
   ScaleSeriesProvider,
   SignedEncountersReader,
   OrgScope,

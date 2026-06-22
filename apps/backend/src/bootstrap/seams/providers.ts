@@ -29,6 +29,8 @@ import type {
   LatestAssessmentProvider,
   LevelOfCareReader,
   MileagePayrollReader,
+  OrderProvider,
+  OrderSignatureProvider,
   PatientMutator,
   PatientReader,
   ScaleSeriesProvider,
@@ -314,6 +316,55 @@ export const hopeSubmissionProviderDenyStub: HopeSubmissionProvider = {
   },
   submission() {
     throw new NotImplementedError("HopeSubmissionProvider");
+  },
+};
+
+// M11 (Orders) owned seams (§2.8 D14 / §4.3). LEAF-TYPED (interfaces in @wardenx/types) like M6..M10's
+// seams, so each gets a concrete typed deny-stub. Denies LOUDLY until M11 registers the real impls (M11-T05).
+
+/** M11 — the polymorphic signature-write primitive (sign / verbal / cosign / discontinue; M12 med-orders).
+ * Denies until M11 registers it; a fail-closed signature surface NEVER silently records a clinical signature. */
+export const orderSignatureProviderDenyStub: OrderSignatureProvider = {
+  signOrderTarget() {
+    throw new NotImplementedError("OrderSignatureProvider");
+  },
+  recordVerbalOrder() {
+    throw new NotImplementedError("OrderSignatureProvider");
+  },
+  cosignOrder() {
+    throw new NotImplementedError("OrderSignatureProvider");
+  },
+  discontinueOrder() {
+    throw new NotImplementedError("OrderSignatureProvider");
+  },
+};
+
+/** M11 — the order read seam (active / by-patient / since / verbal-timeliness / discontinuation). Denies
+ * until M11 registers it (M14/M23/M30/M7 resolve the real impl). */
+export const orderProviderDenyStub: OrderProvider = {
+  findActiveOrder() {
+    throw new NotImplementedError("OrderProvider");
+  },
+  listByPatient() {
+    throw new NotImplementedError("OrderProvider");
+  },
+  listByAdmission() {
+    throw new NotImplementedError("OrderProvider");
+  },
+  getOrdersSince() {
+    throw new NotImplementedError("OrderProvider");
+  },
+  getDiscontinuationReason() {
+    throw new NotImplementedError("OrderProvider");
+  },
+  getVerbalOrderTimeliness() {
+    throw new NotImplementedError("OrderProvider");
+  },
+  findByTriggeringAssessment() {
+    throw new NotImplementedError("OrderProvider");
+  },
+  findByCarePlanIntervention() {
+    throw new NotImplementedError("OrderProvider");
   },
 };
 

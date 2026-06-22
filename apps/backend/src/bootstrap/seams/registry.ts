@@ -38,6 +38,8 @@ import {
   mdmEntityProviderDenyStub,
   messagingProviderDenyStub,
   mileagePayrollReaderDenyStub,
+  orderProviderDenyStub,
+  orderSignatureProviderDenyStub,
   patientMutatorDenyStub,
   patientReaderDenyStub,
   scaleSeriesProviderDenyStub,
@@ -259,6 +261,25 @@ export const REQUIRED_SEAMS = [
     ownerModule: 10,
     phi: true,
     denyStub: hopeSubmissionProviderDenyStub,
+  },
+  // M11 (Orders) owned seams (§2.8 D14 / §4.3). `OrderSignatureProvider` is the polymorphic clinical-
+  // signature WRITE primitive (sign / record-verbal / cosign / discontinue) M12 routes medication-order
+  // signatures through (no SQL FK across `order_signature.target_kind`, D4); `OrderProvider` is the read-
+  // side counterpart M14 (orders since last IDG), M23 ("covering order" claim rule), M30 (completion +
+  // verbal-timeliness measures), and M7 (intervention → order back-ref) consume instead of importing M11's
+  // schema. Both touch patient-linked clinical orders → phi: true; boot-validated and fail-closed until M11
+  // registers the real impls (M11-T05).
+  {
+    key: "OrderSignatureProvider",
+    ownerModule: 11,
+    phi: true,
+    denyStub: orderSignatureProviderDenyStub,
+  },
+  {
+    key: "OrderProvider",
+    ownerModule: 11,
+    phi: true,
+    denyStub: orderProviderDenyStub,
   },
 ] satisfies readonly RequiredSeam[];
 

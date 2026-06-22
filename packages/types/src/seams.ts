@@ -20,6 +20,7 @@ import type {
   HopeSubmissionProvider,
   HopeTimepointProvider,
 } from "./hope";
+import type { OrderProvider, OrderSignatureProvider } from "./orders";
 import type { PatientMutator, PatientReader } from "./patient";
 // @wardenx/types — Boot-registered SEAM contracts (Phase 0 skeleton).
 //
@@ -89,7 +90,15 @@ export type SeamName =
   // decline-prediction) consume them instead of importing M10's schema.
   | "HopeTimepointProvider" // M10 — open/all timepoint windows + completion state (IDG, PDF timeline, HQRP, AI)
   | "HopeJ2051Provider" // M10 — J2051 trigger history + open SFV obligations (HQRP Timely-Follow-Up, AI trajectory)
-  | "HopeSubmissionProvider"; // M10 — per-PE submission batch status (HQRP acceptance posture, submission dashboards)
+  | "HopeSubmissionProvider" // M10 — per-PE submission batch status (HQRP acceptance posture, submission dashboards)
+  // M11 (Orders) owned seams (§2.8 D14 / §4.3) — also leaf-typed (interfaces in ./orders), so they are typed
+  // here like M6/M7/M8/M9/M10's seams. M12 (the polymorphic medication-order signature primitive), M14 (IDG
+  // "orders since last IDG"), M23 (the claim "every billed line has a covering order" rule), M30 (order-
+  // completion + verbal-order-timeliness HQRP measures), M7 (care-plan intervention → order back-ref) consume
+  // them instead of importing M11's schema. `OrderSignatureProvider` is the one MUTATE seam (M12 writes med-
+  // order signatures through it); `OrderProvider` is the read-side counterpart.
+  | "OrderSignatureProvider" // M11 — polymorphic clinical-signature primitive (sign / verbal / cosign / discontinue)
+  | "OrderProvider"; // M11 — order read seam (active / by-patient / since / verbal-timeliness / discontinuation)
 
 /**
  * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
@@ -280,6 +289,14 @@ export interface SeamContracts {
   HopeTimepointProvider: HopeTimepointProvider;
   HopeJ2051Provider: HopeJ2051Provider;
   HopeSubmissionProvider: HopeSubmissionProvider;
+  // M11's owned seams (§2.8 D14 / §4.3) are LEAF-TYPED too — interfaces live in ./orders (this package), so
+  // the registry is statically typed against the real contract. M11 registers the real Drizzle-backed impls
+  // over the deny-stubs (M11-T05); consumers that list `11` in their manifest `dependsOn` (M12/M14/M23/M30/M7)
+  // resolve them through the typed accessors with no schema import edge. `OrderSignatureProvider` is the
+  // polymorphic signature-write primitive M12 routes medication-order signatures through (no SQL FK across
+  // `order_signature.target_kind`, D4); `OrderProvider` is the read-side counterpart.
+  OrderSignatureProvider: OrderSignatureProvider;
+  OrderProvider: OrderProvider;
 }
 
 /**

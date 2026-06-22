@@ -395,7 +395,7 @@ exports.MODULES = [
     id: 11,
     name: "Orders",
     codePaths: ["packages/orders", "apps/backend/src/modules/11-orders", "apps/web/src/modules/11-orders"],
-    dependsOn: [6, 36, 38, 40], // +packages/orders: §3.1 M11-owned feature pkg (kinds/catalog/seams/alerts), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M11-T08
+    dependsOn: [1, 6, 36, 38, 40], // +M1: the bootstrap seam registry (registerSeam/getSeam) M11's backend module wires its §2.8/§4.3 owned seams into (M11-T05; M6..M10 seam-task precedent); +packages/orders: §3.1 M11-owned feature pkg (kinds/catalog/seams/alerts), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M11-T08
     ownedTables: [
       "order_record",
       "order_signature",

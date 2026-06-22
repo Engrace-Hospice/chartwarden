@@ -36,6 +36,7 @@ import { registerCarePlanErasers, registerCarePlanSeams } from "./modules/07-car
 import { registerEncounterErasers, registerEncounterSeams } from "./modules/08-encounters/index";
 import { registerAssessmentErasers, registerAssessmentSeams } from "./modules/09-assessments/index";
 import { registerHopeErasers, registerHopeSeams } from "./modules/10-hope/index";
+import { registerOrderSeams } from "./modules/11-orders/index";
 import {
   createDbMessagingProvider,
   mountMessagingRoutes,
@@ -113,6 +114,11 @@ export function wireModuleSeams(
   // status. Slice/tests keep the in-memory store; the Drizzle-backed store lands with M10's routes/repos
   // (M10-T06+).
   registerHopeSeams();
+  // M11 — the two §2.8 D14 / §4.3 owned seams (OrderSignatureProvider — the polymorphic clinical-signature
+  // WRITE primitive M12 routes medication-order signatures through, D4 — + OrderProvider — the read-side
+  // counterpart M14/M23/M30/M7 consume). Slice/tests keep the in-memory store; the Drizzle-backed store lands
+  // with M11's routes/repos (M11-T06+).
+  registerOrderSeams();
   // M39 — ConsentEvaluator (§4.3, the disclosure/redaction gate). Production backs it with the Drizzle
   // store over the real M39 consent tables (FB-T03); slice/tests keep the in-memory default.
   registerConsentSeams(deps.db ? { store: createDbConsentStore(deps.db) } : {});
