@@ -16,6 +16,7 @@
     "06-admission",
     "07-care-plan",
     "08-encounters",
+    "09-assessments",
     "36-messaging",
     "38-terminology",
     "40-mdm"
@@ -188,6 +189,48 @@
       "id": "encounter.my-drafts",
       "path": "/work/drafts",
       "permission": "encounter.author"
+    },
+    {
+      "module": "09-assessments",
+      "moduleId": 9,
+      "id": "assessment.timeline",
+      "path": "/patients/:patientId/assessments",
+      "permission": "assessment.read"
+    },
+    {
+      "module": "09-assessments",
+      "moduleId": 9,
+      "id": "assessment.scale-trend",
+      "path": "/patients/:patientId/scales/:scaleType",
+      "permission": "assessment.read_trend"
+    },
+    {
+      "module": "09-assessments",
+      "moduleId": 9,
+      "id": "assessment.changes",
+      "path": "/patients/:patientId/assessments/changes",
+      "permission": "assessment.read"
+    },
+    {
+      "module": "09-assessments",
+      "moduleId": 9,
+      "id": "assessment.summary",
+      "path": "/patients/:patientId/assessments/summary",
+      "permission": "assessment.read_summary"
+    },
+    {
+      "module": "09-assessments",
+      "moduleId": 9,
+      "id": "assessment.scale-licenses",
+      "path": "/admin/scales/licenses",
+      "permission": "assessment.license_read"
+    },
+    {
+      "module": "09-assessments",
+      "moduleId": 9,
+      "id": "assessment.scale-policies",
+      "path": "/admin/scales/policies",
+      "permission": "assessment.policy_read"
     },
     {
       "module": "36-messaging",

@@ -1044,6 +1044,36 @@ export const M8_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M8 contributed permission keys. */
 export type M8ContributedPermissionKey = keyof typeof M8_CONTRIBUTED_PERMISSIONS;
 
+/**
+ * The permission keys Module 9 (Clinical Assessments Suite) registers into Module 3's catalog — the §4.6
+ * binding cross-module handshake (M9-T05; M9 spec §4.6). M3 must include these before M9's routes can be
+ * authorized; the route inventory (M9-T05) gates on them. Boot validation fails if any key is missing.
+ *
+ * Bare `assessment.*` keys (assessment is a first-class clinical resource, like M5's `patient.*`). The
+ * catalog `abac` field is the DEFAULT predicate per key (the §4.1 Auth column's base predicate); the route
+ * layer additionally composes the explicit chain — author/correction routes add the `discipline_can_record_scale`
+ * predicate M9 OWNS (the D8 typed matrix), the cosign route adds the `cosigner_role_match` predicate M9 owns,
+ * and the AIMS/SUD read + DPOA-proxy gates resolve through M39's `ConsentEvaluator` seam (`sud_disclosure_allowed`
+ * / `dpoa_active`, registered by M5/M7). The four admin keys are pure RBAC (`none`) — license/policy rows are
+ * org-scoped reference data administered by org_admin. Kept in a dedicated const for §3.3 attributability.
+ */
+export const M9_CONTRIBUTED_PERMISSIONS = {
+  "assessment.read": { resource: "assessment", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  "assessment.author": { resource: "assessment", action: "author", category: "clinical", abac: "caseload_or_scope" },
+  "assessment.amend": { resource: "assessment", action: "amend", category: "clinical", abac: "caseload_or_scope" },
+  "assessment.cosign": { resource: "assessment", action: "cosign", category: "clinical", abac: "cosigner_role_match" },
+  "assessment.read_trend": { resource: "assessment", action: "read_trend", category: "clinical", abac: "caseload_or_scope" },
+  "assessment.acknowledge_change": { resource: "assessment", action: "acknowledge_change", category: "clinical", abac: "caseload_or_scope" },
+  "assessment.read_summary": { resource: "assessment", action: "read_summary", category: "clinical", abac: "caseload_or_scope" },
+  "assessment.license_read": { resource: "assessment", action: "license_read", category: "admin", abac: "none" },
+  "assessment.license_admin": { resource: "assessment", action: "license_admin", category: "admin", abac: "none" },
+  "assessment.policy_read": { resource: "assessment", action: "policy_read", category: "admin", abac: "none" },
+  "assessment.policy_admin": { resource: "assessment", action: "policy_admin", category: "admin", abac: "none" },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M9 contributed permission keys. */
+export type M9ContributedPermissionKey = keyof typeof M9_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -1106,6 +1136,11 @@ export function m8ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M8_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M9 contributed keys into `permission`-table mirror rows (M9-T05). */
+export function m9ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M9_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -1125,5 +1160,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m6ContributedPermissionMirrorRows(),
     ...m7ContributedPermissionMirrorRows(),
     ...m8ContributedPermissionMirrorRows(),
+    ...m9ContributedPermissionMirrorRows(),
   ];
 }

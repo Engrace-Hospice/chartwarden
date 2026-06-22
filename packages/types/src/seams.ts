@@ -14,6 +14,7 @@ import type {
   MileagePayrollReader,
   SignedEncountersReader,
 } from "./encounter";
+import type { LatestAssessmentProvider, ScaleSeriesProvider } from "./assessment";
 import type { PatientMutator, PatientReader } from "./patient";
 // @wardenx/types — Boot-registered SEAM contracts (Phase 0 skeleton).
 //
@@ -70,7 +71,13 @@ export type SeamName =
   // M18 (EVV) forward seam M8 CONSUMES (§4.7 / D9) — leaf-typed (interface in ./encounter), so it is
   // typed here like M6/M7's readers. Registered with a fail-closed deny-stub until M18 lands (Wave F);
   // M8 resolves it with NO `dependsOn` edge to M18 (the leaf interface, not @wardenx/evv).
-  | "EvvBracketResolver"; // M18 — authoritative EVV bracket for an encounter's visit at finalize (D9)
+  | "EvvBracketResolver" // M18 — authoritative EVV bracket for an encounter's visit at finalize (D9)
+  // M9 (Clinical Assessments) owned seams (§4.7 / D7) — also leaf-typed (interfaces in ./assessment), so
+  // they are typed here like M6/M7/M8's readers. M7 (CTI/IDG latest PPS/FAST/ESAS-r), M10 (HOPE prognosis),
+  // M14 (IDG packet deltas), M28 (FHIR Observation series), M32 (AI symptom-trajectory) consume them
+  // instead of importing M9's schema.
+  | "LatestAssessmentProvider" // M9 — hot latest-active-per-scale read (CTI draft, IDG packet, HOPE context)
+  | "ScaleSeriesProvider"; // M9 — windowed scored series + latest-vs-window delta (IDG, FHIR, AI trajectory)
 
 /**
  * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
@@ -248,6 +255,12 @@ export interface SeamContracts {
   // registry is statically typed against the real contract. M18 registers the real resolver over the
   // deny-stub when it lands (Wave F); M8 resolves it through the typed accessor with no schema import.
   EvvBracketResolver: EvvBracketResolver;
+  // M9's owned seams (§4.7 / D7) are LEAF-TYPED too — interfaces live in ./assessment (this package), so
+  // the registry is statically typed against the real contract. M9 registers the real Drizzle-backed
+  // impls over the deny-stubs (M9-T04); consumers that list `9` in their manifest `dependsOn` resolve
+  // them through the typed accessors with no schema import edge.
+  LatestAssessmentProvider: LatestAssessmentProvider;
+  ScaleSeriesProvider: ScaleSeriesProvider;
 }
 
 /**
@@ -328,4 +341,13 @@ export type DataClass =
   // `subjectId` is the patient being destroyed — M8 owns its own encounter satellites, distinct from
   // M5's patient spine and M6/M7's admission/care-plan subtrees (the spec's §3.6 `clinical_record`
   // mention is reconciled to this disjoint class so the M5 eraser is never double-registered).
-  | "encounter_record";
+  | "encounter_record"
+  // M9 (Clinical Assessments Suite) per-patient assessment record: the assessment subtree M9 owns — the
+  // `assessment_cosignature` and `significant_change_event` child rows plus the `clinical_assessment` rows
+  // themselves (BOTH `active` and `superseded`, so the correction-supersede chain is erased at both ends).
+  // Erased by M9's registered eraser (M9-T07) under an M4 destruction certificate (§8.4); unlike the
+  // M5/M6/M7/M8 root-tombstone erasers, M9 has no satellite root to keep — the assessment rows are the leaf
+  // clinical facts, so they are deleted outright. The org-level `scale_license` / `scale_policy` tables are
+  // NEVER touched — they are tenant configuration, not patient data (§8.4 #3). `subjectId` is the patient
+  // being destroyed; disjoint from M5's `clinical_record` (patient spine) and M6/M7/M8's subtrees.
+  | "clinical_assessment";

@@ -2,9 +2,9 @@
 //
 // The rule-id enum + the CRITICAL_RULES severity floor live in the leaf `@wardenx/types` (so M36 +
 // every consumer reads them without a feature-package import). This module re-exports that surface and
-// adds the per-rule → scale mapping the detector + the per-scale `thresholds.ts` modules key on. The
-// rule EVALUATORS (delta math + tenant-override floor enforcement) land in `significant-change.ts`
-// service + the per-scale `thresholds.ts` in M9-T08; this file is metadata only at T01.
+// adds the per-rule → scale mapping the detector keys on. The rule EVALUATORS (delta math + D2
+// tenant-override floor enforcement) land in `detector.ts` (M9-T08); this file is the metadata surface
+// (rule→scale map + first-emission severity) the detector and the §4.9 alert builder share.
 
 import { CRITICAL_RULES, isCriticalRule } from "@wardenx/types";
 import type { ScaleType, SignificantChangeRuleId, AssessmentAlertSeverity } from "@wardenx/types";

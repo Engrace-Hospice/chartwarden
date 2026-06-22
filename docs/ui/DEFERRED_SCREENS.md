@@ -264,6 +264,7 @@ contract), so `openapi.json`/the client are unchanged.
 | M6 | Referral Inbox (§5.2.1), Admission Census (§5.2.12), Admission Detail + activation gate (§5.2.4/§5.2.5), Compliance Dashboard (§5.2.11) | `screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md`, `WARDENX_UI_ELECTION_CERTIFICATION.md` | done (M6-T12)¹³ |
 | M7 | Care Plan View (§5.2), Version History (§5.1), Care Plan Summary (§5.2) | `screens/clinical/WARDENX_UI_CARE_PLAN.md` | done (M7-T09)¹⁴ |
 | M8 | Encounter Read (§5.2), Cosignature Queue (§5.5), My Drafts (§5.1) | `screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md` | done (M8-T12)¹⁵ |
+| M9 | Assessment Timeline (§5.2), Per-scale Trend (§5.2), Significant-change Inbox (§5.2), Assessment Summary (§5.2), Scale-license Registry (§5.2), Scale-policy Editor (§5.2) | `screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md` | done (M9-T07)¹⁶ |
 
 > ¹³ **Admissions/Intake (M6) now LIVE (Track B, M6-T12, ADR-0030).** Built under
 > `apps/web/src/modules/06-admission` against M6's generated client methods (the M6 read routes are
@@ -295,6 +296,20 @@ contract), so `openapi.json`/the client are unchanged.
 > surfaces — and the Socket.IO real-time preview channel (via M36, §4.3) — fill in as their write paths
 > harden.
 
+> ¹⁶ **Clinical Assessments Suite (M9) now LIVE (Track B, M9-T07, ADR-0030).** Built under
+> `apps/web/src/modules/09-assessments` against M9's generated client methods (the M9 read routes are
+> enriched in `scripts/openapi/enrichments.ts`, so `packages/ui/src/core/api` types them), registered
+> into the M1 shell via `assessmentScreens` (`main.tsx`). The Assessment Timeline lists every captured
+> scale (cosign-pending rows italic; SUD rows surface only as a 🔒 + server `redacted: true`, never a
+> frontend hide, §7.6); the Per-scale Trend shows the 90-day scored series with significant-change
+> markers; the per-patient Significant-change Inbox reads `significant_change_event` rows directly so the
+> alert shows even when M36 push is degraded (§5.6); the Assessment Summary renders latest-per-scale
+> cards; the org-admin Scale-license Registry + Scale-policy Editor surface license status / enabled
+> state. Nav visibility is gated by `assessment.read` / `assessment.read_trend` / `assessment.read_summary`
+> / `assessment.license_read` / `assessment.policy_read`; the SERVER stays the only enforcement point. The
+> record-assessment modal (all 14 scales) and the ack/renew/policy write surfaces (§5.2) fill in as their
+> write paths harden.
+
 ---
 
 ## Blocked on later waves (out of Track A scope until their module lands)
@@ -302,7 +317,7 @@ contract), so `openapi.json`/the client are unchanged.
 The remaining ~50 screens (clinical suite, revenue, portal, platform/ops) are owned by modules not yet
 built (M7–M35, M37). They are **Track B**: each ships with its module's wave (include the
 `apps/web/src/modules/NN-*` codePath from T01; the terminal screen task builds it). Examples:
-Care Plan (M7+M15), Encounters (M8), Assessments (M9), HOPE (M10), Orders (M11),
+Care Plan (M7+M15), HOPE (M10), Orders (M11),
 eMAR (M12+M13), IDG (M14), Scheduling (M17), EVV (M18), Claims (M23+M24), Cap (M26), Cost Report (M27),
 FHIR (M28), HQRP (M30), Portal/Telehealth (M31), Copilot (M32), Reporting (M33), Onboarding (M34),
 Subscription (M35), IPU Bed Board (M37). See each spec's `Module:` line for the authoritative owner.

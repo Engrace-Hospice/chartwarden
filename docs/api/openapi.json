@@ -153,6 +153,211 @@
         }
       }
     },
+    "/api/v1/admin/scales/licenses": {
+      "get": {
+        "operationId": "getApiV1AdminScalesLicenses",
+        "tags": [
+          "09-assessments"
+        ],
+        "summary": "Scale-license registry — one row per (org × scale) with status/expiry (§5.2)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "licenses"
+                  ],
+                  "properties": {
+                    "licenses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "scaleType",
+                          "vendor",
+                          "effectiveDate",
+                          "expiresAt",
+                          "seats",
+                          "status"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "scaleType": {
+                            "type": "string"
+                          },
+                          "vendor": {
+                            "type": "string"
+                          },
+                          "effectiveDate": {
+                            "type": "string"
+                          },
+                          "expiresAt": {
+                            "type": "string"
+                          },
+                          "seats": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1AdminScalesLicenses",
+        "tags": [
+          "09-assessments"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/scales/licenses/{id}": {
+      "patch": {
+        "operationId": "patchApiV1AdminScalesLicensesById",
+        "tags": [
+          "09-assessments"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/scales/policies": {
+      "get": {
+        "operationId": "getApiV1AdminScalesPolicies",
+        "tags": [
+          "09-assessments"
+        ],
+        "summary": "Scale-policy editor — enable/disable state per scale (§5.2)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "policies"
+                  ],
+                  "properties": {
+                    "policies": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "scaleType",
+                          "enabled"
+                        ],
+                        "properties": {
+                          "scaleType": {
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/scales/policies/{scaleType}": {
+      "patch": {
+        "operationId": "patchApiV1AdminScalesPoliciesByScaleType",
+        "tags": [
+          "09-assessments"
+        ],
+        "parameters": [
+          {
+            "name": "scaleType",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/admin/system/status": {
       "post": {
         "operationId": "postApiV1AdminSystemStatus",
@@ -1121,6 +1326,35 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/assessments/{id}/cosignatures": {
+      "post": {
+        "operationId": "postApiV1AssessmentsByIdCosignatures",
+        "tags": [
+          "09-assessments"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -4635,6 +4869,46 @@
         }
       }
     },
+    "/api/v1/internal/assessments/latest-batch": {
+      "get": {
+        "operationId": "getApiV1InternalAssessmentsLatestbatch",
+        "tags": [
+          "09-assessments"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/internal/assessments/series-batch": {
+      "get": {
+        "operationId": "getApiV1InternalAssessmentsSeriesbatch",
+        "tags": [
+          "09-assessments"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/internal/care-plan/relevant-elements": {
       "get": {
         "operationId": "getApiV1InternalCareplanRelevantelements",
@@ -7722,6 +7996,369 @@
         }
       }
     },
+    "/api/v1/patients/{patientId}/assessments": {
+      "get": {
+        "operationId": "getApiV1PatientsByPatientIdAssessments",
+        "tags": [
+          "09-assessments"
+        ],
+        "summary": "Patient assessment timeline — every captured scale, newest first; §7.6 SUD-redacted per caller (§5.2)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "assessments"
+                  ],
+                  "properties": {
+                    "assessments": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "patientId",
+                          "admissionId",
+                          "scaleType",
+                          "score",
+                          "scoreInterpretation",
+                          "capturedAt",
+                          "capturedByDiscipline",
+                          "cosignRequired",
+                          "cosignedAt",
+                          "sudContext",
+                          "status",
+                          "redacted",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "type": "string"
+                          },
+                          "scaleType": {
+                            "type": "string"
+                          },
+                          "score": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "scoreInterpretation": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "capturedAt": {
+                            "type": "string"
+                          },
+                          "capturedByDiscipline": {
+                            "type": "string"
+                          },
+                          "cosignRequired": {
+                            "type": "boolean"
+                          },
+                          "cosignedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "sudContext": {
+                            "type": "boolean"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "redacted": {
+                            "type": "boolean"
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1PatientsByPatientIdAssessments",
+        "tags": [
+          "09-assessments"
+        ],
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{patientId}/assessments/{id}": {
+      "get": {
+        "operationId": "getApiV1PatientsByPatientIdAssessmentsById",
+        "tags": [
+          "09-assessments"
+        ],
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{patientId}/assessments/{id}/corrections": {
+      "post": {
+        "operationId": "postApiV1PatientsByPatientIdAssessmentsByIdCorrections",
+        "tags": [
+          "09-assessments"
+        ],
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{patientId}/assessments/summary": {
+      "get": {
+        "operationId": "getApiV1PatientsByPatientIdAssessmentsSummary",
+        "tags": [
+          "09-assessments"
+        ],
+        "summary": "Assessment summary — latest value per scale family across all scales; SUD-redacted per caller (§5.2)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "patientId",
+                    "latest"
+                  ],
+                  "properties": {
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "latest": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "patientId",
+                          "admissionId",
+                          "scaleType",
+                          "score",
+                          "scoreInterpretation",
+                          "capturedAt",
+                          "capturedByDiscipline",
+                          "cosignRequired",
+                          "cosignedAt",
+                          "sudContext",
+                          "status",
+                          "redacted",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "type": "string"
+                          },
+                          "scaleType": {
+                            "type": "string"
+                          },
+                          "score": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "scoreInterpretation": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "capturedAt": {
+                            "type": "string"
+                          },
+                          "capturedByDiscipline": {
+                            "type": "string"
+                          },
+                          "cosignRequired": {
+                            "type": "boolean"
+                          },
+                          "cosignedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "sudContext": {
+                            "type": "boolean"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "redacted": {
+                            "type": "boolean"
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/patients/{patientId}/care-plan": {
       "get": {
         "operationId": "getApiV1PatientsByPatientIdCareplan",
@@ -8142,6 +8779,289 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{patientId}/scales/{scaleType}/delta": {
+      "get": {
+        "operationId": "getApiV1PatientsByPatientIdScalesByScaleTypeDelta",
+        "tags": [
+          "09-assessments"
+        ],
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scaleType",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{patientId}/scales/{scaleType}/latest": {
+      "get": {
+        "operationId": "getApiV1PatientsByPatientIdScalesByScaleTypeLatest",
+        "tags": [
+          "09-assessments"
+        ],
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scaleType",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{patientId}/scales/{scaleType}/series": {
+      "get": {
+        "operationId": "getApiV1PatientsByPatientIdScalesByScaleTypeSeries",
+        "tags": [
+          "09-assessments"
+        ],
+        "summary": "Per-scale scored series over a [from,to] window with significant-change markers (§5.2)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scaleType",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "scaleType",
+                    "patientId",
+                    "from",
+                    "to",
+                    "points"
+                  ],
+                  "properties": {
+                    "scaleType": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "from": {
+                      "type": "string"
+                    },
+                    "to": {
+                      "type": "string"
+                    },
+                    "points": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "assessmentId",
+                          "capturedAt",
+                          "score",
+                          "scoreInterpretation",
+                          "significantChange"
+                        ],
+                        "properties": {
+                          "assessmentId": {
+                            "type": "string"
+                          },
+                          "capturedAt": {
+                            "type": "string"
+                          },
+                          "score": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "scoreInterpretation": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "significantChange": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{patientId}/significant-changes": {
+      "get": {
+        "operationId": "getApiV1PatientsByPatientIdSignificantchanges",
+        "tags": [
+          "09-assessments"
+        ],
+        "summary": "Per-patient significant-change worklist — open/escalated changes with ack state (§5.2)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "events"
+                  ],
+                  "properties": {
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "assessmentId",
+                          "priorAssessmentId",
+                          "ruleId",
+                          "status",
+                          "severity"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "assessmentId": {
+                            "type": "string"
+                          },
+                          "priorAssessmentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "ruleId": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "severity": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -8799,6 +9719,35 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/significant-changes/{eventId}/acknowledge": {
+      "post": {
+        "operationId": "postApiV1SignificantchangesByEventIdAcknowledge",
+        "tags": [
+          "09-assessments"
+        ],
+        "parameters": [
+          {
+            "name": "eventId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

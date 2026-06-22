@@ -30,12 +30,14 @@ import {
   encounterCreatorDenyStub,
   evvBracketResolverDenyStub,
   faceToFaceReaderDenyStub,
+  latestAssessmentProviderDenyStub,
   levelOfCareReaderDenyStub,
   mdmEntityProviderDenyStub,
   messagingProviderDenyStub,
   mileagePayrollReaderDenyStub,
   patientMutatorDenyStub,
   patientReaderDenyStub,
+  scaleSeriesProviderDenyStub,
   sessionContextResolverDenyStub,
   signedEncountersReaderDenyStub,
   terminologyProviderDenyStub,
@@ -213,6 +215,23 @@ export const REQUIRED_SEAMS = [
     ownerModule: 18,
     phi: true,
     denyStub: evvBracketResolverDenyStub,
+  },
+  // M9 (Clinical Assessments) owned seams (§4.7 / D7). Leaf-typed read-only DTO surfaces over M9's PHI
+  // tables (the latest active scale capture + the windowed scored series/delta), consumed by M7 (CTI/IDG
+  // latest), M10 (HOPE prognosis), M14 (IDG deltas), M28 (FHIR Observation), M32 (AI trajectory) instead
+  // of importing M9's schema. PHI read surfaces (patient-linked scores) → phi: true; boot-validated and
+  // fail-closed until M9 registers the real Drizzle-backed impls (M9-T04).
+  {
+    key: "LatestAssessmentProvider",
+    ownerModule: 9,
+    phi: true,
+    denyStub: latestAssessmentProviderDenyStub,
+  },
+  {
+    key: "ScaleSeriesProvider",
+    ownerModule: 9,
+    phi: true,
+    denyStub: scaleSeriesProviderDenyStub,
   },
 ] satisfies readonly RequiredSeam[];
 

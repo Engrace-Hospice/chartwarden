@@ -34,6 +34,7 @@ import {
 import { registerAdmissionErasers, registerAdmissionSeams } from "./modules/06-admission/index";
 import { registerCarePlanErasers, registerCarePlanSeams } from "./modules/07-care-plan/index";
 import { registerEncounterErasers, registerEncounterSeams } from "./modules/08-encounters/index";
+import { registerAssessmentErasers, registerAssessmentSeams } from "./modules/09-assessments/index";
 import {
   createDbMessagingProvider,
   mountMessagingRoutes,
@@ -102,6 +103,10 @@ export function wireModuleSeams(
   // (registered just above) for the encounter authoring picker + the overdue sign-gate. Slice/tests keep
   // the in-memory store; the Drizzle-backed store lands with M8's routes/repos (M8-T09+).
   registerEncounterSeams();
+  // M9 — the two §4.7 / D7 owned seams (LatestAssessmentProvider + ScaleSeriesProvider) M7/M10/M14/M28/M32
+  // consume for latest-scale reads + trend series/deltas. Slice/tests keep the in-memory store; the
+  // Drizzle-backed store lands with M9's routes/repos (M9-T05+).
+  registerAssessmentSeams();
   // M39 — ConsentEvaluator (§4.3, the disclosure/redaction gate). Production backs it with the Drizzle
   // store over the real M39 consent tables (FB-T03); slice/tests keep the in-memory default.
   registerConsentSeams(deps.db ? { store: createDbConsentStore(deps.db) } : {});
@@ -127,6 +132,7 @@ export function wireModuleErasers(): void {
   registerAdmissionErasers(); // M6-T12 — `admission_record` (admission-subtree destruction-cert callback; D7/D8)
   registerCarePlanErasers(); // M7-T09 — `care_plan_record` (care-plan-subtree destruction-cert callback; D7/D8)
   registerEncounterErasers(); // M8-T12 — `encounter_record` (encounter-subtree destruction-cert callback; DEK crypto-erase §3.6; D7/D8)
+  registerAssessmentErasers(); // M9-T07 — `clinical_assessment` (assessment-subtree destruction-cert callback; §8.4; D7/D8)
   // Phase-1 data-class owners append here as they land.
 }
 

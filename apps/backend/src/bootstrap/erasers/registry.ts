@@ -55,6 +55,12 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // the HearthNote ciphertext (tenant DEK, §3.6), deletes the encounter satellites, and tombstones the
   // `encounter` root for FK integrity (D8); the `subjectId` is the patient.
   "encounter_record",
+  // M9-T07: a patient's assessment record (assessment_cosignature/significant_change_event + the
+  // clinical_assessment rows, both active and superseded). M9 registers the REAL eraser via the
+  // composition-root hook over this deny-stub — under an M4 destruction certificate (§8.4) it deletes the
+  // child rows then the assessment rows outright (no root tombstone); the org-level scale_license/scale_policy
+  // tables are tenant config, not patient data, and stay untouched. The `subjectId` is the patient.
+  "clinical_assessment",
 ];
 
 export function registerEraser(dataClass: DataClass, eraser: DataEraser): void {

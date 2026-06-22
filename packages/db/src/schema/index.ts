@@ -245,3 +245,23 @@ export * from "./encounter/mileage";
 export * from "./encounter/hearthnote-selections";
 export * from "./encounter/hearthnote-assembled-outputs";
 export * from "./encounter/hearthnote-llm-modifications";
+
+// ── Module 9 (Clinical Assessments Suite) — the validated-scale spine (§3.3) ──────────────────
+// M9 owns 5 tables (M9-T02): the shared `clinical_assessment` base table (one row per measurement
+// across all 14 scales, the per-scale shape in the `data` jsonb, the score server-computed — D1/D6) +
+// assessment_cosignature (the §7.4 LPN cosignature) + significant_change_event (the §2.4 D2 detector
+// output) + scale_license (the D3 proprietary-scale gating) + scale_policy (the D2 tenant-tightened
+// thresholds/cadence). The three patient-level tables (clinical_assessment / assessment_cosignature /
+// significant_change_event) carry the three-column tenancy rule (organization_id + provider_entity_id +
+// location_id all NOT NULL, denormalized from the admission); scale_license / scale_policy are org-level
+// licensing/policy config → organization_id only (the ARCH-011 org-level carve-out). Cross-module refs
+// (M5 patient, M6 admission, M8 source_encounter, M39 acting_consent) are plain uuid app-validated, NOT
+// cross-module FKs; actor refs go to M1 `membership`. `clinical_assessment` is PARTITION BY RANGE
+// (captured_at) monthly (D11) — converted from the logical Drizzle shape in the RLS migration alongside
+// the DEFERRABLE self-FK + the correction-supersede trigger. RLS + grants + M4 write-audit triggers +
+// the partition conversion land in migration 0033 (M9-T02, §3.4/§3.5/§3.6).
+export * from "./assessment/clinical-assessments";
+export * from "./assessment/assessment-cosignatures";
+export * from "./assessment/significant-change-events";
+export * from "./assessment/scale-licenses";
+export * from "./assessment/scale-policies";

@@ -23,10 +23,12 @@ import type {
   EncounterCreator,
   EvvBracketResolver,
   FaceToFaceReader,
+  LatestAssessmentProvider,
   LevelOfCareReader,
   MileagePayrollReader,
   PatientMutator,
   PatientReader,
+  ScaleSeriesProvider,
   SeamName,
   SessionContextResolver,
   SignedEncountersReader,
@@ -251,6 +253,30 @@ export const encounterCreatorDenyStub: EncounterCreator = {
 export const evvBracketResolverDenyStub: EvvBracketResolver = {
   resolveBracket() {
     throw new NotImplementedError("EvvBracketResolver");
+  },
+};
+
+// M9 (Clinical Assessments) owned seams (§4.7 / D7). LEAF-TYPED (interfaces in @wardenx/types) like
+// M6/M7/M8's readers, so each gets a concrete typed deny-stub. Denies LOUDLY until M9 registers the real
+// impls (M9-T04).
+
+/** M9 — latest-active-per-scale read (CTI draft, IDG packet, HOPE context). Denies until M9 registers it. */
+export const latestAssessmentProviderDenyStub: LatestAssessmentProvider = {
+  latest() {
+    throw new NotImplementedError("LatestAssessmentProvider");
+  },
+  latestBatch() {
+    throw new NotImplementedError("LatestAssessmentProvider");
+  },
+};
+
+/** M9 — windowed scored series + latest-vs-window delta (IDG/FHIR/AI). Denies until M9 registers it. */
+export const scaleSeriesProviderDenyStub: ScaleSeriesProvider = {
+  series() {
+    throw new NotImplementedError("ScaleSeriesProvider");
+  },
+  delta() {
+    throw new NotImplementedError("ScaleSeriesProvider");
   },
 };
 

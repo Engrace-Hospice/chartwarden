@@ -314,6 +314,80 @@ const CosignatureReadResponseSchema = Type.Object({
   status: Type.Union([Type.String(), Type.Null()]),
 });
 
+// M9 Clinical Assessments Suite (Track B — Assessment Timeline / Per-scale Trend / Significant-change
+// Inbox / Assessment Summary / Scale-license Registry / Scale-policy Editor, M9-T07). Read responses
+// only; the write routes keep their route-level TypeBox request bodies (already in the contract). The
+// UI reads only the fields it renders; the server may send richer rows. SUD-flagged rows are redacted
+// SERVER-side (§7.6) — `redacted: true` is the only signal the client sees. Mirrors AssessmentRouteService's
+// AssessmentView / SignificantChangeView / ScaleLicenseView / ScalePolicyView + ScaleSeries projections
+// (apps/backend/src/modules/09-assessments/routes/service.ts).
+const AssessmentViewDtoSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  scaleType: Type.String(),
+  score: Type.Union([Type.Number(), Type.Null()]),
+  scoreInterpretation: Type.Union([Type.String(), Type.Null()]),
+  capturedAt: Type.String(),
+  capturedByDiscipline: Type.String(),
+  cosignRequired: Type.Boolean(),
+  cosignedAt: Type.Union([Type.String(), Type.Null()]),
+  sudContext: Type.Boolean(),
+  status: Type.String(),
+  redacted: Type.Boolean(),
+  version: Type.Integer(),
+});
+const AssessmentListResponseSchema = Type.Object({ assessments: Type.Array(AssessmentViewDtoSchema) });
+const AssessmentSummaryResponseSchema = Type.Object({
+  patientId: Type.String(),
+  latest: Type.Array(AssessmentViewDtoSchema),
+});
+const ScaleSeriesResponseSchema = Type.Object({
+  scaleType: Type.String(),
+  patientId: Type.String(),
+  from: Type.String(),
+  to: Type.String(),
+  points: Type.Array(
+    Type.Object({
+      assessmentId: Type.String(),
+      capturedAt: Type.String(),
+      score: Type.Union([Type.Number(), Type.Null()]),
+      scoreInterpretation: Type.Union([Type.String(), Type.Null()]),
+      significantChange: Type.Boolean(),
+    }),
+  ),
+});
+const SignificantChangeListResponseSchema = Type.Object({
+  events: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      assessmentId: Type.String(),
+      priorAssessmentId: Type.Union([Type.String(), Type.Null()]),
+      ruleId: Type.String(),
+      status: Type.String(),
+      severity: Type.String(),
+    }),
+  ),
+});
+const ScaleLicenseListResponseSchema = Type.Object({
+  licenses: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      scaleType: Type.String(),
+      vendor: Type.String(),
+      effectiveDate: Type.String(),
+      expiresAt: Type.String(),
+      seats: Type.Union([Type.Integer(), Type.Null()]),
+      status: Type.String(),
+    }),
+  ),
+});
+const ScalePolicyListResponseSchema = Type.Object({
+  policies: Type.Array(Type.Object({ scaleType: Type.String(), enabled: Type.Boolean() })),
+});
+// The per-scale series window (§4.1 `/scales/:scaleType/series` — from/to ISO instants, the trend window).
+const ScaleSeriesQuerySchema = Type.Object({ from: Type.String(), to: Type.String() });
+
 export interface RouteEnrichment {
   /** JSON request body schema (a TypeBox schema reused from the route's validator). */
   body?: TSchema;
@@ -392,6 +466,34 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/encounters/:encounterId/cosignature": {
     summary: "Read an encounter's cosignature-request state (§5.5)",
     response: CosignatureReadResponseSchema,
+  },
+  // M9 Clinical Assessments Suite (Track B — Timeline / Trend / Change Inbox / Summary / License
+  // Registry / Policy Editor, M9-T07). Read responses only; the write routes keep their route-level
+  // TypeBox request bodies (already in the contract). SUD redaction is server-side (§7.6).
+  "GET /api/v1/patients/:patientId/assessments": {
+    summary: "Patient assessment timeline — every captured scale, newest first; §7.6 SUD-redacted per caller (§5.2)",
+    response: AssessmentListResponseSchema,
+  },
+  "GET /api/v1/patients/:patientId/assessments/summary": {
+    summary: "Assessment summary — latest value per scale family across all scales; SUD-redacted per caller (§5.2)",
+    response: AssessmentSummaryResponseSchema,
+  },
+  "GET /api/v1/patients/:patientId/scales/:scaleType/series": {
+    summary: "Per-scale scored series over a [from,to] window with significant-change markers (§5.2)",
+    query: ScaleSeriesQuerySchema,
+    response: ScaleSeriesResponseSchema,
+  },
+  "GET /api/v1/patients/:patientId/significant-changes": {
+    summary: "Per-patient significant-change worklist — open/escalated changes with ack state (§5.2)",
+    response: SignificantChangeListResponseSchema,
+  },
+  "GET /api/v1/admin/scales/licenses": {
+    summary: "Scale-license registry — one row per (org × scale) with status/expiry (§5.2)",
+    response: ScaleLicenseListResponseSchema,
+  },
+  "GET /api/v1/admin/scales/policies": {
+    summary: "Scale-policy editor — enable/disable state per scale (§5.2)",
+    response: ScalePolicyListResponseSchema,
   },
   // M36 Messaging (Track A — Staff Messaging + Notifications)
   "GET /api/v1/messaging/channels": {

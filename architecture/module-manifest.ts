@@ -414,7 +414,7 @@ export const MODULES: ModuleDef[] = [
     id: 9,
     name: "Clinical Assessments Suite",
     codePaths: ["packages/assessments", "apps/backend/src/modules/09-assessments", "apps/web/src/modules/09-assessments"],
-    dependsOn: [38], // +web: Track B in-task screens (ADR-0030), land in M9-T07
+    dependsOn: [1, 38], // +1: M9 registers its §4.7/D7 LatestAssessmentProvider + ScaleSeriesProvider seams via the M1-owned bootstrap registry (M9-T04); +web: Track B in-task screens (ADR-0030), land in M9-T07
     ownedTables: [
       "clinical_assessment",
       "assessment_cosignature",
