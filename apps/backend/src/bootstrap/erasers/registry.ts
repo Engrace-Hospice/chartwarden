@@ -106,6 +106,16 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // `clinician_availability` / `time_off` rows are workforce data, not patient data, and stay untouched. The
   // `subjectId` is the patient.
   "operational_schedule",
+  // M18-T02 (this task) registers the data-class contract; the Phase-0 deny-stub (wireErasers) stands until
+  // M18-T07 registers the REAL eraser via the composition-root hook. Under an M4 destruction certificate the
+  // real eraser cryptographic-shreds the per-tenant DEK (rendering the `evv_event.coords_cipher` GPS
+  // ciphertext unrecoverable) and drops the patient's partitioned `evv_event` rows, their
+  // `evv_geofence_evaluation` children (by evv_event_id), and the `evv_missing_resolution` /
+  // `evv_aggregator_submission` rows joinable via a visit being erased (§3.7 / D12); retention class
+  // `compliance` (`evv_record`, 7 years). The tenant-config `evv_geofence_policy` and the membership-scoped
+  // `evv_device` rows are not patient data and stay untouched (device erases on workforce departure per M2 D8).
+  // The `subjectId` is the patient.
+  "evv_record",
 ];
 
 export function registerEraser(dataClass: DataClass, eraser: DataEraser): void {

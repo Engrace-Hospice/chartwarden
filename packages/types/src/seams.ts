@@ -551,4 +551,15 @@ export type DataClass =
   // proposals / route segments (retention class `operational`, 3 years post-discharge, §3.7). The clinician-
   // scoped `clinician_availability` and `time_off` rows SURVIVE (they are workforce data, not a single
   // patient's record). `subjectId` is the patient being destroyed; disjoint from every other module's subtree.
-  | "operational_schedule";
+  | "operational_schedule"
+  // M18 (EVV) per-patient EVV record: the EVV artifacts joinable to a patient — the partitioned `evv_event`
+  // capture rows, their `evv_geofence_evaluation` children (by evv_event_id), and the `evv_missing_resolution`
+  // / `evv_aggregator_submission` rows (by visit_id, joinable to M17 visits for the patient). Registered in
+  // M18-T02 (this task) so the contract is present from the schema task; M18-T07 registers the REAL eraser via
+  // the composition-root hook over the Phase-0 deny-stub — under an M4 destruction certificate it
+  // cryptographic-shreds the per-tenant DEK (rendering the GPS coordinate ciphertext unrecoverable) and drops
+  // the rows. Retention class `compliance` (`evv_record`, 7 years — the Medicaid EVV / HQRP survey-record
+  // artifact, §3.7 / D12). The tenant-config `evv_geofence_policy` and the membership-scoped `evv_device`
+  // SURVIVE (not patient data; device erases on workforce departure per M2 D8). `subjectId` is the patient
+  // being destroyed; disjoint from every other module's subtree.
+  | "evv_record";
