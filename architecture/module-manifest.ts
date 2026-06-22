@@ -574,7 +574,11 @@ export const MODULES: ModuleDef[] = [
   {
     id: 18,
     name: "EVV",
-    codePaths: ["packages/evv-aggregators", "apps/backend/src/modules/18-evv"],
+    codePaths: [
+      "packages/evv-aggregators",
+      "apps/backend/src/modules/18-evv",
+      "apps/web/src/modules/18-evv",
+    ],
     dependsOn: [17],
     ownedTables: [
       "evv_aggregator_submission",

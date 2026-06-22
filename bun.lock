@@ -135,6 +135,9 @@
     "packages/evv-aggregators": {
       "name": "@wardenx/evv-aggregators",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
     },
     "packages/fhir": {
       "name": "@wardenx/fhir",

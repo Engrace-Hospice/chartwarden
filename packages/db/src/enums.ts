@@ -1785,3 +1785,79 @@ export const timeOffState = pgEnum("time_off_state", [
 // discarded state machine, not the flag). `check-ddl-legality` bans a duplicate pgEnum, so M17-T02's
 // `visits.ts` imports the shared one. The §3.2 Phase-A enum list correctly names only the eight M17-owned
 // enums above.
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// Module 18 — Electronic Visit Verification (EVV) (§3.2 Phase-A). The eight M18-owned enums driving the
+// append-only `evv_event` (check-in/out), the three-layer geofence policy, per-clinician device lifecycle,
+// the §2.2.4 missing-EVV resolution machine, and the per-state aggregator submission machine. The Drizzle
+// tables land in M18-T02 (`packages/db/src/schema/evv/`); the leaf mirrors live in `@wardenx/types`
+// (`evv.ts`). M18 owns no shared EVV enum overlap with M8/M17 — the M17 `visit.evvBracketState` flag reuses
+// M8's `evv_bracket_state`; M18's discrete-event vocabulary below is distinct.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** `evv_event_kind` — the §2.2.1 / D2 discrete event class. `mid_visit_pulse` is reserved for Phase 2. */
+export const evvEventKind = pgEnum("evv_event_kind", ["check_in", "check_out"]);
+
+/** `evv_event_gps_quality` — the §3.2 GPS-quality ladder stamped on every `evv_event`. `degraded_attested`
+ * is the clinician-attested-after-3-retakes path; `outside_geofence`/`no_geofence_baseline` route to the
+ * advisory-not-block missing-resolution flow (D3); `suspected_spoof` is the D9 detector flag. */
+export const evvEventGpsQuality = pgEnum("evv_event_gps_quality", [
+  "high",
+  "acceptable",
+  "degraded_attested",
+  "outside_geofence",
+  "no_geofence_baseline",
+  "suspected_spoof",
+]);
+
+/** `evv_device_platform` — the §2.3 mobile platform; web is refused at the route handler (no enum member). */
+export const evvDevicePlatform = pgEnum("evv_device_platform", ["ios", "android"]);
+
+/** `evv_device_status` — the §2.2.3 D8 per-clinician device-registration lifecycle. */
+export const evvDeviceStatus = pgEnum("evv_device_status", [
+  "pending_approval",
+  "approved",
+  "suspended",
+  "rejected",
+  "retired",
+]);
+
+/** `evv_geofence_policy_scope` — the §2.2.2 D3 three-layer policy resolution order (narrowest wins). */
+export const evvGeofencePolicyScope = pgEnum("evv_geofence_policy_scope", [
+  "platform",
+  "tenant",
+  "patient_address",
+]);
+
+/** `evv_missing_resolution_kind` — the §2.2.4 D6 classification of the unresolved missing event. */
+export const evvMissingResolutionKind = pgEnum("evv_missing_resolution_kind", [
+  "missing_checkin",
+  "missing_checkout",
+  "outside_geofence_at_checkin",
+  "outside_geofence_at_checkout",
+  "device_integrity_failed_at_attempt",
+]);
+
+/** `evv_missing_resolution_status` — the §2.2.4 D6 resolution machine. `closed_system_checkout_received` is
+ * the system-driven auto-close when a late check-out pairs the open missing-checkout row (M18-F09 / ADR-0022;
+ * NO human attestation — `closed_clinician_attested` is reserved for an actual clinician self-attest). */
+export const evvMissingResolutionStatus = pgEnum("evv_missing_resolution_status", [
+  "open",
+  "closed_clinician_attested",
+  "closed_supervisor_override",
+  "closed_visit_voided",
+  "closed_documented_at_encounter",
+  "closed_system_checkout_received",
+]);
+
+/** `evv_aggregator_submission_status` — the §2.2.5 D7 per-state aggregator submission machine. */
+export const evvAggregatorSubmissionStatus = pgEnum("evv_aggregator_submission_status", [
+  "pending",
+  "queued",
+  "submitting",
+  "submitted",
+  "accepted",
+  "rejected",
+  "timeout",
+  "cancelled",
+]);
