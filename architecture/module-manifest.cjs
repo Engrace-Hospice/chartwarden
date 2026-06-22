@@ -427,8 +427,12 @@ exports.MODULES = [
   {
     id: 13,
     name: "eMAR & Med Administration",
-    codePaths: ["apps/backend/src/modules/13-emar"],
-    dependsOn: [12, 36, 38],
+    codePaths: [
+      "packages/emar",
+      "apps/backend/src/modules/13-emar",
+      "apps/web/src/modules/13-emar",
+    ], // +packages/emar: §3.1 M13-owned feature pkg (mode catalog → lifecycle/schedule-parser/five-rights), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M13-T10
+    dependsOn: [12, 36, 38], // +M1 added in M13-T07 when the §2.12 D16 owned seams (MedicationAdministrationProvider/ReconciliationProvider) wire into the bootstrap seam registry
     ownedTables: [
       "administration_offline_queue",
       "administration_policy",

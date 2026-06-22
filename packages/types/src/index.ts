@@ -15,6 +15,7 @@ export * from "./assessment";
 export * from "./hope";
 export * from "./orders";
 export * from "./dosespot";
+export * from "./emar";
 export * from "./screen-registry";
 export * from "./errors";
 export * from "./http-context";

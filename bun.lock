@@ -125,6 +125,13 @@
         "@wardenx/types": "workspace:*",
       },
     },
+    "packages/emar": {
+      "name": "@wardenx/emar",
+      "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
+    },
     "packages/evv-aggregators": {
       "name": "@wardenx/evv-aggregators",
       "version": "0.0.0",
@@ -607,6 +614,8 @@
     "@wardenx/domain": ["@wardenx/domain@workspace:packages/domain"],
 
     "@wardenx/dosespot": ["@wardenx/dosespot@workspace:packages/dosespot"],
+
+    "@wardenx/emar": ["@wardenx/emar@workspace:packages/emar"],
 
     "@wardenx/evv-aggregators": ["@wardenx/evv-aggregators@workspace:packages/evv-aggregators"],
 

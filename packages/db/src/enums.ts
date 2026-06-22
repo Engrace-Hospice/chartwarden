@@ -1495,3 +1495,130 @@ export const medicationOrderDiscontinuationReason = pgEnum(
     "no_refills_no_renewal",
   ],
 );
+
+// ── Module 13 (eMAR & Med Administration) §3.2 enums (M13-T01) ─────────────────────────────────────────
+
+/** `administration_mode` — the §2.1 six administration modes (single-dose + the five IV-continuous segments). */
+export const administrationMode = pgEnum("administration_mode", [
+  "single_dose",
+  "iv_continuous_start",
+  "iv_continuous_rate_change",
+  "iv_continuous_pause",
+  "iv_continuous_resume",
+  "iv_continuous_stop",
+]);
+
+/** `administration_status` — the §2.2 D6 PERSISTED lifecycle states (the transient `committing` /
+ * synthetic `pending_offline_sync` states are never written). */
+export const administrationStatus = pgEnum("administration_status", [
+  "committed",
+  "pending_caregiver_review",
+  "superseded",
+  "voided",
+]);
+
+/** `administration_actor_kind` — who recorded the administration (§2.2 / §2.9). */
+export const administrationActorKind = pgEnum("administration_actor_kind", [
+  "clinician",
+  "caregiver_attested",
+  "system_iv_session_event", // reserved for M37 pump-emitted events at IPU lock
+]);
+
+/** `administration_late_entry_tier` — the §2.5 D8 late-entry tier resolved at write. */
+export const administrationLateEntryTier = pgEnum("administration_late_entry_tier", [
+  "normal",
+  "late",
+  "significant_late",
+  "administrative_override",
+]);
+
+/** `scheduled_dose_status` — the §2.3 D2 materialized-schedule row state. */
+export const scheduledDoseStatus = pgEnum("scheduled_dose_status", [
+  "pending",
+  "administered",
+  "missed",
+  "cancelled",
+  "intentionally_held",
+]);
+
+/** `scheduled_dose_cancellation_reason` — why a future scheduled dose was cancelled (§2.3). */
+export const scheduledDoseCancellationReason = pgEnum("scheduled_dose_cancellation_reason", [
+  "order_discontinued",
+  "admission_discharged",
+  "corrected_replacement",
+  "tenant_policy",
+]);
+
+/** `missed_dose_kind` — how the missed dose arose (§2.5 D4). */
+export const missedDoseKind = pgEnum("missed_dose_kind", [
+  "detected_by_sweep",
+  "intentionally_held",
+  "patient_refused",
+]);
+
+/** `administration_witness_kind` — controlled-substance witness presence mode (§2.6 D7). */
+export const administrationWitnessKind = pgEnum("administration_witness_kind", [
+  "co_present",
+  "telephonic", // reserved for the Phase-2 telehealth-witness workflow
+]);
+
+/** `administration_witnesses_scope` — what the witness attested (§2.6). */
+export const administrationWitnessesScope = pgEnum("administration_witnesses_scope", [
+  "administration_only",
+  "wastage_only",
+  "administration_and_wastage",
+]);
+
+/** `prn_requested_by_kind` — the PRN trigger provenance (§2.4 D3). */
+export const prnRequestedByKind = pgEnum("prn_requested_by_kind", [
+  "clinician_observed",
+  "patient_request",
+  "caregiver_request",
+  "scheduled_reassessment_protocol",
+]);
+
+/** `reconciliation_trigger_kind` — the M6 event that opened the worksheet (§2.8 D17). */
+export const reconciliationTriggerKind = pgEnum("reconciliation_trigger_kind", [
+  "admission",
+  "transfer_in",
+  "discharge",
+  "recertification",
+]);
+
+/** `reconciliation_worksheet_status` — the §2.8 worksheet lifecycle. */
+export const reconciliationWorksheetStatus = pgEnum("reconciliation_worksheet_status", [
+  "pending",
+  "in_progress",
+  "finalized",
+  "voided",
+]);
+
+/** `reconciliation_decision_kind` — the per-line reconciliation decision (§2.8). */
+export const reconciliationDecisionKind = pgEnum("reconciliation_decision_kind", [
+  "carry_forward",
+  "discontinue",
+  "hold",
+  "new_order",
+  "document_only",
+]);
+
+/** `comfort_kit_disposal_status` — the §2.7 D5 deployment disposal lifecycle. */
+export const comfortKitDisposalStatus = pgEnum("comfort_kit_disposal_status", [
+  "deployed",
+  "return_required",
+  "returned",
+  "disposed_unreturned",
+]);
+
+/** `comfort_kit_replenishment_urgency` — the §2.7 replenishment-needed urgency. */
+export const comfortKitReplenishmentUrgency = pgEnum("comfort_kit_replenishment_urgency", [
+  "routine",
+  "urgent",
+]);
+
+/** `offline_sync_status` — the §2.10 D18 server-side offline-queue ingest state. */
+export const offlineSyncStatus = pgEnum("offline_sync_status", [
+  "pending",
+  "synced",
+  "rejected",
+]);
