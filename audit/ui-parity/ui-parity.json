@@ -23,6 +23,7 @@
     "13-emar",
     "14-idg",
     "17-scheduling",
+    "18-evv",
     "36-messaging",
     "38-terminology",
     "40-mdm"
@@ -545,6 +546,69 @@
       "id": "scheduling.metrics",
       "path": "/admin/scheduling-metrics",
       "permission": "visit.read_metrics"
+    },
+    {
+      "module": "18-evv",
+      "moduleId": 18,
+      "id": "evv.dashboard",
+      "path": "/evv/dashboard",
+      "permission": "evv.read_metrics"
+    },
+    {
+      "module": "18-evv",
+      "moduleId": 18,
+      "id": "evv.events",
+      "path": "/evv/events",
+      "permission": "evv.read"
+    },
+    {
+      "module": "18-evv",
+      "moduleId": 18,
+      "id": "evv.event-detail",
+      "path": "/evv/events/:eventId",
+      "permission": "evv.read"
+    },
+    {
+      "module": "18-evv",
+      "moduleId": 18,
+      "id": "evv.missing-resolutions",
+      "path": "/evv/missing-resolutions",
+      "permission": "evv.missing_resolution.read"
+    },
+    {
+      "module": "18-evv",
+      "moduleId": 18,
+      "id": "evv.aggregator-submissions",
+      "path": "/evv/aggregator-submissions",
+      "permission": "evv.aggregator.read"
+    },
+    {
+      "module": "18-evv",
+      "moduleId": 18,
+      "id": "evv.geofence-policy",
+      "path": "/evv/geofence-policy",
+      "permission": "evv.policy.read"
+    },
+    {
+      "module": "18-evv",
+      "moduleId": 18,
+      "id": "evv.devices",
+      "path": "/evv/devices/pending",
+      "permission": "evv.device.read"
+    },
+    {
+      "module": "18-evv",
+      "moduleId": 18,
+      "id": "evv.metrics",
+      "path": "/admin/evv-metrics",
+      "permission": "evv.read_metrics"
+    },
+    {
+      "module": "18-evv",
+      "moduleId": 18,
+      "id": "evv.my-devices",
+      "path": "/me/evv/devices",
+      "permission": "evv.device.read"
     },
     {
       "module": "36-messaging",

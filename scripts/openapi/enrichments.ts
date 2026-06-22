@@ -89,6 +89,21 @@ import {
   WeekViewQuerySchema as SchedWeekViewQuerySchema,
   WeekViewResponseSchema as SchedWeekViewResponseSchema,
 } from "../../apps/backend/src/modules/17-scheduling/routes/scheduling-typebox";
+import {
+  AggregatorListQuery as EvvAggregatorListQuery,
+  EvvAggregatorSubmissionListResponse,
+  EvvDeviceListResponse,
+  EvvEventListResponse,
+  EvvEventView,
+  EvvGeofencePolicyView,
+  EvvMetricsView,
+  EvvMissingResolutionListResponse,
+  EventGetQuery as EvvEventGetQuery,
+  EventListQuery as EvvEventListQuery,
+  MembershipIdQuery as EvvMembershipIdQuery,
+  MetricsQuery as EvvMetricsQuery,
+  MissingResolutionListQuery as EvvMissingResolutionListQuery,
+} from "../../apps/backend/src/modules/18-evv/routes/evv-typebox";
 import { SearchQuerySchema as TerminologySearchQuerySchema } from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
 import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
 
@@ -1255,5 +1270,41 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "Per-clinician route-efficiency metrics — proposed miles + override rate (§5.1)",
     query: SchedRouteEfficiencyQuerySchema,
     response: SchedRouteEfficiencyResponseSchema,
+  },
+
+  // ── M18 EVV read surfaces (§5.1, Track B / M18-T07) ───────────────────────────────────────────────────
+  "GET /api/v1/evv/events": {
+    summary: "EVV event ledger — coordinate-free capture events, filterable (§5.1 events)",
+    query: EvvEventListQuery,
+    response: EvvEventListResponse,
+  },
+  "GET /api/v1/evv/events/:eventId": {
+    summary: "EVV single-event detail — raw + computed fields, coordinates redacted unless evv.read_coords (§5.1 event)",
+    query: EvvEventGetQuery,
+    response: EvvEventView,
+  },
+  "GET /api/v1/evv/devices": {
+    summary: "EVV devices — self or team list with approval/integrity status (§5.1 devices/pending, me/evv/devices)",
+    query: EvvMembershipIdQuery,
+    response: EvvDeviceListResponse,
+  },
+  "GET /api/v1/evv/geofence-policy": {
+    summary: "EVV geofence policy — tenant tighten-only default + per-address overrides (§5.1 geofence-policy)",
+    response: EvvGeofencePolicyView,
+  },
+  "GET /api/v1/evv/missing-resolutions": {
+    summary: "EVV missing-resolution queue — open + recently-closed late-checkout resolutions (§5.1 missing-resolutions)",
+    query: EvvMissingResolutionListQuery,
+    response: EvvMissingResolutionListResponse,
+  },
+  "GET /api/v1/evv/aggregator-submissions": {
+    summary: "EVV aggregator submission queue — per-state submission status + rejection detail (§5.1 aggregator-submissions)",
+    query: EvvAggregatorListQuery,
+    response: EvvAggregatorSubmissionListResponse,
+  },
+  "GET /api/v1/evv/metrics": {
+    summary: "EVV metrics — compliance / late-checkout / geofence-deviation / GPS-spoof / aggregator-acceptance rates (§5.1 dashboard, metrics)",
+    query: EvvMetricsQuery,
+    response: EvvMetricsView,
   },
 };

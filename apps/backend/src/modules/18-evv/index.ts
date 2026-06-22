@@ -46,6 +46,16 @@ export {
   transitionAggregatorSubmission,
 } from "./domain/aggregator-submission";
 export { type SubmissionPassResult, dispatchSubmission, pollSubmissionOnce } from "./submission-flow";
+// M18-T07 — the §4.10 outbox-event catalog (the full `m18.evv.*` taxonomy; check-fitness-gaps.ts scans
+// events-by-m18.ts for naming + ownership + declared consumers). **`m18.evv.check_in_recorded` /
+// `m18.evv.check_out_recorded` wire LIVE M8's encounter.period EVV-bracket forward seam (M8 D9) and drive M17's
+// visit-state transitions (D14).** M19/M25 stay inert Phase-2 consumers (`late_check_out_detected` /
+// `aggregator_rejected`).
+export { M18_OUTBOX_EVENTS } from "./events-by-m18";
+// M18-T07 — the §4.9 M36 typed alert payloads M18 OWNS (late-checkout / geofence-breach / GPS-spoof / device
+// pending+suspended / aggregator rejected+timeout). Registered onto M36's Foundation alert-payload registry at
+// boot; composition + recipient resolution is M36's (ADR-0024). M18-F16: out-of-band channels carry no PHI.
+export { M18_ALERT_PAYLOADS } from "./alerts-by-m18";
 export {
   type EvvAggregatorWindowCounts,
   type EvvAggregatorWindowSeedRow,

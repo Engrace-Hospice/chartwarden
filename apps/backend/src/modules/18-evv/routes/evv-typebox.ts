@@ -132,6 +132,76 @@ export const MetricsQuery = Type.Object({
   stateCode: Type.Optional(Type.String()),
 });
 
+// ── §4.1 read-response views (the coordinate-free projections the §5.1 read screens render via the typed
+// client; M18-T07). Named `*View` and exported so scripts/openapi/enrichments.ts can type the GET responses
+// from the SAME schemas without the OpenAPI scanner mistaking this for a route file. ──────────────────────────
+export const EvvEventView = Type.Object({
+  id: Type.String(),
+  organizationId: Type.String(),
+  visitId: Type.String(),
+  patientId: Type.String(),
+  kind: Type.Union([Type.Literal("check_in"), Type.Literal("check_out")]),
+  serviceTypeCode: Type.String(),
+  postingMembershipId: Type.String(),
+  postingDisciplineAtRecording: Type.String(),
+  evvDeviceId: Type.String(),
+  capturedAt: Type.String(),
+  recordedAt: Type.String(),
+  gpsQuality: Type.String(),
+  offlineCapture: Type.Boolean(),
+  replacesEventId: Type.Union([Type.String(), Type.Null()]),
+  supersededByEventId: Type.Union([Type.String(), Type.Null()]),
+});
+export const EvvEventListResponse = Type.Array(EvvEventView);
+
+export const EvvDeviceView = Type.Object({
+  id: Type.String(),
+  membershipId: Type.String(),
+  platform: Type.Union([Type.Literal("ios"), Type.Literal("android")]),
+  modelDescription: Type.String(),
+  status: Type.String(),
+});
+export const EvvDeviceListResponse = Type.Array(EvvDeviceView);
+
+export const EvvGeofencePolicyView = Type.Object({
+  tenant: Type.Object({ radiusM: Type.Number(), maxAccuracyM: Type.Number() }),
+  perAddress: Type.Array(
+    Type.Object({
+      patientAddressId: Type.String(),
+      radiusM: Type.Number(),
+      maxAccuracyM: Type.Number(),
+    }),
+  ),
+});
+
+export const EvvMissingResolutionView = Type.Object({
+  id: Type.String(),
+  visitId: Type.String(),
+  kind: Type.String(),
+  status: Type.String(),
+  resolvedByMembershipId: Type.Union([Type.String(), Type.Null()]),
+});
+export const EvvMissingResolutionListResponse = Type.Array(EvvMissingResolutionView);
+
+export const EvvAggregatorSubmissionView = Type.Object({
+  id: Type.String(),
+  visitId: Type.String(),
+  stateCode: Type.String(),
+  aggregatorVendor: Type.String(),
+  status: Type.String(),
+  aggregatorTransactionId: Type.Union([Type.String(), Type.Null()]),
+  attemptCount: Type.Integer(),
+});
+export const EvvAggregatorSubmissionListResponse = Type.Array(EvvAggregatorSubmissionView);
+
+export const EvvMetricsView = Type.Object({
+  complianceRate: Type.Number(),
+  lateCheckoutRate: Type.Number(),
+  geofenceDeviationRate: Type.Number(),
+  gpsSpoofingDetectedRate: Type.Number(),
+  aggregatorSubmissionSuccessRate: Type.Number(),
+});
+
 export type CheckInBody = Static<typeof CheckInRequest>;
 export type CheckOutBody = Static<typeof CheckOutRequest>;
 

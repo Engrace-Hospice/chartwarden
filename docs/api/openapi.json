@@ -6470,10 +6470,77 @@
         "tags": [
           "18-evv"
         ],
-        "parameters": [],
+        "summary": "EVV aggregator submission queue — per-state submission status + rejection detail (§5.1 aggregator-submissions)",
+        "parameters": [
+          {
+            "name": "stateCode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "visitId",
+                      "stateCode",
+                      "aggregatorVendor",
+                      "status",
+                      "aggregatorTransactionId",
+                      "attemptCount"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "visitId": {
+                        "type": "string"
+                      },
+                      "stateCode": {
+                        "type": "string"
+                      },
+                      "aggregatorVendor": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "aggregatorTransactionId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "attemptCount": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -6608,10 +6675,64 @@
         "tags": [
           "18-evv"
         ],
-        "parameters": [],
+        "summary": "EVV devices — self or team list with approval/integrity status (§5.1 devices/pending, me/evv/devices)",
+        "parameters": [
+          {
+            "name": "membership",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "membershipId",
+                      "platform",
+                      "modelDescription",
+                      "status"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "membershipId": {
+                        "type": "string"
+                      },
+                      "platform": {
+                        "anyOf": [
+                          {
+                            "const": "ios",
+                            "type": "string"
+                          },
+                          {
+                            "const": "android",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "modelDescription": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -6764,10 +6885,187 @@
         "tags": [
           "18-evv"
         ],
-        "parameters": [],
+        "summary": "EVV event ledger — coordinate-free capture events, filterable (§5.1 events)",
+        "parameters": [
+          {
+            "name": "visit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "clinician",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "patient",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "gpsQuality",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "check_in",
+                  "type": "string"
+                },
+                {
+                  "const": "check_out",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "includeCoords",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "organizationId",
+                      "visitId",
+                      "patientId",
+                      "kind",
+                      "serviceTypeCode",
+                      "postingMembershipId",
+                      "postingDisciplineAtRecording",
+                      "evvDeviceId",
+                      "capturedAt",
+                      "recordedAt",
+                      "gpsQuality",
+                      "offlineCapture",
+                      "replacesEventId",
+                      "supersededByEventId"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "organizationId": {
+                        "type": "string"
+                      },
+                      "visitId": {
+                        "type": "string"
+                      },
+                      "patientId": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "anyOf": [
+                          {
+                            "const": "check_in",
+                            "type": "string"
+                          },
+                          {
+                            "const": "check_out",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "serviceTypeCode": {
+                        "type": "string"
+                      },
+                      "postingMembershipId": {
+                        "type": "string"
+                      },
+                      "postingDisciplineAtRecording": {
+                        "type": "string"
+                      },
+                      "evvDeviceId": {
+                        "type": "string"
+                      },
+                      "capturedAt": {
+                        "type": "string"
+                      },
+                      "recordedAt": {
+                        "type": "string"
+                      },
+                      "gpsQuality": {
+                        "type": "string"
+                      },
+                      "offlineCapture": {
+                        "type": "boolean"
+                      },
+                      "replacesEventId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "supersededByEventId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -6784,6 +7082,7 @@
         "tags": [
           "18-evv"
         ],
+        "summary": "EVV single-event detail — raw + computed fields, coordinates redacted unless evv.read_coords (§5.1 event)",
         "parameters": [
           {
             "name": "eventId",
@@ -6792,11 +7091,114 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "const": "coords",
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "visitId",
+                    "patientId",
+                    "kind",
+                    "serviceTypeCode",
+                    "postingMembershipId",
+                    "postingDisciplineAtRecording",
+                    "evvDeviceId",
+                    "capturedAt",
+                    "recordedAt",
+                    "gpsQuality",
+                    "offlineCapture",
+                    "replacesEventId",
+                    "supersededByEventId"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "visitId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "anyOf": [
+                        {
+                          "const": "check_in",
+                          "type": "string"
+                        },
+                        {
+                          "const": "check_out",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "serviceTypeCode": {
+                      "type": "string"
+                    },
+                    "postingMembershipId": {
+                      "type": "string"
+                    },
+                    "postingDisciplineAtRecording": {
+                      "type": "string"
+                    },
+                    "evvDeviceId": {
+                      "type": "string"
+                    },
+                    "capturedAt": {
+                      "type": "string"
+                    },
+                    "recordedAt": {
+                      "type": "string"
+                    },
+                    "gpsQuality": {
+                      "type": "string"
+                    },
+                    "offlineCapture": {
+                      "type": "boolean"
+                    },
+                    "replacesEventId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededByEventId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -6842,10 +7244,61 @@
         "tags": [
           "18-evv"
         ],
+        "summary": "EVV geofence policy — tenant tighten-only default + per-address overrides (§5.1 geofence-policy)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "tenant",
+                    "perAddress"
+                  ],
+                  "properties": {
+                    "tenant": {
+                      "type": "object",
+                      "required": [
+                        "radiusM",
+                        "maxAccuracyM"
+                      ],
+                      "properties": {
+                        "radiusM": {
+                          "type": "number"
+                        },
+                        "maxAccuracyM": {
+                          "type": "number"
+                        }
+                      }
+                    },
+                    "perAddress": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "patientAddressId",
+                          "radiusM",
+                          "maxAccuracyM"
+                        ],
+                        "properties": {
+                          "patientAddressId": {
+                            "type": "string"
+                          },
+                          "radiusM": {
+                            "type": "number"
+                          },
+                          "maxAccuracyM": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -6902,10 +7355,69 @@
         "tags": [
           "18-evv"
         ],
-        "parameters": [],
+        "summary": "EVV metrics — compliance / late-checkout / geofence-deviation / GPS-spoof / aggregator-acceptance rates (§5.1 dashboard, metrics)",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "stateCode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "complianceRate",
+                    "lateCheckoutRate",
+                    "geofenceDeviationRate",
+                    "gpsSpoofingDetectedRate",
+                    "aggregatorSubmissionSuccessRate"
+                  ],
+                  "properties": {
+                    "complianceRate": {
+                      "type": "number"
+                    },
+                    "lateCheckoutRate": {
+                      "type": "number"
+                    },
+                    "geofenceDeviationRate": {
+                      "type": "number"
+                    },
+                    "gpsSpoofingDetectedRate": {
+                      "type": "number"
+                    },
+                    "aggregatorSubmissionSuccessRate": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -6922,10 +7434,70 @@
         "tags": [
           "18-evv"
         ],
-        "parameters": [],
+        "summary": "EVV missing-resolution queue — open + recently-closed late-checkout resolutions (§5.1 missing-resolutions)",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "visit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "visitId",
+                      "kind",
+                      "status",
+                      "resolvedByMembershipId"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "visitId": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "resolvedByMembershipId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
