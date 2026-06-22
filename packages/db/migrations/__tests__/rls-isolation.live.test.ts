@@ -1142,4 +1142,158 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       expect(r.rows[0].after.scale_type).toBe("pps"); // structured column passes through
     });
   });
+
+  // ── M10 HOPE Engine — org-scoped RLS, partition+correction trigger, audit scrub (§9.4 / §3.4–3.6)
+  // 0034/0035 (M10) applied above. Proves on REAL Postgres: hope_assessment is tenant-isolated on app.org_id
+  // even with app authorization stubbed open (§9.3 layer-independence); the RANGE-partitioned (target_date)
+  // parent's correction-supersede trigger fires under RLS and CANNOT reach across tenants (§9.4 bullet 4);
+  // wardenx_app has NO DELETE (append-only — a correction supersedes, never deletes, §3.6); the
+  // hope_timepoint_schedule child is org-scoped; the M4 write-audit trigger scrubs the
+  // data/clinical_context_snapshot/late_completion_reason_code denylist (§3.1/§8.1) while the structured
+  // rfa_kind passes through.
+  describe("M10 HOPE Engine — cross-tenant isolation, correction trigger, audit scrub (§9.4 / §3.4–3.6)", () => {
+    const PE_A10 = "ea000000-0000-0000-0000-0000000000a1";
+    const PE_B10 = "eb000000-0000-0000-0000-0000000000b1";
+    const LOC_A10 = "ea000000-0000-0000-0000-0000000000a2";
+    const LOC_B10 = "eb000000-0000-0000-0000-0000000000b2";
+    const USER_A10 = "ea000000-0000-0000-0000-0000000000a3";
+    const USER_B10 = "eb000000-0000-0000-0000-0000000000b3";
+    const MEM_A10 = "ea000000-0000-0000-0000-0000000000a4";
+    const MEM_B10 = "eb000000-0000-0000-0000-0000000000b4";
+    const ASMT_A10 = "ea000000-0000-0000-0000-0000000000a5";
+    const ASMT_B10 = "eb000000-0000-0000-0000-0000000000b5";
+    const SCHED_A10 = "ea000000-0000-0000-0000-0000000000a6";
+    // target_date: a stable instant inside the current month (a partition guaranteed to exist post-migration);
+    // the DEFERRABLE composite self-FK pairs (corrects_assessment_id, target_date) so a correction must reuse
+    // its target's target_date — both rows therefore share this value.
+    const TGT = "(date_trunc('month', now()) + interval '10 days')";
+    const HCOLS =
+      "(id,organization_id,provider_entity_id,location_id,patient_id,admission_id,rfa_kind,data,target_date,created_by_membership_id,status)";
+
+    beforeAll(async () => {
+      await db.query(
+        `INSERT INTO provider_entity (id,organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
+           VALUES ($1,$2,'CCN-M10A','M10 A','NPI-M10A','enc','12-31'),
+                  ($3,$4,'CCN-M10B','M10 B','NPI-M10B','enc','12-31')`,
+        [PE_A10, ORG_A, PE_B10, ORG_B],
+      );
+      await db.query(
+        `INSERT INTO location (id,provider_entity_id,name,address_line1,city,state,postal_code,timezone)
+           VALUES ($1,$2,'L10A','1 St','Town','OR','97000','America/Los_Angeles'),
+                  ($3,$4,'L10B','1 St','Town','OR','97000','America/Los_Angeles')`,
+        [LOC_A10, PE_A10, LOC_B10, PE_B10],
+      );
+      await db.query(`INSERT INTO "user" (id,email) VALUES ($1,'m10a@x.test'),($2,'m10b@x.test')`, [
+        USER_A10,
+        USER_B10,
+      ]);
+      await db.query(
+        `INSERT INTO membership (id,user_id,organization_id,status)
+           VALUES ($1,$2,$3,'active'),($4,$5,$6,'active')`,
+        [MEM_A10, USER_A10, ORG_A, MEM_B10, USER_B10, ORG_B],
+      );
+      // One signed Admission RFA per org (superuser → RLS bypassed). data jsonb carries a free-text note so
+      // the audit scrub is observable; both rows share TGT so an in-org correction's composite FK resolves.
+      await db.query(
+        `INSERT INTO hope_assessment ${HCOLS} VALUES
+           ($1,$2,$3,$4,gen_random_uuid(),gen_random_uuid(),'01_admission','{"note":"free text PHI"}'::jsonb,${TGT},$5,'signed'),
+           ($6,$7,$8,$9,gen_random_uuid(),gen_random_uuid(),'01_admission','{"note":"free text PHI"}'::jsonb,${TGT},$10,'signed')`,
+        [ASMT_A10, ORG_A, PE_A10, LOC_A10, MEM_A10, ASMT_B10, ORG_B, PE_B10, LOC_B10, MEM_B10],
+      );
+      // One open schedule for Org A (the dashboard hot read).
+      await db.query(
+        `INSERT INTO hope_timepoint_schedule
+           (id,organization_id,provider_entity_id,location_id,patient_id,admission_id,rfa_kind,window_opens_at,window_closes_at,late_deadline_at,alert_cadence,status,generated_by)
+         VALUES ($1,$2,$3,$4,gen_random_uuid(),gen_random_uuid(),'02_huv1',now(),now()+interval '9 days',now()+interval '16 days','{}'::jsonb,'open','auto_admission')`,
+        [SCHED_A10, ORG_A, PE_A10, LOC_A10],
+      );
+    });
+
+    it("§9.4 Org A sees ONLY its own hope_assessment (RLS blocks cross-tenant reads, auth stubbed open)", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM hope_assessment WHERE id=$1", [ASMT_A10]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM hope_assessment WHERE id=$1", [ASMT_A10]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§3.5 Org B cannot INSERT a hope_assessment into Org A (WITH CHECK blocks the cross-tenant write)", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO hope_assessment ${HCOLS} VALUES
+               (gen_random_uuid(),$1,$2,$3,gen_random_uuid(),gen_random_uuid(),'01_admission','{}'::jsonb,${TGT},$4,'draft')`,
+            [ORG_A, PE_A10, LOC_A10, MEM_A10],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§3.6 hope_assessment has NO DELETE grant for wardenx_app (corrections supersede, never delete)", async () => {
+      await expect(
+        withOrg(ORG_A, () => db.query("DELETE FROM hope_assessment WHERE id=$1", [ASMT_A10])),
+      ).rejects.toThrow();
+    });
+
+    it("§3.4 the correction-supersede trigger flips the prior Org-A row to superseded (under RLS)", async () => {
+      // Insert a correction that reuses the target's patient/admission/target_date (composite self-FK) under
+      // Org A's RLS context; the AFTER-INSERT trigger flips the target row to 'superseded' in the same TX.
+      await withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO hope_assessment
+             (id,organization_id,provider_entity_id,location_id,patient_id,admission_id,rfa_kind,data,target_date,created_by_membership_id,status,corrects_assessment_id)
+           SELECT gen_random_uuid(),organization_id,provider_entity_id,location_id,patient_id,admission_id,rfa_kind,
+                  '{"note":"corrected"}'::jsonb,target_date,$2,'signed',id
+             FROM hope_assessment WHERE id=$1`,
+          [ASMT_A10, MEM_A10],
+        ),
+      );
+      const r = await withOrg(ORG_A, () =>
+        db.query("SELECT status FROM hope_assessment WHERE id=$1", [ASMT_A10]),
+      );
+      expect(r.rows[0].status).toBe("superseded");
+    });
+
+    it("§9.4 a correction from Org A cannot supersede an Org B row (defense-in-depth org-match guard)", async () => {
+      // The supersede trigger's `AND organization_id = NEW.organization_id` guard means a correction inserted
+      // under Org A pointing at Org B's row updates ZERO rows — Org B's row is never reached. (The composite
+      // self-FK does not deny the insert: Postgres RI checks bypass RLS, so the cross-tenant FK resolves; the
+      // org-match guard is the real defense-in-depth, plus the service-layer org-match, §9.4 bullet 4.)
+      await withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO hope_assessment
+             (id,organization_id,provider_entity_id,location_id,patient_id,admission_id,rfa_kind,data,target_date,created_by_membership_id,status,corrects_assessment_id)
+           VALUES (gen_random_uuid(),$1,$2,$3,gen_random_uuid(),gen_random_uuid(),'01_admission','{}'::jsonb,${TGT},$4,'signed',$5)`,
+          [ORG_A, PE_A10, LOC_A10, MEM_A10, ASMT_B10],
+        ),
+      );
+      // Org B's row is untouched — still signed, never flipped to superseded by Org A's cross-tenant attempt.
+      const r = await db.query("SELECT status FROM hope_assessment WHERE id=$1", [ASMT_B10]);
+      expect(r.rows[0].status).toBe("signed");
+    });
+
+    it("§9.4 hope_timepoint_schedule is org-scoped — Org A sees its open schedule, Org B sees none", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM hope_timepoint_schedule WHERE id=$1", [SCHED_A10]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM hope_timepoint_schedule WHERE id=$1", [SCHED_A10]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§8.1 the M4 write-audit trigger fired for the assessment write and scrubbed the data denylist", async () => {
+      const r = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='hope_assessment' AND event_type='hope_assessment.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.data).toBe("<changed>"); // §8.1 free-text PHI (jsonb payload) scrub
+      expect(r.rows[0].after.rfa_kind).toBe("01_admission"); // structured column passes through
+    });
+  });
 });

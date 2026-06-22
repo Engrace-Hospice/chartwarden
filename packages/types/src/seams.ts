@@ -369,4 +369,16 @@ export type DataClass =
   // clinical facts, so they are deleted outright. The org-level `scale_license` / `scale_policy` tables are
   // NEVER touched — they are tenant configuration, not patient data (§8.4 #3). `subjectId` is the patient
   // being destroyed; disjoint from M5's `clinical_record` (patient spine) and M6/M7/M8's subtrees.
-  | "clinical_assessment";
+  | "clinical_assessment"
+  // M10 (HOPE Engine) per-patient HOPE record: the timepoint subtree M10 owns — the
+  // `hope_timepoint_schedule`, `symptom_follow_up_visit`, `hope_validation_finding` child rows plus the
+  // partitioned `hope_assessment` rows (both `signed` and `superseded`, so the correction-supersede chain is
+  // erased at both ends). Erased by M10's registered eraser (M10-T08) under an M4 destruction certificate
+  // (§8.4): the `hope_assessment` rows are dropped at partition granularity when a partition is wholly erasable
+  // and row-deleted otherwise. Submitted assessments carry the CMS 10-year extended retention — erasing them
+  // before that horizon is REFUSED unless a legal-hold override is supplied (§8.4 #1). `hope_submission` /
+  // `hope_submission_item` rows SURVIVE (the envelope SHA-256 is operational/compliance evidence); their
+  // per-patient envelope content in MinIO is purged by M4's envelope-purge worker, not this eraser (§8.4).
+  // `subjectId` is the patient being destroyed; disjoint from M9's `clinical_assessment` (clinical-scale rows)
+  // and M5/M6/M7/M8's subtrees.
+  | "hope_record";

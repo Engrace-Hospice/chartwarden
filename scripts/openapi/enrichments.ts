@@ -388,6 +388,90 @@ const ScalePolicyListResponseSchema = Type.Object({
 // The per-scale series window (§4.1 `/scales/:scaleType/series` — from/to ISO instants, the trend window).
 const ScaleSeriesQuerySchema = Type.Object({ from: Type.String(), to: Type.String() });
 
+// ── M10 HOPE Engine read DTOs (Track B, M10-T08) ───────────────────────────────────────────────────
+// Mirror HopeRouteService's view projections (apps/backend/src/modules/10-hope/routes/service.ts). The UI
+// reads only the fields it renders; the server is authoritative for J2051/late/snapshot. The §4.10 iQIES
+// submission lifecycle surfaces as read-only status here; the recording modal (writes) keeps its route-level
+// TypeBox request bodies (already in the contract).
+const HopeScheduleViewSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  rfaKind: Type.String(),
+  status: Type.String(),
+  windowOpensAt: Type.String(),
+  windowClosesAt: Type.String(),
+  lateDeadlineAt: Type.String(),
+  generatedBy: Type.String(),
+  completedByAssessmentId: Type.Union([Type.String(), Type.Null()]),
+});
+const HopeAssessmentViewSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  rfaKind: Type.String(),
+  status: Type.String(),
+  targetDate: Type.String(),
+  authorDiscipline: Type.String(),
+  j2051MaxSeverity: Type.Union([Type.String(), Type.Null()]),
+  j2051TriggerFired: Type.Boolean(),
+  wasLate: Type.Boolean(),
+  signedAt: Type.Union([Type.String(), Type.Null()]),
+  signedBy: Type.Union([Type.String(), Type.Null()]),
+  correctsAssessmentId: Type.Union([Type.String(), Type.Null()]),
+  supersededByAssessmentId: Type.Union([Type.String(), Type.Null()]),
+  snapshot: Type.Union([Type.Record(Type.String(), Type.Union([Type.Number(), Type.Null()])), Type.Null()]),
+  version: Type.Integer(),
+});
+const HopeSfvViewSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  triggeringAssessmentId: Type.String(),
+  status: Type.String(),
+  triggeredAt: Type.String(),
+  dueAt: Type.String(),
+  completingAssessmentId: Type.Union([Type.String(), Type.Null()]),
+});
+const HopeSubmissionViewSchema = Type.Object({
+  id: Type.String(),
+  providerEntityId: Type.String(),
+  submissionPeriod: Type.String(),
+  status: Type.String(),
+  itemCount: Type.Integer(),
+  acceptedCount: Type.Integer(),
+  rejectedCount: Type.Integer(),
+  transmittedAt: Type.Union([Type.String(), Type.Null()]),
+  acceptedAt: Type.Union([Type.String(), Type.Null()]),
+});
+const HopeComplianceViewSchema = Type.Object({
+  providerEntityId: Type.Union([Type.String(), Type.Null()]),
+  hopeOnTimeRate: Type.Number(),
+  sfvOnTimeRate: Type.Number(),
+  submissionAcceptanceRate: Type.Number(),
+});
+const HopeValidationResponseSchema = Type.Object({
+  assessmentId: Type.String(),
+  findings: Type.Array(
+    Type.Object({ ruleId: Type.String(), severity: Type.String(), message: Type.String() }),
+  ),
+});
+const HopeScheduleListResponseSchema = Type.Object({ schedules: Type.Array(HopeScheduleViewSchema) });
+const HopeAssessmentListResponseSchema = Type.Object({
+  assessments: Type.Array(HopeAssessmentViewSchema),
+});
+const HopeSfvListResponseSchema = Type.Object({ sfvs: Type.Array(HopeSfvViewSchema) });
+const HopeSubmissionListResponseSchema = Type.Object({
+  submissions: Type.Array(HopeSubmissionViewSchema),
+});
+const HopeScheduleListQuerySchema = Type.Object({
+  patientId: Type.Optional(Type.String()),
+  status: Type.Optional(Type.String()),
+  rfaKind: Type.Optional(Type.String()),
+});
+const HopeSfvWorklistQuerySchema = Type.Object({ state: Type.Optional(Type.String()) });
+const HopeSubmissionListQuerySchema = Type.Object({ providerEntityId: Type.Optional(Type.String()) });
+const HopeDashboardQuerySchema = Type.Object({ providerEntityId: Type.Optional(Type.String()) });
+
 export interface RouteEnrichment {
   /** JSON request body schema (a TypeBox schema reused from the route's validator). */
   body?: TSchema;
@@ -494,6 +578,54 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/admin/scales/policies": {
     summary: "Scale-policy editor — enable/disable state per scale (§5.2)",
     response: ScalePolicyListResponseSchema,
+  },
+  // M10 HOPE Engine (Track B — Timepoint Dashboard / Patient Timeline / SFV Worklist / Assessment Detail /
+  // Submission Worklist + Detail / HQRP Compliance Dashboard, M10-T08). Read responses only; the recording
+  // modal, sign/correct, skip, retry, assemble, and admin-regenerate write routes keep their route-level
+  // TypeBox request bodies (already in the contract). The server is authoritative for J2051/late/snapshot.
+  "GET /api/v1/hope/schedules": {
+    summary: "HOPE timepoint dashboard — open/closing/late/expired schedules (§5.1/§5.2)",
+    query: HopeScheduleListQuerySchema,
+    response: HopeScheduleListResponseSchema,
+  },
+  "GET /api/v1/hope/schedules/:id": {
+    summary: "HOPE schedule detail with derived window state (§5.2)",
+    response: HopeScheduleViewSchema,
+  },
+  "GET /api/v1/patients/:patientId/hope/assessments": {
+    summary: "Patient HOPE timeline — Admission → HUV1 → HUV2 → SFV(s) → Discharge (§5.1/§5.2)",
+    response: HopeAssessmentListResponseSchema,
+  },
+  "GET /api/v1/hope/assessments/:id": {
+    summary: "HOPE assessment detail — snapshot, J2051 trigger outcome, submission status (§5.2)",
+    response: HopeAssessmentViewSchema,
+  },
+  "GET /api/v1/hope/assessments/:id/validation": {
+    summary: "On-demand pre-submission validation findings for one HOPE assessment (§5.2)",
+    response: HopeValidationResponseSchema,
+  },
+  "GET /api/v1/hope/sfv": {
+    summary: "SFV worklist — open/overdue/missed symptom-follow-up visits across the org (§5.1/§5.2)",
+    query: HopeSfvWorklistQuerySchema,
+    response: HopeSfvListResponseSchema,
+  },
+  "GET /api/v1/hope/sfv/:id": {
+    summary: "SFV detail — triggering symptoms + 2-calendar-day countdown (§5.2)",
+    response: HopeSfvViewSchema,
+  },
+  "GET /api/v1/hope/submissions": {
+    summary: "HOPE submission worklist — batches per ProviderEntity, per-period (§5.1/§5.2)",
+    query: HopeSubmissionListQuerySchema,
+    response: HopeSubmissionListResponseSchema,
+  },
+  "GET /api/v1/hope/submissions/:id": {
+    summary: "HOPE submission detail — per-item outcomes, rejection findings, retry control (§5.2)",
+    response: HopeSubmissionViewSchema,
+  },
+  "GET /api/v1/hope/dashboard/compliance": {
+    summary: "HQRP compliance dashboard — on-time / SFV on-time / submission acceptance rates (§5.2)",
+    query: HopeDashboardQuerySchema,
+    response: HopeComplianceViewSchema,
   },
   // M36 Messaging (Track A — Staff Messaging + Notifications)
   "GET /api/v1/messaging/channels": {

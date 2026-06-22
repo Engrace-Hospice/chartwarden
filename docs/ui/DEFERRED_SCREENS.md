@@ -265,6 +265,7 @@ contract), so `openapi.json`/the client are unchanged.
 | M7 | Care Plan View (§5.2), Version History (§5.1), Care Plan Summary (§5.2) | `screens/clinical/WARDENX_UI_CARE_PLAN.md` | done (M7-T09)¹⁴ |
 | M8 | Encounter Read (§5.2), Cosignature Queue (§5.5), My Drafts (§5.1) | `screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md` | done (M8-T12)¹⁵ |
 | M9 | Assessment Timeline (§5.2), Per-scale Trend (§5.2), Significant-change Inbox (§5.2), Assessment Summary (§5.2), Scale-license Registry (§5.2), Scale-policy Editor (§5.2) | `screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md` | done (M9-T07)¹⁶ |
+| M10 | HOPE Timepoint Dashboard (§5.2), Patient HOPE Timeline (§5.2), SFV Worklist (§5.2), HOPE Assessment Detail (§5.2), Submission Worklist (§5.2), Submission Detail (§5.2), HQRP Compliance Dashboard (§5.2) | `docs/modules/WARDENX_MODULE_10_HOPE_ENGINE_SPEC_v0_2.md` §5 | done (M10-T08)¹⁷ |
 
 > ¹³ **Admissions/Intake (M6) now LIVE (Track B, M6-T12, ADR-0030).** Built under
 > `apps/web/src/modules/06-admission` against M6's generated client methods (the M6 read routes are
@@ -310,6 +311,21 @@ contract), so `openapi.json`/the client are unchanged.
 > record-assessment modal (all 14 scales) and the ack/renew/policy write surfaces (§5.2) fill in as their
 > write paths harden.
 
+> ¹⁷ **HOPE Engine (M10) now LIVE (Track B, M10-T08, ADR-0030).** Built under
+> `apps/web/src/modules/10-hope` against M10's generated client methods (the M10 read routes are enriched in
+> `scripts/openapi/enrichments.ts`, so `packages/ui/src/core/api` types them), registered into the M1 shell
+> via `hopeScreens` (`main.tsx`). The Timepoint Dashboard buckets open schedules into Open / Closing-48h /
+> Late / Expired counters (window state is a client UX cue; the SERVER owns the authoritative status); the
+> Patient HOPE Timeline renders the Admission → HUV1 → HUV2 → SFV(s) → Discharge chronology with the
+> server-authoritative J2051 max-severity + trigger chip (superseded rows struck through); the SFV Worklist
+> sorts by the 2-calendar-day deadline (ADR-0018 D1); the Assessment Detail shows the PPS/ESAS-r snapshot +
+> on-demand validation findings; the Submission Worklist + Detail surface per-PE batch outcomes; the HQRP
+> Compliance Dashboard shows the on-time / SFV on-time / acceptance / late-completion KPIs. Nav visibility is
+> gated by `hope.schedule.read` / `hope.timepoint.read` / `hope.sfv.read` / `hope.submission.read` /
+> `hope.dashboard.read`; the SERVER stays the only enforcement point. The recording modal (all five RFAs),
+> the late-completion confirmation dialog, the correction flow, and the schedule-admin write surfaces fill in
+> as their write paths harden.
+
 ---
 
 ## Blocked on later waves (out of Track A scope until their module lands)
@@ -317,7 +333,7 @@ contract), so `openapi.json`/the client are unchanged.
 The remaining ~50 screens (clinical suite, revenue, portal, platform/ops) are owned by modules not yet
 built (M7–M35, M37). They are **Track B**: each ships with its module's wave (include the
 `apps/web/src/modules/NN-*` codePath from T01; the terminal screen task builds it). Examples:
-Care Plan (M7+M15), HOPE (M10), Orders (M11),
+Care Plan (M7+M15), Orders (M11),
 eMAR (M12+M13), IDG (M14), Scheduling (M17), EVV (M18), Claims (M23+M24), Cap (M26), Cost Report (M27),
 FHIR (M28), HQRP (M30), Portal/Telehealth (M31), Copilot (M32), Reporting (M33), Onboarding (M34),
 Subscription (M35), IPU Bed Board (M37). See each spec's `Module:` line for the authoritative owner.

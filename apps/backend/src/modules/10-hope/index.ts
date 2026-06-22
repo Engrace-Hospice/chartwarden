@@ -95,3 +95,23 @@ export {
   planReconcile,
   planTransmitResult,
 } from "./jobs/submission";
+// M10-T08 — the `hope_record` data eraser (§8.4). registerHopeErasers stands the REAL eraser over the
+// Phase-0 deny-stub; invoked from the composition root's wireModuleErasers() before validateErasers(). The
+// pure retention/partition core (earliestErasableInstant / isHopeErasureBlocked / eraseHopeRecord) is unit
+// tested across all four §9.1 paths (partition-drop, mixed-partition row-delete, retention-block, override).
+export {
+  type HopeEraseCounts,
+  type HopeEraseOptions,
+  type HopeEraseStore,
+  type HopeEraserDeps,
+  type InMemoryHopeEraseSeed,
+  type SubmittedAssessmentRef,
+  HopeRetentionBlockedError,
+  addYears,
+  createHopeEraser,
+  createInMemoryHopeEraseStore,
+  earliestErasableInstant,
+  eraseHopeRecord,
+  isHopeErasureBlocked,
+  registerHopeErasers,
+} from "./erasers/hope-eraser";

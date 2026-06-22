@@ -61,6 +61,13 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // child rows then the assessment rows outright (no root tombstone); the org-level scale_license/scale_policy
   // tables are tenant config, not patient data, and stay untouched. The `subjectId` is the patient.
   "clinical_assessment",
+  // M10-T08: a patient's HOPE record (hope_timepoint_schedule/symptom_follow_up_visit/hope_validation_finding
+  // + the partitioned hope_assessment rows, both signed and superseded). M10 registers the REAL eraser via the
+  // composition-root hook over this deny-stub — under an M4 destruction certificate (§8.4) it refuses when
+  // submitted assessments are still inside the CMS 10-year retention horizon (unless a legal-hold override is
+  // supplied), then drops/row-deletes the assessment rows and deletes the child rows; hope_submission rows
+  // survive as compliance evidence (envelope content purged by M4's MinIO worker). The `subjectId` is the patient.
+  "hope_record",
 ];
 
 export function registerEraser(dataClass: DataClass, eraser: DataEraser): void {

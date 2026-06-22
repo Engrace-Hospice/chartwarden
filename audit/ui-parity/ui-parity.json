@@ -17,6 +17,7 @@
     "07-care-plan",
     "08-encounters",
     "09-assessments",
+    "10-hope",
     "36-messaging",
     "38-terminology",
     "40-mdm"
@@ -231,6 +232,55 @@
       "id": "assessment.scale-policies",
       "path": "/admin/scales/policies",
       "permission": "assessment.policy_read"
+    },
+    {
+      "module": "10-hope",
+      "moduleId": 10,
+      "id": "hope.dashboard",
+      "path": "/hope",
+      "permission": "hope.schedule.read"
+    },
+    {
+      "module": "10-hope",
+      "moduleId": 10,
+      "id": "hope.patient-timeline",
+      "path": "/patients/:patientId/hope",
+      "permission": "hope.timepoint.read"
+    },
+    {
+      "module": "10-hope",
+      "moduleId": 10,
+      "id": "hope.sfv-worklist",
+      "path": "/hope/sfv",
+      "permission": "hope.sfv.read"
+    },
+    {
+      "module": "10-hope",
+      "moduleId": 10,
+      "id": "hope.assessment-detail",
+      "path": "/hope/assessments/:id",
+      "permission": "hope.timepoint.read"
+    },
+    {
+      "module": "10-hope",
+      "moduleId": 10,
+      "id": "hope.submission-worklist",
+      "path": "/hope/submissions",
+      "permission": "hope.submission.read"
+    },
+    {
+      "module": "10-hope",
+      "moduleId": 10,
+      "id": "hope.submission-detail",
+      "path": "/hope/submissions/:id",
+      "permission": "hope.submission.read"
+    },
+    {
+      "module": "10-hope",
+      "moduleId": 10,
+      "id": "hope.compliance",
+      "path": "/hope/compliance",
+      "permission": "hope.dashboard.read"
     },
     {
       "module": "36-messaging",
