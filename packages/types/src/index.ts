@@ -19,6 +19,7 @@ export * from "./emar";
 export * from "./idg";
 export * from "./scheduling";
 export * from "./evv";
+export * from "./documents";
 export * from "./screen-registry";
 export * from "./errors";
 export * from "./http-context";

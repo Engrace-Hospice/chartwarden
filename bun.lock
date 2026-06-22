@@ -146,6 +146,9 @@
     "packages/forms": {
       "name": "@wardenx/forms",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
     },
     "packages/gusto-client": {
       "name": "@wardenx/gusto-client",
@@ -180,6 +183,9 @@
     "packages/intake-extraction": {
       "name": "@wardenx/intake-extraction",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
     },
     "packages/iqies-client": {
       "name": "@wardenx/iqies-client",

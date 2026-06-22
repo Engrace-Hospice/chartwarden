@@ -1861,3 +1861,217 @@ export const evvAggregatorSubmissionStatus = pgEnum("evv_aggregator_submission_s
   "timeout",
   "cancelled",
 ]);
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// Module 22 — Document Management (§3.2 Phase-1). The nineteen M22-owned enums backing the 17 document /
+// form-render / intake-extraction tables. Schema (`packages/db/src/schema/...`) + the `0022_documents`
+// migration land in M22-T02; the leaf mirrors live in `@wardenx/types` (`documents.ts`). M22 owns no
+// shared-enum overlap with another module. The `compliance_42cfr_part2` value of `document_retention_class`
+// is appended to the live PG type by M4's migration `0035` (M22 exercises it at INSERT via the renderer's
+// D23 auto-tagging — it does NOT own the SQL ALTER TYPE); the Drizzle value list mirrors the full set.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** `document_retention_class` — the §2.3 retention anchor driving M4's destruction math.
+ * `compliance_42cfr_part2` is M4-0035-owned (SUD-class; eraser refused during patient lifetime, D23). */
+export const documentRetentionClass = pgEnum("document_retention_class", [
+  "compliance",
+  "clinical_record",
+  "bereavement",
+  "operational",
+  "intake_artifact",
+  "compliance_42cfr_part2",
+]);
+
+/** `document_source_kind` — the §2.1 provenance of a stored document. */
+export const documentSourceKind = pgEnum("document_source_kind", [
+  "form_render",
+  "user_upload",
+  "api_ingest",
+  "fax_ingest",
+  "portal_upload",
+  "extraction_writeback",
+  "consent_capture",
+]);
+
+/** `document_aggregate_type` — the §4.5 form-template / chart-artifact taxonomy a document instantiates. */
+export const documentAggregateType = pgEnum("document_aggregate_type", [
+  "election_statement",
+  "cti",
+  "f2f",
+  "nor",
+  "revocation",
+  "discharge_summary",
+  "nomnc",
+  "abn",
+  "hipaa_privacy_notice",
+  "code_status_directive",
+  "encounter",
+  "order_record",
+  "medication_order",
+  "medication_administration_record",
+  "medication_reconciliation_worksheet",
+  "patient_medication_list",
+  "comfort_kit_receipt",
+  "idg_patient_packet",
+  "idg_minutes",
+  "aide_poc",
+  "msw_plan",
+  "spiritual_plan",
+  "volunteer_plan",
+  "bereavement_letter",
+  "visit_confirmation",
+  "evv_verification",
+  "patient_amendment_statement_of_disagreement",
+  "consent_record",
+  "intake_source",
+  "other",
+]);
+
+/** `document_status` — the §2.2.1 document lifecycle. New versions flip `active_version_id`, never status. */
+export const documentStatus = pgEnum("document_status", [
+  "active",
+  "superseded",
+  "legal_hold",
+  "destroyed_tombstone",
+]);
+
+/** `form_render_engine` — the §3.3 render adapter selector. */
+export const formRenderEngine = pgEnum("form_render_engine", ["react_pdf", "puppeteer"]);
+
+/** `form_fill_status` — the §2.2.4 D6 render lifecycle (one render per `form_fill`, §2.5). */
+export const formFillStatus = pgEnum("form_fill_status", [
+  "queued",
+  "rendering",
+  "rendered",
+  "failed",
+  "delivered",
+]);
+
+/** `intake_batch_status` — the §2.2.5 multi-doc intake-pipeline machine (incl. D10 fax-split + parse_failed). */
+export const intakeBatchStatus = pgEnum("intake_batch_status", [
+  "uploaded",
+  "docling_complete",
+  "classifier_complete",
+  "extraction_complete",
+  "in_review",
+  "writeback_complete",
+  "discarded",
+  "split_into_children",
+  "split_resolved_no_split",
+  "parse_failed",
+]);
+
+/** `classified_page_doc_type` — the §2.1 per-page classifier output vocabulary. */
+export const classifiedPageDocType = pgEnum("classified_page_doc_type", [
+  "discharge_summary",
+  "med_recon",
+  "hp",
+  "lab",
+  "imaging",
+  "consult",
+  "insurance_card",
+  "photo_id",
+  "advance_directive",
+  "dpoa",
+  "transfer_record",
+  "unknown",
+]);
+
+/** `extraction_job_status` — the §2.2.6 DocLens job machine. `awaiting_capability`/`stalled` are the M32
+ * deny-stub / circuit-open parks (§8.10 degraded-mode) distinct from `failed`. */
+export const extractionJobStatus = pgEnum("extraction_job_status", [
+  "queued",
+  "extracting",
+  "verifying",
+  "discrepancy_check",
+  "ready_for_review",
+  "in_review",
+  "committed",
+  "discarded",
+  "failed",
+  "awaiting_capability",
+  "stalled",
+]);
+
+/** `extraction_candidate_risk_level` — the §2.3 high-risk-field per-field-only gate (D4). */
+export const extractionCandidateRiskLevel = pgEnum("extraction_candidate_risk_level", [
+  "low",
+  "medium",
+  "high",
+]);
+
+/** `extraction_candidate_field_kind` — the §2.1 typed-value discriminator on an extracted candidate. */
+export const extractionCandidateFieldKind = pgEnum("extraction_candidate_field_kind", [
+  "text",
+  "code",
+  "date",
+  "boolean",
+  "measurement",
+  "enum",
+]);
+
+/** `extraction_candidate_code_system` — the §2.1 coding system for a `code`-kind candidate. */
+export const extractionCandidateCodeSystem = pgEnum("extraction_candidate_code_system", [
+  "rxnorm",
+  "icd10",
+  "loinc",
+  "snomed",
+  "ndc",
+  "none",
+]);
+
+/** `extraction_discrepancy_kind` — the §2.3 cross-source vs chart-existing discrepancy classifier (D4). */
+export const extractionDiscrepancyKind = pgEnum("extraction_discrepancy_kind", [
+  "cross_source",
+  "chart_existing",
+]);
+
+/** `extraction_discrepancy_status` — the §2.1 discrepancy resolution flag. */
+export const extractionDiscrepancyStatus = pgEnum("extraction_discrepancy_status", ["open", "resolved"]);
+
+/** `extraction_decision_kind` — the §2.3 per-candidate reviewer disposition. */
+export const extractionDecisionKind = pgEnum("extraction_decision_kind", [
+  "approve",
+  "approve_with_edit",
+  "reject",
+]);
+
+/** `extraction_review_status` — the §2.2.7 single-reviewer-per-batch session machine (§2.5 advisory lock). */
+export const extractionReviewStatus = pgEnum("extraction_review_status", [
+  "in_progress",
+  "complete",
+  "abandoned",
+]);
+
+/** `chart_target_module` — the §4.10 writeback discriminator routing an approved candidate to its module. */
+export const chartTargetModule = pgEnum("chart_target_module", [
+  "m5",
+  "m7",
+  "m9",
+  "m11",
+  "m12",
+  "m13",
+  "m22",
+  "m40",
+]);
+
+/** `document_access_kind` — the §3.6 / §164.528 accounting-of-disclosures access classifier. */
+export const documentAccessKind = pgEnum("document_access_kind", [
+  "metadata_read",
+  "content_download",
+  "signed_url_issued",
+  "signed_url_consumed",
+  "portal_view",
+  "disclosure_export",
+]);
+
+/** `document_access_purpose` — the §4.2 access-purpose taxonomy stamped on every document access-log row. */
+export const documentAccessPurpose = pgEnum("document_access_purpose", [
+  "treatment",
+  "payment",
+  "operations",
+  "disclosure",
+  "patient_access",
+  "amendment_review",
+  "survey_export",
+]);

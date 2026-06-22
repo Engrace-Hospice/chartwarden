@@ -608,6 +608,7 @@ exports.MODULES = [
       "packages/forms",
       "packages/intake-extraction",
       "apps/backend/src/modules/22-documents",
+      "apps/web/src/modules/22-documents",
     ],
     dependsOn: [1, 5],
     ownedTables: [
