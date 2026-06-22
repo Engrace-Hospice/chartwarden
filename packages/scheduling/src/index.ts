@@ -17,3 +17,4 @@
 export * from "./policy";
 export * from "./cancellation-reasons";
 export * from "./rrule";
+export * from "./lifecycle";
