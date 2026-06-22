@@ -1633,4 +1633,142 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       expect(r.rows[0].after.mode).toBe("single_dose"); // structured column passes through
     });
   });
+
+  // ── M14 IDG (Interdisciplinary Group) — org-scoped RLS, append-only no-DELETE, nested audit scrub (§3.3/§9.3)
+  // 0042/0043 (M14) applied above. Proves on REAL Postgres: idg_decision (the canonical cross-module decision
+  // record) + idg_patient_packet (the RANGE-partitioned-by-built_at survey artifact, D12) are tenant-isolated on
+  // app.org_id even with app authorization stubbed open (§9.4 layer-independence); the WITH CHECK blocks a
+  // cross-tenant write; wardenx_app has NO DELETE on either (decisions supersede, packets freeze — never delete);
+  // the M4 write-audit trigger scrubs BOTH the top-level free-text columns AND the nested json-paths — for
+  // idg_decision the per-kind `payload` narrative keys (rationaleText / …), for idg_patient_packet the top-level
+  // cover summaries + discipline_views AND the nested `built_snapshot` keys (discipline_views / sinceLastIdg) —
+  // while the structural columns (decision_kind / since_cursor_iso) pass through (§3.3).
+  describe("M14 IDG — cross-tenant isolation, no-DELETE, nested audit scrub (§3.3 / §9.3 / §9.4)", () => {
+    const PE_A14 = "ea000000-0000-0000-0000-0000000000b1";
+    const PE_B14 = "eb000000-0000-0000-0000-0000000000c1";
+    const LOC_A14 = "ea000000-0000-0000-0000-0000000000b2";
+    const LOC_B14 = "eb000000-0000-0000-0000-0000000000c2";
+    const MTG_A14 = "ea000000-0000-0000-0000-0000000000b3";
+    const MTG_B14 = "eb000000-0000-0000-0000-0000000000c3";
+    const DEC_A14 = "ea000000-0000-0000-0000-0000000000b4";
+    const DEC_B14 = "eb000000-0000-0000-0000-0000000000c4";
+    const PKT_A14 = "ea000000-0000-0000-0000-0000000000b5";
+    const QSNAP = `'{"met":true,"presentDisciplines":[],"missingDisciplines":[]}'::jsonb`;
+    // idg_decision narrative free-text lives INSIDE the per-kind payload (rationaleText denylisted, §3.3).
+    const DEC_PAYLOAD = `'{"kind":"care_plan_update","rationaleText":"family wants comfort-only — free text PHI"}'::jsonb`;
+    // idg_patient_packet snapshot: top-level cover summary + the nested built_snapshot keys are all denylisted.
+    const SNAPSHOT = `'{"schemaVersion":"2026-01-v1","discipline_views":{"rn":"free text PHI"},"sinceLastIdg":{"encounters":["free text PHI"]}}'::jsonb`;
+    const DVIEWS = `'{"rn":{"highlightedEntries":["free text PHI"]}}'::jsonb`;
+
+    beforeAll(async () => {
+      await db.query(
+        `INSERT INTO provider_entity (id,organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
+           VALUES ($1,$2,'CCN-M14A','M14 A','NPI-M14A','enc','12-31'),
+                  ($3,$4,'CCN-M14B','M14 B','NPI-M14B','enc','12-31')`,
+        [PE_A14, ORG_A, PE_B14, ORG_B],
+      );
+      await db.query(
+        `INSERT INTO location (id,provider_entity_id,name,address_line1,city,state,postal_code,timezone)
+           VALUES ($1,$2,'L14A','1 St','Town','OR','97000','America/Los_Angeles'),
+                  ($3,$4,'L14B','1 St','Town','OR','97000','America/Los_Angeles')`,
+        [LOC_A14, PE_A14, LOC_B14, PE_B14],
+      );
+      // One meeting per org (superuser → RLS bypassed for the seed).
+      await db.query(
+        `INSERT INTO idg_meeting (id,organization_id,location_id,scheduled_start,scheduled_end,coordinator_membership_id,tenant_quorum_snapshot)
+           VALUES ($1,$2,$3,now(),now()+interval '2 hour',gen_random_uuid(),${QSNAP}),
+                  ($4,$5,$6,now(),now()+interval '2 hour',gen_random_uuid(),${QSNAP})`,
+        [MTG_A14, ORG_A, LOC_A14, MTG_B14, ORG_B, LOC_B14],
+      );
+      // One decision per org — the payload carries a denylisted nested narrative key (rationaleText).
+      await db.query(
+        `INSERT INTO idg_decision (id,organization_id,provider_entity_id,location_id,idg_meeting_id,patient_id,decision_kind,payload,was_quorate,quorum_snapshot,recorded_by_membership_id)
+           VALUES ($1,$2,$3,$4,$5,gen_random_uuid(),'care_plan_update',${DEC_PAYLOAD},true,${QSNAP},gen_random_uuid()),
+                  ($6,$7,$8,$9,$10,gen_random_uuid(),'care_plan_update',${DEC_PAYLOAD},true,${QSNAP},gen_random_uuid())`,
+        [DEC_A14, ORG_A, PE_A14, LOC_A14, MTG_A14, DEC_B14, ORG_B, PE_B14, LOC_B14, MTG_B14],
+      );
+      // One packet on Org A — top-level cover summary + the nested built_snapshot keys are all free-text PHI.
+      await db.query(
+        `INSERT INTO idg_patient_packet (id,organization_id,provider_entity_id,location_id,idg_meeting_id,patient_id,admission_id,since_cursor_iso,built_snapshot,discipline_views,cover_summary_layer1)
+           VALUES ($1,$2,$3,$4,$5,gen_random_uuid(),gen_random_uuid(),'2026-06-01T00:00:00.000Z',${SNAPSHOT},${DVIEWS},'cover narrative — free text PHI')`,
+        [PKT_A14, ORG_A, PE_A14, LOC_A14, MTG_A14],
+      );
+    });
+
+    it("§3.3 Org A sees ONLY its own idg_decision (RLS blocks cross-tenant reads, auth stubbed open)", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM idg_decision WHERE id=$1", [DEC_A14]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM idg_decision WHERE id=$1", [DEC_A14]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§3.3 Org B cannot INSERT an idg_decision into Org A (WITH CHECK blocks the cross-tenant write)", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO idg_decision (id,organization_id,provider_entity_id,location_id,idg_meeting_id,patient_id,decision_kind,payload,was_quorate,quorum_snapshot,recorded_by_membership_id)
+               VALUES (gen_random_uuid(),$1,$2,$3,$4,gen_random_uuid(),'team_note','{}'::jsonb,false,${QSNAP},gen_random_uuid())`,
+            [ORG_A, PE_A14, LOC_A14, MTG_A14],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§3.3 idg_decision + idg_patient_packet have NO DELETE grant for wardenx_app (decisions supersede / packets freeze, never delete)", async () => {
+      await expect(
+        withOrg(ORG_A, () => db.query("DELETE FROM idg_decision WHERE id=$1", [DEC_A14])),
+      ).rejects.toThrow();
+      await expect(
+        withOrg(ORG_A, () => db.query("DELETE FROM idg_patient_packet WHERE id=$1", [PKT_A14])),
+      ).rejects.toThrow();
+    });
+
+    it("§3.3 idg_meeting + idg_patient_packet are org-scoped — Org A sees its rows, Org B sees none", async () => {
+      const mA = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM idg_meeting WHERE id=$1", [MTG_A14]),
+      );
+      const mB = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM idg_meeting WHERE id=$1", [MTG_A14]),
+      );
+      expect(mA.rows[0].n).toBe(1);
+      expect(mB.rows[0].n).toBe(0);
+      const pA = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM idg_patient_packet WHERE id=$1", [PKT_A14]),
+      );
+      const pB = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM idg_patient_packet WHERE id=$1", [PKT_A14]),
+      );
+      expect(pA.rows[0].n).toBe(1);
+      expect(pB.rows[0].n).toBe(0);
+    });
+
+    it("§3.3 the M4 write-audit trigger scrubbed the nested idg_decision payload narrative (rationaleText), kind passes through", async () => {
+      const r = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='idg_decision' AND event_type='idg_decision.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.payload.rationaleText).toBe("<changed>"); // §3.3 nested payload free-text scrub
+      expect(r.rows[0].after.payload.kind).toBe("care_plan_update"); // structured payload field passes through
+      expect(r.rows[0].after.decision_kind).toBe("care_plan_update"); // structured column passes through
+    });
+
+    it("§3.3 the M4 write-audit trigger scrubbed BOTH the top-level cover summary AND the nested built_snapshot keys", async () => {
+      const r = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='idg_patient_packet' AND event_type='idg_patient_packet.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.cover_summary_layer1).toBe("<changed>"); // top-level free-text PHI scrub
+      expect(r.rows[0].after.discipline_views).toBe("<changed>"); // top-level discipline_views column scrub
+      expect(r.rows[0].after.built_snapshot.discipline_views).toBe("<changed>"); // nested json-path scrub
+      expect(r.rows[0].after.built_snapshot.sinceLastIdg).toBe("<changed>"); // nested json-path scrub
+      expect(r.rows[0].after.built_snapshot.schemaVersion).toBe("2026-01-v1"); // structural key passes through
+      expect(r.rows[0].after.since_cursor_iso).toBe("2026-06-01T00:00:00.000Z"); // structural column passes through
+    });
+  });
 });
