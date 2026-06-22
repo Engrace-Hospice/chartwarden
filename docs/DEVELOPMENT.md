@@ -19,7 +19,7 @@ Phase 1 builds feature modules against the gates described here.
 ```bash
 bun install            # resolves from the committed bun.lock (hoisted linker, see bunfig.toml)
 bun run build          # tsc -b across the project-reference graph
-bun run arch:fitness   # scaffold parity + 6 fitness gates
+bun run arch:fitness   # scaffold parity + the fitness gates (incl. report freshness checks)
 bun run test           # Vitest: boot smoke test + fitness-gate self-test (red/green)
 ```
 
@@ -38,7 +38,10 @@ All four are green on a clean checkout, and CI (`.github/workflows/ci.yml`) runs
 | `bun run arch:ddl` | PostgreSQL DDL legality (partition keys, CHECK subqueries, duplicate enums). |
 | `bun run arch:gaps` | event-catalog `mN.` naming, seam-registry completeness, PHI RLS/audit presence. |
 | `bun run docs:ui` | UI screen-spec corpus consistency. |
-| `bun run arch:fitness` | all of the above (parity + 6 gates). |
+| `bun run arch:ai-governance` | AI capability catalog ↔ per-capability docs parity (AI Governance §4.1/§4.4). |
+| `bun run status:matrix` / `arch:status-matrix` | (re)generate / freshness-check the per-module implementation-status matrix (`audit/implementation-status/`); hard-fails on orphan (unowned) schema/migration tables. |
+| `bun run ui:parity` / `arch:ui-parity` | (re)generate / freshness-check the UI implementation-parity report (`audit/ui-parity/`); hard-fails on duplicate screen id/path, unknown `requiredPermission`, or an unregistered `screens.ts`. |
+| `bun run arch:fitness` | all of the above (parity + every fitness gate, including the report freshness checks). |
 | `bun run test` | Vitest self-tests. |
 | `bun run lint` / `lint:fix` | Biome (advisory; not in the blocking gate path). |
 
@@ -64,7 +67,11 @@ automatically as a module's schema/seams/events land.
    `requirePermission`/`requireAbac`; emit audit events; register the module's eraser with M4.
 6. **UI** per `docs/ui/screens/*` using the declared layout pattern (`docs:ui` stays green).
 7. **Tests** (Vitest) including RLS cross-tenant isolation. Keep the fitness fixtures red.
-8. Run `bun run build && bun run arch:fitness && bun run test` before opening the PR.
+8. **Regenerate the freshness-checked reports and commit them:** `bun run status:matrix && bun run ui:parity`.
+   Adding schema/routes/screens makes `audit/implementation-status/` and `audit/ui-parity/` stale, so
+   `arch:status-matrix` / `arch:ui-parity` (inside `arch:fitness`) go red until the committed reports are
+   regenerated. (Their failure output also prints the exact command to run.)
+9. Run `bun run build && bun run arch:fitness && bun run test` before opening the PR.
 
 See the per-module Definition of Done in
 [`IMPLEMENTATION_ROADMAP.md`](./IMPLEMENTATION_ROADMAP.md).
