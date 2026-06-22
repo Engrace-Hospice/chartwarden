@@ -18,6 +18,7 @@
     "08-encounters",
     "09-assessments",
     "10-hope",
+    "11-orders",
     "36-messaging",
     "38-terminology",
     "40-mdm"
@@ -281,6 +282,55 @@
       "id": "hope.compliance",
       "path": "/hope/compliance",
       "permission": "hope.dashboard.read"
+    },
+    {
+      "module": "11-orders",
+      "moduleId": 11,
+      "id": "orders.sign-inbox",
+      "path": "/orders",
+      "permission": "orders.read"
+    },
+    {
+      "module": "11-orders",
+      "moduleId": 11,
+      "id": "orders.patient-list",
+      "path": "/patients/:patientId/orders",
+      "permission": "orders.read"
+    },
+    {
+      "module": "11-orders",
+      "moduleId": 11,
+      "id": "orders.detail",
+      "path": "/orders/:id",
+      "permission": "orders.read"
+    },
+    {
+      "module": "11-orders",
+      "moduleId": 11,
+      "id": "orders.verbal-expiring",
+      "path": "/orders/verbal-expiring",
+      "permission": "orders.read"
+    },
+    {
+      "module": "11-orders",
+      "moduleId": 11,
+      "id": "orders.cosign-pending",
+      "path": "/orders/cosign-pending",
+      "permission": "orders.read"
+    },
+    {
+      "module": "11-orders",
+      "moduleId": 11,
+      "id": "orders.results-review",
+      "path": "/orders/results-pending-review",
+      "permission": "orders.read"
+    },
+    {
+      "module": "11-orders",
+      "moduleId": 11,
+      "id": "orders.standing",
+      "path": "/standing-orders",
+      "permission": "orders.read"
     },
     {
       "module": "36-messaging",

@@ -68,6 +68,13 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // supplied), then drops/row-deletes the assessment rows and deletes the child rows; hope_submission rows
   // survive as compliance evidence (envelope content purged by M4's MinIO worker). The `subjectId` is the patient.
   "hope_record",
+  // M11-T08: a patient's orders record (order_signature/verbal_order/standing_order_instance/
+  // order_discontinuation child rows + the partitioned order_record rows + the patient's standing_order
+  // templates). M11 registers the REAL eraser via the composition-root hook over this deny-stub — under an M4
+  // destruction certificate (§7.7 / D12) it drops/row-deletes the order_record rows and cascade-deletes the
+  // child rows; the cert's retentionAsOf enforces M4's standard `compliance` 7-year floor. The org-scoped
+  // order_verbal_policy is tenant config, not patient data, and stays untouched. The `subjectId` is the patient.
+  "order_record",
 ];
 
 export function registerEraser(dataClass: DataClass, eraser: DataEraser): void {

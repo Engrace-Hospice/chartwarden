@@ -36,7 +36,7 @@ import { registerCarePlanErasers, registerCarePlanSeams } from "./modules/07-car
 import { registerEncounterErasers, registerEncounterSeams } from "./modules/08-encounters/index";
 import { registerAssessmentErasers, registerAssessmentSeams } from "./modules/09-assessments/index";
 import { registerHopeErasers, registerHopeSeams } from "./modules/10-hope/index";
-import { registerOrderSeams } from "./modules/11-orders/index";
+import { registerOrderErasers, registerOrderSeams } from "./modules/11-orders/index";
 import {
   createDbMessagingProvider,
   mountMessagingRoutes,
@@ -146,6 +146,7 @@ export function wireModuleErasers(): void {
   registerEncounterErasers(); // M8-T12 — `encounter_record` (encounter-subtree destruction-cert callback; DEK crypto-erase §3.6; D7/D8)
   registerAssessmentErasers(); // M9-T07 — `clinical_assessment` (assessment-subtree destruction-cert callback; §8.4; D7/D8)
   registerHopeErasers(); // M10-T08 — `hope_record` (HOPE-timepoint-subtree destruction-cert callback; CMS 10-year retention block; §8.4; D7/D8)
+  registerOrderErasers(); // M11-T08 — `order_record` (orders-subtree destruction-cert callback; partition-drop; §7.7; D12; D7/D8)
   // Phase-1 data-class owners append here as they land.
 }
 

@@ -38,6 +38,7 @@ import {
   ListMessagesQuerySchema,
   SendMessageBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/messaging-typebox";
+import { OrderListQuerySchema } from "../../apps/backend/src/modules/11-orders/routes/orders-typebox";
 import { SearchQuerySchema as TerminologySearchQuerySchema } from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
 import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
 
@@ -472,6 +473,61 @@ const HopeSfvWorklistQuerySchema = Type.Object({ state: Type.Optional(Type.Strin
 const HopeSubmissionListQuerySchema = Type.Object({ providerEntityId: Type.Optional(Type.String()) });
 const HopeDashboardQuerySchema = Type.Object({ providerEntityId: Type.Optional(Type.String()) });
 
+// ── M11 Orders read DTOs (Track B, M11-T08) ────────────────────────────────────────────────────────
+// Mirror OrderRouteService's view projections (apps/backend/src/modules/11-orders/routes/service.ts —
+// OrderView / StandingOrderView / VerbalPolicyView). The UI reads only the fields it renders; the server is
+// authoritative for the §2.2 D2 lifecycle status, the §2.3 verbal deadline, and the transmission/results
+// state. The write surfaces (draft modal, sign step-up, cosign, discontinue, standing-order admin) keep
+// their route-level TypeBox request bodies (already in the contract); only the read responses are enriched.
+const OrderViewSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  kind: Type.String(),
+  status: Type.String(),
+  priority: Type.String(),
+  version: Type.Integer(),
+  drafterMembershipId: Type.String(),
+  drafterDiscipline: Type.String(),
+  orderingPhysicianMdmId: Type.String(),
+  cosignRequired: Type.Boolean(),
+  cosignStatus: Type.Union([Type.Literal("pending"), Type.Literal("attached"), Type.Null()]),
+  transmissionStatus: Type.String(),
+  resultsStatus: Type.String(),
+  verbalDeadlineAt: Type.Union([Type.String(), Type.Null()]),
+  discontinuationReason: Type.Union([Type.String(), Type.Null()]),
+  replacesOrderId: Type.Union([Type.String(), Type.Null()]),
+  triggeringAssessmentId: Type.Union([Type.String(), Type.Null()]),
+  triggeringHopeAssessmentId: Type.Union([Type.String(), Type.Null()]),
+  signedAt: Type.Union([Type.String(), Type.Null()]),
+  signedBy: Type.Union([Type.String(), Type.Null()]),
+  completedAt: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String(),
+});
+const StandingOrderViewSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  kind: Type.String(),
+  cadence: Type.String(),
+  status: Type.String(),
+  nextSpawnAt: Type.Union([Type.String(), Type.Null()]),
+  spawnCount: Type.Integer(),
+  maxSpawns: Type.Union([Type.Integer(), Type.Null()]),
+});
+const VerbalPolicyViewSchema = Type.Object({
+  windowHours: Type.Integer(),
+  businessHoursOnly: Type.Boolean(),
+  lpnCosignRequiredKinds: Type.Array(Type.String()),
+  npCosignRequiredKinds: Type.Array(Type.String()),
+  platformFloorWindowHours: Type.Integer(),
+  policyVersion: Type.String(),
+});
+const OrderListResponseSchema = Type.Object({ orders: Type.Array(OrderViewSchema) });
+const StandingOrderListResponseSchema = Type.Object({
+  standingOrders: Type.Array(StandingOrderViewSchema),
+});
+
 export interface RouteEnrichment {
   /** JSON request body schema (a TypeBox schema reused from the route's validator). */
   body?: TSchema;
@@ -626,6 +682,46 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "HQRP compliance dashboard — on-time / SFV on-time / submission acceptance rates (§5.2)",
     query: HopeDashboardQuerySchema,
     response: HopeComplianceViewSchema,
+  },
+  // M11 Orders (Track B — Patient Orders / Signature Inbox / Verbal-Expiring / Cosign / Results-Review /
+  // Standing-Order admin, M11-T08). Read responses only; the write routes keep their route-level TypeBox
+  // request bodies (already in the contract). The server is authoritative for the §2.2 D2 lifecycle.
+  "GET /api/v1/orders": {
+    summary: "List orders by patient / admission / kind / status (§4.1; ABAC caseload_or_scope)",
+    query: OrderListQuerySchema,
+    response: OrderListResponseSchema,
+  },
+  "GET /api/v1/orders/:id": {
+    summary: "Order detail — lifecycle status, signatures, verbal deadline, transmission/results state (§4.1)",
+    response: OrderViewSchema,
+  },
+  "GET /api/v1/orders/pending-signature": {
+    summary: "Physician pending-signature inbox — orders in pending_signature (§4.1 / §5.2)",
+    response: OrderListResponseSchema,
+  },
+  "GET /api/v1/orders/verbal-expiring": {
+    summary: "RN verbal-expiring queue — verbal_pending orders with a live 48h countdown (§4.1 / §5.2 D3)",
+    response: OrderListResponseSchema,
+  },
+  "GET /api/v1/orders/cosign-pending": {
+    summary: "RN cosign-pending queue — orders awaiting an RN/supervisor cosignature (§4.1 / §5.2 §2.5)",
+    response: OrderListResponseSchema,
+  },
+  "GET /api/v1/orders/results-pending-review": {
+    summary: "Lab orders with results received awaiting clinician Mark-reviewed (§4.1 / §5.2 D17)",
+    response: OrderListResponseSchema,
+  },
+  "GET /api/v1/standing-orders": {
+    summary: "Standing-order templates — cadence, next-spawn, spawn count (§4.1 / §5.2 D5)",
+    response: StandingOrderListResponseSchema,
+  },
+  "GET /api/v1/standing-orders/:id": {
+    summary: "Standing-order template detail + spawn history (§4.1 / §5.2 D5)",
+    response: StandingOrderViewSchema,
+  },
+  "GET /api/v1/admin/orders/verbal-policy": {
+    summary: "Org verbal-order policy — window hours, cosign kinds, platform floor (§4.1 / §2.3 D3)",
+    response: VerbalPolicyViewSchema,
   },
   // M36 Messaging (Track A — Staff Messaging + Notifications)
   "GET /api/v1/messaging/channels": {

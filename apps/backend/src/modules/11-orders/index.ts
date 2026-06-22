@@ -74,3 +74,25 @@ export {
   decideDischargeCascade,
   decideHopeSuggestion,
 } from "./consumers/index";
+// M11-T08 — the `order_record` data eraser (§7.7 / D12). registerOrderErasers stands the REAL eraser over the
+// Phase-0 deny-stub; invoked from the composition root's wireModuleErasers() before validateErasers(). The
+// pure orchestration core (eraseOrderRecord) + the partition-drop / row-delete store path are unit tested.
+export {
+  type InMemoryOrderEraseSeed,
+  type OrderEraseCounts,
+  type OrderEraseOptions,
+  type OrderEraseStore,
+  type OrderEraserDeps,
+  createInMemoryOrderEraseStore,
+  createOrderEraser,
+  eraseOrderRecord,
+  registerOrderErasers,
+} from "./erasers/orders-eraser";
+// M11-T08 — the M22 order-PDF forward seam (DENY-STUB; Wave F). M11 OWNS the payload contract; M22 binds the
+// renderer at its lock. NO M1 seam-registry entry + NO `dependsOn` edge (forward seam, M9 precedent).
+export {
+  type OrderPdfRenderPayload,
+  type OrderPdfRenderer,
+  type OrderPdfResult,
+  denyStubOrderPdfRenderer,
+} from "./seams/m22-order-pdf";

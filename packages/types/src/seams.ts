@@ -398,4 +398,14 @@ export type DataClass =
   // per-patient envelope content in MinIO is purged by M4's envelope-purge worker, not this eraser (§8.4).
   // `subjectId` is the patient being destroyed; disjoint from M9's `clinical_assessment` (clinical-scale rows)
   // and M5/M6/M7/M8's subtrees.
-  | "hope_record";
+  | "hope_record"
+  // M11 (Orders) per-patient orders record: the orders subtree M11 owns — the monthly-partitioned
+  // `order_record` rows plus the cascaded `order_signature`, `verbal_order`, `standing_order_instance`, and
+  // `order_discontinuation` child rows, and the patient's `standing_order` templates. Erased by M11's
+  // registered eraser (M11-T08) under an M4 destruction certificate (§7.7 / D12): the `order_record` rows are
+  // dropped at partition granularity when a partition is wholly erasable and row-deleted otherwise; the cert's
+  // `retentionAsOf` boundary enforces M4's standard `compliance` 7-year retention floor (no CMS extended-
+  // retention block, unlike M10). The ORG-scoped `order_verbal_policy` is tenant configuration, not patient
+  // data, and is NEVER touched (§7.7 #4). `subjectId` is the patient being destroyed; disjoint from M10's
+  // `hope_record` and M5/M6/M7/M8/M9's subtrees.
+  | "order_record";

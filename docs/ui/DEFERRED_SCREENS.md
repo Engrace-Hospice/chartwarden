@@ -266,6 +266,7 @@ contract), so `openapi.json`/the client are unchanged.
 | M8 | Encounter Read (§5.2), Cosignature Queue (§5.5), My Drafts (§5.1) | `screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md` | done (M8-T12)¹⁵ |
 | M9 | Assessment Timeline (§5.2), Per-scale Trend (§5.2), Significant-change Inbox (§5.2), Assessment Summary (§5.2), Scale-license Registry (§5.2), Scale-policy Editor (§5.2) | `screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md` | done (M9-T07)¹⁶ |
 | M10 | HOPE Timepoint Dashboard (§5.2), Patient HOPE Timeline (§5.2), SFV Worklist (§5.2), HOPE Assessment Detail (§5.2), Submission Worklist (§5.2), Submission Detail (§5.2), HQRP Compliance Dashboard (§5.2) | `docs/modules/WARDENX_MODULE_10_HOPE_ENGINE_SPEC_v0_2.md` §5 | done (M10-T08)¹⁷ |
+| M11 | Signature Inbox (§5), Patient Orders (§5), Order Detail (§5), Verbal-Expiring Queue (§5), Cosign-Pending Queue (§5 §2.5), Lab Results-Pending-Review Queue (§5 D17), Standing-Order Admin (§5 §2.4 D5) | `screens/clinical/WARDENX_UI_ORDERS.md` | done (M11-T08)¹⁸ |
 
 > ¹³ **Admissions/Intake (M6) now LIVE (Track B, M6-T12, ADR-0030).** Built under
 > `apps/web/src/modules/06-admission` against M6's generated client methods (the M6 read routes are
@@ -325,6 +326,22 @@ contract), so `openapi.json`/the client are unchanged.
 > `hope.dashboard.read`; the SERVER stays the only enforcement point. The recording modal (all five RFAs),
 > the late-completion confirmation dialog, the correction flow, and the schedule-admin write surfaces fill in
 > as their write paths harden.
+
+> ¹⁸ **Orders (M11) now LIVE (Track B, M11-T08, ADR-0030).** Built under
+> `apps/web/src/modules/11-orders` against M11's generated client methods (the M11 read routes are enriched in
+> `scripts/openapi/enrichments.ts`, so `packages/ui/src/core/api` types them), registered into the M1 shell
+> via `orderScreens` (`main.tsx`). The Signature Inbox is the global queue of orders awaiting signature, KPI'd
+> by kind with a priority cue (the SERVER owns the authoritative §2.2 D2 status); the Patient Orders list
+> ("Use Patient Workspace") renders every order for the patient with its lifecycle status and verbal deadline;
+> the Order Detail shows signatures, the verbal deadline, the correction link, and the lab transmission /
+> results lifecycle (D17); the Verbal-Expiring queue renders the 48h countdown with 12h/2h pre-expiry colour
+> tiers (42 CFR 418.104(b) / D3); the Cosign-Pending queue surfaces LPN-drafted orders awaiting RN/supervisor
+> cosignature (§2.5); the Lab Results-Pending-Review queue surfaces results received awaiting "Mark reviewed"
+> (D17); the Standing-Order admin lists templates with cadence + spawn history (§2.4 D5). Nav visibility is
+> gated by `orders.read`; the SERVER stays the only enforcement point (out-of-scope orders 404, never 403).
+> The draft modal (all 8 kinds), the sign step-up, the record-verbal / cosign / discontinue / mark-reviewed /
+> correct write surfaces, the standing-order admin writes, and the verbal-policy admin fill in as their write
+> paths harden.
 
 ---
 

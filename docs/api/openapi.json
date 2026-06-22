@@ -188,10 +188,52 @@
         "tags": [
           "11-orders"
         ],
+        "summary": "Org verbal-order policy — window hours, cosign kinds, platform floor (§4.1 / §2.3 D3)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "windowHours",
+                    "businessHoursOnly",
+                    "lpnCosignRequiredKinds",
+                    "npCosignRequiredKinds",
+                    "platformFloorWindowHours",
+                    "policyVersion"
+                  ],
+                  "properties": {
+                    "windowHours": {
+                      "type": "integer"
+                    },
+                    "businessHoursOnly": {
+                      "type": "boolean"
+                    },
+                    "lpnCosignRequiredKinds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "npCosignRequiredKinds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "platformFloorWindowHours": {
+                      "type": "integer"
+                    },
+                    "policyVersion": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -7346,10 +7388,262 @@
         "tags": [
           "11-orders"
         ],
-        "parameters": [],
+        "summary": "List orders by patient / admission / kind / status (§4.1; ABAC caseload_or_scope)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "admissionId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "lab",
+                  "type": "string"
+                },
+                {
+                  "const": "dme",
+                  "type": "string"
+                },
+                {
+                  "const": "level_of_care_change",
+                  "type": "string"
+                },
+                {
+                  "const": "recertification",
+                  "type": "string"
+                },
+                {
+                  "const": "comfort_kit",
+                  "type": "string"
+                },
+                {
+                  "const": "supply",
+                  "type": "string"
+                },
+                {
+                  "const": "ancillary_service",
+                  "type": "string"
+                },
+                {
+                  "const": "idg_requested",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 32,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "orders"
+                  ],
+                  "properties": {
+                    "orders": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "patientId",
+                          "admissionId",
+                          "kind",
+                          "status",
+                          "priority",
+                          "version",
+                          "drafterMembershipId",
+                          "drafterDiscipline",
+                          "orderingPhysicianMdmId",
+                          "cosignRequired",
+                          "cosignStatus",
+                          "transmissionStatus",
+                          "resultsStatus",
+                          "verbalDeadlineAt",
+                          "discontinuationReason",
+                          "replacesOrderId",
+                          "triggeringAssessmentId",
+                          "triggeringHopeAssessmentId",
+                          "signedAt",
+                          "signedBy",
+                          "completedAt",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "priority": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "drafterMembershipId": {
+                            "type": "string"
+                          },
+                          "drafterDiscipline": {
+                            "type": "string"
+                          },
+                          "orderingPhysicianMdmId": {
+                            "type": "string"
+                          },
+                          "cosignRequired": {
+                            "type": "boolean"
+                          },
+                          "cosignStatus": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "attached",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "transmissionStatus": {
+                            "type": "string"
+                          },
+                          "resultsStatus": {
+                            "type": "string"
+                          },
+                          "verbalDeadlineAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "discontinuationReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "replacesOrderId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "triggeringAssessmentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "triggeringHopeAssessmentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "signedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "signedBy": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "completedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -7384,6 +7678,7 @@
         "tags": [
           "11-orders"
         ],
+        "summary": "Order detail — lifecycle status, signatures, verbal deadline, transmission/results state (§4.1)",
         "parameters": [
           {
             "name": "id",
@@ -7396,7 +7691,178 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "admissionId",
+                    "kind",
+                    "status",
+                    "priority",
+                    "version",
+                    "drafterMembershipId",
+                    "drafterDiscipline",
+                    "orderingPhysicianMdmId",
+                    "cosignRequired",
+                    "cosignStatus",
+                    "transmissionStatus",
+                    "resultsStatus",
+                    "verbalDeadlineAt",
+                    "discontinuationReason",
+                    "replacesOrderId",
+                    "triggeringAssessmentId",
+                    "triggeringHopeAssessmentId",
+                    "signedAt",
+                    "signedBy",
+                    "completedAt",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "priority": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "drafterMembershipId": {
+                      "type": "string"
+                    },
+                    "drafterDiscipline": {
+                      "type": "string"
+                    },
+                    "orderingPhysicianMdmId": {
+                      "type": "string"
+                    },
+                    "cosignRequired": {
+                      "type": "boolean"
+                    },
+                    "cosignStatus": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "attached",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "transmissionStatus": {
+                      "type": "string"
+                    },
+                    "resultsStatus": {
+                      "type": "string"
+                    },
+                    "verbalDeadlineAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "discontinuationReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "replacesOrderId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "triggeringAssessmentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "triggeringHopeAssessmentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signedBy": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "completedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -7672,10 +8138,193 @@
         "tags": [
           "11-orders"
         ],
+        "summary": "RN cosign-pending queue — orders awaiting an RN/supervisor cosignature (§4.1 / §5.2 §2.5)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "orders"
+                  ],
+                  "properties": {
+                    "orders": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "patientId",
+                          "admissionId",
+                          "kind",
+                          "status",
+                          "priority",
+                          "version",
+                          "drafterMembershipId",
+                          "drafterDiscipline",
+                          "orderingPhysicianMdmId",
+                          "cosignRequired",
+                          "cosignStatus",
+                          "transmissionStatus",
+                          "resultsStatus",
+                          "verbalDeadlineAt",
+                          "discontinuationReason",
+                          "replacesOrderId",
+                          "triggeringAssessmentId",
+                          "triggeringHopeAssessmentId",
+                          "signedAt",
+                          "signedBy",
+                          "completedAt",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "priority": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "drafterMembershipId": {
+                            "type": "string"
+                          },
+                          "drafterDiscipline": {
+                            "type": "string"
+                          },
+                          "orderingPhysicianMdmId": {
+                            "type": "string"
+                          },
+                          "cosignRequired": {
+                            "type": "boolean"
+                          },
+                          "cosignStatus": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "attached",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "transmissionStatus": {
+                            "type": "string"
+                          },
+                          "resultsStatus": {
+                            "type": "string"
+                          },
+                          "verbalDeadlineAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "discontinuationReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "replacesOrderId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "triggeringAssessmentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "triggeringHopeAssessmentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "signedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "signedBy": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "completedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -7692,10 +8341,193 @@
         "tags": [
           "11-orders"
         ],
+        "summary": "Physician pending-signature inbox — orders in pending_signature (§4.1 / §5.2)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "orders"
+                  ],
+                  "properties": {
+                    "orders": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "patientId",
+                          "admissionId",
+                          "kind",
+                          "status",
+                          "priority",
+                          "version",
+                          "drafterMembershipId",
+                          "drafterDiscipline",
+                          "orderingPhysicianMdmId",
+                          "cosignRequired",
+                          "cosignStatus",
+                          "transmissionStatus",
+                          "resultsStatus",
+                          "verbalDeadlineAt",
+                          "discontinuationReason",
+                          "replacesOrderId",
+                          "triggeringAssessmentId",
+                          "triggeringHopeAssessmentId",
+                          "signedAt",
+                          "signedBy",
+                          "completedAt",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "priority": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "drafterMembershipId": {
+                            "type": "string"
+                          },
+                          "drafterDiscipline": {
+                            "type": "string"
+                          },
+                          "orderingPhysicianMdmId": {
+                            "type": "string"
+                          },
+                          "cosignRequired": {
+                            "type": "boolean"
+                          },
+                          "cosignStatus": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "attached",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "transmissionStatus": {
+                            "type": "string"
+                          },
+                          "resultsStatus": {
+                            "type": "string"
+                          },
+                          "verbalDeadlineAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "discontinuationReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "replacesOrderId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "triggeringAssessmentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "triggeringHopeAssessmentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "signedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "signedBy": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "completedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -7712,10 +8544,193 @@
         "tags": [
           "11-orders"
         ],
+        "summary": "Lab orders with results received awaiting clinician Mark-reviewed (§4.1 / §5.2 D17)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "orders"
+                  ],
+                  "properties": {
+                    "orders": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "patientId",
+                          "admissionId",
+                          "kind",
+                          "status",
+                          "priority",
+                          "version",
+                          "drafterMembershipId",
+                          "drafterDiscipline",
+                          "orderingPhysicianMdmId",
+                          "cosignRequired",
+                          "cosignStatus",
+                          "transmissionStatus",
+                          "resultsStatus",
+                          "verbalDeadlineAt",
+                          "discontinuationReason",
+                          "replacesOrderId",
+                          "triggeringAssessmentId",
+                          "triggeringHopeAssessmentId",
+                          "signedAt",
+                          "signedBy",
+                          "completedAt",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "priority": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "drafterMembershipId": {
+                            "type": "string"
+                          },
+                          "drafterDiscipline": {
+                            "type": "string"
+                          },
+                          "orderingPhysicianMdmId": {
+                            "type": "string"
+                          },
+                          "cosignRequired": {
+                            "type": "boolean"
+                          },
+                          "cosignStatus": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "attached",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "transmissionStatus": {
+                            "type": "string"
+                          },
+                          "resultsStatus": {
+                            "type": "string"
+                          },
+                          "verbalDeadlineAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "discontinuationReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "replacesOrderId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "triggeringAssessmentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "triggeringHopeAssessmentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "signedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "signedBy": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "completedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -7761,10 +8776,193 @@
         "tags": [
           "11-orders"
         ],
+        "summary": "RN verbal-expiring queue — verbal_pending orders with a live 48h countdown (§4.1 / §5.2 D3)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "orders"
+                  ],
+                  "properties": {
+                    "orders": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "patientId",
+                          "admissionId",
+                          "kind",
+                          "status",
+                          "priority",
+                          "version",
+                          "drafterMembershipId",
+                          "drafterDiscipline",
+                          "orderingPhysicianMdmId",
+                          "cosignRequired",
+                          "cosignStatus",
+                          "transmissionStatus",
+                          "resultsStatus",
+                          "verbalDeadlineAt",
+                          "discontinuationReason",
+                          "replacesOrderId",
+                          "triggeringAssessmentId",
+                          "triggeringHopeAssessmentId",
+                          "signedAt",
+                          "signedBy",
+                          "completedAt",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "priority": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "drafterMembershipId": {
+                            "type": "string"
+                          },
+                          "drafterDiscipline": {
+                            "type": "string"
+                          },
+                          "orderingPhysicianMdmId": {
+                            "type": "string"
+                          },
+                          "cosignRequired": {
+                            "type": "boolean"
+                          },
+                          "cosignStatus": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "attached",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "transmissionStatus": {
+                            "type": "string"
+                          },
+                          "resultsStatus": {
+                            "type": "string"
+                          },
+                          "verbalDeadlineAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "discontinuationReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "replacesOrderId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "triggeringAssessmentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "triggeringHopeAssessmentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "signedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "signedBy": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "completedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -11550,10 +12748,83 @@
         "tags": [
           "11-orders"
         ],
+        "summary": "Standing-order templates — cadence, next-spawn, spawn count (§4.1 / §5.2 D5)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "standingOrders"
+                  ],
+                  "properties": {
+                    "standingOrders": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "patientId",
+                          "admissionId",
+                          "kind",
+                          "cadence",
+                          "status",
+                          "nextSpawnAt",
+                          "spawnCount",
+                          "maxSpawns"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "cadence": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "nextSpawnAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "spawnCount": {
+                            "type": "integer"
+                          },
+                          "maxSpawns": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -11588,6 +12859,7 @@
         "tags": [
           "11-orders"
         ],
+        "summary": "Standing-order template detail + spawn history (§4.1 / §5.2 D5)",
         "parameters": [
           {
             "name": "id",
@@ -11600,7 +12872,68 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "admissionId",
+                    "kind",
+                    "cadence",
+                    "status",
+                    "nextSpawnAt",
+                    "spawnCount",
+                    "maxSpawns"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "cadence": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "nextSpawnAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "spawnCount": {
+                      "type": "integer"
+                    },
+                    "maxSpawns": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"

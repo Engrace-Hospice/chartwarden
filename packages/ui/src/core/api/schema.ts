@@ -100,6 +100,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/orders/regenerate-verbal-timer/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1AdminOrdersRegenerateverbaltimerById"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/orders/verbal-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Org verbal-order policy — window hours, cosign kinds, platform floor (§4.1 / §2.3 D3) */
+        get: operations["getApiV1AdminOrdersVerbalpolicy"];
+        put: operations["putApiV1AdminOrdersVerbalpolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/scales/licenses": {
         parameters: {
             query?: never;
@@ -2613,6 +2646,252 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List orders by patient / admission / kind / status (§4.1; ABAC caseload_or_scope) */
+        get: operations["getApiV1Orders"];
+        put?: never;
+        post: operations["postApiV1Orders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Order detail — lifecycle status, signatures, verbal deadline, transmission/results state (§4.1) */
+        get: operations["getApiV1OrdersById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patchApiV1OrdersById"];
+        trace?: never;
+    };
+    "/api/v1/orders/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1OrdersByIdComplete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{id}/correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1OrdersByIdCorrect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{id}/cosign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1OrdersByIdCosign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{id}/discontinue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1OrdersByIdDiscontinue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{id}/request-signature": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1OrdersByIdRequestsignature"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{id}/sign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1OrdersByIdSign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{id}/sign-on-behalf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1OrdersByIdSignonbehalf"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{id}/verbal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1OrdersByIdVerbal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/cosign-pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** RN cosign-pending queue — orders awaiting an RN/supervisor cosignature (§4.1 / §5.2 §2.5) */
+        get: operations["getApiV1OrdersCosignpending"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/pending-signature": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Physician pending-signature inbox — orders in pending_signature (§4.1 / §5.2) */
+        get: operations["getApiV1OrdersPendingsignature"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/results-pending-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lab orders with results received awaiting clinician Mark-reviewed (§4.1 / §5.2 D17) */
+        get: operations["getApiV1OrdersResultspendingreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/suggestions/{patientId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1OrdersSuggestionsByPatientId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/verbal-expiring": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** RN verbal-expiring queue — verbal_pending orders with a live 48h countdown (§4.1 / §5.2 D3) */
+        get: operations["getApiV1OrdersVerbalexpiring"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orgs/{id}/invitations": {
         parameters: {
             query?: never;
@@ -3199,6 +3478,104 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/standing-orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Standing-order templates — cadence, next-spawn, spawn count (§4.1 / §5.2 D5) */
+        get: operations["getApiV1Standingorders"];
+        put?: never;
+        post: operations["postApiV1Standingorders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/standing-orders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Standing-order template detail + spawn history (§4.1 / §5.2 D5) */
+        get: operations["getApiV1StandingordersById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patchApiV1StandingordersById"];
+        trace?: never;
+    };
+    "/api/v1/standing-orders/{id}/discontinue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1StandingordersByIdDiscontinue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/standing-orders/{id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1StandingordersByIdPause"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/standing-orders/{id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1StandingordersByIdResume"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/standing-orders/{id}/spawn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1StandingordersByIdSpawn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/feature-flags": {
         parameters: {
             query?: never;
@@ -3612,6 +3989,77 @@ export interface operations {
             path: {
                 id: string;
             };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminOrdersRegenerateverbaltimerById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AdminOrdersVerbalpolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        windowHours: number;
+                        businessHoursOnly: boolean;
+                        lpnCosignRequiredKinds: string[];
+                        npCosignRequiredKinds: string[];
+                        platformFloorWindowHours: number;
+                        policyVersion: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1AdminOrdersVerbalpolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -7767,6 +8215,539 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1Orders: {
+        parameters: {
+            query?: {
+                patientId?: string;
+                admissionId?: string;
+                kind?: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                status?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        orders: {
+                            id: string;
+                            patientId: string;
+                            admissionId: string;
+                            kind: string;
+                            status: string;
+                            priority: string;
+                            version: number;
+                            drafterMembershipId: string;
+                            drafterDiscipline: string;
+                            orderingPhysicianMdmId: string;
+                            cosignRequired: boolean;
+                            cosignStatus: "pending" | "attached" | null;
+                            transmissionStatus: string;
+                            resultsStatus: string;
+                            verbalDeadlineAt: string | null;
+                            discontinuationReason: string | null;
+                            replacesOrderId: string | null;
+                            triggeringAssessmentId: string | null;
+                            triggeringHopeAssessmentId: string | null;
+                            signedAt: string | null;
+                            signedBy: string | null;
+                            completedAt: string | null;
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Orders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OrdersById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        kind: string;
+                        status: string;
+                        priority: string;
+                        version: number;
+                        drafterMembershipId: string;
+                        drafterDiscipline: string;
+                        orderingPhysicianMdmId: string;
+                        cosignRequired: boolean;
+                        cosignStatus: "pending" | "attached" | null;
+                        transmissionStatus: string;
+                        resultsStatus: string;
+                        verbalDeadlineAt: string | null;
+                        discontinuationReason: string | null;
+                        replacesOrderId: string | null;
+                        triggeringAssessmentId: string | null;
+                        triggeringHopeAssessmentId: string | null;
+                        signedAt: string | null;
+                        signedBy: string | null;
+                        completedAt: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1OrdersById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OrdersByIdComplete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OrdersByIdCorrect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OrdersByIdCosign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OrdersByIdDiscontinue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OrdersByIdRequestsignature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OrdersByIdSign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OrdersByIdSignonbehalf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OrdersByIdVerbal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OrdersCosignpending: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        orders: {
+                            id: string;
+                            patientId: string;
+                            admissionId: string;
+                            kind: string;
+                            status: string;
+                            priority: string;
+                            version: number;
+                            drafterMembershipId: string;
+                            drafterDiscipline: string;
+                            orderingPhysicianMdmId: string;
+                            cosignRequired: boolean;
+                            cosignStatus: "pending" | "attached" | null;
+                            transmissionStatus: string;
+                            resultsStatus: string;
+                            verbalDeadlineAt: string | null;
+                            discontinuationReason: string | null;
+                            replacesOrderId: string | null;
+                            triggeringAssessmentId: string | null;
+                            triggeringHopeAssessmentId: string | null;
+                            signedAt: string | null;
+                            signedBy: string | null;
+                            completedAt: string | null;
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OrdersPendingsignature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        orders: {
+                            id: string;
+                            patientId: string;
+                            admissionId: string;
+                            kind: string;
+                            status: string;
+                            priority: string;
+                            version: number;
+                            drafterMembershipId: string;
+                            drafterDiscipline: string;
+                            orderingPhysicianMdmId: string;
+                            cosignRequired: boolean;
+                            cosignStatus: "pending" | "attached" | null;
+                            transmissionStatus: string;
+                            resultsStatus: string;
+                            verbalDeadlineAt: string | null;
+                            discontinuationReason: string | null;
+                            replacesOrderId: string | null;
+                            triggeringAssessmentId: string | null;
+                            triggeringHopeAssessmentId: string | null;
+                            signedAt: string | null;
+                            signedBy: string | null;
+                            completedAt: string | null;
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OrdersResultspendingreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        orders: {
+                            id: string;
+                            patientId: string;
+                            admissionId: string;
+                            kind: string;
+                            status: string;
+                            priority: string;
+                            version: number;
+                            drafterMembershipId: string;
+                            drafterDiscipline: string;
+                            orderingPhysicianMdmId: string;
+                            cosignRequired: boolean;
+                            cosignStatus: "pending" | "attached" | null;
+                            transmissionStatus: string;
+                            resultsStatus: string;
+                            verbalDeadlineAt: string | null;
+                            discontinuationReason: string | null;
+                            replacesOrderId: string | null;
+                            triggeringAssessmentId: string | null;
+                            triggeringHopeAssessmentId: string | null;
+                            signedAt: string | null;
+                            signedBy: string | null;
+                            completedAt: string | null;
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OrdersSuggestionsByPatientId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                patientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OrdersVerbalexpiring: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        orders: {
+                            id: string;
+                            patientId: string;
+                            admissionId: string;
+                            kind: string;
+                            status: string;
+                            priority: string;
+                            version: number;
+                            drafterMembershipId: string;
+                            drafterDiscipline: string;
+                            orderingPhysicianMdmId: string;
+                            cosignRequired: boolean;
+                            cosignStatus: "pending" | "attached" | null;
+                            transmissionStatus: string;
+                            resultsStatus: string;
+                            verbalDeadlineAt: string | null;
+                            discontinuationReason: string | null;
+                            replacesOrderId: string | null;
+                            triggeringAssessmentId: string | null;
+                            triggeringHopeAssessmentId: string | null;
+                            signedAt: string | null;
+                            signedBy: string | null;
+                            completedAt: string | null;
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1OrgsByIdInvitations: {
         parameters: {
             query?: never;
@@ -9180,6 +10161,204 @@ export interface operations {
             header?: never;
             path: {
                 eventId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Standingorders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        standingOrders: {
+                            id: string;
+                            patientId: string;
+                            admissionId: string;
+                            kind: string;
+                            cadence: string;
+                            status: string;
+                            nextSpawnAt: string | null;
+                            spawnCount: number;
+                            maxSpawns: number | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Standingorders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1StandingordersById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        kind: string;
+                        cadence: string;
+                        status: string;
+                        nextSpawnAt: string | null;
+                        spawnCount: number;
+                        maxSpawns: number | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1StandingordersById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1StandingordersByIdDiscontinue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1StandingordersByIdPause: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1StandingordersByIdResume: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1StandingordersByIdSpawn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
             };
             cookie?: never;
         };

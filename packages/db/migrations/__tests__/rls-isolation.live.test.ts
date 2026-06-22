@@ -1296,4 +1296,116 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       expect(r.rows[0].after.rfa_kind).toBe("01_admission"); // structured column passes through
     });
   });
+
+  // ── M11 Orders — org-scoped RLS, append-only no-DELETE, audit scrub (§7.7 / §3.4–3.7 / §9.3)
+  // 0036/0037 (M11) applied above. Proves on REAL Postgres: order_record is tenant-isolated on app.org_id
+  // even with app authorization stubbed open (§9.3 layer-independence); the WITH CHECK blocks a cross-tenant
+  // write; wardenx_app has NO DELETE (orders supersede via correction / discontinue, never delete — §3.6);
+  // the monthly-partitioned (created_at) parent's M4 write-audit trigger scrubs the data/indication_text
+  // denylist (D11 / §8.1) while the structured kind column passes through; the order_signature child is
+  // org-scoped.
+  describe("M11 Orders — cross-tenant isolation, no-DELETE, audit scrub (§7.7 / §3.4–3.7 / §9.3)", () => {
+    const PE_A11 = "ea000000-0000-0000-0000-0000000000c1";
+    const PE_B11 = "eb000000-0000-0000-0000-0000000000d1";
+    const LOC_A11 = "ea000000-0000-0000-0000-0000000000c2";
+    const LOC_B11 = "eb000000-0000-0000-0000-0000000000d2";
+    const USER_A11 = "ea000000-0000-0000-0000-0000000000c3";
+    const USER_B11 = "eb000000-0000-0000-0000-0000000000d3";
+    const MEM_A11 = "ea000000-0000-0000-0000-0000000000c4";
+    const MEM_B11 = "eb000000-0000-0000-0000-0000000000d4";
+    const ORD_A11 = "ea000000-0000-0000-0000-0000000000c5";
+    const ORD_B11 = "eb000000-0000-0000-0000-0000000000d5";
+    const SIG_A11 = "ea000000-0000-0000-0000-0000000000c6";
+    const OCOLS =
+      "(id,organization_id,provider_entity_id,location_id,patient_id,admission_id,kind,kind_version,data,drafter_membership_id,drafter_discipline,ordering_physician_mdm_id)";
+
+    beforeAll(async () => {
+      await db.query(
+        `INSERT INTO provider_entity (id,organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
+           VALUES ($1,$2,'CCN-M11A','M11 A','NPI-M11A','enc','12-31'),
+                  ($3,$4,'CCN-M11B','M11 B','NPI-M11B','enc','12-31')`,
+        [PE_A11, ORG_A, PE_B11, ORG_B],
+      );
+      await db.query(
+        `INSERT INTO location (id,provider_entity_id,name,address_line1,city,state,postal_code,timezone)
+           VALUES ($1,$2,'L11A','1 St','Town','OR','97000','America/Los_Angeles'),
+                  ($3,$4,'L11B','1 St','Town','OR','97000','America/Los_Angeles')`,
+        [LOC_A11, PE_A11, LOC_B11, PE_B11],
+      );
+      await db.query(`INSERT INTO "user" (id,email) VALUES ($1,'m11a@x.test'),($2,'m11b@x.test')`, [
+        USER_A11,
+        USER_B11,
+      ]);
+      await db.query(
+        `INSERT INTO membership (id,user_id,organization_id,status)
+           VALUES ($1,$2,$3,'active'),($4,$5,$6,'active')`,
+        [MEM_A11, USER_A11, ORG_A, MEM_B11, USER_B11, ORG_B],
+      );
+      // One draft order per org (superuser → RLS bypassed). data jsonb carries a free-text note so the audit
+      // scrub is observable; created_at defaults to now() → the current monthly partition (exists post-migration).
+      await db.query(
+        `INSERT INTO order_record ${OCOLS} VALUES
+           ($1,$2,$3,$4,gen_random_uuid(),gen_random_uuid(),'lab','v1','{"note":"free text PHI"}'::jsonb,$5,'rn_case_manager',gen_random_uuid()),
+           ($6,$7,$8,$9,gen_random_uuid(),gen_random_uuid(),'lab','v1','{"note":"free text PHI"}'::jsonb,$10,'rn_case_manager',gen_random_uuid())`,
+        [ORD_A11, ORG_A, PE_A11, LOC_A11, MEM_A11, ORD_B11, ORG_B, PE_B11, LOC_B11, MEM_B11],
+      );
+      // One signature on Org A's order (the polymorphic order_signature child; target_kind='order').
+      await db.query(
+        `INSERT INTO order_signature
+           (id,organization_id,provider_entity_id,location_id,target_kind,target_id,signature_kind,signer_membership_id,signer_discipline)
+         VALUES ($1,$2,$3,$4,'order',$5,'signature',$6,'md')`,
+        [SIG_A11, ORG_A, PE_A11, LOC_A11, ORD_A11, MEM_A11],
+      );
+    });
+
+    it("§9.3 Org A sees ONLY its own order_record (RLS blocks cross-tenant reads, auth stubbed open)", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM order_record WHERE id=$1", [ORD_A11]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM order_record WHERE id=$1", [ORD_A11]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§3.5 Org B cannot INSERT an order_record into Org A (WITH CHECK blocks the cross-tenant write)", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO order_record ${OCOLS} VALUES
+               (gen_random_uuid(),$1,$2,$3,gen_random_uuid(),gen_random_uuid(),'lab','v1','{}'::jsonb,$4,'rn_case_manager',gen_random_uuid())`,
+            [ORG_A, PE_A11, LOC_A11, MEM_A11],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§3.6 order_record has NO DELETE grant for wardenx_app (orders supersede/discontinue, never delete)", async () => {
+      await expect(
+        withOrg(ORG_A, () => db.query("DELETE FROM order_record WHERE id=$1", [ORD_A11])),
+      ).rejects.toThrow();
+    });
+
+    it("§3.4 order_signature is org-scoped — Org A sees its signature, Org B sees none", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM order_signature WHERE id=$1", [SIG_A11]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM order_signature WHERE id=$1", [SIG_A11]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§8.1 the M4 write-audit trigger fired for the order write and scrubbed the data denylist", async () => {
+      const r = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='order_record' AND event_type='order_record.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.data).toBe("<changed>"); // §8.1 free-text PHI (jsonb payload) scrub
+      expect(r.rows[0].after.kind).toBe("lab"); // structured column passes through
+    });
+  });
 });
