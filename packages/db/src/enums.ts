@@ -1371,3 +1371,127 @@ export const orderResultsStatus = pgEnum("order_results_status", [
   "results_received",
   "results_overdue",
 ]);
+
+// ── Module 12 (DoseSpot Integration) §3.2 ──────────────────────────────────────────────────────
+// The prescribing surface. `medication_order_status` is the §2.2 D2 lifecycle (note the EPCS-only
+// `epcs_identity_pending` branch + the `queued_for_transmission`/`transmitted`/`ack_received` wire
+// states). `dosespot_send_state` is the orthogonal transmission observed-state (mirrors M11's lab
+// dispatch split). Values mirror the leaf type surface in `@wardenx/types` (`dosespot.ts`); the §3.3
+// tables (M12-T02) compile against this final set (ADR-0022 D1.3: one definition site, no ALTER-redeclare).
+
+/** `medication_order_status` — the §2.2 D2 medication-order lifecycle (incl. EPCS + transmission states). */
+export const medicationOrderStatus = pgEnum("medication_order_status", [
+  "draft",
+  "pending_signature",
+  "verbal_pending",
+  "epcs_identity_pending",
+  "signed",
+  "queued_for_transmission",
+  "transmitted",
+  "ack_received",
+  "nack_received",
+  "active",
+  "completed",
+  "discontinued",
+  "transmission_failed",
+  "expired_unsigned",
+]);
+
+/** `med_class` — the §2.1 medication taxonomy (standard / controlled / compounded). */
+export const medClass = pgEnum("med_class", ["standard", "controlled_substance", "compounded"]);
+
+/** `dea_schedule` — the §2.4 DEA controlled-substance schedules subject to the EPCS gate. */
+export const deaSchedule = pgEnum("dea_schedule", ["II", "III", "IV", "V"]);
+
+/** `dosespot_send_state` — the §2.2 / §4.10 orthogonal NewRx-transmission observed state. */
+export const dosespotSendState = pgEnum("dosespot_send_state", [
+  "not_required",
+  "queued",
+  "in_flight",
+  "transmitted",
+  "acked",
+  "nacked",
+  "failed",
+]);
+
+/** `refill_request_status` — the §2.7 D9 refill-inbox lifecycle. */
+export const refillRequestStatus = pgEnum("refill_request_status", [
+  "pending",
+  "approved",
+  "denied",
+  "expired",
+]);
+
+/** `refill_response_channel` — the §2.7 channel a refill decision is communicated back through. */
+export const refillResponseChannel = pgEnum("refill_response_channel", [
+  "electronic_via_dosespot",
+  "phone",
+  "fax",
+  "in_person",
+]);
+
+/** `medication_history_source` — the §2.8 provenance of a medication-history record. */
+export const medicationHistorySource = pgEnum("medication_history_source", [
+  "dosespot_medhx",
+  "manual_entry",
+  "reconciliation_carryforward",
+]);
+
+/** `dosespot_webhook_event_type` — the §2.5 / §7.4 D7 typed inbound webhook taxonomy. */
+export const dosespotWebhookEventType = pgEnum("dosespot_webhook_event_type", [
+  "script_status_update",
+  "refill_request",
+  "medication_history_result",
+  "patient_mismatch",
+  "prescriber_status_changed",
+]);
+
+/** `ial2_status` — the §2.4 §1311.115 IAL2 identity-proofing status for an EPCS prescriber. */
+export const ial2Status = pgEnum("ial2_status", [
+  "not_started",
+  "in_progress",
+  "verified",
+  "expired",
+  "revoked",
+]);
+
+/** `epcs_certification_status` — the §2.4 D18 per-tenant EPCS certification gate (Drummond / ADR-006). */
+export const epcsCertificationStatus = pgEnum("epcs_certification_status", [
+  "not_certified",
+  "audit_in_progress",
+  "certified",
+  "revoked",
+]);
+
+/** `epcs_signing_attempt_outcome` — the §2.4 §1311.205 record-of-application outcome per signing attempt. */
+export const epcsSigningAttemptOutcome = pgEnum("epcs_signing_attempt_outcome", [
+  "pending",
+  "succeeded",
+  "failed_2fa",
+  "failed_timeout",
+  "failed_validation",
+]);
+
+/** `epcs_second_factor_type` — the §2.4 §1311.116 second-factor used at controlled-substance signing. */
+export const epcsSecondFactorType = pgEnum("epcs_second_factor_type", [
+  "totp",
+  "passkey",
+  "push_confirm",
+]);
+
+/** `medication_order_discontinuation_reason` — the §2.2 / §2.12 discontinuation reasons (operator + cascade). */
+export const medicationOrderDiscontinuationReason = pgEnum(
+  "medication_order_discontinuation_reason",
+  [
+    "clinical_judgement",
+    "patient_request",
+    "adverse_event",
+    "replaced_by_corrected_order",
+    "admission_discharged",
+    "pharmacy_nack",
+    "corrected_replacement",
+    "expired_verbal",
+    "transmission_failed",
+    "no_refills_no_renewal",
+  ],
+);

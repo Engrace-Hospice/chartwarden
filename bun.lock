@@ -121,6 +121,9 @@
     "packages/dosespot": {
       "name": "@wardenx/dosespot",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
     },
     "packages/evv-aggregators": {
       "name": "@wardenx/evv-aggregators",

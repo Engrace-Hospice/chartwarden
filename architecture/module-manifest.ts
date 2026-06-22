@@ -455,7 +455,11 @@ export const MODULES: ModuleDef[] = [
   {
     id: 12,
     name: "DoseSpot Integration",
-    codePaths: ["packages/dosespot", "apps/backend/src/modules/12-dosespot"],
+    codePaths: [
+      "packages/dosespot",
+      "apps/backend/src/modules/12-dosespot",
+      "apps/web/src/modules/12-dosespot",
+    ], // +web: Track B in-task screens (ADR-0030), land in M12-T09
     dependsOn: [5, 11, 38, 40],
     ownedTables: [
       "dosespot_prescriber",
