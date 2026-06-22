@@ -11,8 +11,16 @@
 // HERE (the M13 feature package, the M11 `@wardenx/orders` / M12 `@wardenx/dosespot` precedent) rather than
 // the `@wardenx/domain` leaf because it reads the local `ADMINISTRATION_MODE_CATALOG`. Later M13 tasks add
 // the §2.4 D3 PRN reassessment rules + §2.6 D7 controlled-substance witness eligibility (M13-T04).
+//
+// M13-T04 lands the §2.4 D3 PRN reassessment trigger + minimum-interval enforcement (`prn/`: recommended-
+// scale derivation by clinical category, order→tenant→category window resolution, `m13.prn_administration_
+// recorded` payload, and the hard minimum-interval gate with the supervisor-override path) and the §2.6 D7
+// controlled-substance witness (`witness/`: the five-rule `controlled_substance_witness_eligible` predicate
+// + the §7.4 HMAC-signed, scope-bound, 60s single-use witness-attestation token core). All PURE.
 
 export * from "./modes/catalog";
 export * from "./lifecycle";
 export * from "./schedule";
 export * from "./five-rights";
+export * from "./prn";
+export * from "./witness";

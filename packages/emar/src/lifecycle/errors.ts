@@ -39,6 +39,18 @@ export const M13_ERROR_STATUS = {
   VOID_REASON_TOO_SHORT: 422,
   // §2.2 — a transition reserved to the system (correction trigger) was attempted by a human actor.
   NOT_SYSTEM_ACTOR: 403,
+  // §2.4 D3 — a PRN dose was requested inside the order's minimum-interval window without an override.
+  PRN_INTERVAL_VIOLATION: 422,
+  // §2.4 D3 — the PRN minimum-interval override requires the `prn_interval_override` permission.
+  PRN_INTERVAL_OVERRIDE_NOT_PERMITTED: 403,
+  // §2.4 D3 — the PRN minimum-interval override reason is shorter than the 40-character minimum.
+  PRN_INTERVAL_OVERRIDE_REASON_TOO_SHORT: 422,
+  // §7.4 — the witness-attestation token failed HMAC verification (tampered or wrong tenant secret).
+  WITNESS_TOKEN_INVALID: 401,
+  // §7.4 — the witness-attestation token is past its 60-second TTL (or its issued-at is in the future).
+  WITNESS_TOKEN_EXPIRED: 401,
+  // §7.4 — the witness-attestation token was minted for a different (patient, order, clinician) scope.
+  WITNESS_TOKEN_SCOPE_MISMATCH: 401,
 } as const;
 
 /** A machine-readable M13 administration-lifecycle failure code (§2.2 / §5.11). */
