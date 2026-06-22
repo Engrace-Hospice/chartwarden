@@ -1107,6 +1107,52 @@ export const M10_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M10 contributed permission keys. */
 export type M10ContributedPermissionKey = keyof typeof M10_CONTRIBUTED_PERMISSIONS;
 
+/**
+ * M11-T06 — Module 11 (Orders) §4.6 permission keys registered into M3's catalog (the binding handshake;
+ * boot validation fails if any key is missing at startup). The clinical read/author/sign/verbal/cosign/
+ * discontinue/amend/complete keys default to `caseload_or_scope` (the patient-scope predicate M5/M6/M7
+ * own); the author routes ALSO carry M11's owned `discipline_can_order` predicate, the sign routes the
+ * owned `signer_eligible` predicate, and the cosign route the owned `cosigner_role_match` predicate
+ * (registered by 11-orders/abac-predicates.ts) — applied explicitly at the route on top of the default.
+ * The policy keys are pure RBAC (`none`; org-admin / compliance reference rows), and the platform-ops
+ * verbal-timer regeneration key is `none` (audited as `audit.elevated_access` at the route, §4.1). Keys
+ * carry an `orders.` NAMESPACE prefix on top of the `resource.action` decomposition (like M10's `hope.`),
+ * so `key` is the full dotted permission string used at `requirePermission(...)`. Kept in a dedicated
+ * const for §3.3 attributability.
+ */
+export const M11_CONTRIBUTED_PERMISSIONS = {
+  // Read (caseload-scoped clinical reads) — every GET route.
+  "orders.read": { resource: "order", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  // Authoring — POST /orders, PATCH draft (route ALSO requires `discipline_can_order`).
+  "orders.draft": { resource: "order", action: "draft", category: "clinical", abac: "caseload_or_scope" },
+  // Signing — sign / request-signature (route ALSO requires `signer_eligible`).
+  "orders.sign": { resource: "order", action: "sign", category: "clinical", abac: "caseload_or_scope" },
+  // Proxy sign — medical_director only (pure RBAC; reason captured at the route).
+  "orders.sign_on_behalf": { resource: "order", action: "sign_on_behalf", category: "clinical", abac: "none" },
+  // Verbal order recording — RN / Clinical Supervisor.
+  "orders.verbal.record": { resource: "order_verbal", action: "record", category: "clinical", abac: "caseload_or_scope" },
+  // Cosignature attach (route ALSO requires `cosigner_role_match`).
+  "orders.cosign": { resource: "order", action: "cosign", category: "clinical", abac: "cosigner_role_match" },
+  // Discontinue an active / pending / verbal order.
+  "orders.discontinue": { resource: "order", action: "discontinue", category: "clinical", abac: "caseload_or_scope" },
+  // Corrected order with replaces_order_id.
+  "orders.amend": { resource: "order", action: "amend", category: "clinical", abac: "caseload_or_scope" },
+  // Manual completion (incl. lab "Mark reviewed", D17).
+  "orders.complete": { resource: "order", action: "complete", category: "clinical", abac: "caseload_or_scope" },
+  // Standing-order template CRUD.
+  "orders.standing.manage": { resource: "standing_order", action: "manage", category: "clinical", abac: "caseload_or_scope" },
+  // PRN manual spawn (worker spawn is system actor).
+  "orders.standing.spawn": { resource: "standing_order", action: "spawn", category: "clinical", abac: "caseload_or_scope" },
+  // Org verbal-policy read / update (org_admin, compliance).
+  "orders.policy.read": { resource: "order_policy", action: "read", category: "compliance", abac: "none" },
+  "orders.policy.manage": { resource: "order_policy", action: "manage", category: "compliance", abac: "none" },
+  // Platform-ops verbal-timer regeneration (audited as elevated access, §4.1).
+  "orders.admin.regenerate_verbal_timer": { resource: "order_admin", action: "regenerate_verbal_timer", category: "platform", abac: "none" },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M11 contributed permission keys. */
+export type M11ContributedPermissionKey = keyof typeof M11_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -1179,6 +1225,11 @@ export function m10ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M10_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M11 contributed keys into `permission`-table mirror rows (M11-T06). */
+export function m11ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M11_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -1200,5 +1251,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m8ContributedPermissionMirrorRows(),
     ...m9ContributedPermissionMirrorRows(),
     ...m10ContributedPermissionMirrorRows(),
+    ...m11ContributedPermissionMirrorRows(),
   ];
 }

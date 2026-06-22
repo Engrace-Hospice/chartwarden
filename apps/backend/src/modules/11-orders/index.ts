@@ -17,7 +17,35 @@ export {
   createInMemoryOrderSeamStore,
   createOrderProvider,
   createOrderSignatureProvider,
+  getOrderMdmValidator,
   getOrderProvider,
   getOrderSignatureProvider,
+  getOrderTerminologyValidator,
   registerOrderSeams,
 } from "./seams/index";
+// M11-T06 — the §4.1 route inventory over an in-memory backend + the §4.7 ABAC predicates M11 owns
+// (`discipline_can_order` / `signer_eligible` / `cosigner_role_match`). The §4.6 permission keys M11
+// contributes to M3 live in @wardenx/auth (M11_CONTRIBUTED_PERMISSIONS).
+export {
+  type OrderAbacDeps,
+  M11_ABAC_PREDICATES,
+  buildOrderAbacPredicates,
+  orderDisciplinesOf,
+  registerOrderAbacPredicates,
+} from "./abac-predicates";
+export { type OrderRouteDeps, registerOrderRoutes } from "./routes/orders-routes";
+export {
+  type CreateOrderArgs,
+  type CreateStandingArgs,
+  type OrderAbacFacts,
+  type OrderAbacResolver,
+  type OrderMdmValidator,
+  type OrderRouteSeed,
+  type OrderRouteService,
+  type OrderTerminologyValidator,
+  type OrderView,
+  type RecordedOrderEvent,
+  type StandingOrderView,
+  type VerbalPolicyView,
+  createInMemoryOrderBackend,
+} from "./routes/service";

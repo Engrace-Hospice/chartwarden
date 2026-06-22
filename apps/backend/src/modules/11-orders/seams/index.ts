@@ -10,6 +10,7 @@
 // mirrors the M8/M9/M10 seams/index.ts precedents.
 import type { OrderProvider, OrderSignatureProvider } from "@wardenx/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
+import type { OrderMdmValidator, OrderTerminologyValidator } from "../routes/service";
 import { createOrderProvider, createOrderSignatureProvider } from "./providers";
 import { type OrderSeamStore, createInMemoryOrderSeamStore } from "./store";
 
@@ -51,4 +52,22 @@ export function getOrderSignatureProvider(): OrderSignatureProvider {
 /** Typed resolver for M11's OrderProvider (M14/M23/M30/M7 consume the read-side seam). */
 export function getOrderProvider(): OrderProvider {
   return getSeam("OrderProvider");
+}
+
+// ── §4.1 cross-module bindings M11 CONSUMES (not owned) ──────────────────────────────────────────────────
+// The order route service "binds" the M40 master-data surface (the ordering physician / DME vendor) and the
+// M38 terminology surface (the LOINC / HCPCS / CPT code on the order payload). Both are resolved from the M1
+// registry here and injected into the service (seed.mdm / seed.terminology); the seam contracts are OPAQUE
+// (`unknown`) in @wardenx/types, so these getters narrow to the minimal validator subsets the service uses
+// (the same USING-the-name pattern as M10's `getLatestAssessmentProviderForHope`). M40 / M38 are already in
+// M11's `dependsOn`, so no new manifest edge is introduced.
+
+/** Resolve the M40 `MdmEntityProvider` seam narrowed to the order service's physician/vendor validator. */
+export function getOrderMdmValidator(): OrderMdmValidator {
+  return getSeam("MdmEntityProvider") as OrderMdmValidator;
+}
+
+/** Resolve the M38 `TerminologyProvider` seam narrowed to the order service's LOINC/HCPCS/CPT validator. */
+export function getOrderTerminologyValidator(): OrderTerminologyValidator {
+  return getSeam("TerminologyProvider") as OrderTerminologyValidator;
 }
