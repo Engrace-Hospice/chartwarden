@@ -25,6 +25,16 @@ export function toSession(ctx: ActorContextResponse): Session {
 }
 
 /**
+ * Does the actor still need to pick an organization? True only for a RESOLVED session with no bound
+ * org (post-login, before `select-organization`): every org-scoped route 401/403s for it, so the
+ * shell routes it to organization-select. A still-loading or signed-out session is `null` → false
+ * (no redirect); a bound session has a non-empty `organizationId` → false.
+ */
+export function needsOrgSelection(session: Session | null): boolean {
+  return session !== null && !session.organizationId;
+}
+
+/**
  * Is a screen visible to the current actor? A screen with no `requiredPermission` is always
  * visible. When the actor's effective permission set is known, a gated screen shows only if the
  * actor holds the key — the SAME key the server enforces on the underlying route. When it is

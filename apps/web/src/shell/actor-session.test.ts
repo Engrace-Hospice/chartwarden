@@ -2,7 +2,12 @@
 // they run in the node test env without React/DOM. Proves the shell reflects (never invents)
 // the server-resolved roles/permissions: role-scoped tiles, fail-open when the set is unknown.
 import { describe, expect, it } from "vitest";
-import { type ActorContextResponse, canSeeScreen, toSession } from "./actor-session";
+import {
+  type ActorContextResponse,
+  canSeeScreen,
+  needsOrgSelection,
+  toSession,
+} from "./actor-session";
 import type { Session } from "./session";
 
 const ORG_BOUND: ActorContextResponse = {
@@ -46,6 +51,30 @@ describe("FB-T15 toSession — maps the live actor context into the shell Sessio
     expect(s.membershipId).toBeUndefined();
     expect(s.displayName).toBeUndefined();
     expect(s.roles).toEqual([]);
+  });
+});
+
+describe("needsOrgSelection — shell pre-org guard", () => {
+  it("is true for a resolved session with no bound org (post-login, pre-select)", () => {
+    const preOrg = toSession({
+      userId: "u_2",
+      organizationId: null,
+      organizationName: null,
+      membershipId: null,
+      displayName: null,
+      roles: [],
+      isAdmin: false,
+      permissions: [],
+    });
+    expect(needsOrgSelection(preOrg)).toBe(true);
+  });
+
+  it("is false for a bound session (has an organizationId)", () => {
+    expect(needsOrgSelection(toSession(ORG_BOUND))).toBe(false);
+  });
+
+  it("is false while loading or signed out (null) — no redirect, no flicker", () => {
+    expect(needsOrgSelection(null)).toBe(false);
   });
 });
 
