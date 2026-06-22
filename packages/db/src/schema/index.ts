@@ -452,3 +452,42 @@ export * from "./evv/evv-geofence-policy";
 export * from "./evv/evv-device";
 export * from "./evv/evv-missing-resolution";
 export * from "./evv/evv-aggregator-submission";
+
+// ---------------------------------------------------------------------------
+// M22 owns 17 tables (M22-T02, §3.3): the document corpus — document (the §2.2.1 aggregate root; the active
+// version is pointed at by active_version_id, F19/§2.2.2 — no per-version is_current flag) + document_version
+// (the append-only byte-payload ledger; one row per MinIO object) + document_tag (the only M22 table
+// wardenx_app may DELETE from) + document_access_log (the §164.528 read-audit ledger) + document_legal_hold
+// (the §2.2.3 hold record) — the form-render pillar — form_template + form_template_version (the §4.5
+// platform-published catalog: NO organization_id BY DESIGN, dual-grant read-all RLS like M38 code_system /
+// M39 consent_type_catalog) + tenant_template_overlay (the D16 per-tenant branding overlay) + form_fill (the
+// §7.2 W2 render-request machine) — and the DocLens intake-extraction pillar — intake_upload_batch (the
+// §2.2.5 multi-doc pipeline) + classified_page + extraction_job + extraction_candidate + extraction_discrepancy
+// + extraction_review + extraction_decision + extraction_provenance (the AI-Governance §8.3 committed-extraction
+// audit trail). Two tables carry patient PHI by the three-column rule (document, intake_upload_batch) → they
+// carry provider_entity_id + location_id (nullable — a raw intake_source upload precedes patient context); the
+// remaining org-scoped tables join to PHI only via document_id/batch_id. Four tables are PARTITION BY RANGE
+// monthly: document_access_log (accessed_at), form_fill (created_at), extraction_job (queued_at),
+// extraction_candidate (extracted_at) — the Drizzle shape is logical (composite PK incl. the partition key);
+// the PARTITION BY conversion + monthly children + DEFAULT catch-all land in the RLS migration (0049). Cross-
+// module refs (M5 patient, M6 admission, the M5/M6/M8/… aggregate the document instantiates) are plain uuid
+// app-validated (M22 dependsOn [1,5]); only the tenancy spine + the M22-owned parents carry SQL FKs. RLS +
+// grants + M4 write-audit triggers (title / cipher / object-key / free-text PHI columns denylisted, §3.6) land
+// in M22-T02 (0049). The compliance_42cfr_part2 value of document_retention_class is appended by M4's 0035.
+export * from "./documents/documents";
+export * from "./documents/document-versions";
+export * from "./documents/document-tags";
+export * from "./documents/document-access-log";
+export * from "./documents/document-legal-hold";
+export * from "./documents/form-templates";
+export * from "./documents/form-template-versions";
+export * from "./documents/tenant-template-overlays";
+export * from "./documents/form-fills";
+export * from "./documents/intake-upload-batches";
+export * from "./documents/classified-pages";
+export * from "./documents/extraction-jobs";
+export * from "./documents/extraction-candidates";
+export * from "./documents/extraction-discrepancies";
+export * from "./documents/extraction-reviews";
+export * from "./documents/extraction-decisions";
+export * from "./documents/extraction-provenance";
