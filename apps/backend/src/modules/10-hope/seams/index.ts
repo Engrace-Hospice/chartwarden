@@ -11,6 +11,7 @@ import type {
   HopeJ2051Provider,
   HopeSubmissionProvider,
   HopeTimepointProvider,
+  LatestAssessmentProvider,
 } from "@wardenx/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import {
@@ -62,4 +63,15 @@ export function getHopeJ2051Provider(): HopeJ2051Provider {
 /** Typed resolver for M10's HopeSubmissionProvider. */
 export function getHopeSubmissionProvider(): HopeSubmissionProvider {
   return getSeam("HopeSubmissionProvider");
+}
+
+/**
+ * M10-T06 — CONSUME M9's `LatestAssessmentProvider` seam (registered by M9-T04; deps edge 10→9 already in
+ * the manifest). The HOPE recording service injects this resolver to snapshot PPS / ESAS-r at sign (D8 /
+ * §7.2). It is the read-only seam M10 consumes — never a direct cross-module schema import (§11). The boot
+ * path passes the resolved provider into `createInMemoryHopeBackend({ latestAssessments })`; absent (M9
+ * down) the snapshot is skipped and a warning is recorded (§7.13 / DR Tier-2).
+ */
+export function getLatestAssessmentProviderForHope(): LatestAssessmentProvider {
+  return getSeam("LatestAssessmentProvider");
 }

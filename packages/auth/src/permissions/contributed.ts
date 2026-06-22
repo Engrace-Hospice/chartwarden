@@ -1074,6 +1074,39 @@ export const M9_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M9 contributed permission keys. */
 export type M9ContributedPermissionKey = keyof typeof M9_CONTRIBUTED_PERMISSIONS;
 
+/**
+ * M10-T06 — Module 10 (HOPE Engine) §4.6 permission keys registered into M3's catalog. The clinical
+ * read/write/sign/correct keys default to `caseload_or_scope` (the patient-scope predicate M5/M7 own);
+ * the timepoint write/sign/correct routes ALSO carry M10's owned `hope.authorDisciplineAllowed` /
+ * `hope.correctionAuthorAllowed` predicates at the route (registered by 10-hope/abac-predicates.ts).
+ * The submission/dashboard keys default to `provider_entity_scope` (HOPE is inherently per-PE; M10-F09).
+ * The two admin keys are pure RBAC (`none`) — platform-admin-gated by role assignment. Kept in a
+ * dedicated const for §3.3 attributability.
+ */
+export const M10_CONTRIBUTED_PERMISSIONS = {
+  // Read (caseload-scoped clinical reads)
+  "hope.schedule.read": { resource: "hope_schedule", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  "hope.timepoint.read": { resource: "hope_timepoint", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  "hope.sfv.read": { resource: "hope_sfv", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  // Read (provider-entity-scoped compliance reads)
+  "hope.submission.read": { resource: "hope_submission", action: "read", category: "compliance", abac: "provider_entity_scope" },
+  "hope.dashboard.read": { resource: "hope_dashboard", action: "read", category: "compliance", abac: "provider_entity_scope" },
+  // Write
+  "hope.timepoint.write": { resource: "hope_timepoint", action: "write", category: "clinical", abac: "caseload_or_scope" },
+  "hope.timepoint.sign": { resource: "hope_timepoint", action: "sign", category: "clinical", abac: "caseload_or_scope" },
+  "hope.timepoint.correct": { resource: "hope_timepoint", action: "correct", category: "clinical", abac: "caseload_or_scope" },
+  // Schedule operations
+  "hope.schedule.skip": { resource: "hope_schedule", action: "skip", category: "clinical", abac: "caseload_or_scope" },
+  // Submission management
+  "hope.submission.manage": { resource: "hope_submission", action: "manage", category: "compliance", abac: "provider_entity_scope" },
+  // Platform admin
+  "hope.admin.regenerate_schedules": { resource: "hope_admin", action: "regenerate_schedules", category: "platform", abac: "none" },
+  "hope.admin.late_deadline_override": { resource: "hope_admin", action: "late_deadline_override", category: "platform", abac: "none" },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M10 contributed permission keys. */
+export type M10ContributedPermissionKey = keyof typeof M10_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -1141,6 +1174,11 @@ export function m9ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M9_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M10 contributed keys into `permission`-table mirror rows (M10-T06). */
+export function m10ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M10_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -1161,5 +1199,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m7ContributedPermissionMirrorRows(),
     ...m8ContributedPermissionMirrorRows(),
     ...m9ContributedPermissionMirrorRows(),
+    ...m10ContributedPermissionMirrorRows(),
   ];
 }

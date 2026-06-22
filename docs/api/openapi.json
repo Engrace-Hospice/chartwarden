@@ -487,6 +487,64 @@
         }
       }
     },
+    "/api/v1/admissions/{admissionId}/hope/sfv": {
+      "post": {
+        "operationId": "postApiV1AdmissionsByAdmissionIdHopeSfv",
+        "tags": [
+          "10-hope"
+        ],
+        "parameters": [
+          {
+            "name": "admissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admissions/{admissionId}/hope/timepoints": {
+      "post": {
+        "operationId": "postApiV1AdmissionsByAdmissionIdHopeTimepoints",
+        "tags": [
+          "10-hope"
+        ],
+        "parameters": [
+          {
+            "name": "admissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/admissions/{id}": {
       "get": {
         "operationId": "getApiV1AdmissionsById",
@@ -4869,6 +4927,443 @@
         }
       }
     },
+    "/api/v1/hope/admin/regenerate-schedules": {
+      "post": {
+        "operationId": "postApiV1HopeAdminRegenerateschedules",
+        "tags": [
+          "10-hope"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/hope/assessments/{id}": {
+      "get": {
+        "operationId": "getApiV1HopeAssessmentsById",
+        "tags": [
+          "10-hope"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1HopeAssessmentsById",
+        "tags": [
+          "10-hope"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/hope/assessments/{id}/correct": {
+      "post": {
+        "operationId": "postApiV1HopeAssessmentsByIdCorrect",
+        "tags": [
+          "10-hope"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/hope/assessments/{id}/sign": {
+      "post": {
+        "operationId": "postApiV1HopeAssessmentsByIdSign",
+        "tags": [
+          "10-hope"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/hope/assessments/{id}/summary-pdf": {
+      "post": {
+        "operationId": "postApiV1HopeAssessmentsByIdSummarypdf",
+        "tags": [
+          "10-hope"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/hope/assessments/{id}/validation": {
+      "get": {
+        "operationId": "getApiV1HopeAssessmentsByIdValidation",
+        "tags": [
+          "10-hope"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/hope/dashboard/compliance": {
+      "get": {
+        "operationId": "getApiV1HopeDashboardCompliance",
+        "tags": [
+          "10-hope"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/hope/schedules": {
+      "get": {
+        "operationId": "getApiV1HopeSchedules",
+        "tags": [
+          "10-hope"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/hope/schedules/{id}": {
+      "get": {
+        "operationId": "getApiV1HopeSchedulesById",
+        "tags": [
+          "10-hope"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/hope/schedules/{id}/skip": {
+      "post": {
+        "operationId": "postApiV1HopeSchedulesByIdSkip",
+        "tags": [
+          "10-hope"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/hope/sfv": {
+      "get": {
+        "operationId": "getApiV1HopeSfv",
+        "tags": [
+          "10-hope"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/hope/sfv/{id}": {
+      "get": {
+        "operationId": "getApiV1HopeSfvById",
+        "tags": [
+          "10-hope"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/hope/submissions": {
+      "get": {
+        "operationId": "getApiV1HopeSubmissions",
+        "tags": [
+          "10-hope"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/hope/submissions/{id}": {
+      "get": {
+        "operationId": "getApiV1HopeSubmissionsById",
+        "tags": [
+          "10-hope"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/hope/submissions/{id}/retry": {
+      "post": {
+        "operationId": "postApiV1HopeSubmissionsByIdRetry",
+        "tags": [
+          "10-hope"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/hope/submissions/assemble": {
+      "post": {
+        "operationId": "postApiV1HopeSubmissionsAssemble",
+        "tags": [
+          "10-hope"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/internal/assessments/latest-batch": {
       "get": {
         "operationId": "getApiV1InternalAssessmentsLatestbatch",
@@ -8765,6 +9260,35 @@
         "operationId": "postApiV1PatientsByPatientIdConsents",
         "tags": [
           "39-consent"
+        ],
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{patientId}/hope/assessments": {
+      "get": {
+        "operationId": "getApiV1PatientsByPatientIdHopeAssessments",
+        "tags": [
+          "10-hope"
         ],
         "parameters": [
           {

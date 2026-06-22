@@ -84,3 +84,10 @@ export {
   M9_CONTRIBUTED_PERMISSIONS,
   m9ContributedPermissionMirrorRows,
 } from "./contributed";
+// M10-T06 — Module 10's permission keys registered into M3's catalog (§4.6 handshake), in a
+// dedicated const so each module's contribution stays attributable (§3.3 ownership model).
+export {
+  type M10ContributedPermissionKey,
+  M10_CONTRIBUTED_PERMISSIONS,
+  m10ContributedPermissionMirrorRows,
+} from "./contributed";
