@@ -239,6 +239,20 @@
       "when": 1782115251757,
       "tag": "0035_hope_m10_rls_audit_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1782121501433,
+      "tag": "0036_orders_m11_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1782121501434,
+      "tag": "0037_orders_m11_rls_audit_triggers",
+      "breakpoints": true
     }
   ]
 }

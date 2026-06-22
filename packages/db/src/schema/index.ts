@@ -287,3 +287,30 @@ export * from "./hope/symptom-follow-up-visits";
 export * from "./hope/hope-validation-findings";
 export * from "./hope/hope-submissions";
 export * from "./hope/hope-submission-items";
+
+// ---------------------------------------------------------------------------
+// Module 11 — Orders (M11-T02)
+// ---------------------------------------------------------------------------
+// M11 owns 7 tables (M11-T02): the `order_record` root for all eight §2.1 non-medication order kinds +
+// order_signature (the §2.5 D4 polymorphic signature/cosignature ledger, target_kind = order |
+// medication_order) + verbal_order (the §2.3 D3 verbal-order receipt + 48h timer) + standing_order /
+// standing_order_instance (the §2.4 D5 cadence template + its spawn history) + order_discontinuation (the
+// clinician/cascade discontinuation ledger) + order_verbal_policy (the per-org §2.3 verbal-window config).
+// All 7 carry the three-column tenancy rule (organization_id + provider_entity_id + location_id all
+// NOT NULL, denormalized from the admission so location/PE access checks + Q-code/claim attribution run
+// without joining M6, §3.3 tenancy note). Cross-module refs (M5 patient, M6 admission, M8 source_encounter,
+// M9 triggering_assessment, M10 triggering_hope_assessment, M14 idg_decision, M40 ordering physician) are
+// plain uuid app-validated, NOT cross-module FKs (M11 dependsOn [6,36,38,40]); the polymorphic target_id
+// (order_signature / verbal_order) and the partition-aware order_record_id (standing_order_instance /
+// order_discontinuation) carry NO SQL FK; the only intra-module FK is standing_order_id; actor refs go to
+// M1 `membership`. `order_record` is PARTITION BY RANGE (created_at) monthly — converted from the logical
+// Drizzle shape in the RLS migration alongside the §3.4 state-transition triggers (replace-supersede /
+// verbal-set-pending / signature-apply / lab-initial-states). RLS + grants + M4 write-audit triggers + the
+// partition conversion land in migration 0037 (M11-T02, §3.3/§3.4/§3.6/§3.8).
+export * from "./orders/standing-orders";
+export * from "./orders/order-records";
+export * from "./orders/order-signatures";
+export * from "./orders/verbal-orders";
+export * from "./orders/standing-order-instances";
+export * from "./orders/order-discontinuations";
+export * from "./orders/order-verbal-policies";
