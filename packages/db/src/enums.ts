@@ -1180,3 +1180,87 @@ export const scaleLicenseStatus = pgEnum("scale_license_status", [
   "pending_renewal",
   "expired",
 ]);
+
+// ── Module 10 (HOPE Engine) §3.2 ──────────────────────────────────────────────────────────────
+// The shared `hope_assessment` row keys on `rfa_kind` and carries a per-section TypeBox-typed `data`
+// jsonb (D1/D11 — single jsonb, no annual ALTER TABLE churn). Enum values mirror the leaf type surface
+// in `@wardenx/types` (`hope.ts`); the §3.3 tables (M10-T02) compile against the final enum set
+// (ADR-0022 D1.3: one pgEnum definition site, no later ALTER-then-redeclare).
+
+/** `hope_rfa_kind` — the five §2 Reasons-For-Assessment a HOPE timepoint/assessment may carry. */
+export const hopeRfaKind = pgEnum("hope_rfa_kind", [
+  "01_admission",
+  "02_huv1",
+  "03_huv2",
+  "04_sfv",
+  "05_discharge",
+]);
+
+/** `hope_discharge_reason` — the Discharge-RFA branch discriminator (D9; null for non-discharge RFAs). */
+export const hopeDischargeReason = pgEnum("hope_discharge_reason", [
+  "death",
+  "revocation",
+  "transfer_to_hospice",
+  "live_discharge",
+]);
+
+/** `hope_assessment_status` — the §2.2.2 lifecycle: draft → signed → (correction) superseded. */
+export const hopeAssessmentStatus = pgEnum("hope_assessment_status", [
+  "draft",
+  "signed",
+  "superseded",
+]);
+
+/** `hope_schedule_status` — the §2.2.1 timepoint-window lifecycle (open → completed/expired/skipped). */
+export const hopeScheduleStatus = pgEnum("hope_schedule_status", [
+  "open",
+  "completed",
+  "expired",
+  "skipped",
+]);
+
+/** `hope_sfv_status` — the §2.2.3 Symptom-Follow-Up-Visit lifecycle (open → completed/overdue → missed). */
+export const hopeSfvStatus = pgEnum("hope_sfv_status", [
+  "open",
+  "completed",
+  "overdue",
+  "missed",
+]);
+
+/** `hope_submission_status` — the §2.2.4 iQIES submission-batch lifecycle. */
+export const hopeSubmissionStatus = pgEnum("hope_submission_status", [
+  "queued",
+  "in_flight",
+  "accepted",
+  "rejected",
+  "partially_accepted",
+]);
+
+/** `hope_submission_item_status` — the per-assessment outcome within a submission batch. */
+export const hopeSubmissionItemStatus = pgEnum("hope_submission_item_status", [
+  "accepted",
+  "rejected",
+  "pending",
+]);
+
+/** `hope_validation_severity` — a §3 `hope_validation_finding`'s blocking class (error vs warning). */
+export const hopeValidationSeverity = pgEnum("hope_validation_severity", [
+  "error",
+  "warning",
+]);
+
+/** `j2051_severity` — the CMS-defined four-level symptom-impact item (D4; drives the 2-day SFV trigger). */
+export const j2051Severity = pgEnum("j2051_severity", [
+  "none",
+  "mild",
+  "moderate",
+  "severe",
+]);
+
+/** `hope_schedule_generated_by` — provenance of a timepoint schedule row (§2 `generated_by`). */
+export const hopeScheduleGeneratedBy = pgEnum("hope_schedule_generated_by", [
+  "auto_admission",
+  "auto_discharge",
+  "sfv_trigger",
+  "manual_admin",
+]);

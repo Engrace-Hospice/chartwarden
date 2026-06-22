@@ -380,8 +380,8 @@ exports.MODULES = [
   {
     id: 10,
     name: "HOPE Engine",
-    codePaths: ["packages/hope", "packages/iqies-client", "apps/backend/src/modules/10-hope"],
-    dependsOn: [9, 36, 38], // +iqies-client ADR-0028
+    codePaths: ["packages/hope", "packages/iqies-client", "apps/backend/src/modules/10-hope", "apps/web/src/modules/10-hope"],
+    dependsOn: [9, 36, 38], // +iqies-client ADR-0028; +web: Track B in-task screens (ADR-0030), land in M10-T08
     ownedTables: [
       "hope_timepoint_schedule",
       "hope_assessment",
