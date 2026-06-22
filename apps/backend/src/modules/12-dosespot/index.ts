@@ -85,3 +85,30 @@ export {
   decidePatientSyncTrigger,
   decideVerbalExpiry,
 } from "./consumers/index";
+// M12-T09 — the `medication_order_record` destruction-cert eraser (§7.7 / D15). Registered over the Phase-0
+// deny-stub via the composition root's wireModuleErasers() (apps/backend/src/index.ts).
+export {
+  type InMemoryMedicationOrderEraseSeed,
+  type MedicationOrderEraseCounts,
+  type MedicationOrderEraseOptions,
+  type MedicationOrderEraserDeps,
+  type MedicationOrderEraseStore,
+  createInMemoryMedicationOrderEraseStore,
+  createMedicationOrderEraser,
+  eraseMedicationOrderRecord,
+  registerDoseSpotErasers,
+} from "./erasers/dosespot-eraser";
+// M12-T09 — the M22 medication-order-PDF (Wave F) + M28 FHIR `MedicationRequest` (Wave H) forward seams
+// (DENY-STUBS). No M1 seam-registry entry, no `dependsOn` edge — M12 only shapes the payloads the consumers
+// will pull when they lock; the deny-stubs fail closed until then.
+export {
+  type MedicationOrderPdfRenderer,
+  type MedicationOrderPdfRenderPayload,
+  type MedicationOrderPdfResult,
+  denyStubMedicationOrderPdfRenderer,
+} from "./seams/m22-medication-order-pdf";
+export {
+  type FhirMedicationRequestPublisher,
+  type FhirMedicationRequestPublishResult,
+  denyStubFhirMedicationRequestPublisher,
+} from "./seams/m28-fhir-medication-request";

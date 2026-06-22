@@ -4,7 +4,7 @@
 > corpus is consistent; this shows how much of it is BUILT in `apps/web`. Do not hand-edit —
 > the `ui:parity --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 69 documented screen specs · 13 module screen-sets registered · 48 screens wired in `apps/web`.
+**Coverage:** 69 documented screen specs · 14 module screen-sets registered · 57 screens wired in `apps/web`.
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -65,6 +65,15 @@
 | 11-orders | `orders.cosign-pending` | `/orders/cosign-pending` | `orders.read` | ✅ |
 | 11-orders | `orders.results-review` | `/orders/results-pending-review` | `orders.read` | ✅ |
 | 11-orders | `orders.standing` | `/standing-orders` | `orders.read` | ✅ |
+| 12-dosespot | `prescribing.patient-medications` | `/patients/:patientId/medications` | `prescribing.read` | ✅ |
+| 12-dosespot | `prescribing.medication-detail` | `/medication-orders/:id` | `prescribing.read` | ✅ |
+| 12-dosespot | `prescribing.sign-inbox` | `/prescribing/sign-inbox` | `prescribing.read` | ✅ |
+| 12-dosespot | `prescribing.verbal-orders` | `/prescribing/verbal-orders` | `prescribing.read` | ✅ |
+| 12-dosespot | `prescribing.refill-inbox` | `/refills` | `prescribing.read` | ✅ |
+| 12-dosespot | `prescribing.refill-detail` | `/refills/:id` | `prescribing.read` | ✅ |
+| 12-dosespot | `prescribing.reconciliation` | `/patients/:patientId/medications/reconciliation` | `prescribing.history.read` | ✅ |
+| 12-dosespot | `prescribing.prescriber-roster` | `/admin/prescribers` | `prescribing.admin.roster` | ✅ |
+| 12-dosespot | `prescribing.policy` | `/admin/prescribing-policy` | `prescribing.admin.policy` | ✅ |
 | 36-messaging | `messaging.staff` | `/messaging` | `messaging.read` | ✅ |
 | 36-messaging | `messaging.notifications` | `/notifications` | `(none)` | ✅ |
 | 38-terminology | `terminology.admin` | `/terminology` | `(none)` | ✅ |

@@ -11,6 +11,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Controlled-substance policy — refill caps + EPCS certification status (§4.1 / 21 CFR 1306.22 / D18) */
         get: operations["getApiV1AdminControlledsubstancepolicy"];
         put?: never;
         post?: never;
@@ -27,6 +28,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Per-tenant DoseSpot prescriber roster — DEA schedules, IAL2 status, enrollment (§4.1 / §6.1) */
         get: operations["getApiV1AdminDosespotprescribers"];
         put?: never;
         post?: never;
@@ -204,6 +206,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Refill-inbox SLA policy — warn/critical hours + platform floors (§4.1 / §2.7 D9) */
         get: operations["getApiV1AdminRefillinboxpolicy"];
         put?: never;
         post?: never;
@@ -2506,6 +2509,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List medication orders by patient / prescriber / med-class / status (§4.1; ABAC caseload_or_scope) */
         get: operations["getApiV1Medicationorders"];
         put?: never;
         post: operations["postApiV1Medicationorders"];
@@ -2522,6 +2526,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Medication-order detail — lifecycle status, signatures, controlled/EPCS posture, refills (§4.1) */
         get: operations["getApiV1MedicationordersById"];
         put?: never;
         post?: never;
@@ -2682,6 +2687,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** DoseSpot transmission status incl. retry history (§4.1 / §2.6) */
         get: operations["getApiV1MedicationordersByIdTransmission"];
         put?: never;
         post?: never;
@@ -3542,6 +3548,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Active medications for a patient (chart medication list; §4.1 / §6.1) */
         get: operations["getApiV1PatientsByPatientIdMedicationsActive"];
         put?: never;
         post?: never;
@@ -3558,6 +3565,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Medication-history records for a patient (DoseSpot MedHx; §4.1 / §6.1 reconciliation) */
         get: operations["getApiV1PatientsByPatientIdMedicationsHistory"];
         put?: never;
         post?: never;
@@ -3754,6 +3762,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Refill inbox — pending refills the caller may decide (§4.1; ABAC refill_inbox_scope) */
         get: operations["getApiV1Refills"];
         put?: never;
         post?: never;
@@ -3770,6 +3779,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Refill detail — source order + request fields for approve/deny (§4.1; ABAC refill_inbox_scope) */
         get: operations["getApiV1RefillsById"];
         put?: never;
         post?: never;
@@ -4324,7 +4334,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        scheduleIiMaxRefills: number;
+                        scheduleIiiToVMaxRefills: number;
+                        epcsCertificationStatus: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -4364,7 +4380,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        prescribers: {
+                            membershipId: string;
+                            enrolled: boolean;
+                            deaAuthorizedSchedules: string[];
+                            ial2Status: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -4625,7 +4650,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        slaWarnHours: number;
+                        slaCriticalHours: number;
+                        platformFloorWarnHours: number;
+                        platformFloorCriticalHours: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -8365,7 +8397,12 @@ export interface operations {
     };
     getApiV1Medicationorders: {
         parameters: {
-            query?: never;
+            query?: {
+                patientId?: string;
+                prescriberId?: string;
+                medClass?: string;
+                status?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -8377,7 +8414,41 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        orders: {
+                            id: string;
+                            patientId: string;
+                            admissionId: string;
+                            medClass: string;
+                            status: string;
+                            drugName: string;
+                            strength: string;
+                            doseForm: string;
+                            route: string;
+                            rxnormRxcui: string | null;
+                            ndc: string | null;
+                            version: number;
+                            prescriberMembershipId: string;
+                            prescriberDiscipline: string;
+                            prescribingPhysicianMdmId: string;
+                            dispensingPharmacyMdmId: string | null;
+                            isControlledSubstance: boolean;
+                            deaSchedule: string | null;
+                            cosignRequired: boolean;
+                            cosignStatus: "pending" | "attached" | null;
+                            refillsRemaining: number;
+                            derivedFromRefillId: string | null;
+                            replacesMedicationOrderId: string | null;
+                            signedAt: string | null;
+                            signedBy: string | null;
+                            transmittedAt: string | null;
+                            discontinuedAt: string | null;
+                            discontinuationReason: string | null;
+                            createdAt: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -8419,7 +8490,39 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        medClass: string;
+                        status: string;
+                        drugName: string;
+                        strength: string;
+                        doseForm: string;
+                        route: string;
+                        rxnormRxcui: string | null;
+                        ndc: string | null;
+                        version: number;
+                        prescriberMembershipId: string;
+                        prescriberDiscipline: string;
+                        prescribingPhysicianMdmId: string;
+                        dispensingPharmacyMdmId: string | null;
+                        isControlledSubstance: boolean;
+                        deaSchedule: string | null;
+                        cosignRequired: boolean;
+                        cosignStatus: "pending" | "attached" | null;
+                        refillsRemaining: number;
+                        derivedFromRefillId: string | null;
+                        replacesMedicationOrderId: string | null;
+                        signedAt: string | null;
+                        signedBy: string | null;
+                        transmittedAt: string | null;
+                        discontinuedAt: string | null;
+                        discontinuationReason: string | null;
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -8661,7 +8764,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        orderId: string;
+                        status: string;
+                        retryHistory: {
+                            attempt: number;
+                            at: string;
+                            errorClass: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -10616,7 +10729,41 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        orders: {
+                            id: string;
+                            patientId: string;
+                            admissionId: string;
+                            medClass: string;
+                            status: string;
+                            drugName: string;
+                            strength: string;
+                            doseForm: string;
+                            route: string;
+                            rxnormRxcui: string | null;
+                            ndc: string | null;
+                            version: number;
+                            prescriberMembershipId: string;
+                            prescriberDiscipline: string;
+                            prescribingPhysicianMdmId: string;
+                            dispensingPharmacyMdmId: string | null;
+                            isControlledSubstance: boolean;
+                            deaSchedule: string | null;
+                            cosignRequired: boolean;
+                            cosignStatus: "pending" | "attached" | null;
+                            refillsRemaining: number;
+                            derivedFromRefillId: string | null;
+                            replacesMedicationOrderId: string | null;
+                            signedAt: string | null;
+                            signedBy: string | null;
+                            transmittedAt: string | null;
+                            discontinuedAt: string | null;
+                            discontinuationReason: string | null;
+                            createdAt: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -10638,7 +10785,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        records: {
+                            id: string;
+                            drugName: string;
+                            source: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -10990,7 +11145,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        refills: {
+                            id: string;
+                            patientId: string;
+                            sourceMedicationOrderId: string;
+                            status: string;
+                            requestedAt: string;
+                            prescriberMembershipId: string | null;
+                            resultingMedicationOrderId: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -11012,7 +11179,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        sourceMedicationOrderId: string;
+                        status: string;
+                        requestedAt: string;
+                        prescriberMembershipId: string | null;
+                        resultingMedicationOrderId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

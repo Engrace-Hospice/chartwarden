@@ -75,6 +75,14 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // child rows; the cert's retentionAsOf enforces M4's standard `compliance` 7-year floor. The org-scoped
   // order_verbal_policy is tenant config, not patient data, and stays untouched. The `subjectId` is the patient.
   "order_record",
+  // M12-T09: a patient's medication-order record (medication_order_transmission/refill_request/
+  // epcs_signing_attempt child rows + the partitioned medication_order rows). M12 registers the REAL eraser via
+  // the composition-root hook over this deny-stub — under an M4 destruction certificate (§7.7 / D15) it
+  // drops/row-deletes the medication_order rows and cascade-deletes the child rows; the cert's retentionAsOf
+  // enforces M4's standard `compliance` retention floor. The org-scoped dosespot_prescriber/
+  // dosespot_webhook_event/refill_inbox_policy/controlled_substance_policy are tenant config / encrypted
+  // webhook receipts, not patient data, and stay untouched. The `subjectId` is the patient.
+  "medication_order_record",
 ];
 
 export function registerEraser(dataClass: DataClass, eraser: DataEraser): void {

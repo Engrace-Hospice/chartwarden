@@ -267,6 +267,7 @@ contract), so `openapi.json`/the client are unchanged.
 | M9 | Assessment Timeline (§5.2), Per-scale Trend (§5.2), Significant-change Inbox (§5.2), Assessment Summary (§5.2), Scale-license Registry (§5.2), Scale-policy Editor (§5.2) | `screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md` | done (M9-T07)¹⁶ |
 | M10 | HOPE Timepoint Dashboard (§5.2), Patient HOPE Timeline (§5.2), SFV Worklist (§5.2), HOPE Assessment Detail (§5.2), Submission Worklist (§5.2), Submission Detail (§5.2), HQRP Compliance Dashboard (§5.2) | `docs/modules/WARDENX_MODULE_10_HOPE_ENGINE_SPEC_v0_2.md` §5 | done (M10-T08)¹⁷ |
 | M11 | Signature Inbox (§5), Patient Orders (§5), Order Detail (§5), Verbal-Expiring Queue (§5), Cosign-Pending Queue (§5 §2.5), Lab Results-Pending-Review Queue (§5 D17), Standing-Order Admin (§5 §2.4 D5) | `screens/clinical/WARDENX_UI_ORDERS.md` | done (M11-T08)¹⁸ |
+| M12 | Patient Medications (§6.1), Medication Detail (§6.1), Medication Sign Inbox (§6.1), Verbal Medication Orders (§6.1), Refill Inbox (§6.1), Refill Detail (§6.1), Medication Reconciliation (§6.1), Prescriber Roster admin (§6.1), Prescribing Policy admin (§6.1) | `screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md` (prescribing half) | done — prescribing (M12-T09)¹⁹ |
 
 > ¹³ **Admissions/Intake (M6) now LIVE (Track B, M6-T12, ADR-0030).** Built under
 > `apps/web/src/modules/06-admission` against M6's generated client methods (the M6 read routes are
@@ -343,6 +344,25 @@ contract), so `openapi.json`/the client are unchanged.
 > correct write surfaces, the standing-order admin writes, and the verbal-policy admin fill in as their write
 > paths harden.
 
+> ¹⁹ **DoseSpot Prescribing (M12) now LIVE — prescribing surfaces (Track B, M12-T09, ADR-0030).** Built under
+> `apps/web/src/modules/12-dosespot` against M12's generated client methods (the M12 read routes are enriched in
+> `scripts/openapi/enrichments.ts`, so `packages/ui/src/core/api` types them), registered into the M1 shell via
+> `dosespotScreens` (`main.tsx`). The Patient Medications list ("Use Patient Workspace") renders the active
+> medications (status filter for drafts/history) with the controlled-substance posture; the Medication Detail
+> shows the drug/sig facts, the §2.2 D2 lifecycle, the EPCS posture, signatures, refills, the correction
+> lineage, and (for transmitted orders) the DoseSpot transmission/retry status; the Medication Sign Inbox is the
+> prescriber's pending_signature queue KPI'd by controlled-vs-standard; the Verbal Medication Orders queue lists
+> verbal_pending orders; the Refill Inbox sorts by SLA age (the `refill_inbox_scope` ABAC narrows server-side)
+> with a Refill Detail; the Medication Reconciliation worksheet lists the DoseSpot MedHx; the Prescriber Roster
+> admin shows DEA schedules + IAL2 status; the Prescribing Policy admin shows the refill SLA + controlled-
+> substance refill caps + EPCS certification status. Nav visibility is gated by `prescribing.read` /
+> `prescribing.history.read` / `prescribing.admin.roster` / `prescribing.admin.policy`; the SERVER stays the
+> only enforcement point (out-of-scope resources 404, never 403; SUD-treatment meds redacted server-side). The
+> prescribe modal (the native per-class authoring UI), the sign / sign-controlled EPCS step-up
+> (`dosespot.epcs` OFF in Phase 1), the verbal / cosign / discontinue / correct / refill-decide / reconcile /
+> roster / policy write surfaces, and the platform-ops EPCS-certification + webhook-explorer screens (apps/admin)
+> fill in as their write paths / flags harden. The M13 administration (eMAR) screens land with M13.
+
 ---
 
 ## Blocked on later waves (out of Track A scope until their module lands)
@@ -350,8 +370,8 @@ contract), so `openapi.json`/the client are unchanged.
 The remaining ~50 screens (clinical suite, revenue, portal, platform/ops) are owned by modules not yet
 built (M7–M35, M37). They are **Track B**: each ships with its module's wave (include the
 `apps/web/src/modules/NN-*` codePath from T01; the terminal screen task builds it). Examples:
-Care Plan (M7+M15), Orders (M11),
-eMAR (M12+M13), IDG (M14), Scheduling (M17), EVV (M18), Claims (M23+M24), Cap (M26), Cost Report (M27),
+Care Plan (M7+M15), Orders (M11), eMAR administration (M13; M12 prescribing is done¹⁹),
+IDG (M14), Scheduling (M17), EVV (M18), Claims (M23+M24), Cap (M26), Cost Report (M27),
 FHIR (M28), HQRP (M30), Portal/Telehealth (M31), Copilot (M32), Reporting (M33), Onboarding (M34),
 Subscription (M35), IPU Bed Board (M37). See each spec's `Module:` line for the authoritative owner.
 

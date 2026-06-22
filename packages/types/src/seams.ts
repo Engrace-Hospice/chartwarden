@@ -425,4 +425,15 @@ export type DataClass =
   // retention block, unlike M10). The ORG-scoped `order_verbal_policy` is tenant configuration, not patient
   // data, and is NEVER touched (§7.7 #4). `subjectId` is the patient being destroyed; disjoint from M10's
   // `hope_record` and M5/M6/M7/M8/M9's subtrees.
-  | "order_record";
+  | "order_record"
+  // M12 (DoseSpot Integration) per-patient medication-order record: the prescribing subtree M12 owns — the
+  // monthly-partitioned `medication_order` rows plus the cascaded `medication_order_transmission`,
+  // `refill_request` (whose source order matches), and `epcs_signing_attempt` child rows. Erased by M12's
+  // registered eraser (M12-T09) under an M4 destruction certificate (§7.7 / D15): the `medication_order` rows
+  // are dropped at partition granularity when a partition is wholly erasable and row-deleted otherwise; the
+  // cert's `retentionAsOf` boundary enforces M4's standard `compliance` retention floor. The ORG-scoped
+  // `dosespot_prescriber`, `dosespot_webhook_event`, `refill_inbox_policy`, and `controlled_substance_policy`
+  // are tenant configuration / encrypted webhook receipts, not patient data, and are NEVER touched (§7.7 #5).
+  // `subjectId` is the patient being destroyed; disjoint from M11's `order_record` (clinical orders) and the
+  // M5/M6/M7/M8/M9/M10 subtrees.
+  | "medication_order_record";

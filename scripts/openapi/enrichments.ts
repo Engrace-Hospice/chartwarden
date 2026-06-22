@@ -528,6 +528,101 @@ const StandingOrderListResponseSchema = Type.Object({
   standingOrders: Type.Array(StandingOrderViewSchema),
 });
 
+// ── M12 DoseSpot prescribing read DTOs (Track B, M12-T09) ──────────────────────────────────────────
+// Mirror MedicationOrderRouteService's view projections (apps/backend/src/modules/12-dosespot/routes/
+// service.ts — MedicationOrderView / RefillRequestView / PrescriberRosterView / RefillInboxPolicyView /
+// ControlledSubstancePolicyView). The UI reads only the fields it renders; the SERVER is authoritative for
+// the §2.2 D2 medication-order lifecycle status, the §2.7 D9 refill state, the controlled-substance / EPCS
+// posture, and every scope (RLS + ABAC). The write surfaces (the prescribe modal, the sign / sign-controlled
+// step-up, verbal / cosign / discontinue / correct / refill-decide / roster / policy mutations) keep their
+// route-level TypeBox request bodies (already in the contract); only the read responses are enriched.
+const MedicationOrderViewSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  medClass: Type.String(),
+  status: Type.String(),
+  drugName: Type.String(),
+  strength: Type.String(),
+  doseForm: Type.String(),
+  route: Type.String(),
+  rxnormRxcui: Type.Union([Type.String(), Type.Null()]),
+  ndc: Type.Union([Type.String(), Type.Null()]),
+  version: Type.Integer(),
+  prescriberMembershipId: Type.String(),
+  prescriberDiscipline: Type.String(),
+  prescribingPhysicianMdmId: Type.String(),
+  dispensingPharmacyMdmId: Type.Union([Type.String(), Type.Null()]),
+  isControlledSubstance: Type.Boolean(),
+  deaSchedule: Type.Union([Type.String(), Type.Null()]),
+  cosignRequired: Type.Boolean(),
+  cosignStatus: Type.Union([Type.Literal("pending"), Type.Literal("attached"), Type.Null()]),
+  refillsRemaining: Type.Integer(),
+  derivedFromRefillId: Type.Union([Type.String(), Type.Null()]),
+  replacesMedicationOrderId: Type.Union([Type.String(), Type.Null()]),
+  signedAt: Type.Union([Type.String(), Type.Null()]),
+  signedBy: Type.Union([Type.String(), Type.Null()]),
+  transmittedAt: Type.Union([Type.String(), Type.Null()]),
+  discontinuedAt: Type.Union([Type.String(), Type.Null()]),
+  discontinuationReason: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String(),
+});
+const RefillRequestViewSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  sourceMedicationOrderId: Type.String(),
+  status: Type.String(),
+  requestedAt: Type.String(),
+  prescriberMembershipId: Type.Union([Type.String(), Type.Null()]),
+  resultingMedicationOrderId: Type.Union([Type.String(), Type.Null()]),
+});
+const PrescriberRosterViewSchema = Type.Object({
+  membershipId: Type.String(),
+  enrolled: Type.Boolean(),
+  deaAuthorizedSchedules: Type.Array(Type.String()),
+  ial2Status: Type.String(),
+});
+const RefillInboxPolicyViewSchema = Type.Object({
+  slaWarnHours: Type.Integer(),
+  slaCriticalHours: Type.Integer(),
+  platformFloorWarnHours: Type.Integer(),
+  platformFloorCriticalHours: Type.Integer(),
+});
+const ControlledSubstancePolicyViewSchema = Type.Object({
+  scheduleIiMaxRefills: Type.Integer(),
+  scheduleIiiToVMaxRefills: Type.Integer(),
+  epcsCertificationStatus: Type.String(),
+});
+const MedicationOrderListResponseSchema = Type.Object({
+  orders: Type.Array(MedicationOrderViewSchema),
+});
+const MedicationOrderListQuerySchema = Type.Object({
+  patientId: Type.Optional(Type.String()),
+  prescriberId: Type.Optional(Type.String()),
+  medClass: Type.Optional(Type.String()),
+  status: Type.Optional(Type.String()),
+});
+const MedicationHistoryListResponseSchema = Type.Object({
+  records: Type.Array(
+    Type.Object({ id: Type.String(), drugName: Type.String(), source: Type.String() }),
+  ),
+});
+const RefillListResponseSchema = Type.Object({ refills: Type.Array(RefillRequestViewSchema) });
+const PrescriberRosterListResponseSchema = Type.Object({
+  prescribers: Type.Array(PrescriberRosterViewSchema),
+});
+const TransmissionStatusResponseSchema = Type.Object({
+  orderId: Type.String(),
+  status: Type.String(),
+  retryHistory: Type.Array(
+    Type.Object({
+      attempt: Type.Integer(),
+      at: Type.String(),
+      errorClass: Type.Union([Type.String(), Type.Null()]),
+    }),
+  ),
+});
+
 export interface RouteEnrichment {
   /** JSON request body schema (a TypeBox schema reused from the route's validator). */
   body?: TSchema;
@@ -722,6 +817,52 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/admin/orders/verbal-policy": {
     summary: "Org verbal-order policy — window hours, cosign kinds, platform floor (§4.1 / §2.3 D3)",
     response: VerbalPolicyViewSchema,
+  },
+  // M12 DoseSpot prescribing (Track B — Patient Medications / Medication Detail / Sign Inbox / Verbal-Orders
+  // Queue / Refill Inbox + Detail / Medication Reconciliation / Prescriber Roster / Prescribing Policy,
+  // M12-T09). Read responses only; the write routes keep their route-level TypeBox request bodies (already in
+  // the contract). The server is authoritative for the §2.2 D2 lifecycle, the §2.7 D9 refill state, and the
+  // controlled-substance / EPCS posture (`dosespot.epcs` OFF in Phase 1).
+  "GET /api/v1/medication-orders": {
+    summary: "List medication orders by patient / prescriber / med-class / status (§4.1; ABAC caseload_or_scope)",
+    query: MedicationOrderListQuerySchema,
+    response: MedicationOrderListResponseSchema,
+  },
+  "GET /api/v1/medication-orders/:id": {
+    summary: "Medication-order detail — lifecycle status, signatures, controlled/EPCS posture, refills (§4.1)",
+    response: MedicationOrderViewSchema,
+  },
+  "GET /api/v1/medication-orders/:id/transmission": {
+    summary: "DoseSpot transmission status incl. retry history (§4.1 / §2.6)",
+    response: TransmissionStatusResponseSchema,
+  },
+  "GET /api/v1/patients/:patientId/medications/active": {
+    summary: "Active medications for a patient (chart medication list; §4.1 / §6.1)",
+    response: MedicationOrderListResponseSchema,
+  },
+  "GET /api/v1/patients/:patientId/medications/history": {
+    summary: "Medication-history records for a patient (DoseSpot MedHx; §4.1 / §6.1 reconciliation)",
+    response: MedicationHistoryListResponseSchema,
+  },
+  "GET /api/v1/refills": {
+    summary: "Refill inbox — pending refills the caller may decide (§4.1; ABAC refill_inbox_scope)",
+    response: RefillListResponseSchema,
+  },
+  "GET /api/v1/refills/:id": {
+    summary: "Refill detail — source order + request fields for approve/deny (§4.1; ABAC refill_inbox_scope)",
+    response: RefillRequestViewSchema,
+  },
+  "GET /api/v1/admin/dosespot-prescribers": {
+    summary: "Per-tenant DoseSpot prescriber roster — DEA schedules, IAL2 status, enrollment (§4.1 / §6.1)",
+    response: PrescriberRosterListResponseSchema,
+  },
+  "GET /api/v1/admin/refill-inbox-policy": {
+    summary: "Refill-inbox SLA policy — warn/critical hours + platform floors (§4.1 / §2.7 D9)",
+    response: RefillInboxPolicyViewSchema,
+  },
+  "GET /api/v1/admin/controlled-substance-policy": {
+    summary: "Controlled-substance policy — refill caps + EPCS certification status (§4.1 / 21 CFR 1306.22 / D18)",
+    response: ControlledSubstancePolicyViewSchema,
   },
   // M36 Messaging (Track A — Staff Messaging + Notifications)
   "GET /api/v1/messaging/channels": {

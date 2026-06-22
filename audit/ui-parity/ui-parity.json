@@ -19,6 +19,7 @@
     "09-assessments",
     "10-hope",
     "11-orders",
+    "12-dosespot",
     "36-messaging",
     "38-terminology",
     "40-mdm"
@@ -331,6 +332,69 @@
       "id": "orders.standing",
       "path": "/standing-orders",
       "permission": "orders.read"
+    },
+    {
+      "module": "12-dosespot",
+      "moduleId": 12,
+      "id": "prescribing.patient-medications",
+      "path": "/patients/:patientId/medications",
+      "permission": "prescribing.read"
+    },
+    {
+      "module": "12-dosespot",
+      "moduleId": 12,
+      "id": "prescribing.medication-detail",
+      "path": "/medication-orders/:id",
+      "permission": "prescribing.read"
+    },
+    {
+      "module": "12-dosespot",
+      "moduleId": 12,
+      "id": "prescribing.sign-inbox",
+      "path": "/prescribing/sign-inbox",
+      "permission": "prescribing.read"
+    },
+    {
+      "module": "12-dosespot",
+      "moduleId": 12,
+      "id": "prescribing.verbal-orders",
+      "path": "/prescribing/verbal-orders",
+      "permission": "prescribing.read"
+    },
+    {
+      "module": "12-dosespot",
+      "moduleId": 12,
+      "id": "prescribing.refill-inbox",
+      "path": "/refills",
+      "permission": "prescribing.read"
+    },
+    {
+      "module": "12-dosespot",
+      "moduleId": 12,
+      "id": "prescribing.refill-detail",
+      "path": "/refills/:id",
+      "permission": "prescribing.read"
+    },
+    {
+      "module": "12-dosespot",
+      "moduleId": 12,
+      "id": "prescribing.reconciliation",
+      "path": "/patients/:patientId/medications/reconciliation",
+      "permission": "prescribing.history.read"
+    },
+    {
+      "module": "12-dosespot",
+      "moduleId": 12,
+      "id": "prescribing.prescriber-roster",
+      "path": "/admin/prescribers",
+      "permission": "prescribing.admin.roster"
+    },
+    {
+      "module": "12-dosespot",
+      "moduleId": 12,
+      "id": "prescribing.policy",
+      "path": "/admin/prescribing-policy",
+      "permission": "prescribing.admin.policy"
     },
     {
       "module": "36-messaging",

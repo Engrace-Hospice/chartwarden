@@ -12,10 +12,34 @@
         "tags": [
           "12-dosespot"
         ],
+        "summary": "Controlled-substance policy — refill caps + EPCS certification status (§4.1 / 21 CFR 1306.22 / D18)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "scheduleIiMaxRefills",
+                    "scheduleIiiToVMaxRefills",
+                    "epcsCertificationStatus"
+                  ],
+                  "properties": {
+                    "scheduleIiMaxRefills": {
+                      "type": "integer"
+                    },
+                    "scheduleIiiToVMaxRefills": {
+                      "type": "integer"
+                    },
+                    "epcsCertificationStatus": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -50,10 +74,52 @@
         "tags": [
           "12-dosespot"
         ],
+        "summary": "Per-tenant DoseSpot prescriber roster — DEA schedules, IAL2 status, enrollment (§4.1 / §6.1)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "prescribers"
+                  ],
+                  "properties": {
+                    "prescribers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "membershipId",
+                          "enrolled",
+                          "deaAuthorizedSchedules",
+                          "ial2Status"
+                        ],
+                        "properties": {
+                          "membershipId": {
+                            "type": "string"
+                          },
+                          "enrolled": {
+                            "type": "boolean"
+                          },
+                          "deaAuthorizedSchedules": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "ial2Status": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -384,10 +450,38 @@
         "tags": [
           "12-dosespot"
         ],
+        "summary": "Refill-inbox SLA policy — warn/critical hours + platform floors (§4.1 / §2.7 D9)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "slaWarnHours",
+                    "slaCriticalHours",
+                    "platformFloorWarnHours",
+                    "platformFloorCriticalHours"
+                  ],
+                  "properties": {
+                    "slaWarnHours": {
+                      "type": "integer"
+                    },
+                    "slaCriticalHours": {
+                      "type": "integer"
+                    },
+                    "platformFloorWarnHours": {
+                      "type": "integer"
+                    },
+                    "platformFloorCriticalHours": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -6836,10 +6930,271 @@
         "tags": [
           "12-dosespot"
         ],
-        "parameters": [],
+        "summary": "List medication orders by patient / prescriber / med-class / status (§4.1; ABAC caseload_or_scope)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "prescriberId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "medClass",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "orders"
+                  ],
+                  "properties": {
+                    "orders": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "patientId",
+                          "admissionId",
+                          "medClass",
+                          "status",
+                          "drugName",
+                          "strength",
+                          "doseForm",
+                          "route",
+                          "rxnormRxcui",
+                          "ndc",
+                          "version",
+                          "prescriberMembershipId",
+                          "prescriberDiscipline",
+                          "prescribingPhysicianMdmId",
+                          "dispensingPharmacyMdmId",
+                          "isControlledSubstance",
+                          "deaSchedule",
+                          "cosignRequired",
+                          "cosignStatus",
+                          "refillsRemaining",
+                          "derivedFromRefillId",
+                          "replacesMedicationOrderId",
+                          "signedAt",
+                          "signedBy",
+                          "transmittedAt",
+                          "discontinuedAt",
+                          "discontinuationReason",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "type": "string"
+                          },
+                          "medClass": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "drugName": {
+                            "type": "string"
+                          },
+                          "strength": {
+                            "type": "string"
+                          },
+                          "doseForm": {
+                            "type": "string"
+                          },
+                          "route": {
+                            "type": "string"
+                          },
+                          "rxnormRxcui": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "ndc": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "prescriberMembershipId": {
+                            "type": "string"
+                          },
+                          "prescriberDiscipline": {
+                            "type": "string"
+                          },
+                          "prescribingPhysicianMdmId": {
+                            "type": "string"
+                          },
+                          "dispensingPharmacyMdmId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "isControlledSubstance": {
+                            "type": "boolean"
+                          },
+                          "deaSchedule": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cosignRequired": {
+                            "type": "boolean"
+                          },
+                          "cosignStatus": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "attached",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "refillsRemaining": {
+                            "type": "integer"
+                          },
+                          "derivedFromRefillId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "replacesMedicationOrderId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "signedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "signedBy": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "transmittedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "discontinuedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "discontinuationReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -6874,6 +7229,7 @@
         "tags": [
           "12-dosespot"
         ],
+        "summary": "Medication-order detail — lifecycle status, signatures, controlled/EPCS posture, refills (§4.1)",
         "parameters": [
           {
             "name": "id",
@@ -6886,7 +7242,223 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "admissionId",
+                    "medClass",
+                    "status",
+                    "drugName",
+                    "strength",
+                    "doseForm",
+                    "route",
+                    "rxnormRxcui",
+                    "ndc",
+                    "version",
+                    "prescriberMembershipId",
+                    "prescriberDiscipline",
+                    "prescribingPhysicianMdmId",
+                    "dispensingPharmacyMdmId",
+                    "isControlledSubstance",
+                    "deaSchedule",
+                    "cosignRequired",
+                    "cosignStatus",
+                    "refillsRemaining",
+                    "derivedFromRefillId",
+                    "replacesMedicationOrderId",
+                    "signedAt",
+                    "signedBy",
+                    "transmittedAt",
+                    "discontinuedAt",
+                    "discontinuationReason",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "medClass": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "drugName": {
+                      "type": "string"
+                    },
+                    "strength": {
+                      "type": "string"
+                    },
+                    "doseForm": {
+                      "type": "string"
+                    },
+                    "route": {
+                      "type": "string"
+                    },
+                    "rxnormRxcui": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "ndc": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "prescriberMembershipId": {
+                      "type": "string"
+                    },
+                    "prescriberDiscipline": {
+                      "type": "string"
+                    },
+                    "prescribingPhysicianMdmId": {
+                      "type": "string"
+                    },
+                    "dispensingPharmacyMdmId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "isControlledSubstance": {
+                      "type": "boolean"
+                    },
+                    "deaSchedule": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cosignRequired": {
+                      "type": "boolean"
+                    },
+                    "cosignStatus": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "attached",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "refillsRemaining": {
+                      "type": "integer"
+                    },
+                    "derivedFromRefillId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "replacesMedicationOrderId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signedBy": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "transmittedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "discontinuedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "discontinuationReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -7191,6 +7763,7 @@
         "tags": [
           "12-dosespot"
         ],
+        "summary": "DoseSpot transmission status incl. retry history (§4.1 / §2.6)",
         "parameters": [
           {
             "name": "id",
@@ -7203,7 +7776,56 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "orderId",
+                    "status",
+                    "retryHistory"
+                  ],
+                  "properties": {
+                    "orderId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "retryHistory": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "attempt",
+                          "at",
+                          "errorClass"
+                        ],
+                        "properties": {
+                          "attempt": {
+                            "type": "integer"
+                          },
+                          "at": {
+                            "type": "string"
+                          },
+                          "errorClass": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -12381,6 +13003,7 @@
         "tags": [
           "12-dosespot"
         ],
+        "summary": "Active medications for a patient (chart medication list; §4.1 / §6.1)",
         "parameters": [
           {
             "name": "patientId",
@@ -12393,7 +13016,234 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "orders"
+                  ],
+                  "properties": {
+                    "orders": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "patientId",
+                          "admissionId",
+                          "medClass",
+                          "status",
+                          "drugName",
+                          "strength",
+                          "doseForm",
+                          "route",
+                          "rxnormRxcui",
+                          "ndc",
+                          "version",
+                          "prescriberMembershipId",
+                          "prescriberDiscipline",
+                          "prescribingPhysicianMdmId",
+                          "dispensingPharmacyMdmId",
+                          "isControlledSubstance",
+                          "deaSchedule",
+                          "cosignRequired",
+                          "cosignStatus",
+                          "refillsRemaining",
+                          "derivedFromRefillId",
+                          "replacesMedicationOrderId",
+                          "signedAt",
+                          "signedBy",
+                          "transmittedAt",
+                          "discontinuedAt",
+                          "discontinuationReason",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "type": "string"
+                          },
+                          "medClass": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "drugName": {
+                            "type": "string"
+                          },
+                          "strength": {
+                            "type": "string"
+                          },
+                          "doseForm": {
+                            "type": "string"
+                          },
+                          "route": {
+                            "type": "string"
+                          },
+                          "rxnormRxcui": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "ndc": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "prescriberMembershipId": {
+                            "type": "string"
+                          },
+                          "prescriberDiscipline": {
+                            "type": "string"
+                          },
+                          "prescribingPhysicianMdmId": {
+                            "type": "string"
+                          },
+                          "dispensingPharmacyMdmId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "isControlledSubstance": {
+                            "type": "boolean"
+                          },
+                          "deaSchedule": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cosignRequired": {
+                            "type": "boolean"
+                          },
+                          "cosignStatus": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "attached",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "refillsRemaining": {
+                            "type": "integer"
+                          },
+                          "derivedFromRefillId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "replacesMedicationOrderId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "signedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "signedBy": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "transmittedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "discontinuedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "discontinuationReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -12410,6 +13260,7 @@
         "tags": [
           "12-dosespot"
         ],
+        "summary": "Medication-history records for a patient (DoseSpot MedHx; §4.1 / §6.1 reconciliation)",
         "parameters": [
           {
             "name": "patientId",
@@ -12422,7 +13273,41 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "records"
+                  ],
+                  "properties": {
+                    "records": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "drugName",
+                          "source"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "drugName": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -13054,10 +13939,75 @@
         "tags": [
           "12-dosespot"
         ],
+        "summary": "Refill inbox — pending refills the caller may decide (§4.1; ABAC refill_inbox_scope)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "refills"
+                  ],
+                  "properties": {
+                    "refills": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "patientId",
+                          "sourceMedicationOrderId",
+                          "status",
+                          "requestedAt",
+                          "prescriberMembershipId",
+                          "resultingMedicationOrderId"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "sourceMedicationOrderId": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "requestedAt": {
+                            "type": "string"
+                          },
+                          "prescriberMembershipId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "resultingMedicationOrderId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -13074,6 +14024,7 @@
         "tags": [
           "12-dosespot"
         ],
+        "summary": "Refill detail — source order + request fields for approve/deny (§4.1; ABAC refill_inbox_scope)",
         "parameters": [
           {
             "name": "id",
@@ -13086,7 +14037,60 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "sourceMedicationOrderId",
+                    "status",
+                    "requestedAt",
+                    "prescriberMembershipId",
+                    "resultingMedicationOrderId"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "sourceMedicationOrderId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "requestedAt": {
+                      "type": "string"
+                    },
+                    "prescriberMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "resultingMedicationOrderId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
