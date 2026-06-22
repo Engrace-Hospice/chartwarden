@@ -56,16 +56,21 @@ const PERMISSION_SEED = [
   { userId: "admin_1", permissions: ["assessment.license_read", "assessment.license_admin", "assessment.policy_read", "assessment.policy_admin"] },
 ];
 
-function makeServer() {
+// biome-ignore lint/suspicious/noExplicitAny: heterogeneous seed rows for test-only extension.
+type ExtraSeed = { assessments?: any[]; consents?: any[] };
+
+function makeServer(extra: ExtraSeed = {}) {
   const backend = createInMemoryAssessmentBackend({
     now: () => NOW,
     admissions: [{ id: ADMISSION, organizationId: ORG, patientId: PATIENT, status: "active", activatedAt: "2026-01-01T00:00:00.000Z" }],
     licenses: [{ id: "c0000000-0000-4000-8000-000000000001", organizationId: ORG, scaleType: "pps", vendor: "Victoria Hospice", effectiveDate: "2026-01-01", expiresAt: "2027-01-01", seats: null }],
+    consents: extra.consents ?? [],
     assessments: [
       { id: PPS_BY_LPN, organizationId: ORG, patientId: PATIENT, admissionId: ADMISSION, scaleType: "pps", capturedByDiscipline: "lpn", recordedByUserId: "lpn_1", cosignRequired: true, score: 60, capturedAt: "2026-06-19T10:00:00.000Z" },
       { id: PAINAD_ACTIVE, organizationId: ORG, patientId: PATIENT, admissionId: ADMISSION, scaleType: "painad", capturedByDiscipline: "rn", recordedByUserId: "rn_1", score: 4, version: 1, capturedAt: "2026-06-18T10:00:00.000Z" },
       { id: PPS_BY_RN, organizationId: ORG, patientId: PATIENT, admissionId: ADMISSION, scaleType: "pps", capturedByDiscipline: "rn", recordedByUserId: "rn_1", cosignRequired: true, score: 60, capturedAt: "2026-06-17T10:00:00.000Z" },
       { id: PPS_B, organizationId: ORG_B, patientId: PATIENT, admissionId: ADMISSION, scaleType: "pps", capturedByDiscipline: "rn", recordedByUserId: "rn_1" },
+      ...(extra.assessments ?? []),
     ],
     significantChanges: [
       { id: CHANGE_OPEN, organizationId: ORG, patientId: PATIENT, assessmentId: PAINAD_ACTIVE, priorAssessmentId: null, ruleId: "pps_drop_20_in_14d", status: "open", severity: "high" },
@@ -265,5 +270,96 @@ describe("M9-T05 — reads, trends, significant-change ack, admin", () => {
     const { app } = makeServer();
     const res = await app.inject({ method: "GET", url: "/api/v1/admin/scales/licenses", headers: RN });
     expect(res.statusCode).toBe(403);
+  });
+});
+
+// ── M9-T08 §9.3 security / authorization — SUD Part-2 disclosure-read gate (D10 / M09-F05 / ADR-0014 D1)
+// + DPOA proxy-attribution write gate (§4.4). AIMS is a Phase-1 not-yet-scored scale, so the SUD rows are
+// SEEDED (creation is never consent-blocked — the row's mere existence proves the write path persisted it
+// with `sud_context=true`) and the gate is exercised on the READ/disclosure boundary, which is where Part 2
+// attaches. Cross-tenant RLS-shape isolation is exercised live in rls-isolation.live.test.ts (§9.4).
+describe("M9-T08 — §9.3 SUD Part-2 disclosure-read gate (D10 / M09-F05)", () => {
+  const SUD_PAT_CONSENTED = "22222222-2222-4222-8222-222222222221";
+  const SUD_PAT_NOCONSENT = "22222222-2222-4222-8222-222222222222";
+  const AIMS_VISIBLE = "90000000-0000-4000-8000-0000000000a1";
+  const AIMS_REDACTED = "90000000-0000-4000-8000-0000000000a2";
+
+  const sudSeed = (): ExtraSeed => ({
+    consents: [{ organizationId: ORG, patientId: SUD_PAT_CONSENTED, sudReleaseActive: true }],
+    assessments: [
+      { id: AIMS_VISIBLE, organizationId: ORG, patientId: SUD_PAT_CONSENTED, admissionId: ADMISSION, scaleType: "aims", capturedByDiscipline: "rn", recordedByUserId: "rn_1", sudContext: true, score: 4, scoreInterpretation: "AIMS 4", data: { facialMuscles: 1 }, capturedAt: "2026-06-19T09:00:00.000Z" },
+      { id: AIMS_REDACTED, organizationId: ORG, patientId: SUD_PAT_NOCONSENT, admissionId: ADMISSION, scaleType: "aims", capturedByDiscipline: "rn", recordedByUserId: "rn_1", sudContext: true, score: 4, scoreInterpretation: "AIMS 4", data: { facialMuscles: 1 }, capturedAt: "2026-06-19T09:00:00.000Z" },
+    ],
+  });
+
+  it("a non-consented read returns the redacted-shape row (redacted=true, empty data, null score) — never a hard block", async () => {
+    const { app } = makeServer(sudSeed());
+    const res = await app.inject({ method: "GET", url: `/api/v1/patients/${SUD_PAT_NOCONSENT}/assessments/${AIMS_REDACTED}`, headers: RN });
+    expect(res.statusCode).toBe(200); // the clinician sees "there IS an AIMS but you can't see it"
+    const row = res.json();
+    expect(row.redacted).toBe(true);
+    expect(row.sudContext).toBe(true);
+    expect(row.data).toEqual({});
+    expect(row.score).toBeNull();
+    expect(row.scoreInterpretation).toBeNull();
+  });
+
+  it("an active 42 CFR Part 2 release discloses the AIMS in full (redacted=false)", async () => {
+    const { app } = makeServer(sudSeed());
+    const res = await app.inject({ method: "GET", url: `/api/v1/patients/${SUD_PAT_CONSENTED}/assessments/${AIMS_VISIBLE}`, headers: RN });
+    expect(res.statusCode).toBe(200);
+    const row = res.json();
+    expect(row.redacted).toBe(false);
+    expect(row.score).toBe(4);
+    expect(row.data).toEqual({ facialMuscles: 1 });
+  });
+
+  it("latest() applies the same redaction projection for a non-consented SUD-context AIMS", async () => {
+    const { app } = makeServer(sudSeed());
+    const res = await app.inject({ method: "GET", url: `/api/v1/patients/${SUD_PAT_NOCONSENT}/scales/aims/latest`, headers: RN });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().redacted).toBe(true);
+    expect(res.json().score).toBeNull();
+  });
+
+  it("series withholds the score of a non-consented SUD-context AIMS trend point", async () => {
+    const { app } = makeServer(sudSeed());
+    const res = await app.inject({ method: "GET", url: `/api/v1/patients/${SUD_PAT_NOCONSENT}/scales/aims/series?from=2026-06-01&to=2026-06-30`, headers: RN });
+    expect(res.statusCode).toBe(200);
+    const pts = res.json().points;
+    expect(pts.length).toBe(1);
+    expect(pts[0].score).toBeNull();
+  });
+
+  it("non-SUD scales are never redacted regardless of consent (PPS reads in full)", async () => {
+    const { app } = makeServer(sudSeed());
+    const res = await app.inject({ method: "GET", url: `/api/v1/patients/${PATIENT}/scales/pps/latest`, headers: RN });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().redacted).toBe(false);
+    expect(res.json().score).toBe(60);
+  });
+});
+
+describe("M9-T08 — §9.3 DPOA proxy-attribution write gate (§4.4)", () => {
+  const repBody = () => painadBody({ actingAs: "patient_representative" });
+
+  it("a representative report without an active DPOA is refused (403 DPOA_CONSENT_REQUIRED)", async () => {
+    const { app } = makeServer(); // no consent seeded for PATIENT
+    const res = await app.inject({ method: "POST", url: `/api/v1/patients/${PATIENT}/assessments`, headers: RN, payload: repBody() });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe("DPOA_CONSENT_REQUIRED");
+  });
+
+  it("a representative report with an active DPOA is accepted (201)", async () => {
+    const { app } = makeServer({ consents: [{ organizationId: ORG, patientId: PATIENT, dpoaActive: true }] });
+    const res = await app.inject({ method: "POST", url: `/api/v1/patients/${PATIENT}/assessments`, headers: RN, payload: repBody() });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().actingAs).toBe("patient_representative");
+  });
+
+  it("a self-attributed report needs no DPOA (201)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({ method: "POST", url: `/api/v1/patients/${PATIENT}/assessments`, headers: RN, payload: painadBody({ actingAs: "self" }) });
+    expect(res.statusCode).toBe(201);
   });
 });

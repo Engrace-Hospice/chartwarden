@@ -311,6 +311,14 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
     return kind === "dpoa" ? c.dpoaActive === true : c.sudReleaseActive === true;
   };
 
+  // D10 / M09-F05 (ADR-0014 D1) chart-read disclosure gate: a SUD-context AIMS row read back WITHOUT an
+  // active 42 CFR Part 2 release is returned in redacted shape (`redacted=true`, empty data/score) so a
+  // clinician sees "there is an AIMS but you can't see it" — never blocked on creation. Non-AIMS and
+  // non-SUD rows are never redacted. The disclosure decision is consent-driven (in prod: M5 PrivacyFlag +
+  // M39 consent.evaluate, resolved SQL-side); the slice models it via the seeded consent fact.
+  const sudRedacted = (r: AssessmentRecord): boolean =>
+    r.scaleType === "aims" && r.sudContext && !consentActive(r.organizationId, r.patientId, "sud");
+
   const licenseStatusFor = (organizationId: string, scaleType: ScaleType): "active" | "pending_renewal" | "expired" | null => {
     const lic = [...licenses.values()].find((l) => l.organizationId === organizationId && l.scaleType === scaleType);
     if (!lic) return null;
@@ -407,14 +415,14 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
       const assessments = [...rows.values()]
         .filter((r) => r.organizationId === organizationId && r.patientId === patientId)
         .sort((a, b) => (a.capturedAt < b.capturedAt ? 1 : a.capturedAt > b.capturedAt ? -1 : 0))
-        .map((r) => toView(r));
+        .map((r) => toView(r, sudRedacted(r)));
       return { assessments };
     },
 
     async getAssessment(organizationId, patientId, id) {
       const r = findRow(organizationId, id);
       if (r.patientId !== patientId) throw new NotFoundError("assessment");
-      return toView(r);
+      return toView(r, sudRedacted(r));
     },
 
     async summary(organizationId, patientId) {
@@ -424,7 +432,7 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
         const cur = latest.get(r.scaleType);
         if (!cur || r.capturedAt > cur.capturedAt) latest.set(r.scaleType, r);
       }
-      return { patientId, latest: [...latest.values()].map((r) => toView(r)) };
+      return { patientId, latest: [...latest.values()].map((r) => toView(r, sudRedacted(r))) };
     },
 
     async latestScale(organizationId, patientId, scaleType) {
@@ -433,7 +441,7 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
       );
       if (candidates.length === 0) throw new NotFoundError("assessment");
       const latest = candidates.reduce((a, b) => (b.capturedAt > a.capturedAt ? b : a));
-      return toView(latest);
+      return toView(latest, sudRedacted(latest));
     },
 
     async seriesScale(organizationId, patientId, scaleType, from, to) {
@@ -442,7 +450,11 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
       const points: ScaleSeriesPoint[] = [...rows.values()]
         .filter((r) => r.organizationId === organizationId && r.patientId === patientId && r.scaleType === scaleType && r.status === "active" && r.capturedAt >= fromI && r.capturedAt <= toI)
         .sort((a, b) => (a.capturedAt < b.capturedAt ? -1 : a.capturedAt > b.capturedAt ? 1 : 0))
-        .map((r) => ({ assessmentId: r.id, capturedAt: r.capturedAt, score: r.score, scoreInterpretation: r.scoreInterpretation, significantChange: false }));
+        .map((r) => {
+          // D10 disclosure gate also withholds the score of a non-consented SUD-context AIMS trend point.
+          const redacted = sudRedacted(r);
+          return { assessmentId: r.id, capturedAt: r.capturedAt, score: redacted ? null : r.score, scoreInterpretation: redacted ? null : r.scoreInterpretation, significantChange: false };
+        });
       return { scaleType, patientId, from: fromI, to: toI, points };
     },
 
@@ -464,7 +476,7 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
         const cur = latest.get(r.scaleType);
         if (!cur || r.capturedAt > cur.capturedAt) latest.set(r.scaleType, r);
       }
-      return { latest: [...latest.values()].map((r) => toView(r)) };
+      return { latest: [...latest.values()].map((r) => toView(r, sudRedacted(r))) };
     },
 
     async cosign(organizationId, actorUserId, id, cosignerDiscipline) {

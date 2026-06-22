@@ -995,4 +995,151 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       expect(r.rows[0].after.encounter_type).toBe("routine_visit"); // structured column passes through
     });
   });
+
+  // ── M9 Clinical Assessments — org-scoped RLS, partition+correction trigger, audit scrub (§9.4 / §3.4–3.6)
+  // 0032/0033 (M9) applied above. Proves on REAL Postgres: clinical_assessment is tenant-isolated on
+  // app.org_id even with app authorization stubbed open (§9.3 layer-independence); the RANGE-partitioned
+  // parent's correction-supersede trigger fires under RLS and CANNOT reach across tenants (§9.4 bullet 3);
+  // wardenx_app has NO DELETE (append-only — a correction supersedes, never deletes, §3.6); scale_license
+  // is org-scoped config (§9.4 bullet 4); the M4 write-audit trigger scrubs the `data`/`correction_reason`
+  // denylist (§3.1/§8.1) while the structured `scale_type` passes through.
+  describe("M9 Clinical Assessments — cross-tenant isolation, correction trigger, audit scrub (§9.4 / §3.4–3.6)", () => {
+    const PE_A9 = "e9a00000-0000-0000-0000-0000000000a1";
+    const PE_B9 = "e9b00000-0000-0000-0000-0000000000b1";
+    const LOC_A9 = "e9a00000-0000-0000-0000-0000000000a2";
+    const LOC_B9 = "e9b00000-0000-0000-0000-0000000000b2";
+    const USER_A9 = "e9a00000-0000-0000-0000-0000000000a3";
+    const USER_B9 = "e9b00000-0000-0000-0000-0000000000b3";
+    const MEM_A9 = "e9a00000-0000-0000-0000-0000000000a4";
+    const MEM_B9 = "e9b00000-0000-0000-0000-0000000000b4";
+    const ASMT_A9 = "e9a00000-0000-0000-0000-0000000000a5";
+    const ASMT_B9 = "e9b00000-0000-0000-0000-0000000000b5";
+    const LIC_A9 = "e9a00000-0000-0000-0000-0000000000a6";
+    // captured_at: a stable instant inside the current month (a partition guaranteed to exist post-migration);
+    // the DEFERRABLE composite self-FK pairs (corrects_assessment_id, captured_at) so a correction must reuse
+    // its target's captured_at — both rows therefore share this value.
+    const CAP = "(date_trunc('month', now()) + interval '10 days')";
+    const ACOLS =
+      "(id,organization_id,provider_entity_id,location_id,patient_id,admission_id,scale_type,scale_version,data,score,captured_at,captured_by_membership_id,captured_by_discipline,status,version)";
+
+    beforeAll(async () => {
+      await db.query(
+        `INSERT INTO provider_entity (id,organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
+           VALUES ($1,$2,'CCN-M9A','M9 A','NPI-M9A','enc','12-31'),
+                  ($3,$4,'CCN-M9B','M9 B','NPI-M9B','enc','12-31')`,
+        [PE_A9, ORG_A, PE_B9, ORG_B],
+      );
+      await db.query(
+        `INSERT INTO location (id,provider_entity_id,name,address_line1,city,state,postal_code,timezone)
+           VALUES ($1,$2,'L9A','1 St','Town','OR','97000','America/Los_Angeles'),
+                  ($3,$4,'L9B','1 St','Town','OR','97000','America/Los_Angeles')`,
+        [LOC_A9, PE_A9, LOC_B9, PE_B9],
+      );
+      await db.query(`INSERT INTO "user" (id,email) VALUES ($1,'m9a@x.test'),($2,'m9b@x.test')`, [
+        USER_A9,
+        USER_B9,
+      ]);
+      await db.query(
+        `INSERT INTO membership (id,user_id,organization_id,status)
+           VALUES ($1,$2,$3,'active'),($4,$5,$6,'active')`,
+        [MEM_A9, USER_A9, ORG_A, MEM_B9, USER_B9, ORG_B],
+      );
+      // One active PPS capture per org (superuser → RLS bypassed). data jsonb carries a free-text note so
+      // the audit scrub is observable; both rows share CAP so an in-org correction's composite FK resolves.
+      await db.query(
+        `INSERT INTO clinical_assessment ${ACOLS} VALUES
+           ($1,$2,$3,$4,gen_random_uuid(),gen_random_uuid(),'pps','pps_v2_2001','{"note":"free text PHI"}'::jsonb,60,${CAP},$5,'rn','active',1),
+           ($6,$7,$8,$9,gen_random_uuid(),gen_random_uuid(),'pps','pps_v2_2001','{"note":"free text PHI"}'::jsonb,60,${CAP},$10,'rn','active',1)`,
+        [ASMT_A9, ORG_A, PE_A9, LOC_A9, MEM_A9, ASMT_B9, ORG_B, PE_B9, LOC_B9, MEM_B9],
+      );
+      // One active scale_license per org (PPS is a licensed scale, D3).
+      await db.query(
+        `INSERT INTO scale_license (id,organization_id,scale_type,license_holder,effective_date,expires_at,status,recorded_by_membership_id)
+           VALUES ($1,$2,'pps','Victoria Hospice',current_date,current_date + 365,'active',$3)`,
+        [LIC_A9, ORG_A, MEM_A9],
+      );
+    });
+
+    it("§9.4 Org A sees ONLY its own clinical_assessment (RLS blocks cross-tenant reads, auth stubbed open)", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM clinical_assessment WHERE id=$1", [ASMT_A9]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM clinical_assessment WHERE id=$1", [ASMT_A9]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§3.5 Org B cannot INSERT a clinical_assessment into Org A (WITH CHECK blocks the cross-tenant write)", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO clinical_assessment ${ACOLS} VALUES
+               (gen_random_uuid(),$1,$2,$3,gen_random_uuid(),gen_random_uuid(),'pps','pps_v2_2001','{}'::jsonb,60,${CAP},$4,'rn','active',1)`,
+            [ORG_A, PE_A9, LOC_A9, MEM_A9],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§3.6 clinical_assessment has NO DELETE grant for wardenx_app (corrections supersede, never delete)", async () => {
+      await expect(
+        withOrg(ORG_A, () => db.query("DELETE FROM clinical_assessment WHERE id=$1", [ASMT_A9])),
+      ).rejects.toThrow();
+    });
+
+    it("§3.4 the correction-supersede trigger flips the prior Org-A row to superseded (D9, under RLS)", async () => {
+      // Insert a correction that reuses the target's patient/admission/captured_at (composite self-FK) under
+      // Org A's RLS context; the AFTER-INSERT trigger flips the target row to 'superseded' in the same TX (D9).
+      await withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO clinical_assessment
+             (id,organization_id,provider_entity_id,location_id,patient_id,admission_id,scale_type,scale_version,data,score,captured_at,captured_by_membership_id,captured_by_discipline,status,version,corrects_assessment_id,correction_reason)
+           SELECT gen_random_uuid(),organization_id,provider_entity_id,location_id,patient_id,admission_id,scale_type,scale_version,
+                  '{"note":"corrected"}'::jsonb,70,captured_at,$2,'rn','active',1,id,'transcription correction of the PPS score'
+             FROM clinical_assessment WHERE id=$1`,
+          [ASMT_A9, MEM_A9],
+        ),
+      );
+      const r = await withOrg(ORG_A, () =>
+        db.query("SELECT status FROM clinical_assessment WHERE id=$1", [ASMT_A9]),
+      );
+      expect(r.rows[0].status).toBe("superseded");
+    });
+
+    it("§9.4 a correction from Org A cannot supersede an Org B row (never reaches across tenants)", async () => {
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            `INSERT INTO clinical_assessment
+               (id,organization_id,provider_entity_id,location_id,patient_id,admission_id,scale_type,scale_version,data,score,captured_at,captured_by_membership_id,captured_by_discipline,status,version,corrects_assessment_id,correction_reason)
+             VALUES (gen_random_uuid(),$1,$2,$3,gen_random_uuid(),gen_random_uuid(),'pps','pps_v2_2001','{}'::jsonb,70,${CAP},$4,'rn','active',1,$5,'attempted cross-tenant correction')`,
+            [ORG_A, PE_A9, LOC_A9, MEM_A9, ASMT_B9],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§9.4 scale_license is org-scoped — Org A sees its PPS license, Org B sees none", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query("SELECT count(*)::int AS n FROM scale_license WHERE id=$1", [LIC_A9]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM scale_license WHERE id=$1", [LIC_A9]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§8.1 the M4 write-audit trigger fired for the assessment write and scrubbed the data/free-text denylist", async () => {
+      const r = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='clinical_assessment' AND event_type='clinical_assessment.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.data).toBe("<changed>"); // §8.1 free-text PHI (jsonb payload) scrub
+      expect(r.rows[0].after.scale_type).toBe("pps"); // structured column passes through
+    });
+  });
 });
