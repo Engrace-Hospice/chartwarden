@@ -56,6 +56,16 @@ import {
   WorksheetQuerySchema as EmarWorksheetQuerySchema,
   WorksheetViewSchema,
 } from "../../apps/backend/src/modules/13-emar/routes/emar-typebox";
+import {
+  ActionItemListQuerySchema as IdgActionItemListQuerySchema,
+  ActionItemListResponseSchema as IdgActionItemListResponseSchema,
+  MeetingViewSchema as IdgMeetingViewSchema,
+  MinutesViewSchema as IdgMinutesViewSchema,
+  PacketDigestViewSchema as IdgPacketDigestViewSchema,
+  PacketListResponseSchema as IdgPacketListResponseSchema,
+  ScheduleListResponseSchema as IdgScheduleListResponseSchema,
+  ScheduleQuerySchema as IdgScheduleQuerySchema,
+} from "../../apps/backend/src/modules/14-idg/routes/idg-typebox";
 import { SearchQuerySchema as TerminologySearchQuerySchema } from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
 import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
 
@@ -1137,5 +1147,33 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "POST /api/v1/amendments/:id/deny": {
     body: DenyBodySchema,
     summary: "Deny an amendment request (denial reason required)",
+  },
+  // M14 IDG (Track B — read surfaces the §5 screens consume; M14-T07). Reads only — the lifecycle / decision /
+  // attendance / agenda / action-item / amendment write surfaces fill in as those write paths harden.
+  "GET /api/v1/idg/schedule": {
+    summary: "Meeting schedule for a location/range — next-weeks meetings, location-scoped (§4.1 / §5)",
+    query: IdgScheduleQuerySchema,
+    response: IdgScheduleListResponseSchema,
+  },
+  "GET /api/v1/idg/meetings/:id": {
+    summary: "One meeting's lifecycle view — status + scheduled window + adjournment (§4.1 / §5)",
+    response: IdgMeetingViewSchema,
+  },
+  "GET /api/v1/idg/meetings/:id/packets": {
+    summary: "Per-patient packet digests for a meeting — readiness + freeze state (§4.1 / §5)",
+    response: IdgPacketListResponseSchema,
+  },
+  "GET /api/v1/idg/meetings/:meetingId/packets/:patientId": {
+    summary: "One patient's packet digest in a meeting — chart-embed read (§4.1 / §5; SUD-redacted server-side)",
+    response: IdgPacketDigestViewSchema,
+  },
+  "GET /api/v1/idg/action-items": {
+    summary: "The caller's action items — open / in-progress queue (§4.1 / §5 'My Action Items')",
+    query: IdgActionItemListQuerySchema,
+    response: IdgActionItemListResponseSchema,
+  },
+  "GET /api/v1/idg/meetings/:id/minutes": {
+    summary: "A meeting's minutes — in-progress or finalized (§4.1 / §5)",
+    response: IdgMinutesViewSchema,
   },
 };

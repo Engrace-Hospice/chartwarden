@@ -71,3 +71,17 @@ export {
 // compliance / non-quorate decision / per-patient review-clock + review-floor override). Registered onto
 // M36's Foundation alert-payload registry at boot; composition + recipient resolution is M36's (ADR-0024).
 export { M14_ALERT_PAYLOADS } from "./alerts-by-m14";
+// M14-T07 — the `idg_record` destruction-cert eraser (§8.4). Registered over the Phase-0 deny-stub via the
+// composition root's wireModuleErasers() (apps/backend/src/index.ts). Patient-scoped packet/decision/action-item/
+// agenda rows are deleted; the caseload-wide meeting/policy/attendance/minutes rows survive.
+export {
+  type IdgEraseCounts,
+  type IdgEraseOptions,
+  type IdgEraserDeps,
+  type IdgEraseStore,
+  type InMemoryIdgEraseSeed,
+  createIdgEraser,
+  createInMemoryIdgEraseStore,
+  eraseIdgRecord,
+  registerIdgErasers,
+} from "./erasers/idg-eraser";

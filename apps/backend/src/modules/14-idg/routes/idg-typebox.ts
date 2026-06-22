@@ -160,6 +160,75 @@ export const SubmitAmendmentRequest = Type.Object({
   amendmentReason: Type.String({ minLength: 1, maxLength: 4000 }),
 });
 
+// ── response views (§4.2 — the read projections the GET routes return; M14-T07 enriches the contract so the
+//    generated client (`packages/ui/src/core/api`) types the §5 screens' reads. Shapes mirror the route
+//    service's view DTOs (routes/service.ts) — never the raw Drizzle row). ───────────────────────────────
+const MEETING_STATUS = Type.Union([
+  Type.Literal("scheduled"),
+  Type.Literal("packets_building"),
+  Type.Literal("packets_ready"),
+  Type.Literal("live"),
+  Type.Literal("adjourned"),
+  Type.Literal("cancelled"),
+  Type.Literal("rescheduled"),
+]);
+
+/** A single meeting in the location/range schedule list (GET /idg/schedule). */
+export const MeetingScheduleViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  locationId: Type.String({ format: "uuid" }),
+  status: MEETING_STATUS,
+  scheduledStart: Type.String({ format: "date-time" }),
+  scheduledEnd: Type.String({ format: "date-time" }),
+});
+export const ScheduleListResponseSchema = Type.Array(MeetingScheduleViewSchema);
+
+/** One meeting's lifecycle view (GET /idg/meetings/:id). */
+export const MeetingViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  organizationId: Type.String({ format: "uuid" }),
+  locationId: Type.String({ format: "uuid" }),
+  status: MEETING_STATUS,
+  scheduledStart: Type.String({ format: "date-time" }),
+  scheduledEnd: Type.String({ format: "date-time" }),
+  adjournedAt: Nullable(Type.String({ format: "date-time" })),
+});
+
+/** A per-patient packet digest (GET /idg/meetings/:id/packets + .../packets/:patientId). */
+export const PacketDigestViewSchema = Type.Object({
+  packetId: Type.String({ format: "uuid" }),
+  meetingId: Type.String({ format: "uuid" }),
+  patientId: Type.String({ format: "uuid" }),
+  frozenAt: Nullable(Type.String({ format: "date-time" })),
+});
+export const PacketListResponseSchema = Type.Array(PacketDigestViewSchema);
+
+/** A caller's action-item view (GET /idg/action-items). */
+export const ActionItemViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  meetingId: Type.String({ format: "uuid" }),
+  decisionId: Nullable(Type.String({ format: "uuid" })),
+  patientId: Nullable(Type.String({ format: "uuid" })),
+  assignedToMembershipId: Type.String({ format: "uuid" }),
+  status: Type.Union([
+    Type.Literal("open"),
+    Type.Literal("in_progress"),
+    Type.Literal("completed"),
+    Type.Literal("cancelled"),
+    Type.Literal("auto_closed"),
+  ]),
+  dueDate: Type.String({ format: "date-time" }),
+  linkedArtifactKind: Nullable(ACTION_ITEM_LINKED_KIND),
+});
+export const ActionItemListResponseSchema = Type.Array(ActionItemViewSchema);
+
+/** A meeting's minutes view (GET /idg/meetings/:id/minutes). */
+export const MinutesViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  meetingId: Type.String({ format: "uuid" }),
+  status: Type.Union([Type.Literal("in_progress"), Type.Literal("final")]),
+});
+
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   const converted = Value.Convert(schema, raw ?? {});

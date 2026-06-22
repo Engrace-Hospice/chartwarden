@@ -2481,6 +2481,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The caller's action items — open / in-progress queue (§4.1 / §5 'My Action Items') */
         get: operations["getApiV1IdgActionitems"];
         put?: never;
         post?: never;
@@ -2577,6 +2578,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** One meeting's lifecycle view — status + scheduled window + adjournment (§4.1 / §5) */
         get: operations["getApiV1IdgMeetingsById"];
         put?: never;
         post?: never;
@@ -2689,6 +2691,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** A meeting's minutes — in-progress or finalized (§4.1 / §5) */
         get: operations["getApiV1IdgMeetingsByIdMinutes"];
         put?: never;
         post?: never;
@@ -2705,6 +2708,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Per-patient packet digests for a meeting — readiness + freeze state (§4.1 / §5) */
         get: operations["getApiV1IdgMeetingsByIdPackets"];
         put?: never;
         post?: never;
@@ -2769,6 +2773,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** One patient's packet digest in a meeting — chart-embed read (§4.1 / §5; SUD-redacted server-side) */
         get: operations["getApiV1IdgMeetingsByMeetingIdPacketsByPatientId"];
         put?: never;
         post?: never;
@@ -2833,6 +2838,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Meeting schedule for a location/range — next-weeks meetings, location-scoped (§4.1 / §5) */
         get: operations["getApiV1IdgSchedule"];
         put?: never;
         post?: never;
@@ -9228,7 +9234,10 @@ export interface operations {
     };
     getApiV1IdgActionitems: {
         parameters: {
-            query?: never;
+            query?: {
+                assignee?: string;
+                status?: "open" | "in_progress" | "completed" | "cancelled";
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9240,7 +9249,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        decisionId: string | null;
+                        patientId: string | null;
+                        /** Format: uuid */
+                        assignedToMembershipId: string;
+                        status: "open" | "in_progress" | "completed" | "cancelled" | "auto_closed";
+                        /** Format: date-time */
+                        dueDate: string;
+                        linkedArtifactKind: ("care_plan_version" | "order" | "encounter" | "medication_order") | null;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -9438,7 +9462,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        locationId: string;
+                        status: "scheduled" | "packets_building" | "packets_ready" | "live" | "adjourned" | "cancelled" | "rescheduled";
+                        /** Format: date-time */
+                        scheduledStart: string;
+                        /** Format: date-time */
+                        scheduledEnd: string;
+                        adjournedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -9592,7 +9631,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        status: "in_progress" | "final";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -9614,7 +9661,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        packetId: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        frozenAt: string | null;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -9703,7 +9760,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        packetId: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        frozenAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -9775,7 +9842,11 @@ export interface operations {
     };
     getApiV1IdgSchedule: {
         parameters: {
-            query?: never;
+            query: {
+                location: string;
+                from: string;
+                to: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9787,7 +9858,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        locationId: string;
+                        status: "scheduled" | "packets_building" | "packets_ready" | "live" | "adjourned" | "cancelled" | "rescheduled";
+                        /** Format: date-time */
+                        scheduledStart: string;
+                        /** Format: date-time */
+                        scheduledEnd: string;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

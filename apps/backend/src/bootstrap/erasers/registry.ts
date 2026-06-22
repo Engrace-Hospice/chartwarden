@@ -91,6 +91,13 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // retentionAsOf enforces M4's standard `compliance` retention floor. The org-scoped administration_policy is
   // tenant config, not patient data, and stays untouched. The `subjectId` is the patient.
   "emar_record",
+  // M14-T07: a patient's IDG record (the patient-scoped idg_agenda_item/idg_decision/idg_action_item/
+  // idg_patient_packet rows). M14 registers the REAL eraser via the composition-root hook over this deny-stub —
+  // under an M4 destruction certificate (§8.4) it deletes the patient's packets / decisions / action-items /
+  // agenda items; the caseload-wide idg_meeting / idg_recurring_policy / idg_attendance / idg_minutes /
+  // idg_minutes_amendment rows SURVIVE (a meeting is not a single patient's record; minutes are hash-redacted by
+  // the M4 trigger, not deleted here). The `subjectId` is the patient.
+  "idg_record",
 ];
 
 export function registerEraser(dataClass: DataClass, eraser: DataEraser): void {

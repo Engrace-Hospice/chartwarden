@@ -269,6 +269,7 @@ contract), so `openapi.json`/the client are unchanged.
 | M11 | Signature Inbox (§5), Patient Orders (§5), Order Detail (§5), Verbal-Expiring Queue (§5), Cosign-Pending Queue (§5 §2.5), Lab Results-Pending-Review Queue (§5 D17), Standing-Order Admin (§5 §2.4 D5) | `screens/clinical/WARDENX_UI_ORDERS.md` | done (M11-T08)¹⁸ |
 | M12 | Patient Medications (§6.1), Medication Detail (§6.1), Medication Sign Inbox (§6.1), Verbal Medication Orders (§6.1), Refill Inbox (§6.1), Refill Detail (§6.1), Medication Reconciliation (§6.1), Prescriber Roster admin (§6.1), Prescribing Policy admin (§6.1) | `screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md` (prescribing half) | done — prescribing (M12-T09)¹⁹ |
 | M13 | Patient eMAR (§6.1 #1), Administration Detail (§6.1 #11), IV Continuous Session (§6.1 #5), Missed-Dose Inbox (§6.1 #8), Reconciliation Worksheet (§6.1 #6), Comfort Kit View (§6.1 #7), Administration Policy admin (§6.1 #12) | `screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md` (eMAR half) | done — eMAR administration (M13-T10)²⁰ |
+| M14 | IDG Schedule (§5), Meeting Detail (§5), Live Meeting Surface (§5), Per-Patient Packet (§5), My Action Items (§5), Minutes (§5) | `screens/clinical/WARDENX_UI_IDG_MEETING.md` | done — IDG read surfaces (M14-T07)²¹ |
 
 > ¹³ **Admissions/Intake (M6) now LIVE (Track B, M6-T12, ADR-0030).** Built under
 > `apps/web/src/modules/06-admission` against M6's generated client methods (the M6 read routes are
@@ -382,6 +383,22 @@ contract), so `openapi.json`/the client are unchanged.
 > surfaces, and the offline/sync-issues mobile queue fill in as their write paths harden. The M22 eMAR PDF
 > (apps/admin) and the M28 FHIR `MedicationAdministration` projection are deferred (Wave F/H forward deny-stubs).
 
+> ²¹ **IDG (M14) now LIVE — read surfaces (Track B, M14-T07, ADR-0030).** Built under
+> `apps/web/src/modules/14-idg` against M14's generated client methods (the M14 read routes are enriched in
+> `scripts/openapi/enrichments.ts`, so `packages/ui/src/core/api` types them), registered into the M1 shell via
+> `idgScreens` (`main.tsx`). The IDG Schedule ("Use Work Queue + Documentation Workspace") lists the next-8-weeks
+> meetings for a location (from `?location=`) with their lifecycle chip; the Meeting Detail shows the lifecycle +
+> packet-readiness list; the Live Meeting Surface lists the meeting's patient packets over the lifecycle state;
+> the Per-Patient Packet (chart embed) shows one patient's packet digest + freeze state; My Action Items queues
+> the caller's IDG action items (`assignee=me` server-resolved) with overdue + linked-artifact markers; the
+> Minutes view shows the finalized/in-progress minutes. Nav visibility is gated by `idg.read`; the SERVER stays
+> the only enforcement point (out-of-scope resources 404, never 403; SUD-flagged packet blocks redacted at the
+> SQL-filter level server-side per §7.2/W-SUD-01). The decision-recording panel (quorum gauge + non-quorate
+> refusal), attendance tracker, action-item assignment, adjourn control (D13 fresh step-up), build-packets, and
+> the minutes amendment-request write surfaces — plus the Socket.IO real-time propagation and the Capacitor
+> Mobile Live variant — fill in as their write paths harden. The M22 minutes/packet PDF render and the M28 FHIR
+> `CareTeam`/`Encounter` projection are deferred (Wave F/H handshakes).
+
 ---
 
 ## Blocked on later waves (out of Track A scope until their module lands)
@@ -390,7 +407,7 @@ The remaining ~50 screens (clinical suite, revenue, portal, platform/ops) are ow
 built (M7–M35, M37). They are **Track B**: each ships with its module's wave (include the
 `apps/web/src/modules/NN-*` codePath from T01; the terminal screen task builds it). Examples:
 Care Plan (M7+M15), Orders (M11; done¹⁸), eMAR administration (M13; done²⁰; M12 prescribing is done¹⁹),
-IDG (M14), Scheduling (M17), EVV (M18), Claims (M23+M24), Cap (M26), Cost Report (M27),
+IDG (M14; done²¹), Scheduling (M17), EVV (M18), Claims (M23+M24), Cap (M26), Cost Report (M27),
 FHIR (M28), HQRP (M30), Portal/Telehealth (M31), Copilot (M32), Reporting (M33), Onboarding (M34),
 Subscription (M35), IPU Bed Board (M37). See each spec's `Module:` line for the authoritative owner.
 

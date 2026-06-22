@@ -16,6 +16,7 @@ import { hopeScreens } from "./modules/10-hope";
 import { orderScreens } from "./modules/11-orders";
 import { dosespotScreens } from "./modules/12-dosespot";
 import { emarScreens } from "./modules/13-emar";
+import { idgScreens } from "./modules/14-idg";
 import { messagingScreens } from "./modules/36-messaging";
 import { terminologyScreens } from "./modules/38-terminology";
 import { mdmScreens } from "./modules/40-mdm";
@@ -38,6 +39,7 @@ registry.register(hopeScreens); // M10 HOPE Engine (Track B, M10-T08)
 registry.register(orderScreens); // M11 Orders (Track B, M11-T08)
 registry.register(dosespotScreens); // M12 DoseSpot Prescribing (Track B, M12-T09)
 registry.register(emarScreens); // M13 eMAR Administration (Track B, M13-T10)
+registry.register(idgScreens); // M14 Interdisciplinary Group / IDG (Track B, M14-T07)
 registry.register(messagingScreens); // M36 Messaging (Track A)
 registry.register(terminologyScreens); // M38 Terminology (Track A)
 registry.register(mdmScreens); // M40 MDM (Track A)

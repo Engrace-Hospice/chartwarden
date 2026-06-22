@@ -7302,10 +7302,157 @@
         "tags": [
           "14-idg"
         ],
-        "parameters": [],
+        "summary": "The caller's action items — open / in-progress queue (§4.1 / §5 'My Action Items')",
+        "parameters": [
+          {
+            "name": "assignee",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "open",
+                  "type": "string"
+                },
+                {
+                  "const": "in_progress",
+                  "type": "string"
+                },
+                {
+                  "const": "completed",
+                  "type": "string"
+                },
+                {
+                  "const": "cancelled",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "meetingId",
+                      "decisionId",
+                      "patientId",
+                      "assignedToMembershipId",
+                      "status",
+                      "dueDate",
+                      "linkedArtifactKind"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "meetingId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "decisionId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "patientId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "assignedToMembershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "status": {
+                        "anyOf": [
+                          {
+                            "const": "open",
+                            "type": "string"
+                          },
+                          {
+                            "const": "in_progress",
+                            "type": "string"
+                          },
+                          {
+                            "const": "completed",
+                            "type": "string"
+                          },
+                          {
+                            "const": "cancelled",
+                            "type": "string"
+                          },
+                          {
+                            "const": "auto_closed",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "dueDate": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "linkedArtifactKind": {
+                        "anyOf": [
+                          {
+                            "anyOf": [
+                              {
+                                "const": "care_plan_version",
+                                "type": "string"
+                              },
+                              {
+                                "const": "order",
+                                "type": "string"
+                              },
+                              {
+                                "const": "encounter",
+                                "type": "string"
+                              },
+                              {
+                                "const": "medication_order",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -7548,6 +7695,7 @@
         "tags": [
           "14-idg"
         ],
+        "summary": "One meeting's lifecycle view — status + scheduled window + adjournment (§4.1 / §5)",
         "parameters": [
           {
             "name": "id",
@@ -7560,7 +7708,88 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "locationId",
+                    "status",
+                    "scheduledStart",
+                    "scheduledEnd",
+                    "adjournedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "scheduled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "packets_building",
+                          "type": "string"
+                        },
+                        {
+                          "const": "packets_ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "live",
+                          "type": "string"
+                        },
+                        {
+                          "const": "adjourned",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rescheduled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "scheduledStart": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "scheduledEnd": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "adjournedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -7751,6 +7980,7 @@
         "tags": [
           "14-idg"
         ],
+        "summary": "A meeting's minutes — in-progress or finalized (§4.1 / §5)",
         "parameters": [
           {
             "name": "id",
@@ -7763,7 +7993,41 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "meetingId",
+                    "status"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "meetingId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "in_progress",
+                          "type": "string"
+                        },
+                        {
+                          "const": "final",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -7780,6 +8044,7 @@
         "tags": [
           "14-idg"
         ],
+        "summary": "Per-patient packet digests for a meeting — readiness + freeze state (§4.1 / §5)",
         "parameters": [
           {
             "name": "id",
@@ -7792,7 +8057,48 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "packetId",
+                      "meetingId",
+                      "patientId",
+                      "frozenAt"
+                    ],
+                    "properties": {
+                      "packetId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "meetingId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "patientId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "frozenAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -7896,6 +8202,7 @@
         "tags": [
           "14-idg"
         ],
+        "summary": "One patient's packet digest in a meeting — chart-embed read (§4.1 / §5; SUD-redacted server-side)",
         "parameters": [
           {
             "name": "meetingId",
@@ -7916,7 +8223,45 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "packetId",
+                    "meetingId",
+                    "patientId",
+                    "frozenAt"
+                  ],
+                  "properties": {
+                    "packetId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "meetingId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "frozenAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -8011,10 +8356,106 @@
         "tags": [
           "14-idg"
         ],
-        "parameters": [],
+        "summary": "Meeting schedule for a location/range — next-weeks meetings, location-scoped (§4.1 / §5)",
+        "parameters": [
+          {
+            "name": "location",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "locationId",
+                      "status",
+                      "scheduledStart",
+                      "scheduledEnd"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "locationId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "status": {
+                        "anyOf": [
+                          {
+                            "const": "scheduled",
+                            "type": "string"
+                          },
+                          {
+                            "const": "packets_building",
+                            "type": "string"
+                          },
+                          {
+                            "const": "packets_ready",
+                            "type": "string"
+                          },
+                          {
+                            "const": "live",
+                            "type": "string"
+                          },
+                          {
+                            "const": "adjourned",
+                            "type": "string"
+                          },
+                          {
+                            "const": "cancelled",
+                            "type": "string"
+                          },
+                          {
+                            "const": "rescheduled",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "scheduledStart": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "scheduledEnd": {
+                        "format": "date-time",
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"

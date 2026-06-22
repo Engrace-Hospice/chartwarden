@@ -490,4 +490,13 @@ export type DataClass =
   // `administration_policy` is tenant configuration, not patient data, and is NEVER touched (§7.7 #7).
   // `subjectId` is the patient being destroyed; disjoint from M12's `medication_order_record` (prescribing
   // subtree) and the M5/M6/M7/M8/M9/M10/M11 subtrees.
-  | "emar_record";
+  | "emar_record"
+  // M14 (Interdisciplinary Group / IDG) per-patient IDG record: the patient-scoped IDG artifacts M14 owns —
+  // the `idg_agenda_item`, `idg_decision`, `idg_action_item`, and `idg_patient_packet` rows that carry a
+  // `patient_id`. Erased by M14's registered eraser (M14-T07) under an M4 destruction certificate (§8.4): the
+  // patient's packets / decisions / action-items / agenda items are deleted; the `idg_meeting`,
+  // `idg_recurring_policy`, `idg_attendance`, `idg_minutes`, and `idg_minutes_amendment` rows SURVIVE — they are
+  // caseload-wide / org-level meeting artifacts (a meeting is not a single patient's record), and patient-
+  // specific references inside `idg_minutes` snapshots are hash-redacted by the M4 trigger pattern, not deleted
+  // here. `subjectId` is the patient being destroyed; disjoint from every other module's clinical subtree.
+  | "idg_record";

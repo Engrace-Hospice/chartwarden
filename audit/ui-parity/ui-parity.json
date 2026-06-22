@@ -21,6 +21,7 @@
     "11-orders",
     "12-dosespot",
     "13-emar",
+    "14-idg",
     "36-messaging",
     "38-terminology",
     "40-mdm"
@@ -445,6 +446,48 @@
       "id": "emar.administration-policy",
       "path": "/admin/administration-policy",
       "permission": "administration.admin.policy"
+    },
+    {
+      "module": "14-idg",
+      "moduleId": 14,
+      "id": "idg.schedule",
+      "path": "/idg/schedule",
+      "permission": "idg.read"
+    },
+    {
+      "module": "14-idg",
+      "moduleId": 14,
+      "id": "idg.meeting-detail",
+      "path": "/idg/meetings/:id",
+      "permission": "idg.read"
+    },
+    {
+      "module": "14-idg",
+      "moduleId": 14,
+      "id": "idg.meeting-live",
+      "path": "/idg/meetings/:id/live",
+      "permission": "idg.read"
+    },
+    {
+      "module": "14-idg",
+      "moduleId": 14,
+      "id": "idg.packet",
+      "path": "/idg/meetings/:meetingId/packets/:patientId",
+      "permission": "idg.read"
+    },
+    {
+      "module": "14-idg",
+      "moduleId": 14,
+      "id": "idg.action-items",
+      "path": "/idg/action-items",
+      "permission": "idg.read"
+    },
+    {
+      "module": "14-idg",
+      "moduleId": 14,
+      "id": "idg.minutes",
+      "path": "/idg/meetings/:id/minutes",
+      "permission": "idg.read"
     },
     {
       "module": "36-messaging",
