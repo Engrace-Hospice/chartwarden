@@ -7,11 +7,13 @@
 // (`idg.ts`) so downstream consumers (M7/M11/M12/M16/M22/M28/M30/M33/M36) import them with no `dependsOn`
 // edge.
 //
-// Later M14 tasks add the pure (IO-free, `@wardenx/types`-only) domain that reads these constants — the
-// §2.2 meeting state machine + decision/action-item/minutes logic (M14-T03) and the §2.4 D1 packet-snapshot
-// builder helpers (M14-T04). It lives HERE (the M11 `@wardenx/orders` / M12 `@wardenx/dosespot` / M13
+// The pure (IO-free, `@wardenx/types`-only) domain that reads these constants — the §2.2 meeting state
+// machine + decision/action-item/minutes logic (M14-T03) and the §2.4 D1 / §2.5 D7 packet-snapshot builder +
+// W-PKT-02 freeze guard + W-SUD-01 read-path redactor (M14-T04). It lives HERE (the M11 `@wardenx/orders` /
+// M12 `@wardenx/dosespot` / M13
 // `@wardenx/emar` precedent) rather than the `@wardenx/domain` leaf because it reads the local
 // `DISCIPLINE_VIEW_POLICY` / quorum constants.
 
 export * from "./policy";
 export * from "./lifecycle";
+export * from "./packet";
