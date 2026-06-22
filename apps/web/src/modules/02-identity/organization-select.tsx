@@ -6,7 +6,6 @@ import { CenteredCardLayout, EmptyState, LoadingSpinner, useApiClient } from "@w
 // Imports only leaves (@wardenx/ui) + react-router — never the backend or the shell internals.
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
-import { useNavigate } from "react-router-dom";
 
 // Wire shape mirrored from the M2 route (apps/backend/.../identity-routes.ts toView), re-declared
 // here rather than imported — the UI consumes the HTTP response, not the backend package.
@@ -27,7 +26,6 @@ type LoadState =
 
 export function OrganizationSelect(): JSX.Element {
   const client = useApiClient();
-  const navigate = useNavigate();
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [selecting, setSelecting] = useState<string | null>(null);
 
@@ -66,7 +64,11 @@ export function OrganizationSelect(): JSX.Element {
       });
       return;
     }
-    navigate("/");
+    // The session's active org is now bound server-side. Re-bootstrap the app with a full load (not
+    // an SPA navigate) so ActorSessionProvider re-fetches /auth/context and the whole shell — nav,
+    // Role Home, the pre-org guard — sees the bound org. An SPA navigate would keep the stale
+    // pre-org session in memory and the shell guard would bounce straight back here.
+    window.location.assign("/");
   }
 
   return (

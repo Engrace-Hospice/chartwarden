@@ -4,8 +4,8 @@ import { DegradedBanner, EmptyState } from "@wardenx/ui";
 // <Outlet/>. Imports only @wardenx/ui (leaf) + react-router — never a feature module.
 import { useState } from "react";
 import type { FormEvent, JSX, ReactNode } from "react";
-import { Link, Outlet, useNavigate } from "react-router-dom";
-import { canSeeScreen } from "./actor-session";
+import { Link, Navigate, Outlet, useNavigate } from "react-router-dom";
+import { canSeeScreen, needsOrgSelection } from "./actor-session";
 import type { WebScreenDescriptor } from "./screen-registry";
 import { useSession } from "./session";
 
@@ -17,6 +17,13 @@ export interface AppLayoutProps {
 
 export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   const session = useSession();
+  // Pre-org guard (ADR-0030): an authenticated session with no bound organization can't use ANY
+  // org-scoped screen — the server 401/403s every org route, so the shell would render screens that
+  // all read "Unavailable". Send the actor to organization-select instead. `/login/organization` is
+  // chromeless (outside this layout), so it is never guarded — no redirect loop.
+  if (needsOrgSelection(session)) {
+    return <Navigate to="/login/organization" replace />;
+  }
   return (
     <div className="wx-shell">
       <DegradedBanner />
