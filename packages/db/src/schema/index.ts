@@ -265,3 +265,25 @@ export * from "./assessment/assessment-cosignatures";
 export * from "./assessment/significant-change-events";
 export * from "./assessment/scale-licenses";
 export * from "./assessment/scale-policies";
+
+// ── Module 10 (HOPE Engine) — the CMS HOPE timepoint + iQIES submission spine (§3.3) ─────────
+// M10 owns 6 tables (M10-T02): hope_timepoint_schedule (the §2.2.1 window ledger) + hope_assessment
+// (the per-RFA capture, PARTITIONED BY RANGE (target_date) monthly per D11/§3.6) + symptom_follow_up_visit
+// (the J2051-triggered SFV, D4) + hope_validation_finding (the CMS pre-submission rule output) +
+// hope_submission / hope_submission_item (the per-CCN iQIES batch + its assessment join rows). The four
+// patient-level PHI tables (hope_timepoint_schedule / hope_assessment / symptom_follow_up_visit /
+// hope_validation_finding) carry the three-column tenancy rule (organization_id + provider_entity_id +
+// location_id all NOT NULL, denormalized from the admission so per-CCN batching + location dashboards run
+// without joining M6, §3.3 tenancy note); hope_submission is per-CCN (organization_id + provider_entity_id,
+// NO location/patient) and hope_submission_item is a join row (organization_id only) — both outside the
+// PHI three-column rule. Cross-module refs (M5 patient, M6 admission, M8 source_encounter) are plain uuid
+// app-validated, NOT cross-module FKs; actor refs go to M1 `membership`. `hope_assessment` is PARTITION BY
+// RANGE (target_date) monthly — converted from the logical Drizzle shape in the RLS migration alongside the
+// DEFERRABLE self-FK + the correction-supersede / schedule-mark-completed triggers. RLS + grants + M4
+// write-audit triggers + the partition conversion land in migration 0035 (M10-T02, §3.4/§3.5/§3.6).
+export * from "./hope/hope-timepoint-schedules";
+export * from "./hope/hope-assessments";
+export * from "./hope/symptom-follow-up-visits";
+export * from "./hope/hope-validation-findings";
+export * from "./hope/hope-submissions";
+export * from "./hope/hope-submission-items";

@@ -1,8 +1,8 @@
 {
   "totals": {
     "Implemented": 12,
-    "Partial": 1,
-    "Placeholder": 27
+    "Partial": 2,
+    "Placeholder": 26
   },
   "rows": [
     {
@@ -134,10 +134,10 @@
     {
       "id": 10,
       "module": "M10 HOPE Engine",
-      "status": "Placeholder",
+      "status": "Partial",
       "spec": true,
-      "schema": false,
-      "migration": false,
+      "schema": true,
+      "migration": true,
       "routes": false,
       "enriched": false,
       "screens": false,
