@@ -394,8 +394,8 @@ exports.MODULES = [
   {
     id: 11,
     name: "Orders",
-    codePaths: ["apps/backend/src/modules/11-orders"],
-    dependsOn: [6, 36, 38, 40],
+    codePaths: ["packages/orders", "apps/backend/src/modules/11-orders", "apps/web/src/modules/11-orders"],
+    dependsOn: [6, 36, 38, 40], // +packages/orders: §3.1 M11-owned feature pkg (kinds/catalog/seams/alerts), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M11-T08
     ownedTables: [
       "order_record",
       "order_signature",

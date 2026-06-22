@@ -90,6 +90,9 @@
       "path": "./packages/narrative-vocab"
     },
     {
+      "path": "./packages/orders"
+    },
+    {
       "path": "./packages/quality"
     },
     {

@@ -1264,3 +1264,110 @@ export const hopeScheduleGeneratedBy = pgEnum("hope_schedule_generated_by", [
   "sfv_trigger",
   "manual_admin",
 ]);
+
+// ── Module 11 (Orders) §3.2 ───────────────────────────────────────────────────────────────────
+// The shared `order_record` row keys on `kind` and carries a per-kind TypeBox-typed `data` jsonb
+// (D1 — single jsonb, no per-kind ALTER TABLE churn). `transmission_status` / `results_status` are
+// the §2.2 orthogonal lab-only observed states (never lifecycle states). Enum values mirror the leaf
+// type surface in `@wardenx/types` (`orders.ts`); the §3.3 tables (M11-T02) compile against the final
+// enum set (ADR-0022 D1.3: one pgEnum definition site, no later ALTER-then-redeclare).
+
+/** `order_kind` — the eight §2.1 non-medication order kinds. */
+export const orderKind = pgEnum("order_kind", [
+  "lab",
+  "dme",
+  "level_of_care_change",
+  "recertification",
+  "comfort_kit",
+  "supply",
+  "ancillary_service",
+  "idg_requested",
+]);
+
+/** `order_status` — the §2.2 D2 lifecycle (draft → … → active → completed/discontinued). */
+export const orderStatus = pgEnum("order_status", [
+  "draft",
+  "pending_signature",
+  "verbal_pending",
+  "active",
+  "completed",
+  "discontinued",
+  "expired_unsigned",
+]);
+
+/** `order_priority` — the §2.1 lab/dispatch priority (ORC-7 / OBR-5 in the §4.4 ORM payload). */
+export const orderPriority = pgEnum("order_priority", ["routine", "stat", "asap"]);
+
+/** `order_signature_target_kind` — the §2.8 D14 polymorphic-signature discriminator (M11 order vs M12 med order). */
+export const orderSignatureTargetKind = pgEnum("order_signature_target_kind", [
+  "order",
+  "medication_order",
+]);
+
+/** `order_signature_kind` — the §2.5 polymorphic `order_signature.signature_kind`. */
+export const orderSignatureKind = pgEnum("order_signature_kind", [
+  "signature",
+  "cosignature",
+  "verbal_attestation",
+]);
+
+/** `verbal_order_status` — the §2.3 D3 verbal-order timer lifecycle. */
+export const verbalOrderStatus = pgEnum("verbal_order_status", [
+  "pending",
+  "signed_in_time",
+  "expired_unsigned",
+]);
+
+/** `standing_order_cadence` — the §2.4 D5 template spawn cadence. */
+export const standingOrderCadence = pgEnum("standing_order_cadence", [
+  "daily",
+  "weekly",
+  "biweekly",
+  "monthly",
+  "prn",
+]);
+
+/** `standing_order_status` — the §2.4 D5 standing-order template lifecycle. */
+export const standingOrderStatus = pgEnum("standing_order_status", [
+  "active",
+  "paused",
+  "expired",
+  "discontinued",
+]);
+
+/** `standing_order_spawned_by` — provenance of a §2.4 `standing_order_instance` (worker vs PRN request). */
+export const standingOrderSpawnedBy = pgEnum("standing_order_spawned_by", [
+  "system",
+  "clinician_request",
+]);
+
+/** `order_discontinuation_reason` — the §2.6 D13 discontinuation reasons (operator + auto-cascade). */
+export const orderDiscontinuationReason = pgEnum("order_discontinuation_reason", [
+  "clinical_judgement",
+  "patient_request",
+  "adverse_event",
+  "replaced_by_corrected_order",
+  "admission_discharged",
+  "level_of_care_change",
+  "standing_order_discontinued",
+  "corrected_replacement",
+  "expired_verbal",
+]);
+
+/** `order_transmission_status` — the §2.2 / §4.10 orthogonal lab-wire dispatch state (M29-driven). */
+export const orderTransmissionStatus = pgEnum("order_transmission_status", [
+  "not_required",
+  "pending",
+  "pending_retry",
+  "transmitted",
+  "failed",
+]);
+
+/** `order_results_status` — the §2.2 / §4.10 orthogonal lab-results-received state (M29-driven). */
+export const orderResultsStatus = pgEnum("order_results_status", [
+  "not_expected",
+  "awaiting_results",
+  "partial_results_received",
+  "results_received",
+  "results_overdue",
+]);

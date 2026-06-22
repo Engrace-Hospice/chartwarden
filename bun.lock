@@ -190,6 +190,13 @@
         "@wardenx/types": "workspace:*",
       },
     },
+    "packages/orders": {
+      "name": "@wardenx/orders",
+      "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
+    },
     "packages/quality": {
       "name": "@wardenx/quality",
       "version": "0.0.0",
@@ -623,6 +630,8 @@
     "@wardenx/messaging": ["@wardenx/messaging@workspace:packages/messaging"],
 
     "@wardenx/narrative-vocab": ["@wardenx/narrative-vocab@workspace:packages/narrative-vocab"],
+
+    "@wardenx/orders": ["@wardenx/orders@workspace:packages/orders"],
 
     "@wardenx/portal": ["@wardenx/portal@workspace:apps/portal"],
 
