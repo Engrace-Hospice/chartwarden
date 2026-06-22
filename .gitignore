@@ -13,6 +13,9 @@ dist/
 .env
 .env.local
 
+# Local dev credentials written by `bun run db:seed` (never commit secrets).
+CREDENTIALS.local.md
+
 # Phase 0: bun.lock IS committed (acceptance #1 — `bun install` resolves from a
 # committed lockfile on a clean checkout). Do NOT ignore it.
 

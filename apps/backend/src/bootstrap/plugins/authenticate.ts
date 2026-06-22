@@ -31,6 +31,9 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
     const snap = await deps.getSnapshot(request);
     if (!snap) return; // unauthenticated — context stays anonymous (org routes deny)
     request.context.userId = snap.userId; // authenticated (pre-org or org-bound)
+    // Expose the real Better Auth session id so route helpers (e.g. select-organization's session
+    // writer) can act on the actual session row, not the per-request id. Init the bag if absent.
+    (request.context.attributes ??= {}).sessionId = snap.sessionId;
     if (!snap.activeOrganizationId) return; // pre-org: org-scoped routes gate on the missing org
     const scope: OrgScope = { orgId: snap.activeOrganizationId };
     const actor = await deps.getResolver().resolveActor(scope, snap.sessionId);
