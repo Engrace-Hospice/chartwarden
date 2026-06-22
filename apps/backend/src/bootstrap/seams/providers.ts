@@ -23,6 +23,9 @@ import type {
   EncounterCreator,
   EvvBracketResolver,
   FaceToFaceReader,
+  HopeJ2051Provider,
+  HopeSubmissionProvider,
+  HopeTimepointProvider,
   LatestAssessmentProvider,
   LevelOfCareReader,
   MileagePayrollReader,
@@ -277,6 +280,40 @@ export const scaleSeriesProviderDenyStub: ScaleSeriesProvider = {
   },
   delta() {
     throw new NotImplementedError("ScaleSeriesProvider");
+  },
+};
+
+// M10 (HOPE Engine) owned seams (§2 / D10). LEAF-TYPED (interfaces in @wardenx/types) like M6/M7/M8/M9's
+// readers, so each gets a concrete typed deny-stub. Denies LOUDLY until M10 registers the real impls
+// (M10-T05).
+
+/** M10 — open/all timepoint windows + completion state (IDG, PDF timeline, HQRP, AI). Denies until M10 registers it. */
+export const hopeTimepointProviderDenyStub: HopeTimepointProvider = {
+  openTimepoints() {
+    throw new NotImplementedError("HopeTimepointProvider");
+  },
+  forAdmission() {
+    throw new NotImplementedError("HopeTimepointProvider");
+  },
+};
+
+/** M10 — J2051 trigger history + open SFV obligations (HQRP Timely-Follow-Up, AI trajectory). Denies until M10 registers it. */
+export const hopeJ2051ProviderDenyStub: HopeJ2051Provider = {
+  history() {
+    throw new NotImplementedError("HopeJ2051Provider");
+  },
+  openSfvs() {
+    throw new NotImplementedError("HopeJ2051Provider");
+  },
+};
+
+/** M10 — per-PE submission batch status (HQRP acceptance posture, submission dashboards). Denies until M10 registers it. */
+export const hopeSubmissionProviderDenyStub: HopeSubmissionProvider = {
+  latestForProviderEntity() {
+    throw new NotImplementedError("HopeSubmissionProvider");
+  },
+  submission() {
+    throw new NotImplementedError("HopeSubmissionProvider");
   },
 };
 

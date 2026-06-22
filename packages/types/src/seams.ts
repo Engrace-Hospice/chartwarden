@@ -15,6 +15,11 @@ import type {
   SignedEncountersReader,
 } from "./encounter";
 import type { LatestAssessmentProvider, ScaleSeriesProvider } from "./assessment";
+import type {
+  HopeJ2051Provider,
+  HopeSubmissionProvider,
+  HopeTimepointProvider,
+} from "./hope";
 import type { PatientMutator, PatientReader } from "./patient";
 // @wardenx/types — Boot-registered SEAM contracts (Phase 0 skeleton).
 //
@@ -77,7 +82,14 @@ export type SeamName =
   // M14 (IDG packet deltas), M28 (FHIR Observation series), M32 (AI symptom-trajectory) consume them
   // instead of importing M9's schema.
   | "LatestAssessmentProvider" // M9 — hot latest-active-per-scale read (CTI draft, IDG packet, HOPE context)
-  | "ScaleSeriesProvider"; // M9 — windowed scored series + latest-vs-window delta (IDG, FHIR, AI trajectory)
+  | "ScaleSeriesProvider" // M9 — windowed scored series + latest-vs-window delta (IDG, FHIR, AI trajectory)
+  // M10 (HOPE Engine) owned seams (§2 / D10) — also leaf-typed (interfaces in ./hope), so they are typed
+  // here like M6/M7/M8/M9's readers. M14 (open HOPE windows on the IDG packet), M22 (per-admission HOPE
+  // timeline PDF), M30 (HQRP on-time / acceptance / Timely-Follow-Up measures), M32 (AI symptom-trajectory +
+  // decline-prediction) consume them instead of importing M10's schema.
+  | "HopeTimepointProvider" // M10 — open/all timepoint windows + completion state (IDG, PDF timeline, HQRP, AI)
+  | "HopeJ2051Provider" // M10 — J2051 trigger history + open SFV obligations (HQRP Timely-Follow-Up, AI trajectory)
+  | "HopeSubmissionProvider"; // M10 — per-PE submission batch status (HQRP acceptance posture, submission dashboards)
 
 /**
  * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
@@ -261,6 +273,13 @@ export interface SeamContracts {
   // them through the typed accessors with no schema import edge.
   LatestAssessmentProvider: LatestAssessmentProvider;
   ScaleSeriesProvider: ScaleSeriesProvider;
+  // M10's owned seams (§2 / D10) are LEAF-TYPED too — interfaces live in ./hope (this package), so the
+  // registry is statically typed against the real contract. M10 registers the real Drizzle-backed impls
+  // over the deny-stubs (M10-T05); consumers that list `10` in their manifest `dependsOn` resolve them
+  // through the typed accessors with no schema import edge.
+  HopeTimepointProvider: HopeTimepointProvider;
+  HopeJ2051Provider: HopeJ2051Provider;
+  HopeSubmissionProvider: HopeSubmissionProvider;
 }
 
 /**

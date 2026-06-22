@@ -35,6 +35,7 @@ import { registerAdmissionErasers, registerAdmissionSeams } from "./modules/06-a
 import { registerCarePlanErasers, registerCarePlanSeams } from "./modules/07-care-plan/index";
 import { registerEncounterErasers, registerEncounterSeams } from "./modules/08-encounters/index";
 import { registerAssessmentErasers, registerAssessmentSeams } from "./modules/09-assessments/index";
+import { registerHopeSeams } from "./modules/10-hope/index";
 import {
   createDbMessagingProvider,
   mountMessagingRoutes,
@@ -107,6 +108,11 @@ export function wireModuleSeams(
   // consume for latest-scale reads + trend series/deltas. Slice/tests keep the in-memory store; the
   // Drizzle-backed store lands with M9's routes/repos (M9-T05+).
   registerAssessmentSeams();
+  // M10 — the three §2 / D10 owned seams (HopeTimepointProvider + HopeJ2051Provider + HopeSubmissionProvider)
+  // M14/M22/M30/M32 consume for open HOPE windows, J2051 trigger/SFV obligations, and per-PE submission
+  // status. Slice/tests keep the in-memory store; the Drizzle-backed store lands with M10's routes/repos
+  // (M10-T06+).
+  registerHopeSeams();
   // M39 — ConsentEvaluator (§4.3, the disclosure/redaction gate). Production backs it with the Drizzle
   // store over the real M39 consent tables (FB-T03); slice/tests keep the in-memory default.
   registerConsentSeams(deps.db ? { store: createDbConsentStore(deps.db) } : {});

@@ -30,6 +30,9 @@ import {
   encounterCreatorDenyStub,
   evvBracketResolverDenyStub,
   faceToFaceReaderDenyStub,
+  hopeJ2051ProviderDenyStub,
+  hopeSubmissionProviderDenyStub,
+  hopeTimepointProviderDenyStub,
   latestAssessmentProviderDenyStub,
   levelOfCareReaderDenyStub,
   mdmEntityProviderDenyStub,
@@ -232,6 +235,30 @@ export const REQUIRED_SEAMS = [
     ownerModule: 9,
     phi: true,
     denyStub: scaleSeriesProviderDenyStub,
+  },
+  // M10 (HOPE Engine) owned seams (§2 / D10). Leaf-typed read-only DTO surfaces over M10's PHI tables (the
+  // timepoint schedule + completion state, the J2051 trigger/SFV obligations, the per-PE submission batch
+  // status), consumed by M14 (open HOPE windows on the IDG packet), M22 (per-admission HOPE timeline PDF),
+  // M30 (HQRP on-time / acceptance / Timely-Follow-Up measures), M32 (AI symptom-trajectory + decline
+  // prediction) instead of importing M10's schema. PHI read surfaces (patient-linked timepoints/triggers/
+  // submissions) → phi: true; boot-validated and fail-closed until M10 registers the real impls (M10-T05).
+  {
+    key: "HopeTimepointProvider",
+    ownerModule: 10,
+    phi: true,
+    denyStub: hopeTimepointProviderDenyStub,
+  },
+  {
+    key: "HopeJ2051Provider",
+    ownerModule: 10,
+    phi: true,
+    denyStub: hopeJ2051ProviderDenyStub,
+  },
+  {
+    key: "HopeSubmissionProvider",
+    ownerModule: 10,
+    phi: true,
+    denyStub: hopeSubmissionProviderDenyStub,
   },
 ] satisfies readonly RequiredSeam[];
 
