@@ -17,6 +17,13 @@
 // recorded` payload, and the hard minimum-interval gate with the supervisor-override path) and the §2.6 D7
 // controlled-substance witness (`witness/`: the five-rule `controlled_substance_witness_eligible` predicate
 // + the §7.4 HMAC-signed, scope-bound, 60s single-use witness-attestation token core). All PURE.
+//
+// M13-T05 lands the §2.7 D5 comfort-kit surface (`comfort-kit/`: deployment + per-medication drawdown
+// materialization, the atomic decrement with the `KIT_INSUFFICIENT_QUANTITY` floor, the
+// `m13.comfort_kit.replenishment_needed` signal with routine/urgent urgency, and the return-reconciliation
+// controlled-substance-discrepancy detector) and the §2.5/§2.7 D14 admission-discharge / patient-deceased
+// cascade (`cascade/`: cancel future pending scheduled doses without retro-marking misses, emit
+// `m13.comfort_kit.return_required` for active deployments, and the 30-day return-overdue sweep). All PURE.
 
 export * from "./modes/catalog";
 export * from "./lifecycle";
@@ -24,3 +31,5 @@ export * from "./schedule";
 export * from "./five-rights";
 export * from "./prn";
 export * from "./witness";
+export * from "./comfort-kit";
+export * from "./cascade";
