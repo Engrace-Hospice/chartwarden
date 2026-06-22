@@ -93,7 +93,15 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
   return betterAuth({
     appName: "WardenX",
     secret: process.env.BETTER_AUTH_SECRET,
-    baseURL: process.env.BETTER_AUTH_URL,
+    // `baseURL` is the canonical origin of the auth server (this backend) — used for callbacks,
+    // redirects, and cookie domains. Production MUST set BETTER_AUTH_URL (the deploy host); we keep it
+    // fail-loud there (undefined → Better Auth warns) rather than silently pinning a wrong origin. Dev
+    // and test fall back to the local backend origin so the "Base URL is not set" warning stays out of
+    // the dev/test output (mirrors the passkey `origin` fallback below). Multi-host front-ends (e.g. the
+    // M31 per-tenant portal) are an additive `trustedOrigins` concern, not a second baseURL.
+    baseURL:
+      process.env.BETTER_AUTH_URL ??
+      (process.env.NODE_ENV === "production" ? undefined : "http://localhost:3000"),
     // M1's identity PKs are `uuid` (defaultRandom) — Better Auth's default id generator emits non-UUID
     // strings, which fail to insert into a uuid column (AUTH-T06 live finding). Generate UUIDs instead;
     // a UUID string is valid for the uuid PKs (user/session/account/passkey) AND for verification's
