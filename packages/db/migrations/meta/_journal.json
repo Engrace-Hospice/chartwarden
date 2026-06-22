@@ -253,6 +253,20 @@
       "when": 1782121501434,
       "tag": "0037_orders_m11_rls_audit_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1782128428795,
+      "tag": "0038_dosespot_m12_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1782128428796,
+      "tag": "0039_dosespot_m12_rls_audit_triggers",
+      "breakpoints": true
     }
   ]
 }

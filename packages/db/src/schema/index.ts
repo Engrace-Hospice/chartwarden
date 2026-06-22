@@ -314,3 +314,29 @@ export * from "./orders/verbal-orders";
 export * from "./orders/standing-order-instances";
 export * from "./orders/order-discontinuations";
 export * from "./orders/order-verbal-policies";
+
+// ---------------------------------------------------------------------------
+// Module 12 — DoseSpot Integration (M12-T02)
+// ---------------------------------------------------------------------------
+// M12 owns 6 tables (M12-T02): the `medication_order` root for every DoseSpot-prescribed medication (the
+// §2.2 D2 draft→…→active→completed/discontinued lifecycle + the orthogonal §4.10 DoseSpot send-state; all
+// clinician free-text lives inside the per-class TypeBox `data`, so the whole column is denylisted, §7.6) +
+// medication_order_transmission (the §4.10 audit-anchor for every adapter call, D8 idempotency) +
+// refill_request (the §2.7 D9 pharmacy refill inbox) + dosespot_webhook_event (the §7.4 D7 DEK-encrypted
+// inbound webhook receipt) + dosespot_prescriber (the per-tenant roster backing the §4.7 ABAC predicates +
+// §1311.115 IAL2/EPCS gates) + epcs_signing_attempt (the §1311.205 records-of-application, behind the OFF
+// `dosespot.epcs` flag). The two PHI-bearing tables (medication_order / refill_request) carry the
+// three-column tenancy rule (organization_id + provider_entity_id + location_id NOT NULL, denormalized from
+// the admission/source order). Cross-module refs (M5 patient, M6 admission, M40 prescribing physician /
+// pharmacy MDM, M38 RxNorm/NDC codes) are plain uuid/text app-validated, NOT cross-module FKs (M12 dependsOn
+// [5,11,38,40]); medication_order is partitioned, so every reference TO it (transmission / refill /
+// epcs_signing_attempt / self-ref replaces) carries NO single-column SQL FK; actor refs go to M1 `membership`.
+// `medication_order` is PARTITION BY RANGE (created_at) monthly — converted from the logical Drizzle shape in
+// the RLS migration. RLS + grants + M4 write-audit triggers + the partition conversion land in the RLS
+// migration (M12-T02, §3.3/§3.5/§7.6).
+export * from "./dosespot/medication-orders";
+export * from "./dosespot/medication-order-transmissions";
+export * from "./dosespot/refill-requests";
+export * from "./dosespot/dosespot-webhook-events";
+export * from "./dosespot/dosespot-prescribers";
+export * from "./dosespot/epcs-signing-attempts";
