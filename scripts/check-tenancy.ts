@@ -114,6 +114,14 @@ const NON_ORG_SCOPED = new Set<string>([
   // RLS in M39-T03; the four patient-bearing ones (consent_record / delegated_access /
   // consent_eval_audit / consent_renewal_cycle) additionally carry the three-column rule.
   "consent_type_catalog",
+  // M22 Document Management (§3.3 / §4.5): the form-template library is platform-published —
+  // `form_template` + `form_template_version` carry NO organization_id BY DESIGN (the same template
+  // definition for every tenant; per-tenant branding is layered via the org-scoped
+  // `tenant_template_overlay`). Dual-grant RLS in 0049 (platform writes, read-all within any tenant —
+  // M38 `code_system` / M40 canonical-entity precedent). The other fifteen M22 tables carry
+  // organization_id; `document` + `intake_upload_batch` additionally carry the three-column rule.
+  "form_template",
+  "form_template_version",
 ]);
 // PHI signal: a table referencing a patient is PHI-bearing and MUST be fully org-scoped.
 const PHI_SIGNAL_RE =
