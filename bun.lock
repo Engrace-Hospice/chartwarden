@@ -137,6 +137,9 @@
     "packages/evv-aggregators": {
       "name": "@wardenx/evv-aggregators",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
     },
     "packages/fhir": {
       "name": "@wardenx/fhir",
@@ -160,6 +163,13 @@
     },
     "packages/hope": {
       "name": "@wardenx/hope",
+      "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
+    },
+    "packages/idg": {
+      "name": "@wardenx/idg",
       "version": "0.0.0",
       "dependencies": {
         "@wardenx/types": "workspace:*",
@@ -220,6 +230,13 @@
     "packages/saas": {
       "name": "@wardenx/saas",
       "version": "0.0.0",
+    },
+    "packages/scheduling": {
+      "name": "@wardenx/scheduling",
+      "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
     },
     "packages/shared": {
       "name": "@wardenx/shared",
@@ -661,6 +678,8 @@
 
     "@wardenx/hope": ["@wardenx/hope@workspace:packages/hope"],
 
+    "@wardenx/idg": ["@wardenx/idg@workspace:packages/idg"],
+
     "@wardenx/inpatient": ["@wardenx/inpatient@workspace:packages/inpatient"],
 
     "@wardenx/intake-extraction": ["@wardenx/intake-extraction@workspace:packages/intake-extraction"],
@@ -684,6 +703,8 @@
     "@wardenx/routing-client": ["@wardenx/routing-client@workspace:packages/routing-client"],
 
     "@wardenx/saas": ["@wardenx/saas@workspace:packages/saas"],
+
+    "@wardenx/scheduling": ["@wardenx/scheduling@workspace:packages/scheduling"],
 
     "@wardenx/shared": ["@wardenx/shared@workspace:packages/shared"],
 

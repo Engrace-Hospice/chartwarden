@@ -497,8 +497,12 @@ export const MODULES: ModuleDef[] = [
   {
     id: 14,
     name: "IDG",
-    codePaths: ["apps/backend/src/modules/14-idg"],
-    dependsOn: [7, 8, 36],
+    codePaths: [
+      "packages/idg",
+      "apps/backend/src/modules/14-idg",
+      "apps/web/src/modules/14-idg",
+    ], // +packages/idg: §3.1 M14-owned feature pkg (quorum/schedule/discipline-view policy → lifecycle/packet-builder), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M14-T07
+    dependsOn: [1, 7, 8, 36], // +M1: the bootstrap seam registry (registerSeam/getSeam) M14's backend module wires its §4.8 owned seams (IdgPacketProvider/IdgDecisionProvider/IdgScheduleProvider) into (M14-T05; M6..M13 seam-task precedent)
     ownedTables: [
       "idg_meeting",
       "idg_recurring_policy",
@@ -550,8 +554,13 @@ export const MODULES: ModuleDef[] = [
   {
     id: 17,
     name: "Scheduling & Route Optimization",
-    codePaths: ["packages/routing-client", "apps/backend/src/modules/17-scheduling"],
-    dependsOn: [5, 8, 40],
+    codePaths: [
+      "packages/routing-client",
+      "packages/scheduling",
+      "apps/backend/src/modules/17-scheduling",
+      "apps/web/src/modules/17-scheduling",
+    ], // +packages/scheduling: §3.1 M17-owned feature pkg (cancellation value-set/RRULE-subset/visit-purpose→discipline policy → state machine/proposers), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M17-T08
+    dependsOn: [1, 5, 8, 40], // +M1: the bootstrap seam registry (registerSeam/getSeam) M17's backend module wires its §4.3 owned seams (VisitReader/VisitAssignmentReader/PortalVisitReader/VisitMetricsProvider) into (M17-T05; M6..M14 seam-task precedent)
     ownedTables: [
       "clinician_availability",
       "recurring_visit",
@@ -565,8 +574,12 @@ export const MODULES: ModuleDef[] = [
   {
     id: 18,
     name: "EVV",
-    codePaths: ["packages/evv-aggregators", "apps/backend/src/modules/18-evv"],
-    dependsOn: [17],
+    codePaths: [
+      "packages/evv-aggregators",
+      "apps/backend/src/modules/18-evv",
+      "apps/web/src/modules/18-evv",
+    ],
+    dependsOn: [1, 17], // +M1: the bootstrap seam registry (registerSeam/getSeam) M18's backend module wires its six §4.3 owned seams (EvvBracketResolver/EvvComplianceReader/EvvAggregatorReferenceReader/EvvLocationProvider/EvvMetricsProvider/EvvVerificationProvider) into (M18-T05; M6..M17 seam-task precedent)
     ownedTables: [
       "evv_aggregator_submission",
       "evv_device",

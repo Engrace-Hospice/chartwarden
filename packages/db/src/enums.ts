@@ -1622,3 +1622,242 @@ export const offlineSyncStatus = pgEnum("offline_sync_status", [
   "synced",
   "rejected",
 ]);
+
+// ── Module 14 (Interdisciplinary Group / IDG) — §3.2 enums (M14-T01) ──────────────────────────────────
+
+/** `idg_meeting_status` — the §2.2 meeting lifecycle. `scheduled → packets_building → packets_ready →
+ * live → adjourned`, with terminal `cancelled` / `rescheduled` branches. */
+export const idgMeetingStatus = pgEnum("idg_meeting_status", [
+  "scheduled",
+  "packets_building",
+  "packets_ready",
+  "live",
+  "adjourned",
+  "cancelled",
+  "rescheduled",
+]);
+
+/** `idg_attendance_status` — per-attendee participation (§1.1 / §2.7). */
+export const idgAttendanceStatus = pgEnum("idg_attendance_status", [
+  "present",
+  "tardy",
+  "partial",
+  "absent",
+  "excused",
+]);
+
+/** `idg_agenda_item_kind` — the §2.7 agenda-item taxonomy (carry-forward of overdue action items is its
+ * own kind so the next meeting's cover surfaces it). */
+export const idgAgendaItemKind = pgEnum("idg_agenda_item_kind", [
+  "patient_review",
+  "carry_forward",
+  "administrative_note",
+  "family_meeting_setup",
+  "other",
+]);
+
+/** `idg_decision_kind` — the §2.6 D4 canonical decision taxonomy; the discriminator on the
+ * `idg.decision_recorded` payload union (`IdgDecisionRecordedPayload`). */
+export const idgDecisionKind = pgEnum("idg_decision_kind", [
+  "care_plan_update",
+  "order_request",
+  "medication_recommendation",
+  "level_of_care_consideration",
+  "recertification_consideration",
+  "family_meeting_needed",
+  "bereavement_risk_flag",
+  "referral",
+  "team_note",
+]);
+
+/** `idg_decision_status` — `open` at record-time; flips to `emitted` in the adjournment outbox burst;
+ * `superseded` when a later meeting's decision replaces it (§2.7 / §2.8). */
+export const idgDecisionStatus = pgEnum("idg_decision_status", ["open", "emitted", "superseded"]);
+
+/** `idg_action_item_status` — the §1.1 / D8 action-item lifecycle; `auto_closed` is set by the
+ * downstream-artifact auto-close engine (care-plan version / order / encounter / medication order). */
+export const idgActionItemStatus = pgEnum("idg_action_item_status", [
+  "open",
+  "in_progress",
+  "completed",
+  "cancelled",
+  "auto_closed",
+]);
+
+/** `idg_action_item_linked_kind` — which downstream absorbing artifact closes an action item (D8). */
+export const idgActionItemLinkedKind = pgEnum("idg_action_item_linked_kind", [
+  "care_plan_version",
+  "order",
+  "encounter",
+  "medication_order",
+]);
+
+/** `idg_minutes_status` — append-only-annotation while `in_progress`; immutable on `final` (D10). */
+export const idgMinutesStatus = pgEnum("idg_minutes_status", ["in_progress", "final"]);
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// Module 17 — Scheduling & Route Optimization (§3.2). The reconciled (M17-F03) eight-state visit machine +
+// the proposal/recurring/time-off lifecycles + the EVV-bracket flag column. The Drizzle tables land in
+// M17-T02 (`packages/db/src/schema/scheduling/`); the leaf mirrors live in `@wardenx/types` (`scheduling.ts`).
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** `visit_status` — the §2.2.1 / D3 (M17-F03-reconciled) eight-state visit lifecycle. `proposed` is worker
+ * output awaiting scheduler review; `en_route`/`in_visit` are EVV-authoritative (M18) or clinician-self-
+ * attested; `completed` is set on `m8.encounter.signed`; `no_show`/`cancelled`/`rescheduled` are terminal. */
+export const visitStatus = pgEnum("visit_status", [
+  "proposed",
+  "published",
+  "en_route",
+  "in_visit",
+  "completed",
+  "no_show",
+  "cancelled",
+  "rescheduled",
+]);
+
+/** `visit_purpose` — the §1.1 discipline+intent taxonomy (the §4.2 `CreateVisitRequest` value set governs). */
+export const visitPurpose = pgEnum("visit_purpose", [
+  "routine_visit",
+  "prn",
+  "aide_poc",
+  "msw_assessment",
+  "msw_followup",
+  "chaplain_visit",
+  "chaplain_assessment",
+  "volunteer_visit",
+  "f2f",
+  "recert",
+  "loc_change",
+  "pronouncement",
+  "admission_visit",
+  "discharge_visit",
+]);
+
+/** `visit_setting` — the §2.3 service-location class; drives the address/facility validation rules. */
+export const visitSetting = pgEnum("visit_setting", [
+  "patient_home",
+  "facility",
+  "inpatient_unit",
+  "telephonic",
+]);
+
+/** `visit_proposal_status` — the §2.2.4 D5 proposal lifecycle; `stale` is set when not actioned by the
+ * cadence hard-cutoff. */
+export const visitProposalStatus = pgEnum("visit_proposal_status", [
+  "pending",
+  "published",
+  "dismissed",
+  "stale",
+]);
+
+/** `visit_proposal_source` — the §2.2.4 origin of a proposal (the upstream module that drove it). */
+export const visitProposalSource = pgEnum("visit_proposal_source", [
+  "frequency_driven_m7",
+  "supervisory_cadence_m15",
+  "order_required_m11",
+  "idg_decision_m14",
+]);
+
+/** `recurring_visit_status` — the §2.2.3 D4 policy lifecycle; `discontinued` cascade-cancels future children. */
+export const recurringVisitStatus = pgEnum("recurring_visit_status", ["active", "discontinued"]);
+
+/** `time_off_kind` — the §1.1 D7 PTO taxonomy. */
+export const timeOffKind = pgEnum("time_off_kind", [
+  "pto",
+  "sick",
+  "bereavement",
+  "training",
+  "other",
+]);
+
+/** `time_off_state` — the §2.2.6 D7 approval lifecycle; `consumed` is set when the window passes. */
+export const timeOffState = pgEnum("time_off_state", [
+  "requested",
+  "approved",
+  "denied",
+  "cancelled",
+  "consumed",
+]);
+
+// NOTE: the §1.1 / D3 EVV-bracket flag column on `visit` reuses the existing shared `evvBracketState`
+// pgEnum (`evv_present` | `evv_missing_documented`) defined above for M8 — those two values are exactly the
+// M17 body vocabulary (§2.2.1 / line 76 / §7.6; the struck M17-F03 `evv_missing_attested` belonged to the
+// discarded state machine, not the flag). `check-ddl-legality` bans a duplicate pgEnum, so M17-T02's
+// `visits.ts` imports the shared one. The §3.2 Phase-A enum list correctly names only the eight M17-owned
+// enums above.
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// Module 18 — Electronic Visit Verification (EVV) (§3.2 Phase-A). The eight M18-owned enums driving the
+// append-only `evv_event` (check-in/out), the three-layer geofence policy, per-clinician device lifecycle,
+// the §2.2.4 missing-EVV resolution machine, and the per-state aggregator submission machine. The Drizzle
+// tables land in M18-T02 (`packages/db/src/schema/evv/`); the leaf mirrors live in `@wardenx/types`
+// (`evv.ts`). M18 owns no shared EVV enum overlap with M8/M17 — the M17 `visit.evvBracketState` flag reuses
+// M8's `evv_bracket_state`; M18's discrete-event vocabulary below is distinct.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** `evv_event_kind` — the §2.2.1 / D2 discrete event class. `mid_visit_pulse` is reserved for Phase 2. */
+export const evvEventKind = pgEnum("evv_event_kind", ["check_in", "check_out"]);
+
+/** `evv_event_gps_quality` — the §3.2 GPS-quality ladder stamped on every `evv_event`. `degraded_attested`
+ * is the clinician-attested-after-3-retakes path; `outside_geofence`/`no_geofence_baseline` route to the
+ * advisory-not-block missing-resolution flow (D3); `suspected_spoof` is the D9 detector flag. */
+export const evvEventGpsQuality = pgEnum("evv_event_gps_quality", [
+  "high",
+  "acceptable",
+  "degraded_attested",
+  "outside_geofence",
+  "no_geofence_baseline",
+  "suspected_spoof",
+]);
+
+/** `evv_device_platform` — the §2.3 mobile platform; web is refused at the route handler (no enum member). */
+export const evvDevicePlatform = pgEnum("evv_device_platform", ["ios", "android"]);
+
+/** `evv_device_status` — the §2.2.3 D8 per-clinician device-registration lifecycle. */
+export const evvDeviceStatus = pgEnum("evv_device_status", [
+  "pending_approval",
+  "approved",
+  "suspended",
+  "rejected",
+  "retired",
+]);
+
+/** `evv_geofence_policy_scope` — the §2.2.2 D3 three-layer policy resolution order (narrowest wins). */
+export const evvGeofencePolicyScope = pgEnum("evv_geofence_policy_scope", [
+  "platform",
+  "tenant",
+  "patient_address",
+]);
+
+/** `evv_missing_resolution_kind` — the §2.2.4 D6 classification of the unresolved missing event. */
+export const evvMissingResolutionKind = pgEnum("evv_missing_resolution_kind", [
+  "missing_checkin",
+  "missing_checkout",
+  "outside_geofence_at_checkin",
+  "outside_geofence_at_checkout",
+  "device_integrity_failed_at_attempt",
+]);
+
+/** `evv_missing_resolution_status` — the §2.2.4 D6 resolution machine. `closed_system_checkout_received` is
+ * the system-driven auto-close when a late check-out pairs the open missing-checkout row (M18-F09 / ADR-0022;
+ * NO human attestation — `closed_clinician_attested` is reserved for an actual clinician self-attest). */
+export const evvMissingResolutionStatus = pgEnum("evv_missing_resolution_status", [
+  "open",
+  "closed_clinician_attested",
+  "closed_supervisor_override",
+  "closed_visit_voided",
+  "closed_documented_at_encounter",
+  "closed_system_checkout_received",
+]);
+
+/** `evv_aggregator_submission_status` — the §2.2.5 D7 per-state aggregator submission machine. */
+export const evvAggregatorSubmissionStatus = pgEnum("evv_aggregator_submission_status", [
+  "pending",
+  "queued",
+  "submitting",
+  "submitted",
+  "accepted",
+  "rejected",
+  "timeout",
+  "cancelled",
+]);

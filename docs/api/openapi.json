@@ -3250,6 +3250,111 @@
         }
       }
     },
+    "/api/v1/availability": {
+      "get": {
+        "operationId": "getApiV1Availability",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "A membership's weekly availability pattern (§5.1 availability editor)",
+        "parameters": [
+          {
+            "name": "membership",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "membershipId",
+                    "timeZone",
+                    "slots"
+                  ],
+                  "properties": {
+                    "membershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "timeZone": {
+                      "type": "string"
+                    },
+                    "slots": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "weekday",
+                          "startTime",
+                          "endTime"
+                        ],
+                        "properties": {
+                          "weekday": {
+                            "minimum": 0,
+                            "maximum": 6,
+                            "type": "integer"
+                          },
+                          "startTime": {
+                            "type": "string"
+                          },
+                          "endTime": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/availability/{membershipId}": {
+      "put": {
+        "operationId": "putApiV1AvailabilityByMembershipId",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "membershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/breakglass": {
       "get": {
         "operationId": "getApiV1Breakglass",
@@ -4693,6 +4798,247 @@
         }
       }
     },
+    "/api/v1/day-view": {
+      "get": {
+        "operationId": "getApiV1Dayview",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "Day-view grid — a clinician's visits for one service date (§5.1 day)",
+        "parameters": [
+          {
+            "name": "membership",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "date",
+                    "membershipId",
+                    "visits"
+                  ],
+                  "properties": {
+                    "date": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "membershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "visits": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "organizationId",
+                          "patientId",
+                          "admissionId",
+                          "assignedMembershipId",
+                          "visitPurpose",
+                          "visitSetting",
+                          "scheduledStartedAt",
+                          "scheduledEndedAt",
+                          "serviceDate",
+                          "status",
+                          "patientAddressId",
+                          "externalFacilityId",
+                          "rescheduledIntoVisitId"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "assignedMembershipId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "visitPurpose": {
+                            "anyOf": [
+                              {
+                                "const": "routine_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "prn",
+                                "type": "string"
+                              },
+                              {
+                                "const": "aide_poc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "msw_assessment",
+                                "type": "string"
+                              },
+                              {
+                                "const": "msw_followup",
+                                "type": "string"
+                              },
+                              {
+                                "const": "chaplain_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "chaplain_assessment",
+                                "type": "string"
+                              },
+                              {
+                                "const": "volunteer_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "f2f",
+                                "type": "string"
+                              },
+                              {
+                                "const": "recert",
+                                "type": "string"
+                              },
+                              {
+                                "const": "loc_change",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pronouncement",
+                                "type": "string"
+                              },
+                              {
+                                "const": "admission_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "discharge_visit",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "visitSetting": {
+                            "anyOf": [
+                              {
+                                "const": "patient_home",
+                                "type": "string"
+                              },
+                              {
+                                "const": "facility",
+                                "type": "string"
+                              },
+                              {
+                                "const": "inpatient_unit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "telephonic",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "scheduledStartedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "scheduledEndedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "serviceDate": {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "patientAddressId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "externalFacilityId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rescheduledIntoVisitId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/discharges/{id}/cosign-for-cause": {
       "post": {
         "operationId": "postApiV1DischargesByIdCosignforcause",
@@ -6118,6 +6464,1157 @@
         }
       }
     },
+    "/api/v1/evv/aggregator-submissions": {
+      "get": {
+        "operationId": "getApiV1EvvAggregatorsubmissions",
+        "tags": [
+          "18-evv"
+        ],
+        "summary": "EVV aggregator submission queue — per-state submission status + rejection detail (§5.1 aggregator-submissions)",
+        "parameters": [
+          {
+            "name": "stateCode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "visitId",
+                      "stateCode",
+                      "aggregatorVendor",
+                      "status",
+                      "aggregatorTransactionId",
+                      "attemptCount"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "visitId": {
+                        "type": "string"
+                      },
+                      "stateCode": {
+                        "type": "string"
+                      },
+                      "aggregatorVendor": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "aggregatorTransactionId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "attemptCount": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/aggregator-submissions/{id}/cancel": {
+      "post": {
+        "operationId": "postApiV1EvvAggregatorsubmissionsByIdCancel",
+        "tags": [
+          "18-evv"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/aggregator-submissions/{id}/resubmit": {
+      "post": {
+        "operationId": "postApiV1EvvAggregatorsubmissionsByIdResubmit",
+        "tags": [
+          "18-evv"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/check-in": {
+      "post": {
+        "operationId": "postApiV1EvvCheckin",
+        "tags": [
+          "18-evv"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/check-out": {
+      "post": {
+        "operationId": "postApiV1EvvCheckout",
+        "tags": [
+          "18-evv"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/clinician-current-location": {
+      "get": {
+        "operationId": "getApiV1EvvCliniciancurrentlocation",
+        "tags": [
+          "18-evv"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/devices": {
+      "get": {
+        "operationId": "getApiV1EvvDevices",
+        "tags": [
+          "18-evv"
+        ],
+        "summary": "EVV devices — self or team list with approval/integrity status (§5.1 devices/pending, me/evv/devices)",
+        "parameters": [
+          {
+            "name": "membership",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "membershipId",
+                      "platform",
+                      "modelDescription",
+                      "status"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "membershipId": {
+                        "type": "string"
+                      },
+                      "platform": {
+                        "anyOf": [
+                          {
+                            "const": "ios",
+                            "type": "string"
+                          },
+                          {
+                            "const": "android",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "modelDescription": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/devices/{id}/approve": {
+      "post": {
+        "operationId": "postApiV1EvvDevicesByIdApprove",
+        "tags": [
+          "18-evv"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/devices/{id}/reject": {
+      "post": {
+        "operationId": "postApiV1EvvDevicesByIdReject",
+        "tags": [
+          "18-evv"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/devices/{id}/retire": {
+      "post": {
+        "operationId": "postApiV1EvvDevicesByIdRetire",
+        "tags": [
+          "18-evv"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/devices/{id}/suspend": {
+      "post": {
+        "operationId": "postApiV1EvvDevicesByIdSuspend",
+        "tags": [
+          "18-evv"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/devices/self-register": {
+      "post": {
+        "operationId": "postApiV1EvvDevicesSelfregister",
+        "tags": [
+          "18-evv"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/events": {
+      "get": {
+        "operationId": "getApiV1EvvEvents",
+        "tags": [
+          "18-evv"
+        ],
+        "summary": "EVV event ledger — coordinate-free capture events, filterable (§5.1 events)",
+        "parameters": [
+          {
+            "name": "visit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "clinician",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "patient",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "gpsQuality",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "check_in",
+                  "type": "string"
+                },
+                {
+                  "const": "check_out",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "includeCoords",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "organizationId",
+                      "visitId",
+                      "patientId",
+                      "kind",
+                      "serviceTypeCode",
+                      "postingMembershipId",
+                      "postingDisciplineAtRecording",
+                      "evvDeviceId",
+                      "capturedAt",
+                      "recordedAt",
+                      "gpsQuality",
+                      "offlineCapture",
+                      "replacesEventId",
+                      "supersededByEventId"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "organizationId": {
+                        "type": "string"
+                      },
+                      "visitId": {
+                        "type": "string"
+                      },
+                      "patientId": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "anyOf": [
+                          {
+                            "const": "check_in",
+                            "type": "string"
+                          },
+                          {
+                            "const": "check_out",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "serviceTypeCode": {
+                        "type": "string"
+                      },
+                      "postingMembershipId": {
+                        "type": "string"
+                      },
+                      "postingDisciplineAtRecording": {
+                        "type": "string"
+                      },
+                      "evvDeviceId": {
+                        "type": "string"
+                      },
+                      "capturedAt": {
+                        "type": "string"
+                      },
+                      "recordedAt": {
+                        "type": "string"
+                      },
+                      "gpsQuality": {
+                        "type": "string"
+                      },
+                      "offlineCapture": {
+                        "type": "boolean"
+                      },
+                      "replacesEventId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "supersededByEventId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/events/{eventId}": {
+      "get": {
+        "operationId": "getApiV1EvvEventsByEventId",
+        "tags": [
+          "18-evv"
+        ],
+        "summary": "EVV single-event detail — raw + computed fields, coordinates redacted unless evv.read_coords (§5.1 event)",
+        "parameters": [
+          {
+            "name": "eventId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "const": "coords",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "visitId",
+                    "patientId",
+                    "kind",
+                    "serviceTypeCode",
+                    "postingMembershipId",
+                    "postingDisciplineAtRecording",
+                    "evvDeviceId",
+                    "capturedAt",
+                    "recordedAt",
+                    "gpsQuality",
+                    "offlineCapture",
+                    "replacesEventId",
+                    "supersededByEventId"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "visitId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "anyOf": [
+                        {
+                          "const": "check_in",
+                          "type": "string"
+                        },
+                        {
+                          "const": "check_out",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "serviceTypeCode": {
+                      "type": "string"
+                    },
+                    "postingMembershipId": {
+                      "type": "string"
+                    },
+                    "postingDisciplineAtRecording": {
+                      "type": "string"
+                    },
+                    "evvDeviceId": {
+                      "type": "string"
+                    },
+                    "capturedAt": {
+                      "type": "string"
+                    },
+                    "recordedAt": {
+                      "type": "string"
+                    },
+                    "gpsQuality": {
+                      "type": "string"
+                    },
+                    "offlineCapture": {
+                      "type": "boolean"
+                    },
+                    "replacesEventId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededByEventId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/events/{eventId}/correct": {
+      "post": {
+        "operationId": "postApiV1EvvEventsByEventIdCorrect",
+        "tags": [
+          "18-evv"
+        ],
+        "parameters": [
+          {
+            "name": "eventId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/geofence-policy": {
+      "get": {
+        "operationId": "getApiV1EvvGeofencepolicy",
+        "tags": [
+          "18-evv"
+        ],
+        "summary": "EVV geofence policy — tenant tighten-only default + per-address overrides (§5.1 geofence-policy)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "tenant",
+                    "perAddress"
+                  ],
+                  "properties": {
+                    "tenant": {
+                      "type": "object",
+                      "required": [
+                        "radiusM",
+                        "maxAccuracyM"
+                      ],
+                      "properties": {
+                        "radiusM": {
+                          "type": "number"
+                        },
+                        "maxAccuracyM": {
+                          "type": "number"
+                        }
+                      }
+                    },
+                    "perAddress": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "patientAddressId",
+                          "radiusM",
+                          "maxAccuracyM"
+                        ],
+                        "properties": {
+                          "patientAddressId": {
+                            "type": "string"
+                          },
+                          "radiusM": {
+                            "type": "number"
+                          },
+                          "maxAccuracyM": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/geofence-policy/per-address": {
+      "post": {
+        "operationId": "postApiV1EvvGeofencepolicyPeraddress",
+        "tags": [
+          "18-evv"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/geofence-policy/tenant": {
+      "patch": {
+        "operationId": "patchApiV1EvvGeofencepolicyTenant",
+        "tags": [
+          "18-evv"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/metrics": {
+      "get": {
+        "operationId": "getApiV1EvvMetrics",
+        "tags": [
+          "18-evv"
+        ],
+        "summary": "EVV metrics — compliance / late-checkout / geofence-deviation / GPS-spoof / aggregator-acceptance rates (§5.1 dashboard, metrics)",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "stateCode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "complianceRate",
+                    "lateCheckoutRate",
+                    "geofenceDeviationRate",
+                    "gpsSpoofingDetectedRate",
+                    "aggregatorSubmissionSuccessRate"
+                  ],
+                  "properties": {
+                    "complianceRate": {
+                      "type": "number"
+                    },
+                    "lateCheckoutRate": {
+                      "type": "number"
+                    },
+                    "geofenceDeviationRate": {
+                      "type": "number"
+                    },
+                    "gpsSpoofingDetectedRate": {
+                      "type": "number"
+                    },
+                    "aggregatorSubmissionSuccessRate": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/missing-resolutions": {
+      "get": {
+        "operationId": "getApiV1EvvMissingresolutions",
+        "tags": [
+          "18-evv"
+        ],
+        "summary": "EVV missing-resolution queue — open + recently-closed late-checkout resolutions (§5.1 missing-resolutions)",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "visit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "visitId",
+                      "kind",
+                      "status",
+                      "resolvedByMembershipId"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "visitId": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "resolvedByMembershipId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/missing-resolutions/{id}/clinician-attest": {
+      "post": {
+        "operationId": "postApiV1EvvMissingresolutionsByIdClinicianattest",
+        "tags": [
+          "18-evv"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/missing-resolutions/{id}/supervisor-override": {
+      "post": {
+        "operationId": "postApiV1EvvMissingresolutionsByIdSupervisoroverride",
+        "tags": [
+          "18-evv"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/offline-sync": {
+      "post": {
+        "operationId": "postApiV1EvvOfflinesync",
+        "tags": [
+          "18-evv"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/evv/visits/{visitId}/bracket": {
+      "get": {
+        "operationId": "getApiV1EvvVisitsByVisitIdBracket",
+        "tags": [
+          "18-evv"
+        ],
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/face-to-face/{id}": {
       "get": {
         "operationId": "getApiV1FacetofaceById",
@@ -7296,6 +8793,1176 @@
         }
       }
     },
+    "/api/v1/idg/action-items": {
+      "get": {
+        "operationId": "getApiV1IdgActionitems",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "The caller's action items — open / in-progress queue (§4.1 / §5 'My Action Items')",
+        "parameters": [
+          {
+            "name": "assignee",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "open",
+                  "type": "string"
+                },
+                {
+                  "const": "in_progress",
+                  "type": "string"
+                },
+                {
+                  "const": "completed",
+                  "type": "string"
+                },
+                {
+                  "const": "cancelled",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "meetingId",
+                      "decisionId",
+                      "patientId",
+                      "assignedToMembershipId",
+                      "status",
+                      "dueDate",
+                      "linkedArtifactKind"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "meetingId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "decisionId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "patientId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "assignedToMembershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "status": {
+                        "anyOf": [
+                          {
+                            "const": "open",
+                            "type": "string"
+                          },
+                          {
+                            "const": "in_progress",
+                            "type": "string"
+                          },
+                          {
+                            "const": "completed",
+                            "type": "string"
+                          },
+                          {
+                            "const": "cancelled",
+                            "type": "string"
+                          },
+                          {
+                            "const": "auto_closed",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "dueDate": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "linkedArtifactKind": {
+                        "anyOf": [
+                          {
+                            "anyOf": [
+                              {
+                                "const": "care_plan_version",
+                                "type": "string"
+                              },
+                              {
+                                "const": "order",
+                                "type": "string"
+                              },
+                              {
+                                "const": "encounter",
+                                "type": "string"
+                              },
+                              {
+                                "const": "medication_order",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/action-items/{id}": {
+      "delete": {
+        "operationId": "deleteApiV1IdgActionitemsById",
+        "tags": [
+          "14-idg"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1IdgActionitemsById",
+        "tags": [
+          "14-idg"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/agenda/{id}": {
+      "delete": {
+        "operationId": "deleteApiV1IdgAgendaById",
+        "tags": [
+          "14-idg"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1IdgAgendaById",
+        "tags": [
+          "14-idg"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/attendance/{id}": {
+      "delete": {
+        "operationId": "deleteApiV1IdgAttendanceById",
+        "tags": [
+          "14-idg"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1IdgAttendanceById",
+        "tags": [
+          "14-idg"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/decisions/{id}": {
+      "patch": {
+        "operationId": "patchApiV1IdgDecisionsById",
+        "tags": [
+          "14-idg"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/decisions/{id}/supersede": {
+      "post": {
+        "operationId": "postApiV1IdgDecisionsByIdSupersede",
+        "tags": [
+          "14-idg"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{id}": {
+      "get": {
+        "operationId": "getApiV1IdgMeetingsById",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "One meeting's lifecycle view — status + scheduled window + adjournment (§4.1 / §5)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "locationId",
+                    "status",
+                    "scheduledStart",
+                    "scheduledEnd",
+                    "adjournedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "scheduled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "packets_building",
+                          "type": "string"
+                        },
+                        {
+                          "const": "packets_ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "live",
+                          "type": "string"
+                        },
+                        {
+                          "const": "adjourned",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rescheduled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "scheduledStart": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "scheduledEnd": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "adjournedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{id}/action-items": {
+      "post": {
+        "operationId": "postApiV1IdgMeetingsByIdActionitems",
+        "tags": [
+          "14-idg"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{id}/adjourn": {
+      "post": {
+        "operationId": "postApiV1IdgMeetingsByIdAdjourn",
+        "tags": [
+          "14-idg"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{id}/agenda": {
+      "post": {
+        "operationId": "postApiV1IdgMeetingsByIdAgenda",
+        "tags": [
+          "14-idg"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{id}/attendance": {
+      "post": {
+        "operationId": "postApiV1IdgMeetingsByIdAttendance",
+        "tags": [
+          "14-idg"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{id}/cancel": {
+      "post": {
+        "operationId": "postApiV1IdgMeetingsByIdCancel",
+        "tags": [
+          "14-idg"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{id}/decisions": {
+      "post": {
+        "operationId": "postApiV1IdgMeetingsByIdDecisions",
+        "tags": [
+          "14-idg"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{id}/minutes": {
+      "get": {
+        "operationId": "getApiV1IdgMeetingsByIdMinutes",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "A meeting's minutes — in-progress or finalized (§4.1 / §5)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "meetingId",
+                    "status"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "meetingId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "in_progress",
+                          "type": "string"
+                        },
+                        {
+                          "const": "final",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{id}/packets": {
+      "get": {
+        "operationId": "getApiV1IdgMeetingsByIdPackets",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "Per-patient packet digests for a meeting — readiness + freeze state (§4.1 / §5)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "packetId",
+                      "meetingId",
+                      "patientId",
+                      "frozenAt"
+                    ],
+                    "properties": {
+                      "packetId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "meetingId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "patientId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "frozenAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{id}/packets/build": {
+      "post": {
+        "operationId": "postApiV1IdgMeetingsByIdPacketsBuild",
+        "tags": [
+          "14-idg"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{id}/reschedule": {
+      "post": {
+        "operationId": "postApiV1IdgMeetingsByIdReschedule",
+        "tags": [
+          "14-idg"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{id}/start": {
+      "post": {
+        "operationId": "postApiV1IdgMeetingsByIdStart",
+        "tags": [
+          "14-idg"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{meetingId}/packets/{patientId}": {
+      "get": {
+        "operationId": "getApiV1IdgMeetingsByMeetingIdPacketsByPatientId",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "One patient's packet digest in a meeting — chart-embed read (§4.1 / §5; SUD-redacted server-side)",
+        "parameters": [
+          {
+            "name": "meetingId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "packetId",
+                    "meetingId",
+                    "patientId",
+                    "frozenAt"
+                  ],
+                  "properties": {
+                    "packetId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "meetingId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "frozenAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/minutes/{id}/amendments": {
+      "post": {
+        "operationId": "postApiV1IdgMinutesByIdAmendments",
+        "tags": [
+          "14-idg"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/recurring-policies": {
+      "post": {
+        "operationId": "postApiV1IdgRecurringpolicies",
+        "tags": [
+          "14-idg"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/recurring-policies/{id}": {
+      "patch": {
+        "operationId": "patchApiV1IdgRecurringpoliciesById",
+        "tags": [
+          "14-idg"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/schedule": {
+      "get": {
+        "operationId": "getApiV1IdgSchedule",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "Meeting schedule for a location/range — next-weeks meetings, location-scoped (§4.1 / §5)",
+        "parameters": [
+          {
+            "name": "location",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "locationId",
+                      "status",
+                      "scheduledStart",
+                      "scheduledEnd"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "locationId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "status": {
+                        "anyOf": [
+                          {
+                            "const": "scheduled",
+                            "type": "string"
+                          },
+                          {
+                            "const": "packets_building",
+                            "type": "string"
+                          },
+                          {
+                            "const": "packets_ready",
+                            "type": "string"
+                          },
+                          {
+                            "const": "live",
+                            "type": "string"
+                          },
+                          {
+                            "const": "adjourned",
+                            "type": "string"
+                          },
+                          {
+                            "const": "cancelled",
+                            "type": "string"
+                          },
+                          {
+                            "const": "rescheduled",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "scheduledStart": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "scheduledEnd": {
+                        "format": "date-time",
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/internal/assessments/latest-batch": {
       "get": {
         "operationId": "getApiV1InternalAssessmentsLatestbatch",
@@ -7484,6 +10151,240 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/map-view": {
+      "get": {
+        "operationId": "getApiV1Mapview",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "Map-view ordered stops for a clinician day (coords-only polylines, D9; §5.1 map)",
+        "parameters": [
+          {
+            "name": "membership",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "membershipId",
+                    "date",
+                    "stops"
+                  ],
+                  "properties": {
+                    "membershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "date": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "stops": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "organizationId",
+                          "patientId",
+                          "admissionId",
+                          "assignedMembershipId",
+                          "visitPurpose",
+                          "visitSetting",
+                          "scheduledStartedAt",
+                          "scheduledEndedAt",
+                          "serviceDate",
+                          "status",
+                          "patientAddressId",
+                          "externalFacilityId",
+                          "rescheduledIntoVisitId"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "assignedMembershipId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "visitPurpose": {
+                            "anyOf": [
+                              {
+                                "const": "routine_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "prn",
+                                "type": "string"
+                              },
+                              {
+                                "const": "aide_poc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "msw_assessment",
+                                "type": "string"
+                              },
+                              {
+                                "const": "msw_followup",
+                                "type": "string"
+                              },
+                              {
+                                "const": "chaplain_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "chaplain_assessment",
+                                "type": "string"
+                              },
+                              {
+                                "const": "volunteer_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "f2f",
+                                "type": "string"
+                              },
+                              {
+                                "const": "recert",
+                                "type": "string"
+                              },
+                              {
+                                "const": "loc_change",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pronouncement",
+                                "type": "string"
+                              },
+                              {
+                                "const": "admission_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "discharge_visit",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "visitSetting": {
+                            "anyOf": [
+                              {
+                                "const": "patient_home",
+                                "type": "string"
+                              },
+                              {
+                                "const": "facility",
+                                "type": "string"
+                              },
+                              {
+                                "const": "inpatient_unit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "telephonic",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "scheduledStartedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "scheduledEndedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "serviceDate": {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "patientAddressId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "externalFacilityId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rescheduledIntoVisitId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -9434,6 +12335,151 @@
         }
       }
     },
+    "/api/v1/metrics/route-efficiency": {
+      "get": {
+        "operationId": "getApiV1MetricsRouteefficiency",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "Per-clinician route-efficiency metrics — proposed miles + override rate (§5.1)",
+        "parameters": [
+          {
+            "name": "membership",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "membershipId",
+                    "totalProposedMiles",
+                    "overrideRate"
+                  ],
+                  "properties": {
+                    "membershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "totalProposedMiles": {
+                      "type": "number"
+                    },
+                    "overrideRate": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/metrics/visits": {
+      "get": {
+        "operationId": "getApiV1MetricsVisits",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "Org-wide visit metrics — on-time / no-show / reschedule rates (§5.1 scheduling-metrics)",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "discipline",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 32,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "onTimeRate",
+                    "noShowRate",
+                    "rescheduleRate"
+                  ],
+                  "properties": {
+                    "onTimeRate": {
+                      "type": "number"
+                    },
+                    "noShowRate": {
+                      "type": "number"
+                    },
+                    "rescheduleRate": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/missed-doses": {
       "get": {
         "operationId": "getApiV1Misseddoses",
@@ -9649,6 +12695,26 @@
         "operationId": "putApiV1NotificationsPreferences",
         "tags": [
           "36-messaging"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/optimize-day": {
+      "post": {
+        "operationId": "postApiV1Optimizeday",
+        "tags": [
+          "17-scheduling"
         ],
         "parameters": [],
         "responses": {
@@ -14753,6 +17819,55 @@
         }
       }
     },
+    "/api/v1/portal/upcoming": {
+      "get": {
+        "operationId": "getApiV1PortalUpcoming",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/visits/{visitId}/arrival": {
+      "get": {
+        "operationId": "getApiV1PortalVisitsByVisitIdArrival",
+        "tags": [
+          "18-evv"
+        ],
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/reconciliation/worksheets": {
       "get": {
         "operationId": "getApiV1ReconciliationWorksheets",
@@ -15070,6 +18185,191 @@
         "operationId": "postApiV1ReconciliationWorksheetsByIdVoid",
         "tags": [
           "13-emar"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/recurring-visits": {
+      "get": {
+        "operationId": "getApiV1Recurringvisits",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "A patient's recurring-visit policies — active/discontinued (§5.1 recurring)",
+        "parameters": [
+          {
+            "name": "patient",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "patientId",
+                      "assignedMembershipId",
+                      "visitPurpose",
+                      "rrule",
+                      "status"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "patientId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "assignedMembershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "visitPurpose": {
+                        "anyOf": [
+                          {
+                            "const": "routine_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "prn",
+                            "type": "string"
+                          },
+                          {
+                            "const": "aide_poc",
+                            "type": "string"
+                          },
+                          {
+                            "const": "msw_assessment",
+                            "type": "string"
+                          },
+                          {
+                            "const": "msw_followup",
+                            "type": "string"
+                          },
+                          {
+                            "const": "chaplain_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "chaplain_assessment",
+                            "type": "string"
+                          },
+                          {
+                            "const": "volunteer_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "f2f",
+                            "type": "string"
+                          },
+                          {
+                            "const": "recert",
+                            "type": "string"
+                          },
+                          {
+                            "const": "loc_change",
+                            "type": "string"
+                          },
+                          {
+                            "const": "pronouncement",
+                            "type": "string"
+                          },
+                          {
+                            "const": "admission_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "discharge_visit",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "rrule": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "anyOf": [
+                          {
+                            "const": "active",
+                            "type": "string"
+                          },
+                          {
+                            "const": "discontinued",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Recurringvisits",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/recurring-visits/{id}/discontinue": {
+      "post": {
+        "operationId": "postApiV1RecurringvisitsByIdDiscontinue",
+        "tags": [
+          "17-scheduling"
         ],
         "parameters": [
           {
@@ -16862,6 +20162,232 @@
         }
       }
     },
+    "/api/v1/time-off": {
+      "get": {
+        "operationId": "getApiV1Timeoff",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "Time-off requests — approval queue / my-PTO, membership/state/date filtered (§5.1)",
+        "parameters": [
+          {
+            "name": "membership",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 32,
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "membershipId",
+                      "kind",
+                      "startsAt",
+                      "endsAt",
+                      "state"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "membershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "anyOf": [
+                          {
+                            "const": "pto",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sick",
+                            "type": "string"
+                          },
+                          {
+                            "const": "bereavement",
+                            "type": "string"
+                          },
+                          {
+                            "const": "training",
+                            "type": "string"
+                          },
+                          {
+                            "const": "other",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "startsAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "endsAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "state": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Timeoff",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/time-off/{id}/approve": {
+      "post": {
+        "operationId": "postApiV1TimeoffByIdApprove",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/time-off/{id}/cancel": {
+      "post": {
+        "operationId": "postApiV1TimeoffByIdCancel",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/time-off/{id}/deny": {
+      "post": {
+        "operationId": "postApiV1TimeoffByIdDeny",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/users/{id}/deactivate": {
       "post": {
         "operationId": "postApiV1UsersByIdDeactivate",
@@ -16881,6 +20407,1088 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/visit-proposals": {
+      "get": {
+        "operationId": "getApiV1Visitproposals",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "The scheduler proposal inbox — pending frequency/order/IDG/supervisory proposals (§5.1)",
+        "parameters": [
+          {
+            "name": "patient",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "patientId",
+                      "admissionId",
+                      "proposedVisitPurpose",
+                      "proposedForDate",
+                      "status"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "patientId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "admissionId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "proposedVisitPurpose": {
+                        "anyOf": [
+                          {
+                            "const": "routine_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "prn",
+                            "type": "string"
+                          },
+                          {
+                            "const": "aide_poc",
+                            "type": "string"
+                          },
+                          {
+                            "const": "msw_assessment",
+                            "type": "string"
+                          },
+                          {
+                            "const": "msw_followup",
+                            "type": "string"
+                          },
+                          {
+                            "const": "chaplain_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "chaplain_assessment",
+                            "type": "string"
+                          },
+                          {
+                            "const": "volunteer_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "f2f",
+                            "type": "string"
+                          },
+                          {
+                            "const": "recert",
+                            "type": "string"
+                          },
+                          {
+                            "const": "loc_change",
+                            "type": "string"
+                          },
+                          {
+                            "const": "pronouncement",
+                            "type": "string"
+                          },
+                          {
+                            "const": "admission_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "discharge_visit",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "proposedForDate": {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      "status": {
+                        "anyOf": [
+                          {
+                            "const": "pending",
+                            "type": "string"
+                          },
+                          {
+                            "const": "published",
+                            "type": "string"
+                          },
+                          {
+                            "const": "dismissed",
+                            "type": "string"
+                          },
+                          {
+                            "const": "stale",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/visit-proposals/{proposalId}/dismiss": {
+      "post": {
+        "operationId": "postApiV1VisitproposalsByProposalIdDismiss",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/visit-proposals/{proposalId}/publish": {
+      "post": {
+        "operationId": "postApiV1VisitproposalsByProposalIdPublish",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/visits": {
+      "get": {
+        "operationId": "getApiV1Visits",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "Visits in caseload/scope — clinician/patient/status/date-window filtered (§4.1 / §5.1)",
+        "parameters": [
+          {
+            "name": "clinician",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "patient",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 32,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "organizationId",
+                      "patientId",
+                      "admissionId",
+                      "assignedMembershipId",
+                      "visitPurpose",
+                      "visitSetting",
+                      "scheduledStartedAt",
+                      "scheduledEndedAt",
+                      "serviceDate",
+                      "status",
+                      "patientAddressId",
+                      "externalFacilityId",
+                      "rescheduledIntoVisitId"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "organizationId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "patientId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "admissionId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "assignedMembershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "visitPurpose": {
+                        "anyOf": [
+                          {
+                            "const": "routine_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "prn",
+                            "type": "string"
+                          },
+                          {
+                            "const": "aide_poc",
+                            "type": "string"
+                          },
+                          {
+                            "const": "msw_assessment",
+                            "type": "string"
+                          },
+                          {
+                            "const": "msw_followup",
+                            "type": "string"
+                          },
+                          {
+                            "const": "chaplain_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "chaplain_assessment",
+                            "type": "string"
+                          },
+                          {
+                            "const": "volunteer_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "f2f",
+                            "type": "string"
+                          },
+                          {
+                            "const": "recert",
+                            "type": "string"
+                          },
+                          {
+                            "const": "loc_change",
+                            "type": "string"
+                          },
+                          {
+                            "const": "pronouncement",
+                            "type": "string"
+                          },
+                          {
+                            "const": "admission_visit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "discharge_visit",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "visitSetting": {
+                        "anyOf": [
+                          {
+                            "const": "patient_home",
+                            "type": "string"
+                          },
+                          {
+                            "const": "facility",
+                            "type": "string"
+                          },
+                          {
+                            "const": "inpatient_unit",
+                            "type": "string"
+                          },
+                          {
+                            "const": "telephonic",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "scheduledStartedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "scheduledEndedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "serviceDate": {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "patientAddressId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "externalFacilityId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "rescheduledIntoVisitId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Visits",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/visits/{visitId}": {
+      "get": {
+        "operationId": "getApiV1VisitsByVisitId",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "One visit's detail — status + scheduled window + assignment (§4.1 / §5.1 visit detail)",
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "patientId",
+                    "admissionId",
+                    "assignedMembershipId",
+                    "visitPurpose",
+                    "visitSetting",
+                    "scheduledStartedAt",
+                    "scheduledEndedAt",
+                    "serviceDate",
+                    "status",
+                    "patientAddressId",
+                    "externalFacilityId",
+                    "rescheduledIntoVisitId"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "assignedMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "visitPurpose": {
+                      "anyOf": [
+                        {
+                          "const": "routine_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "prn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "aide_poc",
+                          "type": "string"
+                        },
+                        {
+                          "const": "msw_assessment",
+                          "type": "string"
+                        },
+                        {
+                          "const": "msw_followup",
+                          "type": "string"
+                        },
+                        {
+                          "const": "chaplain_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "chaplain_assessment",
+                          "type": "string"
+                        },
+                        {
+                          "const": "volunteer_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "f2f",
+                          "type": "string"
+                        },
+                        {
+                          "const": "recert",
+                          "type": "string"
+                        },
+                        {
+                          "const": "loc_change",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pronouncement",
+                          "type": "string"
+                        },
+                        {
+                          "const": "admission_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "discharge_visit",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "visitSetting": {
+                      "anyOf": [
+                        {
+                          "const": "patient_home",
+                          "type": "string"
+                        },
+                        {
+                          "const": "facility",
+                          "type": "string"
+                        },
+                        {
+                          "const": "inpatient_unit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "telephonic",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "scheduledStartedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "scheduledEndedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "serviceDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "patientAddressId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalFacilityId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rescheduledIntoVisitId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1VisitsByVisitId",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/visits/{visitId}/cancel": {
+      "post": {
+        "operationId": "postApiV1VisitsByVisitIdCancel",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/visits/{visitId}/no-show": {
+      "post": {
+        "operationId": "postApiV1VisitsByVisitIdNoshow",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/visits/{visitId}/reassign": {
+      "post": {
+        "operationId": "postApiV1VisitsByVisitIdReassign",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/visits/{visitId}/reschedule": {
+      "post": {
+        "operationId": "postApiV1VisitsByVisitIdReschedule",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/visits/{visitId}/start": {
+      "post": {
+        "operationId": "postApiV1VisitsByVisitIdStart",
+        "tags": [
+          "17-scheduling"
+        ],
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/week-view": {
+      "get": {
+        "operationId": "getApiV1Weekview",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "Week-view grid — a clinician's visits across a week (§5.1 week)",
+        "parameters": [
+          {
+            "name": "membership",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "weekStart",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "weekStart",
+                    "membershipId",
+                    "visits"
+                  ],
+                  "properties": {
+                    "weekStart": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "membershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "visits": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "organizationId",
+                          "patientId",
+                          "admissionId",
+                          "assignedMembershipId",
+                          "visitPurpose",
+                          "visitSetting",
+                          "scheduledStartedAt",
+                          "scheduledEndedAt",
+                          "serviceDate",
+                          "status",
+                          "patientAddressId",
+                          "externalFacilityId",
+                          "rescheduledIntoVisitId"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "assignedMembershipId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "visitPurpose": {
+                            "anyOf": [
+                              {
+                                "const": "routine_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "prn",
+                                "type": "string"
+                              },
+                              {
+                                "const": "aide_poc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "msw_assessment",
+                                "type": "string"
+                              },
+                              {
+                                "const": "msw_followup",
+                                "type": "string"
+                              },
+                              {
+                                "const": "chaplain_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "chaplain_assessment",
+                                "type": "string"
+                              },
+                              {
+                                "const": "volunteer_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "f2f",
+                                "type": "string"
+                              },
+                              {
+                                "const": "recert",
+                                "type": "string"
+                              },
+                              {
+                                "const": "loc_change",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pronouncement",
+                                "type": "string"
+                              },
+                              {
+                                "const": "admission_visit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "discharge_visit",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "visitSetting": {
+                            "anyOf": [
+                              {
+                                "const": "patient_home",
+                                "type": "string"
+                              },
+                              {
+                                "const": "facility",
+                                "type": "string"
+                              },
+                              {
+                                "const": "inpatient_unit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "telephonic",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "scheduledStartedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "scheduledEndedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "serviceDate": {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "patientAddressId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "externalFacilityId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rescheduledIntoVisitId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"

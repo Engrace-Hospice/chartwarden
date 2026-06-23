@@ -39,6 +39,9 @@ import { registerHopeErasers, registerHopeSeams } from "./modules/10-hope/index"
 import { registerOrderErasers, registerOrderSeams } from "./modules/11-orders/index";
 import { registerDoseSpotErasers, registerDoseSpotSeams } from "./modules/12-dosespot/index";
 import { registerEmarErasers, registerEmarSeams } from "./modules/13-emar/index";
+import { registerIdgErasers, registerIdgSeams } from "./modules/14-idg/index";
+import { registerSchedulingSeams } from "./modules/17-scheduling/index";
+import { registerEvvSeams } from "./modules/18-evv/index";
 import {
   createDbMessagingProvider,
   mountMessagingRoutes,
@@ -132,6 +135,28 @@ export function wireModuleSeams(
   // consume — + ReconciliationProvider — the reconciliation-worksheet read path M14/M30 consume). Slice/tests
   // keep the in-memory store; the Drizzle-backed store lands with M13's routes/repos (M13-T08+).
   registerEmarSeams();
+  // M14 — the three §4.8 owned READ seams (IdgPacketProvider — the packet-snapshot + M22 render handshake M22
+  // (minutes / packet PDF) + M33 consume — + IdgDecisionProvider — the decision read path M30
+  // (decision-to-careplan-update latency) + M33 consume — + IdgScheduleProvider — the meeting-schedule +
+  // 15-day-cadence read path M28 (FHIR) + M30 (cadence-adherence) + M33 consume). Slice/tests keep the
+  // in-memory store; the Drizzle-backed store lands with M14's routes/repos (M14-T05+).
+  registerIdgSeams();
+  // M17 — the four §4.3 owned READ seams (VisitReader — the visit read path M8 (encounter-authoring context,
+  // which CLOSES M8's visit-seeding inert consumer M8 D9) / M18 (EVV geofence target) / M14 (IDG since-meeting)
+  // consume — + VisitAssignmentReader — the assignment read path M5 (the §4.5 D11 caseload-contribution
+  // projection) / M19 (on-call triage) / M20 (field-safety live-awareness) consume — + PortalVisitReader — the
+  // M31 portal upcoming-visit read path (lay-language, scrubbed) — + VisitMetricsProvider — the M30/M33
+  // productivity + quality measures read path). Slice/tests keep the in-memory store; the Drizzle-backed store
+  // lands with M17's routes/repos (M17-T07+).
+  registerSchedulingSeams();
+  // M18 — the six §4.3 owned reader seams. `EvvBracketResolver` is published over M8's EXISTING `resolveBracket`
+  // contract — this registration CLOSES M8's `encounter.period` forward seam (M8 D9), replacing its fail-closed
+  // deny-stub with the real resolver. The other five (EvvComplianceReader — M23/M24 billing gate + M30 HQRP —
+  // EvvAggregatorReferenceReader — M24 claim / M25 denial — EvvLocationProvider — M20 field-safety live-awareness,
+  // the only coordinate-bearing seam, D10 — EvvMetricsProvider — M30/M33 dashboards — EvvVerificationProvider — M31
+  // portal arrival surface) stand over their deny-stubs. Slice/tests keep the in-memory store; the Drizzle-backed
+  // store lands with M18's routes/repos (M18-T06+).
+  registerEvvSeams();
   // M39 — ConsentEvaluator (§4.3, the disclosure/redaction gate). Production backs it with the Drizzle
   // store over the real M39 consent tables (FB-T03); slice/tests keep the in-memory default.
   registerConsentSeams(deps.db ? { store: createDbConsentStore(deps.db) } : {});
@@ -162,6 +187,7 @@ export function wireModuleErasers(): void {
   registerOrderErasers(); // M11-T08 — `order_record` (orders-subtree destruction-cert callback; partition-drop; §7.7; D12; D7/D8)
   registerDoseSpotErasers(); // M12-T09 — `medication_order_record` (prescribing-subtree destruction-cert callback; partition-drop; §7.7; D15; D7/D8)
   registerEmarErasers(); // M13-T10 — `emar_record` (eMAR-subtree destruction-cert callback; partition-drop; §7.7; D7/D8)
+  registerIdgErasers(); // M14-T07 — `idg_record` (patient-scoped packet/decision/action-item/agenda destruction-cert callback; meetings/minutes survive; §8.4)
   // Phase-1 data-class owners append here as they land.
 }
 

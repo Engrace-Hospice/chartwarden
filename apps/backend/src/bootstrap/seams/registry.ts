@@ -28,11 +28,19 @@ import {
   documentRendererDenyStub,
   electionPeriodReaderDenyStub,
   encounterCreatorDenyStub,
+  evvAggregatorReferenceReaderDenyStub,
   evvBracketResolverDenyStub,
+  evvComplianceReaderDenyStub,
+  evvLocationProviderDenyStub,
+  evvMetricsProviderDenyStub,
+  evvVerificationProviderDenyStub,
   faceToFaceReaderDenyStub,
   hopeJ2051ProviderDenyStub,
   hopeSubmissionProviderDenyStub,
   hopeTimepointProviderDenyStub,
+  idgDecisionProviderDenyStub,
+  idgPacketProviderDenyStub,
+  idgScheduleProviderDenyStub,
   latestAssessmentProviderDenyStub,
   levelOfCareReaderDenyStub,
   mdmEntityProviderDenyStub,
@@ -44,12 +52,18 @@ import {
   orderSignatureProviderDenyStub,
   patientMutatorDenyStub,
   patientReaderDenyStub,
+  portalVisitReaderDenyStub,
   reconciliationProviderDenyStub,
   refillInboxProviderDenyStub,
   scaleSeriesProviderDenyStub,
   sessionContextResolverDenyStub,
   signedEncountersReaderDenyStub,
+  supervisoryCadenceReaderDenyStub,
   terminologyProviderDenyStub,
+  visitAssignmentReaderDenyStub,
+  visitMetricsProviderDenyStub,
+  visitReaderDenyStub,
+  volunteerComplianceProviderDenyStub,
 } from "./providers";
 
 export class SeamError extends Error {
@@ -225,6 +239,42 @@ export const REQUIRED_SEAMS = [
     phi: true,
     denyStub: evvBracketResolverDenyStub,
   },
+  // M18 (EVV) other five owned seams (§4.3 / D15). The sixth published M18 seam is `EvvBracketResolver` above (the
+  // EXISTING M8-consumed contract M18 publishes the impl over). All five are READ-only DTO surfaces over M18's
+  // `evv_event` / `evv_missing_resolution` / `evv_aggregator_submission` tables, consumed by M20 (field-safety),
+  // M23/M24 (billing pre-submission gate + claim aggregator id), M25 (denial back-link), M30/M33 (measures), M31
+  // (portal arrival) in later waves instead of importing M18's schema. Patient-visit-linked (the location seam is
+  // coordinate-bearing, D10) → phi: true; boot-validated and fail-closed until M18 registers the real impls (M18-T05).
+  {
+    key: "EvvComplianceReader",
+    ownerModule: 18,
+    phi: true,
+    denyStub: evvComplianceReaderDenyStub,
+  },
+  {
+    key: "EvvAggregatorReferenceReader",
+    ownerModule: 18,
+    phi: true,
+    denyStub: evvAggregatorReferenceReaderDenyStub,
+  },
+  {
+    key: "EvvLocationProvider",
+    ownerModule: 18,
+    phi: true,
+    denyStub: evvLocationProviderDenyStub,
+  },
+  {
+    key: "EvvMetricsProvider",
+    ownerModule: 18,
+    phi: true,
+    denyStub: evvMetricsProviderDenyStub,
+  },
+  {
+    key: "EvvVerificationProvider",
+    ownerModule: 18,
+    phi: true,
+    denyStub: evvVerificationProviderDenyStub,
+  },
   // M9 (Clinical Assessments) owned seams (§4.7 / D7). Leaf-typed read-only DTO surfaces over M9's PHI
   // tables (the latest active scale capture + the windowed scored series/delta), consumed by M7 (CTI/IDG
   // latest), M10 (HOPE prognosis), M14 (IDG deltas), M28 (FHIR Observation), M32 (AI trajectory) instead
@@ -323,6 +373,79 @@ export const REQUIRED_SEAMS = [
     ownerModule: 13,
     phi: true,
     denyStub: reconciliationProviderDenyStub,
+  },
+  // M14 (Interdisciplinary Group / IDG) owned seams (§4.8). All three are READ-only DTO surfaces over M14's
+  // `idg_*` tables: `IdgPacketProvider` is the packet-snapshot + M22 render handshake M22 + M33 consume;
+  // `IdgDecisionProvider` is the decision read path M30 (decision-to-careplan-update latency) + M33 consume;
+  // `IdgScheduleProvider` is the meeting-schedule + 15-day-cadence read path M28 (FHIR `CareTeam`/`Encounter`) +
+  // M30 (cadence-adherence measure) + M33 consume — all instead of importing M14's schema. All touch
+  // patient-linked clinical records → phi: true; boot-validated and fail-closed until M14 registers the real
+  // impls (M14-T05).
+  {
+    key: "IdgPacketProvider",
+    ownerModule: 14,
+    phi: true,
+    denyStub: idgPacketProviderDenyStub,
+  },
+  {
+    key: "IdgDecisionProvider",
+    ownerModule: 14,
+    phi: true,
+    denyStub: idgDecisionProviderDenyStub,
+  },
+  {
+    key: "IdgScheduleProvider",
+    ownerModule: 14,
+    phi: true,
+    denyStub: idgScheduleProviderDenyStub,
+  },
+  // M17 (Scheduling & Route Optimization) owned seams (§4.3). All four are READ-only DTO surfaces over M17's
+  // `visit` / `visit_state_history` / `route_segment` rows: `VisitReader` is the visit read path M8 (encounter-
+  // authoring context — closes M8's visit-seeding inert consumer, M8 D9) + M18 (EVV geofence target) + M14 (IDG
+  // packet) consume; `VisitAssignmentReader` is the assignment read path M5 (the §4.5 D11 caseload-contribution
+  // projection) + M19 (on-call triage) + M20 (field-safety live-awareness) consume; `PortalVisitReader` is the M31
+  // portal upcoming-visit read path (lay-language, scrubbed); `VisitMetricsProvider` is the M30/M33 productivity +
+  // quality measures read path — all instead of importing M17's schema. Visit times + addresses are patient-linked
+  // → phi: true; boot-validated and fail-closed until M17 registers the real impls (M17-T05).
+  {
+    key: "VisitReader",
+    ownerModule: 17,
+    phi: true,
+    denyStub: visitReaderDenyStub,
+  },
+  {
+    key: "VisitAssignmentReader",
+    ownerModule: 17,
+    phi: true,
+    denyStub: visitAssignmentReaderDenyStub,
+  },
+  {
+    key: "PortalVisitReader",
+    ownerModule: 17,
+    phi: true,
+    denyStub: portalVisitReaderDenyStub,
+  },
+  {
+    key: "VisitMetricsProvider",
+    ownerModule: 17,
+    phi: true,
+    denyStub: visitMetricsProviderDenyStub,
+  },
+  // M15 (Discipline Care Plans, Phase 2) seams M17 CONSUMES (§4.4). Boot-validated and FAIL-CLOSED behind their
+  // deny-stubs until M15 ships (M17-F06/ADR-0009 — M17 Phase 1 no longer hard-requires Phase-2 M15). The
+  // volunteer gate is patient-agnostic staff compliance (phi: false); the supervisory cadence is admission-linked
+  // (phi: true). The volunteer deny-stub denies LOUDLY only when a `volunteer_visit` is scheduled before M15 lands.
+  {
+    key: "VolunteerComplianceProvider",
+    ownerModule: 15,
+    phi: false,
+    denyStub: volunteerComplianceProviderDenyStub,
+  },
+  {
+    key: "SupervisoryCadenceReader",
+    ownerModule: 15,
+    phi: true,
+    denyStub: supervisoryCadenceReaderDenyStub,
   },
 ] satisfies readonly RequiredSeam[];
 

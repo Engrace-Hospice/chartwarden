@@ -374,3 +374,81 @@ export * from "./emar/medication-reconciliation-decisions";
 export * from "./emar/barcode-scan-events";
 export * from "./emar/administration-offline-queue";
 export * from "./emar/administration-policy";
+
+// ---------------------------------------------------------------------------
+// Module 14 — Interdisciplinary Group / IDG (M14-T02)
+// ---------------------------------------------------------------------------
+// M14 owns 9 tables (M14-T02): idg_recurring_policy (the §2.2/§2.3 per-location cadence template) +
+// idg_meeting (the §2.2 meeting-occurrence lifecycle + frozen quorum snapshot) + idg_attendance (the §2.7
+// per-attendee participation backing the quorate_decision ABAC) + idg_agenda_item (the §2.7 ordered agenda)
+// + idg_decision (the §2.6 D4 canonical-payload decision ledger + open→emitted→superseded) + idg_action_item
+// (the D8 follow-up task lifecycle + downstream-artifact auto-close) + idg_minutes / idg_minutes_amendment
+// (the D10 immutable-on-final minutes + W-MIN-01 amendment ledger) + idg_patient_packet (the §2.4 D1 frozen
+// pre-meeting packet + the M14-F01/ADR-0018 D2 per-patient 15-day review anchor column). The four patient-
+// bearing tables (idg_agenda_item / idg_decision / idg_action_item carry a nullable patient_id → nullable
+// three-column tenancy; idg_patient_packet carries patient_id + admission_id NOT NULL → provider_entity_id +
+// location_id NOT NULL); the other five are org/location-scoped. Cross-module refs (M5 patient, M6 admission,
+// M22 document, and the polymorphic linked_artifact) are plain uuid app-validated, NOT cross-module FKs (M14
+// dependsOn [7,8,36]); actor refs go to M1 `membership` as plain uuid; only the tenancy spine + intra-module
+// parents carry FKs. `idg_patient_packet` is PARTITION BY RANGE (built_at) monthly (D12) — converted from the
+// logical Drizzle shape in the RLS migration, so its "one packet per meeting+patient" rule is a plain index +
+// app-enforced. RLS + grants + M4 write-audit triggers + the partition conversion land in the RLS migration
+// (M14-T02, §3.3/§3.4).
+export * from "./idg/idg-recurring-policies";
+export * from "./idg/idg-meetings";
+export * from "./idg/idg-attendance";
+export * from "./idg/idg-agenda-items";
+export * from "./idg/idg-decisions";
+export * from "./idg/idg-action-items";
+export * from "./idg/idg-minutes";
+export * from "./idg/idg-minutes-amendments";
+export * from "./idg/idg-patient-packets";
+
+// ---------------------------------------------------------------------------
+// M17 owns 7 tables (M17-T02, §3.3): visit (the §2.2.1 D3 eight-state scheduling aggregate + EVV-bracket
+// flag + route-optimizer cache) + visit_state_history (the D3 append-only transition ledger, written in the
+// same tx as each transition) + recurring_visit (the §2.2.3 D4 RRULE-subset cadence policy, source of truth
+// for materialized child visits) + visit_proposal (the §2.2.4 D5 scheduler inbox, idempotent per source
+// event) + clinician_availability (the D7 positive-declaration weekly pattern) + time_off (the D7 negative-
+// overlay PTO workflow) + route_segment (the D10 optimized day-route legs; mileage is a proposal — M8 owns
+// billable). M17 is the Location-scoped module (M17-F01, BLOCKER): every table carries the three tenancy
+// columns — provider_entity_id + location_id NOT NULL on the patient-scoped tables (visit / recurring_visit /
+// visit_proposal), nullable on the clinician/route-scoped ones (visit_state_history / clinician_availability /
+// time_off / route_segment). Cross-module refs (M5 patient / patient_address, M6 admission, M8 encounter, M40
+// facility, M18 evv_event, M31 telehealth) are plain uuid app-validated (M17 dependsOn [5,8,40]); actor/
+// assignment refs go to M1 `membership` as SQL FKs; only the tenancy spine + membership carry FKs. `visit`
+// is PARTITION BY RANGE (service_date) and `visit_state_history` PARTITION BY RANGE (transitioned_at), both
+// monthly (D14) — converted from the logical Drizzle shape in the RLS migration, so refs TO `visit` are
+// plain uuid (no SQL FK). The D6 visit-overlap + D7 PTO-overlap GiST EXCLUDE backstops also land in that SQL
+// migration. RLS + grants + M4 write-audit triggers land in M17-T02 (§3.3/§3.5/§3.6).
+export * from "./scheduling/visits";
+export * from "./scheduling/visit-state-history";
+export * from "./scheduling/recurring-visits";
+export * from "./scheduling/visit-proposals";
+export * from "./scheduling/clinician-availability";
+export * from "./scheduling/time-off";
+export * from "./scheduling/route-segments";
+
+// ---------------------------------------------------------------------------
+// M18 owns 6 tables (M18-T02, §3.3): evv_event (the §2.2.1 D2 append-only discrete check-in/check-out ledger
+// — one row per capture; the visit-level bracket state is M17's domain, derived from these) + evv_geofence_
+// evaluation (the D3 per-event geofence calculation record) + evv_geofence_policy (the D3 three-layer policy:
+// platform floor → tenant default → per-address override) + evv_device (the D8 per-clinician device-
+// registration lifecycle) + evv_missing_resolution (the D6 missing-EVV resolution machine — documented_missing
+// is never a Medicare claim gate, ADR-0008) + evv_aggregator_submission (the D7 per-state aggregator submission
+// machine). Only evv_event is PHI-bearing by the three-column rule (it carries patient_id) → it gets
+// provider_entity_id + location_id NOT NULL; the other five are org-scoped (joinable to PHI only via
+// visit_id/evv_event_id) or tenant-config (geofence_policy) / membership-scoped (device). evv_event is
+// PARTITION BY RANGE (event_at) monthly (D12, `evv_record` 7-year retention) — the Drizzle shape is logical
+// (composite PK incl. the partition key); the PARTITION BY + the per-LEAF partial-UNIQUE backstops (active-
+// pair D2 / offline-idempotency D5, which omit the partition key and so cannot live on the parent) + the
+// append-only immutability trigger (§3.2 Phase C) land in the RLS migration (0047). Cross-module refs (M5
+// patient / patient_address, M17 visit, M8 encounter, M2 device_attestation / step_up_session) are plain uuid
+// app-validated (M18 dependsOn [17]); only the tenancy spine + membership carry SQL FKs. RLS + grants + M4
+// write-audit triggers (GPS coords + free-text reasons denylisted, §3.6) land in M18-T02 (0047).
+export * from "./evv/evv-event";
+export * from "./evv/evv-geofence-evaluation";
+export * from "./evv/evv-geofence-policy";
+export * from "./evv/evv-device";
+export * from "./evv/evv-missing-resolution";
+export * from "./evv/evv-aggregator-submission";

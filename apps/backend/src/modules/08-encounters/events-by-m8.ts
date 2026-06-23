@@ -106,7 +106,7 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
         ),
       }),
     }),
-    declaredConsumers: ["m9", "m10", "m14", "m22", "m28", "m30", "m31", "m33", "m36"],
+    declaredConsumers: ["m9", "m10", "m14", "m17", "m22", "m28", "m30", "m31", "m33", "m36"],
     isOutboxOnly: true,
   },
   {

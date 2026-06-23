@@ -1,8 +1,8 @@
 {
   "totals": {
-    "Implemented": 16,
+    "Implemented": 19,
     "Partial": 1,
-    "Placeholder": 23
+    "Placeholder": 20
   },
   "rows": [
     {
@@ -190,16 +190,16 @@
     {
       "id": 14,
       "module": "M14 IDG",
-      "status": "Placeholder",
+      "status": "Implemented",
       "spec": true,
-      "schema": false,
-      "migration": false,
-      "routes": false,
-      "enriched": false,
-      "screens": false,
-      "tests": false,
+      "schema": true,
+      "migration": true,
+      "routes": true,
+      "enriched": true,
+      "screens": true,
+      "tests": true,
       "adapter": null,
-      "liveInfra": false
+      "liveInfra": true
     },
     {
       "id": 15,
@@ -232,30 +232,30 @@
     {
       "id": 17,
       "module": "M17 Scheduling & Route Optimization",
-      "status": "Placeholder",
+      "status": "Implemented",
       "spec": true,
-      "schema": false,
-      "migration": false,
-      "routes": false,
-      "enriched": false,
-      "screens": false,
-      "tests": false,
-      "adapter": false,
+      "schema": true,
+      "migration": true,
+      "routes": true,
+      "enriched": true,
+      "screens": true,
+      "tests": true,
+      "adapter": true,
       "liveInfra": true
     },
     {
       "id": 18,
       "module": "M18 EVV",
-      "status": "Placeholder",
+      "status": "Implemented",
       "spec": true,
-      "schema": false,
-      "migration": false,
-      "routes": false,
-      "enriched": false,
-      "screens": false,
-      "tests": false,
+      "schema": true,
+      "migration": true,
+      "routes": true,
+      "enriched": true,
+      "screens": true,
+      "tests": true,
       "adapter": null,
-      "liveInfra": false
+      "liveInfra": true
     },
     {
       "id": 19,

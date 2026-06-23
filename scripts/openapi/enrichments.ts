@@ -56,6 +56,54 @@ import {
   WorksheetQuerySchema as EmarWorksheetQuerySchema,
   WorksheetViewSchema,
 } from "../../apps/backend/src/modules/13-emar/routes/emar-typebox";
+import {
+  ActionItemListQuerySchema as IdgActionItemListQuerySchema,
+  ActionItemListResponseSchema as IdgActionItemListResponseSchema,
+  MeetingViewSchema as IdgMeetingViewSchema,
+  MinutesViewSchema as IdgMinutesViewSchema,
+  PacketDigestViewSchema as IdgPacketDigestViewSchema,
+  PacketListResponseSchema as IdgPacketListResponseSchema,
+  ScheduleListResponseSchema as IdgScheduleListResponseSchema,
+  ScheduleQuerySchema as IdgScheduleQuerySchema,
+} from "../../apps/backend/src/modules/14-idg/routes/idg-typebox";
+import {
+  AvailabilityQuerySchema as SchedAvailabilityQuerySchema,
+  AvailabilityViewSchema as SchedAvailabilityViewSchema,
+  DayViewQuerySchema as SchedDayViewQuerySchema,
+  DayViewResponseSchema as SchedDayViewResponseSchema,
+  MapViewQuerySchema as SchedMapViewQuerySchema,
+  MapViewResponseSchema as SchedMapViewResponseSchema,
+  MetricsQuerySchema as SchedMetricsQuerySchema,
+  ProposalListQuerySchema as SchedProposalListQuerySchema,
+  ProposalListResponseSchema as SchedProposalListResponseSchema,
+  RecurringListQuerySchema as SchedRecurringListQuerySchema,
+  RecurringListResponseSchema as SchedRecurringListResponseSchema,
+  RouteEfficiencyQuerySchema as SchedRouteEfficiencyQuerySchema,
+  RouteEfficiencyResponseSchema as SchedRouteEfficiencyResponseSchema,
+  TimeOffListQuerySchema as SchedTimeOffListQuerySchema,
+  TimeOffListResponseSchema as SchedTimeOffListResponseSchema,
+  VisitListQuerySchema as SchedVisitListQuerySchema,
+  VisitListResponseSchema as SchedVisitListResponseSchema,
+  VisitMetricsResponseSchema as SchedVisitMetricsResponseSchema,
+  VisitViewSchema as SchedVisitViewSchema,
+  WeekViewQuerySchema as SchedWeekViewQuerySchema,
+  WeekViewResponseSchema as SchedWeekViewResponseSchema,
+} from "../../apps/backend/src/modules/17-scheduling/routes/scheduling-typebox";
+import {
+  AggregatorListQuery as EvvAggregatorListQuery,
+  EvvAggregatorSubmissionListResponse,
+  EvvDeviceListResponse,
+  EvvEventListResponse,
+  EvvEventView,
+  EvvGeofencePolicyView,
+  EvvMetricsView,
+  EvvMissingResolutionListResponse,
+  EventGetQuery as EvvEventGetQuery,
+  EventListQuery as EvvEventListQuery,
+  MembershipIdQuery as EvvMembershipIdQuery,
+  MetricsQuery as EvvMetricsQuery,
+  MissingResolutionListQuery as EvvMissingResolutionListQuery,
+} from "../../apps/backend/src/modules/18-evv/routes/evv-typebox";
 import { SearchQuerySchema as TerminologySearchQuerySchema } from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
 import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
 
@@ -1137,5 +1185,126 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "POST /api/v1/amendments/:id/deny": {
     body: DenyBodySchema,
     summary: "Deny an amendment request (denial reason required)",
+  },
+  // M14 IDG (Track B — read surfaces the §5 screens consume; M14-T07). Reads only — the lifecycle / decision /
+  // attendance / agenda / action-item / amendment write surfaces fill in as those write paths harden.
+  "GET /api/v1/idg/schedule": {
+    summary: "Meeting schedule for a location/range — next-weeks meetings, location-scoped (§4.1 / §5)",
+    query: IdgScheduleQuerySchema,
+    response: IdgScheduleListResponseSchema,
+  },
+  "GET /api/v1/idg/meetings/:id": {
+    summary: "One meeting's lifecycle view — status + scheduled window + adjournment (§4.1 / §5)",
+    response: IdgMeetingViewSchema,
+  },
+  "GET /api/v1/idg/meetings/:id/packets": {
+    summary: "Per-patient packet digests for a meeting — readiness + freeze state (§4.1 / §5)",
+    response: IdgPacketListResponseSchema,
+  },
+  "GET /api/v1/idg/meetings/:meetingId/packets/:patientId": {
+    summary: "One patient's packet digest in a meeting — chart-embed read (§4.1 / §5; SUD-redacted server-side)",
+    response: IdgPacketDigestViewSchema,
+  },
+  "GET /api/v1/idg/action-items": {
+    summary: "The caller's action items — open / in-progress queue (§4.1 / §5 'My Action Items')",
+    query: IdgActionItemListQuerySchema,
+    response: IdgActionItemListResponseSchema,
+  },
+  "GET /api/v1/idg/meetings/:id/minutes": {
+    summary: "A meeting's minutes — in-progress or finalized (§4.1 / §5)",
+    response: IdgMinutesViewSchema,
+  },
+  // M17 Scheduling (Track B — the §5.1 read surfaces the day/week/map/proposals/recurring/time-off/availability/
+  // metrics screens consume; M17-T08). Reads only — the create/publish/edit/reschedule/cancel/reassign/approve
+  // write routes keep their route-level TypeBox request bodies (already in the contract).
+  "GET /api/v1/visits": {
+    summary: "Visits in caseload/scope — clinician/patient/status/date-window filtered (§4.1 / §5.1)",
+    query: SchedVisitListQuerySchema,
+    response: SchedVisitListResponseSchema,
+  },
+  "GET /api/v1/visits/:visitId": {
+    summary: "One visit's detail — status + scheduled window + assignment (§4.1 / §5.1 visit detail)",
+    response: SchedVisitViewSchema,
+  },
+  "GET /api/v1/visit-proposals": {
+    summary: "The scheduler proposal inbox — pending frequency/order/IDG/supervisory proposals (§5.1)",
+    query: SchedProposalListQuerySchema,
+    response: SchedProposalListResponseSchema,
+  },
+  "GET /api/v1/recurring-visits": {
+    summary: "A patient's recurring-visit policies — active/discontinued (§5.1 recurring)",
+    query: SchedRecurringListQuerySchema,
+    response: SchedRecurringListResponseSchema,
+  },
+  "GET /api/v1/availability": {
+    summary: "A membership's weekly availability pattern (§5.1 availability editor)",
+    query: SchedAvailabilityQuerySchema,
+    response: SchedAvailabilityViewSchema,
+  },
+  "GET /api/v1/time-off": {
+    summary: "Time-off requests — approval queue / my-PTO, membership/state/date filtered (§5.1)",
+    query: SchedTimeOffListQuerySchema,
+    response: SchedTimeOffListResponseSchema,
+  },
+  "GET /api/v1/day-view": {
+    summary: "Day-view grid — a clinician's visits for one service date (§5.1 day)",
+    query: SchedDayViewQuerySchema,
+    response: SchedDayViewResponseSchema,
+  },
+  "GET /api/v1/week-view": {
+    summary: "Week-view grid — a clinician's visits across a week (§5.1 week)",
+    query: SchedWeekViewQuerySchema,
+    response: SchedWeekViewResponseSchema,
+  },
+  "GET /api/v1/map-view": {
+    summary: "Map-view ordered stops for a clinician day (coords-only polylines, D9; §5.1 map)",
+    query: SchedMapViewQuerySchema,
+    response: SchedMapViewResponseSchema,
+  },
+  "GET /api/v1/metrics/visits": {
+    summary: "Org-wide visit metrics — on-time / no-show / reschedule rates (§5.1 scheduling-metrics)",
+    query: SchedMetricsQuerySchema,
+    response: SchedVisitMetricsResponseSchema,
+  },
+  "GET /api/v1/metrics/route-efficiency": {
+    summary: "Per-clinician route-efficiency metrics — proposed miles + override rate (§5.1)",
+    query: SchedRouteEfficiencyQuerySchema,
+    response: SchedRouteEfficiencyResponseSchema,
+  },
+
+  // ── M18 EVV read surfaces (§5.1, Track B / M18-T07) ───────────────────────────────────────────────────
+  "GET /api/v1/evv/events": {
+    summary: "EVV event ledger — coordinate-free capture events, filterable (§5.1 events)",
+    query: EvvEventListQuery,
+    response: EvvEventListResponse,
+  },
+  "GET /api/v1/evv/events/:eventId": {
+    summary: "EVV single-event detail — raw + computed fields, coordinates redacted unless evv.read_coords (§5.1 event)",
+    query: EvvEventGetQuery,
+    response: EvvEventView,
+  },
+  "GET /api/v1/evv/devices": {
+    summary: "EVV devices — self or team list with approval/integrity status (§5.1 devices/pending, me/evv/devices)",
+    query: EvvMembershipIdQuery,
+    response: EvvDeviceListResponse,
+  },
+  "GET /api/v1/evv/geofence-policy": {
+    summary: "EVV geofence policy — tenant tighten-only default + per-address overrides (§5.1 geofence-policy)",
+    response: EvvGeofencePolicyView,
+  },
+  "GET /api/v1/evv/missing-resolutions": {
+    summary: "EVV missing-resolution queue — open + recently-closed late-checkout resolutions (§5.1 missing-resolutions)",
+    query: EvvMissingResolutionListQuery,
+    response: EvvMissingResolutionListResponse,
+  },
+  "GET /api/v1/evv/aggregator-submissions": {
+    summary: "EVV aggregator submission queue — per-state submission status + rejection detail (§5.1 aggregator-submissions)",
+    query: EvvAggregatorListQuery,
+    response: EvvAggregatorSubmissionListResponse,
+  },
+  "GET /api/v1/evv/metrics": {
+    summary: "EVV metrics — compliance / late-checkout / geofence-deviation / GPS-spoof / aggregator-acceptance rates (§5.1 dashboard, metrics)",
+    query: EvvMetricsQuery,
+    response: EvvMetricsView,
   },
 };

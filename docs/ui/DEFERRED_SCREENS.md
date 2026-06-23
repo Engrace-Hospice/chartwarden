@@ -269,6 +269,9 @@ contract), so `openapi.json`/the client are unchanged.
 | M11 | Signature Inbox (§5), Patient Orders (§5), Order Detail (§5), Verbal-Expiring Queue (§5), Cosign-Pending Queue (§5 §2.5), Lab Results-Pending-Review Queue (§5 D17), Standing-Order Admin (§5 §2.4 D5) | `screens/clinical/WARDENX_UI_ORDERS.md` | done (M11-T08)¹⁸ |
 | M12 | Patient Medications (§6.1), Medication Detail (§6.1), Medication Sign Inbox (§6.1), Verbal Medication Orders (§6.1), Refill Inbox (§6.1), Refill Detail (§6.1), Medication Reconciliation (§6.1), Prescriber Roster admin (§6.1), Prescribing Policy admin (§6.1) | `screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md` (prescribing half) | done — prescribing (M12-T09)¹⁹ |
 | M13 | Patient eMAR (§6.1 #1), Administration Detail (§6.1 #11), IV Continuous Session (§6.1 #5), Missed-Dose Inbox (§6.1 #8), Reconciliation Worksheet (§6.1 #6), Comfort Kit View (§6.1 #7), Administration Policy admin (§6.1 #12) | `screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md` (eMAR half) | done — eMAR administration (M13-T10)²⁰ |
+| M14 | IDG Schedule (§5), Meeting Detail (§5), Live Meeting Surface (§5), Per-Patient Packet (§5), My Action Items (§5), Minutes (§5) | `screens/clinical/WARDENX_UI_IDG_MEETING.md` | done — IDG read surfaces (M14-T07)²¹ |
+| M17 | Day View (§5.1), Week View (§5.1), Proposal Inbox (§5.1), Recurring Policies (§5.1), Time-Off Queue (§5.1), Visit Detail (§5.1), My Visits (§5.1), Scheduling Metrics (§5.1) | M17 spec §5.1 | done — scheduling read surfaces (M17-T08)²² |
+| M18 | EVV Dashboard (§5.1), Event Ledger (§5.1), Event Detail (§5.1), Missing-EVV Resolutions (§5.1), Aggregator Submissions (§5.1), Geofence Policy (§5.1), Devices (§5.1), EVV Metrics (§5.1), My Devices (§5.1) | M18 spec §5.1 | done — EVV read surfaces (M18-T07)²³ |
 
 > ¹³ **Admissions/Intake (M6) now LIVE (Track B, M6-T12, ADR-0030).** Built under
 > `apps/web/src/modules/06-admission` against M6's generated client methods (the M6 read routes are
@@ -382,6 +385,55 @@ contract), so `openapi.json`/the client are unchanged.
 > surfaces, and the offline/sync-issues mobile queue fill in as their write paths harden. The M22 eMAR PDF
 > (apps/admin) and the M28 FHIR `MedicationAdministration` projection are deferred (Wave F/H forward deny-stubs).
 
+> ²¹ **IDG (M14) now LIVE — read surfaces (Track B, M14-T07, ADR-0030).** Built under
+> `apps/web/src/modules/14-idg` against M14's generated client methods (the M14 read routes are enriched in
+> `scripts/openapi/enrichments.ts`, so `packages/ui/src/core/api` types them), registered into the M1 shell via
+> `idgScreens` (`main.tsx`). The IDG Schedule ("Use Work Queue + Documentation Workspace") lists the next-8-weeks
+> meetings for a location (from `?location=`) with their lifecycle chip; the Meeting Detail shows the lifecycle +
+> packet-readiness list; the Live Meeting Surface lists the meeting's patient packets over the lifecycle state;
+> the Per-Patient Packet (chart embed) shows one patient's packet digest + freeze state; My Action Items queues
+> the caller's IDG action items (`assignee=me` server-resolved) with overdue + linked-artifact markers; the
+> Minutes view shows the finalized/in-progress minutes. Nav visibility is gated by `idg.read`; the SERVER stays
+> the only enforcement point (out-of-scope resources 404, never 403; SUD-flagged packet blocks redacted at the
+> SQL-filter level server-side per §7.2/W-SUD-01). The decision-recording panel (quorum gauge + non-quorate
+> refusal), attendance tracker, action-item assignment, adjourn control (D13 fresh step-up), build-packets, and
+> the minutes amendment-request write surfaces — plus the Socket.IO real-time propagation and the Capacitor
+> Mobile Live variant — fill in as their write paths harden. The M22 minutes/packet PDF render and the M28 FHIR
+> `CareTeam`/`Encounter` projection are deferred (Wave F/H handshakes).
+
+> ²² **Scheduling (M17) now LIVE — read surfaces (Track B, M17-T08, ADR-0030).** Built under
+> `apps/web/src/modules/17-scheduling` against M17's generated client methods (the M17 read routes are enriched
+> in `scripts/openapi/enrichments.ts`, so `packages/ui/src/core/api` types them), registered into the M1 shell
+> via `schedulingScreens` (`main.tsx`). The Day View / Week View ("Use Work Queue") list a clinician's visits for
+> a service date / week with the §2.2.1 lifecycle chip; the Proposal Inbox lists pending frequency/order/IDG/
+> supervisory proposals; the Recurring Policies view lists a patient's active recurring-visit policies + RRULE;
+> the Time-Off Queue is the supervisor PTO approval queue; the Visit Detail ("Use Detail Page") shows one visit's
+> status + scheduled window + assignment + reschedule chain; My Visits is the clinician's own today + upcoming-7-
+> days queue; Scheduling Metrics ("Use Dashboard") shows the org-wide on-time / no-show / reschedule rates. Nav
+> visibility is gated by the matching M17 permission key (`visit.read_team` / `visit.proposal.read` /
+> `recurring_visit.read` / `time_off.read_team` / `visit.read` / `visit.read_metrics`); the SERVER stays the only
+> enforcement point (out-of-scope visits 404, never 403; the §4.7 pre-schedule ABAC + RLS narrow every read). The
+> drag-drop reschedule, publish-all, create/discontinue-recurring, approve/deny-time-off, availability editor, and
+> the OSRM map (polyline) write/visual surfaces — plus the Capacitor mobile Today/Map variants and the M31 portal
+> upcoming-visit view — fill in as those write paths / Phase-2 modules land (`scheduling.route_optimization` OFF).
+
+> ²³ **EVV (M18) now LIVE — read surfaces (Track B, M18-T07, ADR-0030).** Built under
+> `apps/web/src/modules/18-evv` against M18's generated client methods (the M18 read routes are enriched in
+> `scripts/openapi/enrichments.ts`, so `packages/ui/src/core/api` types them), registered into the M1 shell via
+> `evvScreens` (`main.tsx`). The EVV Dashboard + EVV Metrics ("Use Dashboard") show the org-wide compliant /
+> late-checkout / geofence-deviation / GPS-spoof / aggregator-acceptance rates; the Event Ledger ("Use Work
+> Queue") is the coordinate-free, caseload-scoped capture ledger and the Event Detail ("Use Detail Page") shows
+> one event's raw + computed fields; the Missing-EVV Resolutions queue is the §2.2.4 D6 late-checkout backlog;
+> the Aggregator Submissions queue is the §2.2.5 D7 per-state submission backlog; the Geofence Policy view shows
+> the tenant tighten-only default + per-address overrides; the Devices roster surfaces pending-approval devices
+> first; My Devices is the clinician self-service list. Coordinates are NEVER projected by these read paths (D10
+> — `evv.read_coords` is a separate permission/path). Nav visibility is gated by the matching M18 permission key
+> (`evv.read_metrics` / `evv.read` / `evv.missing_resolution.read` / `evv.aggregator.read` / `evv.policy.read` /
+> `evv.device.read`); the SERVER stays the only enforcement point (out-of-scope events 404, never 403; the §4.7
+> capture ABAC + RLS narrow every read). The mobile check-in/check-out capture flow (§5.2, owned by the M17
+> visit-detail CTA), the resolution-attest / device-approve / policy-edit / aggregator-resubmit write surfaces,
+> and the M31 portal arrival view fill in as those write / Phase-2 paths land.
+
 ---
 
 ## Blocked on later waves (out of Track A scope until their module lands)
@@ -390,7 +442,7 @@ The remaining ~50 screens (clinical suite, revenue, portal, platform/ops) are ow
 built (M7–M35, M37). They are **Track B**: each ships with its module's wave (include the
 `apps/web/src/modules/NN-*` codePath from T01; the terminal screen task builds it). Examples:
 Care Plan (M7+M15), Orders (M11; done¹⁸), eMAR administration (M13; done²⁰; M12 prescribing is done¹⁹),
-IDG (M14), Scheduling (M17), EVV (M18), Claims (M23+M24), Cap (M26), Cost Report (M27),
+IDG (M14; done²¹), Scheduling (M17; done²²), EVV (M18; done²³), Claims (M23+M24), Cap (M26), Cost Report (M27),
 FHIR (M28), HQRP (M30), Portal/Telehealth (M31), Copilot (M32), Reporting (M33), Onboarding (M34),
 Subscription (M35), IPU Bed Board (M37). See each spec's `Module:` line for the authoritative owner.
 

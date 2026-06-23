@@ -91,6 +91,31 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // retentionAsOf enforces M4's standard `compliance` retention floor. The org-scoped administration_policy is
   // tenant config, not patient data, and stays untouched. The `subjectId` is the patient.
   "emar_record",
+  // M14-T07: a patient's IDG record (the patient-scoped idg_agenda_item/idg_decision/idg_action_item/
+  // idg_patient_packet rows). M14 registers the REAL eraser via the composition-root hook over this deny-stub —
+  // under an M4 destruction certificate (§8.4) it deletes the patient's packets / decisions / action-items /
+  // agenda items; the caseload-wide idg_meeting / idg_recurring_policy / idg_attendance / idg_minutes /
+  // idg_minutes_amendment rows SURVIVE (a meeting is not a single patient's record; minutes are hash-redacted by
+  // the M4 trigger, not deleted here). The `subjectId` is the patient.
+  "idg_record",
+  // M17-T02 (this task) registers the data-class contract; the Phase-0 deny-stub (wireErasers) stands until
+  // M17-T08 registers the REAL eraser via the composition-root hook. Under an M4 destruction certificate the
+  // real eraser row-deletes the patient's partitioned `visit` rows (+ cascaded `visit_state_history`),
+  // `recurring_visit`, `visit_proposal`, and the `route_segment` legs joinable via a visit being erased
+  // (§3.7); retention class `operational` (3 years post-discharge). The clinician-scoped
+  // `clinician_availability` / `time_off` rows are workforce data, not patient data, and stay untouched. The
+  // `subjectId` is the patient.
+  "operational_schedule",
+  // M18-T02 (this task) registers the data-class contract; the Phase-0 deny-stub (wireErasers) stands until
+  // M18-T07 registers the REAL eraser via the composition-root hook. Under an M4 destruction certificate the
+  // real eraser cryptographic-shreds the per-tenant DEK (rendering the `evv_event.coords_cipher` GPS
+  // ciphertext unrecoverable) and drops the patient's partitioned `evv_event` rows, their
+  // `evv_geofence_evaluation` children (by evv_event_id), and the `evv_missing_resolution` /
+  // `evv_aggregator_submission` rows joinable via a visit being erased (§3.7 / D12); retention class
+  // `compliance` (`evv_record`, 7 years). The tenant-config `evv_geofence_policy` and the membership-scoped
+  // `evv_device` rows are not patient data and stay untouched (device erases on workforce departure per M2 D8).
+  // The `subjectId` is the patient.
+  "evv_record",
 ];
 
 export function registerEraser(dataClass: DataClass, eraser: DataEraser): void {

@@ -14,6 +14,13 @@ import type {
   MileagePayrollReader,
   SignedEncountersReader,
 } from "./encounter";
+import type {
+  EvvAggregatorReferenceReader,
+  EvvComplianceReader,
+  EvvLocationProvider,
+  EvvMetricsProvider,
+  EvvVerificationProvider,
+} from "./evv";
 import type { LatestAssessmentProvider, ScaleSeriesProvider } from "./assessment";
 import type {
   HopeJ2051Provider,
@@ -23,6 +30,19 @@ import type {
 import type { OrderProvider, OrderSignatureProvider } from "./orders";
 import type { MedicationOrderProvider, RefillInboxProvider } from "./dosespot";
 import type { MedicationAdministrationProvider, ReconciliationProvider } from "./emar";
+import type {
+  IdgDecisionProvider,
+  IdgPacketProvider,
+  IdgScheduleProvider,
+} from "./idg";
+import type {
+  PortalVisitReader,
+  SupervisoryCadenceReader,
+  VisitAssignmentReader,
+  VisitMetricsProvider,
+  VisitReader,
+  VolunteerComplianceProvider,
+} from "./scheduling";
 import type { PatientMutator, PatientReader } from "./patient";
 // @wardenx/types — Boot-registered SEAM contracts (Phase 0 skeleton).
 //
@@ -80,6 +100,21 @@ export type SeamName =
   // typed here like M6/M7's readers. Registered with a fail-closed deny-stub until M18 lands (Wave F);
   // M8 resolves it with NO `dependsOn` edge to M18 (the leaf interface, not @wardenx/evv).
   | "EvvBracketResolver" // M18 — authoritative EVV bracket for an encounter's visit at finalize (D9)
+  // M18 (EVV) owned seams (§4.3 / D15) — leaf-typed (interfaces in ./evv, this leaf), so they are typed here
+  // like M6..M17's seams. The sixth published M18 seam is `EvvBracketResolver` above (the EXISTING M8-consumed
+  // contract M18 publishes the impl over; M18-T01 GOTCHA — never re-declared). These five are the rest: all
+  // READ-only projections over M18's `evv_event` / `evv_missing_resolution` / `evv_aggregator_submission` rows.
+  // `EvvComplianceReader` — the billing pre-submission compliance gate M23/M24 + the M30 HQRP measure consume;
+  // `EvvAggregatorReferenceReader` — the state-aggregator transaction-id back-link M24 (claim) + M25 (denial)
+  // consume; `EvvLocationProvider` — the last-known-clinician-location read M20 field-safety live-awareness
+  // consumes (coordinate-bearing); `EvvMetricsProvider` — the productivity/quality measures M30/M33 dashboards
+  // consume; `EvvVerificationProvider` — the M31 portal "Nurse arrived at HH:MM" surface (timestamp only, no
+  // coordinates) — all instead of importing M18's schema. M18 owns the EVV lifecycle internally; none mutates.
+  | "EvvComplianceReader" // M18 — billing compliance gate (compliant / documented_missing / unresolved_missing / not_required) + HQRP rate
+  | "EvvAggregatorReferenceReader" // M18 — per-state aggregator transaction-id + submission back-link (M24 claim / M25 denial)
+  | "EvvLocationProvider" // M18 — last-known clinician location (M20 field-safety live-awareness; coordinate-bearing)
+  | "EvvMetricsProvider" // M18 — productivity + quality measures (compliance / late-checkout / geofence / spoof / aggregator / device coverage)
+  | "EvvVerificationProvider" // M18 — portal arrival/verification surface (timestamp only, no coordinates)
   // M9 (Clinical Assessments) owned seams (§4.7 / D7) — also leaf-typed (interfaces in ./assessment), so
   // they are typed here like M6/M7/M8's readers. M7 (CTI/IDG latest PPS/FAST/ESAS-r), M10 (HOPE prognosis),
   // M14 (IDG packet deltas), M28 (FHIR Observation series), M32 (AI symptom-trajectory) consume them
@@ -119,7 +154,37 @@ export type SeamName =
   // read path M14 (IDG packet) and M30 (reconciliation-timeliness measure) consume — all instead of importing
   // M13's schema. M13 owns the recording + reconciliation workflows and downstream modules NEVER import its schema.
   | "MedicationAdministrationProvider" // M13 — administration read seam (by-id / by-patient / by-order / since / measure inputs / portal / IV session / FHIR)
-  | "ReconciliationProvider"; // M13 — reconciliation read seam (worksheet by-id / by-admission / timeliness)
+  | "ReconciliationProvider" // M13 — reconciliation read seam (worksheet by-id / by-admission / timeliness)
+  // M14 (Interdisciplinary Group / IDG) owned seams (§4.8) — also leaf-typed (interfaces in ./idg, this leaf), so
+  // they are typed here like M6..M13's seams. All three are READ surfaces over M14's `idg_*` tables:
+  // `IdgPacketProvider` is the packet-snapshot + render handshake M22 (minutes/packet PDF) + M33 (dashboards)
+  // consume; `IdgDecisionProvider` is the decision read path M30 (decision-to-careplan-update latency measure) +
+  // M33 consume; `IdgScheduleProvider` is the meeting-schedule + 15-day-cadence read path M28 (FHIR
+  // `CareTeam`/`Encounter`) + M30 (cadence-adherence measure) + M33 consume — all instead of importing M14's
+  // schema. M14 owns the meeting/decision/packet lifecycle internally and downstream modules NEVER import its schema.
+  | "IdgPacketProvider" // M14 — packet read seam (snapshot by-id + M22 render payload)
+  | "IdgDecisionProvider" // M14 — decision read seam (by-care-plan / by-meeting)
+  | "IdgScheduleProvider" // M14 — schedule read seam (meetings-for-location / cadence-adherence)
+  // M17 (Scheduling & Route Optimization) owned seams (§4.3) — also leaf-typed (interfaces in ./scheduling,
+  // this leaf), so they are typed here like M6..M14's seams. All four are READ surfaces over M17's `visit` /
+  // `visit_state_history` / `route_segment` rows: `VisitReader` is the visit read path M8 (encounter-authoring
+  // context — closes M8's visit-seeding inert consumer, M8 D9), M18 (EVV geofence target), M14 (IDG packet
+  // "completed visits since last meeting") consume; `VisitAssignmentReader` is the assignment/roster/live read
+  // path M5 (the §4.5 D11 caseload-contribution projection `patientCaseloadProvider` reads), M19 (on-call
+  // triage), M20 (field-safety live-awareness) consume; `PortalVisitReader` is the M31 portal upcoming-visit
+  // read path (lay-language, scheduler-internal notes scrubbed); `VisitMetricsProvider` is the M30/M33
+  // productivity + quality measures read path — all instead of importing M17's schema. M17 owns the visit
+  // lifecycle internally and downstream modules NEVER import its schema; none is a mutate path.
+  | "VisitReader" // M17 — visit read seam (encounter context / EVV geofence target / IDG since-meeting)
+  | "VisitAssignmentReader" // M17 — assignment read seam (caseload contribution / on-call roster / live in_visit)
+  | "PortalVisitReader" // M17 — portal upcoming-visit read seam (lay-language, scrubbed)
+  | "VisitMetricsProvider" // M17 — productivity + quality measures read seam (on-time / no-show / reschedule / route / stability)
+  // M15 (Discipline Care Plans, Phase 2) owned seams M17 CONSUMES (§4.4) — leaf-typed in ./scheduling (M15 has no
+  // types file yet) so M17's D8 pre-schedule gate (predicate 6) + day-view advisory compile against the real
+  // contract. Both fail-closed deny-stub until M15 ships (M17-F06/ADR-0009); the volunteer gate denies LOUDLY
+  // exactly when a `volunteer_visit` is scheduled before M15 lands. No `dependsOn` edge (registry is M1-owned).
+  | "VolunteerComplianceProvider" // M15 — per-membership volunteer-compliance status (gate predicate 6, VOLUNTEER_GATE_UNMET)
+  | "SupervisoryCadenceReader"; // M15 — next-due RN supervisory visit per admission (day-view advisory + propose-from-frequency)
 
 /**
  * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
@@ -297,6 +362,17 @@ export interface SeamContracts {
   // registry is statically typed against the real contract. M18 registers the real resolver over the
   // deny-stub when it lands (Wave F); M8 resolves it through the typed accessor with no schema import.
   EvvBracketResolver: EvvBracketResolver;
+  // M18's other five owned seams (§4.3 / D15) are LEAF-TYPED too — interfaces live in ./evv (this package), so the
+  // registry is statically typed against the real contract. M18 registers the real Drizzle-backed impls over the
+  // deny-stubs (M18-T05); consumers that list `18` in their manifest `dependsOn` (M20/M23/M24/M25/M30/M31/M33)
+  // resolve them through the typed accessors with no schema import edge. All five are READ-only — M18 publishes the
+  // compliance / aggregator-reference / location / metrics / verification projections and never a Drizzle row (the
+  // GPS coordinate is encrypted at rest, D10, and crosses only the coordinate-bearing `EvvLocationProvider` seam).
+  EvvComplianceReader: EvvComplianceReader;
+  EvvAggregatorReferenceReader: EvvAggregatorReferenceReader;
+  EvvLocationProvider: EvvLocationProvider;
+  EvvMetricsProvider: EvvMetricsProvider;
+  EvvVerificationProvider: EvvVerificationProvider;
   // M9's owned seams (§4.7 / D7) are LEAF-TYPED too — interfaces live in ./assessment (this package), so
   // the registry is statically typed against the real contract. M9 registers the real Drizzle-backed
   // impls over the deny-stubs (M9-T04); consumers that list `9` in their manifest `dependsOn` resolve
@@ -332,6 +408,28 @@ export interface SeamContracts {
   // reconciliation read projections; never a Drizzle row and never the free-text PHI (D12).
   MedicationAdministrationProvider: MedicationAdministrationProvider;
   ReconciliationProvider: ReconciliationProvider;
+  // M14's owned seams (§4.8) are LEAF-TYPED too — interfaces live in ./idg (this package), so the registry is
+  // statically typed against the real contract. M14 registers the real Drizzle-backed impls over the deny-stubs
+  // (M14-T05); consumers that list `14` in their manifest `dependsOn` (M22/M28/M30/M33) resolve them through the
+  // typed accessors with no schema import edge. All three are READ-only — M14 publishes the packet / decision /
+  // schedule read projections and never the free-text PHI (the SUD-redacted layer crosses, never the raw notes).
+  IdgPacketProvider: IdgPacketProvider;
+  IdgDecisionProvider: IdgDecisionProvider;
+  IdgScheduleProvider: IdgScheduleProvider;
+  // M17's owned seams (§4.3) are LEAF-TYPED too — interfaces live in ./scheduling (this package), so the registry
+  // is statically typed against the real contract. M17 registers the real Drizzle-backed impls over the deny-stubs
+  // (M17-T05); consumers that list `17` in their manifest `dependsOn` (M8/M18/M19/M20/M30/M31/M33) resolve them
+  // through the typed accessors with no schema import edge. All four are READ-only — M17 publishes the visit /
+  // assignment / portal / metrics read projections and never a Drizzle row (visit metadata, never clinical free-text).
+  VisitReader: VisitReader;
+  VisitAssignmentReader: VisitAssignmentReader;
+  PortalVisitReader: PortalVisitReader;
+  VisitMetricsProvider: VisitMetricsProvider;
+  // M15's consumed-by-M17 seams (§4.4) are LEAF-TYPED too — interfaces live in ./scheduling (M15 has no types
+  // file yet, Phase 2). The registry holds the deny-stub until M15 registers the real impls (M17-F06/ADR-0009);
+  // M17 resolves them through the module-17 consumed-seam accessors with no schema import edge.
+  VolunteerComplianceProvider: VolunteerComplianceProvider;
+  SupervisoryCadenceReader: SupervisoryCadenceReader;
 }
 
 /**
@@ -467,4 +565,34 @@ export type DataClass =
   // `administration_policy` is tenant configuration, not patient data, and is NEVER touched (§7.7 #7).
   // `subjectId` is the patient being destroyed; disjoint from M12's `medication_order_record` (prescribing
   // subtree) and the M5/M6/M7/M8/M9/M10/M11 subtrees.
-  | "emar_record";
+  | "emar_record"
+  // M14 (Interdisciplinary Group / IDG) per-patient IDG record: the patient-scoped IDG artifacts M14 owns —
+  // the `idg_agenda_item`, `idg_decision`, `idg_action_item`, and `idg_patient_packet` rows that carry a
+  // `patient_id`. Erased by M14's registered eraser (M14-T07) under an M4 destruction certificate (§8.4): the
+  // patient's packets / decisions / action-items / agenda items are deleted; the `idg_meeting`,
+  // `idg_recurring_policy`, `idg_attendance`, `idg_minutes`, and `idg_minutes_amendment` rows SURVIVE — they are
+  // caseload-wide / org-level meeting artifacts (a meeting is not a single patient's record), and patient-
+  // specific references inside `idg_minutes` snapshots are hash-redacted by the M4 trigger pattern, not deleted
+  // here. `subjectId` is the patient being destroyed; disjoint from every other module's clinical subtree.
+  | "idg_record"
+  // M17 (Scheduling & Route Optimization) per-patient schedule record: the patient-scoped scheduling rows
+  // M17 owns — the partitioned `visit` rows (and their cascaded `visit_state_history` transitions),
+  // `recurring_visit` policies, `visit_proposal` rows, and the `route_segment` legs joinable via a visit
+  // being erased (§3.7). Registered in M17-T02 (this task) so the contract is present from the schema task;
+  // M17-T08 registers the REAL eraser via the composition-root hook over the Phase-0 deny-stub — under an M4
+  // destruction certificate it row-deletes the patient's visits / state-history / recurring policies /
+  // proposals / route segments (retention class `operational`, 3 years post-discharge, §3.7). The clinician-
+  // scoped `clinician_availability` and `time_off` rows SURVIVE (they are workforce data, not a single
+  // patient's record). `subjectId` is the patient being destroyed; disjoint from every other module's subtree.
+  | "operational_schedule"
+  // M18 (EVV) per-patient EVV record: the EVV artifacts joinable to a patient — the partitioned `evv_event`
+  // capture rows, their `evv_geofence_evaluation` children (by evv_event_id), and the `evv_missing_resolution`
+  // / `evv_aggregator_submission` rows (by visit_id, joinable to M17 visits for the patient). Registered in
+  // M18-T02 (this task) so the contract is present from the schema task; M18-T07 registers the REAL eraser via
+  // the composition-root hook over the Phase-0 deny-stub — under an M4 destruction certificate it
+  // cryptographic-shreds the per-tenant DEK (rendering the GPS coordinate ciphertext unrecoverable) and drops
+  // the rows. Retention class `compliance` (`evv_record`, 7 years — the Medicaid EVV / HQRP survey-record
+  // artifact, §3.7 / D12). The tenant-config `evv_geofence_policy` and the membership-scoped `evv_device`
+  // SURVIVE (not patient data; device erases on workforce departure per M2 D8). `subjectId` is the patient
+  // being destroyed; disjoint from every other module's subtree.
+  | "evv_record";

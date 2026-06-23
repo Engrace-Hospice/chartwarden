@@ -21,6 +21,9 @@
     "11-orders",
     "12-dosespot",
     "13-emar",
+    "14-idg",
+    "17-scheduling",
+    "18-evv",
     "36-messaging",
     "38-terminology",
     "40-mdm"
@@ -445,6 +448,167 @@
       "id": "emar.administration-policy",
       "path": "/admin/administration-policy",
       "permission": "administration.admin.policy"
+    },
+    {
+      "module": "14-idg",
+      "moduleId": 14,
+      "id": "idg.schedule",
+      "path": "/idg/schedule",
+      "permission": "idg.read"
+    },
+    {
+      "module": "14-idg",
+      "moduleId": 14,
+      "id": "idg.meeting-detail",
+      "path": "/idg/meetings/:id",
+      "permission": "idg.read"
+    },
+    {
+      "module": "14-idg",
+      "moduleId": 14,
+      "id": "idg.meeting-live",
+      "path": "/idg/meetings/:id/live",
+      "permission": "idg.read"
+    },
+    {
+      "module": "14-idg",
+      "moduleId": 14,
+      "id": "idg.packet",
+      "path": "/idg/meetings/:meetingId/packets/:patientId",
+      "permission": "idg.read"
+    },
+    {
+      "module": "14-idg",
+      "moduleId": 14,
+      "id": "idg.action-items",
+      "path": "/idg/action-items",
+      "permission": "idg.read"
+    },
+    {
+      "module": "14-idg",
+      "moduleId": 14,
+      "id": "idg.minutes",
+      "path": "/idg/meetings/:id/minutes",
+      "permission": "idg.read"
+    },
+    {
+      "module": "17-scheduling",
+      "moduleId": 17,
+      "id": "scheduling.day",
+      "path": "/scheduling/day",
+      "permission": "visit.read_team"
+    },
+    {
+      "module": "17-scheduling",
+      "moduleId": 17,
+      "id": "scheduling.week",
+      "path": "/scheduling/week",
+      "permission": "visit.read_team"
+    },
+    {
+      "module": "17-scheduling",
+      "moduleId": 17,
+      "id": "scheduling.proposals",
+      "path": "/scheduling/proposals",
+      "permission": "visit.proposal.read"
+    },
+    {
+      "module": "17-scheduling",
+      "moduleId": 17,
+      "id": "scheduling.recurring",
+      "path": "/scheduling/recurring",
+      "permission": "recurring_visit.read"
+    },
+    {
+      "module": "17-scheduling",
+      "moduleId": 17,
+      "id": "scheduling.time-off",
+      "path": "/scheduling/time-off",
+      "permission": "time_off.read_team"
+    },
+    {
+      "module": "17-scheduling",
+      "moduleId": 17,
+      "id": "scheduling.visit-detail",
+      "path": "/scheduling/visits/:visitId",
+      "permission": "visit.read"
+    },
+    {
+      "module": "17-scheduling",
+      "moduleId": 17,
+      "id": "scheduling.my-visits",
+      "path": "/me/visits",
+      "permission": "visit.read"
+    },
+    {
+      "module": "17-scheduling",
+      "moduleId": 17,
+      "id": "scheduling.metrics",
+      "path": "/admin/scheduling-metrics",
+      "permission": "visit.read_metrics"
+    },
+    {
+      "module": "18-evv",
+      "moduleId": 18,
+      "id": "evv.dashboard",
+      "path": "/evv/dashboard",
+      "permission": "evv.read_metrics"
+    },
+    {
+      "module": "18-evv",
+      "moduleId": 18,
+      "id": "evv.events",
+      "path": "/evv/events",
+      "permission": "evv.read"
+    },
+    {
+      "module": "18-evv",
+      "moduleId": 18,
+      "id": "evv.event-detail",
+      "path": "/evv/events/:eventId",
+      "permission": "evv.read"
+    },
+    {
+      "module": "18-evv",
+      "moduleId": 18,
+      "id": "evv.missing-resolutions",
+      "path": "/evv/missing-resolutions",
+      "permission": "evv.missing_resolution.read"
+    },
+    {
+      "module": "18-evv",
+      "moduleId": 18,
+      "id": "evv.aggregator-submissions",
+      "path": "/evv/aggregator-submissions",
+      "permission": "evv.aggregator.read"
+    },
+    {
+      "module": "18-evv",
+      "moduleId": 18,
+      "id": "evv.geofence-policy",
+      "path": "/evv/geofence-policy",
+      "permission": "evv.policy.read"
+    },
+    {
+      "module": "18-evv",
+      "moduleId": 18,
+      "id": "evv.devices",
+      "path": "/evv/devices/pending",
+      "permission": "evv.device.read"
+    },
+    {
+      "module": "18-evv",
+      "moduleId": 18,
+      "id": "evv.metrics",
+      "path": "/admin/evv-metrics",
+      "permission": "evv.read_metrics"
+    },
+    {
+      "module": "18-evv",
+      "moduleId": 18,
+      "id": "evv.my-devices",
+      "path": "/me/evv/devices",
+      "permission": "evv.device.read"
     },
     {
       "module": "36-messaging",

@@ -72,6 +72,9 @@
       "path": "./packages/hope"
     },
     {
+      "path": "./packages/idg"
+    },
+    {
       "path": "./packages/inpatient"
     },
     {
@@ -103,6 +106,9 @@
     },
     {
       "path": "./packages/saas"
+    },
+    {
+      "path": "./packages/scheduling"
     },
     {
       "path": "./packages/shared"

@@ -21,11 +21,19 @@ import type {
   DocumentRenderer,
   ElectionPeriodReader,
   EncounterCreator,
+  EvvAggregatorReferenceReader,
   EvvBracketResolver,
+  EvvComplianceReader,
+  EvvLocationProvider,
+  EvvMetricsProvider,
+  EvvVerificationProvider,
   FaceToFaceReader,
   HopeJ2051Provider,
   HopeSubmissionProvider,
   HopeTimepointProvider,
+  IdgDecisionProvider,
+  IdgPacketProvider,
+  IdgScheduleProvider,
   LatestAssessmentProvider,
   LevelOfCareReader,
   MedicationAdministrationProvider,
@@ -37,10 +45,16 @@ import type {
   RefillInboxProvider,
   PatientMutator,
   PatientReader,
+  PortalVisitReader,
   ScaleSeriesProvider,
   SeamName,
   SessionContextResolver,
   SignedEncountersReader,
+  SupervisoryCadenceReader,
+  VisitAssignmentReader,
+  VisitMetricsProvider,
+  VisitReader,
+  VolunteerComplianceProvider,
 } from "../interfaces";
 
 export class NotImplementedError extends Error {
@@ -265,6 +279,71 @@ export const evvBracketResolverDenyStub: EvvBracketResolver = {
   },
 };
 
+// M18 (EVV) other five owned seams (§4.3 / D15). LEAF-TYPED (interfaces in @wardenx/types) like M6..M17's readers,
+// so each gets a concrete typed deny-stub. Denies LOUDLY until M18 registers the real impls (M18-T05).
+
+/** M18 — billing compliance gate (M23/M24 pre-submission) + M30 HQRP rate. Denies until M18 registers it. */
+export const evvComplianceReaderDenyStub: EvvComplianceReader = {
+  bracketStateForVisit() {
+    throw new NotImplementedError("EvvComplianceReader");
+  },
+  complianceRateForWindow() {
+    throw new NotImplementedError("EvvComplianceReader");
+  },
+};
+
+/** M18 — per-state aggregator transaction-id back-link (M24 claim / M25 denial). Denies until M18 registers it. */
+export const evvAggregatorReferenceReaderDenyStub: EvvAggregatorReferenceReader = {
+  aggregatorIdForVisit() {
+    throw new NotImplementedError("EvvAggregatorReferenceReader");
+  },
+  submissionForVisit() {
+    throw new NotImplementedError("EvvAggregatorReferenceReader");
+  },
+};
+
+/** M18 — last-known clinician location (M20 field-safety live-awareness). Denies until M18 registers it. */
+export const evvLocationProviderDenyStub: EvvLocationProvider = {
+  lastKnownLocationForClinician() {
+    throw new NotImplementedError("EvvLocationProvider");
+  },
+  lastKnownLocationsForOrgShift() {
+    throw new NotImplementedError("EvvLocationProvider");
+  },
+};
+
+/** M18 — productivity + quality measures (M30/M33 dashboards). Denies until M18 registers it. */
+export const evvMetricsProviderDenyStub: EvvMetricsProvider = {
+  getComplianceRate() {
+    throw new NotImplementedError("EvvMetricsProvider");
+  },
+  getLateCheckoutRate() {
+    throw new NotImplementedError("EvvMetricsProvider");
+  },
+  getGeofenceDeviationRate() {
+    throw new NotImplementedError("EvvMetricsProvider");
+  },
+  getGpsSpoofingDetectedRate() {
+    throw new NotImplementedError("EvvMetricsProvider");
+  },
+  getAggregatorSubmissionSuccessRate() {
+    throw new NotImplementedError("EvvMetricsProvider");
+  },
+  getDeviceRegistrationCoverage() {
+    throw new NotImplementedError("EvvMetricsProvider");
+  },
+};
+
+/** M18 — portal arrival/verification surface (timestamp only, no coordinates). Denies until M18 registers it. */
+export const evvVerificationProviderDenyStub: EvvVerificationProvider = {
+  arrivalEventForVisit() {
+    throw new NotImplementedError("EvvVerificationProvider");
+  },
+  visitVerificationSummaryForPortal() {
+    throw new NotImplementedError("EvvVerificationProvider");
+  },
+};
+
 // M9 (Clinical Assessments) owned seams (§4.7 / D7). LEAF-TYPED (interfaces in @wardenx/types) like
 // M6/M7/M8's readers, so each gets a concrete typed deny-stub. Denies LOUDLY until M9 registers the real
 // impls (M9-T04).
@@ -477,6 +556,114 @@ export const reconciliationProviderDenyStub: ReconciliationProvider = {
   },
   getReconciliationTimelinessByAdmission() {
     throw new NotImplementedError("ReconciliationProvider");
+  },
+};
+
+/** M14 — the packet read seam (snapshot by-id + the M22 deterministic render payload) M22/M33 consume.
+ * Denies until M14 registers it (M14-T05). */
+export const idgPacketProviderDenyStub: IdgPacketProvider = {
+  getPacketSnapshot() {
+    throw new NotImplementedError("IdgPacketProvider");
+  },
+  renderPayloadFor() {
+    throw new NotImplementedError("IdgPacketProvider");
+  },
+};
+
+/** M14 — the decision read seam (by-care-plan / by-meeting) M30 (decision-latency measure) / M33 consume.
+ * Denies until M14 registers it (M14-T05). */
+export const idgDecisionProviderDenyStub: IdgDecisionProvider = {
+  getDecisionsForCarePlan() {
+    throw new NotImplementedError("IdgDecisionProvider");
+  },
+  getDecisionsForMeeting() {
+    throw new NotImplementedError("IdgDecisionProvider");
+  },
+};
+
+/** M14 — the schedule read seam (meetings-for-location / 15-day-cadence-adherence) M28/M30/M33 consume.
+ * Denies until M14 registers it (M14-T05). */
+export const idgScheduleProviderDenyStub: IdgScheduleProvider = {
+  listMeetingsForLocation() {
+    throw new NotImplementedError("IdgScheduleProvider");
+  },
+  getCadenceAdherence() {
+    throw new NotImplementedError("IdgScheduleProvider");
+  },
+};
+
+/** M17 — the visit read seam (encounter context / EVV geofence target / IDG since-meeting) M8/M18/M14 consume.
+ * Denies until M17 registers it (M17-T05). */
+export const visitReaderDenyStub: VisitReader = {
+  visitForEncounter() {
+    throw new NotImplementedError("VisitReader");
+  },
+  visitsScheduledForMembershipOnDate() {
+    throw new NotImplementedError("VisitReader");
+  },
+  completedVisitsForPatientSince() {
+    throw new NotImplementedError("VisitReader");
+  },
+};
+
+/** M17 — the assignment read seam (§4.5 D11 caseload contribution / on-call roster / live in_visit) M5/M19/M20
+ * consume. Denies until M17 registers it (M17-T05). */
+export const visitAssignmentReaderDenyStub: VisitAssignmentReader = {
+  activeVisitsForMembershipOnDate() {
+    throw new NotImplementedError("VisitAssignmentReader");
+  },
+  tonightsOnCallRoster() {
+    throw new NotImplementedError("VisitAssignmentReader");
+  },
+  currentVisitForClinician() {
+    throw new NotImplementedError("VisitAssignmentReader");
+  },
+};
+
+/** M17 — the portal upcoming-visit read seam (lay-language, scheduler-internal notes scrubbed) M31 consumes.
+ * Denies until M17 registers it (M17-T05). */
+export const portalVisitReaderDenyStub: PortalVisitReader = {
+  upcomingForPatient() {
+    throw new NotImplementedError("PortalVisitReader");
+  },
+};
+
+/** M17 — the productivity + quality measures read seam (on-time / no-show / reschedule / route / stability)
+ * M30/M33 consume. Denies until M17 registers it (M17-T05). */
+export const visitMetricsProviderDenyStub: VisitMetricsProvider = {
+  getOnTimeVisitRate() {
+    throw new NotImplementedError("VisitMetricsProvider");
+  },
+  getNoShowRate() {
+    throw new NotImplementedError("VisitMetricsProvider");
+  },
+  getRescheduleRate() {
+    throw new NotImplementedError("VisitMetricsProvider");
+  },
+  getRouteEfficiencyForMembership() {
+    throw new NotImplementedError("VisitMetricsProvider");
+  },
+  getScheduleStabilityIndex() {
+    throw new NotImplementedError("VisitMetricsProvider");
+  },
+};
+
+// M15 (Discipline Care Plans, Phase 2) seams M17 CONSUMES (§4.4). LEAF-TYPED (interfaces in @wardenx/types),
+// so each gets a concrete typed deny-stub. Per M17-F06/ADR-0009 M17 (Phase 1) no longer hard-requires M15 to
+// boot — these stand fail-closed until M15 ships. The volunteer gate denies LOUDLY exactly when a
+// `volunteer_visit` is scheduled before M15 lands (a non-volunteer visit never invokes predicate 6, M17-T06).
+
+/** M15 — effective volunteer-compliance status (the D8 gate predicate-6 input). Denies until M15 registers it. */
+export const volunteerComplianceProviderDenyStub: VolunteerComplianceProvider = {
+  effectiveStatusFor() {
+    throw new NotImplementedError("VolunteerComplianceProvider");
+  },
+};
+
+/** M15 — next-due RN supervisory visit per admission (day-view advisory). Denies until M15 registers it. */
+export const supervisoryCadenceReaderDenyStub: SupervisoryCadenceReader = {
+  nextSupervisoryDueAt() {
+    throw new NotImplementedError("SupervisoryCadenceReader");
   },
 };
 
