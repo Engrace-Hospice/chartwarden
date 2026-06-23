@@ -19,6 +19,7 @@ import type {
   CaseloadProvider,
   CertificationReader,
   DocumentRenderer,
+  DocumentStorageProvider,
   ElectionPeriodReader,
   EncounterCreator,
   EvvAggregatorReferenceReader,
@@ -103,6 +104,15 @@ export const patientMutatorDenyStub: PatientMutator = {
 export const documentRendererDenyStub: DocumentRenderer = {
   render() {
     throw new NotImplementedError("DocumentRenderer");
+  },
+};
+
+export const documentStorageProviderDenyStub: DocumentStorageProvider = {
+  presignDownload() {
+    throw new NotImplementedError("DocumentStorageProvider");
+  },
+  destroyAllObjectVersions() {
+    throw new NotImplementedError("DocumentStorageProvider");
   },
 };
 

@@ -16,6 +16,7 @@ export type {
   DataClass,
   DataEraser,
   DocumentRenderer,
+  DocumentStorageProvider,
   ElectionPeriodReader,
   EncounterCreator,
   EvvAggregatorReferenceReader,

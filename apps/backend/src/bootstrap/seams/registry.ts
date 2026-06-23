@@ -26,6 +26,7 @@ import {
   certificationReaderDenyStub,
   consentEvaluatorDenyStub,
   documentRendererDenyStub,
+  documentStorageProviderDenyStub,
   electionPeriodReaderDenyStub,
   encounterCreatorDenyStub,
   evvAggregatorReferenceReaderDenyStub,
@@ -89,6 +90,16 @@ export const REQUIRED_SEAMS = [
   // boot-validated and fail-closed until M5 registers the real mutator (M5-T08).
   { key: "PatientMutator", ownerModule: 5, phi: true, denyStub: patientMutatorDenyStub },
   { key: "DocumentRenderer", ownerModule: 22, phi: true, denyStub: documentRendererDenyStub },
+  // M22 (§4.3 / §11 D1) — the per-tenant object-storage seam (presign download + version-aware destroy).
+  // The presigned URL is never logged and the keys are PHI-free by construction (D11), but the surface
+  // reaches PHI bytes → phi: true; boot-validated and fail-closed until M22 registers the real provider
+  // (M22-T04). The M22 lifecycle/eraser paths resolve it through the typed accessor.
+  {
+    key: "DocumentStorageProvider",
+    ownerModule: 22,
+    phi: true,
+    denyStub: documentStorageProviderDenyStub,
+  },
   { key: "ConsentEvaluator", ownerModule: 39, phi: true, denyStub: consentEvaluatorDenyStub },
   // M2 published seams (§4.7): authenticated request context + auditor session minter. Not PHI
   // (identity/session metadata, not a patient record), but still boot-validated and fail-closed.

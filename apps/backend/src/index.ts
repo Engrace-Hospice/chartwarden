@@ -42,6 +42,7 @@ import { registerEmarErasers, registerEmarSeams } from "./modules/13-emar/index"
 import { registerIdgErasers, registerIdgSeams } from "./modules/14-idg/index";
 import { registerSchedulingSeams } from "./modules/17-scheduling/index";
 import { registerEvvSeams } from "./modules/18-evv/index";
+import { registerDocumentSeams } from "./modules/22-documents/index";
 import {
   createDbMessagingProvider,
   mountMessagingRoutes,
@@ -157,11 +158,18 @@ export function wireModuleSeams(
   // portal arrival surface) stand over their deny-stubs. Slice/tests keep the in-memory store; the Drizzle-backed
   // store lands with M18's routes/repos (M18-T06+).
   registerEvvSeams();
+  // M22 — the two §4.3 published seams: `DocumentRenderer` (the §7.2 W2 render-from-typed-payload handshake
+  // M5/M6/M8/M11/M12/M13/M14/M16/M17/M18/M23/M39 consume to materialize their PDFs) + `DocumentStorageProvider`
+  // (the §11 D1 per-tenant object store: presign-download + version-aware destroy). Registering the renderer
+  // CLOSES the forward-seam deny-stub M39 consent's Wave-C render path + every source module's m22-document-
+  // backref consumer awaited. Slice/tests keep the in-memory store + in-memory object store; the Drizzle +
+  // MinIO adapters land with M22's routes/worker (a later M22 task).
+  registerDocumentSeams();
   // M39 — ConsentEvaluator (§4.3, the disclosure/redaction gate). Production backs it with the Drizzle
   // store over the real M39 consent tables (FB-T03); slice/tests keep the in-memory default.
   registerConsentSeams(deps.db ? { store: createDbConsentStore(deps.db) } : {});
   registerConsentAbacPredicates(); // M39 — the 11 §4.8 ABAC predicate resolvers (resolve via the seam)
-  // Phase-1 producers append here as they land: M22 DocumentRenderer, …
+  // Phase-1 producers append here as they land.
 }
 
 /**

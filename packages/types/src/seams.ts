@@ -7,6 +7,7 @@ import type {
   LevelOfCareReader,
 } from "./admission";
 import type { CarePlanReader } from "./care-plan";
+import type { DocumentStorageProvider } from "./documents";
 import type {
   BillableEncounterReader,
   EncounterCreator,
@@ -67,7 +68,8 @@ export type SeamName =
   | "CaseloadProvider" // M5/M17 — which patients an actor may see
   | "PatientReader" // M5 — patient identity/demographics reads (§4.8; M29 cascade)
   | "PatientMutator" // M5 — apply an M29-proposal/amendment field diff (§4.9; D12 strip)
-  | "DocumentRenderer" // M22 — render a typed payload to a stored document
+  | "DocumentRenderer" // M22 — render a typed payload to a stored document (W2 handshake)
+  | "DocumentStorageProvider" // M22 — per-tenant object storage (presign + version-aware destroy; §4.3/D1)
   | "ConsentEvaluator" // M39 — disclosure/redaction gate
   | "SessionContextResolver" // M2 — authenticated, org-scoped request context (actor + step-up state)
   | "AuditorSessionMinter" // M2 — mint a time-boxed auditor magic-link session (M3 calls it)
@@ -303,6 +305,12 @@ export interface SeamContracts {
   PatientReader: PatientReader;
   PatientMutator: PatientMutator;
   DocumentRenderer: DocumentRenderer;
+  // M22's `DocumentStorageProvider` (§4.3 / §11 D1) is LEAF-TYPED — its interface lives in ./documents
+  // (this package), so the registry is statically typed against the real contract. M22 registers the
+  // real MinIO-backed provider over the deny-stub (M22-T04); the M22 lifecycle/eraser paths resolve it
+  // through the typed accessor. The presign URL itself is never logged; the keys are PHI-free by
+  // construction (D11) — but the surface guards a PHI object store → phi: true in REQUIRED_SEAMS.
+  DocumentStorageProvider: DocumentStorageProvider;
   // M39's `ConsentEvaluator` is OPAQUE (`unknown`) here — the rich §4.3 interface lives in
   // @wardenx/consent (rich-seam pattern, see the note above the interface block). Consumers that
   // list `39` in `dependsOn` import the real type from @wardenx/consent and resolve via the
