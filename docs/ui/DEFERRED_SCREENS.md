@@ -272,6 +272,7 @@ contract), so `openapi.json`/the client are unchanged.
 | M14 | IDG Schedule (§5), Meeting Detail (§5), Live Meeting Surface (§5), Per-Patient Packet (§5), My Action Items (§5), Minutes (§5) | `screens/clinical/WARDENX_UI_IDG_MEETING.md` | done — IDG read surfaces (M14-T07)²¹ |
 | M17 | Day View (§5.1), Week View (§5.1), Proposal Inbox (§5.1), Recurring Policies (§5.1), Time-Off Queue (§5.1), Visit Detail (§5.1), My Visits (§5.1), Scheduling Metrics (§5.1) | M17 spec §5.1 | done — scheduling read surfaces (M17-T08)²² |
 | M18 | EVV Dashboard (§5.1), Event Ledger (§5.1), Event Detail (§5.1), Missing-EVV Resolutions (§5.1), Aggregator Submissions (§5.1), Geofence Policy (§5.1), Devices (§5.1), EVV Metrics (§5.1), My Devices (§5.1) | M18 spec §5.1 | done — EVV read surfaces (M18-T07)²³ |
+| M22 | Document Explorer (§5.1 DOC.Explorer), Patient Chart Documents (§5.1 DOC.PatientChart.DocumentsTab), Document Detail (§5.1), Version History (§5.1 DOC.VersionHistory) | `screens/clinical` + M22 spec §5.1 | done — document read surfaces (M22-T10)²⁴ |
 
 > ¹³ **Admissions/Intake (M6) now LIVE (Track B, M6-T12, ADR-0030).** Built under
 > `apps/web/src/modules/06-admission` against M6's generated client methods (the M6 read routes are
@@ -434,6 +435,22 @@ contract), so `openapi.json`/the client are unchanged.
 > visit-detail CTA), the resolution-attest / device-approve / policy-edit / aggregator-resubmit write surfaces,
 > and the M31 portal arrival view fill in as those write / Phase-2 paths land.
 
+> ²⁴ **Document Management (M22) now LIVE — read surfaces (Track B, M22-T10, ADR-0030).** Built under
+> `apps/web/src/modules/22-documents` against M22's generated client methods (the M22 read routes are enriched in
+> `scripts/openapi/enrichments.ts`, so `packages/ui/src/core/api` types them), registered into the M1 shell via
+> `documentScreens` (`main.tsx`). The Document Explorer ("Use Work Queue") is the tenant-wide browse with patient /
+> aggregate-type / retention-class filters and opaque-cursor pagination (SD-052 — `nextCursor` + `hasMore`, never an
+> offset); the Patient Chart Documents tab is the same browse pre-filtered to one patient; the Document Detail ("Use
+> Detail Page") shows metadata + active version + tags and renders the `DOC.LegalHoldBanner` when status is
+> `legal_hold`; the Version History ("Use Work Queue") is the §2.2.2 append-only version ledger. Nav visibility is
+> gated by the matching M22 permission key (`documents.read` / `documents.read_history`); the SERVER stays the only
+> enforcement point (an out-of-scope document is absent / 404s, never a frontend 403; the §4.7
+> `document_owner_or_caseload` ABAC + RLS narrow every read). The intake/DocLens review surfaces (`INTAKE.*`) are NOT
+> registered in Phase 1 — those routes 503 EXTRACTION_DISABLED while `documents.doclens` is OFF (M22-T08) and light
+> up with the M32 wiring. The upload / tag-editor / overlay-editor / signed-URL-preview write surfaces, the §5.2
+> Capacitor mobile screens (ADR-0035 — Capacitor-over-web, so they live under `apps/web` too), and the M31 portal
+> documents view fill in as those write / mobile / Phase-2 paths land.
+
 ---
 
 ## Blocked on later waves (out of Track A scope until their module lands)
@@ -442,8 +459,8 @@ The remaining ~50 screens (clinical suite, revenue, portal, platform/ops) are ow
 built (M7–M35, M37). They are **Track B**: each ships with its module's wave (include the
 `apps/web/src/modules/NN-*` codePath from T01; the terminal screen task builds it). Examples:
 Care Plan (M7+M15), Orders (M11; done¹⁸), eMAR administration (M13; done²⁰; M12 prescribing is done¹⁹),
-IDG (M14; done²¹), Scheduling (M17; done²²), EVV (M18; done²³), Claims (M23+M24), Cap (M26), Cost Report (M27),
-FHIR (M28), HQRP (M30), Portal/Telehealth (M31), Copilot (M32), Reporting (M33), Onboarding (M34),
+IDG (M14; done²¹), Scheduling (M17; done²²), EVV (M18; done²³), Documents (M22; done²⁴), Claims (M23+M24), Cap (M26),
+Cost Report (M27), FHIR (M28), HQRP (M30), Portal/Telehealth (M31), Copilot (M32), Reporting (M33), Onboarding (M34),
 Subscription (M35), IPU Bed Board (M37). See each spec's `Module:` line for the authoritative owner.
 
 ---

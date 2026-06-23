@@ -1,7 +1,7 @@
 {
   "totals": {
-    "Implemented": 19,
-    "Partial": 2,
+    "Implemented": 20,
+    "Partial": 1,
     "Placeholder": 19
   },
   "rows": [
@@ -302,16 +302,16 @@
     {
       "id": 22,
       "module": "M22 Document Management",
-      "status": "Partial",
+      "status": "Implemented",
       "spec": true,
       "schema": true,
       "migration": true,
-      "routes": false,
-      "enriched": false,
-      "screens": false,
+      "routes": true,
+      "enriched": true,
+      "screens": true,
       "tests": true,
       "adapter": null,
-      "liveInfra": false
+      "liveInfra": true
     },
     {
       "id": 23,

@@ -1407,6 +1407,55 @@ export const M18_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M18 contributed permission keys. */
 export type M18ContributedPermissionKey = keyof typeof M18_CONTRIBUTED_PERMISSIONS;
 
+/**
+ * M22-T07 — Module 22 (Document Management) §4.6 permission keys registered into M3's catalog (the single
+ * permission registry for M22 per M22-F16 / ADR-0022; boot validation fails if any route key is missing). The
+ * dot-key form is canonical — there is NO parallel colon-key catalog. Keys carry a `documents.` / `intake.` /
+ * `extraction.` NAMESPACE prefix on top of the `resource.action` decomposition (like M11's `orders.` / M18's
+ * `evv.`). The patient-document reads default to M22's OWNED `document_owner_or_caseload` predicate (§4.7,
+ * composes M5's caseload check); the metadata-mutating keys default to `legal_hold_aware`; `intake.review`
+ * defaults to `extraction_reviewer_eligible`; the template-publish / overlay keys default to their authority
+ * predicates. The org-wide compliance/admin/billing surfaces (access-log read, template catalog read, intake
+ * pipeline reads, aggregator-style admin) are pure RBAC (`none`) — the route layer scopes them server-side, not
+ * by patient caseload. Review-action granularity (approve low/high-risk, reject, discrepancy-overwrite) all map
+ * to the single `intake.review` route key; the high-risk-field eligibility distinction is the
+ * `extraction_reviewer_eligible` ABAC concern (§4.7), not a separate key. Twenty-three keys total (§4.6).
+ */
+export const M22_CONTRIBUTED_PERMISSIONS = {
+  // --- document read / write (patient-document reads carry the OWNED `document_owner_or_caseload` predicate) ---
+  "documents.upload": { resource: "documents", action: "upload", category: "documents", abac: "none" },
+  "documents.read": { resource: "documents", action: "read", category: "documents", abac: "document_owner_or_caseload" },
+  "documents.read_history": { resource: "documents", action: "read_history", category: "documents", abac: "document_owner_or_caseload" },
+  "documents.read_access_log": { resource: "documents", action: "read_access_log", category: "documents", abac: "none" },
+  "documents.read_phi_content": { resource: "documents", action: "read_phi_content", category: "documents", abac: "document_owner_or_caseload" },
+  "documents.edit_metadata": { resource: "documents", action: "edit_metadata", category: "documents", abac: "legal_hold_aware" },
+  "documents.attach_to_disclosures": { resource: "documents", action: "attach_to_disclosures", category: "documents", abac: "none" },
+  "documents.export_phi_bundle": { resource: "documents", action: "export_phi_bundle", category: "documents", abac: "document_owner_or_caseload" },
+  // §2.2.2 / F19 — no user soft-delete; `documents.delete` routes to the M4 destruction path (legal-hold-aware).
+  "documents.delete": { resource: "documents", action: "delete", category: "documents", abac: "legal_hold_aware" },
+  // --- form-template catalog + platform/tenant publishing (authority predicates at the write routes) ---
+  "documents.read_templates": { resource: "documents", action: "read_templates", category: "documents", abac: "none" },
+  "documents.preview_template": { resource: "documents", action: "preview_template", category: "documents", abac: "none" },
+  "documents.publish_template": { resource: "documents", action: "publish_template", category: "documents", abac: "form_template_publish_authority" },
+  "documents.manage_overlay": { resource: "documents", action: "manage_overlay", category: "documents", abac: "tenant_template_overlay_edit_authority" },
+  // --- platform-admin form-fill debug surface (elevated-access audited; org-wide) ---
+  "documents.admin_read_fills": { resource: "documents", action: "admin_read_fills", category: "documents", abac: "none" },
+  "documents.admin_retry_render": { resource: "documents", action: "admin_retry_render", category: "documents", abac: "none" },
+  // --- intake batch pipeline (reads are org-scoped RBAC; review carries `extraction_reviewer_eligible`) ---
+  "intake.upload": { resource: "intake", action: "upload", category: "intake", abac: "none" },
+  "intake.read": { resource: "intake", action: "read", category: "intake", abac: "none" },
+  "intake.reclassify": { resource: "intake", action: "reclassify", category: "intake", abac: "none" },
+  "intake.confirm_classification": { resource: "intake", action: "confirm_classification", category: "intake", abac: "none" },
+  "intake.split_batch": { resource: "intake", action: "split_batch", category: "intake", abac: "none" },
+  "intake.review": { resource: "intake", action: "review", category: "intake", abac: "extraction_reviewer_eligible" },
+  "intake.discard_batch": { resource: "intake", action: "discard_batch", category: "intake", abac: "none" },
+  // --- extraction provenance read (compliance/QA/own-patient case-manager; org-scoped RBAC) ---
+  "extraction.read_provenance": { resource: "extraction", action: "read_provenance", category: "intake", abac: "none" },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M22 contributed permission keys. */
+export type M22ContributedPermissionKey = keyof typeof M22_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -1509,6 +1558,11 @@ export function m18ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M18_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M22 contributed keys into `permission`-table mirror rows (M22-T07). */
+export function m22ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M22_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -1536,5 +1590,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m14ContributedPermissionMirrorRows(),
     ...m17ContributedPermissionMirrorRows(),
     ...m18ContributedPermissionMirrorRows(),
+    ...m22ContributedPermissionMirrorRows(),
   ];
 }

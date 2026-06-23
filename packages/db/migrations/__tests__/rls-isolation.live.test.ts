@@ -2123,4 +2123,194 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       expect(sub.rows[0].after.status).toBe("rejected"); // structural passes through
     });
   });
+
+  // 0048/0049 (M22 Documents) applied above. Proves on REAL Postgres the §8.8 cross-tenant isolation across the
+  // M22 owned tables: with two tenants A and B and one user per tenant, user A cannot SELECT / INSERT / UPDATE /
+  // DELETE any row owned by tenant B, even with crafted ids and with the application authorization layer stubbed
+  // wide open (RLS keyed ONLY on app.org_id). The central PHI table (`document`) plus its `document_version` /
+  // `document_tag` satellites are seeded for both orgs; the WITH CHECK blocks a cross-tenant INSERT; a cross-tenant
+  // UPDATE affects ZERO rows; wardenx_app has NO DELETE grant on any org-scoped owned table EXCEPT `document_tag`
+  // (tags are user-removable — §3.2 Phase-2 step-3); and the M4 write-audit trigger scrubs the §3.6 denylist
+  // (`document.title`, `document_version.byte_payload_cipher`/`minio_object_key`) while structural columns pass
+  // through. (`form_template` / `form_template_version` are platform-catalog dual-grant tables with NO org_id, so
+  // they are deliberately excluded from the org-isolation loops.)
+  describe("M22 Documents — cross-tenant isolation, no-DELETE (except tags), PHI-column audit scrub (§3.5 / §3.6 / §8.8)", () => {
+    const PE_A22 = "f2000000-0000-0000-0000-0000000000a1";
+    const PE_B22 = "f3000000-0000-0000-0000-0000000000b1";
+    const LOC_A22 = "f2000000-0000-0000-0000-0000000000a2";
+    const LOC_B22 = "f3000000-0000-0000-0000-0000000000b2";
+    const USER_A22 = "f2000000-0000-0000-0000-0000000000a3";
+    const USER_B22 = "f3000000-0000-0000-0000-0000000000b3";
+    const MEM_A22 = "f2000000-0000-0000-0000-0000000000a4";
+    const MEM_B22 = "f3000000-0000-0000-0000-0000000000b4";
+    const DOC_A22 = "f2000000-0000-0000-0000-0000000000a5";
+    const DOC_B22 = "f3000000-0000-0000-0000-0000000000b5";
+    const VER_A22 = "f2000000-0000-0000-0000-0000000000a6";
+    const VER_B22 = "f3000000-0000-0000-0000-0000000000b6";
+    const TAG_A22 = "f2000000-0000-0000-0000-0000000000a7";
+    const TAG_B22 = "f3000000-0000-0000-0000-0000000000b7";
+
+    // The three seeded owned tables, used by the parametrized cross-tenant SELECT loop.
+    const SEEDED_TABLES = ["document", "document_version", "document_tag"] as const;
+    const A_ROW: Record<(typeof SEEDED_TABLES)[number], string> = {
+      document: DOC_A22,
+      document_version: VER_A22,
+      document_tag: TAG_A22,
+    };
+    // The fourteen org-scoped owned tables with NO wardenx_app DELETE grant (destruction-by-eraseFn only); only
+    // `document_tag` carries a DELETE grant, so it is excluded from this loop and checked separately.
+    const NO_DELETE_TABLES = [
+      "document",
+      "document_version",
+      "document_access_log",
+      "document_legal_hold",
+      "tenant_template_overlay",
+      "form_fill",
+      "intake_upload_batch",
+      "classified_page",
+      "extraction_job",
+      "extraction_candidate",
+      "extraction_discrepancy",
+      "extraction_review",
+      "extraction_decision",
+      "extraction_provenance",
+    ] as const;
+
+    /** Seed a document chain for one org (superuser → RLS bypassed): document → version → tag. The denylisted
+     * columns (title / object-key / byte-payload-cipher / tag-value) carry sentinel PHI so the §3.6 scrub is
+     * observable. */
+    async function seedDocChain(
+      org: string,
+      pe: string,
+      loc: string,
+      mem: string,
+      doc: string,
+      ver: string,
+      tag: string,
+    ) {
+      await db.query(
+        `INSERT INTO document
+           (id,organization_id,provider_entity_id,location_id,patient_id,retention_class,source_kind,
+            aggregate_type,title,status,created_by_membership_id)
+           VALUES ($1,$2,$3,$4,gen_random_uuid(),'clinical_record','user_upload','other',
+            'SENSITIVE TITLE — denylisted PHI','active',$5)`,
+        [doc, org, pe, loc, mem],
+      );
+      await db.query(
+        `INSERT INTO document_version
+           (id,organization_id,document_id,version_number,minio_object_key,mime_type,byte_size,sha256_hex,
+            byte_payload_cipher,uploaded_by_kind)
+           VALUES ($1,$2,$3,'1',$4,'application/pdf','1024',
+            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'BYTE-PAYLOAD-CIPHER — denylisted',
+            'system')`,
+        [ver, org, doc, `tenant-${org}/object — denylisted`],
+      );
+      await db.query(
+        `INSERT INTO document_tag
+           (id,organization_id,document_id,tag_kind,tag_key,tag_value,added_by_membership_id)
+           VALUES ($1,$2,$3,'free','priority','SECRET TAG VALUE — denylisted',$4)`,
+        [tag, org, doc, mem],
+      );
+    }
+
+    beforeAll(async () => {
+      await db.query(
+        `INSERT INTO provider_entity (id,organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
+           VALUES ($1,$2,'CCN-M22A','M22 A','NPI-M22A','enc','12-31'),
+                  ($3,$4,'CCN-M22B','M22 B','NPI-M22B','enc','12-31')`,
+        [PE_A22, ORG_A, PE_B22, ORG_B],
+      );
+      await db.query(
+        `INSERT INTO location (id,provider_entity_id,name,address_line1,city,state,postal_code,timezone)
+           VALUES ($1,$2,'L22A','1 St','Town','OR','97000','America/Los_Angeles'),
+                  ($3,$4,'L22B','1 St','Town','OR','97000','America/Los_Angeles')`,
+        [LOC_A22, PE_A22, LOC_B22, PE_B22],
+      );
+      await db.query(`INSERT INTO "user" (id,email) VALUES ($1,'m22a@x.test'),($2,'m22b@x.test')`, [
+        USER_A22,
+        USER_B22,
+      ]);
+      await db.query(
+        `INSERT INTO membership (id,user_id,organization_id,status)
+           VALUES ($1,$2,$3,'active'),($4,$5,$6,'active')`,
+        [MEM_A22, USER_A22, ORG_A, MEM_B22, USER_B22, ORG_B],
+      );
+      await seedDocChain(ORG_A, PE_A22, LOC_A22, MEM_A22, DOC_A22, VER_A22, TAG_A22);
+      await seedDocChain(ORG_B, PE_B22, LOC_B22, MEM_B22, DOC_B22, VER_B22, TAG_B22);
+    });
+
+    it("§8.8 Org A sees its own row but Org B sees ZERO across document / version / tag (RLS, auth stubbed open)", async () => {
+      for (const table of SEEDED_TABLES) {
+        const a = await withOrg(ORG_A, () =>
+          db.query(`SELECT count(*)::int AS n FROM ${table} WHERE id=$1`, [A_ROW[table]]),
+        );
+        const b = await withOrg(ORG_B, () =>
+          db.query(`SELECT count(*)::int AS n FROM ${table} WHERE id=$1`, [A_ROW[table]]),
+        );
+        expect(a.rows[0].n, `Org A reads its own ${table}`).toBe(1);
+        expect(b.rows[0].n, `Org B is blocked from ${table}`).toBe(0);
+      }
+    });
+
+    it("§3.5 Org B cannot INSERT a document into Org A (WITH CHECK blocks the cross-tenant write)", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO document
+               (id,organization_id,provider_entity_id,location_id,retention_class,source_kind,aggregate_type,
+                title,status,created_by_membership_id)
+               VALUES (gen_random_uuid(),$1,$2,$3,'clinical_record','user_upload','other','x','active',$4)`,
+            [ORG_A, PE_A22, LOC_A22, MEM_A22],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§8.8 a cross-tenant UPDATE affects ZERO rows — Org B cannot mutate Org A's document", async () => {
+      const r = await withOrg(ORG_B, () =>
+        db.query("UPDATE document SET status='superseded' WHERE id=$1", [DOC_A22]),
+      );
+      expect(r.rowCount).toBe(0);
+      const a = await withOrg(ORG_A, () => db.query("SELECT status FROM document WHERE id=$1", [DOC_A22]));
+      expect(a.rows[0].status).toBe("active"); // Org A's row is untouched
+    });
+
+    it("§3.6 wardenx_app has NO DELETE grant on the fourteen non-tag org-scoped owned tables (eraseFn-only)", async () => {
+      for (const table of NO_DELETE_TABLES) {
+        await expect(
+          withOrg(ORG_A, () => db.query(`DELETE FROM ${table} WHERE id=$1`, [DOC_A22])),
+          `DELETE on ${table} must be refused`,
+        ).rejects.toThrow();
+      }
+    });
+
+    it("§3.2 document_tag DELETE IS granted (tags are user-removable) and stays tenant-scoped", async () => {
+      // Org B's delete of Org A's tag affects ZERO rows (RLS), but does not throw on grant.
+      const cross = await withOrg(ORG_B, () => db.query("DELETE FROM document_tag WHERE id=$1", [TAG_A22]));
+      expect(cross.rowCount).toBe(0);
+      // Org A deletes its own tag (grant present + in-tenant) — exactly one row.
+      const own = await withOrg(ORG_A, () => db.query("DELETE FROM document_tag WHERE id=$1", [TAG_A22]));
+      expect(own.rowCount).toBe(1);
+    });
+
+    it("§3.6 the M4 audit trigger scrubbed document.title + version cipher/object-key; structural columns pass through", async () => {
+      const doc = await db.query(
+        "SELECT after, retention_class FROM audit_event WHERE resource_kind='document' AND event_type='document.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(doc.rows).toHaveLength(1);
+      expect(doc.rows[0].after.title).toBe("<changed>"); // §3.6 denylisted free-text
+      expect(doc.rows[0].after.status).toBe("active"); // structural passes through
+      expect(doc.rows[0].after.aggregate_type).toBe("other"); // structural passes through
+      expect(doc.rows[0].retention_class).toBe("compliance"); // the audit trail is itself a compliance-class record
+      const ver = await db.query(
+        "SELECT after FROM audit_event WHERE resource_kind='document_version' AND event_type='document_version.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(ver.rows[0].after.byte_payload_cipher).toBe("<changed>"); // §3.6 ciphertext scrub
+      expect(ver.rows[0].after.minio_object_key).toBe("<changed>"); // §3.6 object-key scrub
+      expect(ver.rows[0].after.mime_type).toBe("application/pdf"); // structural passes through
+    });
+  });
 });

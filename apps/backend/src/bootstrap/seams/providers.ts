@@ -18,9 +18,15 @@ import type {
   CarePlanReader,
   CaseloadProvider,
   CertificationReader,
+  DocumentReader,
   DocumentRenderer,
+  DocumentStorageProvider,
   ElectionPeriodReader,
   EncounterCreator,
+  ExtractionProvenanceReader,
+  IntakeMetricsProvider,
+  PortalDocumentReader,
+  RenderedDocumentProvider,
   EvvAggregatorReferenceReader,
   EvvBracketResolver,
   EvvComplianceReader,
@@ -103,6 +109,59 @@ export const patientMutatorDenyStub: PatientMutator = {
 export const documentRendererDenyStub: DocumentRenderer = {
   render() {
     throw new NotImplementedError("DocumentRenderer");
+  },
+};
+
+export const documentStorageProviderDenyStub: DocumentStorageProvider = {
+  putRenderedDocument() {
+    throw new NotImplementedError("DocumentStorageProvider");
+  },
+  presignDownload() {
+    throw new NotImplementedError("DocumentStorageProvider");
+  },
+};
+
+// M22 (Documents) §4.3 published READER seams. LEAF-TYPED (interfaces in @wardenx/types) like M6..M18's readers,
+// so each gets a concrete typed deny-stub that denies LOUDLY until M22 registers the real impl (M22-T05).
+
+/** M22 — W2 back-ref read (aggregate → rendered document). Denies until M22 registers the real provider. */
+export const renderedDocumentProviderDenyStub: RenderedDocumentProvider = {
+  getRenderedDocumentForAggregate() {
+    throw new NotImplementedError("RenderedDocumentProvider");
+  },
+};
+
+/** M22 — document-metadata read (FHIR DocumentReference / portal / reporting). Denies until M22 registers it. */
+export const documentReaderDenyStub: DocumentReader = {
+  documentsForPatient() {
+    throw new NotImplementedError("DocumentReader");
+  },
+  documentMetadata() {
+    throw new NotImplementedError("DocumentReader");
+  },
+};
+
+/** M22 — M31 portal read (tags stripped + SUD-filtered; mint portal URL). Denies until M22 registers it. */
+export const portalDocumentReaderDenyStub: PortalDocumentReader = {
+  documentsForPatient() {
+    throw new NotImplementedError("PortalDocumentReader");
+  },
+  mintPortalDownloadUrl() {
+    throw new NotImplementedError("PortalDocumentReader");
+  },
+};
+
+/** M22 — intake-pipeline throughput aggregate (M33/M30). Denies until M22 registers the real provider. */
+export const intakeMetricsProviderDenyStub: IntakeMetricsProvider = {
+  metricsForOrg() {
+    throw new NotImplementedError("IntakeMetricsProvider");
+  },
+};
+
+/** M22 — per-chart-field extraction provenance (FHIR Provenance / HQRP). Denies until M22 registers it. */
+export const extractionProvenanceReaderDenyStub: ExtractionProvenanceReader = {
+  provenanceForTargetAggregate() {
+    throw new NotImplementedError("ExtractionProvenanceReader");
   },
 };
 

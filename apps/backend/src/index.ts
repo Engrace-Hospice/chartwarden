@@ -43,6 +43,16 @@ import { registerIdgErasers, registerIdgSeams } from "./modules/14-idg/index";
 import { registerSchedulingSeams } from "./modules/17-scheduling/index";
 import { registerEvvSeams } from "./modules/18-evv/index";
 import {
+  type ExternalPartnerBaaGate,
+  type ExternalPartnerSignedUrlService,
+  type PortalSudConsentGate,
+  createExternalPartnerSignedUrlService,
+  getDocumentStorageProvider,
+  registerDocumentErasers,
+  registerDocumentReaderSeams,
+  registerDocumentSeams,
+} from "./modules/22-documents/index";
+import {
   createDbMessagingProvider,
   mountMessagingRoutes,
   registerMessagingErasers,
@@ -57,6 +67,7 @@ import {
 } from "./modules/38-terminology/index";
 import {
   createDbConsentStore,
+  getConsentEvaluator,
   mountConsentRoutes,
   registerConsentAbacPredicates,
   registerConsentErasers,
@@ -65,6 +76,7 @@ import {
 import {
   createDbBaaStore,
   createDbMdmStore,
+  getBaaStatusProvider,
   mountMdmRoutes,
   registerMdmErasers,
   registerMdmSeams,
@@ -72,6 +84,59 @@ import {
 
 export { buildServer };
 export * from "./bootstrap/index";
+
+/**
+ * M22-T06 — adapt M39's REAL `ConsentEvaluator` into M22's narrow {@link PortalSudConsentGate}. The composition
+ * root is the one place that may bridge an opaque feature-package seam (M39) into a module whose `dependsOn` does
+ * not include it (M22 is `[1, 5]`). Resolved LAZILY at mint time, so it is registration-order independent: a
+ * SUD-class portal download mints only when the patient's active 42 CFR Part 2 consent permits it (§2.31 / §4.3).
+ */
+export function createPortalSudConsentGate(): PortalSudConsentGate {
+  return {
+    async evaluateSudPortalAccess({ organizationId, patientId, portalSessionId }) {
+      const result = await getConsentEvaluator().evaluate({
+        organizationId,
+        patientId,
+        consentType: "42_cfr_part_2_release",
+        sessionContext: { sessionClass: "patient_portal", sessionId: portalSessionId },
+        callerModule: "m22",
+        callerRoute: "portal.document.download",
+      });
+      return result.allowed;
+    },
+  };
+}
+
+/**
+ * M22-T06 — adapt M40's REAL `BaaStatusProvider` into M22's narrow {@link ExternalPartnerBaaGate} (§4.12). Stamps
+ * `asOf: new Date()` per §7.7 and projects `BaaStatusResult` to the `{ isActive, status }` subset M22's signed-URL
+ * service needs. Lives in the composition root so M22 never imports `@wardenx/mdm` (outside its `[1, 5]` envelope).
+ */
+export function createExternalPartnerBaaGate(): ExternalPartnerBaaGate {
+  return {
+    async checkDisclosure({ organizationId, entityKind, entityId }) {
+      const r = await getBaaStatusProvider().baaStatusByMdmEntity({
+        orgId: organizationId,
+        kind: entityKind,
+        id: entityId,
+        asOf: new Date(),
+      });
+      return { isActive: r.isActive, status: r.status };
+    },
+  };
+}
+
+/**
+ * M22-T06 — compose M22's §4.12 external-partner signed-URL service from M40's REAL BAA gate + M22's
+ * `DocumentStorageProvider` seam. The M22-T07 routes call this for any presign targeting an external partner; a
+ * missing/expired BAA blocks the URL (`DOCUMENT_EXTERNAL_DISCLOSURE_BAA_BLOCKED`). Resolve seams at call time.
+ */
+export function createDocumentSignedUrlService(): ExternalPartnerSignedUrlService {
+  return createExternalPartnerSignedUrlService({
+    baaGate: createExternalPartnerBaaGate(),
+    presign: getDocumentStorageProvider(),
+  });
+}
 
 /**
  * Register every Phase-1 producer module's real seams into the M1 registry. Passed to
@@ -157,11 +222,26 @@ export function wireModuleSeams(
   // portal arrival surface) stand over their deny-stubs. Slice/tests keep the in-memory store; the Drizzle-backed
   // store lands with M18's routes/repos (M18-T06+).
   registerEvvSeams();
+  // M22 — the two §4.3 / §7.2 W2 write-side seams (`DocumentRenderer` — the render-from-typed-payload handshake
+  // M5/M6/M8/M11/M12/M13/M14/M15/M16/M17/M18/M23/M39 consume — + `DocumentStorageProvider` — the per-tenant
+  // object-storage port). Registering the renderer CLOSES M39's Wave-C `DocumentRenderer` deny-stub. Slice/tests
+  // keep the in-memory render store + storage adapter; the Drizzle ledger + per-tenant MinIO land with M22's
+  // routes/repos (M22-T07).
+  registerDocumentSeams();
+  // M22 — the five §4.3 published READER seams (`RenderedDocumentProvider` — the §7.2 W2 back-ref read every source
+  // module consumes — `DocumentReader` — M28 FHIR DocumentReference / M31 portal list / M33 reporting — `PortalDocumentReader`
+  // — M31 portal read + mint download URL, Phase 2 — `IntakeMetricsProvider` — M33/M30 intake throughput — and
+  // `ExtractionProvenanceReader` — M28 FHIR Provenance / M30 HQRP). All five stand over their deny-stubs on a shared
+  // read store. Slice/tests keep the in-memory read store; the Drizzle-backed store (under consumer RLS) lands with
+  // M22's routes/repos (M22-T07). M22-T06 wires the portal SUD-consent gate to M39's REAL ConsentEvaluator (resolved
+  // lazily at mint time, so registration order vs. registerConsentSeams below is irrelevant) — a SUD-class portal
+  // download now mints only on an active 42 CFR Part 2 consent (was fail-closed in T05).
+  registerDocumentReaderSeams({ consentGate: createPortalSudConsentGate() });
   // M39 — ConsentEvaluator (§4.3, the disclosure/redaction gate). Production backs it with the Drizzle
   // store over the real M39 consent tables (FB-T03); slice/tests keep the in-memory default.
   registerConsentSeams(deps.db ? { store: createDbConsentStore(deps.db) } : {});
   registerConsentAbacPredicates(); // M39 — the 11 §4.8 ABAC predicate resolvers (resolve via the seam)
-  // Phase-1 producers append here as they land: M22 DocumentRenderer, …
+  // Phase-1 producers append here as they land.
 }
 
 /**
@@ -188,6 +268,7 @@ export function wireModuleErasers(): void {
   registerDoseSpotErasers(); // M12-T09 — `medication_order_record` (prescribing-subtree destruction-cert callback; partition-drop; §7.7; D15; D7/D8)
   registerEmarErasers(); // M13-T10 — `emar_record` (eMAR-subtree destruction-cert callback; partition-drop; §7.7; D7/D8)
   registerIdgErasers(); // M14-T07 — `idg_record` (patient-scoped packet/decision/action-item/agenda destruction-cert callback; meetings/minutes survive; §8.4)
+  registerDocumentErasers(); // M22-T10 — `documents` (document-subtree destruction-cert callback; D12 legal-hold skip + 42 CFR Part 2 lifetime refusal; version-aware MinIO/DEK shred; §164.528 access-log floor preserved; §3.7/§8.6)
   // Phase-1 data-class owners append here as they land.
 }
 

@@ -250,6 +250,93 @@
         }
       }
     },
+    "/api/v1/admin/form-fills/{id}": {
+      "get": {
+        "operationId": "getApiV1AdminFormfillsById",
+        "tags": [
+          "22-documents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/form-fills/{id}/retry": {
+      "post": {
+        "operationId": "postApiV1AdminFormfillsByIdRetry",
+        "tags": [
+          "22-documents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/form-templates/{key}/versions": {
+      "post": {
+        "operationId": "postApiV1AdminFormtemplatesByKeyVersions",
+        "tags": [
+          "22-documents"
+        ],
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/admin/mdm/merge-requests": {
       "get": {
         "operationId": "getApiV1AdminMdmMergerequests",
@@ -5068,6 +5155,994 @@
         }
       }
     },
+    "/api/v1/documents": {
+      "get": {
+        "operationId": "getApiV1Documents",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "Document explorer — tenant-wide browse filtered by patient / aggregate_type / retention_class, opaque-cursor paginated (§5.1 DOC.Explorer)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "aggregateType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "retentionClass",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "organizationId",
+                          "patientId",
+                          "admissionId",
+                          "retentionClass",
+                          "sourceKind",
+                          "aggregateType",
+                          "aggregateId",
+                          "title",
+                          "patientFacing",
+                          "attachToDisclosures",
+                          "status",
+                          "activeVersion",
+                          "versionsCount",
+                          "tags",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "admissionId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "retentionClass": {
+                            "anyOf": [
+                              {
+                                "const": "compliance",
+                                "type": "string"
+                              },
+                              {
+                                "const": "clinical_record",
+                                "type": "string"
+                              },
+                              {
+                                "const": "bereavement",
+                                "type": "string"
+                              },
+                              {
+                                "const": "operational",
+                                "type": "string"
+                              },
+                              {
+                                "const": "intake_artifact",
+                                "type": "string"
+                              },
+                              {
+                                "const": "compliance_42cfr_part2",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "sourceKind": {
+                            "type": "string"
+                          },
+                          "aggregateType": {
+                            "type": "string"
+                          },
+                          "aggregateId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "patientFacing": {
+                            "type": "boolean"
+                          },
+                          "attachToDisclosures": {
+                            "type": "boolean"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "activeVersion": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "versionNumber",
+                                  "mimeType",
+                                  "byteSize",
+                                  "sha256Hex",
+                                  "uploadedByKind",
+                                  "uploadedAt"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "versionNumber": {
+                                    "type": "integer"
+                                  },
+                                  "mimeType": {
+                                    "type": "string"
+                                  },
+                                  "byteSize": {
+                                    "type": "integer"
+                                  },
+                                  "sha256Hex": {
+                                    "type": "string"
+                                  },
+                                  "uploadedByKind": {
+                                    "type": "string"
+                                  },
+                                  "uploadedAt": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "versionsCount": {
+                            "type": "integer"
+                          },
+                          "tags": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "tagKind",
+                                "tagKey",
+                                "tagValue"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "tagKind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "free",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "structured",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "tagKey": {
+                                  "type": "string"
+                                },
+                                "tagValue": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Documents",
+        "tags": [
+          "22-documents"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{id}": {
+      "get": {
+        "operationId": "getApiV1DocumentsById",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "Document detail — metadata + active version + tags (owner-or-caseload ABAC, §5.1 DOC detail)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "patientId",
+                    "admissionId",
+                    "retentionClass",
+                    "sourceKind",
+                    "aggregateType",
+                    "aggregateId",
+                    "title",
+                    "patientFacing",
+                    "attachToDisclosures",
+                    "status",
+                    "activeVersion",
+                    "versionsCount",
+                    "tags",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "admissionId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "retentionClass": {
+                      "anyOf": [
+                        {
+                          "const": "compliance",
+                          "type": "string"
+                        },
+                        {
+                          "const": "clinical_record",
+                          "type": "string"
+                        },
+                        {
+                          "const": "bereavement",
+                          "type": "string"
+                        },
+                        {
+                          "const": "operational",
+                          "type": "string"
+                        },
+                        {
+                          "const": "intake_artifact",
+                          "type": "string"
+                        },
+                        {
+                          "const": "compliance_42cfr_part2",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "sourceKind": {
+                      "type": "string"
+                    },
+                    "aggregateType": {
+                      "type": "string"
+                    },
+                    "aggregateId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "patientFacing": {
+                      "type": "boolean"
+                    },
+                    "attachToDisclosures": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "activeVersion": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "versionNumber",
+                            "mimeType",
+                            "byteSize",
+                            "sha256Hex",
+                            "uploadedByKind",
+                            "uploadedAt"
+                          ],
+                          "properties": {
+                            "id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "versionNumber": {
+                              "type": "integer"
+                            },
+                            "mimeType": {
+                              "type": "string"
+                            },
+                            "byteSize": {
+                              "type": "integer"
+                            },
+                            "sha256Hex": {
+                              "type": "string"
+                            },
+                            "uploadedByKind": {
+                              "type": "string"
+                            },
+                            "uploadedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "versionsCount": {
+                      "type": "integer"
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "tagKind",
+                          "tagKey",
+                          "tagValue"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "tagKind": {
+                            "anyOf": [
+                              {
+                                "const": "free",
+                                "type": "string"
+                              },
+                              {
+                                "const": "structured",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "tagKey": {
+                            "type": "string"
+                          },
+                          "tagValue": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1DocumentsById",
+        "tags": [
+          "22-documents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{id}/export-phi-bundle": {
+      "post": {
+        "operationId": "postApiV1DocumentsByIdExportphibundle",
+        "tags": [
+          "22-documents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{id}/tags": {
+      "post": {
+        "operationId": "postApiV1DocumentsByIdTags",
+        "tags": [
+          "22-documents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{id}/tags/{tagId}": {
+      "delete": {
+        "operationId": "deleteApiV1DocumentsByIdTagsByTagId",
+        "tags": [
+          "22-documents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tagId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{id}/versions": {
+      "get": {
+        "operationId": "getApiV1DocumentsByIdVersions",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "Document version history — the append-only version ledger, newest first (§5.1 DOC.VersionHistory)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "versionNumber",
+                      "mimeType",
+                      "byteSize",
+                      "sha256Hex",
+                      "uploadedByKind",
+                      "uploadedAt"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "versionNumber": {
+                        "type": "integer"
+                      },
+                      "mimeType": {
+                        "type": "string"
+                      },
+                      "byteSize": {
+                        "type": "integer"
+                      },
+                      "sha256Hex": {
+                        "type": "string"
+                      },
+                      "uploadedByKind": {
+                        "type": "string"
+                      },
+                      "uploadedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1DocumentsByIdVersions",
+        "tags": [
+          "22-documents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{id}/versions/{versionId}": {
+      "get": {
+        "operationId": "getApiV1DocumentsByIdVersionsByVersionId",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "Single document version metadata (§5.1)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "versionNumber",
+                        "mimeType",
+                        "byteSize",
+                        "sha256Hex",
+                        "uploadedByKind",
+                        "uploadedAt"
+                      ],
+                      "properties": {
+                        "id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "versionNumber": {
+                          "type": "integer"
+                        },
+                        "mimeType": {
+                          "type": "string"
+                        },
+                        "byteSize": {
+                          "type": "integer"
+                        },
+                        "sha256Hex": {
+                          "type": "string"
+                        },
+                        "uploadedByKind": {
+                          "type": "string"
+                        },
+                        "uploadedAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{id}/versions/{versionId}/content": {
+      "get": {
+        "operationId": "getApiV1DocumentsByIdVersionsByVersionIdContent",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "Mint a §164.528 short-TTL signed URL for version content (owner-or-caseload; TTL clamped at the service, §4.12 DOC.SignedUrlPreview)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "purpose",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "treatment",
+                  "type": "string"
+                },
+                {
+                  "const": "payment",
+                  "type": "string"
+                },
+                {
+                  "const": "operations",
+                  "type": "string"
+                },
+                {
+                  "const": "disclosure",
+                  "type": "string"
+                },
+                {
+                  "const": "patient_access",
+                  "type": "string"
+                },
+                {
+                  "const": "amendment_review",
+                  "type": "string"
+                },
+                {
+                  "const": "survey_export",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "ttlSeconds",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 30,
+              "maximum": 3600,
+              "default": 300,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "url",
+                    "expiresAt",
+                    "accessKind"
+                  ],
+                  "properties": {
+                    "url": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "accessKind": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/election-periods/{id}": {
       "patch": {
         "operationId": "patchApiV1ElectionperiodsById",
@@ -7615,6 +8690,95 @@
         }
       }
     },
+    "/api/v1/extraction/provenance": {
+      "get": {
+        "operationId": "getApiV1ExtractionProvenance",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "Extraction provenance trail for a chart row (compliance / QA / own-patient case manager, §8.7)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "targetModule",
+                          "targetAggregateId",
+                          "targetFieldPath",
+                          "sourceDocumentId",
+                          "decisionKind",
+                          "committedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "targetModule": {
+                            "type": "string"
+                          },
+                          "targetAggregateId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "targetFieldPath": {
+                            "type": "string"
+                          },
+                          "sourceDocumentId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "decisionKind": {
+                            "type": "string"
+                          },
+                          "committedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/face-to-face/{id}": {
       "get": {
         "operationId": "getApiV1FacetofaceById",
@@ -7711,6 +8875,55 @@
         "parameters": [
           {
             "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/form-templates": {
+      "get": {
+        "operationId": "getApiV1Formtemplates",
+        "tags": [
+          "22-documents"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/form-templates/{key}": {
+      "get": {
+        "operationId": "getApiV1FormtemplatesByKey",
+        "tags": [
+          "22-documents"
+        ],
+        "parameters": [
+          {
+            "name": "key",
             "in": "path",
             "required": true,
             "schema": {
@@ -9953,6 +11166,290 @@
                 }
               }
             }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/intake/reviews/{id}": {
+      "get": {
+        "operationId": "getApiV1IntakeReviewsById",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "DocLens review state — candidate count + decisions so far (DocLens-gated, §5.1 INTAKE.ReviewSideBySide)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "intakeBatchId",
+                    "status",
+                    "reviewerMembershipId",
+                    "decisionsCount"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "intakeBatchId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "reviewerMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "decisionsCount": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/intake/reviews/{id}/decisions": {
+      "post": {
+        "operationId": "postApiV1IntakeReviewsByIdDecisions",
+        "tags": [
+          "22-documents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/intake/reviews/{id}/decisions{bulk}-approve": {
+      "post": {
+        "operationId": "postApiV1IntakeReviewsByIdDecisionsbulkapprove",
+        "tags": [
+          "22-documents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bulk",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/intake/uploads": {
+      "post": {
+        "operationId": "postApiV1IntakeUploads",
+        "tags": [
+          "22-documents"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/intake/uploads/{id}": {
+      "get": {
+        "operationId": "getApiV1IntakeUploadsById",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "Intake batch detail + pipeline status (DocLens-gated → 503 EXTRACTION_DISABLED while documents.doclens OFF, §5.1 INTAKE.BatchDetail)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "patientId",
+                    "status",
+                    "pageCount",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "pageCount": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/intake/uploads/{id}/classification/confirm": {
+      "post": {
+        "operationId": "postApiV1IntakeUploadsByIdClassificationConfirm",
+        "tags": [
+          "22-documents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/intake/uploads/{id}/discard": {
+      "post": {
+        "operationId": "postApiV1IntakeUploadsByIdDiscard",
+        "tags": [
+          "22-documents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -19745,6 +21242,55 @@
           "bootstrap"
         ],
         "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant-overlays": {
+      "get": {
+        "operationId": "getApiV1Tenantoverlays",
+        "tags": [
+          "22-documents"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant-overlays/{templateKey}": {
+      "put": {
+        "operationId": "putApiV1TenantoverlaysByTemplateKey",
+        "tags": [
+          "22-documents"
+        ],
+        "parameters": [
+          {
+            "name": "templateKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"

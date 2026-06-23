@@ -104,6 +104,17 @@ import {
   MetricsQuery as EvvMetricsQuery,
   MissingResolutionListQuery as EvvMissingResolutionListQuery,
 } from "../../apps/backend/src/modules/18-evv/routes/evv-typebox";
+import {
+  DocumentListQuery,
+  DocumentListResponse,
+  DocumentVersionListResponse,
+  DocumentView,
+  IntakeBatchView,
+  ProvenanceListResponse,
+  ReviewView,
+  SignedUrlQuery,
+  SignedUrlView,
+} from "../../apps/backend/src/modules/22-documents/routes/documents-typebox";
 import { SearchQuerySchema as TerminologySearchQuerySchema } from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
 import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
 
@@ -1306,5 +1317,41 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "EVV metrics — compliance / late-checkout / geofence-deviation / GPS-spoof / aggregator-acceptance rates (§5.1 dashboard, metrics)",
     query: EvvMetricsQuery,
     response: EvvMetricsView,
+  },
+
+  // ── M22 Documents read surfaces (§5.1, Track B / M22-T10) ──────────────────────────────────────────────
+  "GET /api/v1/documents": {
+    summary: "Document explorer — tenant-wide browse filtered by patient / aggregate_type / retention_class, opaque-cursor paginated (§5.1 DOC.Explorer)",
+    query: DocumentListQuery,
+    response: DocumentListResponse,
+  },
+  "GET /api/v1/documents/:id": {
+    summary: "Document detail — metadata + active version + tags (owner-or-caseload ABAC, §5.1 DOC detail)",
+    response: DocumentView,
+  },
+  "GET /api/v1/documents/:id/versions": {
+    summary: "Document version history — the append-only version ledger, newest first (§5.1 DOC.VersionHistory)",
+    response: DocumentVersionListResponse,
+  },
+  "GET /api/v1/documents/:id/versions/:versionId": {
+    summary: "Single document version metadata (§5.1)",
+    response: DocumentView.properties.activeVersion,
+  },
+  "GET /api/v1/documents/:id/versions/:versionId/content": {
+    summary: "Mint a §164.528 short-TTL signed URL for version content (owner-or-caseload; TTL clamped at the service, §4.12 DOC.SignedUrlPreview)",
+    query: SignedUrlQuery,
+    response: SignedUrlView,
+  },
+  "GET /api/v1/intake/uploads/:id": {
+    summary: "Intake batch detail + pipeline status (DocLens-gated → 503 EXTRACTION_DISABLED while documents.doclens OFF, §5.1 INTAKE.BatchDetail)",
+    response: IntakeBatchView,
+  },
+  "GET /api/v1/intake/reviews/:id": {
+    summary: "DocLens review state — candidate count + decisions so far (DocLens-gated, §5.1 INTAKE.ReviewSideBySide)",
+    response: ReviewView,
+  },
+  "GET /api/v1/extraction/provenance": {
+    summary: "Extraction provenance trail for a chart row (compliance / QA / own-patient case manager, §8.7)",
+    response: ProvenanceListResponse,
   },
 };

@@ -25,8 +25,14 @@ import {
   caseloadDenyStub,
   certificationReaderDenyStub,
   consentEvaluatorDenyStub,
+  documentReaderDenyStub,
   documentRendererDenyStub,
+  documentStorageProviderDenyStub,
   electionPeriodReaderDenyStub,
+  extractionProvenanceReaderDenyStub,
+  intakeMetricsProviderDenyStub,
+  portalDocumentReaderDenyStub,
+  renderedDocumentProviderDenyStub,
   encounterCreatorDenyStub,
   evvAggregatorReferenceReaderDenyStub,
   evvBracketResolverDenyStub,
@@ -88,7 +94,24 @@ export const REQUIRED_SEAMS = [
   // M5 (§4.9) — applies an M29-proposal/amendment field diff (D12 strip). PHI write surface;
   // boot-validated and fail-closed until M5 registers the real mutator (M5-T08).
   { key: "PatientMutator", ownerModule: 5, phi: true, denyStub: patientMutatorDenyStub },
+  // M22 (Documents) write-side seams (§4.3 / §7.2 W2). `DocumentRenderer` is the render-from-typed-payload
+  // handshake M5/M6/M8/M11/M12/M13/M14/M15/M16/M17/M18/M23/M39 consume (returns the new document id its backref
+  // path stamps); `DocumentStorageProvider` is the per-tenant object-storage port the renderer + the §1.3
+  // Signed-URL Service write rendered bytes / presign downloads through. Both touch patient-bound documents →
+  // phi: true; boot-validated and fail-closed until M22 registers the real impls (M22-T04).
   { key: "DocumentRenderer", ownerModule: 22, phi: true, denyStub: documentRendererDenyStub },
+  { key: "DocumentStorageProvider", ownerModule: 22, phi: true, denyStub: documentStorageProviderDenyStub },
+  // M22 (Documents) §4.3 published READER seams. All READ-only DTO surfaces over M22's `document` / `document_version`
+  // / `extraction_*` / `intake_upload_batch` tables, consumed by M28 (FHIR DocumentReference/Provenance), M30/M33
+  // (HQRP + reporting measures), M31 (portal) in later waves instead of importing M22's schema. `RenderedDocumentProvider`
+  // / `DocumentReader` / `PortalDocumentReader` / `ExtractionProvenanceReader` are patient/document-linked → phi: true;
+  // `IntakeMetricsProvider` is an org-level throughput aggregate with no patient linkage → phi: false. Boot-validated
+  // and fail-closed until M22 registers the real impls (M22-T05).
+  { key: "RenderedDocumentProvider", ownerModule: 22, phi: true, denyStub: renderedDocumentProviderDenyStub },
+  { key: "DocumentReader", ownerModule: 22, phi: true, denyStub: documentReaderDenyStub },
+  { key: "PortalDocumentReader", ownerModule: 22, phi: true, denyStub: portalDocumentReaderDenyStub },
+  { key: "IntakeMetricsProvider", ownerModule: 22, phi: false, denyStub: intakeMetricsProviderDenyStub },
+  { key: "ExtractionProvenanceReader", ownerModule: 22, phi: true, denyStub: extractionProvenanceReaderDenyStub },
   { key: "ConsentEvaluator", ownerModule: 39, phi: true, denyStub: consentEvaluatorDenyStub },
   // M2 published seams (§4.7): authenticated request context + auditor session minter. Not PHI
   // (identity/session metadata, not a patient record), but still boot-validated and fail-closed.

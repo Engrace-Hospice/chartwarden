@@ -8,6 +8,13 @@ import type {
 } from "./admission";
 import type { CarePlanReader } from "./care-plan";
 import type {
+  DocumentReader,
+  ExtractionProvenanceReader,
+  IntakeMetricsProvider,
+  PortalDocumentReader,
+  RenderedDocumentProvider,
+} from "./documents";
+import type {
   BillableEncounterReader,
   EncounterCreator,
   EvvBracketResolver,
@@ -67,7 +74,20 @@ export type SeamName =
   | "CaseloadProvider" // M5/M17 — which patients an actor may see
   | "PatientReader" // M5 — patient identity/demographics reads (§4.8; M29 cascade)
   | "PatientMutator" // M5 — apply an M29-proposal/amendment field diff (§4.9; D12 strip)
-  | "DocumentRenderer" // M22 — render a typed payload to a stored document
+  | "DocumentRenderer" // M22 — the §7.2 W2 render-from-typed-payload handshake (returns the new document id)
+  | "DocumentStorageProvider" // M22 — the per-tenant object-storage port (store rendered bytes + presign download)
+  // M22 (Documents) §4.3 published READER seams — leaf-typed read-only DTO surfaces (interfaces in ./documents,
+  // this leaf) downstream modules consume instead of importing M22's schema. `RenderedDocumentProvider` is the
+  // §7.2 W2 back-ref read every source module's `m22-document-backref` path consumes; `DocumentReader` is the
+  // document-metadata read M28 (FHIR DocumentReference)/M31/M33 use; `PortalDocumentReader` is the M31 portal
+  // read (internal tags stripped + SUD consent-filtered, Phase 2); `IntakeMetricsProvider` is the intake-pipeline
+  // throughput aggregate M33/M30 read; `ExtractionProvenanceReader` is the per-chart-field provenance read M28
+  // (FHIR Provenance)/M30 (HQRP) use. All READ-only — M22 owns the document lifecycle internally (M22-T05).
+  | "RenderedDocumentProvider" // M22 — W2 back-ref read (aggregate → {documentId, versionId, renderedAt})
+  | "DocumentReader" // M22 — document-metadata read (FHIR DocumentReference / portal list / reporting)
+  | "PortalDocumentReader" // M22 — M31 portal read (tags stripped + SUD-filtered; mint portal download URL)
+  | "IntakeMetricsProvider" // M22 — intake-pipeline throughput aggregate (M33 reporting / M30 quality measures)
+  | "ExtractionProvenanceReader" // M22 — per-chart-field extraction provenance (FHIR Provenance / HQRP AI signal)
   | "ConsentEvaluator" // M39 — disclosure/redaction gate
   | "SessionContextResolver" // M2 — authenticated, org-scoped request context (actor + step-up state)
   | "AuditorSessionMinter" // M2 — mint a time-boxed auditor magic-link session (M3 calls it)
@@ -209,9 +229,45 @@ export interface CaseloadProvider {
 // M5's `PatientReader` (§4.8) + `PatientMutator` (§4.9) interfaces live in ./patient (alongside
 // PatientIdentity) and are imported above for the SeamContracts map.
 
-/** M22 — render a typed payload to a stored document (forward-seam for M39 etc.). */
+/**
+ * M22 — the §7.2 W2 render-from-typed-payload handshake. A source module (M5/M6/M8/M11/M12/M13/M14/M15/M16/
+ * M17/M18/M23/M39) hands a `templateKey` + its typed payload; M22 selects the template, renders to PDF, stores
+ * the bytes in the per-tenant bucket through {@link DocumentStorageProvider}, creates the `document` +
+ * `document_version` rows, and returns the new `document.id`. The returned `{ documentId }` is what each source
+ * module's `m22-document-backref` path stamps on its own row. Resolved through the M1 registry — the interface
+ * lives in this leaf so consumers type against it with NO `dependsOn` edge to any M22 package (ADR-0005 D1); M22
+ * registers the real impl over the boot deny-stub (M22-T04). The signature is LOCKED — M39 already consumes it.
+ */
 export interface DocumentRenderer {
   render(scope: OrgScope, templateKey: string, payload: unknown): Promise<{ documentId: string }>;
+}
+
+/**
+ * M22 — the per-tenant object-storage port behind the §1.3 "Document Storage & Versioning" pillar (the MinIO
+ * surface; §7.2 W2 step 5). The {@link DocumentRenderer} stores rendered bytes through `putRenderedDocument`;
+ * the §1.3 Signed-URL Service (M22-T07) mints short-lived presigned download URLs through `presignDownload`.
+ * Object keys are the D1 internal, tenant-prefixed keys (server-internal, never client-facing); the
+ * `downloadFilename` is the §7.10 D11 opaque, PHI-free leaf (the ONLY storage string allowed into a URL or
+ * `Content-Disposition` header). Production binds a MinIO adapter with per-tenant bucket scope; the slice/tests
+ * bind an in-memory adapter. Registered into the M1 registry alongside `DocumentRenderer` (M22-T04).
+ */
+export interface DocumentStorageProvider {
+  /** Store rendered bytes at the internal D1 `objectKey` inside the per-tenant bucket; return §2.2.2 integrity facts. */
+  putRenderedDocument(args: {
+    readonly scope: OrgScope;
+    readonly tenantId: string;
+    readonly objectKey: string;
+    readonly bytes: Uint8Array;
+    readonly mimeType: string;
+  }): Promise<{ readonly sha256Hex: string; readonly byteSize: number }>;
+  /** Mint a short-lived presigned download URL (TTL clamped to the ≤60min platform-floor); `downloadFilename` is the D11 opaque leaf. */
+  presignDownload(args: {
+    readonly scope: OrgScope;
+    readonly tenantId: string;
+    readonly objectKey: string;
+    readonly downloadFilename: string;
+    readonly ttlSeconds: number;
+  }): Promise<{ readonly url: string; readonly expiresAt: string }>;
 }
 
 // M39's `ConsentEvaluator` (§4.3) follows the SAME opaque rich-seam pattern as TerminologyProvider /
@@ -303,6 +359,13 @@ export interface SeamContracts {
   PatientReader: PatientReader;
   PatientMutator: PatientMutator;
   DocumentRenderer: DocumentRenderer;
+  DocumentStorageProvider: DocumentStorageProvider;
+  // M22 §4.3 published reader seams (interfaces in ./documents) — typed here like M6..M18's leaf-typed readers.
+  RenderedDocumentProvider: RenderedDocumentProvider;
+  DocumentReader: DocumentReader;
+  PortalDocumentReader: PortalDocumentReader;
+  IntakeMetricsProvider: IntakeMetricsProvider;
+  ExtractionProvenanceReader: ExtractionProvenanceReader;
   // M39's `ConsentEvaluator` is OPAQUE (`unknown`) here — the rich §4.3 interface lives in
   // @wardenx/consent (rich-seam pattern, see the note above the interface block). Consumers that
   // list `39` in `dependsOn` import the real type from @wardenx/consent and resolve via the

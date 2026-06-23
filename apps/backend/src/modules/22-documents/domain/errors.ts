@@ -57,6 +57,11 @@ export const M22_ERROR_STATUS = {
   // ── §7.10 D11 signed-URL TTL clamp ─────────────────────────────────────────────────────────────────
   // §7.10 — a non-positive requested TTL (a signed URL must live for at least one second).
   DOCUMENT_SIGNED_URL_TTL_INVALID: 422,
+
+  // ── §4.12 M40 BaaStatusProvider external-disclosure gate ─────────────────────────────────────────────
+  // §4.12 / §7.7 — a presigned URL targeting an external partner was requested but the M40 BAA gate denied
+  // it (no active BAA at `asOf`: `missing` / `pending` / `expired`). The URL is never minted (fail closed).
+  DOCUMENT_EXTERNAL_DISCLOSURE_BAA_BLOCKED: 403,
 } as const;
 
 /** A machine-readable M22 document-lifecycle / storage failure code (§2.2 / §2.3). */

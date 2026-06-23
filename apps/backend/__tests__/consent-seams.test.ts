@@ -2,11 +2,11 @@
 //
 // Proves: (1) M39's `ConsentEvaluator` registers over the M1 deny-stub and the boot passes
 // validateSeams(); (2) M39 CONSUMES M5's REAL `PatientReader` through the registry (identity
-// resolution, §4.4); (3) M22's `DocumentRenderer` stays a fail-closed FORWARD-SEAM deny-stub (M22 is
-// Wave F) so the D15 signed-PDF path throws LOUDLY rather than dropping the artifact — and there is no
-// 22→39 import edge (the type is the leaf one, the impl is resolved at call time).
+// resolution, §4.4); (3) M22's `DocumentRenderer` is now REAL (Wave F / M22-T04 registers it through
+// wireModuleSeams) so the D15 signed-PDF path renders an actual document and returns its id — the
+// Wave-C forward-seam deny-stub is CLOSED — and there is still no 22→39 import edge (the type is the
+// leaf one, the impl is resolved at call time).
 import { beforeEach, describe, expect, it } from "vitest";
-import { NotImplementedError } from "../src/bootstrap/seams/providers";
 import { __resetSeamsForTest, validateSeams } from "../src/bootstrap/seams/registry";
 import { wireModuleSeams } from "../src/index";
 import {
@@ -57,22 +57,23 @@ describe("M39 seams — published ConsentEvaluator + consumed PatientReader/Docu
     expect(found).toBeNull();
   });
 
-  it("M22 DocumentRenderer stays a fail-closed forward-seam deny-stub (D15 path throws)", async () => {
-    wireModuleSeams();
-    validateSeams(); // applies the DocumentRenderer deny-stub (M22 unbuilt)
+  it("consumes M22's REAL DocumentRenderer for the D15 signed-PDF render (Wave-C deny-stub CLOSED)", async () => {
+    wireModuleSeams(); // M22-T04 registers the real DocumentRenderer over the deny-stub
+    validateSeams();
     expect(() => getConsentDocumentRenderer()).not.toThrow();
-    await expect(
-      renderConsentRecordDocument(
-        { orgId: ORG },
-        {
-          consentRecordId: "c1",
-          patientId: "p1",
-          typeKey: "hipaa_release",
-          grantorKind: "patient_self",
-          effectiveAt: new Date().toISOString(),
-          recipients: [],
-        },
-      ),
-    ).rejects.toThrow(NotImplementedError);
+    const result = await renderConsentRecordDocument(
+      { orgId: ORG },
+      {
+        consentRecordId: "c1",
+        patientId: "p1",
+        typeKey: "hipaa_release",
+        grantorKind: "patient_self",
+        effectiveAt: new Date().toISOString(),
+        recipients: [],
+      },
+    );
+    // The real renderer produces a document and returns its id (the M39 backref path then stamps it).
+    expect(typeof result.documentId).toBe("string");
+    expect(result.documentId.length).toBeGreaterThan(0);
   });
 });
