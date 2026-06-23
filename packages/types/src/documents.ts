@@ -421,6 +421,37 @@ export interface ExtractionProvenanceReader {
   }): Promise<ReadonlyArray<ProvenanceRecord>>;
 }
 
+// ── §2.2 / D1 per-tenant object storage PORT (interface only; the real MinIO client is injected at boot
+// in a later M22 task). M22-T03 models storage as a pure planning surface: the lifecycle machines derive
+// the per-tenant object key + presign descriptor as DATA; no network IO, no MinIO SDK import here. ───────
+
+/** §11 D11 — the opaque presigned-download descriptor a lifecycle plan returns as data. The object key and
+ * filename are PHI-free by construction (`{documentType}-{shortVersionId}.pdf`, the short id a random 12-char
+ * token); the human-readable name is applied client-side via `Content-Disposition`, never in the key/URL. */
+export interface SignedUrlDescriptor {
+  readonly bucket: string;
+  readonly objectKey: string;
+  readonly ttlSeconds: number;
+  readonly accessKind: DocumentAccessKind;
+}
+
+/** §11 D1 — the per-tenant object-storage seam. The lifecycle machines compute keys + presign descriptors
+ * purely (see {@link deriveTenantBucket} / {@link deriveObjectKey}); the runtime impl (MinIO presign +
+ * version-aware delete) is injected at boot. Modeled as a PORT so M22-T03 stays IO-free and unit-testable. */
+export interface DocumentStorageProvider {
+  /** Mint a short-TTL presigned GET URL for one object version (§4.12; the URL itself is never logged). */
+  presignDownload(args: {
+    readonly descriptor: SignedUrlDescriptor;
+    readonly organizationId: OrgId;
+  }): Promise<{ readonly url: string; readonly expiresAt: IsoInstant }>;
+  /** Version-aware destruction: delete EVERY object version + delete-marker for the key (D12 / DR-019). */
+  destroyAllObjectVersions(args: {
+    readonly bucket: string;
+    readonly objectKey: string;
+    readonly organizationId: OrgId;
+  }): Promise<void>;
+}
+
 // ── A render-handshake back-ref shape reused across consumers (the §4.10 `m22.document.rendered` payload
 // core that every source module's `m22-document-backref.ts` applies to its own row) ────────────────────
 
