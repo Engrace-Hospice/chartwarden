@@ -148,14 +148,14 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 
 | Screen | Module(s) | Layout pattern | Pencil |
 | :-- | :-- | :-- | :-- |
-| [HIPAA Privacy & Disclosure](./screens/compliance/WARDENX_UI_HIPAA_PRIVACY_DISCLOSURE.md) | M04 · M39 | Work Queue | `⬚` |
-| [Breach & Security Incidents](./screens/compliance/WARDENX_UI_BREACH_SECURITY_INCIDENTS.md) | M04 | Work Queue | `⬚` |
-| [Business Associate Agreements](./screens/compliance/WARDENX_UI_BAA_MANAGER.md) | M40 · M34 | Work Queue | `⬚` |
-| [Patient Rights & Grievances](./screens/compliance/WARDENX_UI_PATIENT_RIGHTS_GRIEVANCES.md) | M30 | Work Queue | `⬚` |
-| [QAPI Program & Incidents](./screens/compliance/WARDENX_UI_QAPI_INCIDENTS.md) | M30 | Dashboard | `⬚` |
-| [Quality Measures & Chart Audit](./screens/compliance/WARDENX_UI_QUALITY_MEASURES_CHART_AUDIT.md) | M30 | Dashboard | `⬚` |
-| [Accreditation & Survey Readiness](./screens/compliance/WARDENX_UI_ACCREDITATION_SURVEY.md) | M30 | Work Queue | `⬚` |
-| [OIG Exclusion & Compliance Program](./screens/compliance/WARDENX_UI_OIG_COMPLIANCE_PROGRAM.md) | M30 · M34 | Work Queue | `⬚` |
+| [HIPAA Privacy & Disclosure](./screens/compliance/WARDENX_UI_HIPAA_PRIVACY_DISCLOSURE.md) | M04 · M39 | Work Queue | `◐ node:nPnkV` (P6 .pen) |
+| [Breach & Security Incidents](./screens/compliance/WARDENX_UI_BREACH_SECURITY_INCIDENTS.md) | M04 | Work Queue | `◐ node:c5WGQ9` (P6 .pen) |
+| [Business Associate Agreements](./screens/compliance/WARDENX_UI_BAA_MANAGER.md) | M40 · M34 | Work Queue | `◐ node:Y1ubGH` (P6 .pen) |
+| [Patient Rights & Grievances](./screens/compliance/WARDENX_UI_PATIENT_RIGHTS_GRIEVANCES.md) | M30 | Work Queue | `◐ node:GQMdF` (P6 .pen) |
+| [QAPI Program & Incidents](./screens/compliance/WARDENX_UI_QAPI_INCIDENTS.md) | M30 | Dashboard | `◐ node:k7H99` (P6 .pen) |
+| [Quality Measures & Chart Audit](./screens/compliance/WARDENX_UI_QUALITY_MEASURES_CHART_AUDIT.md) | M30 | Dashboard | `◐ node:jbNOR` (P6 .pen) |
+| [Accreditation & Survey Readiness](./screens/compliance/WARDENX_UI_ACCREDITATION_SURVEY.md) | M30 | Work Queue | `◐ node:SHZre` (P6 .pen) |
+| [OIG Exclusion & Compliance Program](./screens/compliance/WARDENX_UI_OIG_COMPLIANCE_PROGRAM.md) | M30 · M34 | Work Queue | `◐ node:gOyIA` (P6 .pen) |
 
 ### P7 — Prescribing Controls, Staffing & Patient Billing (5)
 
