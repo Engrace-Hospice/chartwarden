@@ -10484,6 +10484,35 @@
         }
       }
     },
+    "/api/v1/intake/jobs/{id}/extraction/commit": {
+      "post": {
+        "operationId": "postApiV1IntakeJobsByIdExtractionCommit",
+        "tags": [
+          "22-documents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/intake/reviews/{id}": {
       "get": {
         "operationId": "getApiV1IntakeReviewsById",
@@ -10784,6 +10813,35 @@
     "/api/v1/intake/uploads/{id}/discard": {
       "post": {
         "operationId": "postApiV1IntakeUploadsByIdDiscard",
+        "tags": [
+          "22-documents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/intake/uploads/{id}/extraction/run": {
+      "post": {
+        "operationId": "postApiV1IntakeUploadsByIdExtractionRun",
         "tags": [
           "22-documents"
         ],

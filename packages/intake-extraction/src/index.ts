@@ -20,3 +20,36 @@ export {
 } from "./schemas/registry";
 export { SUD_SUGGESTED_KINDS } from "./sud-detection/domain";
 export type { SudSuggestedKind } from "./sud-detection/domain";
+
+// §7.1 W1 (M22-T08) — the DocLens extraction pipeline (classify → extract → discrepancy → review →
+// decide → provenance) as pure domain + the M32 capability port + Phase-1 deny-stub. Built-not-active:
+// the backend gates every entry point behind `documents.doclens` (default OFF → 503 EXTRACTION_DISABLED).
+export {
+  type CapabilityResult,
+  type ChartValue,
+  type ClassifiedPage,
+  type ClassifiedPageResult,
+  type CommitIntent,
+  type Discrepancy,
+  type DocLensCapabilityPort,
+  type ExtractedCandidate,
+  type PageRun,
+  type PipelineCandidate,
+  type PipelineRunInput,
+  type PipelineRunResult,
+  type ProvenanceRecord,
+  type ReviewSession,
+  type ReviewerDecision,
+  type VisionVerificationResult,
+  CAPABILITY_UNAVAILABLE,
+  DEFAULT_CLASSIFIER_CONFIDENCE_FLOOR,
+  buildProvenance,
+  buildReviewSession,
+  classifyPages,
+  denyStubDocLensCapability,
+  detectDiscrepancies,
+  groupContiguousRuns,
+  mergeVisionVerification,
+  planCommitIntents,
+  runExtractionPipeline,
+} from "./pipeline/index";

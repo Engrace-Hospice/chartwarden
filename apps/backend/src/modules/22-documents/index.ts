@@ -13,9 +13,15 @@
 // and the §4.1/§4.12 signed-URL service (T03 plan + T04 presign port + §4.12 BAA gate). Cursor (keyset)
 // pagination on every PHI list; If-Match optimistic concurrency on the overlay PUT. M22 deps stay [1, 5]
 // (@wardenx/auth needs no dep edge; the M5 CaseloadProvider seam is reached opaquely via getSeam).
+// M22-T08 adds the §7.1 W1 DocLens extraction pipeline under ./extraction — BUILT-NOT-ACTIVE behind the
+// `documents.doclens` feature flag (default OFF → routes return 503 EXTRACTION_DISABLED with Retry-After: 0).
+// The pure pipeline (classify → extract → discrepancy → review → decide → provenance) lives in
+// @wardenx/intake-extraction; the M32 classifier/extractor/vision capability is consumed OPAQUELY as a
+// deny-stub via getSeam (the M22-T06 consent-gate precedent), so M22 deps stay [1, 5] (no M32 edge).
 export * from "./lifecycle/index";
 export * from "./seams/index";
 export * from "./outbox-consumers/index";
+export * from "./extraction/index";
 export {
   type DocumentAbacDeps,
   type DocumentAbacFacts,

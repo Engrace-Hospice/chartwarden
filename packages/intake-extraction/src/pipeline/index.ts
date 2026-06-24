@@ -1,0 +1,32 @@
+// @wardenx/intake-extraction — §7.1 W1 the DocLens extraction PIPELINE barrel.
+export {
+  type CapabilityResult,
+  type ClassifiedPageResult,
+  type DocLensCapabilityPort,
+  type ExtractedCandidate,
+  type VisionVerificationResult,
+  CAPABILITY_UNAVAILABLE,
+  denyStubDocLensCapability,
+} from "./capability";
+export {
+  type ChartValue,
+  type ClassifiedPage,
+  type CommitIntent,
+  type Discrepancy,
+  type PageRun,
+  type PipelineCandidate,
+  type PipelineRunInput,
+  type PipelineRunResult,
+  type ProvenanceRecord,
+  type ReviewSession,
+  type ReviewerDecision,
+  DEFAULT_CLASSIFIER_CONFIDENCE_FLOOR,
+  buildProvenance,
+  buildReviewSession,
+  classifyPages,
+  detectDiscrepancies,
+  groupContiguousRuns,
+  mergeVisionVerification,
+  planCommitIntents,
+  runExtractionPipeline,
+} from "./pipeline";
