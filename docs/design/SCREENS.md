@@ -32,74 +32,74 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 
 | Screen | Module(s) | Layout pattern | Pencil |
 | :-- | :-- | :-- | :-- |
-| [App Shell & Role Home](./screens/core/WARDENX_UI_APP_SHELL_HOME.md) | M01 | App Shell (Dashboard content) | `⬚` |
-| [Authentication & Session](./screens/core/WARDENX_UI_AUTH.md) | M02 | Auth Flow | `⬚` |
-| [Global Search Results](./screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md) | M01 · M33 | Work Queue | `⬚` |
+| [App Shell & Role Home](./screens/core/WARDENX_UI_APP_SHELL_HOME.md) | M01 | App Shell (Dashboard content) | `◐ node:AQAhY` (wardenx-P0-foundation.pen) |
+| [Authentication & Session](./screens/core/WARDENX_UI_AUTH.md) | M02 | Auth Flow | `◐ node:a1dbhD` (P0 .pen) |
+| [Global Search Results](./screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md) | M01 · M33 | Work Queue | `◐ node:Cp053` (P0 .pen) |
 | [Help & Training](./screens/core/WARDENX_UI_HELP_TRAINING.md) | M01 | Work Queue | `⬚` |
-| [Notifications & Tasks](./screens/core/WARDENX_UI_NOTIFICATIONS_TASKS.md) | M01 · M36 | Work Queue | `⬚` |
-| [Reporting & Analytics](./screens/core/WARDENX_UI_REPORTING_ANALYTICS.md) | M33 | Dashboard | `⬚` |
-| [Staff Messaging](./screens/core/WARDENX_UI_STAFF_MESSAGING.md) | M36 | Conversation View | `⬚` |
-| [System / Utility Pages](./screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md) | M01 | System Page | `⬚` |
+| [Notifications & Tasks](./screens/core/WARDENX_UI_NOTIFICATIONS_TASKS.md) | M01 · M36 | Work Queue | `◐ node:mK4co` (P0 .pen) |
+| [Reporting & Analytics](./screens/core/WARDENX_UI_REPORTING_ANALYTICS.md) | M33 | Dashboard | `◐ node:H3JUcW` (P0 .pen) |
+| [Staff Messaging](./screens/core/WARDENX_UI_STAFF_MESSAGING.md) | M36 | Conversation View | `◐ node:A016Y` (P0 .pen) |
+| [System / Utility Pages](./screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md) | M01 | System Page | `◐ node:dT1Bt` (P0 .pen) |
 | [User Profile & Preferences](./screens/core/WARDENX_UI_USER_PROFILE_PREFERENCES.md) | M02 | Admin Settings | `⬚` |
-| [Agency Command Center](./screens/core/WARDENX_UI_AGENCY_COMMAND_CENTER.md) | M33 · M01 | Dashboard | `⬚` |
+| [Agency Command Center](./screens/core/WARDENX_UI_AGENCY_COMMAND_CENTER.md) | M33 · M01 | Dashboard | `◐ node:LRfYv` (P0 .pen) |
 
 ## Clinical — Patient, Care, Assessments, Visits (28)
 
 | Screen | Module(s) | Layout pattern | Pencil |
 | :-- | :-- | :-- | :-- |
-| [Patient Chart](./screens/clinical/WARDENX_UI_PATIENT_CHART.md) | M05 | Patient Workspace | `⬚` |
-| [Patient List / Census](./screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md) | M05 | Work Queue | `⬚` |
-| [Patient Clinical Timeline](./screens/clinical/WARDENX_UI_PATIENT_CLINICAL_TIMELINE.md) | M05 | Patient Workspace + Timeline | `⬚` |
+| [Patient Chart](./screens/clinical/WARDENX_UI_PATIENT_CHART.md) | M05 | Patient Workspace | `◐ node:fQjjh` (P0 .pen) |
+| [Patient List / Census](./screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md) | M05 | Work Queue | `◐ node:DNqXm` (P0 .pen) |
+| [Patient Clinical Timeline](./screens/clinical/WARDENX_UI_PATIENT_CLINICAL_TIMELINE.md) | M05 | Patient Workspace + Timeline | `◐ node:KfY70` (P1 .pen) |
 | [Admissions / Referral Intake](./screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md) | M06 | Stepper Workflow + Review Workspace | `⬚` |
 | [Election & Certification](./screens/clinical/WARDENX_UI_ELECTION_CERTIFICATION.md) | M06 | Patient Workspace + Stepper Workflow | `⬚` |
 | [Eligibility Worksheet / CTI](./screens/clinical/WARDENX_UI_ELIGIBILITY_WORKSHEET_CTI.md) | M06 | Patient Workspace + Stepper Workflow | `⬚` |
-| [Care Plan](./screens/clinical/WARDENX_UI_CARE_PLAN.md) | M07 | Patient Workspace + Documentation Workspace | `⬚` |
-| [Encounter / Visit Documentation](./screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md) | M08 | Patient Workspace + Documentation Workspace | `⬚` |
-| [Clinical Assessments Suite](./screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md) | M09 | Patient Workspace + Documentation Workspace | `⬚` |
-| [Wound Care](./screens/clinical/WARDENX_UI_WOUND_CARE.md) | M09 | Patient Workspace + Documentation Workspace | `⬚` |
-| [Allergy Management](./screens/clinical/WARDENX_UI_ALLERGY_MANAGEMENT.md) | M05 · M11 | Patient Workspace | `⬚` |
-| [HOPE Assessment](./screens/clinical/WARDENX_UI_HOPE_ASSESSMENT.md) | M10 | Patient Workspace + Documentation Workspace | `⬚` |
-| [Orders](./screens/clinical/WARDENX_UI_ORDERS.md) | M11 | Patient Workspace | `⬚` |
-| [Medications — Prescribing & eMAR](./screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md) | M12 · M13 | MAR Grid | `⬚` |
-| [IDG Meeting](./screens/clinical/WARDENX_UI_IDG_MEETING.md) | M14 | Work Queue + Documentation Workspace | `⬚` |
-| [Scheduling / Visit Calendar](./screens/clinical/WARDENX_UI_SCHEDULING_VISIT_CALENDAR.md) | M17 | Scheduling Calendar | `⬚` |
-| [EVV](./screens/clinical/WARDENX_UI_EVV.md) | M18 | Work Queue | `⬚` |
-| [On-Call Triage](./screens/clinical/WARDENX_UI_ON_CALL_TRIAGE.md) | M19 | Work Queue + Documentation Workspace | `⬚` |
-| [Field Safety](./screens/clinical/WARDENX_UI_FIELD_SAFETY.md) | M20 | Dashboard + Mobile Task Flow | `⬚` |
-| [Supplies / DME / Comfort Kit](./screens/clinical/WARDENX_UI_SUPPLIES_DME_COMFORT_KIT.md) | M21 | Patient Workspace | `⬚` |
+| [Care Plan](./screens/clinical/WARDENX_UI_CARE_PLAN.md) | M07 | Patient Workspace + Documentation Workspace | `◐ node:UaKVf` (P1 .pen) |
+| [Encounter / Visit Documentation](./screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md) | M08 | Patient Workspace + Documentation Workspace | `◐ node:AohyV` (P1 .pen) |
+| [Clinical Assessments Suite](./screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md) | M09 | Patient Workspace + Documentation Workspace | `◐ node:aSIwN` (P1 .pen) |
+| [Wound Care](./screens/clinical/WARDENX_UI_WOUND_CARE.md) | M09 | Patient Workspace + Documentation Workspace | `◐ node:T6KHo` (P1 .pen) |
+| [Allergy Management](./screens/clinical/WARDENX_UI_ALLERGY_MANAGEMENT.md) | M05 · M11 | Patient Workspace | `◐ node:TFdIR` (P1 .pen) |
+| [HOPE Assessment](./screens/clinical/WARDENX_UI_HOPE_ASSESSMENT.md) | M10 | Patient Workspace + Documentation Workspace | `◐ node:KQ8kz` (P1 .pen) |
+| [Orders](./screens/clinical/WARDENX_UI_ORDERS.md) | M11 | Patient Workspace | `◐ node:pQiC0` (P1 .pen) |
+| [Medications — Prescribing & eMAR](./screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md) | M12 · M13 | MAR Grid | `◐ node:ANbhv` (P1 .pen) |
+| [IDG Meeting](./screens/clinical/WARDENX_UI_IDG_MEETING.md) | M14 | Work Queue + Documentation Workspace | `◐ node:Wqf1e` (P1 .pen) |
+| [Scheduling / Visit Calendar](./screens/clinical/WARDENX_UI_SCHEDULING_VISIT_CALENDAR.md) | M17 | Scheduling Calendar | `◐ node:xeeXk` (P2 .pen) |
+| [EVV](./screens/clinical/WARDENX_UI_EVV.md) | M18 | Work Queue | `◐ node:vw0AC` (P2 .pen) |
+| [On-Call Triage](./screens/clinical/WARDENX_UI_ON_CALL_TRIAGE.md) | M19 | Work Queue + Documentation Workspace | `◐ node:H6PP83` (P2 .pen) |
+| [Field Safety](./screens/clinical/WARDENX_UI_FIELD_SAFETY.md) | M20 | Dashboard + Mobile Task Flow | `◐ node:qOmAz` (P2 .pen) |
+| [Supplies / DME / Comfort Kit](./screens/clinical/WARDENX_UI_SUPPLIES_DME_COMFORT_KIT.md) | M21 | Patient Workspace | `◐ node:WYFsN` (P2 .pen) |
 | [Document Management](./screens/clinical/WARDENX_UI_DOCUMENT_MANAGEMENT.md) | M22 | Work Queue + Review Workspace | `⬚` |
 | [DocLens Extraction Review](./screens/clinical/WARDENX_UI_DOCLENS_EXTRACTION_REVIEW.md) | M22 · M32 | Work Queue + Review Workspace | `⬚` |
-| [Clinical Copilot & Chart Search](./screens/clinical/WARDENX_UI_CLINICAL_COPILOT.md) | M32 | Assistant | `⬚` |
-| [Bereavement](./screens/clinical/WARDENX_UI_BEREAVEMENT.md) | M16 | Work Queue + Patient/Family Detail | `⬚` |
-| [Death & Pronouncement](./screens/clinical/WARDENX_UI_DEATH_PRONOUNCEMENT.md) | M06 · M16 | Stepper Workflow | `⬚` |
-| [Discharge / Revocation / Transfer](./screens/clinical/WARDENX_UI_DISCHARGE_REVOCATION_TRANSFER.md) | M06 | Stepper Workflow | `⬚` |
-| [HQRP Quality](./screens/clinical/WARDENX_UI_HQRP_QUALITY.md) | M30 | Dashboard | `⬚` |
-| [Volunteer Management](./screens/clinical/WARDENX_UI_VOLUNTEER_MANAGEMENT.md) | M30 | Work Queue | `⬚` |
-| [IPU / GIP Bed Board](./screens/clinical/WARDENX_UI_IPU_BED_BOARD.md) | M37 | Bed Board | `⬚` |
+| [Clinical Copilot & Chart Search](./screens/clinical/WARDENX_UI_CLINICAL_COPILOT.md) | M32 | Assistant | `◐ node:c96zD` (P1 .pen) |
+| [Bereavement](./screens/clinical/WARDENX_UI_BEREAVEMENT.md) | M16 | Work Queue + Patient/Family Detail | `◐ node:hyJ3j` (P2 .pen) |
+| [Death & Pronouncement](./screens/clinical/WARDENX_UI_DEATH_PRONOUNCEMENT.md) | M06 · M16 | Stepper Workflow | `◐ node:f7o1r` (P2 .pen) |
+| [Discharge / Revocation / Transfer](./screens/clinical/WARDENX_UI_DISCHARGE_REVOCATION_TRANSFER.md) | M06 | Stepper Workflow | `◐ node:m8VaU` (P2 .pen) |
+| [HQRP Quality](./screens/clinical/WARDENX_UI_HQRP_QUALITY.md) | M30 | Dashboard | `◐ node:cFmyk` (P2 .pen) |
+| [Volunteer Management](./screens/clinical/WARDENX_UI_VOLUNTEER_MANAGEMENT.md) | M30 | Work Queue | `◐ node:p4tXCO` (P2 .pen) |
+| [IPU / GIP Bed Board](./screens/clinical/WARDENX_UI_IPU_BED_BOARD.md) | M37 | Bed Board | `◐ node:m1prt` (P2 .pen) |
 
 ## Revenue Cycle — Billing, Remittance, Cap, Cost (7)
 
 | Screen | Module(s) | Layout pattern | Pencil |
 | :-- | :-- | :-- | :-- |
-| [Claims & Billing](./screens/revenue/WARDENX_UI_CLAIMS_BILLING.md) | M23 · M24 | Work Queue | `⬚` |
-| [Eligibility Verification](./screens/revenue/WARDENX_UI_ELIGIBILITY_VERIFICATION.md) | M23 · M29 | Work Queue + Patient Detail | `⬚` |
-| [Prior Authorization](./screens/revenue/WARDENX_UI_PRIOR_AUTHORIZATION.md) | M23 | Work Queue | `⬚` |
-| [Remittance / ERA Posting](./screens/revenue/WARDENX_UI_REMITTANCE_ERA_POSTING.md) | M25 | Work Queue | `⬚` |
-| [Denials Management](./screens/revenue/WARDENX_UI_DENIALS_MANAGEMENT.md) | M25 | Work Queue | `⬚` |
-| [Cap Management](./screens/revenue/WARDENX_UI_CAP_MANAGEMENT.md) | M26 | Dashboard | `⬚` |
-| [Cost Report Workspace](./screens/revenue/WARDENX_UI_COST_REPORT_WORKSPACE.md) | M27 | Stepper Workflow | `⬚` |
+| [Claims & Billing](./screens/revenue/WARDENX_UI_CLAIMS_BILLING.md) | M23 · M24 | Work Queue | `◐ node:RSFHC` (P3 .pen) |
+| [Eligibility Verification](./screens/revenue/WARDENX_UI_ELIGIBILITY_VERIFICATION.md) | M23 · M29 | Work Queue + Patient Detail | `◐ node:fRVXt` (P3 .pen) |
+| [Prior Authorization](./screens/revenue/WARDENX_UI_PRIOR_AUTHORIZATION.md) | M23 | Work Queue | `◐ node:RCdgT` (P3 .pen) |
+| [Remittance / ERA Posting](./screens/revenue/WARDENX_UI_REMITTANCE_ERA_POSTING.md) | M25 | Work Queue | `◐ node:eeoJ4` (P3 .pen) |
+| [Denials Management](./screens/revenue/WARDENX_UI_DENIALS_MANAGEMENT.md) | M25 | Work Queue | `◐ node:l00Umf` (P3 .pen) |
+| [Cap Management](./screens/revenue/WARDENX_UI_CAP_MANAGEMENT.md) | M26 | Dashboard | `◐ node:B1Wukv` (P3 .pen) |
+| [Cost Report Workspace](./screens/revenue/WARDENX_UI_COST_REPORT_WORKSPACE.md) | M27 | Stepper Workflow | `◐ node:ogmWK` (P3 .pen) |
 
 ## Admin — Tenant, Identity, Interop, Master Data (15)
 
 | Screen | Module(s) | Layout pattern | Pencil |
 | :-- | :-- | :-- | :-- |
-| [Org / Provider / Location Setup](./screens/admin/WARDENX_UI_ORG_PROVIDER_LOCATION_SETUP.md) | M01 · M34 | Admin Hierarchy | `⬚` |
-| [Roles & Permissions](./screens/admin/WARDENX_UI_ROLES_PERMISSIONS.md) | M03 | Admin Split | `⬚` |
-| [Staff Management](./screens/admin/WARDENX_UI_STAFF_MANAGEMENT.md) | M02 · M34 | Work Queue | `⬚` |
-| [Tenant Settings](./screens/admin/WARDENX_UI_TENANT_SETTINGS.md) | M34 | Admin Settings | `⬚` |
+| [Org / Provider / Location Setup](./screens/admin/WARDENX_UI_ORG_PROVIDER_LOCATION_SETUP.md) | M01 · M34 | Admin Hierarchy | `◐ node:MZZY2` (P4 .pen) |
+| [Roles & Permissions](./screens/admin/WARDENX_UI_ROLES_PERMISSIONS.md) | M03 | Admin Split | `◐ node:q5UDi` (P4 .pen) |
+| [Staff Management](./screens/admin/WARDENX_UI_STAFF_MANAGEMENT.md) | M02 · M34 | Work Queue | `◐ node:g7sGoJ` (P4 .pen) |
+| [Tenant Settings](./screens/admin/WARDENX_UI_TENANT_SETTINGS.md) | M34 | Admin Settings | `◐ node:LcUWy` (P4 .pen) |
 | [Feature Flags](./screens/admin/WARDENX_UI_FEATURE_FLAGS.md) | M01 · M34 | Work Queue | `⬚` |
-| [Audit Log Viewer](./screens/admin/WARDENX_UI_AUDIT_LOG_VIEWER.md) | M04 | Work Queue | `⬚` |
-| [AI Governance Console](./screens/admin/WARDENX_UI_AI_GOVERNANCE_CONSOLE.md) | M32 | Work Queue | `⬚` |
+| [Audit Log Viewer](./screens/admin/WARDENX_UI_AUDIT_LOG_VIEWER.md) | M04 | Work Queue | `◐ node:o18aS` (P4 .pen) |
+| [AI Governance Console](./screens/admin/WARDENX_UI_AI_GOVERNANCE_CONSOLE.md) | M32 | Work Queue | `◐ node:ejsox` (P4 .pen) |
 | [Master Data (MDM)](./screens/admin/WARDENX_UI_MASTER_DATA_MDM.md) | M40 | Work Queue | `⬚` |
 | [Terminology Admin](./screens/admin/WARDENX_UI_TERMINOLOGY_ADMIN.md) | M38 | Work Queue | `⬚` |
 | [Clinical Content Admin](./screens/admin/WARDENX_UI_CLINICAL_CONTENT_ADMIN.md) | M38 · M01 | Work Queue | `⬚` |
@@ -112,10 +112,10 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 
 | Screen | Module(s) | Layout pattern | Pencil |
 | :-- | :-- | :-- | :-- |
-| [Ops Console](./screens/platform/WARDENX_UI_OPS_CONSOLE.md) | M34 | Admin Console | `⬚` |
-| [Subscription Billing](./screens/platform/WARDENX_UI_SUBSCRIPTION_BILLING.md) | M35 | Detail Page | `⬚` |
-| [Support / Impersonation Audit](./screens/platform/WARDENX_UI_SUPPORT_IMPERSONATION_AUDIT.md) | M34 | Gated Action Flow | `⬚` |
-| [System Health / Degraded Mode](./screens/platform/WARDENX_UI_SYSTEM_HEALTH_DEGRADED_MODE.md) | M01 · M34 | Status Board | `⬚` |
+| [Ops Console](./screens/platform/WARDENX_UI_OPS_CONSOLE.md) | M34 | Admin Console | `◐ node:WGWP7` (P4 .pen) |
+| [Subscription Billing](./screens/platform/WARDENX_UI_SUBSCRIPTION_BILLING.md) | M35 | Detail Page | `◐ node:C0ljC` (P4 .pen) |
+| [Support / Impersonation Audit](./screens/platform/WARDENX_UI_SUPPORT_IMPERSONATION_AUDIT.md) | M34 | Gated Action Flow | `◐ node:j3z3U` (P4 .pen) |
+| [System Health / Degraded Mode](./screens/platform/WARDENX_UI_SYSTEM_HEALTH_DEGRADED_MODE.md) | M01 · M34 | Status Board | `◐ node:cFG0u` (P4 .pen) |
 
 ## Portal — Patient / Family / Telehealth — Module M31 (5)
 
