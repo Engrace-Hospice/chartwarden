@@ -220,7 +220,31 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 > Each screen spec lists its own **variants** (in its `## Pencil Notes` section) — e.g. Patient
 > Chart wants active / just-admitted / discharged / deceased / merged / SSN-masked-vs-revealed.
 > Generate the variants Pencil-side as frames within the screen's node. Variant count, not screen
-> count, is the true size of the design surface (~250+ frames).
+> count, is the true size of the design surface (~600 frames; see the Depth track below).
+
+## Depth track (D1–D6) — the sub-view / variant surface
+
+The 97 screens above are each built as **one frame**. A [coverage diagnosis](#coverage-diagnosis)
+found the specs declare ~6.35 frames each (~600 total), so ~500 sub-views/variants are unbuilt.
+The **Depth track** ([`pencil-prompts/D1-D6-depth.md`](./pencil-prompts/D1-D6-depth.md)) builds
+that surface — reusable treatments (ceremonies, masking, states) built once and instanced.
+
+| Phase | File | Theme | Status |
+| :-- | :-- | :-- | :-- |
+| D1 | `wardenx-D1-ceremonies.pen` | Guardrail & signing-ceremony library | `⬚` |
+| D2 | `wardenx-D2-sensitivity.pen` | PHI masking / SUD-Part2 / consent / break-glass | `⬚` |
+| D3 | `wardenx-D3-states.pen` | Universal empty / loading / error / no-perm / degraded | `⬚` |
+| D4 | `wardenx-D4-steppers.pen` | Multi-step workflows — all steps | `⬚` |
+| D5 | `wardenx-D5-variants.pen` | Role dashboards · discipline care plans · assessments | `⬚` |
+| D6 | `wardenx-D6-subviews.pen` | Heavyweight screens' secondary tabs / panels | `⬚` |
+
+### Coverage diagnosis
+
+Corpus completeness against the 40-module architecture (2026-06-24):
+**100% by screen-count · ~16% by frame-depth (97 of ~600) · ~65% by module-breadth.**
+Breadth gaps: M15 Discipline Care Plans (0 screens), M12/M24/M39 (no dedicated screen), and
+~12 flagship modules compressed to 1 screen. Depth-first remediation (this track) was chosen
+before breadth (the ~45–65 missing whole screens remain a later track).
 
 ## How to generate a screen in Pencil
 

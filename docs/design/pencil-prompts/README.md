@@ -95,6 +95,7 @@ Generate in this order — each phase reuses chrome/components proven in the pri
 | **P5** | [`P5-portal-mobile.md`](./P5-portal-mobile.md) | Portal dashboard/messages/docs/schedule/telehealth + mobile field/EVV variants | 5 + mobile |
 | **P6–P10** | [`P6-P10-expansion.md`](./P6-P10-expansion.md) | Missing-domain expansion: compliance/privacy/quality, EPCS+staffing+patient-billing, external portals, mobile/integration/ops, cert+billing-ops+note-lifecycle+role-dashboards | 28 |
 | **P11** | [`P11-core-clinical-cleanup.md`](./P11-core-clinical-cleanup.md) | Deferred-screen cleanup: the 7 index entries never authored into a P0–P5 prompt block — help/training, user profile, admissions intake, election & cert, eligibility/CTI, document mgmt, DocLens | 7 |
+| **D1–D6** | [`D1-D6-depth.md`](./D1-D6-depth.md) | **Depth track** — the ~500 unbuilt sub-views/variants the 97 screens' specs call for: ceremonies, masking/consent states, universal empty/error/no-perm states, expanded steppers, role/discipline variants, heavyweight sub-views | ~400 frames |
 
 > **Why overlays are in P0.** The Guardrail blocking dialogs, signature ceremonies, AI-provenance
 > treatment, and sensitivity/masking are *components reused across dozens of screens*. Designing
