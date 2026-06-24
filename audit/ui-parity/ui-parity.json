@@ -1,12 +1,16 @@
 {
-  "documentedSpecs": 69,
+  "documentedSpecs": 97,
   "byCategory": {
     "admin": 14,
-    "core": 10,
-    "clinical": 29,
-    "platform": 4,
-    "portal": 5,
-    "revenue": 7
+    "core": 11,
+    "clinical": 33,
+    "platform": 5,
+    "portal": 11,
+    "revenue": 9,
+    "compliance": 8,
+    "staffing": 3,
+    "mobile": 1,
+    "integration": 2
   },
   "registeredModules": [
     "02-identity",

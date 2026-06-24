@@ -4,18 +4,22 @@
 > corpus is consistent; this shows how much of it is BUILT in `apps/web`. Do not hand-edit —
 > the `ui:parity --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 69 documented screen specs · 19 module screen-sets registered · 91 screens wired in `apps/web`.
+**Coverage:** 97 documented screen specs · 19 module screen-sets registered · 91 screens wired in `apps/web`.
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
 ## Documented surface (by category)
 
 - **admin**: 14 spec(s)
-- **clinical**: 29 spec(s)
-- **core**: 10 spec(s)
-- **platform**: 4 spec(s)
-- **portal**: 5 spec(s)
-- **revenue**: 7 spec(s)
+- **clinical**: 33 spec(s)
+- **compliance**: 8 spec(s)
+- **core**: 11 spec(s)
+- **integration**: 2 spec(s)
+- **mobile**: 1 spec(s)
+- **platform**: 5 spec(s)
+- **portal**: 11 spec(s)
+- **revenue**: 9 spec(s)
+- **staffing**: 3 spec(s)
 
 ## Implemented surface (registered screens)
 
