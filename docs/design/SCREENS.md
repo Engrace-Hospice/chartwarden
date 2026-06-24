@@ -22,11 +22,15 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 | `●` | Generated + reviewed, on-system |
 | `node:<id>` | Pencil node id once generated |
 
-> **Status: ALL 62 screens generated in Pencil** (`◐`), across 6 phase files
-> (`wardenx-P0-foundation.pen` … `wardenx-P5-portal-mobile.pen`), each screenshot-verified
-> against the Lantern design system. Every named pattern in the
-> [layout glossary](./WARDENX_UI_LAYOUT_PATTERNS.md) is represented. Next step is design review
-> (`◐` → `●`) and frontend implementation.
+> **Status: 90 of 97 screens generated in Pencil** (`◐`), across 11 phase files
+> (`wardenx-P0-foundation.pen` … `wardenx-P10-cert-billing-dashboards.pen`), each screenshot-verified
+> against the Lantern design system. The full P0–P5 core corpus plus the P6–P10 gap-fill
+> expansion (compliance/privacy/quality, EPCS+staffing+patient-billing, external portals,
+> mobile/integration/ops, cert+billing-ops+note-lifecycle+facility+role-dashboards) are complete.
+> Every named pattern in the [layout glossary](./WARDENX_UI_LAYOUT_PATTERNS.md) is represented.
+> **7 screens remain `⬚`** (Help & Training, User Profile, Admissions/Intake, Election &
+> Certification, Eligibility Worksheet/CTI, Document Management, DocLens) — deferred from the
+> original P0–P5 batches. Next step is design review (`◐` → `●`) and frontend implementation.
 
 > **Generation order** follows the phase batches in [`pencil-prompts/`](./pencil-prompts/)
 > (P0 foundation → P5 portal/mobile). Generate via the Pencil MCP into an open `.pen` file;
@@ -191,11 +195,11 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 
 | Screen | Module(s) | Layout pattern | Pencil |
 | :-- | :-- | :-- | :-- |
-| [Certification & Recert Lifecycle](./screens/clinical/WARDENX_UI_CERTIFICATION_RECERT_LIFECYCLE.md) | M06 | Stepper Workflow | `⬚` |
-| [Clinical Note Lifecycle](./screens/clinical/WARDENX_UI_CLINICAL_NOTE_LIFECYCLE.md) | M08 | Work Queue + Review Workspace | `⬚` |
-| [NOE/NOTR & Claim Ops](./screens/revenue/WARDENX_UI_NOE_NOTR_CLAIM_OPS.md) | M23 | Work Queue | `⬚` |
-| [Facility & Supply Operations](./screens/clinical/WARDENX_UI_FACILITY_SUPPLY_OPERATIONS.md) | M21 · M37 | Admin Hierarchy Layout | `⬚` |
-| [Role Dashboards](./screens/core/WARDENX_UI_ROLE_DASHBOARDS.md) | M33 | Dashboard | `⬚` |
+| [Certification & Recert Lifecycle](./screens/clinical/WARDENX_UI_CERTIFICATION_RECERT_LIFECYCLE.md) | M06 | Stepper Workflow | `◐ node:URHlL` (P10 .pen) |
+| [Clinical Note Lifecycle](./screens/clinical/WARDENX_UI_CLINICAL_NOTE_LIFECYCLE.md) | M08 | Work Queue + Review Workspace | `◐ node:v72Yj` (P10 .pen) |
+| [NOE/NOTR & Claim Ops](./screens/revenue/WARDENX_UI_NOE_NOTR_CLAIM_OPS.md) | M23 | Work Queue | `◐ node:eq20w` (P10 .pen) |
+| [Facility & Supply Operations](./screens/clinical/WARDENX_UI_FACILITY_SUPPLY_OPERATIONS.md) | M21 · M37 | Admin Hierarchy Layout | `◐ node:lbY0m` (P10 .pen) |
+| [Role Dashboards](./screens/core/WARDENX_UI_ROLE_DASHBOARDS.md) | M33 | Dashboard | `◐ node:KpBpz` (P10 .pen) |
 
 ---
 
