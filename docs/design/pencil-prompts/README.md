@@ -94,6 +94,7 @@ Generate in this order — each phase reuses chrome/components proven in the pri
 | **P4** | [`P4-admin-platform.md`](./P4-admin-platform.md) | Org/roles/staff/tenant/flags/audit/AI-gov/MDM/terminology/content/FHIR/integration/CRM/onboarding + ops/subscription/support/health | 18 |
 | **P5** | [`P5-portal-mobile.md`](./P5-portal-mobile.md) | Portal dashboard/messages/docs/schedule/telehealth + mobile field/EVV variants | 5 + mobile |
 | **P6–P10** | [`P6-P10-expansion.md`](./P6-P10-expansion.md) | Missing-domain expansion: compliance/privacy/quality, EPCS+staffing+patient-billing, external portals, mobile/integration/ops, cert+billing-ops+note-lifecycle+role-dashboards | 28 |
+| **P11** | [`P11-core-clinical-cleanup.md`](./P11-core-clinical-cleanup.md) | Deferred-screen cleanup: the 7 index entries never authored into a P0–P5 prompt block — help/training, user profile, admissions intake, election & cert, eligibility/CTI, document mgmt, DocLens | 7 |
 
 > **Why overlays are in P0.** The Guardrail blocking dialogs, signature ceremonies, AI-provenance
 > treatment, and sensitivity/masking are *components reused across dozens of screens*. Designing

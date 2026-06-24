@@ -22,15 +22,15 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 | `●` | Generated + reviewed, on-system |
 | `node:<id>` | Pencil node id once generated |
 
-> **Status: 90 of 97 screens generated in Pencil** (`◐`), across 11 phase files
-> (`wardenx-P0-foundation.pen` … `wardenx-P10-cert-billing-dashboards.pen`), each screenshot-verified
-> against the Lantern design system. The full P0–P5 core corpus plus the P6–P10 gap-fill
-> expansion (compliance/privacy/quality, EPCS+staffing+patient-billing, external portals,
-> mobile/integration/ops, cert+billing-ops+note-lifecycle+facility+role-dashboards) are complete.
-> Every named pattern in the [layout glossary](./WARDENX_UI_LAYOUT_PATTERNS.md) is represented.
-> **7 screens remain `⬚`** (Help & Training, User Profile, Admissions/Intake, Election &
-> Certification, Eligibility Worksheet/CTI, Document Management, DocLens) — deferred from the
-> original P0–P5 batches. Next step is design review (`◐` → `●`) and frontend implementation.
+> **Status: ALL 97 screens generated in Pencil** (`◐`), across 12 phase files
+> (`wardenx-P0-foundation.pen` … `wardenx-P11-core-clinical-cleanup.pen`), each screenshot-verified
+> against the Lantern design system. The full P0–P5 core corpus, the P6–P10 gap-fill expansion
+> (compliance/privacy/quality, EPCS+staffing+patient-billing, external portals, mobile/integration/
+> ops, cert+billing-ops+note-lifecycle+facility+role-dashboards), and the P11 cleanup of the 7
+> index entries the original P0–P5 prompts had skipped (help/training, user profile, admissions
+> intake, election & cert, eligibility/CTI, document mgmt, DocLens) are all complete. Every named
+> pattern in the [layout glossary](./WARDENX_UI_LAYOUT_PATTERNS.md) is represented. The corpus is
+> closed at **97/97**. Next step is design review (`◐` → `●`) and frontend implementation.
 
 > **Generation order** follows the phase batches in [`pencil-prompts/`](./pencil-prompts/)
 > (P0 foundation → P5 portal/mobile). Generate via the Pencil MCP into an open `.pen` file;
@@ -45,12 +45,12 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 | [App Shell & Role Home](./screens/core/WARDENX_UI_APP_SHELL_HOME.md) | M01 | App Shell (Dashboard content) | `◐ node:AQAhY` (wardenx-P0-foundation.pen) |
 | [Authentication & Session](./screens/core/WARDENX_UI_AUTH.md) | M02 | Auth Flow | `◐ node:a1dbhD` (P0 .pen) |
 | [Global Search Results](./screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md) | M01 · M33 | Work Queue | `◐ node:Cp053` (P0 .pen) |
-| [Help & Training](./screens/core/WARDENX_UI_HELP_TRAINING.md) | M01 | Work Queue | `⬚` |
+| [Help & Training](./screens/core/WARDENX_UI_HELP_TRAINING.md) | M01 | Work Queue | `◐ node:nNKhB` (P11 .pen) |
 | [Notifications & Tasks](./screens/core/WARDENX_UI_NOTIFICATIONS_TASKS.md) | M01 · M36 | Work Queue | `◐ node:mK4co` (P0 .pen) |
 | [Reporting & Analytics](./screens/core/WARDENX_UI_REPORTING_ANALYTICS.md) | M33 | Dashboard | `◐ node:H3JUcW` (P0 .pen) |
 | [Staff Messaging](./screens/core/WARDENX_UI_STAFF_MESSAGING.md) | M36 | Conversation View | `◐ node:A016Y` (P0 .pen) |
 | [System / Utility Pages](./screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md) | M01 | System Page | `◐ node:dT1Bt` (P0 .pen) |
-| [User Profile & Preferences](./screens/core/WARDENX_UI_USER_PROFILE_PREFERENCES.md) | M02 | Admin Settings | `⬚` |
+| [User Profile & Preferences](./screens/core/WARDENX_UI_USER_PROFILE_PREFERENCES.md) | M02 | Admin Settings | `◐ node:fGKwq` (P11 .pen) |
 | [Agency Command Center](./screens/core/WARDENX_UI_AGENCY_COMMAND_CENTER.md) | M33 · M01 | Dashboard | `◐ node:LRfYv` (P0 .pen) |
 
 ## Clinical — Patient, Care, Assessments, Visits (28)
@@ -60,9 +60,9 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 | [Patient Chart](./screens/clinical/WARDENX_UI_PATIENT_CHART.md) | M05 | Patient Workspace | `◐ node:fQjjh` (P0 .pen) |
 | [Patient List / Census](./screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md) | M05 | Work Queue | `◐ node:DNqXm` (P0 .pen) |
 | [Patient Clinical Timeline](./screens/clinical/WARDENX_UI_PATIENT_CLINICAL_TIMELINE.md) | M05 | Patient Workspace + Timeline | `◐ node:KfY70` (P1 .pen) |
-| [Admissions / Referral Intake](./screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md) | M06 | Stepper Workflow + Review Workspace | `⬚` |
-| [Election & Certification](./screens/clinical/WARDENX_UI_ELECTION_CERTIFICATION.md) | M06 | Patient Workspace + Stepper Workflow | `⬚` |
-| [Eligibility Worksheet / CTI](./screens/clinical/WARDENX_UI_ELIGIBILITY_WORKSHEET_CTI.md) | M06 | Patient Workspace + Stepper Workflow | `⬚` |
+| [Admissions / Referral Intake](./screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md) | M06 | Stepper Workflow + Review Workspace | `◐ node:d9ZJU` (P11 .pen) |
+| [Election & Certification](./screens/clinical/WARDENX_UI_ELECTION_CERTIFICATION.md) | M06 | Patient Workspace + Stepper Workflow | `◐ node:LXxxD` (P11 .pen) |
+| [Eligibility Worksheet / CTI](./screens/clinical/WARDENX_UI_ELIGIBILITY_WORKSHEET_CTI.md) | M06 | Patient Workspace + Stepper Workflow | `◐ node:lZPbZ` (P11 .pen) |
 | [Care Plan](./screens/clinical/WARDENX_UI_CARE_PLAN.md) | M07 | Patient Workspace + Documentation Workspace | `◐ node:UaKVf` (P1 .pen) |
 | [Encounter / Visit Documentation](./screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md) | M08 | Patient Workspace + Documentation Workspace | `◐ node:AohyV` (P1 .pen) |
 | [Clinical Assessments Suite](./screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md) | M09 | Patient Workspace + Documentation Workspace | `◐ node:aSIwN` (P1 .pen) |
@@ -77,8 +77,8 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 | [On-Call Triage](./screens/clinical/WARDENX_UI_ON_CALL_TRIAGE.md) | M19 | Work Queue + Documentation Workspace | `◐ node:H6PP83` (P2 .pen) |
 | [Field Safety](./screens/clinical/WARDENX_UI_FIELD_SAFETY.md) | M20 | Dashboard + Mobile Task Flow | `◐ node:qOmAz` (P2 .pen) |
 | [Supplies / DME / Comfort Kit](./screens/clinical/WARDENX_UI_SUPPLIES_DME_COMFORT_KIT.md) | M21 | Patient Workspace | `◐ node:WYFsN` (P2 .pen) |
-| [Document Management](./screens/clinical/WARDENX_UI_DOCUMENT_MANAGEMENT.md) | M22 | Work Queue + Review Workspace | `⬚` |
-| [DocLens Extraction Review](./screens/clinical/WARDENX_UI_DOCLENS_EXTRACTION_REVIEW.md) | M22 · M32 | Work Queue + Review Workspace | `⬚` |
+| [Document Management](./screens/clinical/WARDENX_UI_DOCUMENT_MANAGEMENT.md) | M22 | Work Queue + Review Workspace | `◐ node:plO9v` (P11 .pen) |
+| [DocLens Extraction Review](./screens/clinical/WARDENX_UI_DOCLENS_EXTRACTION_REVIEW.md) | M22 · M32 | Work Queue + Review Workspace | `◐ node:SCV56` (P11 .pen) |
 | [Clinical Copilot & Chart Search](./screens/clinical/WARDENX_UI_CLINICAL_COPILOT.md) | M32 | Assistant | `◐ node:c96zD` (P1 .pen) |
 | [Bereavement](./screens/clinical/WARDENX_UI_BEREAVEMENT.md) | M16 | Work Queue + Patient/Family Detail | `◐ node:hyJ3j` (P2 .pen) |
 | [Death & Pronouncement](./screens/clinical/WARDENX_UI_DEATH_PRONOUNCEMENT.md) | M06 · M16 | Stepper Workflow | `◐ node:f7o1r` (P2 .pen) |
