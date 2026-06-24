@@ -11,9 +11,23 @@ export type { FormTemplateDescriptor } from "./templates/interface";
 export {
   FORM_TEMPLATE_REGISTRY,
   BEREAVEMENT_LETTER_KINDS,
+  V1_TEMPLATE_VERSION,
   findFormTemplate,
 } from "./templates/registry";
 export type { BereavementLetterKind } from "./templates/registry";
+export {
+  PLATFORM_FIELD_VALUE_SPACE,
+  TemplateResolutionError,
+  listPlatformTemplates,
+  resolveTemplate,
+  validateOverlay,
+} from "./templates/library";
+export type {
+  OverlayValidationResult,
+  OverlayViolation,
+  ResolvedTemplate,
+  TenantTemplateOverlay,
+} from "./templates/library";
 export type {
   PrintVendorAdapter,
   PrintDispatchResult,

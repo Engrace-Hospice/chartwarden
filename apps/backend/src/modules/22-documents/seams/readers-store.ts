@@ -1,0 +1,203 @@
+// apps/backend/src/modules/22-documents/seams/readers-store.ts — M22-T05 the data PORT the five §4.3 PUBLISHED
+// reader seams (RenderedDocumentProvider / DocumentReader / PortalDocumentReader / IntakeMetricsProvider /
+// ExtractionProvenanceReader) compose over, plus an in-memory slice for tests / boot-without-DB. The reader
+// impls (./readers.ts) are pure orchestration over this port; production injects a Drizzle-backed store that
+// reads M22's `document` / `document_version` / `extraction_*` rows under the CONSUMER's `withOrgContext` —
+// the impls never switch tenants; RLS scopes every read by `app.org_id` (§4.3). Mirrors the M17 seams/store.ts
+// read-seam precedent (one store, many readers). All five seams are READ-only — M22 owns the lifecycle internally.
+import type {
+  DocumentAggregateType,
+  DocumentDigest,
+  DocumentId,
+  DocumentVersionId,
+  IntakeMetrics,
+  IsoInstant,
+  OrgId,
+  PatientId,
+  PortalDocumentDigest,
+  ProvenanceRecord,
+  ChartTargetModule,
+} from "@wardenx/types";
+
+/** The render-back-ref shape `RenderedDocumentProvider` returns (the active version per source aggregate). */
+export interface RenderedAggregateRow {
+  readonly documentId: DocumentId;
+  readonly versionId: DocumentVersionId;
+  readonly renderedAt: IsoInstant;
+}
+
+/**
+ * The data port the §4.3 published reader seams compose over. Read methods return read-only DTO shapes
+ * (never Drizzle rows); the Drizzle adapter projects rows to these under the consumer's RLS context. The org
+ * is already pinned by RLS, so reads key on the tenant-scoped ids and the (already-pinned) `organizationId`.
+ */
+export interface DocumentReaderStore {
+  /** §4.3 RenderedDocumentProvider — the active rendered document for one source aggregate, or null. */
+  renderedDocumentForAggregate(args: {
+    readonly aggregateType: DocumentAggregateType;
+    readonly aggregateId: string;
+    readonly organizationId: OrgId;
+  }): Promise<RenderedAggregateRow | null>;
+
+  /** §4.3 DocumentReader — the patient's document digests (most-recent first), `sinceCursor`-paged. The
+   * cursor is the opaque `createdAt|documentId` of the last row a prior page returned (keyset pagination). */
+  documentsForPatient(args: {
+    readonly patientId: PatientId;
+    readonly organizationId: OrgId;
+    readonly aggregateType?: DocumentAggregateType;
+    readonly sinceCursor?: string;
+    readonly limit: number;
+  }): Promise<ReadonlyArray<DocumentDigest>>;
+
+  /** §4.3 DocumentReader — one document's digest by id, or null when not visible under RLS. */
+  documentMetadata(args: {
+    readonly documentId: DocumentId;
+    readonly organizationId: OrgId;
+  }): Promise<DocumentDigest | null>;
+
+  /** The active version id for one document (the version the portal mint targets), or null. */
+  activeVersionForDocument(args: {
+    readonly documentVersionId: DocumentVersionId;
+    readonly organizationId: OrgId;
+  }): Promise<{ readonly documentId: DocumentId; readonly patientId: PatientId | null; readonly patientFacing: boolean } | null>;
+
+  /** §4.3 IntakeMetricsProvider — the intake-throughput counts for an org over a window. */
+  intakeMetrics(args: {
+    readonly organizationId: OrgId;
+    readonly from: IsoInstant;
+    readonly to: IsoInstant;
+  }): Promise<IntakeMetrics>;
+
+  /** §4.3 ExtractionProvenanceReader — the provenance records for one chart-target aggregate. */
+  provenanceForTargetAggregate(args: {
+    readonly targetModule: ChartTargetModule;
+    readonly targetAggregateId: string;
+    readonly organizationId: OrgId;
+  }): Promise<ReadonlyArray<ProvenanceRecord>>;
+}
+
+// ── in-memory slice ───────────────────────────────────────────────────────────────────────────────────
+
+/** Deterministic, I/O-free seed for the in-memory {@link DocumentReaderStore} (slice + seam tests). */
+export interface DocumentReaderSeed {
+  /** The rendered documents per source aggregate (RenderedDocumentProvider). */
+  readonly rendered?: readonly (RenderedAggregateRow & {
+    readonly aggregateType: DocumentAggregateType;
+    readonly aggregateId: string;
+    readonly organizationId: OrgId;
+  })[];
+  /** The full document digests (DocumentReader / PortalDocumentReader project these). */
+  readonly documents?: readonly DocumentDigest[];
+  /** The portal `consentByPatient` map — true when SUD-class portal content is consented (per-patient). */
+  readonly sudConsentByPatient?: Readonly<Record<string, boolean>>;
+  /** The intake-throughput counts per org. */
+  readonly intakeMetrics?: readonly IntakeMetrics[];
+  /** The provenance records (ExtractionProvenanceReader). */
+  readonly provenance?: readonly ProvenanceRecord[];
+}
+
+/** Compare two digests by (createdAt desc, documentId desc) — the keyset order the cursor pages over. */
+function digestAfterCursor(d: DocumentDigest, cursor: string): boolean {
+  // cursor = `${createdAt}|${documentId}` of the last row of the prior page; return rows strictly older.
+  const [cAt, cId] = cursor.split("|");
+  if (d.createdAt < (cAt ?? "")) return true;
+  if (d.createdAt > (cAt ?? "")) return false;
+  return d.documentId < (cId ?? "");
+}
+
+/** An in-memory {@link DocumentReaderStore} for the slice/tests — no DB, deterministic, RLS-free. */
+export function createInMemoryDocumentReaderStore(seed: DocumentReaderSeed = {}): {
+  store: DocumentReaderStore;
+} {
+  const rendered = [...(seed.rendered ?? [])];
+  const documents = [...(seed.documents ?? [])];
+  const consent = seed.sudConsentByPatient ?? {};
+  const metrics = [...(seed.intakeMetrics ?? [])];
+  const provenance = [...(seed.provenance ?? [])];
+
+  const sortedForPatient = (patientId: PatientId, organizationId: OrgId, aggregateType?: DocumentAggregateType) =>
+    documents
+      .filter(
+        (d) =>
+          d.patientId === patientId &&
+          d.organizationId === organizationId &&
+          (aggregateType === undefined || d.aggregateType === aggregateType),
+      )
+      // (createdAt desc, documentId desc) — newest first, stable on ties.
+      .sort((a, b) =>
+        a.createdAt === b.createdAt
+          ? b.documentId.localeCompare(a.documentId)
+          : b.createdAt.localeCompare(a.createdAt),
+      );
+
+  return {
+    store: {
+      async renderedDocumentForAggregate({ aggregateType, aggregateId, organizationId }) {
+        const r = rendered.find(
+          (x) =>
+            x.aggregateType === aggregateType &&
+            x.aggregateId === aggregateId &&
+            x.organizationId === organizationId,
+        );
+        return r ? { documentId: r.documentId, versionId: r.versionId, renderedAt: r.renderedAt } : null;
+      },
+      async documentsForPatient({ patientId, organizationId, aggregateType, sinceCursor, limit }) {
+        let rows = sortedForPatient(patientId, organizationId, aggregateType);
+        if (sinceCursor) rows = rows.filter((d) => digestAfterCursor(d, sinceCursor));
+        return rows.slice(0, limit);
+      },
+      async documentMetadata({ documentId, organizationId }) {
+        return (
+          documents.find((d) => d.documentId === documentId && d.organizationId === organizationId) ?? null
+        );
+      },
+      async activeVersionForDocument({ documentVersionId, organizationId }) {
+        const d = documents.find(
+          (x) => x.activeVersionId === documentVersionId && x.organizationId === organizationId,
+        );
+        return d ? { documentId: d.documentId, patientId: d.patientId, patientFacing: d.patientFacing } : null;
+      },
+      async intakeMetrics({ organizationId }) {
+        return (
+          metrics.find((m) => m.organizationId === organizationId) ?? {
+            organizationId,
+            bundlesProcessed: 0,
+            bundlesInReview: 0,
+            avgTimeToReviewMinutes: 0,
+            candidatesApproved: 0,
+            candidatesRejected: 0,
+          }
+        );
+      },
+      async provenanceForTargetAggregate({ targetModule, targetAggregateId, organizationId }) {
+        void organizationId; // RLS-enforced in prod; the slice's provenance rows are already tenant-scoped by seed
+        return provenance.filter(
+          (p) => p.targetModule === targetModule && p.targetAggregateId === targetAggregateId,
+        );
+      },
+    },
+  };
+  // `consent` is read by the PortalDocumentReader impl through the dedicated consent port (below), not here.
+  void consent;
+}
+
+/**
+ * The per-patient SUD-portal-consent gate the {@link PortalDocumentReader} consults before exposing SUD-class
+ * content or minting a download URL (§4.3 — "filters SUD content per consent"). In prod this resolves through
+ * M39's ConsentEvaluator seam; the slice models it as a pure map so the portal reader is testable with no M39.
+ */
+export interface PortalConsentPort {
+  /** Is SUD-class portal disclosure consented for this patient right now? */
+  isSudPortalDisclosureConsented(patientId: PatientId): boolean;
+}
+
+/** An in-memory {@link PortalConsentPort} from a per-patient consent map (default: not consented). */
+export function createInMemoryPortalConsentPort(
+  consentByPatient: Readonly<Record<string, boolean>> = {},
+): PortalConsentPort {
+  return {
+    isSudPortalDisclosureConsented(patientId: PatientId): boolean {
+      return consentByPatient[patientId] === true;
+    },
+  };
+}

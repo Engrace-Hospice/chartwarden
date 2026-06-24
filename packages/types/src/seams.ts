@@ -7,7 +7,14 @@ import type {
   LevelOfCareReader,
 } from "./admission";
 import type { CarePlanReader } from "./care-plan";
-import type { DocumentStorageProvider } from "./documents";
+import type {
+  DocumentReader,
+  DocumentStorageProvider,
+  ExtractionProvenanceReader,
+  IntakeMetricsProvider,
+  PortalDocumentReader,
+  RenderedDocumentProvider,
+} from "./documents";
 import type {
   BillableEncounterReader,
   EncounterCreator,
@@ -70,6 +77,19 @@ export type SeamName =
   | "PatientMutator" // M5 — apply an M29-proposal/amendment field diff (§4.9; D12 strip)
   | "DocumentRenderer" // M22 — render a typed payload to a stored document (W2 handshake)
   | "DocumentStorageProvider" // M22 — per-tenant object storage (presign + version-aware destroy; §4.3/D1)
+  // M22's five §4.3 PUBLISHED reader seams — leaf-typed (interfaces in ./documents, this leaf). All read-only
+  // projections downstream modules attach to instead of importing M22's schema: `RenderedDocumentProvider` —
+  // every source module's `m22-document-backref` consumer resolves the rendered document for its aggregate;
+  // `DocumentReader` — M28 (FHIR DocumentReference), M31 (portal list), M33 (reporting); `PortalDocumentReader`
+  // — M31 portal (internal tags stripped, SUD filtered per consent); `IntakeMetricsProvider` — M33/M30 intake
+  // throughput; `ExtractionProvenanceReader` — M28 (FHIR Provenance) + M30 (HQRP AI-governance) per-chart-field
+  // provenance (the data exists even though DocLens is OFF). M22 registers the real impls over the deny-stubs
+  // (M22-T05); consumers that list `22` in `dependsOn` resolve them through the typed accessors with no schema edge.
+  | "RenderedDocumentProvider" // M22 — rendered-document-for-aggregate read seam (the render back-ref resolve)
+  | "DocumentReader" // M22 — document/version digest read seam (FHIR projection / portal list / reporting)
+  | "PortalDocumentReader" // M22 — portal-safe document read seam (tags stripped, SUD filtered, mint download URL)
+  | "IntakeMetricsProvider" // M22 — intake-throughput metrics read seam (bundles processed / time-to-review)
+  | "ExtractionProvenanceReader" // M22 — per-chart-field extraction provenance read seam (data exists, DocLens OFF)
   | "ConsentEvaluator" // M39 — disclosure/redaction gate
   | "SessionContextResolver" // M2 — authenticated, org-scoped request context (actor + step-up state)
   | "AuditorSessionMinter" // M2 — mint a time-boxed auditor magic-link session (M3 calls it)
@@ -311,6 +331,16 @@ export interface SeamContracts {
   // through the typed accessor. The presign URL itself is never logged; the keys are PHI-free by
   // construction (D11) — but the surface guards a PHI object store → phi: true in REQUIRED_SEAMS.
   DocumentStorageProvider: DocumentStorageProvider;
+  // M22's five §4.3 published reader seams are LEAF-TYPED — their interfaces live in ./documents (this
+  // package), so the registry is statically typed against the real contract. M22 registers the real
+  // Drizzle-backed impls over the deny-stubs (M22-T05); consumers that list `22` in their manifest
+  // `dependsOn` (M28/M30/M31/M33 + every source module's back-ref consumer) resolve them through the typed
+  // accessors with no schema import edge. All five are READ-only — M22 owns the document lifecycle internally.
+  RenderedDocumentProvider: RenderedDocumentProvider;
+  DocumentReader: DocumentReader;
+  PortalDocumentReader: PortalDocumentReader;
+  IntakeMetricsProvider: IntakeMetricsProvider;
+  ExtractionProvenanceReader: ExtractionProvenanceReader;
   // M39's `ConsentEvaluator` is OPAQUE (`unknown`) here — the rich §4.3 interface lives in
   // @wardenx/consent (rich-seam pattern, see the note above the interface block). Consumers that
   // list `39` in `dependsOn` import the real type from @wardenx/consent and resolve via the

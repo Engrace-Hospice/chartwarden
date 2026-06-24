@@ -25,8 +25,10 @@ import {
   caseloadDenyStub,
   certificationReaderDenyStub,
   consentEvaluatorDenyStub,
+  documentReaderDenyStub,
   documentRendererDenyStub,
   documentStorageProviderDenyStub,
+  extractionProvenanceReaderDenyStub,
   electionPeriodReaderDenyStub,
   encounterCreatorDenyStub,
   evvAggregatorReferenceReaderDenyStub,
@@ -42,6 +44,7 @@ import {
   idgDecisionProviderDenyStub,
   idgPacketProviderDenyStub,
   idgScheduleProviderDenyStub,
+  intakeMetricsProviderDenyStub,
   latestAssessmentProviderDenyStub,
   levelOfCareReaderDenyStub,
   mdmEntityProviderDenyStub,
@@ -53,7 +56,9 @@ import {
   orderSignatureProviderDenyStub,
   patientMutatorDenyStub,
   patientReaderDenyStub,
+  portalDocumentReaderDenyStub,
   portalVisitReaderDenyStub,
+  renderedDocumentProviderDenyStub,
   reconciliationProviderDenyStub,
   refillInboxProviderDenyStub,
   scaleSeriesProviderDenyStub,
@@ -99,6 +104,34 @@ export const REQUIRED_SEAMS = [
     ownerModule: 22,
     phi: true,
     denyStub: documentStorageProviderDenyStub,
+  },
+  // M22 (§4.3) — the five PUBLISHED reader seams. All read PHI document/provenance projections except
+  // IntakeMetricsProvider (aggregate counts only → phi: false). Boot-validated and fail-closed until M22
+  // registers the real Drizzle-backed readers over the deny-stubs (M22-T05).
+  {
+    key: "RenderedDocumentProvider",
+    ownerModule: 22,
+    phi: true,
+    denyStub: renderedDocumentProviderDenyStub,
+  },
+  { key: "DocumentReader", ownerModule: 22, phi: true, denyStub: documentReaderDenyStub },
+  {
+    key: "PortalDocumentReader",
+    ownerModule: 22,
+    phi: true,
+    denyStub: portalDocumentReaderDenyStub,
+  },
+  {
+    key: "IntakeMetricsProvider",
+    ownerModule: 22,
+    phi: false,
+    denyStub: intakeMetricsProviderDenyStub,
+  },
+  {
+    key: "ExtractionProvenanceReader",
+    ownerModule: 22,
+    phi: true,
+    denyStub: extractionProvenanceReaderDenyStub,
   },
   { key: "ConsentEvaluator", ownerModule: 39, phi: true, denyStub: consentEvaluatorDenyStub },
   // M2 published seams (§4.7): authenticated request context + auditor session minter. Not PHI
