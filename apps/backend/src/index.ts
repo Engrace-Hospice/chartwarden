@@ -42,7 +42,7 @@ import { registerEmarErasers, registerEmarSeams } from "./modules/13-emar/index"
 import { registerIdgErasers, registerIdgSeams } from "./modules/14-idg/index";
 import { registerSchedulingSeams } from "./modules/17-scheduling/index";
 import { registerEvvSeams } from "./modules/18-evv/index";
-import { registerDocumentSeams } from "./modules/22-documents/index";
+import { registerDocumentErasers, registerDocumentSeams } from "./modules/22-documents/index";
 import {
   createDbMessagingProvider,
   mountMessagingRoutes,
@@ -196,6 +196,7 @@ export function wireModuleErasers(): void {
   registerDoseSpotErasers(); // M12-T09 — `medication_order_record` (prescribing-subtree destruction-cert callback; partition-drop; §7.7; D15; D7/D8)
   registerEmarErasers(); // M13-T10 — `emar_record` (eMAR-subtree destruction-cert callback; partition-drop; §7.7; D7/D8)
   registerIdgErasers(); // M14-T07 — `idg_record` (patient-scoped packet/decision/action-item/agenda destruction-cert callback; meetings/minutes survive; §8.4)
+  registerDocumentErasers(); // M22-T10 — `documents` (document/intake-subtree destruction-cert callback; DEK crypto-erase §8.6; legal-hold + Part 2 skip; D9/D12)
   // Phase-1 data-class owners append here as they land.
 }
 

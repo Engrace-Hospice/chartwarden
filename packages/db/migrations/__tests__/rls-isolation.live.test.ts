@@ -2123,4 +2123,72 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       expect(sub.rows[0].after.status).toBe("rejected"); // structural passes through
     });
   });
+
+  // ── M22 Document Management — org-scoped RLS, no-DELETE, audit scrub (§8.8 / §3.6) ──────────────────
+  // 0048/0049 (M22) applied above. Proves on REAL Postgres (M22 spec §8.8 cross-tenant isolation): the
+  // `document` aggregate root is tenant-isolated on app.org_id even with app authorization stubbed open
+  // — Org A can SELECT only its own document and Org B cannot (no leak through crafted ids); the WITH
+  // CHECK blocks a cross-tenant INSERT; wardenx_app has NO DELETE on `document` (§3.2 — a document is
+  // superseded/voided, never row-deleted; only `document_tag` is user-deletable); and the M4 write-audit
+  // trigger scrubs the §3.6 free-text PHI denylist (document.title — may carry a patient name) while the
+  // structured columns (retention_class, status) pass through.
+  describe("M22 Document Management — cross-tenant isolation, no-DELETE, audit scrub (§8.8 / §3.6)", () => {
+    const DOC_A22 = "d22a0000-0000-0000-0000-0000000000a1";
+    const DOC_B22 = "d22b0000-0000-0000-0000-0000000000b1";
+    const MEM_A22 = "d22a0000-0000-0000-0000-0000000000a2";
+    const MEM_B22 = "d22b0000-0000-0000-0000-0000000000b2";
+    const DCOLS =
+      "(id,organization_id,retention_class,source_kind,aggregate_type,title,created_by_membership_id)";
+
+    beforeAll(async () => {
+      // Seed one document per org as superuser (RLS bypassed) — the §8.8 fixture. The M4 write-audit
+      // trigger still fires on these inserts (proven below). `title` is the denylisted free-text column.
+      await db.query(
+        `INSERT INTO "document" ${DCOLS} VALUES
+           ($1,$2,'clinical_record','form_render','discharge_summary','Erin Example — Discharge Summary',$3),
+           ($4,$5,'clinical_record','form_render','discharge_summary','Frank Fixture — Discharge Summary',$6)`,
+        [DOC_A22, ORG_A, MEM_A22, DOC_B22, ORG_B, MEM_B22],
+      );
+    });
+
+    it("§8.8 Org A sees ONLY its own document (RLS blocks cross-tenant reads, auth stubbed open)", async () => {
+      const a = await withOrg(ORG_A, () =>
+        db.query('SELECT count(*)::int AS n FROM "document" WHERE id=$1', [DOC_A22]),
+      );
+      const b = await withOrg(ORG_B, () =>
+        db.query('SELECT count(*)::int AS n FROM "document" WHERE id=$1', [DOC_A22]),
+      );
+      expect(a.rows[0].n).toBe(1);
+      expect(b.rows[0].n).toBe(0);
+    });
+
+    it("§8.8 Org B cannot INSERT a document into Org A (WITH CHECK blocks the cross-tenant write)", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO "document" ${DCOLS} VALUES (gen_random_uuid(),$1,'clinical_record','form_render','discharge_summary','X',$2)`,
+            [ORG_A, MEM_B22],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("§3.2 no DELETE grant on document for wardenx_app (supersession/void, not deletes)", async () => {
+      await expect(
+        withOrg(ORG_A, () => db.query('DELETE FROM "document" WHERE id=$1', [DOC_A22])),
+      ).rejects.toThrow();
+    });
+
+    it("§3.6 the M4 write-audit trigger fired for the document write and scrubbed the title denylist", async () => {
+      const r = await db.query(
+        "SELECT after, retention_class FROM audit_event WHERE resource_kind='document' AND event_type='document.insert' AND organization_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [ORG_A],
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].after.title).toBe("<changed>"); // §3.6 free-text PHI scrub (title may carry a name)
+      expect(r.rows[0].after.retention_class).toBe("clinical_record"); // structural passes through
+      expect(r.rows[0].after.status).toBe("active"); // structural passes through
+      expect(r.rows[0].retention_class).toBe("compliance"); // §3.7 document audit-row retention class
+    });
+  });
 });

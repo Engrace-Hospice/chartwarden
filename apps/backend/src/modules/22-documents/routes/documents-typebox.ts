@@ -243,6 +243,75 @@ export const JobQuerySchema = Type.Object(PageQuery);
 export const ReviewQuerySchema = Type.Object(PageQuery);
 export const TemplateListQuerySchema = Type.Object(PageQuery);
 
+// ── Response views (read surfaces — Track B / M22-T10 typed-client enrichment) ─────────────────────
+// These mirror the `service.ts` DTOs (DocumentView / VersionView / IntakeBatchView / CursorPage) so the
+// generated client types the M22 read screens (DOC.Explorer / DOC.VersionHistory / INTAKE.BatchDetail /
+// FORM.TemplateLibrary). The handlers already return these shapes; enriching only the READ responses keeps
+// the contract from drifting from the validators (the same pattern M5/M6/M13 use for their read screens).
+
+/** One PHI list page: `items` + the opaque `nextCursor`/`hasMore` envelope every list route returns. */
+const CursorPageOf = <T extends TSchema>(item: T) =>
+  Type.Object({
+    items: Type.Array(item),
+    nextCursor: Type.Union([Type.String(), Type.Null()]),
+    hasMore: Type.Boolean(),
+  });
+
+export const DocumentViewSchema = Type.Object({
+  id: Type.String(),
+  organizationId: Type.String(),
+  patientId: Type.Union([Type.String(), Type.Null()]),
+  admissionId: Type.Union([Type.String(), Type.Null()]),
+  retentionClass: lit(RETENTION_CLASS),
+  aggregateType: Type.String(),
+  title: Type.String(),
+  patientFacing: Type.Boolean(),
+  attachToDisclosures: Type.Boolean(),
+  status: Type.String(),
+  version: Type.Integer(),
+  versionsCount: Type.Integer(),
+  createdAt: Type.String({ format: "date-time" }),
+  updatedAt: Type.String({ format: "date-time" }),
+});
+export const DocumentListResponseSchema = CursorPageOf(DocumentViewSchema);
+
+export const VersionViewSchema = Type.Object({
+  id: Type.String(),
+  documentId: Type.String(),
+  versionNumber: Type.Integer(),
+  mimeType: Type.String(),
+  byteSize: Type.Integer(),
+  uploadedAt: Type.String({ format: "date-time" }),
+  createdAt: Type.String({ format: "date-time" }),
+});
+export const VersionListResponseSchema = CursorPageOf(VersionViewSchema);
+
+export const IntakeBatchViewSchema = Type.Object({
+  id: Type.String(),
+  organizationId: Type.String(),
+  patientId: Type.Union([Type.String(), Type.Null()]),
+  status: Type.String(),
+  uploadedAt: Type.String({ format: "date-time" }),
+  pages: Type.Integer(),
+  createdAt: Type.String({ format: "date-time" }),
+});
+
+export const IntakeJobListResponseSchema = CursorPageOf(
+  Type.Object({
+    id: Type.String(),
+    createdAt: Type.String({ format: "date-time" }),
+    status: Type.String(),
+  }),
+);
+
+export const FormTemplateListResponseSchema = CursorPageOf(
+  Type.Object({
+    id: Type.String(),
+    key: Type.String(),
+    createdAt: Type.String({ format: "date-time" }),
+  }),
+);
+
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   const converted = Value.Convert(schema, raw ?? {});

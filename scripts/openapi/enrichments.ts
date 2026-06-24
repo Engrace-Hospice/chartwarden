@@ -57,6 +57,17 @@ import {
   WorksheetViewSchema,
 } from "../../apps/backend/src/modules/13-emar/routes/emar-typebox";
 import {
+  DocumentListQuerySchema as M22DocumentListQuerySchema,
+  DocumentListResponseSchema as M22DocumentListResponseSchema,
+  DocumentViewSchema as M22DocumentViewSchema,
+  FormTemplateListResponseSchema as M22FormTemplateListResponseSchema,
+  IntakeBatchViewSchema as M22IntakeBatchViewSchema,
+  IntakeJobListResponseSchema as M22IntakeJobListResponseSchema,
+  TemplateListQuerySchema as M22TemplateListQuerySchema,
+  VersionListQuerySchema as M22VersionListQuerySchema,
+  VersionListResponseSchema as M22VersionListResponseSchema,
+} from "../../apps/backend/src/modules/22-documents/routes/documents-typebox";
+import {
   ActionItemListQuerySchema as IdgActionItemListQuerySchema,
   ActionItemListResponseSchema as IdgActionItemListResponseSchema,
   MeetingViewSchema as IdgMeetingViewSchema,
@@ -979,6 +990,38 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/admin/administration-policy": {
     summary: "Tenant administration policy — grace window, PRN reassessment defaults (§4.1 / §6.1 #12)",
     response: AdministrationPolicyViewSchema,
+  },
+  // M22 Document Management (Track B — DOC.Explorer / DOC.VersionHistory / INTAKE.BatchDetail /
+  // FORM.TemplateLibrary, M22-T10). Read responses only; the upload / tag / export / intake-review /
+  // classify / publish write routes keep their route-level TypeBox request bodies (already in the
+  // contract). The SERVER is authoritative for §4.6 RBAC + §4.7 ABAC, legal-hold blocks (§8.6), the
+  // §4.12 signed-URL TTL floor, and SUD redaction — the screens never decide authorization.
+  "GET /api/v1/documents": {
+    summary: "List documents — filtered by patient / aggregate / retention class, cursor-paginated (§4.1 / §5.1 DOC.Explorer)",
+    query: M22DocumentListQuerySchema,
+    response: M22DocumentListResponseSchema,
+  },
+  "GET /api/v1/documents/:id": {
+    summary: "Document metadata + current version metadata (§4.1 / §5.1 DOC.SignedUrlPreview header)",
+    response: M22DocumentViewSchema,
+  },
+  "GET /api/v1/documents/:id/versions": {
+    summary: "Version history — author/version chain for the side-by-side diff (§4.1 / §5.1 DOC.VersionHistory)",
+    query: M22VersionListQuerySchema,
+    response: M22VersionListResponseSchema,
+  },
+  "GET /api/v1/intake/uploads/:id": {
+    summary: "Intake batch — pipeline status + page count for the DocLens review queue (§4.1 / §5.1 INTAKE.BatchDetail)",
+    response: M22IntakeBatchViewSchema,
+  },
+  "GET /api/v1/intake/uploads/:id/jobs": {
+    summary: "Extraction jobs for a batch — per-job pipeline status, cursor-paginated (§4.1 / §5.1 INTAKE.BatchDetail)",
+    response: M22IntakeJobListResponseSchema,
+  },
+  "GET /api/v1/form-templates": {
+    summary: "Browse the platform-floor form templates with version metadata (§4.1 / §5.1 FORM.TemplateLibrary)",
+    query: M22TemplateListQuerySchema,
+    response: M22FormTemplateListResponseSchema,
   },
   // M36 Messaging (Track A — Staff Messaging + Notifications)
   "GET /api/v1/messaging/channels": {

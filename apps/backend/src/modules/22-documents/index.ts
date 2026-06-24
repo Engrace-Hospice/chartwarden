@@ -26,6 +26,19 @@ export * from "./extraction/index";
 // + §7.16 SUD-redacted placeholder render + the §7.15 lab back-ref deny-stub (M29, Wave H). Pure planning;
 // the live render + dispatcher binding are deferred (T06 precedent); M22 deps stay [1, 5].
 export * from "./render-variants/index";
+// M22-T10 — the `documents` data eraser (§8.6 / D9 / D12): DEK-first crypto-erase → legal-hold/Part-2 skip
+// → version-aware MinIO + row deletion. Registered over the Phase-0 `documents` deny-stub by the composition
+// root (wireModuleErasers, after wireErasers() and before validateErasers()).
+export {
+  type DocumentEraseCounts,
+  type DocumentEraseSkips,
+  type DocumentEraseStore,
+  type DocumentEraserDeps,
+  createDocumentEraser,
+  createInMemoryDocumentEraseStore,
+  eraseDocumentRecord,
+  registerDocumentErasers,
+} from "./erasers/document-eraser";
 export {
   type DocumentAbacDeps,
   type DocumentAbacFacts,
