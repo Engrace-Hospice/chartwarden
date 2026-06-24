@@ -8,12 +8,30 @@ export const statusColors = {
   outage: { fg: "#991b1b", bg: "#fee2e2", border: "#fca5a5" },
 } as const;
 
-/** Brand palette seed (extended per app via the shared Tailwind config). */
+/**
+ * Brand palette seed — WardenX "Lantern" design system (docs/design/DESIGN.md §2).
+ * `primary` / `surface` / `muted` / `border` are the keys the shared Tailwind config reads;
+ * the remaining keys carry the full Lantern token set so this stays the single source of truth.
+ * Light values; dark-mode values live in apps/web/src/index.css `.dark`.
+ */
 export const brandColors = {
-  primary: "#1d4ed8",
-  surface: "#ffffff",
-  muted: "#6b7280",
-  border: "#e5e7eb",
+  // consumed by sharedTailwindConfig
+  primary: "#3b45a8", // twilight indigo
+  surface: "#ffffff", // card surface (surface-container-lowest)
+  muted: "#8c877f", // warm muted text
+  border: "#d7d3cb", // warm ghost border (outline-variant)
+  // full Lantern palette
+  primaryStrong: "#2b338a",
+  primaryTint: "#ecedfb",
+  accent: "#c98a1f", // Lantern gold — brand warmth only, never status
+  success: "#1f8a5b",
+  warning: "#9a5b00",
+  error: "#c12b3b",
+  alert: "#e0413f", // critical clinical/safety
+  background: "#f6f5f2", // warm paper canvas
+  onSurface: "#1c1b1a",
+  onSurfaceVariant: "#56524c",
+  outline: "#6e6a62",
 } as const;
 
 export const colors = { status: statusColors, brand: brandColors } as const;
