@@ -1,0 +1,4 @@
+// apps/web/src/modules/22-documents — M22 Document Management web-slice (Track B, ADR-0030, M22-T10).
+// Exports the screen-registry module the M1 shell registers in main.tsx. The screens read ONLY via the
+// generated typed client; the server is the only authz point.
+export { documentScreens } from "./screens";

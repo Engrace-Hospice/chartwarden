@@ -24,6 +24,7 @@
     "14-idg",
     "17-scheduling",
     "18-evv",
+    "22-documents",
     "36-messaging",
     "38-terminology",
     "40-mdm"
@@ -609,6 +610,34 @@
       "id": "evv.my-devices",
       "path": "/me/evv/devices",
       "permission": "evv.device.read"
+    },
+    {
+      "module": "22-documents",
+      "moduleId": 22,
+      "id": "documents.explorer",
+      "path": "/documents",
+      "permission": "documents.read"
+    },
+    {
+      "module": "22-documents",
+      "moduleId": 22,
+      "id": "documents.version-history",
+      "path": "/documents/:documentId/versions",
+      "permission": "documents.read_history"
+    },
+    {
+      "module": "22-documents",
+      "moduleId": 22,
+      "id": "documents.intake-batch",
+      "path": "/intake/:batchId",
+      "permission": "intake.read"
+    },
+    {
+      "module": "22-documents",
+      "moduleId": 22,
+      "id": "documents.template-library",
+      "path": "/admin/forms/templates",
+      "permission": "documents.read_templates"
     },
     {
       "module": "36-messaging",

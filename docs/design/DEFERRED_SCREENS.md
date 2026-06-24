@@ -272,6 +272,7 @@ contract), so `openapi.json`/the client are unchanged.
 | M14 | IDG Schedule (§5), Meeting Detail (§5), Live Meeting Surface (§5), Per-Patient Packet (§5), My Action Items (§5), Minutes (§5) | `screens/clinical/WARDENX_UI_IDG_MEETING.md` | done — IDG read surfaces (M14-T07)²¹ |
 | M17 | Day View (§5.1), Week View (§5.1), Proposal Inbox (§5.1), Recurring Policies (§5.1), Time-Off Queue (§5.1), Visit Detail (§5.1), My Visits (§5.1), Scheduling Metrics (§5.1) | M17 spec §5.1 | done — scheduling read surfaces (M17-T08)²² |
 | M18 | EVV Dashboard (§5.1), Event Ledger (§5.1), Event Detail (§5.1), Missing-EVV Resolutions (§5.1), Aggregator Submissions (§5.1), Geofence Policy (§5.1), Devices (§5.1), EVV Metrics (§5.1), My Devices (§5.1) | M18 spec §5.1 | done — EVV read surfaces (M18-T07)²³ |
+| M22 | DOC.Explorer (§5.1), DOC.VersionHistory (§5.1), INTAKE.BatchDetail (§5.1), FORM.TemplateLibrary (§5.1) | `docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md` §5.1 | done — Documents read surfaces (M22-T10)²⁴ |
 
 > ¹³ **Admissions/Intake (M6) now LIVE (Track B, M6-T12, ADR-0030).** Built under
 > `apps/web/src/modules/06-admission` against M6's generated client methods (the M6 read routes are
@@ -433,6 +434,25 @@ contract), so `openapi.json`/the client are unchanged.
 > capture ABAC + RLS narrow every read). The mobile check-in/check-out capture flow (§5.2, owned by the M17
 > visit-detail CTA), the resolution-attest / device-approve / policy-edit / aggregator-resubmit write surfaces,
 > and the M31 portal arrival view fill in as those write / Phase-2 paths land.
+
+> ²⁴ **Document Management (M22) now LIVE — read surfaces (Track B, M22-T10, ADR-0030).** Built under
+> `apps/web/src/modules/22-documents` against M22's generated client methods (the M22 read routes are enriched
+> in `scripts/openapi/enrichments.ts`, so `packages/ui/src/core/api` types them), registered into the M1 shell
+> via `documentScreens` (`main.tsx`). Built to the **Lantern** design language (`docs/design/DESIGN.md`) — the
+> first module screens authored against the unified `@theme` tokens (`var(--color-*)` / `var(--radius-*)` /
+> `var(--shadow-soft)` / `var(--font-*)`): warm-paper surfaces, the §6.6 status-pill taxonomy (color always
+> paired with a glyph, Hard Rule §10.10), §6.2 Lantern Cards, §3.1 mono identifiers, No-Line tables (§6.7) —
+> rather than the older inline-hex styling. DOC.Explorer ("Use Work Queue") is the tenant-wide document browse +
+> retention-class filter, KPI'd by total / Part 2 / from-intake; DOC.VersionHistory ("Use Detail Page") renders
+> the per-document version chain with the current-version aside; INTAKE.BatchDetail ("Use Detail Page") shows the
+> batch pipeline status + the per-job extraction lifecycle (DocLens jobs queue as `awaiting_capability` while
+> M32 is off — an in-progress pill, never a hard error); FORM.TemplateLibrary ("Use Work Queue") browses the
+> platform-floor templates. Nav visibility is gated by `documents.read` / `documents.read_history` /
+> `intake.read` / `documents.read_templates`; the SERVER stays the only enforcement point (out-of-scope rows are
+> non-leaking 404s, SUD content + legal-hold blocks are server-side, never a frontend hide). The upload dialog /
+> tag editor / signed-URL preview / DocLens side-by-side review (INTAKE.ReviewSideBySide) / overlay editor write
+> + modal surfaces fill in as those write paths harden; the mobile §5.2 + portal §5.3 (M31 Phase-2) surfaces are
+> forward-seams.
 
 ---
 

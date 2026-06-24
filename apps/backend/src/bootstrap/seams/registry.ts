@@ -25,7 +25,10 @@ import {
   caseloadDenyStub,
   certificationReaderDenyStub,
   consentEvaluatorDenyStub,
+  documentReaderDenyStub,
   documentRendererDenyStub,
+  documentStorageProviderDenyStub,
+  extractionProvenanceReaderDenyStub,
   electionPeriodReaderDenyStub,
   encounterCreatorDenyStub,
   evvAggregatorReferenceReaderDenyStub,
@@ -41,6 +44,7 @@ import {
   idgDecisionProviderDenyStub,
   idgPacketProviderDenyStub,
   idgScheduleProviderDenyStub,
+  intakeMetricsProviderDenyStub,
   latestAssessmentProviderDenyStub,
   levelOfCareReaderDenyStub,
   mdmEntityProviderDenyStub,
@@ -52,7 +56,9 @@ import {
   orderSignatureProviderDenyStub,
   patientMutatorDenyStub,
   patientReaderDenyStub,
+  portalDocumentReaderDenyStub,
   portalVisitReaderDenyStub,
+  renderedDocumentProviderDenyStub,
   reconciliationProviderDenyStub,
   refillInboxProviderDenyStub,
   scaleSeriesProviderDenyStub,
@@ -89,6 +95,44 @@ export const REQUIRED_SEAMS = [
   // boot-validated and fail-closed until M5 registers the real mutator (M5-T08).
   { key: "PatientMutator", ownerModule: 5, phi: true, denyStub: patientMutatorDenyStub },
   { key: "DocumentRenderer", ownerModule: 22, phi: true, denyStub: documentRendererDenyStub },
+  // M22 (§4.3 / §11 D1) — the per-tenant object-storage seam (presign download + version-aware destroy).
+  // The presigned URL is never logged and the keys are PHI-free by construction (D11), but the surface
+  // reaches PHI bytes → phi: true; boot-validated and fail-closed until M22 registers the real provider
+  // (M22-T04). The M22 lifecycle/eraser paths resolve it through the typed accessor.
+  {
+    key: "DocumentStorageProvider",
+    ownerModule: 22,
+    phi: true,
+    denyStub: documentStorageProviderDenyStub,
+  },
+  // M22 (§4.3) — the five PUBLISHED reader seams. All read PHI document/provenance projections except
+  // IntakeMetricsProvider (aggregate counts only → phi: false). Boot-validated and fail-closed until M22
+  // registers the real Drizzle-backed readers over the deny-stubs (M22-T05).
+  {
+    key: "RenderedDocumentProvider",
+    ownerModule: 22,
+    phi: true,
+    denyStub: renderedDocumentProviderDenyStub,
+  },
+  { key: "DocumentReader", ownerModule: 22, phi: true, denyStub: documentReaderDenyStub },
+  {
+    key: "PortalDocumentReader",
+    ownerModule: 22,
+    phi: true,
+    denyStub: portalDocumentReaderDenyStub,
+  },
+  {
+    key: "IntakeMetricsProvider",
+    ownerModule: 22,
+    phi: false,
+    denyStub: intakeMetricsProviderDenyStub,
+  },
+  {
+    key: "ExtractionProvenanceReader",
+    ownerModule: 22,
+    phi: true,
+    denyStub: extractionProvenanceReaderDenyStub,
+  },
   { key: "ConsentEvaluator", ownerModule: 39, phi: true, denyStub: consentEvaluatorDenyStub },
   // M2 published seams (§4.7): authenticated request context + auditor session minter. Not PHI
   // (identity/session metadata, not a patient record), but still boot-validated and fail-closed.

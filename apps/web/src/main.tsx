@@ -20,6 +20,7 @@ import { emarScreens } from "./modules/13-emar";
 import { idgScreens } from "./modules/14-idg";
 import { schedulingScreens } from "./modules/17-scheduling";
 import { evvScreens } from "./modules/18-evv";
+import { documentScreens } from "./modules/22-documents";
 import { messagingScreens } from "./modules/36-messaging";
 import { terminologyScreens } from "./modules/38-terminology";
 import { mdmScreens } from "./modules/40-mdm";
@@ -45,6 +46,7 @@ registry.register(emarScreens); // M13 eMAR Administration (Track B, M13-T10)
 registry.register(idgScreens); // M14 Interdisciplinary Group / IDG (Track B, M14-T07)
 registry.register(schedulingScreens); // M17 Scheduling & Route Optimization (Track B, M17-T08)
 registry.register(evvScreens); // M18 Electronic Visit Verification (Track B, M18-T07)
+registry.register(documentScreens); // M22 Document Management (Track B, M22-T10)
 registry.register(messagingScreens); // M36 Messaging (Track A)
 registry.register(terminologyScreens); // M38 Terminology (Track A)
 registry.register(mdmScreens); // M40 MDM (Track A)

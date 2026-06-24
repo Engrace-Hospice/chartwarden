@@ -11,12 +11,13 @@
 //     it back through this seam (it has no such method), so HIV/MH/genetic redaction stays fail-closed
 //     in the evaluator (§4.3.1) rather than M39 inventing a disclose decision it cannot back.
 //
-//   • DocumentRenderer (M22, §4.4/D15) — DENY-STUB FORWARD SEAM. M22 is Wave F; ADR-0006 dropped the
-//     22→39 manifest edge (M39 consumes M22's renderer, not the reverse). Until M22 registers the real
-//     renderer, getSeam("DocumentRenderer") returns the fail-closed deny-stub, so the signed-PDF render
-//     path (emit m39.consent.signed → render the `consent_record` template) throws LOUDLY rather than
-//     silently dropping the artifact. No import of any @wardenx/documents package here — the type is
-//     the leaf one, the impl is resolved at call time — so arch:boundaries stays edge-free (no 22→39).
+//   • DocumentRenderer (M22, §4.4/D15) — NOW REAL (M22-T04 registered the W2 render handshake over the
+//     boot deny-stub). ADR-0006 dropped the 22→39 manifest edge (M39 consumes M22's renderer, not the
+//     reverse). getSeam("DocumentRenderer") resolves to M22's real publisher, so the signed-PDF render
+//     path (emit m39.consent.signed → render the `consent_record` template) materializes the artifact
+//     (the deny-stub stays the fail-closed default the registry applies if M22 is ever absent). No import
+//     of any @wardenx/documents package here — the type is the leaf one, the impl is resolved at call
+//     time — so arch:boundaries stays edge-free (no 22→39).
 import type { DocumentRenderer, OrgScope, PatientIdentity, PatientReader } from "@wardenx/types";
 import { getSeam } from "../../bootstrap/index";
 
@@ -25,7 +26,7 @@ export function getConsentPatientReader(): PatientReader {
   return getSeam("PatientReader");
 }
 
-/** Typed resolver for M22's `DocumentRenderer` — a forward-seam deny-stub until M22 lands (Wave F). */
+/** Typed resolver for M22's `DocumentRenderer` — REAL since M22-T04 (registered over the boot deny-stub). */
 export function getConsentDocumentRenderer(): DocumentRenderer {
   return getSeam("DocumentRenderer");
 }
@@ -46,6 +47,8 @@ export async function resolvePatientForConsent(
 /** The typed payload M39 hands M22 to render the §164.508(c)(2) `consent_record` writing (D15). M22
  *  owns the template (`consent_record` key, M22 D14); M39 supplies the consent facts. */
 export interface ConsentRecordRenderPayload {
+  /** The W2 render aggregate id (§7.2 step 6) — the consent record id M22 keys the rendered document on. */
+  readonly aggregateId: string;
   readonly consentRecordId: string;
   readonly patientId: string;
   readonly typeKey: string;
@@ -58,7 +61,7 @@ export interface ConsentRecordRenderPayload {
 
 /**
  * D15 signed-PDF render request: emit the `consent_record` template render through M22's renderer.
- * FORWARD SEAM — throws (deny-stub) until M22 registers the real renderer. The caller (the
+ * REAL since M22-T04 — M22's W2 handshake materializes the `consent_record` document. The caller (the
  * m22-render-emitter service, T08/T09) invokes this after `m39.consent.signed`; M22's
  * `m22.document.rendered` back-ref then stamps `consent_document_link` (T08 consumer).
  */

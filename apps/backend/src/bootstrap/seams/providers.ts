@@ -18,7 +18,10 @@ import type {
   CarePlanReader,
   CaseloadProvider,
   CertificationReader,
+  DocumentReader,
   DocumentRenderer,
+  DocumentStorageProvider,
+  ExtractionProvenanceReader,
   ElectionPeriodReader,
   EncounterCreator,
   EvvAggregatorReferenceReader,
@@ -43,9 +46,12 @@ import type {
   OrderSignatureProvider,
   ReconciliationProvider,
   RefillInboxProvider,
+  IntakeMetricsProvider,
   PatientMutator,
   PatientReader,
+  PortalDocumentReader,
   PortalVisitReader,
+  RenderedDocumentProvider,
   ScaleSeriesProvider,
   SeamName,
   SessionContextResolver,
@@ -103,6 +109,60 @@ export const patientMutatorDenyStub: PatientMutator = {
 export const documentRendererDenyStub: DocumentRenderer = {
   render() {
     throw new NotImplementedError("DocumentRenderer");
+  },
+};
+
+export const documentStorageProviderDenyStub: DocumentStorageProvider = {
+  presignDownload() {
+    throw new NotImplementedError("DocumentStorageProvider");
+  },
+  destroyAllObjectVersions() {
+    throw new NotImplementedError("DocumentStorageProvider");
+  },
+};
+
+// M22 (§4.3) the five PUBLISHED reader seams. LEAF-TYPED (interfaces in @wardenx/types) → concrete typed
+// deny-stubs (like M6/M17's readers). Each denies LOUDLY until M22 registers the real Drizzle-backed reader
+// over it (M22-T05). All five are READ-only document/provenance/metrics projections.
+
+/** M22 — rendered-document-for-aggregate read (every source module's back-ref consume). Denies until M22 registers. */
+export const renderedDocumentProviderDenyStub: RenderedDocumentProvider = {
+  getRenderedDocumentForAggregate() {
+    throw new NotImplementedError("RenderedDocumentProvider");
+  },
+};
+
+/** M22 — document/version digest read (M28 FHIR / M31 portal list / M33 reporting). Denies until M22 registers. */
+export const documentReaderDenyStub: DocumentReader = {
+  documentsForPatient() {
+    throw new NotImplementedError("DocumentReader");
+  },
+  documentMetadata() {
+    throw new NotImplementedError("DocumentReader");
+  },
+};
+
+/** M22 — portal-safe document read + download-URL mint (M31). Denies until M22 registers the real reader. */
+export const portalDocumentReaderDenyStub: PortalDocumentReader = {
+  documentsForPatient() {
+    throw new NotImplementedError("PortalDocumentReader");
+  },
+  mintPortalDownloadUrl() {
+    throw new NotImplementedError("PortalDocumentReader");
+  },
+};
+
+/** M22 — intake-throughput metrics read (M33/M30). Denies until M22 registers the real provider. */
+export const intakeMetricsProviderDenyStub: IntakeMetricsProvider = {
+  metricsForOrg() {
+    throw new NotImplementedError("IntakeMetricsProvider");
+  },
+};
+
+/** M22 — per-chart-field extraction provenance read (M28 FHIR Provenance / M30). Denies until M22 registers. */
+export const extractionProvenanceReaderDenyStub: ExtractionProvenanceReader = {
+  provenanceForTargetAggregate() {
+    throw new NotImplementedError("ExtractionProvenanceReader");
   },
 };
 

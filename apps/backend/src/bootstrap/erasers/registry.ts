@@ -19,6 +19,13 @@ const erasers = new Map<DataClass, DataEraser>();
 export const REQUIRED_ERASERS: readonly DataClass[] = [
   "audit_event",
   "clinical_record",
+  // M22-T10: a patient's document record (document/document_version + tags + the intake_artifact subtree:
+  // intake_upload_batch/classified_page/extraction_job/extraction_candidate/extraction_review/extraction_decision
+  // + the MinIO objects). M22 registers the REAL eraser via the composition-root hook over this deny-stub —
+  // under an M4 destruction certificate (§8.6 / W14, D12) it crypto-erases the document/extraction ciphertext
+  // (tenant DEK) FIRST, SKIPS documents under an active legal hold + passes compliance_42cfr_part2-class rows
+  // through to M4's eraseAuditRows Part 2 refusal, then version-aware deletes the remaining MinIO objects + rows;
+  // document_access_log rows inside the §164.528 retention floor survive (ADR-0013). The `subjectId` is the patient.
   "documents",
   // M36-T10: message bodies (D9 tenant offboarding). M36 registers the REAL eraser via the
   // composition-root hook over this deny-stub — tenant-offboarding cryptographically erases every

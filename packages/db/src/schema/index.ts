@@ -452,3 +452,14 @@ export * from "./evv/evv-geofence-policy";
 export * from "./evv/evv-device";
 export * from "./evv/evv-missing-resolution";
 export * from "./evv/evv-aggregator-submission";
+// M22 Document Management (M22-T02, §3.3): 17 tables. `document` + `intake_upload_batch` are PHI-bearing by
+// the three-column rule (they carry patient_id → provider_entity_id + location_id present, nullable as the
+// org-level-entity carve-out); the rest are org-scoped (joining to PHI via document/batch) except
+// `form_template` + `form_template_version`, which are platform-shared catalog (NO organization_id BY DESIGN,
+// NON_ORG_SCOPED, dual-grant RLS — M38/M40 precedent). `document_access_log` / `form_fill` / `extraction_job`
+// / `extraction_candidate` are PARTITION BY RANGE monthly — the Drizzle shape here is logical (composite PK
+// incl. the partition key); the PARTITION BY + monthly children land in the RLS migration (0049). Cross-module
+// refs (M5 patient, M6 admission, owning-module aggregates) are plain uuid app-validated (M22 dependsOn [1,5]);
+// only the org spine + intra-M22 parents carry SQL FKs. RLS + grants + M4 write-audit triggers (cipher /
+// free-text PHI columns denylisted, §3.6) land in M22-T02 (0049).
+export * from "./documents/index";
