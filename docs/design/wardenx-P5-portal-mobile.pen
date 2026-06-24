@@ -1,0 +1,3285 @@
+{
+  "version": "2.13",
+  "children": [
+    {
+      "type": "frame",
+      "id": "bi8Au",
+      "x": 0,
+      "y": 0,
+      "name": "Frame",
+      "clip": true,
+      "width": 800,
+      "height": 600,
+      "fill": "#FFFFFF",
+      "layout": "none"
+    },
+    {
+      "type": "frame",
+      "id": "Fbl6u",
+      "x": 880,
+      "y": 0,
+      "name": "Button/Primary",
+      "reusable": true,
+      "fill": "$--primary",
+      "cornerRadius": "$--radius-pill",
+      "gap": 8,
+      "padding": [
+        12,
+        22
+      ],
+      "justifyContent": "center",
+      "alignItems": "center",
+      "children": [
+        {
+          "type": "text",
+          "id": "k4Tr9X",
+          "name": "Label",
+          "fill": "$--primary-foreground",
+          "content": "Primary",
+          "fontFamily": "$--font-secondary",
+          "fontSize": 16,
+          "fontWeight": "600"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "t585Z1",
+      "x": 1025,
+      "y": 0,
+      "name": "Button/Secondary",
+      "reusable": true,
+      "fill": "$--surface-high",
+      "cornerRadius": "$--radius-pill",
+      "gap": 8,
+      "padding": [
+        12,
+        22
+      ],
+      "justifyContent": "center",
+      "alignItems": "center",
+      "children": [
+        {
+          "type": "text",
+          "id": "cBHTC",
+          "name": "Label",
+          "fill": "$--foreground",
+          "content": "Secondary",
+          "fontFamily": "$--font-secondary",
+          "fontSize": 16,
+          "fontWeight": "600"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "e3gRIN",
+      "x": 1193,
+      "y": 0,
+      "name": "Badge",
+      "reusable": true,
+      "fill": "$--color-success-bg",
+      "cornerRadius": "$--radius-pill",
+      "gap": 6,
+      "padding": [
+        5,
+        12
+      ],
+      "alignItems": "center",
+      "children": [
+        {
+          "type": "icon",
+          "id": "T7kLJ",
+          "name": "Badge Icon",
+          "width": 15,
+          "height": 15,
+          "icon": "check_circle",
+          "library": "Material Symbols Rounded",
+          "fill": "$--color-success"
+        },
+        {
+          "type": "text",
+          "id": "yVkwW",
+          "name": "Badge Label",
+          "fill": "$--color-success",
+          "content": "Active",
+          "fontFamily": "$--font-secondary",
+          "fontSize": 13,
+          "fontWeight": "500"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "ltVaw",
+      "x": 1378,
+      "y": 0,
+      "name": "Patient / Family Portal Dashboard",
+      "clip": true,
+      "width": 1100,
+      "height": 1200,
+      "fill": "$--background",
+      "layout": "vertical",
+      "alignItems": "center",
+      "children": [
+        {
+          "type": "frame",
+          "id": "jUocG",
+          "name": "Portal Header",
+          "width": "fill_container",
+          "height": 72,
+          "fill": "$--card",
+          "stroke": "$--border",
+          "strokeWidth": {
+            "bottom": 1
+          },
+          "strokeAlignment": "inner",
+          "gap": 16,
+          "padding": [
+            0,
+            32
+          ],
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "xiAjP",
+              "name": "b",
+              "fill": "$--primary",
+              "content": "WardenX",
+              "fontFamily": "$--font-primary",
+              "fontSize": 22,
+              "fontWeight": "600"
+            },
+            {
+              "type": "text",
+              "id": "Zy5VH",
+              "name": "p",
+              "fill": "$--muted-foreground",
+              "content": "Engrace Hospice · Family Portal",
+              "fontFamily": "$--font-secondary",
+              "fontSize": 14,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "frame",
+              "id": "ArrdE",
+              "name": "sp",
+              "width": "fill_container",
+              "height": 1
+            },
+            {
+              "type": "icon",
+              "id": "p0KqD",
+              "name": "acc",
+              "width": 30,
+              "height": 30,
+              "icon": "account_circle",
+              "library": "Material Symbols Rounded",
+              "fill": "$--muted-foreground"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "QSldh",
+          "name": "Column",
+          "width": 560,
+          "layout": "vertical",
+          "gap": 20,
+          "padding": [
+            32,
+            0,
+            48,
+            0
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "vxlKb",
+              "name": "greet",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 4,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "fNAu2",
+                  "name": "t",
+                  "fill": "$--foreground",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Good afternoon, Sarah",
+                  "fontFamily": "$--font-primary",
+                  "fontSize": 30,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "dhF7Z",
+                  "name": "s",
+                  "fill": "$--muted-foreground",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Here's how we're caring for your mother, Margaret.",
+                  "fontFamily": "$--font-secondary",
+                  "fontSize": 16,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "BslbV",
+              "name": "Safety",
+              "width": "fill_container",
+              "fill": "$--color-alert-bg",
+              "cornerRadius": "$--radius-l",
+              "gap": 14,
+              "padding": 20,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "CJrB3",
+                  "name": "i",
+                  "width": 26,
+                  "height": 26,
+                  "icon": "call",
+                  "library": "Material Symbols Rounded",
+                  "fill": "$--color-alert"
+                },
+                {
+                  "type": "frame",
+                  "id": "q3K2I",
+                  "name": "sc",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 2,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "RWQfa",
+                      "name": "t",
+                      "fill": "$--color-alert",
+                      "content": "Need help now? We're here 24/7.",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 16,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "dSuSH",
+                      "name": "s",
+                      "fill": "$--color-alert",
+                      "content": "Call the on-call nurse any time, day or night.",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ZASgL",
+                  "name": "cbb",
+                  "fill": "$--color-alert",
+                  "cornerRadius": "$--radius-pill",
+                  "padding": [
+                    10,
+                    18
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "z4wsd",
+                      "name": "l",
+                      "fill": "#ffffff",
+                      "content": "Call now",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 15,
+                      "fontWeight": "600"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "JmXpc",
+              "name": "Card Next visit",
+              "width": "fill_container",
+              "fill": "$--card",
+              "cornerRadius": "$--radius-l",
+              "layout": "vertical",
+              "gap": 16,
+              "padding": 24,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "b4gNdL",
+                  "name": "h",
+                  "width": "fill_container",
+                  "gap": 10,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "LXANo",
+                      "name": "i",
+                      "width": 22,
+                      "height": 22,
+                      "icon": "event",
+                      "library": "Material Symbols Rounded",
+                      "fill": "$--primary"
+                    },
+                    {
+                      "type": "text",
+                      "id": "To779",
+                      "name": "t",
+                      "fill": "$--foreground",
+                      "content": "Next visit",
+                      "fontFamily": "$--font-primary",
+                      "fontSize": 19,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "in8ok",
+                  "name": "nvr",
+                  "width": "fill_container",
+                  "gap": 14,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "ellipse",
+                      "id": "js67U",
+                      "name": "a",
+                      "fill": "$--primary-tint",
+                      "width": 48,
+                      "height": 48
+                    },
+                    {
+                      "type": "frame",
+                      "id": "dIq2Q",
+                      "name": "nc",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "XIQkK",
+                          "name": "n",
+                          "fill": "$--foreground",
+                          "content": "Nurse visit — Jenny Liu, RN",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 17,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "HGhDJ",
+                          "name": "d",
+                          "fill": "$--muted-foreground",
+                          "content": "Today at 2:00 PM",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 15,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "Cbcqe",
+                      "type": "ref",
+                      "ref": "e3gRIN",
+                      "name": "b",
+                      "fill": "$--primary-tint",
+                      "descendants": {
+                        "T7kLJ": {
+                          "icon": "schedule",
+                          "fill": "$--primary"
+                        },
+                        "yVkwW": {
+                          "content": "Today",
+                          "fill": "$--primary"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "pnKte",
+              "name": "Card Your care team",
+              "width": "fill_container",
+              "fill": "$--card",
+              "cornerRadius": "$--radius-l",
+              "layout": "vertical",
+              "gap": 16,
+              "padding": 24,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "RHpl6",
+                  "name": "h",
+                  "width": "fill_container",
+                  "gap": 10,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "w7tzwY",
+                      "name": "i",
+                      "width": 22,
+                      "height": 22,
+                      "icon": "groups",
+                      "library": "Material Symbols Rounded",
+                      "fill": "$--primary"
+                    },
+                    {
+                      "type": "text",
+                      "id": "K6Ybcu",
+                      "name": "t",
+                      "fill": "$--foreground",
+                      "content": "Your care team",
+                      "fontFamily": "$--font-primary",
+                      "fontSize": 19,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "R5grq",
+                  "name": "r",
+                  "width": "fill_container",
+                  "gap": 12,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "ellipse",
+                      "id": "JOC5n",
+                      "name": "a",
+                      "fill": "$--surface-high",
+                      "width": 40,
+                      "height": 40
+                    },
+                    {
+                      "type": "frame",
+                      "id": "yBx7u",
+                      "name": "c",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "hqHUx",
+                          "name": "n",
+                          "fill": "$--foreground",
+                          "content": "Jenny Liu, RN",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 16,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "o3xVPu",
+                          "name": "ro",
+                          "fill": "$--muted",
+                          "content": "Case Manager",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "icon",
+                      "id": "l2AZs",
+                      "name": "m",
+                      "width": 22,
+                      "height": 22,
+                      "icon": "chat_bubble",
+                      "library": "Material Symbols Rounded",
+                      "fill": "$--primary"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ifLEt",
+                  "name": "r",
+                  "width": "fill_container",
+                  "gap": 12,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "ellipse",
+                      "id": "nAYhH",
+                      "name": "a",
+                      "fill": "$--surface-high",
+                      "width": 40,
+                      "height": 40
+                    },
+                    {
+                      "type": "frame",
+                      "id": "cU800",
+                      "name": "c",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "zmEFt",
+                          "name": "n",
+                          "fill": "$--foreground",
+                          "content": "Karen Adams",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 16,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "RbE68",
+                          "name": "ro",
+                          "fill": "$--muted",
+                          "content": "Social Worker",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "icon",
+                      "id": "NGKvt",
+                      "name": "m",
+                      "width": 22,
+                      "height": 22,
+                      "icon": "chat_bubble",
+                      "library": "Material Symbols Rounded",
+                      "fill": "$--primary"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "cSXQl",
+                  "name": "r",
+                  "width": "fill_container",
+                  "gap": 12,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "ellipse",
+                      "id": "fBH97",
+                      "name": "a",
+                      "fill": "$--surface-high",
+                      "width": 40,
+                      "height": 40
+                    },
+                    {
+                      "type": "frame",
+                      "id": "tqkdF",
+                      "name": "c",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "hmxFX",
+                          "name": "n",
+                          "fill": "$--foreground",
+                          "content": "Rev. Stone",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 16,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "KNDNd",
+                          "name": "ro",
+                          "fill": "$--muted",
+                          "content": "Chaplain",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "icon",
+                      "id": "x3foh",
+                      "name": "m",
+                      "width": 22,
+                      "height": 22,
+                      "icon": "chat_bubble",
+                      "library": "Material Symbols Rounded",
+                      "fill": "$--primary"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "N87kg",
+                  "name": "r",
+                  "width": "fill_container",
+                  "gap": 12,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "ellipse",
+                      "id": "XqOSY",
+                      "name": "a",
+                      "fill": "$--surface-high",
+                      "width": 40,
+                      "height": 40
+                    },
+                    {
+                      "type": "frame",
+                      "id": "h3X7oM",
+                      "name": "c",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "K96xDN",
+                          "name": "n",
+                          "fill": "$--foreground",
+                          "content": "Dr. Rivera",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 16,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "YXIjC",
+                          "name": "ro",
+                          "fill": "$--muted",
+                          "content": "Physician",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 14,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "icon",
+                      "id": "tmFhr",
+                      "name": "m",
+                      "width": 22,
+                      "height": 22,
+                      "icon": "chat_bubble",
+                      "library": "Material Symbols Rounded",
+                      "fill": "$--primary"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "O7ih8G",
+              "name": "Card Messages",
+              "width": "fill_container",
+              "fill": "$--card",
+              "cornerRadius": "$--radius-l",
+              "layout": "vertical",
+              "gap": 16,
+              "padding": 24,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "PDlI7",
+                  "name": "h",
+                  "width": "fill_container",
+                  "gap": 10,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "OfyGG",
+                      "name": "i",
+                      "width": 22,
+                      "height": 22,
+                      "icon": "forum",
+                      "library": "Material Symbols Rounded",
+                      "fill": "$--primary"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Up8Xj",
+                      "name": "t",
+                      "fill": "$--foreground",
+                      "content": "Messages",
+                      "fontFamily": "$--font-primary",
+                      "fontSize": 19,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "nV8St",
+                  "name": "mr",
+                  "width": "fill_container",
+                  "gap": 12,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "xsDVE",
+                      "name": "d",
+                      "width": 10,
+                      "height": 10,
+                      "fill": "$--primary",
+                      "cornerRadius": "$--radius-pill"
+                    },
+                    {
+                      "type": "text",
+                      "id": "HhhMl",
+                      "name": "t",
+                      "fill": "$--foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "1 new message from your care team",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 16,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "s2KpZ",
+              "name": "Card Documents & consents",
+              "width": "fill_container",
+              "fill": "$--card",
+              "cornerRadius": "$--radius-l",
+              "layout": "vertical",
+              "gap": 16,
+              "padding": 24,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "J99KK9",
+                  "name": "h",
+                  "width": "fill_container",
+                  "gap": 10,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "UVb7I",
+                      "name": "i",
+                      "width": 22,
+                      "height": 22,
+                      "icon": "draw",
+                      "library": "Material Symbols Rounded",
+                      "fill": "$--primary"
+                    },
+                    {
+                      "type": "text",
+                      "id": "DiWUS",
+                      "name": "t",
+                      "fill": "$--foreground",
+                      "content": "Documents & consents",
+                      "fontFamily": "$--font-primary",
+                      "fontSize": 19,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "VS3yR",
+                  "name": "dr",
+                  "width": "fill_container",
+                  "gap": 12,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "rzekn",
+                      "name": "i",
+                      "width": 20,
+                      "height": 20,
+                      "icon": "edit_document",
+                      "library": "Material Symbols Rounded",
+                      "fill": "$--color-warning"
+                    },
+                    {
+                      "type": "text",
+                      "id": "P8zu95",
+                      "name": "t",
+                      "fill": "$--foreground",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "1 consent form needs your signature",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 16,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "id": "qliJB",
+                      "type": "ref",
+                      "ref": "Fbl6u",
+                      "name": "b",
+                      "descendants": {
+                        "k4Tr9X": {
+                          "content": "Review"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "y8N8k",
+      "x": 2598,
+      "y": 0,
+      "name": "Portal Care Team Messages",
+      "clip": true,
+      "width": 1100,
+      "height": 1100,
+      "fill": "$--background",
+      "layout": "vertical",
+      "alignItems": "center",
+      "children": [
+        {
+          "type": "frame",
+          "id": "WxfoM",
+          "name": "Portal Header",
+          "width": "fill_container",
+          "height": 72,
+          "fill": "$--card",
+          "stroke": "$--border",
+          "strokeWidth": {
+            "bottom": 1
+          },
+          "strokeAlignment": "inner",
+          "gap": 16,
+          "padding": [
+            0,
+            32
+          ],
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "icon",
+              "id": "GLIwD",
+              "name": "back",
+              "width": 24,
+              "height": 24,
+              "icon": "arrow_back",
+              "library": "Material Symbols Rounded",
+              "fill": "$--muted-foreground"
+            },
+            {
+              "type": "text",
+              "id": "A6tHvt",
+              "name": "b",
+              "fill": "$--primary",
+              "content": "Messages",
+              "fontFamily": "$--font-primary",
+              "fontSize": 22,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "u1NSl",
+              "name": "sp",
+              "width": "fill_container",
+              "height": 1
+            },
+            {
+              "type": "frame",
+              "id": "Wkf4V",
+              "name": "safe",
+              "fill": "$--color-alert-bg",
+              "cornerRadius": "$--radius-pill",
+              "gap": 6,
+              "padding": [
+                8,
+                14
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "h7drDZ",
+                  "name": "i",
+                  "width": 16,
+                  "height": 16,
+                  "icon": "call",
+                  "library": "Material Symbols Rounded",
+                  "fill": "$--color-alert"
+                },
+                {
+                  "type": "text",
+                  "id": "IS9Mg",
+                  "name": "t",
+                  "fill": "$--color-alert",
+                  "content": "24/7 care line",
+                  "fontFamily": "$--font-secondary",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "cBsrQ",
+          "name": "Column",
+          "width": 620,
+          "height": "fill_container",
+          "layout": "vertical",
+          "padding": [
+            24,
+            0
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "T5m8o",
+              "name": "ctx",
+              "width": "fill_container",
+              "gap": 10,
+              "padding": [
+                12,
+                4,
+                16,
+                4
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "Z95gOF",
+                  "name": "t",
+                  "fill": "$--muted-foreground",
+                  "content": "Conversation with Margaret's care team",
+                  "fontFamily": "$--font-secondary",
+                  "fontSize": 15,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "qDpHT",
+              "name": "Thread",
+              "width": "fill_container",
+              "height": "fill_container",
+              "layout": "vertical",
+              "gap": 16,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "YU8yB",
+                  "name": "row",
+                  "width": "fill_container",
+                  "gap": 10,
+                  "children": [
+                    {
+                      "type": "ellipse",
+                      "id": "iM5hT",
+                      "name": "a",
+                      "fill": "$--surface-high",
+                      "width": 36,
+                      "height": 36
+                    },
+                    {
+                      "type": "frame",
+                      "id": "f5a9zN",
+                      "name": "b",
+                      "width": 420,
+                      "fill": "$--card",
+                      "cornerRadius": [
+                        18,
+                        18,
+                        18,
+                        4
+                      ],
+                      "layout": "vertical",
+                      "gap": 4,
+                      "padding": [
+                        14,
+                        18
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "ldNxG",
+                          "name": "w",
+                          "fill": "$--primary",
+                          "content": "Jenny Liu, RN",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 13,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "ZzH75",
+                          "name": "t",
+                          "fill": "$--foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Hi Sarah — your mom had a comfortable night and her pain is well controlled this morning. 💛",
+                          "lineHeight": 1.5,
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "L5zNtu",
+                  "name": "row",
+                  "width": "fill_container",
+                  "gap": 10,
+                  "justifyContent": "end",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "xO9bd",
+                      "name": "b",
+                      "width": 420,
+                      "fill": "$--primary",
+                      "cornerRadius": [
+                        18,
+                        18,
+                        4,
+                        18
+                      ],
+                      "layout": "vertical",
+                      "gap": 4,
+                      "padding": [
+                        14,
+                        18
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "NnT4d",
+                          "name": "t",
+                          "fill": "$--primary-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Thank you so much, Jenny. That's a relief. Will you still come by today?",
+                          "lineHeight": 1.5,
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ptZoW",
+                  "name": "row",
+                  "width": "fill_container",
+                  "gap": 10,
+                  "children": [
+                    {
+                      "type": "ellipse",
+                      "id": "z27WmY",
+                      "name": "a",
+                      "fill": "$--surface-high",
+                      "width": 36,
+                      "height": 36
+                    },
+                    {
+                      "type": "frame",
+                      "id": "I4yNF",
+                      "name": "b",
+                      "width": 420,
+                      "fill": "$--card",
+                      "cornerRadius": [
+                        18,
+                        18,
+                        18,
+                        4
+                      ],
+                      "layout": "vertical",
+                      "gap": 4,
+                      "padding": [
+                        14,
+                        18
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "DycSL",
+                          "name": "w",
+                          "fill": "$--primary",
+                          "content": "Jenny Liu, RN",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 13,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "rup84",
+                          "name": "t",
+                          "fill": "$--foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Yes, I'll visit at 2:00 PM today. I'll check her medications and we can talk through any questions you have.",
+                          "lineHeight": 1.5,
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "cNLs6",
+                  "name": "row",
+                  "width": "fill_container",
+                  "gap": 10,
+                  "justifyContent": "end",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "C4QOHq",
+                      "name": "b",
+                      "width": 420,
+                      "fill": "$--primary",
+                      "cornerRadius": [
+                        18,
+                        18,
+                        4,
+                        18
+                      ],
+                      "layout": "vertical",
+                      "gap": 4,
+                      "padding": [
+                        14,
+                        18
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "BrD6K",
+                          "name": "t",
+                          "fill": "$--primary-foreground",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Perfect. See you then.",
+                          "lineHeight": 1.5,
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 16,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "G4WrE",
+              "name": "exp",
+              "width": "fill_container",
+              "fill": "$--surface-low",
+              "cornerRadius": "$--radius-l",
+              "gap": 10,
+              "padding": [
+                14,
+                16
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "H4lHE",
+                  "name": "i",
+                  "width": 18,
+                  "height": 18,
+                  "icon": "info",
+                  "library": "Material Symbols Rounded",
+                  "fill": "$--muted-foreground"
+                },
+                {
+                  "type": "text",
+                  "id": "alntc",
+                  "name": "t",
+                  "fill": "$--muted-foreground",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "The team usually replies within a few hours. For urgent needs, please call the 24/7 care line.",
+                  "fontFamily": "$--font-secondary",
+                  "fontSize": 14,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "ea4g5",
+              "name": "Composer",
+              "width": "fill_container",
+              "gap": 12,
+              "padding": [
+                16,
+                0,
+                8,
+                0
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "H5XHVX",
+                  "name": "box",
+                  "width": "fill_container",
+                  "fill": "$--card",
+                  "cornerRadius": "$--radius-pill",
+                  "stroke": "$--border",
+                  "strokeWidth": 1,
+                  "strokeAlignment": "inner",
+                  "padding": [
+                    14,
+                    18
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "MGiSx",
+                      "name": "p",
+                      "fill": "$--muted",
+                      "content": "Write a message…",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 16,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "id": "Jc01l",
+                  "type": "ref",
+                  "ref": "Fbl6u",
+                  "name": "send",
+                  "descendants": {
+                    "k4Tr9X": {
+                      "content": "Send"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "tCfQ6",
+      "x": 3818,
+      "y": 0,
+      "name": "Portal Documents / Consents",
+      "clip": true,
+      "width": 1100,
+      "height": 1100,
+      "fill": "$--background",
+      "layout": "vertical",
+      "alignItems": "center",
+      "children": [
+        {
+          "type": "frame",
+          "id": "OC4nI",
+          "name": "Portal Header",
+          "width": "fill_container",
+          "height": 72,
+          "fill": "$--card",
+          "stroke": "$--border",
+          "strokeWidth": {
+            "bottom": 1
+          },
+          "strokeAlignment": "inner",
+          "gap": 16,
+          "padding": [
+            0,
+            32
+          ],
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "icon",
+              "id": "e6WBPP",
+              "name": "back",
+              "width": 24,
+              "height": 24,
+              "icon": "arrow_back",
+              "library": "Material Symbols Rounded",
+              "fill": "$--muted-foreground"
+            },
+            {
+              "type": "text",
+              "id": "IbeqI",
+              "name": "b",
+              "fill": "$--primary",
+              "content": "Documents & consents",
+              "fontFamily": "$--font-primary",
+              "fontSize": 22,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "cirki",
+              "name": "sp",
+              "width": "fill_container",
+              "height": 1
+            },
+            {
+              "type": "frame",
+              "id": "wPBCq",
+              "name": "safe",
+              "fill": "$--color-alert-bg",
+              "cornerRadius": "$--radius-pill",
+              "gap": 6,
+              "padding": [
+                8,
+                14
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "duRem",
+                  "name": "i",
+                  "width": 16,
+                  "height": 16,
+                  "icon": "call",
+                  "library": "Material Symbols Rounded",
+                  "fill": "$--color-alert"
+                },
+                {
+                  "type": "text",
+                  "id": "M1PwqJ",
+                  "name": "t",
+                  "fill": "$--color-alert",
+                  "content": "24/7 care line",
+                  "fontFamily": "$--font-secondary",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "B9sfmi",
+          "name": "Column",
+          "width": 600,
+          "layout": "vertical",
+          "gap": 18,
+          "padding": [
+            28,
+            0,
+            48,
+            0
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "aD5cG",
+              "name": "todo",
+              "width": "fill_container",
+              "fill": "$--card",
+              "cornerRadius": "$--radius-l",
+              "stroke": "$--color-warning",
+              "strokeWidth": 1,
+              "strokeAlignment": "inner",
+              "layout": "vertical",
+              "gap": 16,
+              "padding": 24,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "Jsk4I",
+                  "name": "th",
+                  "width": "fill_container",
+                  "gap": 10,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "xDS4j",
+                      "name": "i",
+                      "width": 24,
+                      "height": 24,
+                      "icon": "draw",
+                      "library": "Material Symbols Rounded",
+                      "fill": "$--color-warning"
+                    },
+                    {
+                      "type": "text",
+                      "id": "kXWjv",
+                      "name": "t",
+                      "fill": "$--foreground",
+                      "content": "Needs your signature",
+                      "fontFamily": "$--font-primary",
+                      "fontSize": 19,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "ARTlN",
+                  "name": "d",
+                  "fill": "$--muted-foreground",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Consent to share information with Margaret's primary physician. Please review and sign when you're ready — there's no rush.",
+                  "lineHeight": 1.5,
+                  "fontFamily": "$--font-secondary",
+                  "fontSize": 16,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "frame",
+                  "id": "tSy5i",
+                  "name": "prev",
+                  "width": "fill_container",
+                  "height": 120,
+                  "fill": "$--surface-low",
+                  "cornerRadius": "$--radius-m",
+                  "layout": "vertical",
+                  "gap": 6,
+                  "padding": 16,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "X5wFJ",
+                      "name": "t",
+                      "fill": "$--muted-foreground",
+                      "content": "CONSENT TO RELEASE INFORMATION",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 13,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "P5wuE",
+                      "name": "b",
+                      "fill": "$--muted",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "I authorize Engrace Hospice to share relevant medical information with the treating physician named below for the purpose of coordinating care…",
+                      "lineHeight": 1.5,
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "pTzqq",
+                  "name": "ab",
+                  "width": "fill_container",
+                  "gap": 12,
+                  "children": [
+                    {
+                      "id": "iUs9Z",
+                      "type": "ref",
+                      "ref": "t585Z1",
+                      "name": "v",
+                      "width": "fill_container",
+                      "descendants": {
+                        "cBHTC": {
+                          "content": "Read full document"
+                        }
+                      }
+                    },
+                    {
+                      "id": "ACZGr",
+                      "type": "ref",
+                      "ref": "Fbl6u",
+                      "name": "s",
+                      "width": "fill_container",
+                      "descendants": {
+                        "k4Tr9X": {
+                          "content": "Review & sign"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "id": "n0w2f",
+              "name": "sh",
+              "fill": "$--muted",
+              "content": "YOUR DOCUMENTS",
+              "fontFamily": "$--font-secondary",
+              "fontSize": 13,
+              "fontWeight": "700",
+              "letterSpacing": 0.4
+            },
+            {
+              "type": "frame",
+              "id": "fzHV7",
+              "name": "d",
+              "width": "fill_container",
+              "fill": "$--card",
+              "cornerRadius": "$--radius-l",
+              "gap": 14,
+              "padding": 20,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "hp3XC",
+                  "name": "i",
+                  "width": 24,
+                  "height": 24,
+                  "icon": "check_circle",
+                  "library": "Material Symbols Rounded",
+                  "fill": "$--color-success"
+                },
+                {
+                  "type": "frame",
+                  "id": "uF3mL",
+                  "name": "t",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "FWfbJ",
+                      "name": "n",
+                      "fill": "$--foreground",
+                      "content": "Notice of Privacy Practices",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 16,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "QWJC2",
+                      "name": "s",
+                      "fill": "$--muted",
+                      "content": "Acknowledged · 05/02",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "hnwd1",
+                  "name": "a",
+                  "fill": "$--primary",
+                  "content": "View",
+                  "fontFamily": "$--font-secondary",
+                  "fontSize": 15,
+                  "fontWeight": "600"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "z5RfW",
+              "name": "d",
+              "width": "fill_container",
+              "fill": "$--card",
+              "cornerRadius": "$--radius-l",
+              "gap": 14,
+              "padding": 20,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "izLCa",
+                  "name": "i",
+                  "width": 24,
+                  "height": 24,
+                  "icon": "check_circle",
+                  "library": "Material Symbols Rounded",
+                  "fill": "$--color-success"
+                },
+                {
+                  "type": "frame",
+                  "id": "WIB9U",
+                  "name": "t",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "sJmN0",
+                      "name": "n",
+                      "fill": "$--foreground",
+                      "content": "Hospice election statement",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 16,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "ysds6",
+                      "name": "s",
+                      "fill": "$--muted",
+                      "content": "Signed · 05/02",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "iDasH",
+                  "name": "a",
+                  "fill": "$--primary",
+                  "content": "View",
+                  "fontFamily": "$--font-secondary",
+                  "fontSize": 15,
+                  "fontWeight": "600"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "u1DytR",
+              "name": "d",
+              "width": "fill_container",
+              "fill": "$--card",
+              "cornerRadius": "$--radius-l",
+              "gap": 14,
+              "padding": 20,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "yJwhV",
+                  "name": "i",
+                  "width": 24,
+                  "height": 24,
+                  "icon": "description",
+                  "library": "Material Symbols Rounded",
+                  "fill": "$--muted-foreground"
+                },
+                {
+                  "type": "frame",
+                  "id": "k0fINV",
+                  "name": "t",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "oq2SI",
+                      "name": "n",
+                      "fill": "$--foreground",
+                      "content": "Plan of care summary",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 16,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Xs862",
+                      "name": "s",
+                      "fill": "$--muted",
+                      "content": "Shared · 06/20",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "bJRST",
+                  "name": "a",
+                  "fill": "$--primary",
+                  "content": "View",
+                  "fontFamily": "$--font-secondary",
+                  "fontSize": 15,
+                  "fontWeight": "600"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "P1cun",
+              "name": "d",
+              "width": "fill_container",
+              "fill": "$--card",
+              "cornerRadius": "$--radius-l",
+              "gap": 14,
+              "padding": 20,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "O35Kc",
+                  "name": "i",
+                  "width": 24,
+                  "height": 24,
+                  "icon": "favorite",
+                  "library": "Material Symbols Rounded",
+                  "fill": "$--primary"
+                },
+                {
+                  "type": "frame",
+                  "id": "K9P7b",
+                  "name": "t",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "O5U7Y",
+                      "name": "n",
+                      "fill": "$--foreground",
+                      "content": "Bereavement resources",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 16,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "GITBo",
+                      "name": "s",
+                      "fill": "$--muted",
+                      "content": "Available",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "caF0a",
+                  "name": "a",
+                  "fill": "$--primary",
+                  "content": "Open",
+                  "fontFamily": "$--font-secondary",
+                  "fontSize": 15,
+                  "fontWeight": "600"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "R1Qzuj",
+      "x": 5038,
+      "y": 0,
+      "name": "Portal Visit Schedule",
+      "clip": true,
+      "width": 1100,
+      "height": 1100,
+      "fill": "$--background",
+      "layout": "vertical",
+      "alignItems": "center",
+      "children": [
+        {
+          "type": "frame",
+          "id": "v3Bl2",
+          "name": "Portal Header",
+          "width": "fill_container",
+          "height": 72,
+          "fill": "$--card",
+          "stroke": "$--border",
+          "strokeWidth": {
+            "bottom": 1
+          },
+          "strokeAlignment": "inner",
+          "gap": 16,
+          "padding": [
+            0,
+            32
+          ],
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "icon",
+              "id": "bsJjv",
+              "name": "back",
+              "width": 24,
+              "height": 24,
+              "icon": "arrow_back",
+              "library": "Material Symbols Rounded",
+              "fill": "$--muted-foreground"
+            },
+            {
+              "type": "text",
+              "id": "Z2tSNd",
+              "name": "b",
+              "fill": "$--primary",
+              "content": "Visit schedule",
+              "fontFamily": "$--font-primary",
+              "fontSize": 22,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "weS0u",
+              "name": "sp",
+              "width": "fill_container",
+              "height": 1
+            },
+            {
+              "type": "frame",
+              "id": "sgXOD",
+              "name": "safe",
+              "fill": "$--color-alert-bg",
+              "cornerRadius": "$--radius-pill",
+              "gap": 6,
+              "padding": [
+                8,
+                14
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "sj3LE",
+                  "name": "i",
+                  "width": 16,
+                  "height": 16,
+                  "icon": "call",
+                  "library": "Material Symbols Rounded",
+                  "fill": "$--color-alert"
+                },
+                {
+                  "type": "text",
+                  "id": "IP0vx",
+                  "name": "t",
+                  "fill": "$--color-alert",
+                  "content": "24/7 care line",
+                  "fontFamily": "$--font-secondary",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "F7KiKe",
+          "name": "Column",
+          "width": 600,
+          "layout": "vertical",
+          "gap": 14,
+          "padding": [
+            28,
+            0,
+            48,
+            0
+          ],
+          "children": [
+            {
+              "type": "text",
+              "id": "mk8Mm",
+              "name": "g",
+              "fill": "$--muted",
+              "content": "UPCOMING",
+              "fontFamily": "$--font-secondary",
+              "fontSize": 13,
+              "fontWeight": "700",
+              "letterSpacing": 0.4
+            },
+            {
+              "type": "frame",
+              "id": "VpOBV",
+              "name": "v",
+              "width": "fill_container",
+              "fill": "$--card",
+              "cornerRadius": "$--radius-l",
+              "gap": 16,
+              "padding": 20,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "JW0ju",
+                  "name": "dt",
+                  "width": 64,
+                  "layout": "vertical",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "GImxX",
+                      "name": "d",
+                      "fill": "$--muted",
+                      "content": "TUE",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 12,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "w7PP5",
+                      "name": "n",
+                      "fill": "$--primary",
+                      "content": "24",
+                      "fontFamily": "$--font-primary",
+                      "fontSize": 26,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "X7XFYs",
+                  "name": "t",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 2,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "J2x1Mh",
+                      "name": "tr",
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "YDSrI",
+                          "name": "i",
+                          "width": 18,
+                          "height": 18,
+                          "icon": "medical_services",
+                          "library": "Material Symbols Rounded",
+                          "fill": "$--primary"
+                        },
+                        {
+                          "type": "text",
+                          "id": "BChyd",
+                          "name": "ty",
+                          "fill": "$--foreground",
+                          "content": "Nurse visit",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 16,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "OhnEW",
+                      "name": "w",
+                      "fill": "$--muted-foreground",
+                      "content": "Jenny Liu · RN, Case Manager",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "id": "OgYz7",
+                  "type": "ref",
+                  "ref": "e3gRIN",
+                  "name": "b",
+                  "fill": "$--primary-tint",
+                  "descendants": {
+                    "T7kLJ": {
+                      "icon": "schedule",
+                      "fill": "$--primary"
+                    },
+                    "yVkwW": {
+                      "content": "2:00 PM",
+                      "fill": "$--primary"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "Rcvy1",
+              "name": "v",
+              "width": "fill_container",
+              "fill": "$--card",
+              "cornerRadius": "$--radius-l",
+              "gap": 16,
+              "padding": 20,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "jX05A",
+                  "name": "dt",
+                  "width": 64,
+                  "layout": "vertical",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "TePRc",
+                      "name": "d",
+                      "fill": "$--muted",
+                      "content": "THU",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 12,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Xcp9e",
+                      "name": "n",
+                      "fill": "$--primary",
+                      "content": "26",
+                      "fontFamily": "$--font-primary",
+                      "fontSize": 26,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "L6vWY",
+                  "name": "t",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 2,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "MMF55",
+                      "name": "tr",
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "NVkSL",
+                          "name": "i",
+                          "width": 18,
+                          "height": 18,
+                          "icon": "diversity_3",
+                          "library": "Material Symbols Rounded",
+                          "fill": "$--primary"
+                        },
+                        {
+                          "type": "text",
+                          "id": "B3Ch9",
+                          "name": "ty",
+                          "fill": "$--foreground",
+                          "content": "Social work visit",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 16,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "u8FR7a",
+                      "name": "w",
+                      "fill": "$--muted-foreground",
+                      "content": "Karen Adams · Social Worker",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "id": "ZyDyi",
+                  "type": "ref",
+                  "ref": "e3gRIN",
+                  "name": "b",
+                  "fill": "$--primary-tint",
+                  "descendants": {
+                    "T7kLJ": {
+                      "icon": "schedule",
+                      "fill": "$--primary"
+                    },
+                    "yVkwW": {
+                      "content": "11:00 AM",
+                      "fill": "$--primary"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "l0JxFR",
+              "name": "v",
+              "width": "fill_container",
+              "fill": "$--card",
+              "cornerRadius": "$--radius-l",
+              "gap": 16,
+              "padding": 20,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "IcRJo",
+                  "name": "dt",
+                  "width": 64,
+                  "layout": "vertical",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "fOWJQ",
+                      "name": "d",
+                      "fill": "$--muted",
+                      "content": "FRI",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 12,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "w8Yto",
+                      "name": "n",
+                      "fill": "$--primary",
+                      "content": "27",
+                      "fontFamily": "$--font-primary",
+                      "fontSize": 26,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "Z2zbYv",
+                  "name": "t",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 2,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "xuMkV",
+                      "name": "tr",
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "LaSS9",
+                          "name": "i",
+                          "width": 18,
+                          "height": 18,
+                          "icon": "volunteer_activism",
+                          "library": "Material Symbols Rounded",
+                          "fill": "$--primary"
+                        },
+                        {
+                          "type": "text",
+                          "id": "euIg5",
+                          "name": "ty",
+                          "fill": "$--foreground",
+                          "content": "Chaplain visit",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 16,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "AqHaM",
+                      "name": "w",
+                      "fill": "$--muted-foreground",
+                      "content": "Rev. Stone · Chaplain",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "id": "F9znr",
+                  "type": "ref",
+                  "ref": "e3gRIN",
+                  "name": "b",
+                  "fill": "$--primary-tint",
+                  "descendants": {
+                    "T7kLJ": {
+                      "icon": "schedule",
+                      "fill": "$--primary"
+                    },
+                    "yVkwW": {
+                      "content": "3:30 PM",
+                      "fill": "$--primary"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "id": "PKA8U",
+              "name": "g",
+              "fill": "$--muted",
+              "content": "PAST",
+              "fontFamily": "$--font-secondary",
+              "fontSize": 13,
+              "fontWeight": "700",
+              "letterSpacing": 0.4
+            },
+            {
+              "type": "frame",
+              "id": "GVJAg",
+              "name": "v",
+              "width": "fill_container",
+              "fill": "$--card",
+              "cornerRadius": "$--radius-l",
+              "gap": 16,
+              "padding": 20,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "pNZ9d",
+                  "name": "dt",
+                  "width": 64,
+                  "layout": "vertical",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "ZUsAk",
+                      "name": "d",
+                      "fill": "$--muted",
+                      "content": "MON",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 12,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "SMzSJ",
+                      "name": "n",
+                      "fill": "$--foreground",
+                      "content": "23",
+                      "fontFamily": "$--font-primary",
+                      "fontSize": 26,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "ilBtj",
+                  "name": "t",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 2,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "MvxdM",
+                      "name": "tr",
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "CVaI8",
+                          "name": "i",
+                          "width": 18,
+                          "height": 18,
+                          "icon": "medical_services",
+                          "library": "Material Symbols Rounded",
+                          "fill": "$--primary"
+                        },
+                        {
+                          "type": "text",
+                          "id": "EnVkL",
+                          "name": "ty",
+                          "fill": "$--foreground",
+                          "content": "Nurse visit",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 16,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "C6AxL",
+                      "name": "w",
+                      "fill": "$--muted-foreground",
+                      "content": "Jenny Liu · RN, Case Manager",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "icon",
+                  "id": "VywY2",
+                  "name": "chk",
+                  "width": 22,
+                  "height": 22,
+                  "icon": "check_circle",
+                  "library": "Material Symbols Rounded",
+                  "fill": "$--color-success"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "FQDMt",
+              "name": "v",
+              "width": "fill_container",
+              "fill": "$--card",
+              "cornerRadius": "$--radius-l",
+              "gap": 16,
+              "padding": 20,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "WH4Jt",
+                  "name": "dt",
+                  "width": 64,
+                  "layout": "vertical",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "O3qVO",
+                      "name": "d",
+                      "fill": "$--muted",
+                      "content": "FRI",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 12,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "mH5jf",
+                      "name": "n",
+                      "fill": "$--foreground",
+                      "content": "20",
+                      "fontFamily": "$--font-primary",
+                      "fontSize": 26,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "zQyay",
+                  "name": "t",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 2,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "tOzuY",
+                      "name": "tr",
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "Qxyt1",
+                          "name": "i",
+                          "width": 18,
+                          "height": 18,
+                          "icon": "videocam",
+                          "library": "Material Symbols Rounded",
+                          "fill": "$--primary"
+                        },
+                        {
+                          "type": "text",
+                          "id": "ssZa1",
+                          "name": "ty",
+                          "fill": "$--foreground",
+                          "content": "Telehealth visit",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 16,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "TcUEe",
+                      "name": "w",
+                      "fill": "$--muted-foreground",
+                      "content": "Dr. Rivera · Physician",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "icon",
+                  "id": "O14jht",
+                  "name": "chk",
+                  "width": 22,
+                  "height": 22,
+                  "icon": "check_circle",
+                  "library": "Material Symbols Rounded",
+                  "fill": "$--color-success"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "NRM8F",
+      "x": 6258,
+      "y": 0,
+      "name": "Telehealth Visit Room",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "#15151b",
+      "layout": "vertical",
+      "children": [
+        {
+          "type": "frame",
+          "id": "u1X26Z",
+          "name": "Top",
+          "width": "fill_container",
+          "height": 60,
+          "fill": "#1c1c24",
+          "gap": 12,
+          "padding": [
+            0,
+            24
+          ],
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "RpQKr",
+              "name": "b",
+              "fill": "#aeb4f0",
+              "content": "WardenX",
+              "fontFamily": "$--font-primary",
+              "fontSize": 18,
+              "fontWeight": "600"
+            },
+            {
+              "id": "ABnXq",
+              "type": "ref",
+              "ref": "e3gRIN",
+              "name": "live",
+              "fill": "#3a1513",
+              "descendants": {
+                "T7kLJ": {
+                  "icon": "radio_button_checked",
+                  "fill": "#ff6b68"
+                },
+                "yVkwW": {
+                  "content": "Live · 04:21",
+                  "fill": "#ff6b68"
+                }
+              }
+            },
+            {
+              "type": "frame",
+              "id": "ZBjpp",
+              "name": "sp",
+              "width": "fill_container",
+              "height": 1
+            },
+            {
+              "type": "text",
+              "id": "KHnai",
+              "name": "t",
+              "fill": "#b8b4ad",
+              "content": "Telehealth visit — Margaret Chen",
+              "fontFamily": "$--font-secondary",
+              "fontSize": 14,
+              "fontWeight": "normal"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "pyDur",
+          "name": "Body",
+          "width": "fill_container",
+          "height": "fill_container",
+          "children": [
+            {
+              "type": "frame",
+              "id": "ALRyO",
+              "name": "Stage",
+              "width": "fill_container",
+              "height": "fill_container",
+              "layout": "vertical",
+              "gap": 16,
+              "padding": 20,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "oPPWu",
+                  "name": "Video",
+                  "clip": true,
+                  "width": "fill_container",
+                  "height": "fill_container",
+                  "fill": "#0e0e14",
+                  "cornerRadius": "$--radius-l",
+                  "layout": "vertical",
+                  "gap": 12,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "ellipse",
+                      "id": "oGmtz",
+                      "name": "av",
+                      "fill": "#2a2f55",
+                      "width": 120,
+                      "height": 120
+                    },
+                    {
+                      "type": "text",
+                      "id": "SSmMQ",
+                      "name": "n",
+                      "fill": "#eceae6",
+                      "content": "Dr. A. Rivera",
+                      "fontFamily": "$--font-primary",
+                      "fontSize": 24,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "XsDRM",
+                      "name": "s",
+                      "fill": "#8c877f",
+                      "content": "Attending physician · camera on",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "u1sUne",
+                      "layoutPosition": "absolute",
+                      "x": 0,
+                      "y": 0,
+                      "name": "PiP",
+                      "width": 180,
+                      "height": 120,
+                      "fill": "#21212b",
+                      "cornerRadius": "$--radius-m",
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "mhWxZ",
+                          "name": "y",
+                          "fill": "#b8b4ad",
+                          "content": "You",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "apV3o",
+                  "name": "Controls",
+                  "width": "fill_container",
+                  "gap": 14,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "Z7O3FL",
+                      "name": "c",
+                      "layout": "vertical",
+                      "gap": 6,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "B3kyo7",
+                          "name": "b",
+                          "width": 56,
+                          "height": 56,
+                          "fill": "#272732",
+                          "cornerRadius": "$--radius-pill",
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "yhgFK",
+                              "name": "i",
+                              "width": 24,
+                              "height": 24,
+                              "icon": "mic",
+                              "library": "Material Symbols Rounded",
+                              "fill": "#eceae6"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "uLFHS",
+                          "name": "l",
+                          "fill": "#b8b4ad",
+                          "content": "Mute",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ukfTD",
+                      "name": "c",
+                      "layout": "vertical",
+                      "gap": 6,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "HtQ7z",
+                          "name": "b",
+                          "width": 56,
+                          "height": 56,
+                          "fill": "#272732",
+                          "cornerRadius": "$--radius-pill",
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "aQg1n",
+                              "name": "i",
+                              "width": 24,
+                              "height": 24,
+                              "icon": "videocam",
+                              "library": "Material Symbols Rounded",
+                              "fill": "#eceae6"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "UtlJt",
+                          "name": "l",
+                          "fill": "#b8b4ad",
+                          "content": "Camera",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Mr5Rm",
+                      "name": "c",
+                      "layout": "vertical",
+                      "gap": 6,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "t0hL47",
+                          "name": "b",
+                          "width": 56,
+                          "height": 56,
+                          "fill": "#272732",
+                          "cornerRadius": "$--radius-pill",
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "Y4WQFe",
+                              "name": "i",
+                              "width": 24,
+                              "height": 24,
+                              "icon": "screen_share",
+                              "library": "Material Symbols Rounded",
+                              "fill": "#eceae6"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "qAEz4",
+                          "name": "l",
+                          "fill": "#b8b4ad",
+                          "content": "Share",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "CL4xh",
+                      "name": "c",
+                      "layout": "vertical",
+                      "gap": 6,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "qs9lr",
+                          "name": "b",
+                          "width": 56,
+                          "height": 56,
+                          "fill": "#272732",
+                          "cornerRadius": "$--radius-pill",
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "KT9ei",
+                              "name": "i",
+                              "width": 24,
+                              "height": 24,
+                              "icon": "chat",
+                              "library": "Material Symbols Rounded",
+                              "fill": "#eceae6"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "O20h64",
+                          "name": "l",
+                          "fill": "#b8b4ad",
+                          "content": "Chat",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "hgDxy",
+                      "name": "leavec",
+                      "layout": "vertical",
+                      "gap": 6,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "J9S5q",
+                          "name": "b",
+                          "width": 56,
+                          "height": 56,
+                          "fill": "$--color-alert",
+                          "cornerRadius": "$--radius-pill",
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "vfdK9",
+                              "name": "i",
+                              "width": 24,
+                              "height": 24,
+                              "icon": "call_end",
+                              "library": "Material Symbols Rounded",
+                              "fill": "#ffffff"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "w3UR90",
+                          "name": "l",
+                          "fill": "#b8b4ad",
+                          "content": "Leave",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "RZkYz",
+              "name": "Side",
+              "width": 320,
+              "height": "fill_container",
+              "fill": "#1c1c24",
+              "stroke": "#272732",
+              "strokeWidth": {
+                "left": 1
+              },
+              "strokeAlignment": "inner",
+              "layout": "vertical",
+              "gap": 16,
+              "padding": 20,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "rOwoK",
+                  "name": "ic",
+                  "width": "fill_container",
+                  "fill": "#21212b",
+                  "cornerRadius": "$--radius-l",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": 18,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "nt8RV",
+                      "name": "t",
+                      "fill": "#eceae6",
+                      "content": "Visit details",
+                      "fontFamily": "$--font-primary",
+                      "fontSize": 15,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "VAg53",
+                      "name": "r",
+                      "width": "fill_container",
+                      "gap": 8,
+                      "justifyContent": "space_between",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "WtZI6",
+                          "name": "k",
+                          "fill": "#8c877f",
+                          "content": "Patient",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "qKMK3",
+                          "name": "v",
+                          "fill": "#eceae6",
+                          "content": "Margaret Chen",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 13,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "lqW8a",
+                      "name": "r",
+                      "width": "fill_container",
+                      "gap": 8,
+                      "justifyContent": "space_between",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "abQ3E",
+                          "name": "k",
+                          "fill": "#8c877f",
+                          "content": "Provider",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "z03Pf",
+                          "name": "v",
+                          "fill": "#eceae6",
+                          "content": "Dr. A. Rivera, MD",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 13,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "o2Ekuo",
+                      "name": "r",
+                      "width": "fill_container",
+                      "gap": 8,
+                      "justifyContent": "space_between",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "ZxJnF",
+                          "name": "k",
+                          "fill": "#8c877f",
+                          "content": "Type",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "BeQNx",
+                          "name": "v",
+                          "fill": "#eceae6",
+                          "content": "Telehealth · video",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 13,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "bIpJW",
+                      "name": "r",
+                      "width": "fill_container",
+                      "gap": 8,
+                      "justifyContent": "space_between",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "LtpZ2",
+                          "name": "k",
+                          "fill": "#8c877f",
+                          "content": "Started",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "O793tP",
+                          "name": "v",
+                          "fill": "#eceae6",
+                          "content": "2:00 PM",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 13,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "HGUSg",
+                      "name": "r",
+                      "width": "fill_container",
+                      "gap": 8,
+                      "justifyContent": "space_between",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "OXI12",
+                          "name": "k",
+                          "fill": "#8c877f",
+                          "content": "Connection",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "WlOuK",
+                          "name": "v",
+                          "fill": "#eceae6",
+                          "content": "Good",
+                          "fontFamily": "$--font-secondary",
+                          "fontSize": 13,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "NBbQm",
+                  "name": "cons",
+                  "width": "fill_container",
+                  "fill": "#10331f",
+                  "cornerRadius": "$--radius-m",
+                  "gap": 10,
+                  "padding": 14,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "eda1C",
+                      "name": "i",
+                      "width": 18,
+                      "height": 18,
+                      "icon": "verified_user",
+                      "library": "Material Symbols Rounded",
+                      "fill": "#5fd6a0"
+                    },
+                    {
+                      "type": "text",
+                      "id": "OQv1O",
+                      "name": "t",
+                      "fill": "#5fd6a0",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Recording consent given · not recording",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 13,
+                      "fontWeight": "500"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "b1dnbb",
+                  "name": "g",
+                  "width": "fill_container",
+                  "height": "fill_container"
+                },
+                {
+                  "type": "frame",
+                  "id": "QgpnB",
+                  "name": "note",
+                  "width": "fill_container",
+                  "fill": "#21212b",
+                  "cornerRadius": "$--radius-m",
+                  "layout": "vertical",
+                  "gap": 6,
+                  "padding": 14,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "X6293",
+                      "name": "t",
+                      "fill": "#8c877f",
+                      "content": "VISIT NOTES",
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 12,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "YsIPS",
+                      "name": "b",
+                      "fill": "#b8b4ad",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "Reviewing pain management and goals of care with patient and daughter.",
+                      "lineHeight": 1.5,
+                      "fontFamily": "$--font-secondary",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "--accent": {
+      "type": "color",
+      "value": "#c98a1f"
+    },
+    "--accent-tint": {
+      "type": "color",
+      "value": "#fbf1dd"
+    },
+    "--background": {
+      "type": "color",
+      "value": "#f6f5f2"
+    },
+    "--border": {
+      "type": "color",
+      "value": "#d7d3cb"
+    },
+    "--card": {
+      "type": "color",
+      "value": "#ffffff"
+    },
+    "--color-alert": {
+      "type": "color",
+      "value": "#e0413f"
+    },
+    "--color-alert-bg": {
+      "type": "color",
+      "value": "#fcebea"
+    },
+    "--color-error": {
+      "type": "color",
+      "value": "#c12b3b"
+    },
+    "--color-error-bg": {
+      "type": "color",
+      "value": "#fbe7e9"
+    },
+    "--color-info": {
+      "type": "color",
+      "value": "#3b45a8"
+    },
+    "--color-info-bg": {
+      "type": "color",
+      "value": "#ecedfb"
+    },
+    "--color-success": {
+      "type": "color",
+      "value": "#1f8a5b"
+    },
+    "--color-success-bg": {
+      "type": "color",
+      "value": "#e3f4ec"
+    },
+    "--color-warning": {
+      "type": "color",
+      "value": "#9a5b00"
+    },
+    "--color-warning-bg": {
+      "type": "color",
+      "value": "#fff4e0"
+    },
+    "--destructive": {
+      "type": "color",
+      "value": "#c12b3b"
+    },
+    "--destructive-foreground": {
+      "type": "color",
+      "value": "#ffffff"
+    },
+    "--font-mono": {
+      "type": "string",
+      "value": "IBM Plex Mono"
+    },
+    "--font-primary": {
+      "type": "string",
+      "value": "Fraunces"
+    },
+    "--font-secondary": {
+      "type": "string",
+      "value": "Inter"
+    },
+    "--foreground": {
+      "type": "color",
+      "value": "#1c1b1a"
+    },
+    "--muted": {
+      "type": "color",
+      "value": "#8c877f"
+    },
+    "--muted-foreground": {
+      "type": "color",
+      "value": "#56524c"
+    },
+    "--primary": {
+      "type": "color",
+      "value": "#3b45a8"
+    },
+    "--primary-foreground": {
+      "type": "color",
+      "value": "#ffffff"
+    },
+    "--primary-strong": {
+      "type": "color",
+      "value": "#2b338a"
+    },
+    "--primary-tint": {
+      "type": "color",
+      "value": "#ecedfb"
+    },
+    "--radius-l": {
+      "type": "number",
+      "value": 16
+    },
+    "--radius-m": {
+      "type": "number",
+      "value": 12
+    },
+    "--radius-none": {
+      "type": "number",
+      "value": 0
+    },
+    "--radius-pill": {
+      "type": "number",
+      "value": 9999
+    },
+    "--radius-s": {
+      "type": "number",
+      "value": 8
+    },
+    "--secondary": {
+      "type": "color",
+      "value": "#e5e3dd"
+    },
+    "--secondary-foreground": {
+      "type": "color",
+      "value": "#1c1b1a"
+    },
+    "--surface": {
+      "type": "color",
+      "value": "#eceae5"
+    },
+    "--surface-high": {
+      "type": "color",
+      "value": "#e5e3dd"
+    },
+    "--surface-low": {
+      "type": "color",
+      "value": "#f1f0ec"
+    }
+  }
+}
