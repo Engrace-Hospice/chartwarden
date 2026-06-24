@@ -22,6 +22,10 @@ export * from "./lifecycle/index";
 export * from "./seams/index";
 export * from "./outbox-consumers/index";
 export * from "./extraction/index";
+// M22-T09 — §7.5 Statement-of-Disagreement attachment + §7.12/§7.13/§7.15 EVV/encounter/lab render variants
+// + §7.16 SUD-redacted placeholder render + the §7.15 lab back-ref deny-stub (M29, Wave H). Pure planning;
+// the live render + dispatcher binding are deferred (T06 precedent); M22 deps stay [1, 5].
+export * from "./render-variants/index";
 export {
   type DocumentAbacDeps,
   type DocumentAbacFacts,

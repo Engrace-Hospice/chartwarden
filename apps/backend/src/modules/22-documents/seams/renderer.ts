@@ -82,6 +82,19 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     defaultTitle: "Visit Verification",
   },
   consent_record: { aggregateType: "consent_record", retentionClass: "compliance", defaultTitle: "Consent" },
+  // §7.5 W5 — the Statement-of-Disagreement template (M5 amendment-denied; compliance class, D13).
+  patient_amendment_statement_of_disagreement: {
+    aggregateType: "patient_amendment_statement_of_disagreement",
+    retentionClass: "compliance",
+    defaultTitle: "Statement of Disagreement",
+  },
+  // §7.15 W-M22-22 — the Phase-F lab-results template (D14). Default retention is `clinical_record`; the
+  // §7.16 SUD-redacted variant overrides the INSERT-time class to `compliance_42cfr_part2` (D23).
+  lab_results_pdf: {
+    aggregateType: "order_record",
+    retentionClass: "clinical_record",
+    defaultTitle: "Lab Results",
+  },
 } as const;
 
 /** The shape every W2 caller's typed payload carries (a structural minimum; the full payload is template-
