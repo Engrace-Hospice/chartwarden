@@ -182,10 +182,10 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 
 | Screen | Module(s) | Layout pattern | Pencil |
 | :-- | :-- | :-- | :-- |
-| [Mobile Field Suite](./screens/mobile/WARDENX_UI_MOBILE_FIELD_SUITE.md) | M17 · M18 · M22 | Dashboard + Mobile Task Flow | `⬚` |
-| [HL7 & Interface Logs](./screens/integration/WARDENX_UI_HL7_INTERFACE_LOGS.md) | M29 | Work Queue | `⬚` |
-| [Submission & Resubmission](./screens/integration/WARDENX_UI_SUBMISSION_RESUBMISSION.md) | M10 · M29 | Work Queue | `⬚` |
-| [Workflow & Event Operations](./screens/platform/WARDENX_UI_WORKFLOW_EVENT_OPS.md) | M01 | Status Board | `⬚` |
+| [Mobile Field Suite](./screens/mobile/WARDENX_UI_MOBILE_FIELD_SUITE.md) | M17 · M18 · M22 | Dashboard + Mobile Task Flow | `◐ node:lynRU` (P9 .pen) |
+| [HL7 & Interface Logs](./screens/integration/WARDENX_UI_HL7_INTERFACE_LOGS.md) | M29 | Work Queue | `◐ node:dFRJ9` (P9 .pen) |
+| [Submission & Resubmission](./screens/integration/WARDENX_UI_SUBMISSION_RESUBMISSION.md) | M10 · M29 | Work Queue | `◐ node:m6Iqp` (P9 .pen) |
+| [Workflow & Event Operations](./screens/platform/WARDENX_UI_WORKFLOW_EVENT_OPS.md) | M01 | Status Board | `◐ node:Xnsde` (P9 .pen) |
 
 ### P10 — Certification, Billing-Ops, Note Lifecycle, Facility & Role Dashboards (5)
 
