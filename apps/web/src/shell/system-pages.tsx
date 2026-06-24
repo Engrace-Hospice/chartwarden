@@ -1,7 +1,7 @@
 import type { ScreenRegistryModule } from "@wardenx/types";
 import { CenteredStatusLayout, useCorrelationId } from "@wardenx/ui";
 // apps/web/src/shell — System / Utility Pages (M1 cross-cutting, Track A).
-// Spec: docs/ui/screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md — "Use System Page."
+// Spec: docs/design/screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md — "Use System Page."
 // One pattern (CenteredStatusLayout), several states: 403/404/500/offline/maintenance/expired/
 // suspended. PHI-free, always a forward action. These are M1 (the app shell owns them), registered
 // chromeless (standalone, outside the app chrome — they must work pre-auth too).

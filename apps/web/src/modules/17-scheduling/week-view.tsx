@@ -1,5 +1,5 @@
 // apps/web/src/modules/17-scheduling — Week View (M17 §5.1, Track B / ADR-0030).
-// Spec: docs/ui/screens — "Use Work Queue". The week-view per-clinician: visits across the week from
+// Spec: docs/design/screens — "Use Work Queue". The week-view per-clinician: visits across the week from
 // `?weekStart=` (defaults to today), grouped by service date. Recurring-visit + PTO bar overlays fill in as
 // those surfaces harden; the SERVER owns the §2.2.1 lifecycle (ADR-0030 — no frontend authz). The clinician is
 // taken from `?membership=`. Reads GET /api/v1/week-view via the typed client. Leaves only (@wardenx/ui).

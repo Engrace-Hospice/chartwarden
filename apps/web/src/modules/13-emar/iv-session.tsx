@@ -1,5 +1,5 @@
 // apps/web/src/modules/13-emar — IV continuous session (M13 §4.1/§6.1 #5, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Detail". The IPU-specific surface
+// Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Detail". The IPU-specific surface
 // (limited Phase-1 utility; primary value lands at M37). Shows the session's ordered row sequence
 // (start → rate_change → pause/resume → stop) as a read-only timeline. The Titrate / Pause / Resume / Stop
 // write CTAs (with the order's rate-bound validation and the controlled-substance wastage entry) fill in as

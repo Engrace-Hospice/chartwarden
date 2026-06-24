@@ -28,7 +28,7 @@ Specs: `docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md`,
 > **Manifest note (RESOLVED):** `packages/triage-vendors` is now in M19's `codePaths` and
 > `packages/evv-aggregators` in M18's (ADR-0028, applied) — both fitness-governed. No action needed.
 
-> **Track B screens (ADR-0030) — built in-task, not deferred.** Each UI-owning module owns `apps/web/src/modules/NN-*`: its first task adds that web codePath to the manifest + runs `bun run scaffold` (`arch:parity` 1:1); its screen task builds the §5 screens against the generated client and registers them into the M1 shell, flipping the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`. Backend-first preserved. (Portal-variant screens stay M31's responsibility.)
+> **Track B screens (ADR-0030) — built in-task, not deferred.** Each UI-owning module owns `apps/web/src/modules/NN-*`: its first task adds that web codePath to the manifest + runs `bun run scaffold` (`arch:parity` 1:1); its screen task builds the §5 screens against the generated client and registers them into the M1 shell, flipping the matching `docs/design/DEFERRED_SCREENS.md` row → `done`. Backend-first preserved. (Portal-variant screens stay M31's responsibility.)
 
 ## Module 19 — On-Call Triage (deps: 5,17,36 · apps/backend/src/modules/19-oncall, apps/web/src/modules/19-oncall) — 10 tables
 - **M19-T01** Enums + layout + domain (§2); `packages/triage-vendors` adapter scaffold (see manifest note); types in `packages/types`. → `tsc -b`. **Track B (ADR-0030):** add `apps/web/src/modules/19-oncall` to the manifest `codePaths` and run `bun run scaffold` so the empty web slice exists (→ `arch:parity`).
@@ -38,7 +38,7 @@ Specs: `docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md`,
 - **M19-T05** Triage encounter via M8 `EncounterCreator` (§7); verbal order during call via M11 `OrderSignatureProvider` with **biometric step-up** (§7.7); M12 refill-inbox surface (read).
 - **M19-T06** Five published reader seams (§4.3, incl. **`OnCallProvider`**) into M1 — feeds M36 `on_call` channel + M20; advisory M32 seams as deny-stub (ai.full). → `validateSeams`.
 - **M19-T07** Routes (§4.1–4.2) + permission keys (§4.6) + ABAC (§4.7: `oncall_eligible`/`triage_call_owner_or_supervisor`/`external_triage_actor`) into M3; M36 typed alerts + delivery-failed; M39 SUD gating; M40 ExternalTriageVendor; adapter-mandate compliance (§8.5); **PHI minimization at vendor boundary** (§7.10).
-- **M19-T08** Screens (§5; portal variants M31) — **Track B/ADR-0030**: build under `apps/web/src/modules/19-oncall` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done` + tests (§9 incl. RLS) + §12 sign-off. → `bun run test` + full `arch:fitness`.
+- **M19-T08** Screens (§5; portal variants M31) — **Track B/ADR-0030**: build under `apps/web/src/modules/19-oncall` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done` + tests (§9 incl. RLS) + §12 sign-off. → `bun run test` + full `arch:fitness`.
 
 ## Module 20 — Field Safety (deps: 17,36 · apps/backend/src/modules/20-field-safety, apps/web/src/modules/20-field-safety) — 13 tables  (build after M19)
 - **M20-T01** Enums + layout + domain (§2); types in `packages/types`. → `tsc -b`. **Track B (ADR-0030):** add `apps/web/src/modules/20-field-safety` to the manifest `codePaths` and run `bun run scaffold` so the empty web slice exists (→ `arch:parity`).
@@ -47,7 +47,7 @@ Specs: `docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md`,
 - **M20-T04** Consume M17 `VisitReader`/`VisitAssignmentReader`; **M18 `EvvLocationProvider`** (closes M18 last-known-location); **M19 `OnCallProvider`** for after-hours SOS parallel recipient (§7.5 D14).
 - **M20-T05** Seven published reader seams (§4.3) + `SafetySupervisorProvider` composition with M36's recipient resolver (§4.5); the M20-owned emergency-contact override row (M20-F06). → `validateSeams`.
 - **M20-T06** Routes (§4.1–4.2) + permission keys (§4.6) + ABAC (§4.7: `safety_supervisor_or_above`/`active_sos_responder`/…) into M3; M36 `field_safety` category + **SOS Tier-1 voice** (system_locked); workers-comp/OSHA incident sign-off (§7.6 D9).
-- **M20-T07** Screens (§5; portal variants M31) — **Track B/ADR-0030**: build under `apps/web/src/modules/20-field-safety` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done` + tests (§9 incl. RLS) + §12 sign-off. → `bun run test` + full `arch:fitness`.
+- **M20-T07** Screens (§5; portal variants M31) — **Track B/ADR-0030**: build under `apps/web/src/modules/20-field-safety` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done` + tests (§9 incl. RLS) + §12 sign-off. → `bun run test` + full `arch:fitness`.
 
 ---
 

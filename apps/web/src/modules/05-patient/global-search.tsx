@@ -1,6 +1,6 @@
 import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/05-patient — Global Search Results (cross-cutting; M5 owns it, M5→M2 edge).
-// Spec: docs/ui/screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md — "Use Work Queue."
+// Spec: docs/design/screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md — "Use Work Queue."
 // FB-T11 (partial): the live facets are the M5 **patient** facet (GET /api/v1/patients?q=) and the
 // M2 **staff** facet (GET /api/v1/orgs/:id/members?q=). Later facets (documents/orders/visits/commands)
 // render as labeled "available when <module> ships" rows — visible, never fabricated. The server stays

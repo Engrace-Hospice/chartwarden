@@ -7,7 +7,7 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/03-authorization — Roles & Permissions (M3, Track A).
-// Spec: docs/ui/screens/admin/WARDENX_UI_ROLES_PERMISSIONS.md — "Use Admin Split Layout."
+// Spec: docs/design/screens/admin/WARDENX_UI_ROLES_PERMISSIONS.md — "Use Admin Split Layout."
 // Roles list | the selected role's permission matrix (grouped by catalog category) | right detail.
 // Backed by GET /api/v1/roles + GET /api/v1/permissions via the generated typed client. Read-only
 // in this first cut (edit/clone is a follow-up). Imports only leaves (@wardenx/ui).

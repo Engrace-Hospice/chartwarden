@@ -1,5 +1,5 @@
 // apps/web/src/modules/11-orders — patient orders list (M11 §4.1/§5, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_ORDERS.md — "Use Patient Workspace + Work Queue" (patient half).
+// Spec: docs/design/screens/clinical/WARDENX_UI_ORDERS.md — "Use Patient Workspace + Work Queue" (patient half).
 // Reached from the patient chart "Orders" tab; lists every order for the patient with its §2.2 D2 lifecycle
 // status, kind, priority, and (for verbal_pending) the live 48h deadline. A status filter narrows the list.
 // Window/countdown colour is a UX cue only — the server owns the authoritative status (ADR-0030, no frontend

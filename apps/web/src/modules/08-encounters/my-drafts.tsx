@@ -8,7 +8,7 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/08-encounters — My Drafts (M8 §5.1, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md — "Use Work Queue."
+// Spec: docs/design/screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md — "Use Work Queue."
 // The author's open encounter drafts: one row per in-flight draft with its type · discipline · service
 // date · late-entry tier. A row opens the Encounter Read view (the authoring surface §5.2 fills in as
 // its write path hardens). Reads GET /api/v1/encounters/my-drafts via the typed client; the server

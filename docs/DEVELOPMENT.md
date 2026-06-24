@@ -65,7 +65,7 @@ automatically as a module's schema/seams/events land.
    (ADR-0005 D1).
 5. **Routes** under `apps/backend/src/modules/NN-slug/`, each behind
    `requirePermission`/`requireAbac`; emit audit events; register the module's eraser with M4.
-6. **UI** per `docs/ui/screens/*` using the declared layout pattern (`docs:ui` stays green).
+6. **UI** per `docs/design/screens/*` using the declared layout pattern (`docs:ui` stays green).
 7. **Tests** (Vitest) including RLS cross-tenant isolation. Keep the fitness fixtures red.
 8. **Regenerate the freshness-checked reports and commit them:** `bun run status:matrix && bun run ui:parity`.
    Adding schema/routes/screens makes `audit/implementation-status/` and `audit/ui-parity/` stale, so

@@ -1,6 +1,6 @@
 import { CenteredCardLayout, EmptyState, LoadingSpinner, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/02-identity — Organization Select (M2 Auth, Track A).
-// Spec: docs/ui/screens/core/WARDENX_UI_AUTH.md "Organization select" (/login/organization).
+// Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "Organization select" (/login/organization).
 // A multi-org user picks the org that binds the session (one-time). Backed by the real M2 routes
 // GET /api/v1/auth/memberships + POST /api/v1/auth/select-organization via the generated client.
 // Imports only leaves (@wardenx/ui) + react-router — never the backend or the shell internals.

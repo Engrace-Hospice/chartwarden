@@ -1,5 +1,5 @@
 // apps/web/src/modules/17-scheduling — Time-Off Queue (M17 §5.1 `/app/scheduling/time-off`, Track B / ADR-0030).
-// Spec: docs/ui/screens — "Use Work Queue". The supervisor's PTO approval queue: requested time-off with kind +
+// Spec: docs/design/screens — "Use Work Queue". The supervisor's PTO approval queue: requested time-off with kind +
 // window + state. The one-click approve/deny + per-request conflict count write surfaces fill in as those write
 // paths harden (approval triggers the SERVER-side reassignment scan); ADR-0030 — no frontend authz. Optional
 // `?state=` / `?membership=` filters. Reads GET /api/v1/time-off via the typed client. Leaves only (@wardenx/ui).

@@ -20,7 +20,7 @@ validate gate, and the legend are inherited from `M01-M02_VERTICAL_SLICE_PLAN.md
 >
 > **Step-up / break-glass:** restraint application and IRC-cap-override are step-up/break-glass actions.
 
-> **Track B screens (ADR-0030) — built in-task, not deferred.** M37 owns `apps/web/src/modules/37-ipu`: M37-T01 adds that web codePath to the manifest + runs `bun run scaffold` (`arch:parity` 1:1); M37-T11 builds the §5 screens against the generated client and registers them into the M1 shell, flipping the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`. Backend-first preserved.
+> **Track B screens (ADR-0030) — built in-task, not deferred.** M37 owns `apps/web/src/modules/37-ipu`: M37-T01 adds that web codePath to the manifest + runs `bun run scaffold` (`arch:parity` 1:1); M37-T11 builds the §5 screens against the generated client and registers them into the M1 shell, flipping the matching `docs/design/DEFERRED_SCREENS.md` row → `done`. Backend-first preserved.
 
 ## Module 37 — IPU Management (deps: 6,8,11,13,17,23 · codePaths: apps/backend/src/modules/37-ipu, packages/inpatient, apps/web/src/modules/37-ipu) — 26 tables
 
@@ -56,7 +56,7 @@ validate gate, and the legend are inherited from `M01-M02_VERTICAL_SLICE_PLAN.md
 - **M37-T11** Routes (§4.1–4.2) + permission keys (§4.6) + ABAC (§4.7, 5 predicates) into M3; step-up
   for restraint + IRC-cap-override break-glass; **Track B/ADR-0030 screens (§5):** build under
   `apps/web/src/modules/37-ipu` against M37's generated client (`packages/ui/src/api`), registered
-  into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`;
+  into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done`;
   tests (§5 W-IPU-01..14, **RLS isolation**) + sign-off. → `bun run test` + full `arch:fitness`.
 
 ---

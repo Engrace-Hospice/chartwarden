@@ -1,5 +1,5 @@
 // apps/web/src/modules/11-orders — verbal-expiring queue (M11 §4.1/§5, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_ORDERS.md — "Use Work Queue" (verbal-order workflow). The RN's
+// Spec: docs/design/screens/clinical/WARDENX_UI_ORDERS.md — "Use Work Queue" (verbal-order workflow). The RN's
 // queue of verbal_pending orders inside the 48h signature window (42 CFR 418.104(b)), sorted by deadline.
 // Each row shows a live countdown with pre-expiry colour tiers at 12h (amber) and 2h (red); past-deadline
 // rows are flagged red (the server flips them to expired_unsigned — this is a UX cue only, ADR-0030, no

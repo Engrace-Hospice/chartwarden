@@ -1,5 +1,5 @@
 // apps/web/src/modules/14-idg — Meeting Detail (pre-meeting) (M14 §4.1/§5, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace". The
+// Spec: docs/design/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace". The
 // IDG Coordinator's pre-meeting view: the meeting's lifecycle state + scheduled window over a packet-readiness
 // list (one row per included patient's packet, with its freeze state). The "Build packets now" / start-meeting /
 // cancel / reschedule write surfaces fill in as their write paths harden; the SERVER owns the §2.2 lifecycle and

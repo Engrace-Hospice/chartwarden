@@ -9,7 +9,7 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/06-admission — Admission Census (M6 §5.2.12 entry, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md — "Use Work Queue."
+// Spec: docs/design/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md — "Use Work Queue."
 // Org-scoped admissions queue read from GET /api/v1/admissions (optional state filter) via the
 // generated typed client; a row opens the Admission Detail (§5.2.4). The server enforces every scope
 // (ADR-0030 — no authz on the frontend). Imports only leaves (@wardenx/ui).

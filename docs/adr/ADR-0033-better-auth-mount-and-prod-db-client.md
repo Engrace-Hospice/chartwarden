@@ -5,7 +5,7 @@
   policy/plugins/session-classes → live-PG tests → M2 sign-in screens.
 - **Date:** 2026-06-20
 - **Phase:** pre-build governance (blocks the Better Auth wave; unblocks the M2 sign-in/MFA/passkey
-  screens, which are deferred in `docs/ui/DEFERRED_SCREENS.md`).
+  screens, which are deferred in `docs/design/DEFERRED_SCREENS.md`).
 - **Depends on / refines:**
   - [ADR-0026](ADR-0026-m19-vendor-operator-auth-via-better-auth.md) — Better Auth is the single
     authentication surface; this ADR decides *how it is mounted and run*.

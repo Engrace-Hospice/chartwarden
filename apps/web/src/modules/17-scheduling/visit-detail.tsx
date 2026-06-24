@@ -1,5 +1,5 @@
 // apps/web/src/modules/17-scheduling — Visit Detail (M17 §5.1 `/app/scheduling/visit/:visitId`, Track B / ADR-0030).
-// Spec: docs/ui/screens — "Use Detail Page". A single visit's detail: status, scheduled window, purpose/setting,
+// Spec: docs/design/screens — "Use Detail Page". A single visit's detail: status, scheduled window, purpose/setting,
 // assignment, and the reschedule chain back-ref. The reschedule/cancel/reassign + state-history write surfaces
 // fill in as those write paths harden; the SERVER owns the §2.2.1 lifecycle + §4.7 ABAC (ADR-0030 — no frontend
 // authz; an out-of-scope visit 404s). Reads GET /api/v1/visits/:visitId via the typed client. Leaves only

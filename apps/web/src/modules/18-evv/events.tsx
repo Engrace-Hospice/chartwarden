@@ -1,5 +1,5 @@
 // apps/web/src/modules/18-evv — EVV Event Ledger (M18 §5.1 `/app/evv/events`, Track B / ADR-0030).
-// Spec: docs/ui/screens — "Use Work Queue". A searchable, caseload-scoped capture ledger: one row per
+// Spec: docs/design/screens — "Use Work Queue". A searchable, caseload-scoped capture ledger: one row per
 // `evv_event` with its kind / clinician / gps-quality. Coordinates are NEVER shown here (D10 — evv.read_coords
 // is a separate path). Row click opens the §5.1 event detail. Filters (clinician / patient / kind) are passed
 // to the server as query params; the SERVER owns the §4.7 ABAC + RLS narrowing (ADR-0030 — no frontend authz;

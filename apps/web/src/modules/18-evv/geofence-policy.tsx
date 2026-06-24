@@ -1,5 +1,5 @@
 // apps/web/src/modules/18-evv — Geofence Policy (M18 §5.1 `/app/evv/geofence-policy`, Track B / ADR-0030).
-// Spec: docs/ui/screens — "Use Detail Page". The tenant tighten-only default (radius + max-accuracy) atop the
+// Spec: docs/design/screens — "Use Detail Page". The tenant tighten-only default (radius + max-accuracy) atop the
 // 200m/50m platform floor (§2.2.2 D3), plus the per-patient-address overrides. The editor (radius/accuracy
 // sliders, override-with-reason, step-up) fills in as that write path hardens; the SERVER enforces tighten-only
 // + RLS (ADR-0030 — no frontend authz). Reads GET /api/v1/evv/geofence-policy via the typed client. Leaves only.

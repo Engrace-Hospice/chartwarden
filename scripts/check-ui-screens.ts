@@ -1,10 +1,10 @@
 /**
  * WardenX — UI Screen-Spec Corpus Consistency Check
  * -------------------------------------------------
- * Keeps the docs/ui/ corpus internally coherent. Catches the drift that is easy
+ * Keeps the docs/design/ corpus internally coherent. Catches the drift that is easy
  * to introduce when adding screens by hand:
  *
- *   1. INDEX PARITY — every screen file under docs/ui/screens/ is listed in
+ *   1. INDEX PARITY — every screen file under docs/design/screens/ is listed in
  *      WARDENX_UI_COMPLETE_SCREEN_INDEX.md, and every index entry points to a file
  *      that exists (no orphans, no stragglers, no duplicates).
  *   2. LAYOUT-HEADING HYGIENE — every screen declares its layout via
@@ -26,7 +26,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const REPO_ROOT = process.cwd();
-const UI_DIR = "docs/ui";
+const UI_DIR = "docs/design";
 const SCREENS_DIR = join(UI_DIR, "screens");
 const INDEX_FILE = join(UI_DIR, "WARDENX_UI_COMPLETE_SCREEN_INDEX.md");
 const GLOSSARY_FILE = join(UI_DIR, "WARDENX_UI_LAYOUT_PATTERNS.md");
@@ -48,7 +48,7 @@ function listScreens(dir: string, acc: string[] = []): string[] {
   return acc;
 }
 
-// ---- gather the screen set (relative to docs/ui/, matching index entries) ----
+// ---- gather the screen set (relative to docs/design/, matching index entries) ----
 const screenFiles = listScreens(SCREENS_DIR)
   .map((p) => relative(UI_DIR, p))
   .sort();

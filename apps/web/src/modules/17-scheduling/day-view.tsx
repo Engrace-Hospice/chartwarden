@@ -1,5 +1,5 @@
 // apps/web/src/modules/17-scheduling — Day View (M17 §5.1, Track B / ADR-0030).
-// Spec: docs/ui/screens — "Use Work Queue". The scheduler's per-clinician day grid: one row per visit for the
+// Spec: docs/design/screens — "Use Work Queue". The scheduler's per-clinician day grid: one row per visit for the
 // selected service date with its lifecycle chip + scheduled window. The drag-drop reschedule / publish-all
 // write surfaces fill in as those write paths harden; the SERVER owns the §2.2.1 lifecycle + the §4.7 pre-
 // schedule ABAC (ADR-0030 — no frontend authz; out-of-scope resources 404, never 403). The clinician is taken

@@ -11,7 +11,7 @@ are inherited from `M01-M02_VERTICAL_SLICE_PLAN.md`** — read its header first.
 > `apps/web/src/modules/NN-*`, registered into the M1 shell — never imported by the shell),
 > [ADR-0032](../adr/ADR-0032-frontend-api-transport-and-client.md) (OpenAPI → generated typed client in
 > `packages/ui/src/api`; no `apps/web`→`apps/backend` edge). Status ledger:
-> [`docs/ui/DEFERRED_SCREENS.md`](../ui/DEFERRED_SCREENS.md) (mark rows as tasks clear).
+> [`docs/design/DEFERRED_SCREENS.md`](../design/DEFERRED_SCREENS.md) (mark rows as tasks clear).
 
 ## Why this wave exists (read first — it refines Track A's original scope)
 
@@ -120,7 +120,7 @@ one doesn't exist yet (then `openapi:emit` + `client:gen`). Cross-module tabs (e
 eMAR, …) stay Track B.
 
 ### FB-T06 — Demographics & Identifiers tab
-- deps: none (M5 reads live) · spec: `docs/ui/screens/clinical/WARDENX_UI_PATIENT_CHART.md`
+- deps: none (M5 reads live) · spec: `docs/design/screens/clinical/WARDENX_UI_PATIENT_CHART.md`
 - do: real Demographics tab — names/aliases, DOB, SOGI/race/ethnicity/language (M38 value-set labels),
   identifiers with **gated SSN/state-ID** (masked; step-up to reveal — reuse `/step-up`), MRN immutable.
   Add `GET /api/v1/patients/:id/identifiers` + `/demographics` if not covered by the existing detail.
@@ -155,7 +155,7 @@ eMAR, …) stay Track B.
 ## Group 3 — Unblockable partial screens
 
 ### FB-T11 — Global Search Results (M5 + M2 facets only)
-- deps: FB-T01..T05 · spec: `docs/ui/screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md`
+- deps: FB-T01..T05 · spec: `docs/design/screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md`
 - do: build the Global Search frame + the **patient facet** (`GET /api/v1/patients?q=`) and **staff
   facet** (`GET /api/v1/orgs/:id/members?q=`). Later facets (orders/docs/visits) render as labeled
   "available when <module> ships" rows — visible, not fabricated. Register into the shell top-nav search.

@@ -1,5 +1,5 @@
 // apps/web/src/modules/18-evv — Aggregator Submission Queue (M18 §5.1 `/app/evv/aggregator-submissions`,
-// Track B / ADR-0030). Spec: docs/ui/screens — "Use Work Queue". The per-state aggregator submission backlog:
+// Track B / ADR-0030). Spec: docs/design/screens — "Use Work Queue". The per-state aggregator submission backlog:
 // one row per `evv_aggregator_submission` with its §2.2.5 D7 status + attempt count. Filter by state_code /
 // status. The resubmit / cancel write CTAs fill in as those write paths harden; the SERVER owns the D7
 // transition + RLS (ADR-0030 — no frontend authz). Reads GET /api/v1/evv/aggregator-submissions via the typed

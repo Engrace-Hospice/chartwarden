@@ -8,7 +8,7 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/04-audit — Audit Log Viewer (M4, Track A).
-// Spec: docs/ui/screens/admin/WARDENX_UI_AUDIT_LOG_VIEWER.md — "Use Work Queue."
+// Spec: docs/design/screens/admin/WARDENX_UI_AUDIT_LOG_VIEWER.md — "Use Work Queue."
 // Filterable, cursor-paginated audit-event table with a right detail panel, over the real route
 // GET /api/v1/audit/events via the generated typed client. Imports only leaves (@wardenx/ui).
 import { useCallback, useEffect, useState } from "react";

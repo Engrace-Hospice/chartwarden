@@ -1,6 +1,6 @@
 import { CenteredCardLayout } from "@wardenx/ui";
 // apps/web/src/modules/02-identity — Forgot Password (M2 Auth, AUTH polish).
-// Spec: docs/ui/screens/core/WARDENX_UI_AUTH.md "password reset" (step 1, /forgot). Enter the account
+// Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "password reset" (step 1, /forgot). Enter the account
 // email; Better Auth mints a single-use reset token and (via M36, a follow-up) emails the link, which
 // lands on /reset-password?token=…. We always show the same neutral confirmation whether or not the
 // email exists — no account-enumeration leak (M2 §3.1 / §7.5 no-leak).

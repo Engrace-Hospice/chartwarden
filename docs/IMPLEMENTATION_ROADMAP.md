@@ -109,7 +109,7 @@ A module is not "done" until **all** of these hold:
 - [ ] Published seams registered into the M1 seam registry; `validateSeams()` passes at boot.
 - [ ] Outbox events emitted with the `mN.` catalog naming; consumers wired (or deny-stubbed if a
       consumer is a later phase).
-- [ ] UI screens implemented per `docs/ui/screens/*` using the declared layout pattern; `docs:ui` green.
+- [ ] UI screens implemented per `docs/design/screens/*` using the declared layout pattern; `docs:ui` green.
 - [ ] Eraser registered with M4; `validateErasers()` passes.
 - [ ] DR tier + INT inventory declared; degraded-mode behavior documented where on a cross-phase path.
 - [ ] Unit + integration tests (Vitest), including RLS cross-tenant isolation tests and the spec's

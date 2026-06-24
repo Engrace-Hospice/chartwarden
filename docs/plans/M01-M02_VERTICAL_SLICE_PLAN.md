@@ -101,7 +101,7 @@ feature_flag_evaluation, organization_settings_registry, outbox_event_catalog.
 ### M1-T11 — Shared UI components + degraded-mode banner
 - deps: — (parallel) · files: `packages/ui` · spec §5.1–5.2
 - do: shared UI components delivered by M1; degraded-mode banner. (If M1 has screen specs under
-  `docs/ui/`, implement them.)
+  `docs/design/`, implement them.)
 - accept: `docs:ui` green; `tsc -b` green.
 
 ### M1-T12 — Audit helper, retention classes, erasers, permissions, tests
@@ -173,7 +173,7 @@ ownedTables (4): two_factor, passkey, organization_invitation, tenant_step_up_po
 > **STATUS — BLOCKED (recorded by maintainer 2026-06-14).** This task as written cannot be built
 > under M2. The manifest (law) scopes M2 to `packages/auth/src/identity` +
 > `apps/backend/src/modules/02-identity` — **M2 owns no frontend codePath**. The screens named here are
-> *core/app-shell* identity flows (authoritative spec: `docs/ui/screens/core/WARDENX_UI_AUTH.md`), **not**
+> *core/app-shell* identity flows (authoritative spec: `docs/design/screens/core/WARDENX_UI_AUTH.md`), **not**
 > portal screens — yet this task points them at `apps/portal` (manifest owner: **M31**, the patient/family
 > portal) and `apps/admin` (manifest owner: **M34**, the SaaS tenant platform). Neither M31 nor M34 is the
 > obvious home for *core staff* auth UI, and no core front-end app exists in the tree (`apps/` = `admin`,
@@ -226,7 +226,7 @@ manifest + the module spec. Each maps to one Definition-of-Done line and closes 
 | N-T05 | Permission keys + ABAC predicates registered into M3; audit events (M4) + denylist | spec §6, §8 | `arch:gaps`; audit tests |
 | N-T06 | Published seams registered into M1 registry | spec cross-module §| `validateSeams()`; `arch:gaps` seam |
 | N-T07 | Outbox events `mN.<resource>.<verb>`; consumers wired or deny-stubbed | spec events | `arch:gaps` event-catalog |
-| N-T08 | UI screens per `docs/ui/screens/*` using the declared layout pattern | spec §5 + `docs/ui` | `docs:ui` |
+| N-T08 | UI screens per `docs/design/screens/*` using the declared layout pattern | spec §5 + `docs/design` | `docs:ui` |
 | N-T09 | Eraser registered with M4 | spec §retention | `validateErasers()` |
 | N-T10 | DR tier + INT inventory; degraded-mode where on a cross-phase path | DR/INT docs | docs present |
 | N-T11 | Unit + integration (Vitest) incl. RLS cross-tenant + spec's enumerated cases | spec §test plan | `bun run test`; full `arch:fitness` |

@@ -1,5 +1,5 @@
 // apps/web/src/modules/11-orders — standing-order admin (M11 §4.1/§5 §2.4 D5, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_ORDERS.md — "Use Work Queue" (Standing orders). A signed template
+// Spec: docs/design/screens/clinical/WARDENX_UI_ORDERS.md — "Use Work Queue" (Standing orders). A signed template
 // spawns instances on cadence (spawned instances do NOT re-require signature — the template is the signature
 // anchor, D5). This worklist lists every standing-order template with its cadence, status (active/paused/
 // discontinued), next-spawn time, and spawn count. The create / pause / resume / discontinue / PRN-spawn write

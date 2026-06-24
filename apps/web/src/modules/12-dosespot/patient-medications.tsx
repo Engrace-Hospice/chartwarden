@@ -1,5 +1,5 @@
 // apps/web/src/modules/12-dosespot — patient medication list (M12 §4.1/§6.1, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Patient Workspace + Work Queue"
+// Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Patient Workspace + Work Queue"
 // (medication list, patient chart). Reached from the patient chart "Medications" tab; lists the patient's
 // active medications (and, via the status filter, drafts/history) with drug + sig, the §2.2 D2 lifecycle
 // status, and the controlled-substance posture. SUD-treatment meds are redacted per the M5 PrivacyFlag

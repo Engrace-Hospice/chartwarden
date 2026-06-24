@@ -1,5 +1,5 @@
 // apps/web/src/modules/10-hope — HOPE assessment detail (M10 §5.1/§5.2, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_HOPE_ENGINE.md — "Use Documentation Workspace."
+// Spec: docs/design/screens/clinical/WARDENX_UI_HOPE_ENGINE.md — "Use Documentation Workspace."
 // Read-only view of one HOPE timepoint: RFA kind, status, target/sign metadata, the server-authoritative
 // J2051 max-severity + trigger outcome, the PPS/ESAS-r clinical-context snapshot (D8), and an aside of the
 // on-demand pre-submission validation findings (§3). Two reads: GET /api/v1/hope/assessments/:id and

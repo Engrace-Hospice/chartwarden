@@ -1,5 +1,5 @@
 // apps/web/src/modules/12-dosespot — refill inbox (M12 §4.1/§6.1, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (refill inbox). The
+// Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (refill inbox). The
 // prescriber / clinical-supervisor queue of pending refill requests (§2.7 D9), sorted by request age (a proxy
 // for SLA priority — the SERVER owns the authoritative 48h-warn / 72h-critical SLA, §2.7). The refill_inbox_scope
 // ABAC predicate narrows the list server-side to the caller's caseload OR the orders they prescribe (ADR-0030 —

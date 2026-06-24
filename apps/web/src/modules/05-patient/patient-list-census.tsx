@@ -7,7 +7,7 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/05-patient — Patient List / Census (M5, Track A).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md — "Use Work Queue."
+// Spec: docs/design/screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md — "Use Work Queue."
 // Filterable, cursor-paginated census over GET /api/v1/patients via the generated typed client.
 // A row opens the patient chart (/patients/:id, built later). Imports only leaves (@wardenx/ui).
 import { useCallback, useEffect, useState } from "react";

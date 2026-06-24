@@ -1,5 +1,5 @@
 // apps/web/src/modules/14-idg — Per-Patient Packet (read-only chart embed) (M14 §4.1/§5, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace" (packet
+// Spec: docs/design/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace" (packet
 // reading surface). A read-only view of one patient's IDG packet digest within a meeting (freeze state +
 // identifiers). The full per-discipline `built_snapshot` viewer with the discipline-switcher tabs fills in as
 // the packet-content read path hardens; the SERVER owns the §7.2/W-SUD-01 SUD redaction (blocks elided at the

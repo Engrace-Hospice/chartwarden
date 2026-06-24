@@ -6,7 +6,7 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/07-care-plan — Care Plan Version History (M7 §5.1, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_CARE_PLAN.md — "Use Patient Workspace + Documentation Workspace."
+// Spec: docs/design/screens/clinical/WARDENX_UI_CARE_PLAN.md — "Use Patient Workspace + Documentation Workspace."
 // The immutable version ledger for a plan: every version with its kind, status, signed-at, and the
 // signers collected against the Required Signer Set. Reachable from the Care Plan View aside. Reads
 // GET /api/v1/care-plans/:planId/versions via the typed client; the server enforces every scope.

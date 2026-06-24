@@ -1,6 +1,6 @@
 import { ConversationView, EmptyState, LoadingSpinner, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/36-messaging — Internal Staff Secure Messaging (M36, Track A).
-// Spec: docs/ui/screens/core/WARDENX_UI_STAFF_MESSAGING.md — "Use Conversation View."
+// Spec: docs/design/screens/core/WARDENX_UI_STAFF_MESSAGING.md — "Use Conversation View."
 // Channel list | message thread + composer. Backed by GET /messaging/channels,
 // GET/POST /messaging/channels/:id/messages via the generated typed client. Imports only leaves.
 import { useCallback, useEffect, useState } from "react";

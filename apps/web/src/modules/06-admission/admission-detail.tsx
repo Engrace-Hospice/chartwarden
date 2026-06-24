@@ -7,7 +7,7 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/06-admission — Admission Detail (M6 §5.2.4 + §5.2.5 activation gate, Track B).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md — "Use Detail Page."
+// Spec: docs/design/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md — "Use Detail Page."
 // Reads the admission aggregate from GET /api/v1/admissions/:id (which carries the R-AC-01 activation
 // gate — the SAME server-truth gate route 14 enforces, so the §5.2.5 checklist can never diverge),
 // plus the election-periods and compliance-windows sub-lists. Reads only; the server is the only

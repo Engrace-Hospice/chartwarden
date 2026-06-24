@@ -8,7 +8,7 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/40-mdm — Master Data Management console (M40, Track A).
-// Spec: docs/ui/screens/admin/WARDENX_UI_MASTER_DATA_MDM.md — "Use Work Queue."
+// Spec: docs/design/screens/admin/WARDENX_UI_MASTER_DATA_MDM.md — "Use Work Queue."
 // Search a kind's canonical set, view a result's detail. Backed by GET /api/v1/mdm/:kind/search via
 // the generated typed client. Imports only leaves (@wardenx/ui).
 import { useCallback, useEffect, useState } from "react";

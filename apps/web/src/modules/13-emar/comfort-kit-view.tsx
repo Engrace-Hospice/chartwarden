@@ -1,5 +1,5 @@
 // apps/web/src/modules/13-emar — comfort kit view (M13 §4.1/§6.1 #7, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Detail" (comfort-kit drawdown). Read-only
+// Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Detail" (comfort-kit drawdown). Read-only
 // detail of a deployed comfort kit: the deployment, the admission it serves, and the disposal/return status. The
 // drawdown projection (remaining quantity × replenishment threshold × last-administered) and the
 // acknowledge-return write action fill in as their write surfaces harden; the SERVER owns the §2.7 D5 drawdown

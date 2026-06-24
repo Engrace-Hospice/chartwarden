@@ -1,5 +1,5 @@
 // apps/web/src/modules/12-dosespot — verbal medication-orders queue (M12 §4.1/§6.1, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (verbal-orders). The named
+// Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (verbal-orders). The named
 // prescriber's queue of verbal_pending medication orders awaiting their signature within the 48h window
 // (42 CFR 418.104(b); the M11 OrderSignatureProvider verbal primitive). Sorted by created (the per-order
 // deadline lives on the M11 verbal record). Controlled substances may NOT be ordered verbally in Phase 1

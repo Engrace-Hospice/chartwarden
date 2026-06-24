@@ -35,7 +35,7 @@ Specs (all `docs/modules/`): `WARDENX_MODULE_14_IDG_SPEC_v0_4.md`,
 > `apps/web/src/modules/NN-*`: its first task adds that web codePath to the manifest
 > (`architecture/module-manifest.ts`) + runs `bun run scaffold` (empty slice, `arch:parity` stays
 > 1:1); its screen task builds the §5 screens against the generated client and registers them into
-> the M1 shell, flipping the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`. Backend-first is
+> the M1 shell, flipping the matching `docs/design/DEFERRED_SCREENS.md` row → `done`. Backend-first is
 > preserved.
 
 ---
@@ -49,7 +49,7 @@ ownedTables (9): idg_meeting, idg_recurring_policy, idg_attendance, idg_agenda_i
 - **M14-T04** Packet snapshot build (§2.4 D1, BASIC) — consume M8 `SignedEncountersReader` (since-last-IDG), M7 `CarePlanReader`, M9/M10 summaries; rebuild-after-adjournment refused (W-PKT-02); SUD redaction at packet read (W-SUD-01) via M39/M5.
 - **M14-T05** Seams published (§4.8) into M1 registry; routes (§4.1–4.2) behind guards; permission keys (§4.6) + ABAC `quorate_decision`/`idg_meeting_scope` (§4.7) into M3.
 - **M14-T06** Outbox `idg.decision_recorded` (§4.4) + subscriptions (§4.5) — **this wires live the M7/M11/M12 consumers**; M36 alerts (notification composition is M36's per ADR-0024). → `arch:gaps`.
-- **M14-T07** Screens (§5, BASIC) — **Track B/ADR-0030**: build under `apps/web/src/modules/14-idg` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`; STRIDE (§4.12); eraser; DR/INT.
+- **M14-T07** Screens (§5, BASIC) — **Track B/ADR-0030**: build under `apps/web/src/modules/14-idg` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done`; STRIDE (§4.12); eraser; DR/INT.
 - **M14-T08** Tests (§9, incl. RLS isolation §9.3) + §12 sign-off. → `bun run test` + full `arch:fitness`.
 
 ## Module 17 — Scheduling & Route Optimization (deps: 5,8,40 · codePaths: packages/routing-client, apps/backend/src/modules/17-scheduling, apps/web/src/modules/17-scheduling) — BASIC (no route opt)
@@ -62,7 +62,7 @@ ownedTables (7): clinician_availability, recurring_visit, route_segment, time_of
 - **M17-T05** Four published reader seams (§4.3: `VisitReader`, `VisitAssignmentReader`, `PortalVisitReader`, `RouteEfficiencyReader`/`VisitMetricsProvider`) into M1 registry — **closes M8's visit-seeding consumer**; `m17.visit.assigned` caseload contribution (§4.5 D11). → `validateSeams`.
 - **M17-T06** Seams M17 consumes (§4.4): M8 bidirectional (`m17.visit.published` ↔ `m8.encounter.signed`, `MileagePayrollReader`); **M15 `VolunteerComplianceProvider` deny-stub** (M15 Phase 2).
 - **M17-T07** `RoutingProvider` adapter (§4.10 D1, OSRM) — **route optimization behind `scheduling.route_optimization` (OFF)**; OSRM degraded mode is the Phase-1 path (§7.9). Routes (§4.1–4.2) behind guards; permission keys (§4.6) + ABAC `clinician_credentials_active`/`discipline_matches_visit`/`not_on_pto`/`within_caseload_or_unassigned_pool` (§4.7) into M3.
-- **M17-T08** Outbox (§4.11): `m17.visit.*`, `visit.no_show_detected` (→M19 Phase 2, inert); M36 alerts; M16/M19/M31 consumers deny-stub. Screens (§5.1, BASIC) — **Track B/ADR-0030**: build under `apps/web/src/modules/17-scheduling` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`; DR/INT.
+- **M17-T08** Outbox (§4.11): `m17.visit.*`, `visit.no_show_detected` (→M19 Phase 2, inert); M36 alerts; M16/M19/M31 consumers deny-stub. Screens (§5.1, BASIC) — **Track B/ADR-0030**: build under `apps/web/src/modules/17-scheduling` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done`; DR/INT.
 - **M17-T09** Tests (§9: RLS §9.3, IDOR §9.4) + §12 sign-off. → `bun run test` + full `arch:fitness`.
 
 ## Module 18 — EVV (deps: 17 · codePaths: apps/backend/src/modules/18-evv, apps/web/src/modules/18-evv) — BASIC / operational
@@ -74,7 +74,7 @@ ownedTables (6): evv_aggregator_submission, evv_device, evv_event, evv_geofence_
 - **M18-T04** Missing-EVV resolution (§2.2, `evv_missing_resolution`): self-attest path (§7.3); **`documented_missing` allowed, `unresolved_missing` blocks — never a Medicare claim gate (ADR-0008)**.
 - **M18-T05** Six published reader seams (§4.3) into M1 registry — incl. **`EvvComplianceReader`** (consumed by M23 Wave G) and the EVV bracket that **closes M8's `encounter.period` forward seam (M8 D9)**; `EvvLocationProvider`/`EvvMetricsProvider` published for M20/M33 (Phase 2). → `validateSeams`.
 - **M18-T06** `EvvAggregatorAdapter` seam (§4.5 D1, pluggable per-state) + state-vendor selection from M40; submission → acceptance → billing-ready (§7.8); rejection → resubmit (§7.9). Routes (§4.1–4.2) behind guards; permission keys (§4.6) + ABAC `assigned_clinician_for_visit`/`evv_within_visit_window` (§4.7) into M3.
-- **M18-T07** Outbox (§4.10): `m18.evv.check_in/out_recorded` (→M17 transitions), `late_check_out_detected`/`aggregator_rejected` (→M19/M25 Phase 2, inert); M36 alerts. Screens (§5.1) — **Track B/ADR-0030**: build under `apps/web/src/modules/18-evv` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`; DR/INT.
+- **M18-T07** Outbox (§4.10): `m18.evv.check_in/out_recorded` (→M17 transitions), `late_check_out_detected`/`aggregator_rejected` (→M19/M25 Phase 2, inert); M36 alerts. Screens (§5.1) — **Track B/ADR-0030**: build under `apps/web/src/modules/18-evv` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done`; DR/INT.
 - **M18-T08** Tests (§9: RLS §9.3, IDOR §9.4) + §12 sign-off. → `bun run test` + full `arch:fitness`.
 
 ## Module 22 — Document Management (deps: 1,5 · codePaths: packages/forms, packages/intake-extraction, apps/backend/src/modules/22-documents, apps/web/src/modules/22-documents) — DocLens OFF
@@ -89,7 +89,7 @@ ownedTables (17): classified_page, document, document_access_log, document_legal
 - **M22-T07** Routes (§4.1–4.2) behind guards + `withOrgContext`; permission keys (§4.6) + ABAC predicates (§4.7: `document_owner_or_caseload`, `extraction_reviewer_eligible`, etc.) into M3; cursor pagination; signed-URL service.
 - **M22-T08** **DocLens extraction behind `documents.doclens` (OFF)** — extraction pipeline (§7.1 W1) built; consume M32 as deny-stub; routes return **503 EXTRACTION_DISABLED** in Phase 1.
 - **M22-T09** Statement-of-Disagreement attachment (§7.5 W5); SUD-class result renders redacted placeholder (§7.16); EVV/encounter/lab-results render variants (§7.12/7.13/7.15) — lab back-ref consumer deny-stub (M29 Wave H).
-- **M22-T10** Screens (§5.1 web + §5.2 mobile; portal §5.3 is M31 Phase-2 forward-seam) — **Track B/ADR-0030**: build under `apps/web/src/modules/22-documents` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done` (§5.2 mobile is Capacitor-over-web per ADR-0035, so it lives under `apps/web` too); eraser + retention (§8.6); cross-tenant isolation (§8.8).
+- **M22-T10** Screens (§5.1 web + §5.2 mobile; portal §5.3 is M31 Phase-2 forward-seam) — **Track B/ADR-0030**: build under `apps/web/src/modules/22-documents` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done` (§5.2 mobile is Capacitor-over-web per ADR-0035, so it lives under `apps/web` too); eraser + retention (§8.6); cross-tenant isolation (§8.8).
 - **M22-T11** Tests (§7 workflows + §9) + sign-off. → `bun run test` + full `arch:fitness`.
 
 ---

@@ -35,7 +35,7 @@ Specs: `docs/modules/WARDENX_MODULE_06_ADMISSION_ELECTION_CERTIFICATION_SPEC_v0_
 >    `bun run scaffold` (empty placeholder slice, keeping `arch:parity` 1:1); its **terminal screen
 >    task** (M6-T12 / M7-T09 / M8-T12) builds the §5 screens against the module's generated client
 >    (`packages/ui/src/api`) and registers them into the M1 shell screen registry, flipping the
->    matching `docs/ui/DEFERRED_SCREENS.md` row → `done`. Backend-first is preserved — the screen task
+>    matching `docs/design/DEFERRED_SCREENS.md` row → `done`. Backend-first is preserved — the screen task
 >    still `deps: all MN`, so routes/seams land before UI. No new authz on the frontend; the server
 >    stays the only enforcement point.
 
@@ -116,7 +116,7 @@ referral, notice_of_rights_acknowledgment, compliance_window.
 - deps: all M6 · files: `apps/web/src/modules/06-admission`, module · spec §5, §6, §7
 - do: **Track B screens (ADR-0030) — build, do not defer:** implement the §5 screens under
   `apps/web/src/modules/06-admission` against M6's generated client methods (`packages/ui/src/api`),
-  registered into the M1 shell screen registry; flip the matching `docs/ui/DEFERRED_SCREENS.md`
+  registered into the M1 shell screen registry; flip the matching `docs/design/DEFERRED_SCREENS.md`
   row(s) → `done`. Permissions matrix (§6) incl. cross-tenant denial (§6.6); eraser; DR tier + INT
   inventory; full workflow tests (§7).
 - accept: `docs:ui` + `arch:parity` + `arch:boundaries` green; `validateErasers()` passes; `bun run
@@ -181,7 +181,7 @@ ownedTables (6): care_plan, care_plan_version, care_plan_signature, problem, goa
 - deps: all M7 · files: `apps/web/src/modules/07-care-plan`, module · spec §5, §4.7, §4.8, §8
 - do: **Track B screens (ADR-0030) — build, do not defer:** implement the §5 screens under
   `apps/web/src/modules/07-care-plan` against M7's generated client methods (`packages/ui/src/api`),
-  registered into the M1 shell screen registry; flip the matching `docs/ui/DEFERRED_SCREENS.md`
+  registered into the M1 shell screen registry; flip the matching `docs/design/DEFERRED_SCREENS.md`
   row(s) → `done`. STRIDE (§4.7); DR tier + degraded mode (§4.8); eraser; audit events (§8.1);
   tests (§7).
 - accept: `docs:ui` + `arch:parity` + `arch:boundaries` green; `validateErasers()` passes; `bun run
@@ -267,7 +267,7 @@ hearthnote_llm_modification.
 - do: **Track B screens (ADR-0030) — build, do not defer:** implement the §5 screens (authoring,
   finalize/Layer-2 review, sign, cosign queue) under `apps/web/src/modules/08-encounters` against M8's
   generated client methods (`packages/ui/src/api`), registered into the M1 shell screen registry; flip
-  the matching `docs/ui/DEFERRED_SCREENS.md` row(s) → `done`. Socket.IO surface via M36 (§4.3); eraser
+  the matching `docs/design/DEFERRED_SCREENS.md` row(s) → `done`. Socket.IO surface via M36 (§4.3); eraser
   (§3.6); DR tier + INT inventory; tests (§7).
 - accept: `docs:ui` + `arch:parity` + `arch:boundaries` green; `validateErasers()` passes; `bun run
   test` + full `arch:fitness` green.
@@ -286,7 +286,7 @@ hearthnote_llm_modification.
    consumer, and M8 M17/M18 seams are deny-stubbed/inert (Wave F/H).
 5. **Track B screens shipped (ADR-0030):** each module's §5 screens are built under
    `apps/web/src/modules/NN-*`, registered into the M1 shell, and the matching
-   `docs/ui/DEFERRED_SCREENS.md` rows are `done` — not deferred.
+   `docs/design/DEFERRED_SCREENS.md` rows are `done` — not deferred.
 6. `bun run build && bun run arch:fitness && bun run test` green; fixtures still red.
 7. **Wave D complete → Wave E (M9 Assessments, M10 HOPE, M11 Orders, M12 DoseSpot, M13 eMAR)
    unblocked** — clinical depth from assessments through medication administration.

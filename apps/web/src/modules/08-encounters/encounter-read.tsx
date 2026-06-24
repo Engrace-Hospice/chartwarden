@@ -6,7 +6,7 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/08-encounters — Encounter Read (M8 §5.1/§5.2, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md — "Use Patient Workspace + Documentation Workspace."
+// Spec: docs/design/screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md — "Use Patient Workspace + Documentation Workspace."
 // The signed encounter (or in-flight draft): the encounter header (type · discipline · service date ·
 // status · late-entry tier) | the lifecycle/version meta | a right aside with the cosignature-request
 // state. SUD-flagged content the caller may not see is omitted SERVER-side (§7.6) — never a frontend

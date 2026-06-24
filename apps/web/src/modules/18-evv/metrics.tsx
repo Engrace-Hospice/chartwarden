@@ -1,5 +1,5 @@
 // apps/web/src/modules/18-evv — EVV Dashboard + Metrics (M18 §5.1 `/app/evv/dashboard` + `/app/evv/metrics`,
-// Track B / ADR-0030). Spec: docs/ui/screens — "Use Dashboard". Org-wide EVV health over a trailing-30-day
+// Track B / ADR-0030). Spec: docs/design/screens — "Use Dashboard". Org-wide EVV health over a trailing-30-day
 // window: compliant-event rate, late-checkout rate, geofence-deviation rate, GPS-spoof rate, aggregator
 // acceptance rate (the §4.3 EvvMetricsProvider seam computes them SERVER-side; ADR-0030 — no frontend authz).
 // The 7/30/90-day window selector + trend charts fill in as the metrics surface hardens. Reads

@@ -1,6 +1,6 @@
 import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/36-messaging — Notifications & Tasks / Worklist (M36, Track A).
-// Spec: docs/ui/screens/core/WARDENX_UI_NOTIFICATIONS_TASKS.md — "Use Work Queue."
+// Spec: docs/design/screens/core/WARDENX_UI_NOTIFICATIONS_TASKS.md — "Use Work Queue."
 // The caller's alert inbox. Backed by GET /api/v1/alerts/inbox via the generated typed client.
 import { useEffect, useState } from "react";
 import type { JSX } from "react";

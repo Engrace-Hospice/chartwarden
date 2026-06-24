@@ -1,6 +1,6 @@
 import { SESSION_POLICY } from "@wardenx/types";
 // apps/web/src/modules/02-identity — Idle Screen-Lock overlay (M2 Auth, AUTH polish).
-// Spec: docs/ui/screens/core/WARDENX_UI_AUTH.md "Screen-lock overlay" — after 5 minutes idle, a soft
+// Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "Screen-lock overlay" — after 5 minutes idle, a soft
 // re-auth (password); the SESSION STAYS ALIVE (lifecycle active → screen_locked → active, M2 §2.2.4).
 // This is an OVERLAY, not a route: the composition root mounts it inside the app shell (M1 stays
 // module-free), so it covers only the authenticated frame — the chromeless /login flow is never locked.
