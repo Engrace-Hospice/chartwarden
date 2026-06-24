@@ -1407,6 +1407,51 @@ export const M18_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M18 contributed permission keys. */
 export type M18ContributedPermissionKey = keyof typeof M18_CONTRIBUTED_PERMISSIONS;
 
+/**
+ * The permission keys Module 22 (Document Management) registers into Module 3's catalog — the §4.6
+ * binding cross-module handshake (M22-T07; M22 spec §4.6). M3 must include these before M22's routes
+ * can be authorized; the §4.1 route inventory (M22-T07) gates on them. §4.6 is the SOLE permission
+ * registry for M22 (M22-F16 / ADR-0022): the canonical dot-key form, no parallel colon-key catalog.
+ *
+ * The catalog `abac` field is the DEFAULT predicate per key (the §4.1 Auth column); the route layer
+ * additionally composes the explicit §4.7 chain — `document_owner_or_caseload` on PHI-content + export,
+ * `legal_hold_aware` on metadata edits, `extraction_reviewer_eligible` on per-candidate decisions,
+ * `form_template_publish_authority`/`tenant_template_overlay_edit_authority` on publish. Review actions
+ * (approve low/high-risk, reject, discrepancy-resolve) all map to the single key `intake.review`; the
+ * risk-level eligibility distinction is the `extraction_reviewer_eligible` ABAC concern, not a key.
+ */
+export const M22_CONTRIBUTED_PERMISSIONS = {
+  // --- documents (§4.6) ---
+  "documents.upload": { resource: "document", action: "upload", category: "clinical", abac: "caseload_membership" },
+  "documents.read": { resource: "document", action: "read", category: "clinical", abac: "document_owner_or_caseload" },
+  "documents.read_history": { resource: "document", action: "read_history", category: "clinical", abac: "document_owner_or_caseload" },
+  "documents.read_access_log": { resource: "document", action: "read_access_log", category: "compliance", abac: "none" },
+  "documents.read_phi_content": { resource: "document", action: "read_phi_content", category: "clinical", abac: "document_owner_or_caseload" },
+  "documents.edit_metadata": { resource: "document", action: "edit_metadata", category: "clinical", abac: "legal_hold_aware" },
+  "documents.attach_to_disclosures": { resource: "document", action: "attach_to_disclosures", category: "compliance", abac: "none" },
+  "documents.export_phi_bundle": { resource: "document", action: "export_phi_bundle", category: "compliance", abac: "document_owner_or_caseload" },
+  "documents.delete": { resource: "document", action: "delete", category: "compliance", abac: "legal_hold_aware" },
+  "documents.read_templates": { resource: "form_template", action: "read", category: "clinical", abac: "none" },
+  "documents.preview_template": { resource: "form_template", action: "preview", category: "platform", abac: "none" },
+  "documents.publish_template": { resource: "form_template", action: "publish", category: "platform", abac: "form_template_publish_authority" },
+  "documents.manage_overlay": { resource: "tenant_template_overlay", action: "manage", category: "admin", abac: "tenant_template_overlay_edit_authority" },
+  "documents.admin_read_fills": { resource: "form_fill", action: "admin_read", category: "platform", abac: "none" },
+  "documents.admin_retry_render": { resource: "form_fill", action: "admin_retry_render", category: "platform", abac: "none" },
+  // --- intake (§4.6) ---
+  "intake.upload": { resource: "intake_batch", action: "upload", category: "clinical", abac: "none" },
+  "intake.read": { resource: "intake_batch", action: "read", category: "clinical", abac: "none" },
+  "intake.reclassify": { resource: "intake_batch", action: "reclassify", category: "clinical", abac: "none" },
+  "intake.confirm_classification": { resource: "intake_batch", action: "confirm_classification", category: "clinical", abac: "none" },
+  "intake.split_batch": { resource: "intake_batch", action: "split_batch", category: "clinical", abac: "none" },
+  "intake.review": { resource: "extraction_review", action: "review", category: "clinical", abac: "extraction_reviewer_eligible" },
+  "intake.discard_batch": { resource: "intake_batch", action: "discard_batch", category: "clinical", abac: "none" },
+  // --- extraction provenance (§4.6) ---
+  "extraction.read_provenance": { resource: "extraction_provenance", action: "read", category: "compliance", abac: "none" },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M22 contributed permission keys. */
+export type M22ContributedPermissionKey = keyof typeof M22_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -1509,6 +1554,11 @@ export function m18ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M18_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M22 contributed keys into `permission`-table mirror rows (M22-T07). */
+export function m22ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M22_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -1536,5 +1586,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m14ContributedPermissionMirrorRows(),
     ...m17ContributedPermissionMirrorRows(),
     ...m18ContributedPermissionMirrorRows(),
+    ...m22ContributedPermissionMirrorRows(),
   ];
 }
