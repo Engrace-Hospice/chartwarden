@@ -1,5 +1,5 @@
 // apps/web/src/modules/14-idg — My Action Items (M14 §4.1/§5, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace". The
+// Spec: docs/design/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace". The
 // caller's queue of IDG action items assigned to them (`assignee=me` resolves to the caller's membership
 // server-side), one row per item with its status + due date + linked-artifact kind. The update-status /
 // link-artifact / add-note write surfaces fill in as their write paths harden; the SERVER owns the §2.7

@@ -1,5 +1,5 @@
 // apps/web/src/modules/18-evv — EVV Devices (M18 §5.1 `/app/evv/devices/pending`, Track B / ADR-0030).
-// Spec: docs/ui/screens — "Use Work Queue". The team device roster (devices awaiting approval surface first):
+// Spec: docs/design/screens — "Use Work Queue". The team device roster (devices awaiting approval surface first):
 // one row per `evv_device` with platform / model / integrity status. The approve / reject / suspend / retire
 // write CTAs fill in as those write paths harden; the SERVER owns the device lifecycle + RLS (ADR-0030 — no
 // frontend authz). Reads GET /api/v1/evv/devices via the typed client. Leaves only (@wardenx/ui).

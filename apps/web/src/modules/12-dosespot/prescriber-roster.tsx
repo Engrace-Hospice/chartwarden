@@ -1,5 +1,5 @@
 // apps/web/src/modules/12-dosespot — prescriber roster admin (M12 §4.1/§6.1, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (prescriber roster admin).
+// Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (prescriber roster admin).
 // The per-tenant DoseSpot prescriber list for org_admin / compliance_officer: membership, enrollment, the
 // DEA schedules authorized, and the IAL2 identity-proofing status (§1311.115). The enroll / revoke / IAL2
 // re-verification write actions fill in as their write surfaces harden (each step-up enforced server-side).

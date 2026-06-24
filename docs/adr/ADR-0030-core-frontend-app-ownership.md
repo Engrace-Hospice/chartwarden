@@ -18,7 +18,7 @@
 The M2 (Identity) spec §5 and the M01-M02 slice plan's **M2-T09** call for *core identity* screens —
 sign-in, MFA challenge, organization-select, passkey enrollment, invitation acceptance,
 member-management. The authoritative UI spec places these in the **core** surface
-(`docs/ui/screens/core/WARDENX_UI_AUTH.md`), i.e. the staff/clinician app-shell — **not** a patient or
+(`docs/design/screens/core/WARDENX_UI_AUTH.md`), i.e. the staff/clinician app-shell — **not** a patient or
 tenant surface.
 
 But the manifest leaves these screens homeless:
@@ -70,7 +70,7 @@ Reuse the **proven backend ownership pattern**. `apps/backend` is *not* single-o
   routes (M2-T05/T06) and `packages/ui` (M1-T11).
 - **Every later module N** that ships core/app-shell screens gains **`apps/web/src/modules/NN-<name>`**,
   registered into M1's shell registry. This becomes the target for the reusable template's `N-T08` UI row
-  (replacing the bare "screens per `docs/ui`").
+  (replacing the bare "screens per `docs/design`").
 
 ### Boundaries & enforcement
 - One owner per codePath (ADR-0005) holds — the sub-paths are disjoint.
@@ -104,5 +104,5 @@ native shell) rather than a separate `apps/mobile` — no new app.
 ## References
 
 - M01-M02 slice plan → M2-T09 (`docs/plans/M01-M02_VERTICAL_SLICE_PLAN.md`)
-- Core auth UI spec (`docs/ui/screens/core/WARDENX_UI_AUTH.md`)
+- Core auth UI spec (`docs/design/screens/core/WARDENX_UI_AUTH.md`)
 - Manifest owners: M2 `id: 2`, M31 `id: 31` (`apps/portal`), M34 `id: 34` (`apps/admin`)

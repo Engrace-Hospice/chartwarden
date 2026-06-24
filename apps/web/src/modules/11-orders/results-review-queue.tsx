@@ -1,5 +1,5 @@
 // apps/web/src/modules/11-orders — lab results-pending-review queue (M11 §4.1/§5 D17, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_ORDERS.md — "Use Work Queue" (Lab flow). Result attachment does
+// Spec: docs/design/screens/clinical/WARDENX_UI_ORDERS.md — "Use Work Queue" (Lab flow). Result attachment does
 // NOT auto-complete the order (D17 / 42 CFR 418.106); this queue surfaces every lab order whose results have
 // been received and are awaiting the clinician's "Mark reviewed" acknowledgment. The Mark-reviewed action
 // (the active → completed transition) fills in as its write surface hardens. Reads

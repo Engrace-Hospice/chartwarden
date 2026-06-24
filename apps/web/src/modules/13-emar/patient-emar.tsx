@@ -1,5 +1,5 @@
 // apps/web/src/modules/13-emar — patient eMAR (M13 §4.1/§6.1 #1, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Patient Workspace + MAR Grid". The
+// Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Patient Workspace + MAR Grid". The
 // bedside default landing surface: a projection of the next-window scheduled doses (the timeline; one row per
 // scheduled dose with its pending/administered/missed/cancelled chip) alongside the patient's recent
 // administrations (committed / pending-caregiver-review / superseded / voided). The Single-Dose / PRN / Witness

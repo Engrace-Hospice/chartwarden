@@ -106,7 +106,7 @@ Specs: `docs/modules/WARDENX_MODULE_06_ADMISSION_ELECTION_CERTIFICATION_SPEC_v0_
 
 ## M6L-T07 — §9 test plan + RLS live + ledger
 
-- deps: all M6L · files: module `__tests__`, `rls-isolation.live.test.ts`, `docs/ui/DEFERRED_SCREENS.md`
+- deps: all M6L · files: module `__tests__`, `rls-isolation.live.test.ts`, `docs/design/DEFERRED_SCREENS.md`
 - do: the §7 workflow-acceptance suite against the live Drizzle service (admit → elect Medicare + CTI +
   F2F → LOC → compliance), cross-tenant RLS isolation on the M6 tables in the live lane, and flip the M6
   rows in the deferred-screens ledger to `done (live)`.

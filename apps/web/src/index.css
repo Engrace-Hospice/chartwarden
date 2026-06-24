@@ -1,37 +1,119 @@
-/* apps/web — global stylesheet (ADR-0030/ADR-0035; architecture v0.11 §"Tailwind CSS v4").
+/* apps/web — global stylesheet. WardenX "Lantern" design system (docs/design/DESIGN.md).
  *
  * Two jobs:
- *  1. Pull in Tailwind v4 (Preflight reset + the utility engine) so screens can use utilities and
- *     the app renders in a clean sans-serif base instead of the browser's serif defaults.
- *  2. Define the WardenX `wx-*` design-system classes. The Tier-1 regions / Tier-2 pattern layouts
- *     (@wardenx/ui layouts) already carry inline styles for *structure*; the SHELL chrome
- *     (apps/web/src/shell/layout.tsx) uses `wx-*` classes with NO inline fallback, so those are
- *     defined here. Brand tokens mirror packages/ui/src/core/theme/colors.ts (the source of truth).
+ *  1. Pull in Tailwind v4 (Preflight reset + the utility engine).
+ *  2. Define the Lantern design tokens (@theme) + the WardenX `wx-*` shell classes
+ *     (apps/web/src/shell/layout.tsx uses these with NO inline fallback).
  *
- * When apps/admin + apps/portal need styling, lift the @theme + @layer blocks into a shared
- * @wardenx/ui stylesheet and @import it here.
+ * Brand tokens mirror packages/ui/src/core/theme/colors.ts (the source of truth) and
+ * docs/design/DESIGN.md §11. When apps/admin + apps/portal need styling, lift the @theme +
+ * @layer blocks into a shared @wardenx/ui stylesheet and @import it here.
+ *
+ * FONTS: the Lantern type trio (Fraunces display · Inter UI · IBM Plex Mono identifiers) is
+ * referenced via the --font-* vars below with robust fallbacks. The webfonts themselves should
+ * be SELF-HOSTED (e.g. @fontsource/fraunces, @fontsource/inter, @fontsource-variable/ibm-plex-mono
+ * imported in main.tsx) rather than loaded from a third-party CDN — external font requests leak
+ * client IPs on a PHI app. Until then the fallbacks render. See DESIGN.md §3.
  */
 @import "tailwindcss";
 
-/* Brand tokens → Tailwind theme vars (mirror packages/ui/src/core/theme/colors.ts). */
+/* WardenX Lantern tokens → Tailwind theme vars (light). Dark values under `.dark`. */
 @theme {
-  --color-brand: #1d4ed8;
-  --color-surface: #ffffff;
-  --color-muted: #6b7280;
-  --color-line: #e5e7eb;
-  --font-sans:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  /* Brand — twilight indigo */
+  --color-primary: #3b45a8;
+  --color-primary-strong: #2b338a;
+  --color-primary-tint: #ecedfb;
+  --color-primary-dim: #aeb4ec;
+  --color-on-primary: #ffffff;
+  --color-accent: #c98a1f; /* Lantern gold — brand warmth only, never status */
+  --color-accent-tint: #fbf1dd;
+
+  /* Semantic */
+  --color-success: #1f8a5b;
+  --color-warning: #9a5b00;
+  --color-error: #c12b3b;
+  --color-alert: #e0413f;
+
+  /* Surfaces — warm paper hierarchy */
+  --color-background: #f6f5f2;
+  --color-surface: #f6f5f2;
+  --color-surface-lowest: #ffffff;
+  --color-surface-low: #f1f0ec;
+  --color-surface-container: #eceae5;
+  --color-surface-high: #e5e3dd;
+  --color-surface-highest: #dedbd4;
+
+  /* Text & line */
+  --color-on-surface: #1c1b1a;
+  --color-on-surface-variant: #56524c;
+  --color-muted: #8c877f;
+  --color-outline: #6e6a62;
+  --color-outline-variant: #d7d3cb;
+
+  /* Legacy aliases (kept so existing wx-* refs resolve) */
+  --color-brand: var(--color-primary);
+  --color-line: var(--color-outline-variant);
+
+  /* Type — Lantern trio */
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Radius */
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+
+  /* Elevation */
+  --shadow-soft: 0 4px 24px rgba(28, 27, 26, 0.05);
+  --shadow-float: 0 12px 48px rgba(28, 27, 26, 0.1);
+  --shadow-ambient: 0 8px 32px rgba(59, 69, 168, 0.06);
+}
+
+/* Twilight dark mode (class strategy on <html>). Designed, not inverted. */
+.dark {
+  --color-primary: #aeb4f0;
+  --color-primary-strong: #8e95e0;
+  --color-primary-tint: #262a52;
+  --color-primary-dim: #3a4080;
+  --color-on-primary: #13163a;
+  --color-accent: #e7b35a;
+  --color-accent-tint: #3a2f16;
+  --color-success: #5fd6a0;
+  --color-warning: #e0a24a;
+  --color-error: #f2939e;
+  --color-alert: #ff6b68;
+  --color-background: #15151b;
+  --color-surface: #15151b;
+  --color-surface-lowest: #1c1c24;
+  --color-surface-low: #21212b;
+  --color-surface-container: #272732;
+  --color-surface-high: #30303c;
+  --color-surface-highest: #3a3a47;
+  --color-on-surface: #eceae6;
+  --color-on-surface-variant: #b8b4ad;
+  --color-muted: #7e7a72;
+  --color-outline: #8a857c;
+  --color-outline-variant: #45444e;
 }
 
 @layer base {
   html {
     font-family: var(--font-sans);
-    color: #111827;
-    background: #f9fafb;
+    color: var(--color-on-surface);
+    background: var(--color-background);
+  }
+  /* Editorial/human voice — headings use the Fraunces display face (DESIGN.md §3). */
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 500;
   }
   /* Screens author bare elements (<a>/<input>/<select>/<button>) and lean on these defaults. */
   a {
-    color: var(--color-brand);
+    color: var(--color-primary);
     text-decoration: none;
   }
   a:hover {
@@ -45,15 +127,23 @@
   textarea {
     font: inherit;
     padding: 0.4rem 0.6rem;
-    border: 1px solid var(--color-line);
-    border-radius: 0.375rem;
-    background: var(--color-surface);
+    /* Ghost border — No-Line rule (DESIGN.md §10): low-opacity outline, not a hard 1px line. */
+    border: 1px solid color-mix(in srgb, var(--color-outline-variant) 60%, transparent);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-low);
   }
   input:focus,
   select:focus,
   textarea:focus {
-    outline: 2px solid var(--color-brand);
+    outline: 2px solid var(--color-primary);
     outline-offset: 1px;
+    background: var(--color-surface-lowest);
+  }
+  /* Identifiers/codes read in the mono face (MRN, MBI, claim/control numbers). */
+  code,
+  kbd,
+  samp {
+    font-family: var(--font-mono);
   }
   table {
     border-collapse: collapse;
@@ -63,13 +153,19 @@
   td {
     text-align: left;
     padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid var(--color-line);
+    /* Ghost separator at ~15% opacity rather than an opaque rule. */
+    border-bottom: 1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent);
   }
   th {
     font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.03em;
-    color: var(--color-muted);
+    color: var(--color-on-surface-variant);
+  }
+  /* Financial/numeric alignment per DESIGN.md §6.7. */
+  td:has(> .tabular),
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
   }
 }
 
@@ -85,13 +181,16 @@
     align-items: center;
     gap: 1rem;
     padding: 0.75rem 1.5rem;
-    border-bottom: 1px solid var(--color-line);
-    background: var(--color-surface);
+    border-bottom: 1px solid color-mix(in srgb, var(--color-outline-variant) 50%, transparent);
+    background: color-mix(in srgb, var(--color-surface-lowest) 85%, transparent);
+    -webkit-backdrop-filter: blur(20px) saturate(1.1);
+    backdrop-filter: blur(20px) saturate(1.1);
   }
   .wx-brand {
-    font-weight: 700;
+    font-family: var(--font-display);
+    font-weight: 600;
     font-size: 1.125rem;
-    color: var(--color-brand);
+    color: var(--color-primary);
     white-space: nowrap;
   }
   .wx-topnav-search {
@@ -103,7 +202,7 @@
   }
   .wx-actor {
     margin-left: auto;
-    color: var(--color-muted);
+    color: var(--color-on-surface-variant);
     font-size: 0.875rem;
     white-space: nowrap;
   }
@@ -119,20 +218,27 @@
     width: 14rem;
     flex-shrink: 0;
     padding: 1rem 0.75rem;
-    border-right: 1px solid var(--color-line);
-    background: var(--color-surface);
+    border-right: 1px solid color-mix(in srgb, var(--color-outline-variant) 50%, transparent);
+    background: var(--color-surface-lowest);
     overflow-y: auto;
   }
   .wx-nav a {
     display: block;
     padding: 0.45rem 0.6rem;
-    border-radius: 0.375rem;
-    color: #374151;
+    border-radius: var(--radius-md);
+    color: var(--color-on-surface-variant);
     font-size: 0.925rem;
   }
   .wx-nav a:hover {
-    background: #f3f4f6;
+    background: var(--color-surface-container);
     text-decoration: none;
+  }
+  /* Active nav item — indigo text on primary-tint fill (DESIGN.md §6.1). */
+  .wx-nav a[aria-current="page"],
+  .wx-nav a.active {
+    background: var(--color-primary-tint);
+    color: var(--color-primary);
+    font-weight: 500;
   }
   .wx-main {
     flex: 1;
@@ -144,24 +250,26 @@
 
   /* ---- Light polish on regions/patterns (these already have inline structure) ---- */
   .wx-auth-brand {
-    font-weight: 700;
+    font-family: var(--font-display);
+    font-weight: 600;
     font-size: 1.25rem;
-    color: var(--color-brand);
+    color: var(--color-primary);
   }
   .wx-page-title {
-    font-weight: 600;
+    font-family: var(--font-display);
+    font-weight: 500;
   }
   /* Bare action buttons in headers/footers read as buttons, not plain text. */
   .wx-page-actions button,
   .wx-sticky-footer button {
     padding: 0.4rem 0.8rem;
-    border: 1px solid var(--color-line);
-    border-radius: 0.375rem;
-    background: var(--color-surface);
+    border: 1px solid color-mix(in srgb, var(--color-outline-variant) 60%, transparent);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-lowest);
     cursor: pointer;
   }
   .wx-page-actions button:hover,
   .wx-sticky-footer button:hover {
-    background: #f3f4f6;
+    background: var(--color-surface-container);
   }
 }

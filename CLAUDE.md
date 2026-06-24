@@ -24,13 +24,13 @@ T-29.01–T-29.13 (tasks 12 and 13 share one file, `WARDENX_T-29.12_13_FRONTEND.
 
 > When you need a module spec, **resolve it under `docs/modules/`**, not the repo root.
 
-### UI screen specifications → `docs/ui/`
+### UI screen specifications → `docs/design/`
 
 The UI screen specs (core/app-shell, clinical, revenue, admin, portal, platform/ops) live under
-[`docs/ui/screens/`](./docs/ui/screens/), indexed by
-[`docs/ui/WARDENX_UI_COMPLETE_SCREEN_INDEX.md`](./docs/ui/WARDENX_UI_COMPLETE_SCREEN_INDEX.md).
+[`docs/design/screens/`](./docs/design/screens/), indexed by
+[`docs/design/WARDENX_UI_COMPLETE_SCREEN_INDEX.md`](./docs/design/WARDENX_UI_COMPLETE_SCREEN_INDEX.md).
 Every spec declares a named layout pattern (`Use <name>.`) defined in
-[`docs/ui/WARDENX_UI_LAYOUT_PATTERNS.md`](./docs/ui/WARDENX_UI_LAYOUT_PATTERNS.md) — the
+[`docs/design/WARDENX_UI_LAYOUT_PATTERNS.md`](./docs/design/WARDENX_UI_LAYOUT_PATTERNS.md) — the
 authoritative glossary of layout patterns, shared regions, and composition rules. Like module
 specs, **UI screen specs are implementation proposals** (architecture wins on conflict).
 Run `bun run docs:ui` (`scripts/check-ui-screens.ts`) to verify corpus consistency —
@@ -73,7 +73,7 @@ the prose docs in `docs/architecture/`.
   (`arch:status-matrix`) to keep `audit/implementation-status/` fresh and to hard-fail on orphan
   (unowned) schema/migration tables. Writes `audit/implementation-status/IMPLEMENTATION_STATUS.md` (+ `.json`).
 - `scripts/report-ui-parity.ts` — **UI implementation-parity report**: bridges the documented
-  screen-spec corpus (`docs/ui`) and the implemented web surface (registered `screens.ts`), so a
+  screen-spec corpus (`docs/design`) and the implemented web surface (registered `screens.ts`), so a
   green `docs:ui` is not mistaken for "the UI is built". Regenerate with `bun run ui:parity`;
   `arch:fitness` runs it in `--check` mode (`arch:ui-parity`) to keep `audit/ui-parity/` fresh and
   to hard-fail on duplicate screen id/path, an unknown `requiredPermission`, or a `screens.ts` not

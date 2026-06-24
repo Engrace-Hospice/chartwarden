@@ -1,5 +1,5 @@
 // apps/web/src/modules/12-dosespot — medication-history reconciliation (M12 §4.1/§6.1, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Patient Workspace + Work Queue"
+// Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Patient Workspace + Work Queue"
 // (medication reconciliation). The MedHx pulled from DoseSpot is shown as a worksheet: drug + source. Each
 // row carries a carry_forward | discontinue | document_only action (POST .../reconcile) — carry_forward opens
 // the prescribe modal pre-filled — which fills in as its write surface hardens. The SERVER enforces the

@@ -1,5 +1,5 @@
 // apps/web/src/modules/14-idg — Live Meeting Surface (M14 §4.1/§5, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace". The
+// Spec: docs/design/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace". The
 // IDG Coordinator's in-meeting surface: a left-rail patient list (the meeting's packets) over the meeting's
 // lifecycle state. The center packet viewer (per-discipline switch), the right-rail decision-recording panel
 // (with the live quorum gauge), the attendance tracker, the action-item assignment, the adjourn control, and

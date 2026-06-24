@@ -1,5 +1,5 @@
 // apps/web/src/modules/18-evv — Missing-EVV Resolutions (M18 §5.1 `/app/evv/missing-resolutions`, Track B /
-// ADR-0030). Spec: docs/ui/screens — "Use Work Queue". The late-checkout resolution backlog: one row per
+// ADR-0030). Spec: docs/design/screens — "Use Work Queue". The late-checkout resolution backlog: one row per
 // `evv_missing_resolution` with its §2.2.4 D6 status. `open` is the only billing-blocking state (ADR-0008).
 // The clinician-attest / supervisor-override (step-up) write CTAs fill in as those write paths harden; the
 // SERVER owns the D6 transition + RLS (ADR-0030 — no frontend authz). Reads GET /api/v1/evv/missing-resolutions

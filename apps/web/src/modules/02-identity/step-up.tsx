@@ -1,6 +1,6 @@
 import { CenteredCardLayout, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/02-identity — Step-up Re-authentication (M2 Auth, AUTH polish).
-// Spec: docs/ui/screens/core/WARDENX_UI_AUTH.md "step-up" (/step-up). A sensitive action requires a
+// Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "step-up" (/step-up). A sensitive action requires a
 // fresh second-factor proof; this re-verifies the CURRENT session (no new sign-in) and the server
 // paired-writes lastStepUpAt/lastStepUpFactor (§4.4, D8), which M3's `step_up_recent` predicate gates on.
 //

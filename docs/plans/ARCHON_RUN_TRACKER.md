@@ -103,7 +103,7 @@ M8 Encounters) unblocked.**
 Makes the merged-module screens real end-to-end (mount routes + Drizzle-back the seams), fills the M5
 Patient Chart's M5-owned tabs, ships the unblockable partials, and clears the M2 auth follow-ups. Not a
 new module wave — see [`FRONTEND_INTEGRATION_PLAN.md`](./FRONTEND_INTEGRATION_PLAN.md) (Track A) and the
-status ledger [`../ui/DEFERRED_SCREENS.md`](../ui/DEFERRED_SCREENS.md). Can run anytime after Wave C
+status ledger [`../design/DEFERRED_SCREENS.md`](../design/DEFERRED_SCREENS.md). Can run anytime after Wave C
 (all its target modules — M2/M3/M4/M5/M36/M38/M39/M40 — are on `main`).
 
 | # | Wave | Scope | Command | Status | PR |

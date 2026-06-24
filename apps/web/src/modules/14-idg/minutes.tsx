@@ -1,5 +1,5 @@
 // apps/web/src/modules/14-idg — Minutes (per meeting) (M14 §4.1/§5, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace" (minutes
+// Spec: docs/design/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace" (minutes
 // reading surface). The finalized (or in-progress) minutes view for a meeting. The full attendance /
 // decision-list / action-item-list snapshot rendering and the IDG-Coordinator amendment-request control (§7.8,
 // M5 §164.526 pattern) fill in as their read/write paths harden; the SERVER owns the §2.2 D13 finalize-on-

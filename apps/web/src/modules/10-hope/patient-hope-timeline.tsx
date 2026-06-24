@@ -1,5 +1,5 @@
 // apps/web/src/modules/10-hope — Patient HOPE timeline (M10 §5.1/§5.2, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_HOPE_ENGINE.md — "Use Patient Workspace + Documentation Workspace."
+// Spec: docs/design/screens/clinical/WARDENX_UI_HOPE_ENGINE.md — "Use Patient Workspace + Documentation Workspace."
 // Per-patient chronology: Admission → HUV1 → HUV2 → SFV(s) → Discharge, newest first — each row carries the
 // RFA kind, target date, author discipline, the server-authoritative J2051 max-severity + trigger chip, a
 // late chip, and the signed/draft/superseded status. A row drills into the assessment detail. Reads

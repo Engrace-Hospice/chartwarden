@@ -23,7 +23,7 @@ Specs (all `docs/modules/`): `WARDENX_MODULE_15_DISCIPLINE_CARE_PLANS_SPEC_v0_2.
 > **AI dependency:** M16's risk **narrative** (Layer 2) and the deterministic risk rubric — the rubric
 > works without AI; the narrative needs Part-A `ai.full` (M32). Gate the narrative behind it.
 
-> **Track B screens (ADR-0030) — built in-task, not deferred.** Each UI-owning module owns `apps/web/src/modules/NN-*`: its first task adds that web codePath to the manifest + runs `bun run scaffold` (`arch:parity` 1:1); its screen task builds the §5 screens against the generated client and registers them into the M1 shell, flipping the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`. Backend-first preserved.
+> **Track B screens (ADR-0030) — built in-task, not deferred.** Each UI-owning module owns `apps/web/src/modules/NN-*`: its first task adds that web codePath to the manifest + runs `bun run scaffold` (`arch:parity` 1:1); its screen task builds the §5 screens against the generated client and registers them into the M1 shell, flipping the matching `docs/design/DEFERRED_SCREENS.md` row → `done`. Backend-first preserved.
 
 ## Module 15 — Discipline Care Plans (deps: 7,8 · apps/backend/src/modules/15-discipline-care-plans, apps/web/src/modules/15-discipline-care-plans) — 11 tables
 - **M15-T01** Enums + layout + domain (§2); outbox events (§2.4); types in `packages/types`. → `tsc -b`. **Track B (ADR-0030):** add `apps/web/src/modules/15-discipline-care-plans` to the manifest `codePaths` and run `bun run scaffold` so the empty web slice exists (→ `arch:parity`).
@@ -32,7 +32,7 @@ Specs (all `docs/modules/`): `WARDENX_MODULE_15_DISCIPLINE_CARE_PLANS_SPEC_v0_2.
 - **M15-T04** Volunteer compliance (§7.4/7.5): `volunteer_compliance_gate` + hours ledger; CoP 418.78(e) 5% ratio; gate-expiry → inactive.
 - **M15-T05** Seams published (§4.3): `DisciplinePlanReader`, **`VolunteerComplianceProvider`**, **`SupervisoryCadenceReader`** into M1 — closes M17's Wave-F deny-stubs. → `validateSeams`.
 - **M15-T06** Routes (§4.1) + permission keys (§4.4) + ABAC (§4.5: `aide_supervisor_eligible`/`volunteer_compliance_active`/`family_violence_disclosure_allowed`) into M3; M39 SUD + family-violence gating; M22 plan PDF.
-- **M15-T07** Screens (§5) — **Track B/ADR-0030**: build under `apps/web/src/modules/15-discipline-care-plans` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done` + tests (§9 incl. RLS §9.3) + §12 sign-off. → `bun run test` + full `arch:fitness`.
+- **M15-T07** Screens (§5) — **Track B/ADR-0030**: build under `apps/web/src/modules/15-discipline-care-plans` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done` + tests (§9 incl. RLS §9.3) + §12 sign-off. → `bun run test` + full `arch:fitness`.
 
 ## Module 16 — Bereavement (deps: 5,6,36 · apps/backend/src/modules/16-bereavement, apps/web/src/modules/16-bereavement) — 9 tables  (build after M15)
 - **M16-T01** Enums + layout + domain (§2); types in `packages/types`. → `tsc -b`. **Track B (ADR-0030):** add `apps/web/src/modules/16-bereavement` to the manifest `codePaths` and run `bun run scaffold` so the empty web slice exists (→ `arch:parity`).
@@ -41,7 +41,7 @@ Specs (all `docs/modules/`): `WARDENX_MODULE_15_DISCIPLINE_CARE_PLANS_SPEC_v0_2.
 - **M16-T04** Deterministic risk rubric (`bereavement_risk_score`) from M9 `ScaleSeriesProvider` + M15 `MswRiskFactorReader`; **Layer-2 risk narrative gated on `ai.full`** (§7.3, partial-data §7.17).
 - **M16-T05** Seams published (§4.6): `BereavementPlanProvider` (M36 channel), `BereavementOutreachProvider`/`BereavementRiskTierProvider` (M33 Phase 2) into M1. → `validateSeams`.
 - **M16-T06** Routes (§4.1–4.2) + permission keys (§4.7) + ABAC (§4.8: `bereavement_window`/`discipline_can_provide_bereavement`) into M3; M22 outreach artifacts; M36 bereavement channel; M39 bereavement-outreach consent.
-- **M16-T07** Screens (§5) — **Track B/ADR-0030**: build under `apps/web/src/modules/16-bereavement` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done` + tests (§9 incl. RLS) + §12 sign-off. → `bun run test` + full `arch:fitness`.
+- **M16-T07** Screens (§5) — **Track B/ADR-0030**: build under `apps/web/src/modules/16-bereavement` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done` + tests (§9 incl. RLS) + §12 sign-off. → `bun run test` + full `arch:fitness`.
 
 ## Module 21 — Supplies, DME & Comfort Kits (deps: 11,40 · apps/backend/src/modules/21-supplies, apps/web/src/modules/21-supplies) — 11 tables
 - **M21-T01** Enums + layout + domain (§2); types in `packages/types`. → `tsc -b`. **Track B (ADR-0030):** add `apps/web/src/modules/21-supplies` to the manifest `codePaths` and run `bun run scaffold` so the empty web slice exists (→ `arch:parity`).
@@ -49,7 +49,7 @@ Specs (all `docs/modules/`): `WARDENX_MODULE_15_DISCIPLINE_CARE_PLANS_SPEC_v0_2.
 - **M21-T03** Supply-request lifecycle (§2.2 XState); comfort-kit template (§2.3) + dispatch/per-med content (§2.5) + return/reconciliation (§2.6); par-stock monitoring (§2.7).
 - **M21-T04** **Consume `m11.order.supply_fulfillment_requested`** (closes M11 deny-stub) + **`m13.comfort_kit.*`** (closes M13 deny-stub); emit `m21.supply_request.status_changed` + `m21.comfort_kit.*` back; M11 `OrderProvider` for context.
 - **M21-T05** Seams published (§4.8) into M1; routes (§4.1–4.2) + permission keys (§4.3) + ABAC (§4.4: `controlled_substance_dispatcher_eligible`/`comfort_kit_return_reconciler_eligible`) into M3; M22 BOL/return-receipt + DEA 1304 perpetual log; M40 DmeVendor.
-- **M21-T06** Screens (§5) — **Track B/ADR-0030**: build under `apps/web/src/modules/21-supplies` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done` + tests + §12 sign-off. → `bun run test` + full `arch:fitness`.
+- **M21-T06** Screens (§5) — **Track B/ADR-0030**: build under `apps/web/src/modules/21-supplies` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done` + tests + §12 sign-off. → `bun run test` + full `arch:fitness`.
 
 ## Module 24 — Billing, Medicaid (Oregon) (deps: 23,40 · packages/medicaid-adapters, apps/backend/src/modules/24-billing-medicaid, apps/web/src/modules/24-billing-medicaid) — 14 tables
 - **M24-T01** Enums + `packages/medicaid-adapters` layout + domain (§2); types in `packages/types`. → `tsc -b`. **Track B (ADR-0030):** add `apps/web/src/modules/24-billing-medicaid` to the manifest `codePaths` and run `bun run scaffold` so the empty web slice exists (→ `arch:parity`).
@@ -58,7 +58,7 @@ Specs (all `docs/modules/`): `WARDENX_MODULE_15_DISCIPLINE_CARE_PLANS_SPEC_v0_2.
 - **M24-T04** Medicaid Validation Rule Registry (§4.6 D10): `medicaid_rb_arrangement_required_for_nf_resident` (§7.2), `medicare_primary_required_for_dual` (§7.3), `medicaid_evv_bracket_coherence` (§7.5, consume M18 `EvvComplianceReader`).
 - **M24-T05** Consume M23 (claim base, Medicare-primary for dual-eligible), M40 `PayerCatalogReader`, M5/M6/M8/M38; eight published reader seams (§4.3) into M1. → `validateSeams`.
 - **M24-T06** Routes (§4.1–4.2) + permission keys (§4.7) + ABAC (§4.8) into M3; outbox (§4.11); state trading-partner submission.
-- **M24-T07** Screens (§5) — **Track B/ADR-0030**: build under `apps/web/src/modules/24-billing-medicaid` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done` + workflows (§7.1 Oregon FFS combined hospice+R&B dual-eligible) + tests + §12 sign-off. → `bun run test` + full `arch:fitness`.
+- **M24-T07** Screens (§5) — **Track B/ADR-0030**: build under `apps/web/src/modules/24-billing-medicaid` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done` + workflows (§7.1 Oregon FFS combined hospice+R&B dual-eligible) + tests + §12 sign-off. → `bun run test` + full `arch:fitness`.
 
 ---
 

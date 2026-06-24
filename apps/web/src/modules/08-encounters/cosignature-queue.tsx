@@ -8,7 +8,7 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/08-encounters — Cosignature Queue (M8 §5.5, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md — "Use Work Queue."
+// Spec: docs/design/screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md — "Use Work Queue."
 // The RN / Clinical Supervisor cosignature work queue: one row per encounter awaiting cosignature,
 // with an SLA chip derived from hours-since-primary-sign (green ≤12h, yellow 12–24h, orange 24–48h,
 // red >48h, §5.5). A row opens the Encounter Read view. Reads GET /api/v1/encounters/cosignature-queue

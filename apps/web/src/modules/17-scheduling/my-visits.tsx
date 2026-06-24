@@ -1,5 +1,5 @@
 // apps/web/src/modules/17-scheduling — My Visits (M17 §5.1 `/app/me/visits`, Track B / ADR-0030).
-// Spec: docs/ui/screens — "Use Work Queue". The clinician's own visits today + upcoming 7 days, mobile-
+// Spec: docs/design/screens — "Use Work Queue". The clinician's own visits today + upcoming 7 days, mobile-
 // optimized. Caseload scoping is the SERVER's job (the §4.7 `within_caseload_or_unassigned_pool` ABAC + RLS;
 // ADR-0030 — no frontend authz, out-of-scope visits never appear). The "Start visit" (EVV-missing flow) action
 // fills in as that write path hardens. Reads GET /api/v1/visits (date-window filtered) via the typed client.

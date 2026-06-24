@@ -1,5 +1,5 @@
 // apps/web/src/modules/09-assessments — Patient assessment timeline (M9 §5.1/§5.2, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md — "Use Patient Workspace + Documentation Workspace."
+// Spec: docs/design/screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md — "Use Patient Workspace + Documentation Workspace."
 // Every scale captured for the patient, newest first: scale badge · captured-at · captured-by discipline ·
 // server-computed score + interpretation · cosign-needed chip · significant-change/SUD indicators. SUD-flagged
 // rows the caller may not see are dropped SERVER-side (§7.6) and surface only as `redacted: true` — never a

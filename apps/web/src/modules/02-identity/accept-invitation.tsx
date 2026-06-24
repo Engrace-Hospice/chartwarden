@@ -1,9 +1,9 @@
 import { CenteredCardLayout, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/02-identity — Accept Invitation (M2 Auth, Track A).
-// Spec: docs/ui/screens/core/WARDENX_UI_AUTH.md "Accept invitation" (/invite/:token).
+// Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "Accept invitation" (/invite/:token).
 // This builds the token-consume step (POST /api/v1/invitations/accept → membership). The remaining
 // spec steps (set password, verify email, enroll mandatory MFA) depend on the identity credential
-// backend (better-auth), which is NOT yet mounted — deferred, see docs/ui/DEFERRED_SCREENS.md.
+// backend (better-auth), which is NOT yet mounted — deferred, see docs/design/DEFERRED_SCREENS.md.
 import { useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";

@@ -1,6 +1,6 @@
 import { CenteredCardLayout } from "@wardenx/ui";
 // apps/web/src/modules/02-identity — MFA Challenge (M2 Auth, ADR-0034 task 4).
-// Spec: docs/ui/screens/core/WARDENX_UI_AUTH.md "MFA challenge" (/login/2fa). Reached when sign-in
+// Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "MFA challenge" (/login/2fa). Reached when sign-in
 // returns twoFactorRedirect (a 2FA-enrolled user). TOTP 6-digit or a backup code, via Better Auth's
 // client (twoFactor.verifyTotp / verifyBackupCode). On success the session completes → org-select.
 import { useState } from "react";

@@ -1,5 +1,5 @@
 // apps/web/src/modules/13-emar — reconciliation worksheet (M13 §4.1/§6.1 #6, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Detail" (reconciliation worksheet).
+// Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Detail" (reconciliation worksheet).
 // Read-only per-line view of an admission/transfer/discharge/recert worksheet: the trigger, the line count, and
 // the per-line decisions (carry_forward / discontinue / hold / new_order / document_only). The decision picker,
 // the "Send to prescriber" M12-draft mint, the add-caregiver-reported-line form, and the Finalize CTA (disabled

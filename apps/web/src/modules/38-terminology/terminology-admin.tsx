@@ -8,7 +8,7 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/38-terminology — Terminology Admin (M38, Track A).
-// Spec: docs/ui/screens/admin/WARDENX_UI_TERMINOLOGY_ADMIN.md — "Use Work Queue."
+// Spec: docs/design/screens/admin/WARDENX_UI_TERMINOLOGY_ADMIN.md — "Use Work Queue."
 // Search concepts within a code system; view a concept's detail. Backed by
 // GET /api/v1/terminology/:system/search via the generated typed client. Imports only leaves.
 import { useState } from "react";

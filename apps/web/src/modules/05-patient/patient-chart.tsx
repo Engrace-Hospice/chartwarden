@@ -7,7 +7,7 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/05-patient — Patient Chart (M5, Track A).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_PATIENT_CHART.md — "Use Patient Workspace."
+// Spec: docs/design/screens/clinical/WARDENX_UI_PATIENT_CHART.md — "Use Patient Workspace."
 // The patient-scoped hub: sticky Patient Banner + a module nav rail + a center summary. This builds
 // the M5 FRAME (banner + summary) plus the M5-owned Demographics & Identifiers tab (FB-T06); the
 // cross-module tabs (Encounters, Orders, eMAR, …) graft on as those modules land (Track B). Backed by

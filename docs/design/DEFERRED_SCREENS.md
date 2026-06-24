@@ -8,7 +8,7 @@ other track skips it.
 
 **Governing ADRs:** [ADR-0030](../adr/ADR-0030-core-frontend-app-ownership.md) (placement: each module
 owns `apps/web/src/modules/NN-*`, registered into the M1 shell), [ADR-0032](../adr/ADR-0032-frontend-api-transport-and-client.md)
-(typed client). Screen specs live under `docs/ui/screens/`; layout patterns in
+(typed client). Screen specs live under `docs/design/screens/`; layout patterns in
 `WARDENX_UI_LAYOUT_PATTERNS.md`; module ownership is the `Module:` line in each spec.
 
 **Build rule (backend-first):** a screen is only built after its module's routes/seams are on `main`,

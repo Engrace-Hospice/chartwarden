@@ -3,7 +3,7 @@
  * ----------------------------------------------------------------
  * `docs:ui` proves the UI screen-spec CORPUS is internally consistent; it says nothing about
  * how much of that documented surface is actually BUILT in apps/web. This report bridges the
- * documented surface (docs/ui screen specs) and the implemented surface (registered web
+ * documented surface (docs/design screen specs) and the implemented surface (registered web
  * `screens.ts`), so a green `docs:ui` is never mistaken for "the UI is built".
  *
  * It is ADVISORY on coverage: a documented-but-unbuilt screen is roadmap, not a defect. Note the
@@ -45,7 +45,7 @@ const read = (rel: string) => {
 };
 
 // ---- documented surface: UI screen-spec files listed in the index --------------------------
-const indexSrc = read("docs/ui/WARDENX_UI_COMPLETE_SCREEN_INDEX.md");
+const indexSrc = read("docs/design/WARDENX_UI_COMPLETE_SCREEN_INDEX.md");
 const docSpecs = [...indexSrc.matchAll(/`(screens\/[^`]+\.md)`/g)].map((m) => m[1]!);
 const docByCategory = new Map<string, number>();
 for (const f of docSpecs) {

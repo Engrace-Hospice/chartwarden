@@ -1,5 +1,5 @@
 // apps/web/src/modules/17-scheduling — Scheduling Metrics (M17 §5.1 `/app/admin/scheduling-metrics`, Track B / ADR-0030).
-// Spec: docs/ui/screens — "Use Dashboard". Org-wide scheduling metrics: on-time rate, no-show rate, reschedule
+// Spec: docs/design/screens — "Use Dashboard". Org-wide scheduling metrics: on-time rate, no-show rate, reschedule
 // rate (the visit-metrics provider) over a trailing-30-day window. The route-efficiency drill-down is a
 // per-clinician read surfaced from `?membership=`. The SERVER computes the aggregates (the §4.3
 // VisitMetricsProvider seam); ADR-0030 — no frontend authz. Reads GET /api/v1/metrics/visits via the typed

@@ -1,6 +1,6 @@
 import { CenteredCardLayout } from "@wardenx/ui";
 // apps/web/src/modules/02-identity — Sign In (M2 Auth, AUTH-T07, ADR-0033 §4).
-// Spec: docs/ui/screens/core/WARDENX_UI_AUTH.md "Sign in" (/login). Email + password via Better Auth's
+// Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "Sign in" (/login). Email + password via Better Auth's
 // own client (@wardenx/auth/client — NOT the generated REST client). On success the session cookie is
 // set and we hand off to organization-select. Passkey + MFA-challenge are follow-ups (need the passkey
 // enrollment + 2FA Option-C work). Imports its own M2 package (codePath) + leaves only.

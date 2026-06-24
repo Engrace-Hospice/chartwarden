@@ -1,5 +1,5 @@
 // apps/web/src/modules/09-assessments — Assessment-summary view (M9 §5.1/§5.2, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md — "Use Patient Workspace + Documentation Workspace."
+// Spec: docs/design/screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md — "Use Patient Workspace + Documentation Workspace."
 // The latest value across all scales for a patient — a card per scale with its newest score + interpretation +
 // captured-at. SUD-flagged scales are redacted SERVER-side per the caller's consent (§7.6) and surface only as
 // `redacted: true`. This is the same summary projection M22 (PDF) consumes when it lands (forward seam — see

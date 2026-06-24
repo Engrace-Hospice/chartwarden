@@ -67,7 +67,7 @@ M2 sign-in/MFA/passkey screens. Governed by **[ADR-0033](../adr/ADR-0033-better-
 
 ## AUTH-T07 — M2 sign-in front-door screens (frontend)
 - files: `packages/auth` client export (or M1 shell), `apps/web/src/modules/02-identity`,
-  `docs/ui/DEFERRED_SCREENS.md`
+  `docs/design/DEFERRED_SCREENS.md`
 - do: wire Better Auth's **client SDK** (ADR-0033 §4 — not the generated REST client). Build the
   deferred Auth Flow screens: **Sign in** (password + passkey), **MFA challenge** (TOTP/backup/SMS),
   **password reset**, **screen-lock**, **step-up modal**; finish **Accept Invitation** (set-password +

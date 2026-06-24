@@ -1,5 +1,5 @@
 // apps/web/src/modules/11-orders — order detail (M11 §4.1/§5, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_ORDERS.md — "Use Detail" (Order Detail region). Shows the
+// Spec: docs/design/screens/clinical/WARDENX_UI_ORDERS.md — "Use Detail" (Order Detail region). Shows the
 // per-order facts the §5 detail pane renders: kind/priority/status, ordering physician + drafter, signature
 // posture (signed/cosign/verbal), the verbal-order deadline, the correction link, and the lab transmission /
 // results lifecycle (D17). The sign / cosign / discontinue / mark-reviewed write actions fill in as their

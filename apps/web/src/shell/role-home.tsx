@@ -1,5 +1,5 @@
 // apps/web/src/shell — Role-Based Home (M1 app-shell landing, Track A).
-// Spec: docs/ui/screens/core/WARDENX_UI_APP_SHELL_HOME.md — the content outlet's landing.
+// Spec: docs/design/screens/core/WARDENX_UI_APP_SHELL_HOME.md — the content outlet's landing.
 // The chrome (App Shell) is F0-T03; this is the role-based home rendered at "/". It surfaces
 // quick-access tiles for the screens registered into the shell (grouped by nav group); role-specific
 // data widgets (My Patients, AR snapshot, cosign queue…) populate as their modules land.

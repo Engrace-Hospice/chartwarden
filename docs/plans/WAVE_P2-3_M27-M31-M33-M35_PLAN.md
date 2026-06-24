@@ -36,7 +36,7 @@ Specs (all `docs/modules/`): `WARDENX_MODULE_27_COST_REPORT_SPEC_v0_2.md`,
 > **Track B screens (ADR-0030) — built in-task, not deferred.** Each UI-owning module owns its
 > frontend slice: its first task adds that web codePath to the manifest + runs `bun run scaffold`
 > (`arch:parity` 1:1); its screen task builds the §5 screens against the generated client and
-> registers them into the M1 shell, flipping the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`.
+> registers them into the M1 shell, flipping the matching `docs/design/DEFERRED_SCREENS.md` row → `done`.
 > Backend-first preserved. M31's `apps/portal` codePath already exists, so M31 only makes its screen
 > task real.
 
@@ -47,7 +47,7 @@ Specs (all `docs/modules/`): `WARDENX_MODULE_27_COST_REPORT_SPEC_v0_2.md`,
 - **M27-T04** `XeroClientFactory` + `GustoClientFactory` seams (§4.5 D6) in `packages/xero-client`/`packages/gusto-client` (see manifest note); trial-balance + wage-data import; OAuth refresh held once per tenant.
 - **M27-T05** Validation framework (§4.7) + ECR/PI file generation via M22 render; published seams (§4.3) incl. **`CostReportProvider` for M30** (closes M30 deny-stub) + `CostReportFilingStatusReader` for M33. → `validateSeams`.
 - **M27-T06** Routes (§4.1–4.2) + permission keys (§4.6) + ABAC (§4.7) into M3; outbox (§4.10); filing-deadline scans.
-- **M27-T07** Screens (§5) — **Track B/ADR-0030**: build under `apps/web/src/modules/27-cost-report` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done` + workflows (§7.1 create→refresh→validate→approve→submit; §7.12 provider offboarding) + tests (§9) + §12 sign-off. → `bun run test` + full `arch:fitness`.
+- **M27-T07** Screens (§5) — **Track B/ADR-0030**: build under `apps/web/src/modules/27-cost-report` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done` + workflows (§7.1 create→refresh→validate→approve→submit; §7.12 provider offboarding) + tests (§9) + §12 sign-off. → `bun run test` + full `arch:fitness`.
 
 ## Module 31 — Patient/Family Portal & Telehealth (deps: 5,7,8,22,36,39 · packages/telehealth-client, apps/portal, apps/backend/src/modules/31-portal) — 3 tables
 - **M31-T01** Enums + `apps/portal` + `packages/telehealth-client` layout + domain (§2); types in `packages/types`. → `tsc -b`.
@@ -57,7 +57,7 @@ Specs (all `docs/modules/`): `WARDENX_MODULE_27_COST_REPORT_SPEC_v0_2.md`,
 - **M31-T05** Telehealth adapter (§4.5 D1) in `packages/telehealth-client`; happy path (§7.2) + audio-only Tier-3 fallback (§7.3); state two-party recording consent.
 - **M31-T06** Portal write paths: **M13 caregiver-attested administration** (closes M13 deny-stub); M5 amendment-request submit; M22 portal upload → intake; seven published reader seams (§4.3). → `validateSeams`.
 - **M31-T07** Routes (§4.1–4.2) + permission keys (§4.6, `portal.*`) + ABAC (§4.7: `portal_grant_active_for_patient`/`telehealth_consent_active`/…) into M3; M36 `portal_caregiver` channel membership.
-- **M31-T08** Screens (§5.1 portal + staff-admin §5.3) — **Track B/ADR-0030**: build real screens into `apps/portal` (portal-side) against the generated client, register into the M1 shell, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done` (the `apps/portal` codePath is already in the manifest; the staff-admin §5.3 pane follows the same convention under the staff app) + workflows (§7.1 onboarding) + tests + §12 sign-off. → `bun run test` + full `arch:fitness`.
+- **M31-T08** Screens (§5.1 portal + staff-admin §5.3) — **Track B/ADR-0030**: build real screens into `apps/portal` (portal-side) against the generated client, register into the M1 shell, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done` (the `apps/portal` codePath is already in the manifest; the staff-admin §5.3 pane follows the same convention under the staff app) + workflows (§7.1 onboarding) + tests + §12 sign-off. → `bun run test` + full `arch:fitness`.
 
 ## Module 33 — Reporting & Dashboards (deps: broad · apps/backend/src/modules/33-reporting, apps/web/src/modules/33-reporting) — 12 tables  (build LAST)
 - **M33-T01** Enums + layout (no package — seams in `packages/types`) + domain (§2). → `tsc -b`. **Track B (ADR-0030):** add `apps/web/src/modules/33-reporting` to the manifest `codePaths` and run `bun run scaffold` so the empty web slice exists (→ `arch:parity`).
@@ -66,7 +66,7 @@ Specs (all `docs/modules/`): `WARDENX_MODULE_27_COST_REPORT_SPEC_v0_2.md`,
 - **M33-T04** Consume **seams/outbox ONLY** across the upstream graph (every `*MetricsProvider`/reader incl. M30 `HqrpMeasureProvider`, M23 `ClaimMetricsProvider`, M25 `DenialMetricsProvider`, M26 cap seams, M27 filing status, M18 `EvvMetricsProvider`, …). **No `Patient.name`/PII reads; no new `dependsOn` edge** — the canonical no-edge test (`arch:boundaries` green).
 - **M33-T05** Published seams (§4.3) + drilldown navigation with `report_drilldown_audit` emit; M39 `evaluateForReporting` as a navigation filter (consent-redacted drilldowns).
 - **M33-T06** Routes (§4.1–4.2) + permission keys (§4.6) + ABAC (§4.7: `reportable_scope`/`dashboard_visibility`, step-up on bulk drilldown export) into M3; scheduled-report render via M22 + M36 delivery.
-- **M33-T07** Screens (§5.1 desktop) — **Track B/ADR-0030**: build under `apps/web/src/modules/33-reporting` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done` + tests (§9 incl. RLS + **zero boundary violations**) + sign-off. → `bun run test` + full `arch:fitness`.
+- **M33-T07** Screens (§5.1 desktop) — **Track B/ADR-0030**: build under `apps/web/src/modules/33-reporting` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done` + tests (§9 incl. RLS + **zero boundary violations**) + sign-off. → `bun run test` + full `arch:fitness`.
 
 ## Module 35 — Subscription Billing (Stripe) (deps: — · packages/subscription-billing, apps/backend/src/modules/35-subscription, apps/web/src/modules/35-subscription) — 21 tables
 - **M35-T01** Enums + `packages/subscription-billing` layout + domain (§2); types in `packages/types`. → `tsc -b`. **Track B (ADR-0030):** add `apps/web/src/modules/35-subscription` to the manifest `codePaths` and run `bun run scaffold` so the empty web slice exists (→ `arch:parity`).
@@ -75,7 +75,7 @@ Specs (all `docs/modules/`): `WARDENX_MODULE_27_COST_REPORT_SPEC_v0_2.md`,
 - **M35-T04** **Stripe dispatcher — outbox-only API path (§4.13 D3)**; `stripe` SDK confined to `packages/subscription-billing` (vendor-adapter rule); webhook surface (§4.3) with signature verification; `stripe_webhook_event`/`stripe_api_call_audit`.
 - **M35-T05** Dunning state machine (§4.15 D7); M34↔M35 bidirectional seams **no edge** (ADR-0025); published seams (§4.5) + consumed seams (§4.6) into M1. → `validateSeams`.
 - **M35-T06** Routes (tenant §4.1 + admin §4.2 + webhook §4.3) + Idempotency-Key on mutating routes (§4.17) + permission keys (§4.7) + ABAC (§4.8) into M3; outbox (§4.11).
-- **M35-T07** Screens (§5.1 tenant) — **Track B/ADR-0030**: build under `apps/web/src/modules/35-subscription` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done` + tests + sign-off. → `bun run test` + full `arch:fitness`.
+- **M35-T07** Screens (§5.1 tenant) — **Track B/ADR-0030**: build under `apps/web/src/modules/35-subscription` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done` + tests + sign-off. → `bun run test` + full `arch:fitness`.
 
 ---
 

@@ -1,5 +1,5 @@
 // apps/web/src/modules/17-scheduling — Recurring Policies (M17 §5.1 `/app/scheduling/recurring`, Track B / ADR-0030).
-// Spec: docs/ui/screens — "Use Work Queue". The list of active recurring-visit policies for a patient (from
+// Spec: docs/design/screens — "Use Work Queue". The list of active recurring-visit policies for a patient (from
 // `?patient=`) with their RRULE + status. The create/discontinue write surfaces fill in as those write paths
 // harden; the SERVER owns the §7.7 materialization/discontinuation (ADR-0030 — no frontend authz). Reads GET
 // /api/v1/recurring-visits via the typed client. Leaves only (@wardenx/ui).

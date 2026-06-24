@@ -1,5 +1,5 @@
 // apps/web/src/modules/17-scheduling — Proposals Inbox (M17 §5.1 `/app/scheduling/proposals`, Track B / ADR-0030).
-// Spec: docs/ui/screens — "Use Work Queue". The scheduler's pending-proposals inbox: frequency / supervisory /
+// Spec: docs/design/screens — "Use Work Queue". The scheduler's pending-proposals inbox: frequency / supervisory /
 // order / IDG-driven proposals awaiting publish. The bulk publish/dismiss write surfaces fill in as those write
 // paths harden (publish reruns the §1.1 D8 pre-schedule gate SERVER-side); ADR-0030 — no frontend authz. The
 // patient filter comes from `?patient=`. Reads GET /api/v1/visit-proposals via the typed client. Leaves only

@@ -38,7 +38,7 @@ Specs (all `docs/modules/`): `WARDENX_MODULE_09_CLINICAL_ASSESSMENTS_SPEC_v0_3.m
 > `apps/web/src/modules/NN-*`: its first task adds that web codePath to the manifest
 > (`architecture/module-manifest.ts`) + runs `bun run scaffold` (empty slice, `arch:parity` stays
 > 1:1); its screen task builds the §5 screens against the module's generated client and registers
-> them into the M1 shell, flipping the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`.
+> them into the M1 shell, flipping the matching `docs/design/DEFERRED_SCREENS.md` row → `done`.
 > Backend-first is preserved — the screen task still depends on the module's routes/seams.
 
 ---
@@ -52,7 +52,7 @@ ownedTables (5): clinical_assessment, assessment_cosignature, significant_change
 - **M9-T04** Seams `LatestAssessmentProvider` + `ScaleSeriesProvider` registered into M1 registry. → `validateSeams`.
 - **M9-T05** Routes (§4.1) behind guards + `withOrgContext`; permission keys (§4.6) + ABAC predicates (§4.7) into M3; bind M38 (LOINC/SNOMED), M6 (admission anchor), M40 (discipline), M39 (Part 2/AIMS gating).
 - **M9-T06** `m9.assessment.significant_change` outbox + jobs (§4.8); M36 alerts. → `arch:gaps` event-catalog.
-- **M9-T07** Screens (§5) — **Track B/ADR-0030**: build under `apps/web/src/modules/09-assessments` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`; M22 assessment-summary PDF as **deny-stub** (Wave F); eraser; DR/INT.
+- **M9-T07** Screens (§5) — **Track B/ADR-0030**: build under `apps/web/src/modules/09-assessments` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done`; M22 assessment-summary PDF as **deny-stub** (Wave F); eraser; DR/INT.
 - **M9-T08** Tests (§9) + §12 sign-off; RLS isolation. → `bun run test` + full `arch:fitness`.
 
 ## Module 10 — HOPE Engine (deps: 9,36,38 · codePaths: packages/hope, apps/backend/src/modules/10-hope, apps/web/src/modules/10-hope)
@@ -65,7 +65,7 @@ ownedTables (6): hope_timepoint_schedule, hope_assessment, symptom_follow_up_vis
 - **M10-T05** Seams `HopeTimepointProvider` + `HopeSubmissionProvider` + `HopeJ2051Provider` into M1 registry. → `validateSeams`.
 - **M10-T06** Routes (§4.1) behind guards; permission keys (§4.6) + ABAC (§4.7) into M3; consume M9 `LatestAssessmentProvider`; emit J2051 trigger; M36 alerts; outbox + jobs (§4.8). → `arch:gaps`.
 - **M10-T07** **iQIES submission worker loop (§4.10)** — INT inventory, DR Tier-1/2; capture stays functional when iQIES is down (§7.10); submission cycle (§7.9). (Mobile `hope_assessment_draft` is manifest-exempt — server path only.)
-- **M10-T08** Screens (§5) — **Track B/ADR-0030**: build under `apps/web/src/modules/10-hope` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`; eraser; tests (§9) + §12 sign-off; RLS isolation. → `bun run test` + full `arch:fitness`.
+- **M10-T08** Screens (§5) — **Track B/ADR-0030**: build under `apps/web/src/modules/10-hope` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done`; eraser; tests (§9) + §12 sign-off; RLS isolation. → `bun run test` + full `arch:fitness`.
 
 ## Module 11 — Orders (deps: 6,36,38,40 · codePaths: apps/backend/src/modules/11-orders, apps/web/src/modules/11-orders)
 ownedTables (7): order_record, order_signature, verbal_order, standing_order, standing_order_instance, order_discontinuation, order_verbal_policy.
@@ -77,7 +77,7 @@ ownedTables (7): order_record, order_signature, verbal_order, standing_order, st
 - **M11-T05** **`OrderSignatureProvider` seam (§2.8 D14)** + `OrderProvider` into M1 registry (polymorphic signature consumed by M12/M13). → `validateSeams`.
 - **M11-T06** Routes (§4.1–4.2 TypeBox) behind guards; permission keys (§4.6) + ABAC `discipline_can_order`/`signer_eligible` (§4.7) into M3; bind M40 (ExternalPhysician/DmeVendor), M38 (LOINC/HCPCS/CPT).
 - **M11-T07** Outbox catalog (§4.4) + subscriptions (§4.5): consume M9 significant-change + M10 J2051 banners + M6 discharge auto-discontinue cascade + recert→CTI (W-RC-01); **`supply_fulfillment_requested`→M21 (deny-stub, Wave F)**, **`hl7_orm_requested`→M29 (deny-stub, Wave H)**. → `arch:gaps`.
-- **M11-T08** Screens (§5) — **Track B/ADR-0030**: build under `apps/web/src/modules/11-orders` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`; M22 order PDF deny-stub (Wave F); eraser; DR/INT.
+- **M11-T08** Screens (§5) — **Track B/ADR-0030**: build under `apps/web/src/modules/11-orders` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done`; M22 order PDF deny-stub (Wave F); eraser; DR/INT.
 - **M11-T09** Workflows (§5: W-VO-01/02, W-CS-01, W-SO-01/02) + race tests (§9.3) + §10 sign-off; RLS isolation. → `bun run test` + full `arch:fitness`.
 
 ## Module 12 — DoseSpot Integration (deps: 5,11,38,40 · codePaths: packages/dosespot, apps/backend/src/modules/12-dosespot, apps/web/src/modules/12-dosespot)
@@ -91,7 +91,7 @@ ownedTables (6): dosespot_prescriber, dosespot_webhook_event, epcs_signing_attem
 - **M12-T06** DoseSpot adapter (vendor SDK confined to `packages/dosespot`) + **webhook security (§7.4 D7)**; `medication_order_transmission`; M5 patient sync.
 - **M12-T07** `MedicationOrderProvider` seam (§2.10 D17) into M1 registry (consumed by M13/M28). → `validateSeams`.
 - **M12-T08** Routes (§4.1–4.2) behind guards; permission keys (§4.6) + ABAC `prescriber_eligible`/`dea_schedule_authorized`/`refill_inbox_scope` (§4.7) into M3; bind M38 (RxNorm/NDC), M40 (Pharmacy/ExternalPhysician+DEA), M39 (Part 2 SUD meds). Outbox/subscriptions (§4.4–4.5).
-- **M12-T09** Screens (§6) — **Track B/ADR-0030**: build under `apps/web/src/modules/12-dosespot` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`; M22 med-order PDF + M28 FHIR `MedicationRequest` deny-stubs (Wave F/H); eraser; DR/INT.
+- **M12-T09** Screens (§6) — **Track B/ADR-0030**: build under `apps/web/src/modules/12-dosespot` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done`; M22 med-order PDF + M28 FHIR `MedicationRequest` deny-stubs (Wave F/H); eraser; DR/INT.
 - **M12-T10** Workflows (§5: W-MR-01/04/05) + tests (§9) + §12 sign-off; RLS isolation. → `bun run test` + full `arch:fitness`.
 
 ## Module 13 — eMAR & Med Administration (deps: 12,36,38 · codePaths: apps/backend/src/modules/13-emar, apps/web/src/modules/13-emar)
@@ -106,7 +106,7 @@ ownedTables (12): administration_offline_queue, administration_policy, administr
 - **M13-T07** Seams `MedicationAdministrationProvider` + `ReconciliationProvider` (§2.12 D16) into M1 registry. → `validateSeams`.
 - **M13-T08** Routes (§4.1–4.2) behind guards; permission keys (§4.6) + ABAC `administering_clinician_eligible`/`controlled_substance_witness_eligible`/`caregiver_attested_review_required`/`comfort_kit_drawdown_authorized` (§4.7) into M3; consume M8 `SignedEncountersReader` (encounter linkage, D9); **pattern-reuse only from M11 — no M11/M12 schema import**. Outbox/subscriptions (§4.4–4.5).
 - **M13-T09** Caregiver-attested administration (§2.9 D10) — server path; **M31 portal write path is Phase 2** (deny-stub). Barcode scanning (`barcode_scan_event`).
-- **M13-T10** Screens (§6) — **Track B/ADR-0030**: build under `apps/web/src/modules/13-emar` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`; M22 eMAR PDF + M28 FHIR `MedicationAdministration` deny-stubs (Wave F/H); eraser; DR/INT.
+- **M13-T10** Screens (§6) — **Track B/ADR-0030**: build under `apps/web/src/modules/13-emar` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done`; M22 eMAR PDF + M28 FHIR `MedicationAdministration` deny-stubs (Wave F/H); eraser; DR/INT.
 - **M13-T11** Workflows (§5: W-EMAR-02/04/05/08/09/10/11) + tests (§9) + §12 sign-off; RLS isolation. → `bun run test` + full `arch:fitness`.
 
 ---

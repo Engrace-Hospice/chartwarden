@@ -9,7 +9,7 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/06-admission — Referral Inbox (M6 §5.2.1, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md — "Use Work Queue."
+// Spec: docs/design/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md — "Use Work Queue."
 // The queue of inbound referrals across sources, read from GET /api/v1/referrals via the generated
 // typed client. A row opens the referral's admission (built later); the server enforces every scope
 // (no authz on the frontend — ADR-0030). Imports only leaves (@wardenx/ui).

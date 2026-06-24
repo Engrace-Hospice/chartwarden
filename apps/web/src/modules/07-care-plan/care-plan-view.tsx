@@ -6,7 +6,7 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/07-care-plan — Care Plan View (M7 §5.2, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_CARE_PLAN.md — "Use Patient Workspace + Documentation Workspace."
+// Spec: docs/design/screens/clinical/WARDENX_UI_CARE_PLAN.md — "Use Patient Workspace + Documentation Workspace."
 // The active IPOC for a patient: a problems list (terminal first, then related, then unrelated) | the
 // selected problem's goals + interventions | a right aside with the next-review date + current signers
 // and an "Open draft" affordance. SUD-flagged problems the caller may not see are omitted SERVER-side

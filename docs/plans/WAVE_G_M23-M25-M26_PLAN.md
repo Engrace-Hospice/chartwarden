@@ -41,7 +41,7 @@ Specs (all `docs/modules/`): `WARDENX_MODULE_23_BILLING_MEDICARE_SPEC_v0_2.md`,
 > `apps/web/src/modules/NN-*`: its first task adds that web codePath to the manifest + runs
 > `bun run scaffold` (`arch:parity` 1:1); its screen task builds the §5 screens against the
 > generated client and registers them into the M1 shell, flipping the matching
-> `docs/ui/DEFERRED_SCREENS.md` row → `done`. Backend-first preserved.
+> `docs/design/DEFERRED_SCREENS.md` row → `done`. Backend-first preserved.
 
 ---
 
@@ -59,7 +59,7 @@ ownedTables (17): claim, claim_acknowledgment, claim_line, claim_state_history, 
 - **M23-T09** NOE/NOTR windows (§7.4–7.6): `noe_record` on `m6.election.signed`, `notr_record` on `m6.discharge.created`; day-3 warning / day-5+1 breach blocks submission.
 - **M23-T10** Five published reader seams (§4.3: `ClaimReader`, `ClaimDayProjectionProvider` for M26, `ClaimMetricsProvider` for M33, …) into M1 registry. → `validateSeams`.
 - **M23-T11** Routes (§4.1–4.2) behind guards + step-up; permission keys (§4.6) + ABAC (§4.7) into M3; outbox (§4.10): `m23.claim.*` + **inert** `m25.remittance.*` consumer; M28 FHIR `Claim` projection forward-seam (Wave H); M24 Medicaid Phase 2.
-- **M23-T12** Screens (§5) — **Track B/ADR-0030**: build under `apps/web/src/modules/23-billing-medicare` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`; tests (§9: RLS §9.3, IDOR §9.4, §11.A rule suite, **clean 837I** §7) + §12 sign-off. → `bun run test` + full `arch:fitness`.
+- **M23-T12** Screens (§5) — **Track B/ADR-0030**: build under `apps/web/src/modules/23-billing-medicare` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done`; tests (§9: RLS §9.3, IDOR §9.4, §11.A rule suite, **clean 837I** §7) + §12 sign-off. → `bun run test` + full `arch:fitness`.
 
 ## Module 25 — Remittance & Denials (deps: 23,36 · codePaths: apps/backend/src/modules/25-remittance, apps/web/src/modules/25-remittance) — BASIC (835 posting + denial worklist)
 ownedTables (11): appeal_case, appeal_case_event, denial_case, denial_case_assignment, denial_taxonomy_overlay, patient_responsibility_ledger, remittance_adjustment, remittance_advice, remittance_line, remittance_remark, remittance_service_line.
@@ -71,7 +71,7 @@ ownedTables (11): appeal_case, appeal_case_event, denial_case, denial_case_assig
 - **M25-T05** Auto-match 835 → claim: consume M23 `ClaimReader.findByControlNumbers`; `m23.claim.rejected` (277CA) seeds the denial worklist (§7.3).
 - **M25-T06** Denial worklist (`denial_case`/`denial_case_assignment`/`denial_taxonomy_overlay`) + appeals (`appeal_case`/`appeal_case_event`, next-tier auto-spawn §7.10); CARC/RARC via M38; M40 `PayerCatalogReader`.
 - **M25-T07** Eight published reader seams (§4.3: `RemittanceReader`, `DenialMetricsProvider`, …) into M1; emit `m25.remittance.*` (→ **closes M23's inert consumer**: PAID/DENIED/PARTIAL); appeal packets via M22 `DocumentRenderer`. → `validateSeams`.
-- **M25-T08** Routes (§4.1–4.2) + permission keys (§4.6) + ABAC (§4.7, step-up on `appeal.submit`/`remittance.adjustment.override`); screens (§5: inbox, worklist Kanban, appeal builder) — **Track B/ADR-0030**: build under `apps/web/src/modules/25-remittance` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`. M24 Medicaid 835 + commercial = Phase 2.
+- **M25-T08** Routes (§4.1–4.2) + permission keys (§4.6) + ABAC (§4.7, step-up on `appeal.submit`/`remittance.adjustment.override`); screens (§5: inbox, worklist Kanban, appeal builder) — **Track B/ADR-0030**: build under `apps/web/src/modules/25-remittance` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done`. M24 Medicaid 835 + commercial = Phase 2.
 - **M25-T09** Tests (§9: RLS §9.3, IDOR §9.4, E2E §9.6, happy-path 835 §7.1, 277CA→denial→appeal §7.3) + §12 sign-off. → `bun run test` + full `arch:fitness`.
 
 ## Module 26 — Cap Management (deps: 23,36 · codePaths: apps/backend/src/modules/26-cap, apps/web/src/modules/26-cap) — BASIC projection (cap.full_projection OFF)
@@ -85,7 +85,7 @@ ownedTables (12): cap_beneficiary_accrual, cap_beneficiary_accrual_line, cap_inp
 - **M26-T06** `CapProjectionProvider` seam (§4.3) + `CapAccrualReader`/`InpatientCapProvider`/`CapSettlementProvider`/`CapMetricsProvider` into M1 — **wires live M23's §11.A warn-only cap rule** (closes the M23 deny-stub). → `validateSeams`.
 - **M26-T07** Cap-year lifecycle (§4.5): auto-open new cap year (§7.7); PS&R import/reconciliation (`cap_psr_import`/`cap_psr_reconciliation`); settlement proposal/finalize (§7.9/7.10, `cap_settlement`) with step-up.
 - **M26-T08** Alerts via M36 **generic `AlertEmitter` + `CapAlertSubscriberProvider`** (no `cap_watch` channel — M36-F03); routes (§4.1–4.2) + permission keys (§4.6) + ABAC (§4.7) into M3.
-- **M26-T09** Outbox (§4.10): `m26.cap.*` watch/warn/breach; nightly projection batch (§7.2); screens (§5.1 web, Phase 1) — **Track B/ADR-0030**: build under `apps/web/src/modules/26-cap` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`. Full agency-wide watch deferred to Phase 3.
+- **M26-T09** Outbox (§4.10): `m26.cap.*` watch/warn/breach; nightly projection batch (§7.2); screens (§5.1 web, Phase 1) — **Track B/ADR-0030**: build under `apps/web/src/modules/26-cap` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done`. Full agency-wide watch deferred to Phase 3.
 - **M26-T10** Tests (§9: RLS §9.3, IDOR §9.4, E2E §9.5, accrual→projection §7.1, warn-only validation §7.12, **enum-drift snapshot §9.9**) + §12 sign-off. → `bun run test` + full `arch:fitness`.
 
 ---

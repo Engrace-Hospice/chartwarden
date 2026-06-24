@@ -43,7 +43,7 @@ Specs (all `docs/modules/`): `WARDENX_MODULE_28_FHIR_GATEWAY_SPEC_v0_4.md`,
 >   (RLS on from day one; Phase 3 is an activation, not a retrofit). Adds the `tenant_platform_writer`
 >   SECURITY DEFINER role; key destruction goes through the M4 destruction-cert workflow.
 
-> **Track B screens (ADR-0030) — built in-task, not deferred.** Each UI-owning module owns its frontend slice: its first task adds that web codePath to the manifest + runs `bun run scaffold` (`arch:parity` 1:1); its screen task builds the §5 screens against the generated client and registers them into the M1 shell, flipping the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`. Backend-first preserved. **Headless modules — M28 (FHIR), M29 (External Interfaces), M32 (AI Platform) — have no in-scope screen task this phase and keep no web codePath.**
+> **Track B screens (ADR-0030) — built in-task, not deferred.** Each UI-owning module owns its frontend slice: its first task adds that web codePath to the manifest + runs `bun run scaffold` (`arch:parity` 1:1); its screen task builds the §5 screens against the generated client and registers them into the M1 shell, flipping the matching `docs/design/DEFERRED_SCREENS.md` row → `done`. Backend-first preserved. **Headless modules — M28 (FHIR), M29 (External Interfaces), M32 (AI Platform) — have no in-scope screen task this phase and keep no web codePath.**
 
 ---
 
@@ -82,7 +82,7 @@ ownedTables (18): cahps_decedent_sample, cahps_result_summary, cahps_vendor_bind
 - **M30-T05** CoP compliance + incident + infection + mortality + SRA (§7.4/7.5): `cop_compliance_status`, `incident_report`, `infection_surveillance_event`/`infection_outbreak_case`, `mortality_review`, `sra_cycle`/`sra_finding`/`sra_remediation`.
 - **M30-T06** CAHPS vendor adapter (§4.5) — **`quality.cahps` OFF** (`cahps_decedent_sample`/`cahps_result_summary`/`cahps_vendor_binding` built, sampling/export/ingest gated to Phase 3, §7.2); sampling-source marking (§4.13 D22).
 - **M30-T07** Published seams (§4.3, incl. `HqrpMeasureProvider` for M33 Phase 2) into M1; consumed seams (§4.4) incl. **M27 `CostReportProvider` deny-stub** ("not-yet-available"); routes (§4.1) + permission keys (§4.6) + ABAC (§4.7) into M3; outbox (§4.10).
-- **M30-T08** Screens (§5) — **Track B/ADR-0030**: build under `apps/web/src/modules/30-quality` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done`; tests (§7 + RLS) + sign-off. → `bun run test` + full `arch:fitness`.
+- **M30-T08** Screens (§5) — **Track B/ADR-0030**: build under `apps/web/src/modules/30-quality` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done`; tests (§7 + RLS) + sign-off. → `bun run test` + full `arch:fitness`.
 
 ## Module 32 — AI Platform (deps: 1,2,3,4 · codePaths: packages/ai-platform, apps/backend/src/modules/32-ai-platform) — capability shell (ai.full OFF)
 ownedTables (13): ai_capability, ai_capability_calibration, ai_capability_lifecycle_event, ai_clinician_opt_out, ai_evaluation_run, ai_hallucination_report, ai_invocation, ai_kill_switch_state, ai_model_backend, ai_prompt_template, ai_routing_override, ai_tenant_opt_in_record, ai_token_ledger.
@@ -106,7 +106,7 @@ ownedTables (17): dsar_export_job, dsar_export_job_event, onboarding_task, onboa
 - **M34-T05** `tenant_key_ring` + `tenant_key_destruction_log` (§3.5): per-tenant DEK lifecycle; **cryptographic shred via the M4 destruction-cert workflow** (M34 calls `requestDestruction('saas_tenant_platform_class')`).
 - **M34-T06** Support sessions (§3.6, §7.4): `support_consent_grant`/`support_session`/`support_session_event` — break-glass, actor-distinct-from-grantor, time-boxed, PHI-elevation audited.
 - **M34-T07** DSAR export (§3.7, §7.3, HIPAA §164.524) + tenant export (§7.6, migration/BAA termination): `dsar_export_job(_event)`/`tenant_export_job(_event)` via M22 render + MinIO; BAA register (§3.8, §7.5, `platform_tenant_baa_record`).
-- **M34-T08** Seams (§4.6) into M1; routes (§4.1–4.2) + jobs (§4.3) + permission keys (§4.4) + ABAC (§4.5, incl. `support_session_actor_distinct_from_grantor`) into M3; outbox (§4.9); admin-console screens (§5) — **Track B/ADR-0030**: build real screens into `apps/admin` against the generated client, register into the M1 shell, flip the matching `docs/ui/DEFERRED_SCREENS.md` row → `done` (the `apps/admin` codePath is already in the manifest); **`saas.multi_tenant` OFF** (single-tenant for Engrace).
+- **M34-T08** Seams (§4.6) into M1; routes (§4.1–4.2) + jobs (§4.3) + permission keys (§4.4) + ABAC (§4.5, incl. `support_session_actor_distinct_from_grantor`) into M3; outbox (§4.9); admin-console screens (§5) — **Track B/ADR-0030**: build real screens into `apps/admin` against the generated client, register into the M1 shell, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done` (the `apps/admin` codePath is already in the manifest); **`saas.multi_tenant` OFF** (single-tenant for Engrace).
 - **M34-T09** STRIDE (§8.1); tests (§9: RLS role-switching §9.3) + sign-off. → `bun run test` + full `arch:fitness`.
 
 ---

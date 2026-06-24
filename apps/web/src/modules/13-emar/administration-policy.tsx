@@ -1,5 +1,5 @@
 // apps/web/src/modules/13-emar — administration policy admin (M13 §4.1/§6.1 #12, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (administration-policy admin).
+// Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (administration-policy admin).
 // Read-only tenant configuration for org_admin / compliance_officer: the grace window, the PRN minimum-interval
 // default, and the eMAR-PDF-on-commit toggle. The tighten-only PUT write action (step-up enforced server-side)
 // fills in as its write surface hardens; the SERVER owns the platform floors and the §2.5 grace-window policy

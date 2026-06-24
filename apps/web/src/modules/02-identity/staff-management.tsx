@@ -1,14 +1,14 @@
 import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout } from "@wardenx/ui";
 import { useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/02-identity — Staff Management (M2, Track A).
-// Spec: docs/ui/screens/admin/WARDENX_UI_STAFF_MANAGEMENT.md (Work Queue). Manages the org's member
+// Spec: docs/design/screens/admin/WARDENX_UI_STAFF_MANAGEMENT.md (Work Queue). Manages the org's member
 // roster: invite by email, change a member's status (active/suspended), and revoke a membership — over
 // the M2 member routes via the generated client. The active org for the path comes from the session
 // (authClient.getSession). Server stays authoritative (every route is behind member.manage + the
 // last-admin lockout guard). FB-T12 enriches the roster with what the M2 surface carries today —
 // Name/email, Last login, and the Pending-invite / Locked-account KPIs (the live repo joins the
 // M1-owned user/session tables). Discipline / credentials stay deferred to M34 (noted, not faked);
-// see docs/ui/DEFERRED_SCREENS.md.
+// see docs/design/DEFERRED_SCREENS.md.
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { authClient } from "./auth-client";

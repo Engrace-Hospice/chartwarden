@@ -101,7 +101,7 @@ frontend-foundation files, it cannot disturb any backend fitness gate. Land as o
 
 ### F0-T03 — App shell + screen registry + build tooling (M1 codePath)
 - files: `apps/web/src/shell`, `apps/web` (Vite), `packages/types` (registry contract) · spec:
-  `docs/ui/WARDENX_UI_LAYOUT_PATTERNS.md`, ADR-0030
+  `docs/design/WARDENX_UI_LAYOUT_PATTERNS.md`, ADR-0030
 - do: Vite app + entry; router; auth/session/tenant-org context; the **screen registry** (ADR-0030) —
   the shell lazily mounts each module's screens via a registry contract in `packages/types` (leaf), so
   the shell **never imports a feature module**. Compose the existing `packages/ui` providers
@@ -127,14 +127,14 @@ frontend-foundation files, it cannot disturb any backend fitness gate. Land as o
   Vite bundles. Specialized patterns tracked to their module screens.
 
 ### F0-T05 — Backlog ledger ✅ done
-- files: `docs/ui/DEFERRED_SCREENS.md` · source: `docs/ui/WARDENX_UI_COMPLETE_SCREEN_INDEX.md` + each
+- files: `docs/design/DEFERRED_SCREENS.md` · source: `docs/design/WARDENX_UI_COMPLETE_SCREEN_INDEX.md` + each
   spec's `Module:` line
 - do: derived the screen→module map for all 69 specs and built the ledger — a **Track A worklist** of
   the 11 screens whose primary owner is a merged module (M2/M3/M4/M5/M36/M38/M40), a **partial** set
   whose owner is merged but which need unbuilt modules, a note that M39 has no standalone screen, and
   the **blocked** remainder (Track B, ship with their wave). Each ready row cross-references its F0-T04
   layout component. Status legend `deferred | in-progress | done` = the single coordination point.
-- accept: `docs:ui` green (ledger sits at `docs/ui/` root, not under `screens/`, so not a screen entry);
+- accept: `docs:ui` green (ledger sits at `docs/design/` root, not under `screens/`, so not a screen entry);
   full gate green; doc-only.
 
 > **F0 complete.** Foundation is in place: contract generator + typed client + app shell/screen
@@ -153,9 +153,9 @@ mechanical, and read-only against a **stable** API:
 - do:
   1. Add `"apps/web/src/modules/NN-slug"` to module NN's `codePaths` in **both**
      `module-manifest.ts` and `module-manifest.cjs`; `bun run scaffold` → `arch:parity` green.
-  2. Build the screens from `docs/ui/screens/` against module NN's generated client methods, composing
+  2. Build the screens from `docs/design/screens/` against module NN's generated client methods, composing
      F0-T04 layout patterns. Import only `packages/ui` + `packages/types` (leaves).
-  3. Mark the rows `done` in `docs/ui/DEFERRED_SCREENS.md`.
+  3. Mark the rows `done` in `docs/design/DEFERRED_SCREENS.md`.
 - accept: `bun run build && bun run arch:fitness && bun run test` green; screens listed in the spec
   exist and call real client methods; ledger updated.
 
@@ -177,7 +177,7 @@ terminal screen task fires **in-task** instead of deferring.
 - **Manifest:** add `"apps/web/src/modules/NN-slug"` (or `apps/admin` / `apps/portal`) to the module's
   `codePaths` when the module is first specced into the manifest.
 - **Task ladder:** the module's existing final rung (the template's **N-T08 UI row**, ADR-0030)
-  becomes a **real** screen task (no deferral note): *"Screens: build `docs/ui/screens/...` against the
+  becomes a **real** screen task (no deferral note): *"Screens: build `docs/design/screens/...` against the
   module's generated client methods, registered into the M1 screen registry; ledger → done."*
 - **Backend-first within the module is preserved:** the screen task still depends on the module's
   routes/seams task, so backend lands first, UI last — same ordering as today, just not deferred.
@@ -188,7 +188,7 @@ terminal screen task fires **in-task** instead of deferring.
 
 ## Coordination & governance (keeps the two tracks from colliding)
 
-- **`docs/ui/DEFERRED_SCREENS.md` is the single source of truth** for screen status. Track B marks a
+- **`docs/design/DEFERRED_SCREENS.md` is the single source of truth** for screen status. Track B marks a
   module `done` so Track A skips it; Track A marks the backlog down as it clears. No screen is owned by
   both tracks.
 - **Backend-first invariant (unchanged):** a screen PR may only target a module whose routes/seams are

@@ -1,5 +1,5 @@
 // apps/web/src/modules/14-idg — IDG Schedule (per-location) (M14 §4.1/§5, Track B / ADR-0030).
-// Spec: docs/ui/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace". The
+// Spec: docs/design/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace". The
 // IDG Coordinator's per-location view of the next weeks of meetings: one row per scheduled meeting with its
 // lifecycle chip (scheduled → packets_building → packets_ready → live → adjourned). The cancel / reschedule /
 // edit-recurring-policy write surfaces fill in as their write paths harden; the SERVER owns the §2.2 lifecycle
