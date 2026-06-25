@@ -273,6 +273,8 @@ describe.skipIf(!DB_URL)(
     }
 
     beforeAll(async () => {
+      // Runs in its OWN CI job (`rls-live-m34`) with a fresh Postgres service, so the schema/role
+      // reset starts clean (a fresh cluster has no prior migration set / cluster-global roles to fight).
       db = new Client({ connectionString: DB_URL });
       await db.connect();
       await resetSchema();
