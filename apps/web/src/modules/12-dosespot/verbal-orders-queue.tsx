@@ -1,3 +1,4 @@
+import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/12-dosespot — verbal medication-orders queue (M12 §4.1/§6.1, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (verbal-orders). The named
 // prescriber's queue of verbal_pending medication orders awaiting their signature within the 48h window
@@ -9,13 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-  WorkQueueLayout,
-} from "@wardenx/ui";
+import { stateLabel } from "./medication-status";
 
 interface MedRow {
   id: string;
@@ -73,28 +68,37 @@ export function VerbalMedicationOrdersQueue(): JSX.Element {
             description="No verbal medication orders are awaiting signature."
           />
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+          <table>
             <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                <th style={th}>Drug</th>
-                <th style={th}>Class</th>
-                <th style={th}>Named prescriber</th>
-                <th style={th}>Recorded</th>
+              <tr>
+                <th>Drug</th>
+                <th>Class</th>
+                <th>Named prescriber</th>
+                <th>Recorded</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((o) => (
                 <tr
                   key={o.id}
+                  // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                  role="button"
+                  tabIndex={0}
                   onClick={() => navigate(`/medication-orders/${o.id}`)}
-                  style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Enter" || ev.key === " ") {
+                      ev.preventDefault();
+                      navigate(`/medication-orders/${o.id}`);
+                    }
+                  }}
+                  style={{ cursor: "pointer" }}
                 >
-                  <td style={td}>
+                  <td>
                     {o.drugName} {o.strength}
                   </td>
-                  <td style={td}>{o.medClass}</td>
-                  <td style={td}>{o.prescribingPhysicianMdmId}</td>
-                  <td style={td}>{o.createdAt.slice(0, 16).replace("T", " ")}</td>
+                  <td>{stateLabel(o.medClass)}</td>
+                  <td className="wx-data-md">{o.prescribingPhysicianMdmId}</td>
+                  <td className="tabular-nums">{o.createdAt.slice(0, 16).replace("T", " ")}</td>
                 </tr>
               ))}
             </tbody>
@@ -104,6 +108,3 @@ export function VerbalMedicationOrdersQueue(): JSX.Element {
     />
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;

@@ -1,3 +1,13 @@
+import {
+  EmptyState,
+  KpiCard,
+  KpiStrip,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/12-dosespot — prescriber medication sign inbox (M12 §4.1/§6.1, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (sign inbox). The
 // prescriber's queue of medication orders awaiting their signature (status pending_signature), KPI'd by
@@ -8,15 +18,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  EmptyState,
-  KpiCard,
-  KpiStrip,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-  WorkQueueLayout,
-} from "@wardenx/ui";
+import { controlledLabel, stateLabel } from "./medication-status";
 
 interface MedRow {
   id: string;
@@ -84,32 +86,53 @@ export function MedicationSignInbox(): JSX.Element {
         ) : loading && items.length === 0 ? (
           <LoadingSpinner />
         ) : rows.length === 0 ? (
-          <EmptyState title="No medications awaiting signature" description="The sign inbox is clear." />
+          <EmptyState
+            title="No medications awaiting signature"
+            description="The sign inbox is clear."
+          />
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+          <table>
             <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                <th style={th}>Drug</th>
-                <th style={th}>Class</th>
-                <th style={th}>Controlled</th>
-                <th style={th}>Created</th>
+              <tr>
+                <th>Drug</th>
+                <th>Class</th>
+                <th>Controlled</th>
+                <th>Created</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((o) => (
                 <tr
                   key={o.id}
+                  // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                  role="button"
+                  tabIndex={0}
                   onClick={() => navigate(`/medication-orders/${o.id}`)}
-                  style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Enter" || ev.key === " ") {
+                      ev.preventDefault();
+                      navigate(`/medication-orders/${o.id}`);
+                    }
+                  }}
+                  style={{ cursor: "pointer" }}
                 >
-                  <td style={td}>
+                  <td>
                     {o.drugName} {o.strength}
                   </td>
-                  <td style={td}>{o.medClass}</td>
-                  <td style={{ ...td, color: o.isControlledSubstance ? "#b45309" : undefined }}>
-                    {o.isControlledSubstance ? `C-${o.deaSchedule ?? "?"} · EPCS` : "—"}
+                  <td>{stateLabel(o.medClass)}</td>
+                  <td>
+                    {/* §10 — controlled-substance / EPCS gold `critical` tone. */}
+                    {o.isControlledSubstance ? (
+                      <StatusPill
+                        label={`${controlledLabel(o.deaSchedule)} · EPCS`}
+                        tone="critical"
+                        glyph="alert"
+                      />
+                    ) : (
+                      <span style={{ color: "var(--color-muted)" }}>—</span>
+                    )}
                   </td>
-                  <td style={td}>{o.createdAt.slice(0, 16).replace("T", " ")}</td>
+                  <td className="tabular-nums">{o.createdAt.slice(0, 16).replace("T", " ")}</td>
                 </tr>
               ))}
             </tbody>
@@ -119,6 +142,3 @@ export function MedicationSignInbox(): JSX.Element {
     />
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;
