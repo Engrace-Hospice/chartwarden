@@ -42,6 +42,7 @@ import type {
 } from "@wardenx/saas-tenant-platform";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { sql } from "drizzle-orm";
+import { getSeam } from "../../../bootstrap/index";
 import {
   M34_JOB_SCHEDULES,
   M34_QUEUES,
@@ -160,11 +161,18 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
         "provision.ensureTenantStoragePrefixes",
         "bind to the M1 MinIO prefix-ensure helper (getSeam — no ObjectStorageProvider/MinIO seam registered yet)",
       ),
-    ensureOrganization: () =>
-      unbound(
+    // M34 §7.1 step 3 — BOUND to M2's TenantOrgCreationProvider seam (M2 registers the real Drizzle-backed
+    // provider at init; the registry's deny-stub returns `unavailable` until then). Idempotent confirm in
+    // Phase 1 (org pre-created by the route); the create branch backs Phase-3 self-serve. Fails closed
+    // (throws) on `unavailable` — provision never proceeds without a real org id.
+    ensureOrganization: async (input) => {
+      const result = await getSeam("TenantOrgCreationProvider").createOrganizationForTenant(input);
+      if (result.kind === "available") return { organizationId: result.organizationId };
+      throw new M34WorkerPortUnbound(
         "provision.ensureOrganization",
-        "bind to the M2 createOrganization seam/outbox confirm",
-      ),
+        `M2 TenantOrgCreationProvider resolved '${result.reason}' — M2 has not registered the real provider yet`,
+      );
+    },
     materializeOnboardingTasks: () =>
       unbound(
         "provision.materializeOnboardingTasks",

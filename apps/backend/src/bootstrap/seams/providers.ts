@@ -57,6 +57,7 @@ import type {
   SessionContextResolver,
   SignedEncountersReader,
   SupervisoryCadenceReader,
+  TenantOrgCreationProvider,
   VisitAssignmentReader,
   VisitMetricsProvider,
   VisitReader,
@@ -178,6 +179,16 @@ export const sessionContextResolverDenyStub: SessionContextResolver = {
 export const auditorSessionMinterDenyStub: AuditorSessionMinter = {
   mintAuditorSession() {
     throw new NotImplementedError("AuditorSessionMinter");
+  },
+};
+
+// M2 — the fail-closed default for the org-creation seam M34's provision worker consumes (§7.1 step 3).
+// Unlike most deny-stubs this RETURNS `unavailable` rather than throwing: the contract's discriminated
+// result is designed for graceful degradation (the worker branches on `kind`, never fabricates an org id,
+// never fails open). M2 registers the real Drizzle-backed provider over this at init.
+export const tenantOrgCreationProviderDenyStub: TenantOrgCreationProvider = {
+  async createOrganizationForTenant() {
+    return { kind: "unavailable", reason: "m2_org_creation_not_yet_locked" };
   },
 };
 

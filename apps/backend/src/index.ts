@@ -104,7 +104,7 @@ export function wireModuleSeams(
 ): void {
   // AUTH-T05b: pass the DB-backed SessionContextStore in production (composition root supplies it when
   // a DB client is present); the slice/tests fall back to M2's in-memory store.
-  registerIdentitySeams({ sessions: deps.sessionContextStore }); // M2 — SessionContextResolver + AuditorSessionMinter (§4.7)
+  registerIdentitySeams({ sessions: deps.sessionContextStore, db: deps.db }); // M2 — SessionContextResolver + AuditorSessionMinter + TenantOrgCreationProvider (§4.7 / M34 §7.1)
   // M3 — register the live RBAC resolver (DB-backed effective permissions) when a DB client is present,
   // turning `requirePermission` from fail-closed to real resolution. Slice/tests keep the default.
   if (deps.db) registerDbEffectivePermissionResolver(deps.db);
