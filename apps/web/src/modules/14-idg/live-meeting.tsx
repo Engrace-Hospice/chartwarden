@@ -1,3 +1,11 @@
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/14-idg — Live Meeting Surface (M14 §4.1/§5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace". The
 // IDG Coordinator's in-meeting surface: a left-rail patient list (the meeting's packets) over the meeting's
@@ -11,13 +19,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-  WorkQueueLayout,
-} from "@wardenx/ui";
+import { MEETING_TONE, stateLabel } from "./idg-status";
 
 interface MeetingView {
   id: string;
@@ -67,7 +69,15 @@ export function LiveMeeting(): JSX.Element {
       header={
         <PageHeader
           title="Live IDG Meeting"
-          breadcrumb={meeting ? `${meeting.status} · ${meeting.scheduledStart.slice(0, 10)}` : undefined}
+          breadcrumb={meeting ? meeting.scheduledStart.slice(0, 10) : undefined}
+          actions={
+            meeting ? (
+              <StatusPill
+                label={stateLabel(meeting.status)}
+                tone={MEETING_TONE[meeting.status] ?? "neutral"}
+              />
+            ) : undefined
+          }
         />
       }
       table={
@@ -76,25 +86,40 @@ export function LiveMeeting(): JSX.Element {
         ) : loading && meeting === null ? (
           <LoadingSpinner />
         ) : packets.length === 0 ? (
-          <EmptyState title="No patients" description="No patient packets are loaded for this meeting." />
+          <EmptyState
+            title="No patients"
+            description="No patient packets are loaded for this meeting."
+          />
         ) : (
           <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
             {packets.map((p) => (
-              <li
-                key={p.packetId}
-                onClick={() => navigate(`/idg/meetings/${p.meetingId}/packets/${p.patientId}`)}
-                style={{
-                  cursor: "pointer",
-                  padding: "0.75rem 1rem",
-                  borderBottom: "1px solid #f3f4f6",
-                  display: "flex",
-                  justifyContent: "space-between",
-                }}
-              >
-                <span>Patient {p.patientId.slice(0, 8)}</span>
-                <span style={{ color: p.frozenAt ? "#6b7280" : "#b45309" }}>
-                  {p.frozenAt ? "frozen" : "draft"}
-                </span>
+              <li key={p.packetId}>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/idg/meetings/${p.meetingId}/packets/${p.patientId}`)}
+                  style={{
+                    cursor: "pointer",
+                    width: "100%",
+                    textAlign: "left",
+                    border: "none",
+                    background: "none",
+                    padding: "0.75rem 1rem",
+                    borderBottom:
+                      "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    color: "var(--color-on-surface)",
+                  }}
+                >
+                  <span>
+                    Patient <span className="wx-data-md">{p.patientId.slice(0, 8)}</span>
+                  </span>
+                  <StatusPill
+                    label={p.frozenAt ? "Frozen" : "Draft"}
+                    tone={p.frozenAt ? "neutral" : "warning"}
+                  />
+                </button>
               </li>
             ))}
           </ul>
