@@ -3,7 +3,11 @@
 // WARDENX_UI_LAYOUT_PATTERNS.md with a near-term consumer. A screen "Use <Pattern>." renders the
 // matching layout and fills the slots. Domain/surface-specific patterns (MAR Grid, Bed Board,
 // Scheduling Calendar, Admin/Portal variants, Assistant, …) ship with their first module screen.
+//
+// Lantern (DESIGN.md): tokens only (theme-reactive), No-Line edges (§10), type voices (§3) — see
+// regions.tsx for the rationale; these layouts inherit the same discipline.
 import type { JSX, ReactNode } from "react";
+import { cardSurface, ghostBorder, t } from "../theme/tokens";
 
 const fillColumn = { display: "flex", flexDirection: "column" as const, minHeight: 0, flex: 1 };
 const splitRow = { display: "flex", minHeight: 0, flex: 1, overflow: "hidden" };
@@ -38,15 +42,7 @@ export function CenteredCardLayout({
             {brand}
           </div>
         ) : null}
-        <div
-          className="wx-auth-card"
-          style={{
-            border: "1px solid #e5e7eb",
-            borderRadius: "0.75rem",
-            padding: "1.5rem",
-            background: "#fff",
-          }}
-        >
+        <div className="wx-auth-card" style={{ ...cardSurface, padding: "1.5rem" }}>
           {children}
         </div>
         {footer ? (
@@ -101,13 +97,26 @@ export function CenteredStatusLayout({
             {icon}
           </div>
         ) : null}
-        <h1 style={{ margin: 0, fontSize: "1.25rem" }}>{headline}</h1>
-        {explanation ? <p style={{ margin: 0, color: "#6b7280" }}>{explanation}</p> : null}
+        <h1
+          style={{
+            margin: 0,
+            fontFamily: t.fontDisplay,
+            fontSize: "1.75rem",
+            fontWeight: 500,
+            color: t.onSurface,
+          }}
+        >
+          {headline}
+        </h1>
+        {explanation ? <p style={{ margin: 0, color: t.onSurfaceVariant }}>{explanation}</p> : null}
         {actions ? (
           <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>{actions}</div>
         ) : null}
+        {/* Correlation id is a code → mono, muted (§3.1). */}
         {correlationId ? (
-          <code style={{ fontSize: "0.75rem", color: "#9ca3af" }}>{correlationId}</code>
+          <code style={{ fontFamily: t.fontMono, fontSize: "0.75rem", color: t.muted }}>
+            {correlationId}
+          </code>
         ) : null}
       </div>
     </div>
@@ -251,7 +260,7 @@ export function ConversationView({ list, children, detail }: ConversationViewPro
           style={{
             width: "18rem",
             flexShrink: 0,
-            borderRight: "1px solid #e5e7eb",
+            borderRight: ghostBorder,
             overflow: "auto",
           }}
         >
@@ -291,7 +300,7 @@ export function AdminSplitLayout({
           style={{
             width: "18rem",
             flexShrink: 0,
-            borderRight: "1px solid #e5e7eb",
+            borderRight: ghostBorder,
             overflow: "auto",
           }}
         >

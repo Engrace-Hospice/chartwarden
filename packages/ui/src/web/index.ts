@@ -16,6 +16,44 @@ export type { LoadingSpinnerProps } from "./components/loading-spinner";
 // Layout kit — Tier-1 regions + foundational pattern layouts (ADR-0030, WARDENX_UI_LAYOUT_PATTERNS.md)
 export * from "./layouts";
 
+// WardenX system primitives (R0.3, DESIGN.md §7–§9) — the Guardrail / Sensitivity / Provenance
+// systems that define WardenX, as reusable components mapped 1:1 to the D1–D3 boards.
+export {
+  BlockingDialog,
+  CeremonyModal,
+  CountdownChip,
+  GateStepper,
+  GuardChip,
+} from "./system/guardrail";
+export type {
+  BlockingDialogProps,
+  CeremonyModalProps,
+  CountdownChipProps,
+  GateItem,
+  GateStatus,
+  GateStepperProps,
+  GuardChipProps,
+} from "./system/guardrail";
+export {
+  BreakGlassBanner,
+  ConsentBadge,
+  MaskedIdentifier,
+  maskTail,
+  SealedBlock,
+} from "./system/sensitivity";
+export type {
+  BreakGlassBannerProps,
+  ConsentBadgeProps,
+  MaskedIdentifierProps,
+  SealedBlockProps,
+} from "./system/sensitivity";
+export { AiSuggestionCard, DerivedBadge } from "./system/provenance";
+export type { AiSuggestionCardProps, DerivedBadgeProps } from "./system/provenance";
+export { Glyph } from "./system/glyphs";
+export type { GlyphName, GlyphProps } from "./system/glyphs";
+
 // Theme — web-only Tailwind seed (consumes core color tokens)
 export { sharedTailwindConfig } from "./theme/tailwind.config";
 export type { SharedTailwindConfig } from "./theme/tailwind.config";
+// Theme — Lantern token pointers (CSS-var references) + No-Line helpers (R0.2, DESIGN.md §2/§3/§10)
+export { cardSurface, ghostBorder, t } from "./theme/tokens";

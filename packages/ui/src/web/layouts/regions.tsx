@@ -1,10 +1,14 @@
-// @wardenx/ui — Tier-1 layout regions (F0-T04, ADR-0030).
+// @wardenx/ui — Tier-1 layout regions (F0-T04, ADR-0030; Lantern-enforced R0.2).
 // The recurring zones from WARDENX_UI_LAYOUT_PATTERNS.md §"Tier 1 — Shared regions": slot-based,
 // presentational, no business logic. The foundational pattern layouts (patterns.tsx) and the
 // module screens compose these so layout is defined once, here.
+//
+// Lantern (DESIGN.md): tokens only — no hardcoded hex (theme-reactive incl. twilight dark mode);
+// No-Line (§10) — region edges are tonal surface shifts or a ghost border at ≤15% opacity, never
+// an opaque 1px rule; type voices (§3) — Fraunces for human moments (titles, names, KPI labels),
+// Inter for the work (data, numerals with tabular-nums), IBM Plex Mono for identifiers/codes.
 import type { JSX, ReactNode } from "react";
-
-const HAIRLINE = "1px solid #e5e7eb";
+import { ghostBorder, t } from "../theme/tokens";
 
 /** Page Header — screen title, breadcrumb, page-level actions. */
 export interface PageHeaderProps {
@@ -22,11 +26,14 @@ export function PageHeader({ title, breadcrumb, actions, children }: PageHeaderP
         flexDirection: "column",
         gap: "0.5rem",
         padding: "1rem 1.5rem",
-        borderBottom: HAIRLINE,
+        borderBottom: ghostBorder,
       }}
     >
       {breadcrumb ? (
-        <div className="wx-breadcrumb" style={{ fontSize: "0.8rem", color: "#6b7280" }}>
+        <div
+          className="wx-breadcrumb"
+          style={{ fontSize: "0.8rem", color: t.onSurfaceVariant }}
+        >
           {breadcrumb}
         </div>
       ) : null}
@@ -38,7 +45,18 @@ export function PageHeader({ title, breadcrumb, actions, children }: PageHeaderP
           gap: "1rem",
         }}
       >
-        <h1 className="wx-page-title" style={{ margin: 0, fontSize: "1.25rem" }}>
+        {/* headline-lg — Fraunces, the human voice for the screen title (§3.1). */}
+        <h1
+          className="wx-page-title"
+          style={{
+            margin: 0,
+            fontFamily: t.fontDisplay,
+            fontSize: "1.75rem",
+            fontWeight: 500,
+            lineHeight: 1.2,
+            color: t.onSurface,
+          }}
+        >
           {title}
         </h1>
         {actions ? (
@@ -73,15 +91,40 @@ export interface KpiCardProps {
 export function KpiCard({ label, value, onSelect }: KpiCardProps): JSX.Element {
   const body = (
     <>
-      <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>{label}</div>
-      <div style={{ fontSize: "1.5rem", fontWeight: 600 }}>{value}</div>
+      {/* label-sm — Fraunces eyebrow, all-caps (§3.3 Big/Small editorial rule). */}
+      <div
+        style={{
+          fontFamily: t.fontDisplay,
+          fontSize: "0.6875rem",
+          fontWeight: 600,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+          color: t.onSurfaceVariant,
+        }}
+      >
+        {label}
+      </div>
+      {/* The figure — Inter with tabular-nums; never Fraunces (its numerals aren't tabular). */}
+      <div
+        style={{
+          fontFamily: t.fontSans,
+          fontSize: "1.5rem",
+          fontWeight: 600,
+          fontVariantNumeric: "tabular-nums",
+          color: t.onSurface,
+        }}
+      >
+        {value}
+      </div>
     </>
   );
+  // No-Line card: surface-lowest fill + soft shadow + xl radius, no border (§2.5/§4.3).
   const style = {
     minWidth: "10rem",
     padding: "0.75rem 1rem",
-    border: HAIRLINE,
-    borderRadius: "0.5rem",
+    background: t.surfaceLowest,
+    borderRadius: t.radiusXl,
+    boxShadow: t.shadowSoft,
     textAlign: "left" as const,
   };
   return onSelect ? (
@@ -89,7 +132,7 @@ export function KpiCard({ label, value, onSelect }: KpiCardProps): JSX.Element {
       type="button"
       className="wx-kpi-card"
       onClick={onSelect}
-      style={{ ...style, background: "#fff", cursor: "pointer" }}
+      style={{ ...style, cursor: "pointer", border: "none" }}
     >
       {body}
     </button>
@@ -114,7 +157,7 @@ export function FilterBar({
         justifyContent: "space-between",
         gap: "1rem",
         padding: "0.75rem 1.5rem",
-        borderBottom: HAIRLINE,
+        borderBottom: ghostBorder,
       }}
     >
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>{children}</div>
@@ -135,7 +178,9 @@ export function LeftNavRail({
       style={{
         width: "16rem",
         flexShrink: 0,
-        borderRight: HAIRLINE,
+        // Tonal separation: the rail sits on surface-lowest over the page canvas, plus a ghost edge.
+        background: t.surfaceLowest,
+        borderRight: ghostBorder,
         overflowY: "auto",
         padding: "1rem",
       }}
@@ -165,7 +210,8 @@ export function RightDetailPanel({
       style={{
         width: "24rem",
         flexShrink: 0,
-        borderLeft: HAIRLINE,
+        background: t.surfaceLowest,
+        borderLeft: ghostBorder,
         overflowY: "auto",
         padding: "1rem",
       }}
@@ -179,13 +225,14 @@ export function RightDetailPanel({
             marginBottom: "0.75rem",
           }}
         >
-          <div style={{ fontWeight: 600 }}>{title}</div>
+          {/* title-md — Inter section header (§3.2). */}
+          <div style={{ fontFamily: t.fontSans, fontWeight: 600, color: t.onSurface }}>{title}</div>
           {onClose ? (
             <button
               type="button"
               onClick={onClose}
               aria-label="Close detail panel"
-              style={{ cursor: "pointer" }}
+              style={{ cursor: "pointer", color: t.onSurfaceVariant, border: "none", background: "none" }}
             >
               ×
             </button>
@@ -209,8 +256,8 @@ export function StickyFooterActions({ children }: { children: ReactNode }): JSX.
         justifyContent: "flex-end",
         gap: "0.5rem",
         padding: "0.75rem 1.5rem",
-        borderTop: HAIRLINE,
-        background: "#fff",
+        borderTop: ghostBorder,
+        background: t.surfaceLowest,
       }}
     >
       {children}
@@ -235,11 +282,11 @@ export function PatientBanner({
   allergies,
   benefitPeriod,
 }: PatientBannerProps): JSX.Element {
-  const field = (label: string, value: ReactNode): ReactNode =>
+  const field = (label: string, value: ReactNode, mono = false): ReactNode =>
     value ? (
-      <span className="wx-banner-field">
-        <span style={{ color: "#6b7280", marginRight: "0.25rem" }}>{label}</span>
-        {value}
+      <span className="wx-banner-field" style={{ color: t.onSurface }}>
+        <span style={{ color: t.onSurfaceVariant, marginRight: "0.25rem" }}>{label}</span>
+        {mono ? <span style={{ fontFamily: t.fontMono }}>{value}</span> : value}
       </span>
     ) : null;
   return (
@@ -252,14 +299,21 @@ export function PatientBanner({
         display: "flex",
         flexWrap: "wrap",
         gap: "1rem",
-        alignItems: "center",
+        alignItems: "baseline",
         padding: "0.5rem 1.5rem",
-        background: "#f9fafb",
-        borderBottom: HAIRLINE,
+        background: t.surfaceLowest,
+        borderBottom: ghostBorder,
       }}
     >
-      <strong className="wx-banner-name">{name}</strong>
-      {field("MRN", mrn)}
+      {/* headline-md — the patient name in Fraunces, the human anchor of the chart (§3.3). */}
+      <strong
+        className="wx-banner-name"
+        style={{ fontFamily: t.fontDisplay, fontSize: "1.375rem", fontWeight: 500, color: t.onSurface }}
+      >
+        {name}
+      </strong>
+      {/* MRN is an identifier → IBM Plex Mono (§3.1). */}
+      {field("MRN", mrn, true)}
       {field("DOB", dob)}
       {field("Code", codeStatus)}
       {field("Allergies", allergies)}

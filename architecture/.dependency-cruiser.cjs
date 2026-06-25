@@ -154,6 +154,10 @@ module.exports = {
 
   options: {
     doNotFollow: { path: "node_modules" },
+    // Build artifacts are not source — the Storybook static build (R0.5) emits code-split chunks
+    // that legitimately reference each other (iframe ↔ story bundles), which is not an architecture
+    // signal. Gitignored, but depcruise walks the filesystem, so exclude it here too.
+    exclude: { path: "(^|/)storybook-static/" },
     tsConfig: { fileName: "tsconfig.json" },
     tsPreCompilationDeps: true,
     enhancedResolveOptions: { exportsFields: ["exports"], conditionNames: ["import", "require"] },
