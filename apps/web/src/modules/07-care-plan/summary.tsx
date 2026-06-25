@@ -1,6 +1,7 @@
 import {
   DetailPageLayout,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   PageHeader,
   useApiClient,
@@ -63,8 +64,17 @@ export function CarePlanSummary(): JSX.Element {
     <DetailPageLayout header={<PageHeader title="Care Plan Summary" />}>
       <div style={{ maxWidth: "44rem" }}>
         {summary.redacted ? (
-          <p role="note" style={{ ...meta, color: "#b45309" }}>
-            Some confidential content is not shown in this summary.
+          <p
+            role="note"
+            style={{
+              ...meta,
+              color: "var(--color-warning)",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.3rem",
+            }}
+          >
+            <Glyph name="lock" size={13} /> Some confidential content is not shown in this summary.
           </p>
         ) : null}
 
@@ -127,7 +137,7 @@ export function CarePlanSummary(): JSX.Element {
 const h3 = {
   fontSize: "0.8rem",
   textTransform: "uppercase",
-  color: "#6b7280",
+  color: "var(--color-on-surface-variant)",
   margin: "1rem 0 0.5rem",
 } as const;
-const meta = { fontSize: "0.8rem", color: "#6b7280" } as const;
+const meta = { fontSize: "0.8rem", color: "var(--color-on-surface-variant)" } as const;

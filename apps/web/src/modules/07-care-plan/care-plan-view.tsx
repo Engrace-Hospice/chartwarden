@@ -1,8 +1,10 @@
 import {
   DetailPageLayout,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   PageHeader,
+  StatusPill,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/07-care-plan — Care Plan View (M7 §5.2, Track B / ADR-0030).
@@ -16,6 +18,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { cap, toneFor } from "./care-plan-status";
 
 interface Version {
   id: string;
@@ -141,9 +144,15 @@ export function CarePlanView(): JSX.Element {
     <DetailPageLayout
       header={
         <PageHeader title="Care Plan">
-          <span style={meta}>
-            Status: {plan.status}
-            {plan.redacted ? " · some content restricted" : ""}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+            <StatusPill label={cap(plan.status)} tone={toneFor(plan.status)} />
+            {plan.redacted ? (
+              <span
+                style={{ ...meta, display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+              >
+                <Glyph name="lock" size={12} /> some content restricted
+              </span>
+            ) : null}
           </span>
         </PageHeader>
       }
@@ -152,7 +161,7 @@ export function CarePlanView(): JSX.Element {
           style={{
             width: "18rem",
             flexShrink: 0,
-            borderLeft: "1px solid #e5e7eb",
+            borderLeft: "1px solid var(--color-outline-variant)",
             padding: "1.5rem",
             overflow: "auto",
           }}
@@ -164,12 +173,22 @@ export function CarePlanView(): JSX.Element {
                 Active version v{activeVersion.sequence} ({activeVersion.kind})
                 {activeVersion.signedAt ? ` · signed ${activeVersion.signedAt.slice(0, 10)}` : ""}
               </p>
-              <ul style={{ paddingLeft: "1rem", margin: "0.5rem 0", fontSize: "0.8rem" }}>
+              <ul style={{ listStyle: "none", padding: 0, margin: "0.5rem 0", fontSize: "0.8rem" }}>
                 {activeVersion.requiredSignerSet.map((role) => {
                   const signed = activeVersion.signatures.some((s) => s.signerRole === role);
                   return (
-                    <li key={role} style={{ color: signed ? "#15803d" : "#b45309" }}>
-                      {signed ? "✓" : "○"} {role}
+                    <li
+                      key={role}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.4rem",
+                        margin: "0.25rem 0",
+                        color: signed ? "var(--color-success)" : "var(--color-warning)",
+                      }}
+                    >
+                      <Glyph name={signed ? "check-circle" : "clock"} size={13} />
+                      {cap(role)}
                     </li>
                   );
                 })}
@@ -221,17 +240,33 @@ export function CarePlanView(): JSX.Element {
                       padding: "0.5rem",
                       border: "none",
                       borderLeft:
-                        p.id === selectedProblemId ? "3px solid #2563eb" : "3px solid transparent",
-                      background: p.id === selectedProblemId ? "#eff6ff" : "transparent",
+                        p.id === selectedProblemId
+                          ? "3px solid var(--color-primary)"
+                          : "3px solid transparent",
+                      background:
+                        p.id === selectedProblemId ? "var(--color-primary-tint)" : "transparent",
                       cursor: "pointer",
                       fontSize: "0.85rem",
+                      color: "var(--color-on-surface)",
                     }}
                   >
                     <span style={{ fontWeight: 600 }}>{p.description}</span>
                     <br />
-                    <span style={meta}>
-                      {p.kind} · {p.status}
-                      {p.sudRelated ? " · 🔒 SUD" : ""}
+                    <span
+                      style={{
+                        ...meta,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.3rem",
+                      }}
+                    >
+                      {cap(p.kind)} · {cap(p.status)}
+                      {p.sudRelated ? (
+                        <>
+                          {" · "}
+                          <Glyph name="lock" size={11} /> SUD
+                        </>
+                      ) : null}
                     </span>
                   </button>
                 </li>
@@ -247,8 +282,18 @@ export function CarePlanView(): JSX.Element {
           ) : (
             selectedGoals.map((g) => (
               <div key={g.id} style={card}>
-                <p style={{ margin: 0, fontStyle: g.source !== "clinical" ? "italic" : "normal" }}>
-                  {g.source !== "clinical" ? `👤 (${g.source}) ` : ""}
+                {g.source !== "clinical" ? (
+                  <div style={{ marginBottom: "0.4rem" }}>
+                    <StatusPill label={`${cap(g.source)}-stated`} tone="neutral" glyph="info" />
+                  </div>
+                ) : null}
+                <p
+                  style={{
+                    margin: 0,
+                    color: "var(--color-on-surface)",
+                    fontStyle: g.source !== "clinical" ? "italic" : "normal",
+                  }}
+                >
                   {g.revisedText ?? g.originalText}
                 </p>
                 {g.revisedText && g.source !== "clinical" ? (
@@ -256,7 +301,9 @@ export function CarePlanView(): JSX.Element {
                     Original ({g.source}): {g.originalText}
                   </p>
                 ) : null}
-                <p style={meta}>Status: {g.status}</p>
+                <div style={{ marginTop: "0.4rem" }}>
+                  <StatusPill label={cap(g.status)} tone={toneFor(g.status)} />
+                </div>
               </div>
             ))
           )}
@@ -266,10 +313,20 @@ export function CarePlanView(): JSX.Element {
           ) : (
             selectedInterventions.map((i) => (
               <div key={i.id} style={card}>
-                <p style={{ margin: 0 }}>{i.scopeText}</p>
-                <p style={meta}>
-                  <span style={chip}>{i.discipline}</span> {i.frequencyText} · {i.status}
-                </p>
+                <p style={{ margin: 0, color: "var(--color-on-surface)" }}>{i.scopeText}</p>
+                <div
+                  style={{
+                    marginTop: "0.4rem",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span style={chip}>{cap(i.discipline)}</span>
+                  <span style={meta}>{i.frequencyText}</span>
+                  <StatusPill label={cap(i.status)} tone={toneFor(i.status)} />
+                </div>
               </div>
             ))
           )}
@@ -282,21 +339,27 @@ export function CarePlanView(): JSX.Element {
 const h3 = {
   fontSize: "0.8rem",
   textTransform: "uppercase",
-  color: "#6b7280",
+  color: "var(--color-on-surface-variant)",
   margin: "0 0 0.5rem",
 } as const;
-const meta = { fontSize: "0.75rem", color: "#6b7280", margin: "0.25rem 0" } as const;
+const meta = {
+  fontSize: "0.75rem",
+  color: "var(--color-on-surface-variant)",
+  margin: "0.25rem 0",
+} as const;
 const card = {
-  border: "1px solid #f3f4f6",
+  border: "1px solid var(--color-outline-variant)",
   borderRadius: "0.375rem",
   padding: "0.75rem",
   marginBottom: "0.5rem",
+  background: "var(--color-surface-lowest)",
 } as const;
 const chip = {
   display: "inline-block",
-  background: "#f3f4f6",
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface-variant)",
   borderRadius: "0.25rem",
   padding: "0 0.375rem",
-  marginRight: "0.375rem",
   fontWeight: 600,
+  fontSize: "0.75rem",
 } as const;
