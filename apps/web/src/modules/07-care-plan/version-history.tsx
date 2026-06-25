@@ -1,8 +1,10 @@
 import {
   DetailPageLayout,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   PageHeader,
+  StatusPill,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/07-care-plan — Care Plan Version History (M7 §5.1, Track B / ADR-0030).
@@ -14,6 +16,7 @@ import {
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
+import { cap, toneFor } from "./care-plan-status";
 
 interface Version {
   id: string;
@@ -67,37 +70,47 @@ export function CarePlanVersionHistory(): JSX.Element {
           description="Versions appear as the care plan is drafted and signed."
         />
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+        <table>
           <thead>
-            <tr style={{ textAlign: "left", color: "#6b7280" }}>
-              <th style={th}>Version</th>
-              <th style={th}>Kind</th>
-              <th style={th}>Status</th>
-              <th style={th}>Signed</th>
-              <th style={th}>Signers</th>
+            <tr>
+              <th>Version</th>
+              <th>Kind</th>
+              <th>Status</th>
+              <th>Signed</th>
+              <th>Signers</th>
             </tr>
           </thead>
           <tbody>
             {[...items]
               .sort((a, b) => b.sequence - a.sequence)
               .map((v) => (
-                <tr key={v.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                  <td style={td}>v{v.sequence}</td>
-                  <td style={td}>{v.kind}</td>
-                  <td style={td}>{v.status}</td>
-                  <td style={td}>{v.signedAt ? v.signedAt.slice(0, 10) : "—"}</td>
-                  <td style={td}>
-                    {v.requiredSignerSet.map((role) => {
-                      const signed = v.signatures.some((s) => s.signerRole === role);
-                      return (
-                        <span
-                          key={role}
-                          style={{ marginRight: "0.5rem", color: signed ? "#15803d" : "#b45309" }}
-                        >
-                          {signed ? "✓" : "○"} {role}
-                        </span>
-                      );
-                    })}
+                <tr key={v.id}>
+                  <td className="wx-data-md">v{v.sequence}</td>
+                  <td>{cap(v.kind)}</td>
+                  <td>
+                    <StatusPill label={cap(v.status)} tone={toneFor(v.status)} />
+                  </td>
+                  <td className="tabular-nums">{v.signedAt ? v.signedAt.slice(0, 10) : "—"}</td>
+                  <td>
+                    <span style={{ display: "inline-flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                      {v.requiredSignerSet.map((role) => {
+                        const signed = v.signatures.some((s) => s.signerRole === role);
+                        return (
+                          <span
+                            key={role}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "0.3rem",
+                              color: signed ? "var(--color-success)" : "var(--color-warning)",
+                            }}
+                          >
+                            <Glyph name={signed ? "check-circle" : "clock"} size={13} />
+                            {cap(role)}
+                          </span>
+                        );
+                      })}
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -107,6 +120,3 @@ export function CarePlanVersionHistory(): JSX.Element {
     </DetailPageLayout>
   );
 }
-
-const th = { padding: "0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem" } as const;
