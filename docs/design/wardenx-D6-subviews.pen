@@ -1997,15 +1997,15 @@
                               "type": "ref",
                               "ref": "An3JN",
                               "name": "b",
-                              "fill": "$--accent-tint",
+                              "fill": "$--color-alert-bg",
                               "descendants": {
                                 "HLO6C": {
                                   "icon": "medication",
-                                  "fill": "$--accent"
+                                  "fill": "$--color-alert"
                                 },
                                 "s7zeN": {
                                   "content": "EPCS",
-                                  "fill": "$--accent"
+                                  "fill": "$--color-alert"
                                 }
                               }
                             }
@@ -13010,15 +13010,15 @@
                               "type": "ref",
                               "ref": "An3JN",
                               "name": "b",
-                              "fill": "$--accent-tint",
+                              "fill": "$--color-alert-bg",
                               "descendants": {
                                 "HLO6C": {
                                   "icon": "medication",
-                                  "fill": "$--accent"
+                                  "fill": "$--color-alert"
                                 },
                                 "s7zeN": {
                                   "content": "EPCS",
-                                  "fill": "$--accent"
+                                  "fill": "$--color-alert"
                                 }
                               }
                             }
@@ -13600,7 +13600,7 @@
                           "id": "WrkJU",
                           "name": "note",
                           "width": "fill_container",
-                          "fill": "$--accent-tint",
+                          "fill": "$--color-alert-bg",
                           "cornerRadius": "$--radius-m",
                           "gap": 9,
                           "padding": 12,
@@ -13613,13 +13613,13 @@
                               "height": 16,
                               "icon": "lock",
                               "library": "Material Symbols Rounded",
-                              "fill": "$--accent"
+                              "fill": "$--color-alert"
                             },
                             {
                               "type": "text",
                               "id": "m6ZqLy",
                               "name": "t",
-                              "fill": "$--accent",
+                              "fill": "$--color-alert",
                               "textGrowth": "fixed-width",
                               "width": "fill_container",
                               "content": "Controlled substances route through the EPCS 2FA ceremony before transmit (see D1).",
@@ -14107,15 +14107,15 @@
     },
     "--muted": {
       "type": "color",
-      "value": "#8A8784"
+      "value": "#8c877f"
     },
     "--muted-foreground": {
       "type": "color",
-      "value": "#56534F"
+      "value": "#56524c"
     },
     "--border": {
       "type": "color",
-      "value": "#E5E3DE"
+      "value": "#d7d3cb"
     },
     "--primary": {
       "type": "color",
@@ -14127,7 +14127,7 @@
     },
     "--primary-tint": {
       "type": "color",
-      "value": "#EAEBF6"
+      "value": "#ecedfb"
     },
     "--primary-foreground": {
       "type": "color",
@@ -14139,7 +14139,7 @@
     },
     "--accent-tint": {
       "type": "color",
-      "value": "#F7ECD8"
+      "value": "#fbf1dd"
     },
     "--color-success": {
       "type": "color",
@@ -14147,7 +14147,7 @@
     },
     "--color-success-bg": {
       "type": "color",
-      "value": "#E3F3EB"
+      "value": "#e3f4ec"
     },
     "--color-warning": {
       "type": "color",
@@ -14155,7 +14155,7 @@
     },
     "--color-warning-bg": {
       "type": "color",
-      "value": "#F7ECD8"
+      "value": "#fff4e0"
     },
     "--color-error": {
       "type": "color",
@@ -14163,7 +14163,7 @@
     },
     "--color-error-bg": {
       "type": "color",
-      "value": "#FBE7E8"
+      "value": "#fbe7e9"
     },
     "--color-alert": {
       "type": "color",
@@ -14171,7 +14171,7 @@
     },
     "--color-alert-bg": {
       "type": "color",
-      "value": "#FCE6E5"
+      "value": "#fcebea"
     },
     "--color-info": {
       "type": "color",
@@ -14179,7 +14179,7 @@
     },
     "--color-info-bg": {
       "type": "color",
-      "value": "#EAEBF6"
+      "value": "#ecedfb"
     },
     "--font-primary": {
       "type": "string",
