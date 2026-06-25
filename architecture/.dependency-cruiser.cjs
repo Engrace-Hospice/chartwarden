@@ -101,7 +101,7 @@ module.exports = {
           "packages/messaging",
           "packages/fhir",
           "packages/dosespot",
-          "packages/saas",
+          "packages/saas-tenant-platform",
           "packages/ai-platform",
           "packages/billing",
           "packages/cost-report",
@@ -146,6 +146,49 @@ module.exports = {
       severity: "error",
       from: { path: p("packages/ui/src/core") },
       to: { path: p("packages/ui/src/web") },
+    },
+    {
+      name: "no-direct-m34-schema-import-from-other-modules",
+      comment:
+        "Other modules must consume M34 (SaaS Tenant Platform) via its published seams, never " +
+        "by reaching into its schema directly. M34's Drizzle tables live in the central barrel " +
+        "(packages/db/src/schema/saas) per repo convention; only M34's own logic package and the " +
+        "db barrel itself may import them. (M34 spec §13.)",
+      severity: "error",
+      from: {
+        pathNot: anyOf([
+          "packages/saas-tenant-platform",
+          "packages/db",
+          "apps/backend/src/modules/34-saas-tenant-platform",
+        ]),
+      },
+      to: { path: p("packages/db/src/schema/saas") },
+    },
+    {
+      name: "no-m34-import-of-clinical-schemas",
+      comment:
+        "M34 is the platform control plane; it may not import clinical/PHI schemas (M5–M20). It " +
+        "references patient-scoped data only through seams and DSAR/export fulfilment adapters. " +
+        "Clinical Drizzle tables live in the central barrel under their per-module schema dirs. " +
+        "(M34 spec §13.)",
+      severity: "error",
+      from: { path: p("packages/saas-tenant-platform") },
+      to: {
+        path: anyOf([
+          "packages/db/src/schema/patient",
+          "packages/db/src/schema/admission",
+          "packages/db/src/schema/care-plan",
+          "packages/db/src/schema/encounter",
+          "packages/db/src/schema/assessment",
+          "packages/db/src/schema/orders",
+          "packages/db/src/schema/dosespot",
+          "packages/db/src/schema/emar",
+          "packages/db/src/schema/hope",
+          "packages/db/src/schema/idg",
+          "packages/db/src/schema/evv",
+          "packages/db/src/schema/scheduling",
+        ]),
+      },
     },
     ...vendorRules,
     ...helperTableRules,

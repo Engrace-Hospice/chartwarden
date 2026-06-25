@@ -98,11 +98,15 @@ for (const base of SCAN_DIRS) {
     while ((tm = tsEnumRe.exec(src))) flagEnum(tm[1]!, tsEnumDefs, "Drizzle");
 
     // ---- Rule 1: partition key absent from a unique index (heuristic) ----
-    // Drizzle: a table declaring `.partitionedBy*('<col>'...)` or a // partitioned-by comment,
-    // whose uniqueIndex(...) does not reference the partition column.
+    // Drizzle: a table declaring `.partitionedBy*('<col>'...)` or a real `PARTITION BY RANGE(col)`
+    // DDL clause, whose uniqueIndex(...) does not reference the partition column. Scan a
+    // comment-stripped copy so a prose mention of "PARTITION BY" in a `--`/`/* */` comment (e.g. a
+    // migration note that the partition conversion is DEFERRED to a later file) is not mistaken for
+    // a real partition declaration.
+    const srcNoComments = src.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
     const partCol =
-      /partitionedBy\w*\(\s*['"](\w+)['"]/i.exec(src)?.[1] ??
-      /PARTITION\s+BY\s+\w+\s*\(\s*(\w+)/i.exec(src)?.[1];
+      /partitionedBy\w*\(\s*['"](\w+)['"]/i.exec(srcNoComments)?.[1] ??
+      /PARTITION\s+BY\s+\w+\s*\(\s*(\w+)/i.exec(srcNoComments)?.[1];
     if (partCol) {
       const uniqRe =
         /uniqueIndex\([^)]*\)\.on\(([^)]*)\)|UNIQUE\s*\(([^)]*)\)|PRIMARY\s+KEY\s*\(([^)]*)\)/gi;

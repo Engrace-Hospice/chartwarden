@@ -1058,17 +1058,72 @@ export type M8ContributedPermissionKey = keyof typeof M8_CONTRIBUTED_PERMISSIONS
  * org-scoped reference data administered by org_admin. Kept in a dedicated const for §3.3 attributability.
  */
 export const M9_CONTRIBUTED_PERMISSIONS = {
-  "assessment.read": { resource: "assessment", action: "read", category: "clinical", abac: "caseload_or_scope" },
-  "assessment.author": { resource: "assessment", action: "author", category: "clinical", abac: "caseload_or_scope" },
-  "assessment.amend": { resource: "assessment", action: "amend", category: "clinical", abac: "caseload_or_scope" },
-  "assessment.cosign": { resource: "assessment", action: "cosign", category: "clinical", abac: "cosigner_role_match" },
-  "assessment.read_trend": { resource: "assessment", action: "read_trend", category: "clinical", abac: "caseload_or_scope" },
-  "assessment.acknowledge_change": { resource: "assessment", action: "acknowledge_change", category: "clinical", abac: "caseload_or_scope" },
-  "assessment.read_summary": { resource: "assessment", action: "read_summary", category: "clinical", abac: "caseload_or_scope" },
-  "assessment.license_read": { resource: "assessment", action: "license_read", category: "admin", abac: "none" },
-  "assessment.license_admin": { resource: "assessment", action: "license_admin", category: "admin", abac: "none" },
-  "assessment.policy_read": { resource: "assessment", action: "policy_read", category: "admin", abac: "none" },
-  "assessment.policy_admin": { resource: "assessment", action: "policy_admin", category: "admin", abac: "none" },
+  "assessment.read": {
+    resource: "assessment",
+    action: "read",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
+  "assessment.author": {
+    resource: "assessment",
+    action: "author",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
+  "assessment.amend": {
+    resource: "assessment",
+    action: "amend",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
+  "assessment.cosign": {
+    resource: "assessment",
+    action: "cosign",
+    category: "clinical",
+    abac: "cosigner_role_match",
+  },
+  "assessment.read_trend": {
+    resource: "assessment",
+    action: "read_trend",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
+  "assessment.acknowledge_change": {
+    resource: "assessment",
+    action: "acknowledge_change",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
+  "assessment.read_summary": {
+    resource: "assessment",
+    action: "read_summary",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
+  "assessment.license_read": {
+    resource: "assessment",
+    action: "license_read",
+    category: "admin",
+    abac: "none",
+  },
+  "assessment.license_admin": {
+    resource: "assessment",
+    action: "license_admin",
+    category: "admin",
+    abac: "none",
+  },
+  "assessment.policy_read": {
+    resource: "assessment",
+    action: "policy_read",
+    category: "admin",
+    abac: "none",
+  },
+  "assessment.policy_admin": {
+    resource: "assessment",
+    action: "policy_admin",
+    category: "admin",
+    abac: "none",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M9 contributed permission keys. */
@@ -1085,23 +1140,83 @@ export type M9ContributedPermissionKey = keyof typeof M9_CONTRIBUTED_PERMISSIONS
  */
 export const M10_CONTRIBUTED_PERMISSIONS = {
   // Read (caseload-scoped clinical reads)
-  "hope.schedule.read": { resource: "hope_schedule", action: "read", category: "clinical", abac: "caseload_or_scope" },
-  "hope.timepoint.read": { resource: "hope_timepoint", action: "read", category: "clinical", abac: "caseload_or_scope" },
-  "hope.sfv.read": { resource: "hope_sfv", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  "hope.schedule.read": {
+    resource: "hope_schedule",
+    action: "read",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
+  "hope.timepoint.read": {
+    resource: "hope_timepoint",
+    action: "read",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
+  "hope.sfv.read": {
+    resource: "hope_sfv",
+    action: "read",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Read (provider-entity-scoped compliance reads)
-  "hope.submission.read": { resource: "hope_submission", action: "read", category: "compliance", abac: "provider_entity_scope" },
-  "hope.dashboard.read": { resource: "hope_dashboard", action: "read", category: "compliance", abac: "provider_entity_scope" },
+  "hope.submission.read": {
+    resource: "hope_submission",
+    action: "read",
+    category: "compliance",
+    abac: "provider_entity_scope",
+  },
+  "hope.dashboard.read": {
+    resource: "hope_dashboard",
+    action: "read",
+    category: "compliance",
+    abac: "provider_entity_scope",
+  },
   // Write
-  "hope.timepoint.write": { resource: "hope_timepoint", action: "write", category: "clinical", abac: "caseload_or_scope" },
-  "hope.timepoint.sign": { resource: "hope_timepoint", action: "sign", category: "clinical", abac: "caseload_or_scope" },
-  "hope.timepoint.correct": { resource: "hope_timepoint", action: "correct", category: "clinical", abac: "caseload_or_scope" },
+  "hope.timepoint.write": {
+    resource: "hope_timepoint",
+    action: "write",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
+  "hope.timepoint.sign": {
+    resource: "hope_timepoint",
+    action: "sign",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
+  "hope.timepoint.correct": {
+    resource: "hope_timepoint",
+    action: "correct",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Schedule operations
-  "hope.schedule.skip": { resource: "hope_schedule", action: "skip", category: "clinical", abac: "caseload_or_scope" },
+  "hope.schedule.skip": {
+    resource: "hope_schedule",
+    action: "skip",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Submission management
-  "hope.submission.manage": { resource: "hope_submission", action: "manage", category: "compliance", abac: "provider_entity_scope" },
+  "hope.submission.manage": {
+    resource: "hope_submission",
+    action: "manage",
+    category: "compliance",
+    abac: "provider_entity_scope",
+  },
   // Platform admin
-  "hope.admin.regenerate_schedules": { resource: "hope_admin", action: "regenerate_schedules", category: "platform", abac: "none" },
-  "hope.admin.late_deadline_override": { resource: "hope_admin", action: "late_deadline_override", category: "platform", abac: "none" },
+  "hope.admin.regenerate_schedules": {
+    resource: "hope_admin",
+    action: "regenerate_schedules",
+    category: "platform",
+    abac: "none",
+  },
+  "hope.admin.late_deadline_override": {
+    resource: "hope_admin",
+    action: "late_deadline_override",
+    category: "platform",
+    abac: "none",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M10 contributed permission keys. */
@@ -1122,32 +1237,102 @@ export type M10ContributedPermissionKey = keyof typeof M10_CONTRIBUTED_PERMISSIO
  */
 export const M11_CONTRIBUTED_PERMISSIONS = {
   // Read (caseload-scoped clinical reads) — every GET route.
-  "orders.read": { resource: "order", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  "orders.read": {
+    resource: "order",
+    action: "read",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Authoring — POST /orders, PATCH draft (route ALSO requires `discipline_can_order`).
-  "orders.draft": { resource: "order", action: "draft", category: "clinical", abac: "caseload_or_scope" },
+  "orders.draft": {
+    resource: "order",
+    action: "draft",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Signing — sign / request-signature (route ALSO requires `signer_eligible`).
-  "orders.sign": { resource: "order", action: "sign", category: "clinical", abac: "caseload_or_scope" },
+  "orders.sign": {
+    resource: "order",
+    action: "sign",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Proxy sign — medical_director only (pure RBAC; reason captured at the route).
-  "orders.sign_on_behalf": { resource: "order", action: "sign_on_behalf", category: "clinical", abac: "none" },
+  "orders.sign_on_behalf": {
+    resource: "order",
+    action: "sign_on_behalf",
+    category: "clinical",
+    abac: "none",
+  },
   // Verbal order recording — RN / Clinical Supervisor.
-  "orders.verbal.record": { resource: "order_verbal", action: "record", category: "clinical", abac: "caseload_or_scope" },
+  "orders.verbal.record": {
+    resource: "order_verbal",
+    action: "record",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Cosignature attach (route ALSO requires `cosigner_role_match`).
-  "orders.cosign": { resource: "order", action: "cosign", category: "clinical", abac: "cosigner_role_match" },
+  "orders.cosign": {
+    resource: "order",
+    action: "cosign",
+    category: "clinical",
+    abac: "cosigner_role_match",
+  },
   // Discontinue an active / pending / verbal order.
-  "orders.discontinue": { resource: "order", action: "discontinue", category: "clinical", abac: "caseload_or_scope" },
+  "orders.discontinue": {
+    resource: "order",
+    action: "discontinue",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Corrected order with replaces_order_id.
-  "orders.amend": { resource: "order", action: "amend", category: "clinical", abac: "caseload_or_scope" },
+  "orders.amend": {
+    resource: "order",
+    action: "amend",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Manual completion (incl. lab "Mark reviewed", D17).
-  "orders.complete": { resource: "order", action: "complete", category: "clinical", abac: "caseload_or_scope" },
+  "orders.complete": {
+    resource: "order",
+    action: "complete",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Standing-order template CRUD.
-  "orders.standing.manage": { resource: "standing_order", action: "manage", category: "clinical", abac: "caseload_or_scope" },
+  "orders.standing.manage": {
+    resource: "standing_order",
+    action: "manage",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // PRN manual spawn (worker spawn is system actor).
-  "orders.standing.spawn": { resource: "standing_order", action: "spawn", category: "clinical", abac: "caseload_or_scope" },
+  "orders.standing.spawn": {
+    resource: "standing_order",
+    action: "spawn",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Org verbal-policy read / update (org_admin, compliance).
-  "orders.policy.read": { resource: "order_policy", action: "read", category: "compliance", abac: "none" },
-  "orders.policy.manage": { resource: "order_policy", action: "manage", category: "compliance", abac: "none" },
+  "orders.policy.read": {
+    resource: "order_policy",
+    action: "read",
+    category: "compliance",
+    abac: "none",
+  },
+  "orders.policy.manage": {
+    resource: "order_policy",
+    action: "manage",
+    category: "compliance",
+    abac: "none",
+  },
   // Platform-ops verbal-timer regeneration (audited as elevated access, §4.1).
-  "orders.admin.regenerate_verbal_timer": { resource: "order_admin", action: "regenerate_verbal_timer", category: "platform", abac: "none" },
+  "orders.admin.regenerate_verbal_timer": {
+    resource: "order_admin",
+    action: "regenerate_verbal_timer",
+    category: "platform",
+    abac: "none",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M11 contributed permission keys. */
@@ -1169,33 +1354,103 @@ export type M11ContributedPermissionKey = keyof typeof M11_CONTRIBUTED_PERMISSIO
  */
 export const M12_CONTRIBUTED_PERMISSIONS = {
   // Read (caseload-scoped clinical reads) — every GET medication-order route.
-  "prescribing.read": { resource: "medication_order", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  "prescribing.read": {
+    resource: "medication_order",
+    action: "read",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Authoring — POST/PATCH draft (route ALSO requires `prescriber_eligible[:medClass]`).
-  "prescribing.draft": { resource: "medication_order", action: "draft", category: "clinical", abac: "caseload_or_scope" },
+  "prescribing.draft": {
+    resource: "medication_order",
+    action: "draft",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Standard sign (→ signed; route ALSO requires M11 `signer_eligible[:medication_order]`).
-  "prescribing.sign": { resource: "medication_order", action: "sign", category: "clinical", abac: "caseload_or_scope" },
+  "prescribing.sign": {
+    resource: "medication_order",
+    action: "sign",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Controlled-substance EPCS sign (route ALSO requires `dea_schedule_authorized[:schedule]` + IAL2 + tenant EPCS).
-  "prescribing.sign_controlled_substance": { resource: "medication_order", action: "sign_controlled", category: "clinical", abac: "caseload_or_scope" },
+  "prescribing.sign_controlled_substance": {
+    resource: "medication_order",
+    action: "sign_controlled",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Verbal medication-order recording — RN+ (D18: controlled is Phase-1-OFF).
-  "prescribing.verbal.record": { resource: "medication_order", action: "verbal_record", category: "clinical", abac: "caseload_or_scope" },
+  "prescribing.verbal.record": {
+    resource: "medication_order",
+    action: "verbal_record",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Cosignature attach (route ALSO requires M11 `cosigner_role_match`).
-  "prescribing.cosign": { resource: "medication_order", action: "cosign", category: "clinical", abac: "cosigner_role_match" },
+  "prescribing.cosign": {
+    resource: "medication_order",
+    action: "cosign",
+    category: "clinical",
+    abac: "cosigner_role_match",
+  },
   // Discontinue / complete an active / pending / verbal medication order.
-  "prescribing.discontinue": { resource: "medication_order", action: "discontinue", category: "clinical", abac: "caseload_or_scope" },
+  "prescribing.discontinue": {
+    resource: "medication_order",
+    action: "discontinue",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Refill-inbox decide (approve mints a new order; route ALSO requires M11 `signer_eligible`).
-  "prescribing.refill_decide": { resource: "refill_request", action: "decide", category: "clinical", abac: "caseload_or_scope" },
+  "prescribing.refill_decide": {
+    resource: "refill_request",
+    action: "decide",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Per-tenant DoseSpot prescriber roster admin (org-scoped, step-up).
-  "prescribing.admin.roster": { resource: "dosespot_prescriber", action: "admin", category: "compliance", abac: "none" },
+  "prescribing.admin.roster": {
+    resource: "dosespot_prescriber",
+    action: "admin",
+    category: "compliance",
+    abac: "none",
+  },
   // Refill-inbox / controlled-substance policy admin (org-scoped, step-up, tighten-only).
-  "prescribing.admin.policy": { resource: "prescribing_policy", action: "admin", category: "compliance", abac: "none" },
+  "prescribing.admin.policy": {
+    resource: "prescribing_policy",
+    action: "admin",
+    category: "compliance",
+    abac: "none",
+  },
   // Platform + org EPCS certification gate (the D18 certification toggle, step-up).
-  "prescribing.admin.epcs_certification": { resource: "epcs_certification", action: "admin", category: "platform", abac: "none" },
+  "prescribing.admin.epcs_certification": {
+    resource: "epcs_certification",
+    action: "admin",
+    category: "platform",
+    abac: "none",
+  },
   // Medication-history read (caseload-scoped).
-  "prescribing.history.read": { resource: "medication_history_record", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  "prescribing.history.read": {
+    resource: "medication_history_record",
+    action: "read",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Medication-history reconcile (carry-forward mints a draft).
-  "prescribing.history.reconcile": { resource: "medication_history_record", action: "reconcile", category: "clinical", abac: "caseload_or_scope" },
+  "prescribing.history.reconcile": {
+    resource: "medication_history_record",
+    action: "reconcile",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // RxBenefit cached lookup (every prescriber + drafter).
-  "prescribing.rx_benefit.lookup": { resource: "rx_benefit", action: "lookup", category: "clinical", abac: "caseload_or_scope" },
+  "prescribing.rx_benefit.lookup": {
+    resource: "rx_benefit",
+    action: "lookup",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M12 contributed permission keys. */
@@ -1220,49 +1475,159 @@ export type M12ContributedPermissionKey = keyof typeof M12_CONTRIBUTED_PERMISSIO
  */
 export const M13_CONTRIBUTED_PERMISSIONS = {
   // Read (caseload-scoped clinical reads) — every GET administration / scheduled-dose / IV-session route.
-  "administration.read": { resource: "administration_record", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  "administration.read": {
+    resource: "administration_record",
+    action: "read",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Record a clinician administration (route ALSO requires `administering_clinician_eligible[:medClass]`).
-  "administration.record": { resource: "administration_record", action: "record", category: "clinical", abac: "caseload_or_scope" },
+  "administration.record": {
+    resource: "administration_record",
+    action: "record",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Significant-late tier (24h-7d) — supervisor cosign queued (D8).
-  "administration.record_significant_late": { resource: "administration_record", action: "record_significant_late", category: "clinical", abac: "caseload_or_scope" },
+  "administration.record_significant_late": {
+    resource: "administration_record",
+    action: "record_significant_late",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Administrative-override tier (>7d) — step-up enforced at the route (D8).
-  "administration.administrative_override": { resource: "administration_record", action: "administrative_override", category: "clinical", abac: "caseload_or_scope" },
+  "administration.administrative_override": {
+    resource: "administration_record",
+    action: "administrative_override",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Record a refusal (patient declined; no medication given; route ALSO requires `administering_clinician_eligible`).
-  "administration.record_refusal": { resource: "administration_record", action: "record_refusal", category: "clinical", abac: "caseload_or_scope" },
+  "administration.record_refusal": {
+    resource: "administration_record",
+    action: "record_refusal",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Record an intentional hold of a scheduled dose before the grace window expires.
-  "administration.record_missed": { resource: "scheduled_dose", action: "intentional_hold", category: "clinical", abac: "caseload_or_scope" },
+  "administration.record_missed": {
+    resource: "scheduled_dose",
+    action: "intentional_hold",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Mint a witness-attestation token (route ALSO requires `controlled_substance_witness_eligible`).
-  "administration.witness_attest": { resource: "administration_witness", action: "attest", category: "clinical", abac: "caseload_or_scope" },
+  "administration.witness_attest": {
+    resource: "administration_witness",
+    action: "attest",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Correction of a committed administration (creates a new row, supersedes original).
-  "administration.correct": { resource: "administration_record", action: "correct", category: "clinical", abac: "caseload_or_scope" },
+  "administration.correct": {
+    resource: "administration_record",
+    action: "correct",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Administrative hard-void (recorded in error) — step-up enforced at the route.
-  "administration.void": { resource: "administration_record", action: "void", category: "clinical", abac: "caseload_or_scope" },
+  "administration.void": {
+    resource: "administration_record",
+    action: "void",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Caregiver-attested administration via M31 portal — the portal session token gates it (no caseload predicate).
-  "administration.caregiver_record": { resource: "administration_record", action: "caregiver_record", category: "clinical", abac: "none" },
+  "administration.caregiver_record": {
+    resource: "administration_record",
+    action: "caregiver_record",
+    category: "clinical",
+    abac: "none",
+  },
   // RN case manager acknowledges a caregiver-attested row (route ALSO requires `caregiver_attested_review_required`).
-  "administration.caregiver_acknowledge": { resource: "administration_record", action: "caregiver_acknowledge", category: "clinical", abac: "caseload_or_scope" },
+  "administration.caregiver_acknowledge": {
+    resource: "administration_record",
+    action: "caregiver_acknowledge",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // RN case manager disputes a caregiver-attested row (route ALSO requires `caregiver_attested_review_required`).
-  "administration.caregiver_dispute": { resource: "administration_record", action: "caregiver_dispute", category: "clinical", abac: "caseload_or_scope" },
+  "administration.caregiver_dispute": {
+    resource: "administration_record",
+    action: "caregiver_dispute",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Missed-dose read (caseload-scoped).
-  "administration.read_missed": { resource: "missed_dose", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  "administration.read_missed": {
+    resource: "missed_dose",
+    action: "read",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Case manager acknowledges a missed dose.
-  "administration.acknowledge_missed": { resource: "missed_dose", action: "acknowledge", category: "clinical", abac: "caseload_or_scope" },
+  "administration.acknowledge_missed": {
+    resource: "missed_dose",
+    action: "acknowledge",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // PRN minimum-interval override (supervisor / prescriber; reason captured).
-  "administration.prn_interval_override": { resource: "administration_record", action: "prn_interval_override", category: "clinical", abac: "caseload_or_scope" },
+  "administration.prn_interval_override": {
+    resource: "administration_record",
+    action: "prn_interval_override",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Reconciliation worksheet read (caseload-scoped).
-  "reconciliation.read": { resource: "medication_reconciliation_worksheet", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  "reconciliation.read": {
+    resource: "medication_reconciliation_worksheet",
+    action: "read",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Record/update a per-line decision (route ALSO requires `reconciliation_authoring_eligible`).
-  "reconciliation.decide": { resource: "medication_reconciliation_decision", action: "create", category: "clinical", abac: "caseload_or_scope" },
+  "reconciliation.decide": {
+    resource: "medication_reconciliation_decision",
+    action: "create",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Finalize the worksheet (route ALSO requires `reconciliation_authoring_eligible`).
-  "reconciliation.finalize": { resource: "medication_reconciliation_worksheet", action: "finalize", category: "clinical", abac: "caseload_or_scope" },
+  "reconciliation.finalize": {
+    resource: "medication_reconciliation_worksheet",
+    action: "finalize",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Void a worksheet (e.g., re-triggered by a transfer-correction).
-  "reconciliation.void": { resource: "medication_reconciliation_worksheet", action: "void", category: "clinical", abac: "caseload_or_scope" },
+  "reconciliation.void": {
+    resource: "medication_reconciliation_worksheet",
+    action: "void",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Comfort-kit deployment read (caseload-scoped).
-  "comfort_kit.read": { resource: "comfort_kit_deployment", action: "read", category: "clinical", abac: "caseload_or_scope" },
+  "comfort_kit.read": {
+    resource: "comfort_kit_deployment",
+    action: "read",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Manual comfort-kit return acknowledgment (Phase-1 fallback when M21 absent).
-  "comfort_kit.acknowledge_return": { resource: "comfort_kit_deployment", action: "acknowledge_return", category: "clinical", abac: "caseload_or_scope" },
+  "comfort_kit.acknowledge_return": {
+    resource: "comfort_kit_deployment",
+    action: "acknowledge_return",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   // Per-tenant administration policy admin (org-scoped, step-up).
-  "administration.admin.policy": { resource: "administration_policy", action: "admin", category: "compliance", abac: "none" },
+  "administration.admin.policy": {
+    resource: "administration_policy",
+    action: "admin",
+    category: "compliance",
+    abac: "none",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M13 contributed permission keys. */
@@ -1282,23 +1647,68 @@ export type M13ContributedPermissionKey = keyof typeof M13_CONTRIBUTED_PERMISSIO
  */
 export const M14_CONTRIBUTED_PERMISSIONS = {
   // Read packets / minutes / decisions / schedule for in-scope meetings (default `idg_meeting_scope`).
-  "idg.read": { resource: "idg_meeting", action: "read", category: "clinical", abac: "idg_meeting_scope" },
+  "idg.read": {
+    resource: "idg_meeting",
+    action: "read",
+    category: "clinical",
+    abac: "idg_meeting_scope",
+  },
   // Self check-in/check-out attendance (default `idg_meeting_scope`).
-  "idg.attend": { resource: "idg_attendance", action: "check_in", category: "clinical", abac: "idg_meeting_scope" },
+  "idg.attend": {
+    resource: "idg_attendance",
+    action: "check_in",
+    category: "clinical",
+    abac: "idg_meeting_scope",
+  },
   // Build packets, manage agenda, run lifecycle transitions, manage action items as coordinator.
-  "idg.coordinate": { resource: "idg_meeting", action: "coordinate", category: "clinical", abac: "idg_meeting_scope" },
+  "idg.coordinate": {
+    resource: "idg_meeting",
+    action: "coordinate",
+    category: "clinical",
+    abac: "idg_meeting_scope",
+  },
   // Record / supersede decisions (route ALSO requires `quorate_decision`).
-  "idg.decide": { resource: "idg_decision", action: "record", category: "clinical", abac: "idg_meeting_scope" },
+  "idg.decide": {
+    resource: "idg_decision",
+    action: "record",
+    category: "clinical",
+    abac: "idg_meeting_scope",
+  },
   // Update assigned action items (self-scoped via the shared `is_assignee` predicate).
-  "idg.act": { resource: "idg_action_item", action: "update", category: "clinical", abac: "is_assignee" },
+  "idg.act": {
+    resource: "idg_action_item",
+    action: "update",
+    category: "clinical",
+    abac: "is_assignee",
+  },
   // Manage recurring policies, cancel/reschedule meetings (cancel/reschedule ALSO require `per_patient_review_floor_clear`).
-  "idg.schedule": { resource: "idg_recurring_policy", action: "manage", category: "clinical", abac: "none" },
+  "idg.schedule": {
+    resource: "idg_recurring_policy",
+    action: "manage",
+    category: "clinical",
+    abac: "none",
+  },
   // Override the per-patient 15-day review-floor guard on CANCEL/RESCHEDULE (audited + step-up; M14-F01 / ADR-0018 D2).
-  "idg.override_review_floor": { resource: "idg_meeting", action: "override_review_floor", category: "compliance", abac: "none" },
+  "idg.override_review_floor": {
+    resource: "idg_meeting",
+    action: "override_review_floor",
+    category: "compliance",
+    abac: "none",
+  },
   // Submit minutes amendments (tenant-admin / compliance scope).
-  "idg.amend_minutes": { resource: "idg_minutes", action: "amend", category: "compliance", abac: "none" },
+  "idg.amend_minutes": {
+    resource: "idg_minutes",
+    action: "amend",
+    category: "compliance",
+    abac: "none",
+  },
   // Internal system principal — packet build, action-item auto-close consumers, FHIR/render reads.
-  "idg.system": { resource: "idg_patient_packet", action: "system_read", category: "admin", abac: "none" },
+  "idg.system": {
+    resource: "idg_patient_packet",
+    action: "system_read",
+    category: "admin",
+    abac: "none",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M14 contributed permission keys. */
@@ -1318,39 +1728,169 @@ export type M14ContributedPermissionKey = keyof typeof M14_CONTRIBUTED_PERMISSIO
  */
 export const M17_CONTRIBUTED_PERMISSIONS = {
   // --- visit reads (caseload-scoped clinical read + org-wide team/metrics) ---
-  "visit.read": { resource: "visit", action: "read", category: "scheduling", abac: "caseload_or_scope" },
-  "visit.read_team": { resource: "visit", action: "read_team", category: "scheduling", abac: "none" },
-  "visit.read_metrics": { resource: "visit", action: "read_metrics", category: "scheduling", abac: "none" },
+  "visit.read": {
+    resource: "visit",
+    action: "read",
+    category: "scheduling",
+    abac: "caseload_or_scope",
+  },
+  "visit.read_team": {
+    resource: "visit",
+    action: "read_team",
+    category: "scheduling",
+    abac: "none",
+  },
+  "visit.read_metrics": {
+    resource: "visit",
+    action: "read_metrics",
+    category: "scheduling",
+    abac: "none",
+  },
   // --- visit lifecycle writes (assignment routes ALSO compose the four owned §4.7 pre-schedule predicates) ---
-  "visit.create": { resource: "visit", action: "create", category: "scheduling", abac: "caseload_or_scope" },
-  "visit.edit": { resource: "visit", action: "edit", category: "scheduling", abac: "caseload_or_scope" },
-  "visit.start": { resource: "visit", action: "start", category: "scheduling", abac: "caseload_or_scope" },
-  "visit.cancel": { resource: "visit", action: "cancel", category: "scheduling", abac: "caseload_or_scope" },
-  "visit.reschedule": { resource: "visit", action: "reschedule", category: "scheduling", abac: "caseload_or_scope" },
-  "visit.reassign": { resource: "visit", action: "reassign", category: "scheduling", abac: "caseload_or_scope" },
-  "visit.mark_no_show": { resource: "visit", action: "mark_no_show", category: "scheduling", abac: "caseload_or_scope" },
+  "visit.create": {
+    resource: "visit",
+    action: "create",
+    category: "scheduling",
+    abac: "caseload_or_scope",
+  },
+  "visit.edit": {
+    resource: "visit",
+    action: "edit",
+    category: "scheduling",
+    abac: "caseload_or_scope",
+  },
+  "visit.start": {
+    resource: "visit",
+    action: "start",
+    category: "scheduling",
+    abac: "caseload_or_scope",
+  },
+  "visit.cancel": {
+    resource: "visit",
+    action: "cancel",
+    category: "scheduling",
+    abac: "caseload_or_scope",
+  },
+  "visit.reschedule": {
+    resource: "visit",
+    action: "reschedule",
+    category: "scheduling",
+    abac: "caseload_or_scope",
+  },
+  "visit.reassign": {
+    resource: "visit",
+    action: "reassign",
+    category: "scheduling",
+    abac: "caseload_or_scope",
+  },
+  "visit.mark_no_show": {
+    resource: "visit",
+    action: "mark_no_show",
+    category: "scheduling",
+    abac: "caseload_or_scope",
+  },
   // --- visit proposals (scheduler inbox) ---
-  "visit.proposal.read": { resource: "visit_proposal", action: "read", category: "scheduling", abac: "caseload_or_scope" },
-  "visit.proposal.dismiss": { resource: "visit_proposal", action: "dismiss", category: "scheduling", abac: "caseload_or_scope" },
+  "visit.proposal.read": {
+    resource: "visit_proposal",
+    action: "read",
+    category: "scheduling",
+    abac: "caseload_or_scope",
+  },
+  "visit.proposal.dismiss": {
+    resource: "visit_proposal",
+    action: "dismiss",
+    category: "scheduling",
+    abac: "caseload_or_scope",
+  },
   // --- recurring visit policies ---
-  "recurring_visit.read": { resource: "recurring_visit", action: "read", category: "scheduling", abac: "caseload_or_scope" },
-  "recurring_visit.create": { resource: "recurring_visit", action: "create", category: "scheduling", abac: "caseload_or_scope" },
-  "recurring_visit.discontinue": { resource: "recurring_visit", action: "discontinue", category: "scheduling", abac: "caseload_or_scope" },
+  "recurring_visit.read": {
+    resource: "recurring_visit",
+    action: "read",
+    category: "scheduling",
+    abac: "caseload_or_scope",
+  },
+  "recurring_visit.create": {
+    resource: "recurring_visit",
+    action: "create",
+    category: "scheduling",
+    abac: "caseload_or_scope",
+  },
+  "recurring_visit.discontinue": {
+    resource: "recurring_visit",
+    action: "discontinue",
+    category: "scheduling",
+    abac: "caseload_or_scope",
+  },
   // --- clinician availability (membership-scoped; own-vs-any) ---
-  "availability.read": { resource: "availability", action: "read", category: "scheduling", abac: "none" },
-  "availability.edit_own": { resource: "availability", action: "edit_own", category: "scheduling", abac: "none" },
-  "availability.edit_any": { resource: "availability", action: "edit_any", category: "scheduling", abac: "none" },
+  "availability.read": {
+    resource: "availability",
+    action: "read",
+    category: "scheduling",
+    abac: "none",
+  },
+  "availability.edit_own": {
+    resource: "availability",
+    action: "edit_own",
+    category: "scheduling",
+    abac: "none",
+  },
+  "availability.edit_any": {
+    resource: "availability",
+    action: "edit_any",
+    category: "scheduling",
+    abac: "none",
+  },
   // --- time off (PTO) ---
-  "time_off.read_own": { resource: "time_off", action: "read_own", category: "scheduling", abac: "none" },
-  "time_off.read_team": { resource: "time_off", action: "read_team", category: "scheduling", abac: "none" },
-  "time_off.request_own": { resource: "time_off", action: "request_own", category: "scheduling", abac: "none" },
-  "time_off.approve": { resource: "time_off", action: "approve", category: "scheduling", abac: "none" },
-  "time_off.cancel_own": { resource: "time_off", action: "cancel_own", category: "scheduling", abac: "none" },
+  "time_off.read_own": {
+    resource: "time_off",
+    action: "read_own",
+    category: "scheduling",
+    abac: "none",
+  },
+  "time_off.read_team": {
+    resource: "time_off",
+    action: "read_team",
+    category: "scheduling",
+    abac: "none",
+  },
+  "time_off.request_own": {
+    resource: "time_off",
+    action: "request_own",
+    category: "scheduling",
+    abac: "none",
+  },
+  "time_off.approve": {
+    resource: "time_off",
+    action: "approve",
+    category: "scheduling",
+    abac: "none",
+  },
+  "time_off.cancel_own": {
+    resource: "time_off",
+    action: "cancel_own",
+    category: "scheduling",
+    abac: "none",
+  },
   // --- route optimisation (behind scheduling.route_optimization, OFF) + efficiency metrics ---
-  "route.optimize_on_demand": { resource: "route", action: "optimize_on_demand", category: "scheduling", abac: "none" },
-  "route.read_metrics": { resource: "route", action: "read_metrics", category: "scheduling", abac: "none" },
+  "route.optimize_on_demand": {
+    resource: "route",
+    action: "optimize_on_demand",
+    category: "scheduling",
+    abac: "none",
+  },
+  "route.read_metrics": {
+    resource: "route",
+    action: "read_metrics",
+    category: "scheduling",
+    abac: "none",
+  },
   // --- portal session class — upcoming visits, lay-language, scrubbed (per-patient via M39 consent) ---
-  "portal.visit.read_upcoming": { resource: "portal_visit", action: "read_upcoming", category: "scheduling", abac: "none" },
+  "portal.visit.read_upcoming": {
+    resource: "portal_visit",
+    action: "read_upcoming",
+    category: "scheduling",
+    abac: "none",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M17 contributed permission keys. */
@@ -1373,35 +1913,120 @@ export type M17ContributedPermissionKey = keyof typeof M17_CONTRIBUTED_PERMISSIO
  */
 export const M18_CONTRIBUTED_PERMISSIONS = {
   // --- EVV event capture (routes ALSO compose `assigned_clinician_for_visit` ∧ `evv_within_visit_window`) ---
-  "evv.check_in": { resource: "evv_event", action: "check_in", category: "evv", abac: "caseload_or_scope" },
-  "evv.check_out": { resource: "evv_event", action: "check_out", category: "evv", abac: "caseload_or_scope" },
+  "evv.check_in": {
+    resource: "evv_event",
+    action: "check_in",
+    category: "evv",
+    abac: "caseload_or_scope",
+  },
+  "evv.check_out": {
+    resource: "evv_event",
+    action: "check_out",
+    category: "evv",
+    abac: "caseload_or_scope",
+  },
   // --- EVV event reads (coords is a SEPARATE key for audit-prominence, D10) ---
   "evv.read": { resource: "evv_event", action: "read", category: "evv", abac: "caseload_or_scope" },
-  "evv.read_coords": { resource: "evv_event", action: "read_coords", category: "evv", abac: "caseload_or_scope" },
+  "evv.read_coords": {
+    resource: "evv_event",
+    action: "read_coords",
+    category: "evv",
+    abac: "caseload_or_scope",
+  },
   "evv.read_metrics": { resource: "evv_metrics", action: "read", category: "evv", abac: "none" },
   // --- correction-of-record (Clinical Supervisor+, step-up at the route) ---
-  "evv.correct_record": { resource: "evv_event", action: "correct_record", category: "evv", abac: "caseload_or_scope" },
+  "evv.correct_record": {
+    resource: "evv_event",
+    action: "correct_record",
+    category: "evv",
+    abac: "caseload_or_scope",
+  },
   // --- device registration lifecycle (membership-scoped; the route scopes own-vs-team) ---
-  "evv.device.register_self": { resource: "evv_device", action: "register_self", category: "evv", abac: "none" },
+  "evv.device.register_self": {
+    resource: "evv_device",
+    action: "register_self",
+    category: "evv",
+    abac: "none",
+  },
   "evv.device.read": { resource: "evv_device", action: "read", category: "evv", abac: "none" },
-  "evv.device.approve": { resource: "evv_device", action: "approve", category: "evv", abac: "none" },
-  "evv.device.suspend": { resource: "evv_device", action: "suspend", category: "evv", abac: "none" },
+  "evv.device.approve": {
+    resource: "evv_device",
+    action: "approve",
+    category: "evv",
+    abac: "none",
+  },
+  "evv.device.suspend": {
+    resource: "evv_device",
+    action: "suspend",
+    category: "evv",
+    abac: "none",
+  },
   "evv.device.retire": { resource: "evv_device", action: "retire", category: "evv", abac: "none" },
   // --- geofence policy (tenant tighten-only + per-address override; Clin Supv / DON / Compliance) ---
-  "evv.policy.read": { resource: "evv_geofence_policy", action: "read", category: "evv", abac: "none" },
-  "evv.policy.edit": { resource: "evv_geofence_policy", action: "edit", category: "evv", abac: "none" },
+  "evv.policy.read": {
+    resource: "evv_geofence_policy",
+    action: "read",
+    category: "evv",
+    abac: "none",
+  },
+  "evv.policy.edit": {
+    resource: "evv_geofence_policy",
+    action: "edit",
+    category: "evv",
+    abac: "none",
+  },
   // --- missing-EVV resolution (attest_self route ALSO composes `assigned_clinician_for_visit`) ---
-  "evv.missing_resolution.read": { resource: "evv_missing_resolution", action: "read", category: "evv", abac: "caseload_or_scope" },
-  "evv.missing_resolution.attest_self": { resource: "evv_missing_resolution", action: "attest_self", category: "evv", abac: "caseload_or_scope" },
-  "evv.missing_resolution.supervisor_override": { resource: "evv_missing_resolution", action: "supervisor_override", category: "evv", abac: "none" },
+  "evv.missing_resolution.read": {
+    resource: "evv_missing_resolution",
+    action: "read",
+    category: "evv",
+    abac: "caseload_or_scope",
+  },
+  "evv.missing_resolution.attest_self": {
+    resource: "evv_missing_resolution",
+    action: "attest_self",
+    category: "evv",
+    abac: "caseload_or_scope",
+  },
+  "evv.missing_resolution.supervisor_override": {
+    resource: "evv_missing_resolution",
+    action: "supervisor_override",
+    category: "evv",
+    abac: "none",
+  },
   // --- per-state aggregator submission queue (billing-ops; org-wide) ---
-  "evv.aggregator.read": { resource: "evv_aggregator_submission", action: "read", category: "evv", abac: "none" },
-  "evv.aggregator.resubmit": { resource: "evv_aggregator_submission", action: "resubmit", category: "evv", abac: "none" },
-  "evv.aggregator.cancel": { resource: "evv_aggregator_submission", action: "cancel", category: "evv", abac: "none" },
+  "evv.aggregator.read": {
+    resource: "evv_aggregator_submission",
+    action: "read",
+    category: "evv",
+    abac: "none",
+  },
+  "evv.aggregator.resubmit": {
+    resource: "evv_aggregator_submission",
+    action: "resubmit",
+    category: "evv",
+    abac: "none",
+  },
+  "evv.aggregator.cancel": {
+    resource: "evv_aggregator_submission",
+    action: "cancel",
+    category: "evv",
+    abac: "none",
+  },
   // --- M20 field-safety supervisor live-awareness (org-wide team-location read; audit-prominent) ---
-  "evv.location.read_team": { resource: "evv_location", action: "read_team", category: "evv", abac: "none" },
+  "evv.location.read_team": {
+    resource: "evv_location",
+    action: "read_team",
+    category: "evv",
+    abac: "none",
+  },
   // --- M31 portal arrival surface (portal session class; per-patient via M39 consent, not caseload) ---
-  "portal.evv.read_arrival": { resource: "portal_evv", action: "read_arrival", category: "evv", abac: "none" },
+  "portal.evv.read_arrival": {
+    resource: "portal_evv",
+    action: "read_arrival",
+    category: "evv",
+    abac: "none",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M18 contributed permission keys. */
@@ -1422,35 +2047,448 @@ export type M18ContributedPermissionKey = keyof typeof M18_CONTRIBUTED_PERMISSIO
  */
 export const M22_CONTRIBUTED_PERMISSIONS = {
   // --- documents (§4.6) ---
-  "documents.upload": { resource: "document", action: "upload", category: "clinical", abac: "caseload_membership" },
-  "documents.read": { resource: "document", action: "read", category: "clinical", abac: "document_owner_or_caseload" },
-  "documents.read_history": { resource: "document", action: "read_history", category: "clinical", abac: "document_owner_or_caseload" },
-  "documents.read_access_log": { resource: "document", action: "read_access_log", category: "compliance", abac: "none" },
-  "documents.read_phi_content": { resource: "document", action: "read_phi_content", category: "clinical", abac: "document_owner_or_caseload" },
-  "documents.edit_metadata": { resource: "document", action: "edit_metadata", category: "clinical", abac: "legal_hold_aware" },
-  "documents.attach_to_disclosures": { resource: "document", action: "attach_to_disclosures", category: "compliance", abac: "none" },
-  "documents.export_phi_bundle": { resource: "document", action: "export_phi_bundle", category: "compliance", abac: "document_owner_or_caseload" },
-  "documents.delete": { resource: "document", action: "delete", category: "compliance", abac: "legal_hold_aware" },
-  "documents.read_templates": { resource: "form_template", action: "read", category: "clinical", abac: "none" },
-  "documents.preview_template": { resource: "form_template", action: "preview", category: "platform", abac: "none" },
-  "documents.publish_template": { resource: "form_template", action: "publish", category: "platform", abac: "form_template_publish_authority" },
-  "documents.manage_overlay": { resource: "tenant_template_overlay", action: "manage", category: "admin", abac: "tenant_template_overlay_edit_authority" },
-  "documents.admin_read_fills": { resource: "form_fill", action: "admin_read", category: "platform", abac: "none" },
-  "documents.admin_retry_render": { resource: "form_fill", action: "admin_retry_render", category: "platform", abac: "none" },
+  "documents.upload": {
+    resource: "document",
+    action: "upload",
+    category: "clinical",
+    abac: "caseload_membership",
+  },
+  "documents.read": {
+    resource: "document",
+    action: "read",
+    category: "clinical",
+    abac: "document_owner_or_caseload",
+  },
+  "documents.read_history": {
+    resource: "document",
+    action: "read_history",
+    category: "clinical",
+    abac: "document_owner_or_caseload",
+  },
+  "documents.read_access_log": {
+    resource: "document",
+    action: "read_access_log",
+    category: "compliance",
+    abac: "none",
+  },
+  "documents.read_phi_content": {
+    resource: "document",
+    action: "read_phi_content",
+    category: "clinical",
+    abac: "document_owner_or_caseload",
+  },
+  "documents.edit_metadata": {
+    resource: "document",
+    action: "edit_metadata",
+    category: "clinical",
+    abac: "legal_hold_aware",
+  },
+  "documents.attach_to_disclosures": {
+    resource: "document",
+    action: "attach_to_disclosures",
+    category: "compliance",
+    abac: "none",
+  },
+  "documents.export_phi_bundle": {
+    resource: "document",
+    action: "export_phi_bundle",
+    category: "compliance",
+    abac: "document_owner_or_caseload",
+  },
+  "documents.delete": {
+    resource: "document",
+    action: "delete",
+    category: "compliance",
+    abac: "legal_hold_aware",
+  },
+  "documents.read_templates": {
+    resource: "form_template",
+    action: "read",
+    category: "clinical",
+    abac: "none",
+  },
+  "documents.preview_template": {
+    resource: "form_template",
+    action: "preview",
+    category: "platform",
+    abac: "none",
+  },
+  "documents.publish_template": {
+    resource: "form_template",
+    action: "publish",
+    category: "platform",
+    abac: "form_template_publish_authority",
+  },
+  "documents.manage_overlay": {
+    resource: "tenant_template_overlay",
+    action: "manage",
+    category: "admin",
+    abac: "tenant_template_overlay_edit_authority",
+  },
+  "documents.admin_read_fills": {
+    resource: "form_fill",
+    action: "admin_read",
+    category: "platform",
+    abac: "none",
+  },
+  "documents.admin_retry_render": {
+    resource: "form_fill",
+    action: "admin_retry_render",
+    category: "platform",
+    abac: "none",
+  },
   // --- intake (§4.6) ---
-  "intake.upload": { resource: "intake_batch", action: "upload", category: "clinical", abac: "none" },
+  "intake.upload": {
+    resource: "intake_batch",
+    action: "upload",
+    category: "clinical",
+    abac: "none",
+  },
   "intake.read": { resource: "intake_batch", action: "read", category: "clinical", abac: "none" },
-  "intake.reclassify": { resource: "intake_batch", action: "reclassify", category: "clinical", abac: "none" },
-  "intake.confirm_classification": { resource: "intake_batch", action: "confirm_classification", category: "clinical", abac: "none" },
-  "intake.split_batch": { resource: "intake_batch", action: "split_batch", category: "clinical", abac: "none" },
-  "intake.review": { resource: "extraction_review", action: "review", category: "clinical", abac: "extraction_reviewer_eligible" },
-  "intake.discard_batch": { resource: "intake_batch", action: "discard_batch", category: "clinical", abac: "none" },
+  "intake.reclassify": {
+    resource: "intake_batch",
+    action: "reclassify",
+    category: "clinical",
+    abac: "none",
+  },
+  "intake.confirm_classification": {
+    resource: "intake_batch",
+    action: "confirm_classification",
+    category: "clinical",
+    abac: "none",
+  },
+  "intake.split_batch": {
+    resource: "intake_batch",
+    action: "split_batch",
+    category: "clinical",
+    abac: "none",
+  },
+  "intake.review": {
+    resource: "extraction_review",
+    action: "review",
+    category: "clinical",
+    abac: "extraction_reviewer_eligible",
+  },
+  "intake.discard_batch": {
+    resource: "intake_batch",
+    action: "discard_batch",
+    category: "clinical",
+    abac: "none",
+  },
   // --- extraction provenance (§4.6) ---
-  "extraction.read_provenance": { resource: "extraction_provenance", action: "read", category: "compliance", abac: "none" },
+  "extraction.read_provenance": {
+    resource: "extraction_provenance",
+    action: "read",
+    category: "compliance",
+    abac: "none",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M22 contributed permission keys. */
 export type M22ContributedPermissionKey = keyof typeof M22_CONTRIBUTED_PERMISSIONS;
+
+/**
+ * The forty-one permission keys Module 34 (SaaS Tenant Platform) registers into Module 3's catalog —
+ * the §4.5 binding cross-module handshake (M34 spec §4.5 / D7). M3 must include these before M34's
+ * platform-control-plane routes (tenant lifecycle, onboarding, invitations, support sessions, DSAR +
+ * tenant export, feature flags, BAA register, signup intents) can be authorized; those routes
+ * (apps/backend/src/modules/34-saas-tenant-platform/routes/*) gate on them.
+ *
+ * This map is the AUTHORITATIVE copy the boot path projects mirror rows from (an identical const lives
+ * in apps/backend/.../permission-keys.ts as the M34-owned source of truth, kept byte-for-byte in sync —
+ * the package may not import the app, so the keys are RE-DECLARED here the way M22's are). The catalog
+ * `abac` field is the DEFAULT predicate per key (§4.1 Auth column); the route layer additionally composes
+ * the explicit §4.6 chain M34 owns (e.g. `tenant_lifecycle_platform_ops` on the platform-ops surface,
+ * `feature_flag_write_authority` on flag writes). PLATFORM-OPS NOTE (M34-F03): `platform_ops` is an M3
+ * RBAC ROLE on a staff session, NOT a session class — the platform-surface keys default to the
+ * `tenant_lifecycle_platform_ops` predicate, which tests the role. Kept in a dedicated const so each
+ * module's contribution stays attributable (§3.3 ownership).
+ */
+export const M34_CONTRIBUTED_PERMISSIONS = {
+  // --- tenant lifecycle: platform-ops surface (§4.5) ---
+  "tenant.list_platform": {
+    resource: "tenant_account",
+    action: "list_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "tenant.read_platform": {
+    resource: "tenant_account",
+    action: "read_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "tenant.provision": {
+    resource: "tenant_account",
+    action: "provision",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "tenant.transition_status": {
+    resource: "tenant_account",
+    action: "transition_status",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "tenant.offboard": {
+    resource: "tenant_account",
+    action: "offboard",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "tenant.shred.execute": {
+    resource: "tenant_key_ring",
+    action: "shred_execute",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "tenant.dek_rotate": {
+    resource: "tenant_key_ring",
+    action: "dek_rotate",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  // --- tenant lifecycle: tenant surface (§4.5) ---
+  "tenant.read_own": {
+    resource: "tenant_account",
+    action: "read_own",
+    category: "admin",
+    abac: "none",
+  },
+  // --- onboarding (§4.5) ---
+  "onboarding.read_platform": {
+    resource: "onboarding_task",
+    action: "read_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "onboarding.read_own": {
+    resource: "onboarding_task",
+    action: "read_own",
+    category: "admin",
+    abac: "none",
+  },
+  "onboarding.update": {
+    resource: "onboarding_task",
+    action: "update",
+    category: "admin",
+    abac: "onboarding_task_assignee_or_owner",
+  },
+  "onboarding.skip": {
+    resource: "onboarding_task",
+    action: "skip",
+    category: "admin",
+    abac: "onboarding_task_assignee_or_owner",
+  },
+  "onboarding_template.list": {
+    resource: "onboarding_task_template",
+    action: "list",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "onboarding_template.write": {
+    resource: "onboarding_task_template",
+    action: "write",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  // --- invitations (§4.5) ---
+  "tenant_invitation.list_platform": {
+    resource: "tenant_invitation",
+    action: "list_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "tenant_invitation.issue": {
+    resource: "tenant_invitation",
+    action: "issue",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "tenant_invitation.revoke": {
+    resource: "tenant_invitation",
+    action: "revoke",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  // --- support sessions (tenant-consented break-glass) (§4.5) ---
+  "support_session.list_platform": {
+    resource: "support_session",
+    action: "list_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "support_session.start": {
+    resource: "support_session",
+    action: "start",
+    category: "platform",
+    abac: "support_session_actor_distinct_from_grantor",
+  },
+  "support_session.elevate_phi_read": {
+    resource: "support_session",
+    action: "elevate_phi_read",
+    category: "platform",
+    abac: "tenant_consented_support_active",
+  },
+  "support_session.close": {
+    resource: "support_session",
+    action: "close",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "support_consent_grant.list_own": {
+    resource: "support_consent_grant",
+    action: "list_own",
+    category: "admin",
+    abac: "none",
+  },
+  "support_consent_grant.issue": {
+    resource: "support_consent_grant",
+    action: "issue",
+    category: "admin",
+    abac: "none",
+  },
+  "support_consent_grant.revoke": {
+    resource: "support_consent_grant",
+    action: "revoke",
+    category: "admin",
+    abac: "none",
+  },
+  // --- DSAR export (§4.5) ---
+  "dsar_export.list_platform": {
+    resource: "dsar_export_job",
+    action: "list_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "dsar_export.list_own": {
+    resource: "dsar_export_job",
+    action: "list_own",
+    category: "compliance",
+    abac: "none",
+  },
+  "dsar_export.request": {
+    resource: "dsar_export_job",
+    action: "request",
+    category: "compliance",
+    abac: "dsar_export_patient_caseload_or_org_admin",
+  },
+  "dsar_export.fulfill": {
+    resource: "dsar_export_job",
+    action: "fulfill",
+    category: "compliance",
+    abac: "none",
+  },
+  "dsar_export.extend": {
+    resource: "dsar_export_job",
+    action: "extend",
+    category: "compliance",
+    abac: "none",
+  },
+  "dsar_export.deny": {
+    resource: "dsar_export_job",
+    action: "deny",
+    category: "compliance",
+    abac: "none",
+  },
+  "dsar_export.download": {
+    resource: "dsar_export_job",
+    action: "download",
+    category: "compliance",
+    abac: "dsar_export_patient_caseload_or_org_admin",
+  },
+  // --- tenant export (§4.5) ---
+  "tenant_export.list_platform": {
+    resource: "tenant_export_job",
+    action: "list_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "tenant_export.list_own": {
+    resource: "tenant_export_job",
+    action: "list_own",
+    category: "admin",
+    abac: "none",
+  },
+  "tenant_export.request": {
+    resource: "tenant_export_job",
+    action: "request",
+    category: "admin",
+    abac: "tenant_export_org_admin_or_platform_ops",
+  },
+  "tenant_export.download": {
+    resource: "tenant_export_job",
+    action: "download",
+    category: "admin",
+    abac: "tenant_export_org_admin_or_platform_ops",
+  },
+  // --- feature flags: admin surface (§4.5) ---
+  "feature_flag.read_platform": {
+    resource: "feature_flag",
+    action: "read_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "feature_flag.read_own": {
+    resource: "feature_flag",
+    action: "read_own",
+    category: "admin",
+    abac: "none",
+  },
+  "feature_flag.write_platform": {
+    resource: "feature_flag",
+    action: "write_platform",
+    category: "platform",
+    abac: "feature_flag_write_authority",
+  },
+  "feature_flag.write_tenant": {
+    resource: "feature_flag",
+    action: "write_tenant",
+    category: "admin",
+    abac: "feature_flag_write_authority",
+  },
+  "feature_flag.kill_switch": {
+    resource: "feature_flag",
+    action: "kill_switch",
+    category: "platform",
+    abac: "feature_flag_write_authority",
+  },
+  // --- platform-tenant BAA register (§4.5) ---
+  "platform_tenant_baa.read_platform": {
+    resource: "platform_tenant_baa_record",
+    action: "read_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "platform_tenant_baa.read_own": {
+    resource: "platform_tenant_baa_record",
+    action: "read_own",
+    category: "compliance",
+    abac: "none",
+  },
+  "platform_tenant_baa.attest": {
+    resource: "platform_tenant_baa_record",
+    action: "attest",
+    category: "compliance",
+    abac: "tenant_platform_baa_compliance_officer",
+  },
+  // --- signup intents (§4.5) ---
+  "signup_intent.list_platform": {
+    resource: "tenant_signup_intent",
+    action: "list_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "signup_intent.qualify": {
+    resource: "tenant_signup_intent",
+    action: "qualify",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M34 contributed permission keys (forty-one). */
+export type M34ContributedPermissionKey = keyof typeof M34_CONTRIBUTED_PERMISSIONS;
 
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
@@ -1559,6 +2597,11 @@ export function m22ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M22_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M34 contributed keys into `permission`-table mirror rows (M34 §4.5). */
+export function m34ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M34_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -1587,5 +2630,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m17ContributedPermissionMirrorRows(),
     ...m18ContributedPermissionMirrorRows(),
     ...m22ContributedPermissionMirrorRows(),
+    ...m34ContributedPermissionMirrorRows(),
   ];
 }

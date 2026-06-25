@@ -28,7 +28,6 @@ import {
   documentReaderDenyStub,
   documentRendererDenyStub,
   documentStorageProviderDenyStub,
-  extractionProvenanceReaderDenyStub,
   electionPeriodReaderDenyStub,
   encounterCreatorDenyStub,
   evvAggregatorReferenceReaderDenyStub,
@@ -37,6 +36,7 @@ import {
   evvLocationProviderDenyStub,
   evvMetricsProviderDenyStub,
   evvVerificationProviderDenyStub,
+  extractionProvenanceReaderDenyStub,
   faceToFaceReaderDenyStub,
   hopeJ2051ProviderDenyStub,
   hopeSubmissionProviderDenyStub,
@@ -58,13 +58,14 @@ import {
   patientReaderDenyStub,
   portalDocumentReaderDenyStub,
   portalVisitReaderDenyStub,
-  renderedDocumentProviderDenyStub,
   reconciliationProviderDenyStub,
   refillInboxProviderDenyStub,
+  renderedDocumentProviderDenyStub,
   scaleSeriesProviderDenyStub,
   sessionContextResolverDenyStub,
   signedEncountersReaderDenyStub,
   supervisoryCadenceReaderDenyStub,
+  tenantOrgCreationProviderDenyStub,
   terminologyProviderDenyStub,
   visitAssignmentReaderDenyStub,
   visitMetricsProviderDenyStub,
@@ -147,6 +148,16 @@ export const REQUIRED_SEAMS = [
     ownerModule: 2,
     phi: false,
     denyStub: auditorSessionMinterDenyStub,
+  },
+  // M2 (org creation) — the per-tenant `organization` create/attach surface M34's `tenant.provision`
+  // worker consumes (§7.1 step 3). Owned by M2 (it owns the `organization` table); not PHI (org metadata).
+  // Fail-closed default RETURNS `unavailable` (graceful degradation, never fabricates an org) until M2
+  // registers the real Drizzle-backed provider at init.
+  {
+    key: "TenantOrgCreationProvider",
+    ownerModule: 2,
+    phi: false,
+    denyStub: tenantOrgCreationProviderDenyStub,
   },
   // M38 (Terminology) — the version-aware code/value-set resolution surface every clinical and
   // billing module imports (§4.5). Reference data, not a patient record → not PHI; still

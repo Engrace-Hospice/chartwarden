@@ -6,6 +6,7 @@ import type {
   FaceToFaceReader,
   LevelOfCareReader,
 } from "./admission";
+import type { LatestAssessmentProvider, ScaleSeriesProvider } from "./assessment";
 import type { CarePlanReader } from "./care-plan";
 import type {
   DocumentReader,
@@ -15,6 +16,8 @@ import type {
   PortalDocumentReader,
   RenderedDocumentProvider,
 } from "./documents";
+import type { MedicationOrderProvider, RefillInboxProvider } from "./dosespot";
+import type { MedicationAdministrationProvider, ReconciliationProvider } from "./emar";
 import type {
   BillableEncounterReader,
   EncounterCreator,
@@ -29,28 +32,9 @@ import type {
   EvvMetricsProvider,
   EvvVerificationProvider,
 } from "./evv";
-import type { LatestAssessmentProvider, ScaleSeriesProvider } from "./assessment";
-import type {
-  HopeJ2051Provider,
-  HopeSubmissionProvider,
-  HopeTimepointProvider,
-} from "./hope";
+import type { HopeJ2051Provider, HopeSubmissionProvider, HopeTimepointProvider } from "./hope";
+import type { IdgDecisionProvider, IdgPacketProvider, IdgScheduleProvider } from "./idg";
 import type { OrderProvider, OrderSignatureProvider } from "./orders";
-import type { MedicationOrderProvider, RefillInboxProvider } from "./dosespot";
-import type { MedicationAdministrationProvider, ReconciliationProvider } from "./emar";
-import type {
-  IdgDecisionProvider,
-  IdgPacketProvider,
-  IdgScheduleProvider,
-} from "./idg";
-import type {
-  PortalVisitReader,
-  SupervisoryCadenceReader,
-  VisitAssignmentReader,
-  VisitMetricsProvider,
-  VisitReader,
-  VolunteerComplianceProvider,
-} from "./scheduling";
 import type { PatientMutator, PatientReader } from "./patient";
 // @wardenx/types — Boot-registered SEAM contracts (Phase 0 skeleton).
 //
@@ -61,6 +45,14 @@ import type { PatientMutator, PatientReader } from "./patient";
 // each producer module's published seam contract; Phase 0 ships the minimal shape the
 // bootstrap registry needs to compile and self-validate.
 import type { StepUpFactor } from "./policy/step-up-policy";
+import type {
+  PortalVisitReader,
+  SupervisoryCadenceReader,
+  VisitAssignmentReader,
+  VisitMetricsProvider,
+  VisitReader,
+  VolunteerComplianceProvider,
+} from "./scheduling";
 
 /** Opaque tenant scope every seam call carries (resolved by withOrgContext). */
 export interface OrgScope {
@@ -93,6 +85,7 @@ export type SeamName =
   | "ConsentEvaluator" // M39 — disclosure/redaction gate
   | "SessionContextResolver" // M2 — authenticated, org-scoped request context (actor + step-up state)
   | "AuditorSessionMinter" // M2 — mint a time-boxed auditor magic-link session (M3 calls it)
+  | "TenantOrgCreationProvider" // M2 — create/attach the per-tenant org M34's provision worker needs (§7.1)
   | "TerminologyProvider" // M38 — version-aware code/value-set resolution (every clinical/billing module)
   | "AlertEmitter" // M36 — emit an event; M36 resolves rules + recipients + fan-out (every module)
   | "MessagingProvider" // M36 — channel/message surface (DEK-encrypted bodies; PHI read surface)
@@ -319,6 +312,35 @@ export interface AuditorSessionMinter {
   }): Promise<{ magicLinkToken: string }>;
 }
 
+/** The intent M34's `tenant.provision` worker hands M2 to create / attach the per-tenant organization
+ *  (M34 §2.5 r2 / §7.1 step 3). PHI-free — every field is resolved by the platform-ops route that
+ *  enqueued the provision job. `organizationId` is the org spine the §7.1 step-1 route pre-creates in
+ *  Phase 1 (so the provider is an idempotent confirm); the same field is the create target for the
+ *  Phase-3 self-serve path. The interface is LEAF-TYPED here (not opaque) because the PRODUCER is M2 and
+ *  the CONSUMER is M34 — neither may import the other's package, so the shared contract lives in this leaf. */
+export interface TenantOrgCreationIntent {
+  readonly tenantAccountId: string;
+  readonly organizationId: string;
+  readonly legalBusinessName: string;
+}
+
+/** The discriminated result of an org-creation request. `available` carries the created/confirmed M2 org
+ *  id; `unavailable` is the fail-closed forward-state answer (the deny-stub, until M2 registers the real
+ *  provider) — the provision worker branches on `kind` and never fabricates an id / fails open. */
+export type TenantOrgCreationResult =
+  | { readonly kind: "available"; readonly organizationId: string }
+  | { readonly kind: "unavailable"; readonly reason: "m2_org_creation_not_yet_locked" };
+
+/**
+ * M2 — create / attach the per-tenant `organization` row M34's `tenant.provision` worker needs at §7.1
+ * step 3. M2 owns the `organization` table; M34 consumes this published seam (no M34→M2-internal import,
+ * no new `dependsOn` edge — the M2 edge already exists). SELECT-then-create, idempotent confirm in
+ * Phase 1 (the org spine is pre-created by the route); the create branch backs Phase-3 self-serve signup.
+ */
+export interface TenantOrgCreationProvider {
+  createOrganizationForTenant(intent: TenantOrgCreationIntent): Promise<TenantOrgCreationResult>;
+}
+
 /** Map from seam name → its interface type, so the registry is type-safe. */
 export interface SeamContracts {
   CaseloadProvider: CaseloadProvider;
@@ -348,6 +370,9 @@ export interface SeamContracts {
   ConsentEvaluator: unknown;
   SessionContextResolver: SessionContextResolver;
   AuditorSessionMinter: AuditorSessionMinter;
+  // M2 — LEAF-TYPED: M34's provision worker (CONSUMER) and M2 (PRODUCER) can't import each other's
+  // package, so the contract lives here. M2 registers the real Drizzle-backed provider over the deny-stub.
+  TenantOrgCreationProvider: TenantOrgCreationProvider;
   // M38's `TerminologyProvider` is intentionally OPAQUE (`unknown`) here. Its rich interface
   // (per-system generics, FHIR projections) lives in the feature package @wardenx/terminology,
   // which this leaf may not import (`leaves-stay-leaves`, ARCHITECTURE §25.15). Unlike the
@@ -633,4 +658,13 @@ export type DataClass =
   // artifact, §3.7 / D12). The tenant-config `evv_geofence_policy` and the membership-scoped `evv_device`
   // SURVIVE (not patient data; device erases on workforce departure per M2 D8). `subjectId` is the patient
   // being destroyed; disjoint from every other module's subtree.
-  | "evv_record";
+  | "evv_record"
+  // M34 (SaaS Tenant Platform) per-TENANT control-plane record (NOT patient data): on tenant offboarding
+  // (D6, §3.5/§8.4) M34's eraser deletes the org's operational working rows — `onboarding_task`,
+  // `support_consent_grant`, `support_session` headers, `platform_tenant_baa_record`, `tenant_invitation`,
+  // `tenant_signup_intent`/`tenant_signup_token`, and `tenant_export_job` (+ its event ledger). The
+  // lifecycle/key-ring destruction ledger and the §164.528 disclosure-accounting surfaces (`dsar_export_job`,
+  // `support_session_event`) are NEVER touched (§8.4). Unlike every class above, `subjectId` here is the ORG
+  // being offboarded (the platform control plane has no patient subject). Registered by M34's eraseFn over
+  // the Phase-0 deny-stub via the composition-root hook (same pattern as M40's `mdm_tenant_overlays`).
+  | "saas_tenant_platform_class";

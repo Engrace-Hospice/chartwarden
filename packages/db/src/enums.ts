@@ -2073,3 +2073,40 @@ export const documentAccessPurpose = pgEnum("document_access_purpose", [
   "amendment_review",
   "survey_export",
 ]);
+
+// ── M34 SaaS Tenant Platform §3.7 DSAR + Tenant Export ──────────────────────
+
+/** M34 §3.7 `dsar_export_job_status` — the DSAR export job lifecycle. */
+export const dsarExportJobStatus = pgEnum("dsar_export_job_status", [
+  "requested",
+  "generating",
+  "review_pending",
+  "fulfilled",
+  "denied",
+  "extended",
+]);
+
+/** M34 §3.7 `dsar_request_source` — who the DSAR request originated from. */
+export const dsarRequestSource = pgEnum("dsar_request_source", [
+  "patient",
+  "caregiver",
+  "legal_representative",
+  "authorized_third_party",
+]);
+
+/** M34 §3.7 `tenant_export_job_status` — the tenant-export job lifecycle. */
+export const tenantExportJobStatus = pgEnum("tenant_export_job_status", [
+  "requested",
+  "generating",
+  "fulfilled",
+  "expired",
+  "cancelled",
+]);
+
+/** M34 §3.7 `tenant_export_job_purpose` — the captured justification class for a tenant export. */
+export const tenantExportJobPurpose = pgEnum("tenant_export_job_purpose", [
+  "migration",
+  "baa_termination",
+  "compliance_audit",
+  "surveyor_request",
+]);

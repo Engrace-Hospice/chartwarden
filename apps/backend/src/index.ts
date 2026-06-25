@@ -14,6 +14,8 @@ import {
 } from "@wardenx/auth";
 import type { SessionContextStore } from "@wardenx/auth";
 import { type DbClient, createDbClient } from "@wardenx/db";
+import type { PlatformBypassAuditor } from "@wardenx/tenancy";
+import type { ConnectionOptions } from "bullmq";
 import { buildServer, createSessionAuthenticate, getSeam } from "./bootstrap/index";
 import {
   mountIdentityRoutes,
@@ -43,6 +45,24 @@ import { registerIdgErasers, registerIdgSeams } from "./modules/14-idg/index";
 import { registerSchedulingSeams } from "./modules/17-scheduling/index";
 import { registerEvvSeams } from "./modules/18-evv/index";
 import { registerDocumentErasers, registerDocumentSeams } from "./modules/22-documents/index";
+import {
+  type BootstrapModule34Deps,
+  type TenantPlatformAbacResolver,
+  bootstrapModule34,
+  buildDrizzlePlatformService,
+  buildDrizzleTenantService,
+  buildM34WorkerDeps,
+  buildPlatformEnqueue,
+  buildTenantEnqueue,
+  mountTenantPlatformRoutes,
+  registerLiveM34Seams,
+  registerM34Workers,
+  registerSaasTenantPlatformErasers,
+  registerTenantPlatformAbacPredicates,
+  scheduleM34Jobs,
+  validateModule34Seams,
+  wireM34Tenancy,
+} from "./modules/34-saas-tenant-platform/index";
 import {
   createDbMessagingProvider,
   mountMessagingRoutes,
@@ -84,7 +104,7 @@ export function wireModuleSeams(
 ): void {
   // AUTH-T05b: pass the DB-backed SessionContextStore in production (composition root supplies it when
   // a DB client is present); the slice/tests fall back to M2's in-memory store.
-  registerIdentitySeams({ sessions: deps.sessionContextStore }); // M2 — SessionContextResolver + AuditorSessionMinter (§4.7)
+  registerIdentitySeams({ sessions: deps.sessionContextStore, db: deps.db }); // M2 — SessionContextResolver + AuditorSessionMinter + TenantOrgCreationProvider (§4.7 / M34 §7.1)
   // M3 — register the live RBAC resolver (DB-backed effective permissions) when a DB client is present,
   // turning `requirePermission` from fail-closed to real resolution. Slice/tests keep the default.
   if (deps.db) registerDbEffectivePermissionResolver(deps.db);
@@ -169,8 +189,90 @@ export function wireModuleSeams(
   // store over the real M39 consent tables (FB-T03); slice/tests keep the in-memory default.
   registerConsentSeams(deps.db ? { store: createDbConsentStore(deps.db) } : {});
   registerConsentAbacPredicates(); // M39 — the 11 §4.8 ABAC predicate resolvers (resolve via the seam)
+  // M34 — the 8 §4.6 ABAC predicate resolvers (the platform-ops tenant surface gates on
+  // `tenant_lifecycle_platform_ops`, role-only; `dsar_export_*` composes the M5 CaseloadProvider seam,
+  // registered above). The grant/flag/onboarding-task resolver methods are exercised by the tenant-scoped
+  // routes (Phase 2D Drizzle-backed); the platform-ops route surface mounted here uses only the role-only
+  // predicate, so a fail-closed slice resolver is sufficient until the Drizzle resolver lands.
+  registerTenantPlatformAbacPredicates({ resolver: SLICE_M34_ABAC_RESOLVER });
+  // M34 (Phase 2D) — register M34's platform job id on the @wardenx/tenancy allowlist (the allowlist starts
+  // empty; without this the platform-ops seam reads + the platform-scoped workers are REFUSED entry to
+  // withPlatformContext — fail-closed). Must run before any registerLiveM34Seams read or worker run.
+  wireM34Tenancy();
+  // M34 — register the PACKAGE-OWNED seams (the D5 `TenantKeyProvider` + the lifecycle/onboarding/support/
+  // export-shard publishes). These live in `@wardenx/saas-tenant-platform`'s own registry (M1 imports the
+  // `TenantKeyProvider` interface, so the live-impl home is the package, not the M1 registry).
+  // `validateModule34Seams()` HARD-FAILS boot if the mandatory `TenantKeyProvider` is absent (D5) — so the
+  // platform never serves a request whose PHI ciphertext it cannot key. Phase 2D: when a DB client is
+  // present, `registerLiveM34Seams` binds the REAL Drizzle-backed providers (lifecycle/onboarding/support
+  // reads over the §3 repos under withOrgContext/withPlatformContext + the D5 key provider over the real
+  // key-ring repo + the injected KEK-unwrap port — the KEK adapter itself is the one typed-TODO, fail-closed
+  // on call). Without a DB client (tests / no-db boot) the fail-closed slice key provider keeps boot green.
+  if (deps.db) {
+    registerLiveM34Seams({ db: deps.db, auditBypass: m34FailClosedBypassAuditor });
+  } else {
+    bootstrapModule34(SLICE_MODULE_34_SEAM_DEPS);
+  }
+  validateModule34Seams();
   // Phase-1 producers append here as they land.
 }
+
+/**
+ * Fail-closed M34 `platform.bypass_invoked` auditor (Phase 2D typed-TODO). M1's @wardenx/tenancy requires a
+ * `PlatformBypassAuditor` for EVERY `withPlatformContext` entry, so that "every cross-tenant read is audited"
+ * is a type-level guarantee. M4's audit-chain bypass-auditor handle has no boot accessor yet, so this THROWS
+ * on first call — which means the platform-ops cross-tenant surface 5xxs rather than serving an UNAUDITED
+ * read. That is the correct posture: a present-but-fail-closed auditor, never a silent no-op. The platform-ops
+ * READ/LIST + command routes light up the instant M4 exposes the real `platform.bypass_invoked` emitter here.
+ * TODO(integrator — M4 bypass auditor): bind the @wardenx/audit chain-append over the platform tx.
+ */
+const m34FailClosedBypassAuditor: PlatformBypassAuditor<DbClient> = async () => {
+  throw new Error(
+    "M34 platform-bypass auditor: Phase-2D typed-TODO — bind the M4 `platform.bypass_invoked` emitter (no boot accessor yet)",
+  );
+};
+
+/**
+ * Fail-closed slice `TenantKeyProvider` (D5) so `validateModule34Seams()` passes at boot before the real
+ * KMS-backed key provider lands. Every method THROWS — the platform has no live PHI ciphertext to key in the
+ * slice/local boot, so a resolve is a programming error, not a silent fail-open. This satisfies the mandatory
+ * D5 registration without handing out a real key.
+ *
+ * TODO(Phase 2D — TenantKeyProvider adapter): replace with M34's key-ring service backed by the real KEK/KMS
+ * (the §3.3 tenant-key-destruction-log + per-tenant DEK wrap/unwrap). It is the ONLY seam that hard-fails boot;
+ * the lifecycle/onboarding/support providers + the M35 subscription-entitlement reader bind their real adapters
+ * in the same phase (until then they fail-closed via their typed resolvers).
+ */
+const SLICE_MODULE_34_SEAM_DEPS: BootstrapModule34Deps = {
+  tenantKeyProvider: {
+    async dekForOrg() {
+      throw new Error(
+        "M34 TenantKeyProvider: slice deny-stub — the KMS-backed provider lands Phase 2D",
+      );
+    },
+    async dekForOrgVersion() {
+      throw new Error(
+        "M34 TenantKeyProvider: slice deny-stub — the KMS-backed provider lands Phase 2D",
+      );
+    },
+    async keyRingState() {
+      return "absent";
+    },
+  },
+};
+
+/**
+ * Fail-closed slice resolver for M34's §4.6 ABAC predicates registered at boot. Every owner-fact load
+ * denies (returns null/false) — the platform-ops tenant-lifecycle routes only exercise the role-only
+ * `tenant_lifecycle_platform_ops` predicate, so these methods are never reached for that surface. The
+ * Phase-2D Drizzle-backed resolver (loading grant/flag/onboarding-task facts under RLS) replaces this.
+ */
+const SLICE_M34_ABAC_RESOLVER: TenantPlatformAbacResolver = {
+  hasActiveConsentedSupportSession: async () => false,
+  loadConsentGrant: async () => null,
+  loadFeatureFlag: async () => null,
+  loadOnboardingTask: async () => null,
+};
 
 /**
  * Register every module's REAL data eraser over the Phase-0 deny-stubs. Passed to
@@ -197,6 +299,7 @@ export function wireModuleErasers(): void {
   registerEmarErasers(); // M13-T10 — `emar_record` (eMAR-subtree destruction-cert callback; partition-drop; §7.7; D7/D8)
   registerIdgErasers(); // M14-T07 — `idg_record` (patient-scoped packet/decision/action-item/agenda destruction-cert callback; meetings/minutes survive; §8.4)
   registerDocumentErasers(); // M22-T10 — `documents` (document/intake-subtree destruction-cert callback; DEK crypto-erase §8.6; legal-hold + Part 2 skip; D9/D12)
+  registerSaasTenantPlatformErasers(); // M34 — `saas_tenant_platform_class` (tenant-offboarding control-plane cleanup; subjectId=org; D6/§8.4)
   // Phase-1 data-class owners append here as they land.
 }
 
@@ -212,6 +315,13 @@ if ((import.meta as { main?: boolean }).main) {
   const dbHandle = process.env.DATABASE_URL
     ? createDbClient({ connectionString: process.env.DATABASE_URL })
     : undefined;
+  // Phase 2D — the Valkey/Redis connection the M34 §4.3 BullMQ Queue producers + Workers open over. Parsed
+  // from REDIS_URL (the same env M1 infra wires the rate-limit store from). Absent → the M34 command routes'
+  // enqueue ports + the worker construction stay fail-closed (a typed throw), never a silent drop. The M4-T11
+  // audit workers use the SAME connection shape; both are constructed in the worker-runner section below.
+  const queueConnection: ConnectionOptions | undefined = parseRedisConnection(
+    process.env.REDIS_URL,
+  );
   // AUTH-T02/T03: when a DB client is present, build the Better Auth instance + the authenticate hook
   // (getIdentitySession → SessionContextResolver seam → request.context). The seam is resolved lazily
   // at request time, after bootSeams() has registered it.
@@ -252,6 +362,26 @@ if ((import.meta as { main?: boolean }).main) {
           mountMdmRoutes(app, dbHandle.db); // M40 — MDM entity directory + overlay/BAA + platform-ops (FB-T02)
           mountConsentRoutes(app, dbHandle.db); // M39 — consent catalog/records/decision-audit reads (FB-T03)
           mountMessagingRoutes(app, dbHandle.db); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05)
+          // M34 (Phase 2D) — mount the platform-ops + tenant-scoped surfaces over the DRIZZLE route services
+          // (RLS-scoped reads under withPlatformContext/withOrgContext; commands enqueue the §4.3 queue job
+          // through the BullMQ producer). The platform queue producer + the tenant queue producer are the
+          // SAME Valkey connection the workers run on. The platform service's cross-tenant reads require the
+          // M4 bypass auditor (currently fail-closed typed-TODO), so the platform surface 5xxs until that
+          // lands; the tenant surface is fully live (its deps — org-pooled db + tenant queue producer + clock
+          // — are all bound). Both fall back to the in-memory slice when no DB client is present (tests).
+          const m34PlatformEnqueue = buildPlatformEnqueue(queueConnection);
+          const m34TenantEnqueue = buildTenantEnqueue(queueConnection);
+          mountTenantPlatformRoutes(app, dbHandle.db, {
+            platform: buildDrizzlePlatformService({
+              platformDb: dbHandle.db,
+              enqueue: m34PlatformEnqueue.enqueue,
+              auditBypass: m34FailClosedBypassAuditor,
+            }),
+            tenant: buildDrizzleTenantService({
+              db: dbHandle.db,
+              enqueue: m34TenantEnqueue.enqueue,
+            }),
+          });
         }
       : undefined,
     registerModuleSeams: () =>
@@ -267,9 +397,61 @@ if ((import.meta as { main?: boolean }).main) {
     registerIdentityAuth(app, auth); // AUTH-T02: mount /api/auth/* (needs BETTER_AUTH_SECRET/URL in prod)
     app.addHook("onClose", () => dbHandle.close());
   }
+
+  // ── worker-runner section (the M4-T11 BullMQ worker-construction precedent) ──────────────────────────
+  // Construct the §4.3 M34 BullMQ Workers + the four cron-schedule Queue producers, and tear them down on
+  // app close. Guarded by a Valkey connection (constructing a Worker opens the connection — never at import,
+  // never in tests). When REDIS_URL is unset the workers are NOT constructed (the host still boots; the
+  // command routes' enqueue ports already fail closed without a connection). The M4 audit workers
+  // (registerAuditWorkers/scheduleAuditJobs) stay deferred here until their production AuditJobAdapters have
+  // a boot accessor — they are the SAME construction shape and slot in beside the M34 block when bound.
+  if (dbHandle && queueConnection) {
+    const m34Workers = registerM34Workers(
+      buildM34WorkerDeps({ connection: queueConnection, db: dbHandle.db }),
+    );
+    app.addHook("onClose", async () => {
+      await Promise.all(m34Workers.map((w) => w.close()));
+    });
+    // Register the repeatable cron schedules and their close hook BEFORE app.listen() — awaiting here (the
+    // boot block is top-level, so top-level await is legal) so the `onClose` hook is added while the
+    // instance is still pre-listen. The previous `.then()` ran the addHook on a later microtask, after
+    // listen() had already started, which Fastify rejects (FST_ERR_INSTANCE_ALREADY_LISTENING).
+    try {
+      const scheduleQueues = await scheduleM34Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(scheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M34 cron-schedule registration failed");
+    }
+    app.log.info(
+      { queues: m34Workers.length },
+      "M34 §4.3 BullMQ workers constructed (worker ports bind their M1/M4/M22/M36 seams as those accessors land)",
+    );
+  }
+
   const port = Number(process.env.PORT ?? 3000);
   app.listen({ port, host: "0.0.0.0" }).catch((err) => {
     app.log.error(err);
     process.exit(1);
   });
+}
+
+/**
+ * Parse `REDIS_URL` into a BullMQ `ConnectionOptions` (host/port/username/password/db). Returns undefined
+ * when unset so the queue producers + the worker construction stay fail-closed (never a localhost-default
+ * that silently connects to the wrong store). TLS (`rediss:`) sets the `tls` option.
+ */
+function parseRedisConnection(redisUrl: string | undefined): ConnectionOptions | undefined {
+  if (!redisUrl) return undefined;
+  const u = new URL(redisUrl);
+  const db = u.pathname.length > 1 ? Number(u.pathname.slice(1)) : undefined;
+  return {
+    host: u.hostname,
+    port: u.port ? Number(u.port) : 6379,
+    username: u.username || undefined,
+    password: u.password || undefined,
+    db: Number.isFinite(db) ? db : undefined,
+    ...(u.protocol === "rediss:" ? { tls: {} } : {}),
+  };
 }

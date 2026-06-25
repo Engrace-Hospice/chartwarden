@@ -463,3 +463,16 @@ export * from "./evv/evv-aggregator-submission";
 // only the org spine + intra-M22 parents carry SQL FKs. RLS + grants + M4 write-audit triggers (cipher /
 // free-text PHI columns denylisted, §3.6) land in M22-T02 (0049).
 export * from "./documents/index";
+// M34 SaaS Tenant Platform (M34 spec §3.3 / §10.1 / §13). M34 owns 16 tables. Six carry
+// organization_id from day one and get standard app.org_id RLS: tenant_account (1:1 with
+// organization) plus the two DSAR job+event pairs and the two tenant-export job+event pairs
+// (dsar_export_job(_event) / tenant_export_job(_event)). The other ten are FK-join-scoped or
+// platform/operational and carry NO organization_id in this phase (sit on the check-tenancy
+// NON_ORG_SCOPED allowlist): tenant_account_status_event, tenant_key_ring,
+// tenant_key_destruction_log, support_consent_grant, support_session, support_session_event and
+// platform_tenant_baa_record are FK-join-scoped (tenancy via their tenant_account/support_session
+// parent — F02 adds organization_id later); onboarding_task_template, onboarding_task,
+// tenant_signup_intent and tenant_signup_token are platform/operational (org-less). RLS + grants +
+// the M4 write-audit triggers + the key-ring SECURITY DEFINER functions land in migrations
+// 0051–0055; this barrel is schema only.
+export * from "./saas/index";

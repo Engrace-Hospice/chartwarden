@@ -28,7 +28,9 @@ import {
   createInMemorySessionContextStore,
   createSessionContextResolver,
 } from "@wardenx/auth";
+import type { DbClient } from "@wardenx/db";
 import { registerSeam } from "../../bootstrap/index";
+import { createTenantOrgCreationProvider } from "./tenant-org-creation-provider";
 
 /** Injected production adapters for M2's published seams (slice defaults to in-memory). */
 export interface IdentitySeamDeps {
@@ -36,6 +38,9 @@ export interface IdentitySeamDeps {
   sessions?: SessionContextStore;
   /** Mints the one-time auditor magic-link token (Valkey TTL store in production). */
   auditorLinks?: AuditorMagicLinkIssuer;
+  /** DB client for the `TenantOrgCreationProvider` (M34 §7.1 step 3). Absent in slice/tests → the
+   *  registry's fail-closed deny-stub stands (org creation resolves `unavailable`). */
+  db?: DbClient;
 }
 
 /** Register M2's published seams into the M1 registry (M2-T07; call before validateSeams()). */
@@ -44,4 +49,9 @@ export function registerIdentitySeams(deps: IdentitySeamDeps = {}): void {
   const auditorLinks = deps.auditorLinks ?? createInMemoryAuditorMagicLinkIssuer().issuer;
   registerSeam("SessionContextResolver", createSessionContextResolver(sessions));
   registerSeam("AuditorSessionMinter", createAuditorSessionMinter(auditorLinks));
+  // M34 §7.1 step 3 — the real org-creation provider, only when a DB client is present (the registry's
+  // fail-closed deny-stub stands in slice/tests).
+  if (deps.db) {
+    registerSeam("TenantOrgCreationProvider", createTenantOrgCreationProvider(deps.db));
+  }
 }

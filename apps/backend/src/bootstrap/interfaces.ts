@@ -59,6 +59,7 @@ export type {
   SessionContextResolver,
   SessionStepUpFields,
   SupervisoryCadenceReader,
+  TenantOrgCreationProvider,
   VisitAssignmentReader,
   VisitMetricsProvider,
   VisitReader,

@@ -44,6 +44,17 @@ const AUDIT_CONTEXT_VARS = new Set<string>([
   "app.provider_entity_id",
   "app.location_id",
 ]);
+// M34 §3.2/§3.5 (D5/D6): the two SECURITY DEFINER DEK-lifecycle functions take their app-supplied
+// inputs (the KEK-wrapped DEK ciphertext, its KEK id, and the optional destroying membership) as
+// session GUCs rather than SQL args, so the wrapped key material never appears in a query string or
+// the statement log. Like AUDIT_CONTEXT_VARS these are NOT RLS predicates — row visibility still
+// keys ONLY on app.org_id — so they are permitted exclusively inside the key-ring SECURITY DEFINER
+// path (recognized by `m34_provision_tenant_key_ring` / `m34_destroy_tenant_key_ring`).
+const KEY_RING_CONTEXT_VARS = new Set<string>([
+  "app.dek_kek_wrapped_ciphertext_b64",
+  "app.dek_kek_id",
+  "app.destroyed_by_membership_id",
+]);
 // Tables that are NOT tenant-scoped by org_id (user-owned cross-org, or pure platform reference).
 // A spec opts a table out by adding it here with a justification (reviewed change).
 const NON_ORG_SCOPED = new Set<string>([
@@ -122,6 +133,14 @@ const NON_ORG_SCOPED = new Set<string>([
   // organization_id; `document` + `intake_upload_batch` additionally carry the three-column rule.
   "form_template",
   "form_template_version",
+  // M34 SaaS Tenant Platform (§3.10 M34-F02 / ADR-0010, CANONICAL): EVERY tenant-scoped M34 table
+  // carries organization_id NOT NULL and gets standard app.org_id RLS — NONE of them are listed here.
+  // Only THREE M34 tables are genuinely org-less: onboarding_task_template (platform-shared read-only
+  // catalog, SD-036 pattern-2 — SELECT USING(true)); tenant_signup_intent / tenant_signup_token
+  // (pre-organization signup funnel — wardenx_app cannot SELECT; tenant_platform_writer only).
+  "onboarding_task_template",
+  "tenant_signup_intent",
+  "tenant_signup_token",
 ]);
 // PHI signal: a table referencing a patient is PHI-bearing and MUST be fully org-scoped.
 const PHI_SIGNAL_RE =
@@ -159,12 +178,15 @@ for (const base of allPaths) {
 
     // Rule 2 — canonical session variable
     const isAuditCapture = /audit_phi_write|INSERT\s+INTO\s+audit_event/i.test(src);
+    const isKeyRingDefiner =
+      /m34_provision_tenant_key_ring|m34_destroy_tenant_key_ring/.test(src);
     let m: RegExpExecArray | null;
     SESSION_VAR_RE.lastIndex = 0;
     // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic regex exec() iteration.
     while ((m = SESSION_VAR_RE.exec(src))) {
       if (m[1] !== CANONICAL_VAR) {
         if (AUDIT_CONTEXT_VARS.has(m[1]!) && isAuditCapture) continue;
+        if (KEY_RING_CONTEXT_VARS.has(m[1]!) && isKeyRingDefiner) continue;
         violations.push({
           file,
           rule: "rls-session-variable",

@@ -3,7 +3,7 @@
 // cosign-required matrices, and the platform-enforced floor (the service enforces tighten-only — an org
 // may shorten the window below the platform default but never extend past the platform floor). Carries
 // the three-column tenancy rule for ARCH-011 uniformity (org-level config, but PE/location NOT NULL per
-// §3.3). Non-partitioned. Seeded per tenant at onboarding (packages/saas). Actor refs go to M1
+// §3.3). Non-partitioned. Seeded per tenant at onboarding (packages/saas-tenant-platform). Actor refs go to M1
 // `membership`. RLS + grants + M4 write-audit trigger (no free-text denylist) land in the RLS migration.
 import { boolean, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
