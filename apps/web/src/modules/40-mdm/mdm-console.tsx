@@ -4,6 +4,8 @@ import {
   LoadingSpinner,
   PageHeader,
   RightDetailPanel,
+  StatusPill,
+  type StatusTone,
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
@@ -36,6 +38,17 @@ interface MdmResolvedSummary {
     displayName: string;
   };
 }
+
+// §6.6 canonical-record status → tone (the server owns the resolved status).
+const STATUS_TONE: Record<MdmResolvedSummary["status"], StatusTone> = {
+  active: "success",
+  provisional: "warning",
+  deactivated: "neutral",
+};
+const cap = (s: string): string => s.replace(/\b\w/g, (c) => c.toUpperCase());
+const kindLabel = (k: Kind): string => k.replace(/_/g, " ");
+const identifier = (c: MdmResolvedSummary["canonical"]): string | null =>
+  c.identifierValue ? `${c.identifierType}: ${c.identifierValue}` : null;
 
 export function MdmConsole(): JSX.Element {
   const client = useApiClient();
@@ -87,7 +100,7 @@ export function MdmConsole(): JSX.Element {
           >
             {KINDS.map((k) => (
               <option key={k} value={k}>
-                {k.replace(/_/g, " ")}
+                {kindLabel(k)}
               </option>
             ))}
           </select>
@@ -139,45 +152,48 @@ function ResultsTable({
     return <EmptyState title="No matches" description="No canonical records match this search." />;
   return (
     <div style={{ padding: "0 1.5rem 1.5rem" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+      <table>
         <thead>
-          <tr style={{ textAlign: "left", color: "#6b7280" }}>
-            <th style={th}>Name</th>
-            <th style={th}>Identifier</th>
-            <th style={th}>Status</th>
+          <tr>
+            <th>Name</th>
+            <th>Identifier</th>
+            <th>Status</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((r) => (
-            <tr
-              key={r.id}
-              // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-              role="button"
-              tabIndex={0}
-              onClick={() => onSelect(r)}
-              onKeyDown={(ev) => {
-                if (ev.key === "Enter" || ev.key === " ") {
-                  ev.preventDefault();
-                  onSelect(r);
-                }
-              }}
-              style={{
-                cursor: "pointer",
-                background: r.id === selectedId ? "#eff6ff" : undefined,
-                borderTop: "1px solid #f3f4f6",
-              }}
-            >
-              <td style={td}>{r.canonical.displayName}</td>
-              <td style={td}>
-                {r.canonical.identifierValue ? (
-                  `${r.canonical.identifierType}: ${r.canonical.identifierValue}`
-                ) : (
-                  <span style={{ color: "#9ca3af" }}>provisional</span>
-                )}
-              </td>
-              <td style={td}>{r.status}</td>
-            </tr>
-          ))}
+          {items.map((r) => {
+            const id = identifier(r.canonical);
+            return (
+              <tr
+                key={r.id}
+                // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                role="button"
+                tabIndex={0}
+                aria-pressed={r.id === selectedId}
+                onClick={() => onSelect(r)}
+                onKeyDown={(ev) => {
+                  if (ev.key === "Enter" || ev.key === " ") {
+                    ev.preventDefault();
+                    onSelect(r);
+                  }
+                }}
+                style={{
+                  cursor: "pointer",
+                  background: r.id === selectedId ? "var(--color-primary-tint)" : undefined,
+                }}
+              >
+                <td>{r.canonical.displayName}</td>
+                <td className="wx-data-md">
+                  {id ?? (
+                    <span style={{ color: "var(--color-on-surface-variant)" }}>provisional</span>
+                  )}
+                </td>
+                <td>
+                  <StatusPill label={cap(r.status)} tone={STATUS_TONE[r.status] ?? "neutral"} />
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -189,26 +205,26 @@ function EntityDetail({
   kind,
   onClose,
 }: { entity: MdmResolvedSummary; kind: Kind; onClose: () => void }): JSX.Element {
-  const row = (label: string, value: string) => (
+  const row = (label: string, value: JSX.Element | string) => (
     <div style={{ marginBottom: "0.5rem" }}>
-      <div style={{ fontSize: "0.7rem", color: "#6b7280" }}>{label}</div>
-      <div style={{ fontSize: "0.85rem", wordBreak: "break-word" }}>{value}</div>
+      <div style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>{label}</div>
+      <div
+        style={{ fontSize: "0.85rem", wordBreak: "break-word", color: "var(--color-on-surface)" }}
+      >
+        {value}
+      </div>
     </div>
   );
+  const id = identifier(entity.canonical);
   return (
     <RightDetailPanel title={entity.canonical.displayName} onClose={onClose}>
-      {row("Kind", kind.replace(/_/g, " "))}
-      {row("Canonical id", entity.canonical.id)}
+      {row("Kind", kindLabel(kind))}
+      {row("Canonical id", <span className="wx-data-md">{entity.canonical.id}</span>)}
+      {row("Identifier", id ? <span className="wx-data-md">{id}</span> : "— (provisional)")}
       {row(
-        "Identifier",
-        entity.canonical.identifierValue
-          ? `${entity.canonical.identifierType}: ${entity.canonical.identifierValue}`
-          : "— (provisional)",
+        "Status",
+        <StatusPill label={cap(entity.status)} tone={STATUS_TONE[entity.status] ?? "neutral"} />,
       )}
-      {row("Status", entity.status)}
     </RightDetailPanel>
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;
