@@ -1,3 +1,12 @@
+import {
+  DetailPageLayout,
+  EmptyState,
+  GuardChip,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/10-hope — HOPE assessment detail (M10 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_HOPE_ENGINE.md — "Use Documentation Workspace."
 // Read-only view of one HOPE timepoint: RFA kind, status, target/sign metadata, the server-authoritative
@@ -8,13 +17,7 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import {
-  DetailPageLayout,
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-} from "@wardenx/ui";
+import { ASSESSMENT_TONE, J2051_TONE, SEVERITY_TONE, rfaLabel, stateLabel } from "./hope-status";
 
 interface AssessmentDetail {
   id: string;
@@ -73,28 +76,66 @@ export function HopeAssessmentDetail(): JSX.Element {
   }, [client, id]);
 
   const snapshotEntries = row?.snapshot ? Object.entries(row.snapshot) : [];
+  const errorCount = findings.filter((f) => f.severity === "error").length;
 
   return (
     <DetailPageLayout
       header={
-        <PageHeader title="HOPE Assessment">
-          {row ? <span style={meta}>{row.rfaKind} · {row.status}</span> : null}
+        <PageHeader
+          title="HOPE Assessment"
+          actions={
+            row ? (
+              <StatusPill
+                label={stateLabel(row.status)}
+                tone={ASSESSMENT_TONE[row.status] ?? "neutral"}
+              />
+            ) : undefined
+          }
+        >
+          {row ? <span style={meta}>{rfaLabel(row.rfaKind)}</span> : null}
         </PageHeader>
       }
       aside={
         row ? (
-          <div>
-            <h3 style={{ fontSize: "0.85rem", margin: "0 0 0.5rem" }}>Validation findings</h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+            <h3 style={{ fontSize: "0.85rem", margin: 0 }}>Validation findings</h3>
             {findings.length === 0 ? (
               <p style={meta}>No findings.</p>
             ) : (
-              <ul style={{ margin: 0, paddingLeft: "1rem", fontSize: "0.8rem" }}>
-                {findings.map((f) => (
-                  <li key={`${f.ruleId}`} style={{ color: f.severity === "error" ? "#b91c1c" : "#b45309" }}>
-                    <strong>{f.severity}</strong> — {f.message}
-                  </li>
-                ))}
-              </ul>
+              <>
+                {/* §3 — error-severity findings block iQIES submission; surface that as a Guardrail. */}
+                {errorCount > 0 ? (
+                  <GuardChip
+                    tone="error"
+                    reason={`${errorCount} validation error${errorCount === 1 ? "" : "s"} block submission`}
+                  />
+                ) : null}
+                <ul
+                  style={{
+                    listStyle: "none",
+                    margin: 0,
+                    padding: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.5rem",
+                  }}
+                >
+                  {findings.map((f) => (
+                    <li
+                      key={f.ruleId}
+                      style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}
+                    >
+                      <StatusPill
+                        label={stateLabel(f.severity)}
+                        tone={SEVERITY_TONE[f.severity] ?? "neutral"}
+                      />
+                      <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface)" }}>
+                        {f.message}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </div>
         ) : undefined
@@ -105,32 +146,64 @@ export function HopeAssessmentDetail(): JSX.Element {
       ) : loading || !row ? (
         <LoadingSpinner />
       ) : (
-        <dl style={{ display: "grid", gridTemplateColumns: "10rem 1fr", gap: "0.4rem 1rem", fontSize: "0.85rem" }}>
+        <dl
+          style={{
+            display: "grid",
+            gridTemplateColumns: "10rem 1fr",
+            gap: "0.4rem 1rem",
+            fontSize: "0.85rem",
+          }}
+        >
           <dt style={dt}>RFA kind</dt>
-          <dd style={dd}>{row.rfaKind}</dd>
+          <dd style={dd}>{rfaLabel(row.rfaKind)}</dd>
           <dt style={dt}>Status</dt>
-          <dd style={dd}>{row.status}{row.wasLate ? " · late completion" : ""}</dd>
+          <dd style={dd}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+              <StatusPill
+                label={stateLabel(row.status)}
+                tone={ASSESSMENT_TONE[row.status] ?? "neutral"}
+              />
+              {row.wasLate ? <StatusPill label="Late completion" tone="warning" /> : null}
+            </span>
+          </dd>
           <dt style={dt}>Target date</dt>
-          <dd style={dd}>{row.targetDate.slice(0, 10)}</dd>
+          <dd style={dd} className="tabular-nums">
+            {row.targetDate.slice(0, 10)}
+          </dd>
           <dt style={dt}>Author</dt>
-          <dd style={dd}>{row.authorDiscipline}</dd>
+          <dd style={dd}>{stateLabel(row.authorDiscipline)}</dd>
           <dt style={dt}>Signed</dt>
-          <dd style={dd}>{row.signedAt ? `${row.signedAt.slice(0, 16).replace("T", " ")} · ${row.signedBy ?? ""}` : "—"}</dd>
+          <dd style={dd} className="tabular-nums">
+            {row.signedAt
+              ? `${row.signedAt.slice(0, 16).replace("T", " ")} · ${row.signedBy ?? ""}`
+              : "—"}
+          </dd>
           <dt style={dt}>J2051</dt>
-          <dd style={{ ...dd, color: row.j2051TriggerFired ? "#b91c1c" : undefined }}>
-            {row.j2051MaxSeverity ?? "none"}
-            {row.j2051TriggerFired ? " · Symptom Follow-Up Visit obligation created" : ""}
+          <dd style={dd}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+              <StatusPill
+                label={stateLabel(row.j2051MaxSeverity ?? "none")}
+                tone={J2051_TONE[row.j2051MaxSeverity ?? "none"] ?? "neutral"}
+              />
+              {row.j2051TriggerFired ? (
+                <StatusPill label="SFV obligation created" tone="warning" glyph="alert" />
+              ) : null}
+            </span>
           </dd>
           {row.correctsAssessmentId ? (
             <>
               <dt style={dt}>Corrects</dt>
-              <dd style={dd}>{row.correctsAssessmentId}</dd>
+              <dd style={dd} className="wx-data-md">
+                {row.correctsAssessmentId}
+              </dd>
             </>
           ) : null}
           {row.supersededByAssessmentId ? (
             <>
               <dt style={dt}>Superseded by</dt>
-              <dd style={dd}>{row.supersededByAssessmentId}</dd>
+              <dd style={dd} className="wx-data-md">
+                {row.supersededByAssessmentId}
+              </dd>
             </>
           ) : null}
           <dt style={dt}>Snapshot</dt>
@@ -145,6 +218,10 @@ export function HopeAssessmentDetail(): JSX.Element {
   );
 }
 
-const meta = { fontSize: "0.75rem", color: "#6b7280", margin: "0.25rem 0" } as const;
-const dt = { fontWeight: 600, color: "#374151" } as const;
+const meta = {
+  fontSize: "0.75rem",
+  color: "var(--color-on-surface-variant)",
+  margin: "0.25rem 0",
+} as const;
+const dt = { fontWeight: 600, color: "var(--color-on-surface)" } as const;
 const dd = { margin: 0 } as const;

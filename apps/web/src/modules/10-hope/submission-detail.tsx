@@ -1,3 +1,11 @@
+import {
+  DetailPageLayout,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/10-hope — HOPE submission detail (M10 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_HOPE_ENGINE.md — "Use Documentation Workspace."
 // Per-batch outcomes: status, item/accepted/rejected counts, transmit/accept timestamps. The §4.10 iQIES
@@ -7,13 +15,7 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import {
-  DetailPageLayout,
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-} from "@wardenx/ui";
+import { SUBMISSION_TONE, stateLabel } from "./hope-status";
 
 interface SubmissionDetail {
   id: string;
@@ -60,8 +62,18 @@ export function SubmissionDetail(): JSX.Element {
   return (
     <DetailPageLayout
       header={
-        <PageHeader title="HOPE Submission">
-          {row ? <span style={meta}>{row.submissionPeriod} · {row.status}</span> : null}
+        <PageHeader
+          title="HOPE Submission"
+          actions={
+            row ? (
+              <StatusPill
+                label={stateLabel(row.status)}
+                tone={SUBMISSION_TONE[row.status] ?? "neutral"}
+              />
+            ) : undefined
+          }
+        >
+          {row ? <span style={meta}>{row.submissionPeriod}</span> : null}
         </PageHeader>
       }
     >
@@ -70,31 +82,60 @@ export function SubmissionDetail(): JSX.Element {
       ) : loading || !row ? (
         <LoadingSpinner />
       ) : (
-        <dl style={{ display: "grid", gridTemplateColumns: "10rem 1fr", gap: "0.4rem 1rem", fontSize: "0.85rem" }}>
+        <dl
+          style={{
+            display: "grid",
+            gridTemplateColumns: "10rem 1fr",
+            gap: "0.4rem 1rem",
+            fontSize: "0.85rem",
+          }}
+        >
           <dt style={dt}>Provider entity</dt>
-          <dd style={dd}>{row.providerEntityId}</dd>
+          <dd style={dd} className="wx-data-md">
+            {row.providerEntityId}
+          </dd>
           <dt style={dt}>Period</dt>
           <dd style={dd}>{row.submissionPeriod}</dd>
           <dt style={dt}>Status</dt>
-          <dd style={dd}>{row.status}</dd>
+          <dd style={dd}>
+            <StatusPill
+              label={stateLabel(row.status)}
+              tone={SUBMISSION_TONE[row.status] ?? "neutral"}
+            />
+          </dd>
           <dt style={dt}>Items</dt>
-          <dd style={dd}>{row.itemCount}</dd>
+          <dd style={dd} className="tabular-nums">
+            {row.itemCount}
+          </dd>
           <dt style={dt}>Accepted</dt>
-          <dd style={dd}>{row.acceptedCount}</dd>
+          <dd style={dd} className="tabular-nums">
+            {row.acceptedCount}
+          </dd>
           <dt style={dt}>Rejected</dt>
-          <dd style={{ ...dd, color: row.rejectedCount > 0 ? "#b91c1c" : undefined }}>
+          <dd
+            style={{ ...dd, color: row.rejectedCount > 0 ? "var(--color-error)" : undefined }}
+            className="tabular-nums"
+          >
             {row.rejectedCount}
           </dd>
           <dt style={dt}>Transmitted</dt>
-          <dd style={dd}>{row.transmittedAt ? row.transmittedAt.slice(0, 16).replace("T", " ") : "—"}</dd>
+          <dd style={dd} className="tabular-nums">
+            {row.transmittedAt ? row.transmittedAt.slice(0, 16).replace("T", " ") : "—"}
+          </dd>
           <dt style={dt}>Accepted at</dt>
-          <dd style={dd}>{row.acceptedAt ? row.acceptedAt.slice(0, 16).replace("T", " ") : "—"}</dd>
+          <dd style={dd} className="tabular-nums">
+            {row.acceptedAt ? row.acceptedAt.slice(0, 16).replace("T", " ") : "—"}
+          </dd>
         </dl>
       )}
     </DetailPageLayout>
   );
 }
 
-const meta = { fontSize: "0.75rem", color: "#6b7280", margin: "0.25rem 0" } as const;
-const dt = { fontWeight: 600, color: "#374151" } as const;
+const meta = {
+  fontSize: "0.75rem",
+  color: "var(--color-on-surface-variant)",
+  margin: "0.25rem 0",
+} as const;
+const dt = { fontWeight: 600, color: "var(--color-on-surface)" } as const;
 const dd = { margin: 0 } as const;
