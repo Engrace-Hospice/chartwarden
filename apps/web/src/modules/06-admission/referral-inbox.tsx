@@ -5,6 +5,7 @@ import {
   KpiStrip,
   LoadingSpinner,
   PageHeader,
+  StatusPill,
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
@@ -12,10 +13,12 @@ import {
 // Spec: docs/design/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md — "Use Work Queue."
 // The queue of inbound referrals across sources, read from GET /api/v1/referrals via the generated
 // typed client. A row opens the referral's admission (built later); the server enforces every scope
-// (no authz on the frontend — ADR-0030). Imports only leaves (@wardenx/ui).
+// (no authz on the frontend — ADR-0030). Reconciled to Lantern (R1): §6.6 status pills, mono ids,
+// No-Line table. Imports only leaves (@wardenx/ui).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import { REFERRAL_TONE, stateLabel } from "./admission-status";
 
 interface ReferralRow {
   id: string;
@@ -83,12 +86,12 @@ export function ReferralInbox(): JSX.Element {
             onChange={(e) => setState(e.target.value)}
           >
             <option value="">Any state</option>
-            <option value="received">received</option>
-            <option value="triaged">triaged</option>
-            <option value="accepted">accepted</option>
-            <option value="declined">declined</option>
-            <option value="ineligible">ineligible</option>
-            <option value="withdrawn">withdrawn</option>
+            <option value="received">Received</option>
+            <option value="triaged">Triaged</option>
+            <option value="accepted">Accepted</option>
+            <option value="declined">Declined</option>
+            <option value="ineligible">Ineligible</option>
+            <option value="withdrawn">Withdrawn</option>
           </select>
         </FilterBar>
       }
@@ -129,11 +132,11 @@ function ReferralTable({
     );
   return (
     <div style={{ padding: "0 1.5rem 1.5rem" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+      <table>
         <thead>
-          <tr style={{ textAlign: "left", color: "#6b7280" }}>
-            <th style={th}>Referral</th>
-            <th style={th}>State</th>
+          <tr>
+            <th>Referral</th>
+            <th>State</th>
           </tr>
         </thead>
         <tbody>
@@ -150,10 +153,15 @@ function ReferralTable({
                   onOpen(r.id);
                 }
               }}
-              style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}
+              style={{ cursor: "pointer" }}
             >
-              <td style={td}>{r.id}</td>
-              <td style={td}>{r.state}</td>
+              <td className="wx-data-md">{r.id}</td>
+              <td>
+                <StatusPill
+                  label={stateLabel(r.state)}
+                  tone={REFERRAL_TONE[r.state] ?? "neutral"}
+                />
+              </td>
             </tr>
           ))}
         </tbody>
@@ -168,6 +176,3 @@ function ReferralTable({
     </div>
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;
