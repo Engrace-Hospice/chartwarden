@@ -242,6 +242,14 @@
       "name": "@wardenx/quality",
       "version": "0.0.0",
     },
+    "packages/reporting": {
+      "name": "@wardenx/reporting",
+      "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/db": "workspace:*",
+        "@wardenx/types": "workspace:*",
+      },
+    },
     "packages/routing-client": {
       "name": "@wardenx/routing-client",
       "version": "0.0.0",
@@ -857,6 +865,8 @@
     "@wardenx/portal": ["@wardenx/portal@workspace:apps/portal"],
 
     "@wardenx/quality": ["@wardenx/quality@workspace:packages/quality"],
+
+    "@wardenx/reporting": ["@wardenx/reporting@workspace:packages/reporting"],
 
     "@wardenx/routing-client": ["@wardenx/routing-client@workspace:packages/routing-client"],
 

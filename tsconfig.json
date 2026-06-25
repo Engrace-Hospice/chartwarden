@@ -102,6 +102,9 @@
       "path": "./packages/quality"
     },
     {
+      "path": "./packages/reporting"
+    },
+    {
       "path": "./packages/routing-client"
     },
     {

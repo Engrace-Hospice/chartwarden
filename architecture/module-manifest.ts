@@ -894,12 +894,16 @@ export const MODULES: ModuleDef[] = [
   {
     id: 33,
     name: "Reporting & Dashboards",
-    codePaths: ["apps/backend/src/modules/33-reporting"],
-    // "all clinical + billing modules" — read-only consumer; encoded as broad reader (see fitness note).
-    dependsOn: [
-      5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 30, 38,
-      40,
+    codePaths: [
+      "packages/reporting",
+      "apps/backend/src/modules/33-reporting",
     ],
+    // M33 consumes every clinical/billing module THROUGH SEAMS (the runtime M1 SeamRegistry getSeam +
+    // the outbox) — never an import edge — so the broad "all clinical + billing" relationship inventory
+    // drops out of dependsOn (per ADR-0005 that list is NOT the compile-edge set). The real compile edges:
+    // M1 (@wardenx/db client + apps/backend/src/bootstrap getSeam + envelope/idempotency helpers), M2/M3/
+    // M4 (auth/audit/tenancy), M36 (@wardenx/messaging alert types). Mirrors the M34 [1,2,3,4,36] posture.
+    dependsOn: [1, 2, 3, 4, 36],
     ownedTables: [
       "dashboard_tile_cache",
       "materialized_view_metadata",
