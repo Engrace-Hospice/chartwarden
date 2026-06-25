@@ -1,3 +1,11 @@
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  PatientWorkspaceLayout,
+  StatusPill,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/13-emar — patient eMAR (M13 §4.1/§6.1 #1, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Patient Workspace + MAR Grid". The
 // bedside default landing surface: a projection of the next-window scheduled doses (the timeline; one row per
@@ -10,13 +18,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  PatientWorkspaceLayout,
-  useApiClient,
-} from "@wardenx/ui";
+import { ADMIN_STATUS_TONE, DOSE_TONE, lateEntryTone, stateLabel } from "./emar-status";
 
 interface ScheduledDoseRow {
   id: string;
@@ -38,14 +40,6 @@ interface AdministrationRow {
   requiresRnReview: boolean;
 }
 
-const doseColor: Record<string, string | undefined> = {
-  pending: "#374151",
-  due_now: "#b45309",
-  overdue: "#b91c1c",
-  administered: "#15803d",
-  missed: "#b91c1c",
-  cancelled: "#6b7280",
-};
 const ts = (v: string): string => v.slice(0, 16).replace("T", " ");
 
 export function PatientEmar(): JSX.Element {
@@ -99,22 +93,30 @@ export function PatientEmar(): JSX.Element {
           <section>
             <h3 style={h3}>Scheduled doses</h3>
             {timeline.length === 0 ? (
-              <EmptyState title="No doses scheduled" description="No doses scheduled in this window." />
+              <EmptyState
+                title="No doses scheduled"
+                description="No doses scheduled in this window."
+              />
             ) : (
-              <table style={table}>
+              <table>
                 <thead>
-                  <tr style={tr}>
-                    <th style={th}>Due</th>
-                    <th style={th}>Order</th>
-                    <th style={th}>Status</th>
+                  <tr>
+                    <th>Due</th>
+                    <th>Order</th>
+                    <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {timeline.map((s) => (
-                    <tr key={s.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                      <td style={td}>{ts(s.dueAt)}</td>
-                      <td style={td}>{s.medicationOrderId.slice(0, 8)}</td>
-                      <td style={{ ...td, color: doseColor[s.status] }}>{s.status}</td>
+                    <tr key={s.id}>
+                      <td className="tabular-nums">{ts(s.dueAt)}</td>
+                      <td className="wx-data-md">{s.medicationOrderId.slice(0, 8)}</td>
+                      <td>
+                        <StatusPill
+                          label={stateLabel(s.status)}
+                          tone={DOSE_TONE[s.status] ?? "neutral"}
+                        />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -124,36 +126,65 @@ export function PatientEmar(): JSX.Element {
           <section>
             <h3 style={h3}>Administrations</h3>
             {given.length === 0 ? (
-              <EmptyState title="No administrations" description="No administrations recorded for this patient." />
+              <EmptyState
+                title="No administrations"
+                description="No administrations recorded for this patient."
+              />
             ) : (
-              <table style={table}>
+              <table>
                 <thead>
-                  <tr style={tr}>
-                    <th style={th}>Administered</th>
-                    <th style={th}>Mode</th>
-                    <th style={th}>Status</th>
-                    <th style={th}>Tier</th>
-                    <th style={th}>Controlled</th>
+                  <tr>
+                    <th>Administered</th>
+                    <th>Mode</th>
+                    <th>Status</th>
+                    <th>Tier</th>
+                    <th>Controlled</th>
                   </tr>
                 </thead>
                 <tbody>
                   {given.map((a) => (
                     <tr
                       key={a.id}
+                      // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                      role="button"
+                      tabIndex={0}
                       onClick={() => navigate(`/patients/${patientId}/administrations/${a.id}`)}
-                      style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}
+                      onKeyDown={(ev) => {
+                        if (ev.key === "Enter" || ev.key === " ") {
+                          ev.preventDefault();
+                          navigate(`/patients/${patientId}/administrations/${a.id}`);
+                        }
+                      }}
+                      style={{ cursor: "pointer" }}
                     >
-                      <td style={td}>{ts(a.administeredAt)}</td>
-                      <td style={td}>{a.mode}</td>
-                      <td style={{ ...td, color: a.requiresRnReview ? "#b45309" : undefined }}>
-                        {a.status}
-                        {a.requiresRnReview ? " · review" : ""}
+                      <td className="tabular-nums">{ts(a.administeredAt)}</td>
+                      <td>{stateLabel(a.mode)}</td>
+                      <td>
+                        <span
+                          style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                        >
+                          <StatusPill
+                            label={stateLabel(a.status)}
+                            tone={ADMIN_STATUS_TONE[a.status] ?? "neutral"}
+                          />
+                          {a.requiresRnReview ? (
+                            <StatusPill label="RN review" tone="warning" />
+                          ) : null}
+                        </span>
                       </td>
-                      <td style={{ ...td, color: a.lateEntryTier !== "normal" ? "#b45309" : undefined }}>
-                        {a.lateEntryTier}
+                      <td>
+                        <StatusPill
+                          label={stateLabel(a.lateEntryTier)}
+                          tone={lateEntryTone(a.lateEntryTier)}
+                        />
                       </td>
-                      <td style={{ ...td, color: a.isControlledSubstance ? "#b45309" : undefined }}>
-                        {a.isControlledSubstance ? "controlled" : "—"}
+                      <td>
+                        {/* §10 — controlled-substance gold `critical` tone. */}
+                        {a.isControlledSubstance ? (
+                          <StatusPill label="Controlled" tone="critical" glyph="alert" />
+                        ) : (
+                          <span style={{ color: "var(--color-muted)" }}>—</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -168,7 +199,3 @@ export function PatientEmar(): JSX.Element {
 }
 
 const h3 = { fontSize: "0.9rem", fontWeight: 600, margin: "0 0 0.5rem" } as const;
-const table = { width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" } as const;
-const tr = { textAlign: "left", color: "#6b7280" } as const;
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;

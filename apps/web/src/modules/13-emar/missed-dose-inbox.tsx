@@ -1,3 +1,13 @@
+import {
+  EmptyState,
+  KpiCard,
+  KpiStrip,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/13-emar — missed-dose inbox (M13 §4.1/§6.1 #8, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (missed-dose queue /
 // chart-level banner). The queue of unacknowledged missed doses for a patient, KPI'd by acknowledged-vs-open,
@@ -9,15 +19,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import {
-  EmptyState,
-  KpiCard,
-  KpiStrip,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-  WorkQueueLayout,
-} from "@wardenx/ui";
 
 interface MissedDoseRow {
   id: string;
@@ -83,21 +84,27 @@ export function MissedDoseInbox(): JSX.Element {
         ) : rows.length === 0 ? (
           <EmptyState title="No missed doses" description="No missed doses for this patient." />
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+          <table>
             <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                <th style={th}>Due</th>
-                <th style={th}>Order</th>
-                <th style={th}>Acknowledged</th>
+              <tr>
+                <th>Due</th>
+                <th>Order</th>
+                <th>Acknowledged</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((m) => (
-                <tr key={m.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                  <td style={td}>{ts(m.dueAt)}</td>
-                  <td style={td}>{m.medicationOrderId.slice(0, 8)}</td>
-                  <td style={{ ...td, color: m.acknowledgedAt ? "#15803d" : "#b91c1c" }}>
-                    {m.acknowledgedAt ? ts(m.acknowledgedAt) : "open"}
+                <tr key={m.id}>
+                  <td className="tabular-nums">{ts(m.dueAt)}</td>
+                  <td className="wx-data-md">{m.medicationOrderId.slice(0, 8)}</td>
+                  <td>
+                    {m.acknowledgedAt ? (
+                      <span className="tabular-nums" style={{ color: "var(--color-on-surface)" }}>
+                        {ts(m.acknowledgedAt)}
+                      </span>
+                    ) : (
+                      <StatusPill label="Open" tone="error" />
+                    )}
                   </td>
                 </tr>
               ))}
@@ -108,6 +115,3 @@ export function MissedDoseInbox(): JSX.Element {
     />
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;

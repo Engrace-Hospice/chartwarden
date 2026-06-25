@@ -1,3 +1,11 @@
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/13-emar — administration policy admin (M13 §4.1/§6.1 #12, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (administration-policy admin).
 // Read-only tenant configuration for org_admin / compliance_officer: the grace window, the PRN minimum-interval
@@ -6,13 +14,6 @@
 // (ADR-0030). Reads GET /api/v1/admin/administration-policy via the typed client. Leaves only (@wardenx/ui).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import {
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-  WorkQueueLayout,
-} from "@wardenx/ui";
 
 interface AdministrationPolicyView {
   graceWindowMinutes: number;
@@ -57,11 +58,20 @@ export function AdministrationPolicy(): JSX.Element {
               <h3 style={h3}>Scheduling & late entry (§2.5)</h3>
               <dl style={dl}>
                 <dt style={dt}>Grace window</dt>
-                <dd style={dd}>{policy.graceWindowMinutes} min</dd>
+                <dd style={dd} className="tabular-nums">
+                  {policy.graceWindowMinutes} min
+                </dd>
                 <dt style={dt}>PRN minimum interval</dt>
-                <dd style={dd}>{policy.prnMinimumIntervalMinutes} min</dd>
+                <dd style={dd} className="tabular-nums">
+                  {policy.prnMinimumIntervalMinutes} min
+                </dd>
                 <dt style={dt}>eMAR PDF on commit</dt>
-                <dd style={dd}>{policy.emarPdfOnCommit ? "enabled" : "disabled"}</dd>
+                <dd style={dd}>
+                  <StatusPill
+                    label={policy.emarPdfOnCommit ? "Enabled" : "Disabled"}
+                    tone={policy.emarPdfOnCommit ? "success" : "neutral"}
+                  />
+                </dd>
               </dl>
             </section>
           </div>
@@ -72,6 +82,12 @@ export function AdministrationPolicy(): JSX.Element {
 }
 
 const h3 = { fontSize: "0.9rem", fontWeight: 600, margin: "0 0 0.5rem" } as const;
-const dl = { display: "grid", gridTemplateColumns: "14rem 1fr", gap: "0.4rem 1rem", fontSize: "0.85rem", margin: 0 } as const;
-const dt = { fontWeight: 600, color: "#374151" } as const;
+const dl = {
+  display: "grid",
+  gridTemplateColumns: "14rem 1fr",
+  gap: "0.4rem 1rem",
+  fontSize: "0.85rem",
+  margin: 0,
+} as const;
+const dt = { fontWeight: 600, color: "var(--color-on-surface)" } as const;
 const dd = { margin: 0 } as const;
