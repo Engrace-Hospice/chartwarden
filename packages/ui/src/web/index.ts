@@ -12,6 +12,8 @@ export { ErrorBoundary } from "./components/error-boundary";
 export type { ErrorBoundaryProps } from "./components/error-boundary";
 export { LoadingSpinner } from "./components/loading-spinner";
 export type { LoadingSpinnerProps } from "./components/loading-spinner";
+export { StatusPill } from "./components/status-pill";
+export type { StatusPillProps, StatusTone } from "./components/status-pill";
 
 // Layout kit — Tier-1 regions + foundational pattern layouts (ADR-0030, WARDENX_UI_LAYOUT_PATTERNS.md)
 export * from "./layouts";
