@@ -1,3 +1,4 @@
+import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/18-evv — EVV Devices (M18 §5.1 `/app/evv/devices/pending`, Track B / ADR-0030).
 // Spec: docs/design/screens — "Use Work Queue". The team device roster (devices awaiting approval surface first):
 // one row per `evv_device` with platform / model / integrity status. The approve / reject / suspend / retire
@@ -5,8 +6,7 @@
 // frontend authz). Reads GET /api/v1/evv/devices via the typed client. Leaves only (@wardenx/ui).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { EmptyState, LoadingSpinner, PageHeader, useApiClient, WorkQueueLayout } from "@wardenx/ui";
-import { DataTable, EVV_DEVICE_COLOR, StatusChip } from "./evv-shared";
+import { DataTable, EVV_DEVICE_TONE, StatusChip, mono, stateLabel } from "./evv-shared";
 
 interface DeviceRow {
   id: string;
@@ -60,11 +60,14 @@ export function EvvDeviceRoster({ title }: { title: string }): JSX.Element {
             rows={ordered}
             rowKey={(d) => d.id}
             columns={[
-              { header: "Device", cell: (d) => d.id },
-              { header: "Clinician", cell: (d) => d.membershipId },
-              { header: "Platform", cell: (d) => d.platform },
+              { header: "Device", cell: (d) => mono(d.id) },
+              { header: "Clinician", cell: (d) => mono(d.membershipId) },
+              { header: "Platform", cell: (d) => stateLabel(d.platform) },
               { header: "Model", cell: (d) => d.modelDescription },
-              { header: "Status", cell: (d) => <StatusChip value={d.status} colorMap={EVV_DEVICE_COLOR} /> },
+              {
+                header: "Status",
+                cell: (d) => <StatusChip value={d.status} toneMap={EVV_DEVICE_TONE} />,
+              },
             ]}
           />
         )

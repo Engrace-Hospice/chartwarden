@@ -1,3 +1,4 @@
+import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/18-evv — EVV Event Ledger (M18 §5.1 `/app/evv/events`, Track B / ADR-0030).
 // Spec: docs/design/screens — "Use Work Queue". A searchable, caseload-scoped capture ledger: one row per
 // `evv_event` with its kind / clinician / gps-quality. Coordinates are NEVER shown here (D10 — evv.read_coords
@@ -7,8 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { EmptyState, LoadingSpinner, PageHeader, useApiClient, WorkQueueLayout } from "@wardenx/ui";
-import { DataTable, EVV_QUALITY_COLOR, StatusChip, ts } from "./evv-shared";
+import { DataTable, EVV_QUALITY_TONE, StatusChip, mono, stateLabel, ts } from "./evv-shared";
 
 interface EvvEventRow {
   id: string;
@@ -72,11 +72,17 @@ export function EvvEvents(): JSX.Element {
             rowKey={(e) => e.id}
             onSelect={(e) => navigate(`/evv/events/${e.id}`)}
             columns={[
-              { header: "Captured", cell: (e) => ts(e.capturedAt) },
-              { header: "Kind", cell: (e) => e.kind },
-              { header: "Clinician", cell: (e) => e.postingMembershipId },
-              { header: "Visit", cell: (e) => e.visitId },
-              { header: "GPS quality", cell: (e) => <StatusChip value={e.gpsQuality} colorMap={EVV_QUALITY_COLOR} /> },
+              {
+                header: "Captured",
+                cell: (e) => <span className="tabular-nums">{ts(e.capturedAt)}</span>,
+              },
+              { header: "Kind", cell: (e) => stateLabel(e.kind) },
+              { header: "Clinician", cell: (e) => mono(e.postingMembershipId) },
+              { header: "Visit", cell: (e) => mono(e.visitId) },
+              {
+                header: "GPS quality",
+                cell: (e) => <StatusChip value={e.gpsQuality} toneMap={EVV_QUALITY_TONE} />,
+              },
             ]}
           />
         )
