@@ -1,3 +1,11 @@
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/11-orders — lab results-pending-review queue (M11 §4.1/§5 D17, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_ORDERS.md — "Use Work Queue" (Lab flow). Result attachment does
 // NOT auto-complete the order (D17 / 42 CFR 418.106); this queue surfaces every lab order whose results have
@@ -8,13 +16,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-  WorkQueueLayout,
-} from "@wardenx/ui";
+import { RESULTS_TONE, TRANSMISSION_TONE, stateLabel } from "./orders-status";
 
 interface OrderRow {
   id: string;
@@ -49,7 +51,9 @@ export function ResultsReviewQueue(): JSX.Element {
     void load();
   }, [load]);
 
-  const rows = [...items].sort((a, b) => Date.parse(a.signedAt ?? "") - Date.parse(b.signedAt ?? ""));
+  const rows = [...items].sort(
+    (a, b) => Date.parse(a.signedAt ?? "") - Date.parse(b.signedAt ?? ""),
+  );
 
   return (
     <WorkQueueLayout
@@ -60,30 +64,52 @@ export function ResultsReviewQueue(): JSX.Element {
         ) : loading && items.length === 0 ? (
           <LoadingSpinner />
         ) : rows.length === 0 ? (
-          <EmptyState title="No results to review" description="No lab results are awaiting clinician review." />
+          <EmptyState
+            title="No results to review"
+            description="No lab results are awaiting clinician review."
+          />
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+          <table>
             <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                <th style={th}>Order · kind</th>
-                <th style={th}>Results</th>
-                <th style={th}>Transmission</th>
-                <th style={th}>Signed</th>
+              <tr>
+                <th>Order · kind</th>
+                <th>Results</th>
+                <th>Transmission</th>
+                <th>Signed</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((o) => (
                 <tr
                   key={o.id}
+                  // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                  role="button"
+                  tabIndex={0}
                   onClick={() => navigate(`/orders/${o.id}`)}
-                  style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Enter" || ev.key === " ") {
+                      ev.preventDefault();
+                      navigate(`/orders/${o.id}`);
+                    }
+                  }}
+                  style={{ cursor: "pointer" }}
                 >
-                  <td style={td}>{o.kind}</td>
-                  <td style={{ ...td, color: o.resultsStatus === "results_overdue" ? "#b91c1c" : undefined }}>
-                    {o.resultsStatus}
+                  <td>{stateLabel(o.kind)}</td>
+                  <td>
+                    <StatusPill
+                      label={stateLabel(o.resultsStatus)}
+                      tone={RESULTS_TONE[o.resultsStatus] ?? "neutral"}
+                    />
                   </td>
-                  <td style={td}>{o.transmissionStatus}</td>
-                  <td style={td}>{o.signedAt ? o.signedAt.slice(0, 16).replace("T", " ") : "—"}</td>
+                  <td>
+                    <StatusPill
+                      label={stateLabel(o.transmissionStatus)}
+                      tone={TRANSMISSION_TONE[o.transmissionStatus] ?? "neutral"}
+                    />
+                  </td>
+                  <td className="tabular-nums">
+                    {o.signedAt ? o.signedAt.slice(0, 16).replace("T", " ") : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -93,6 +119,3 @@ export function ResultsReviewQueue(): JSX.Element {
     />
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;

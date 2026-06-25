@@ -1,3 +1,11 @@
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/11-orders — standing-order admin (M11 §4.1/§5 §2.4 D5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_ORDERS.md — "Use Work Queue" (Standing orders). A signed template
 // spawns instances on cadence (spawned instances do NOT re-require signature — the template is the signature
@@ -7,13 +15,7 @@
 // server enforces every scope (ADR-0030 — no frontend authz). Leaves only (@wardenx/ui).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import {
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-  WorkQueueLayout,
-} from "@wardenx/ui";
+import { STANDING_TONE, stateLabel } from "./orders-status";
 
 interface StandingOrderRow {
   id: string;
@@ -25,12 +27,6 @@ interface StandingOrderRow {
   spawnCount: number;
   maxSpawns: number | null;
 }
-
-const statusColor: Record<string, string | undefined> = {
-  active: "#15803d",
-  paused: "#b45309",
-  discontinued: "#6b7280",
-};
 
 export function StandingOrders(): JSX.Element {
   const client = useApiClient();
@@ -64,26 +60,36 @@ export function StandingOrders(): JSX.Element {
         ) : loading && items.length === 0 ? (
           <LoadingSpinner />
         ) : items.length === 0 ? (
-          <EmptyState title="No standing orders" description="No standing-order templates are defined." />
+          <EmptyState
+            title="No standing orders"
+            description="No standing-order templates are defined."
+          />
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+          <table>
             <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                <th style={th}>Kind</th>
-                <th style={th}>Cadence</th>
-                <th style={th}>Status</th>
-                <th style={th}>Next spawn</th>
-                <th style={th}>Spawns</th>
+              <tr>
+                <th>Kind</th>
+                <th>Cadence</th>
+                <th>Status</th>
+                <th>Next spawn</th>
+                <th>Spawns</th>
               </tr>
             </thead>
             <tbody>
               {items.map((s) => (
-                <tr key={s.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                  <td style={td}>{s.kind}</td>
-                  <td style={td}>{s.cadence}</td>
-                  <td style={{ ...td, color: statusColor[s.status] }}>{s.status}</td>
-                  <td style={td}>{s.nextSpawnAt ? s.nextSpawnAt.slice(0, 16).replace("T", " ") : "—"}</td>
-                  <td style={td}>
+                <tr key={s.id}>
+                  <td>{stateLabel(s.kind)}</td>
+                  <td>{stateLabel(s.cadence)}</td>
+                  <td>
+                    <StatusPill
+                      label={stateLabel(s.status)}
+                      tone={STANDING_TONE[s.status] ?? "neutral"}
+                    />
+                  </td>
+                  <td className="tabular-nums">
+                    {s.nextSpawnAt ? s.nextSpawnAt.slice(0, 16).replace("T", " ") : "—"}
+                  </td>
+                  <td className="tabular-nums">
                     {s.spawnCount}
                     {s.maxSpawns != null ? ` / ${s.maxSpawns}` : ""}
                   </td>
@@ -96,6 +102,3 @@ export function StandingOrders(): JSX.Element {
     />
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;
