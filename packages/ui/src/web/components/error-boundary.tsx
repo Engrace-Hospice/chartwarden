@@ -3,6 +3,7 @@
 // boundaries must be class components.
 import { Component } from "react";
 import type { ErrorInfo, JSX, ReactNode } from "react";
+import { t } from "../theme/tokens";
 import { CorrelationIdBadge } from "./correlation-id-badge";
 
 export interface ErrorBoundaryProps {
@@ -35,8 +36,18 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
     return (
       <div role="alert" style={{ padding: "2rem", maxWidth: "32rem", margin: "0 auto" }}>
-        <h1 style={{ fontSize: "1.25rem", margin: 0 }}>Something went wrong</h1>
-        <p style={{ color: "#6b7280" }}>
+        <h1
+          style={{
+            fontFamily: t.fontDisplay,
+            fontSize: "1.75rem",
+            fontWeight: 500,
+            margin: 0,
+            color: t.onSurface,
+          }}
+        >
+          Something went wrong
+        </h1>
+        <p style={{ color: t.onSurfaceVariant }}>
           An unexpected error occurred. Please retry; if it keeps happening, contact support with
           the reference below.
         </p>
