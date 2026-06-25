@@ -6,9 +6,6 @@
   },
   "references": [
     {
-      "path": "./apps/admin"
-    },
-    {
       "path": "./apps/backend"
     },
     {
@@ -16,6 +13,9 @@
     },
     {
       "path": "./apps/web"
+    },
+    {
+      "path": "./packages/admin-ui-shell"
     },
     {
       "path": "./packages/ai-platform"
@@ -105,7 +105,7 @@
       "path": "./packages/routing-client"
     },
     {
-      "path": "./packages/saas"
+      "path": "./packages/saas-tenant-platform"
     },
     {
       "path": "./packages/scheduling"

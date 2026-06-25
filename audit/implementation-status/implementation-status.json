@@ -1,8 +1,8 @@
 {
   "totals": {
     "Implemented": 20,
-    "Partial": 1,
-    "Placeholder": 19
+    "Partial": 2,
+    "Placeholder": 18
   },
   "rows": [
     {
@@ -470,10 +470,10 @@
     {
       "id": 34,
       "module": "M34 SaaS Tenant Platform",
-      "status": "Placeholder",
+      "status": "Partial",
       "spec": true,
-      "schema": false,
-      "migration": false,
+      "schema": true,
+      "migration": true,
       "routes": false,
       "enriched": false,
       "screens": false,

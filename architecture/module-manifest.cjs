@@ -87,7 +87,9 @@ exports.HELPER_ONLY_TABLES = {
 exports.VENDOR_ADAPTERS = {
   // npm package (regex)        ->  the only package allowed to import it
   "better-auth": "packages/auth",
-  stripe: "packages/saas",
+  // Stripe is M35 Subscription Billing's vendor SDK (the former M34 `packages/saas` stub was
+  // removed when M34's codePaths were renamed to packages/saas-tenant-platform).
+  stripe: "packages/subscription-billing",
   twilio: "packages/messaging",
   postmark: "packages/messaging",
   "@anthropic-ai/sdk": "packages/ai-platform",
@@ -870,8 +872,15 @@ exports.MODULES = [
   {
     id: 34,
     name: "SaaS Tenant Platform",
-    codePaths: ["packages/saas", "apps/admin", "apps/backend/src/modules/34-saas"],
-    dependsOn: [2, 3, 4, 36],
+    codePaths: [
+      "packages/saas-tenant-platform",
+      "packages/admin-ui-shell",
+      "apps/backend/src/modules/34-saas-tenant-platform",
+    ],
+    // M1 edge is real: M34 repos import the @wardenx/db client + schema barrel and the backend module
+    // imports apps/backend/src/bootstrap (getSeam) — both M1-owned — plus M1 envelope/MinIO/idempotency.
+    // Matches every peer DB consumer (M4 [1,2,3], M40 [1,2,3,4], M22 [1,5]). Keep in sync with .ts.
+    dependsOn: [1, 2, 3, 4, 36],
     ownedTables: [
       "dsar_export_job",
       "dsar_export_job_event",
@@ -883,9 +892,9 @@ exports.MODULES = [
       "support_session_event",
       "tenant_account",
       "tenant_account_status_event",
+      "tenant_invitation",
       "tenant_export_job",
       "tenant_export_job_event",
-      "tenant_invitation",
       "tenant_key_destruction_log",
       "tenant_key_ring",
       "tenant_signup_intent",
