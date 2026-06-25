@@ -165,11 +165,11 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 
 | Screen | Module(s) | Layout pattern | Pencil |
 | :-- | :-- | :-- | :-- |
-| [EPCS & Controlled Substances](./screens/clinical/WARDENX_UI_EPCS_CONTROLLED_SUBSTANCES.md) | M12 | Work Queue | `◐ node:seR8n` (P7 .pen) |
-| [Staff Credentials & Compliance](./screens/staffing/WARDENX_UI_STAFF_CREDENTIALS_COMPLIANCE.md) | M02 · M34 | Work Queue | `◐ node:m0wtL7` (P7 .pen) |
-| [Staff Scheduling & Caseload](./screens/staffing/WARDENX_UI_STAFF_SCHEDULING_CASELOAD.md) | M02 · M17 · M34 | Work Queue | `◐ node:XySvp` (P7 .pen) |
-| [Timesheets & Payroll](./screens/staffing/WARDENX_UI_TIMESHEETS_PAYROLL.md) | M34 | Work Queue | `◐ node:ERZ5p` (P7 .pen) |
-| [Patient Statements & Financial Assistance](./screens/revenue/WARDENX_UI_PATIENT_STATEMENTS_ASSISTANCE.md) | M23 · M24 | Work Queue | `◐ node:JvkW0` (P7 .pen) |
+| [EPCS & Controlled Substances](./screens/clinical/WARDENX_UI_EPCS_CONTROLLED_SUBSTANCES.md) | M12 | Work Queue | `● node:seR8n` (P7 .pen) |
+| [Staff Credentials & Compliance](./screens/staffing/WARDENX_UI_STAFF_CREDENTIALS_COMPLIANCE.md) | M02 · M34 | Work Queue | `● node:m0wtL7` (P7 .pen) |
+| [Staff Scheduling & Caseload](./screens/staffing/WARDENX_UI_STAFF_SCHEDULING_CASELOAD.md) | M02 · M17 · M34 | Work Queue | `● node:XySvp` (P7 .pen) |
+| [Timesheets & Payroll](./screens/staffing/WARDENX_UI_TIMESHEETS_PAYROLL.md) | M34 | Work Queue | `● node:ERZ5p` (P7 .pen) |
+| [Patient Statements & Financial Assistance](./screens/revenue/WARDENX_UI_PATIENT_STATEMENTS_ASSISTANCE.md) | M23 · M24 | Work Queue | `● node:JvkW0` (P7 .pen) |
 
 ### P8 — External & Coordination Portals (6)
 
