@@ -273,6 +273,14 @@ export interface PatientBannerProps {
   codeStatus?: ReactNode;
   allergies?: ReactNode;
   benefitPeriod?: ReactNode;
+  // R2 — reconciled to the P0 patient-chart frame (wardenx-P0-foundation.pen `fQjjh`): an identity
+  // avatar, a secondary meta line under the name, an explicit chips row (status/identifier/alert
+  // pills supplied by the caller), and a right-aligned actions slot. All optional — when omitted the
+  // banner falls back to the original label/value fields, so existing call sites render unchanged.
+  avatar?: ReactNode;
+  meta?: ReactNode;
+  chips?: ReactNode;
+  actions?: ReactNode;
 }
 export function PatientBanner({
   name,
@@ -281,6 +289,10 @@ export function PatientBanner({
   codeStatus,
   allergies,
   benefitPeriod,
+  avatar,
+  meta,
+  chips,
+  actions,
 }: PatientBannerProps): JSX.Element {
   const field = (label: string, value: ReactNode, mono = false): ReactNode =>
     value ? (
@@ -289,6 +301,17 @@ export function PatientBanner({
         {mono ? <span style={{ fontFamily: t.fontMono }}>{value}</span> : value}
       </span>
     ) : null;
+  // Initials fallback for the avatar — only when `name` is a plain string (else the caller owns it).
+  const initials =
+    typeof name === "string"
+      ? name
+          .split(/[\s,]+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((w) => w[0]?.toUpperCase() ?? "")
+          .join("")
+      : null;
+  const avatarNode = avatar ?? initials;
   return (
     <div
       className="wx-patient-banner"
@@ -299,25 +322,87 @@ export function PatientBanner({
         display: "flex",
         flexWrap: "wrap",
         gap: "1rem",
-        alignItems: "baseline",
-        padding: "0.5rem 1.5rem",
+        alignItems: "center",
+        padding: "0.625rem 1.5rem",
         background: t.surfaceLowest,
         borderBottom: ghostBorder,
       }}
     >
-      {/* headline-md — the patient name in Fraunces, the human anchor of the chart (§3.3). */}
-      <strong
-        className="wx-banner-name"
-        style={{ fontFamily: t.fontDisplay, fontSize: "1.375rem", fontWeight: 500, color: t.onSurface }}
+      {avatarNode ? (
+        <div
+          aria-hidden
+          className="wx-banner-avatar"
+          style={{
+            width: "2.75rem",
+            height: "2.75rem",
+            flexShrink: 0,
+            borderRadius: "9999px",
+            background: t.primaryTint,
+            color: t.primary,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontFamily: t.fontDisplay,
+            fontWeight: 600,
+            fontSize: "1rem",
+          }}
+        >
+          {avatarNode}
+        </div>
+      ) : null}
+
+      {/* headline-md — the patient name in Fraunces, the human anchor of the chart (§3.3) — over an
+          optional meta line (DOB · age · sex · pronouns) in the Inter functional voice. */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.1rem" }}>
+        <strong
+          className="wx-banner-name"
+          style={{
+            fontFamily: t.fontDisplay,
+            fontSize: "1.25rem",
+            fontWeight: 500,
+            color: t.onSurface,
+            lineHeight: 1.1,
+          }}
+        >
+          {name}
+        </strong>
+        {meta ? (
+          <span style={{ color: t.onSurfaceVariant, fontSize: "0.75rem" }}>{meta}</span>
+        ) : null}
+      </div>
+
+      {/* Chips row — caller-supplied identity/status/alert pills; falls back to the original fields. */}
+      <div
+        className="wx-banner-chips"
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: "0.5rem",
+          flex: 1,
+          minWidth: 0,
+        }}
       >
-        {name}
-      </strong>
-      {/* MRN is an identifier → IBM Plex Mono (§3.1). */}
-      {field("MRN", mrn, true)}
-      {field("DOB", dob)}
-      {field("Code", codeStatus)}
-      {field("Allergies", allergies)}
-      {field("Benefit period", benefitPeriod)}
+        {chips ?? (
+          <>
+            {/* MRN is an identifier → IBM Plex Mono (§3.1). */}
+            {field("MRN", mrn, true)}
+            {field("DOB", dob)}
+            {field("Code", codeStatus)}
+            {field("Allergies", allergies)}
+            {field("Benefit period", benefitPeriod)}
+          </>
+        )}
+      </div>
+
+      {actions ? (
+        <div
+          className="wx-banner-actions"
+          style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "0.5rem" }}
+        >
+          {actions}
+        </div>
+      ) : null}
     </div>
   );
 }
