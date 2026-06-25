@@ -195,11 +195,11 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 
 | Screen | Module(s) | Layout pattern | Pencil |
 | :-- | :-- | :-- | :-- |
-| [Certification & Recert Lifecycle](./screens/clinical/WARDENX_UI_CERTIFICATION_RECERT_LIFECYCLE.md) | M06 | Stepper Workflow | `◐ node:URHlL` (P10 .pen) |
-| [Clinical Note Lifecycle](./screens/clinical/WARDENX_UI_CLINICAL_NOTE_LIFECYCLE.md) | M08 | Work Queue + Review Workspace | `◐ node:v72Yj` (P10 .pen) |
-| [NOE/NOTR & Claim Ops](./screens/revenue/WARDENX_UI_NOE_NOTR_CLAIM_OPS.md) | M23 | Work Queue | `◐ node:eq20w` (P10 .pen) |
-| [Facility & Supply Operations](./screens/clinical/WARDENX_UI_FACILITY_SUPPLY_OPERATIONS.md) | M21 · M37 | Admin Hierarchy Layout | `◐ node:lbY0m` (P10 .pen) |
-| [Role Dashboards](./screens/core/WARDENX_UI_ROLE_DASHBOARDS.md) | M33 | Dashboard | `◐ node:KpBpz` (P10 .pen) |
+| [Certification & Recert Lifecycle](./screens/clinical/WARDENX_UI_CERTIFICATION_RECERT_LIFECYCLE.md) | M06 | Stepper Workflow | `● node:URHlL` (P10 .pen) |
+| [Clinical Note Lifecycle](./screens/clinical/WARDENX_UI_CLINICAL_NOTE_LIFECYCLE.md) | M08 | Work Queue + Review Workspace | `● node:v72Yj` (P10 .pen) |
+| [NOE/NOTR & Claim Ops](./screens/revenue/WARDENX_UI_NOE_NOTR_CLAIM_OPS.md) | M23 | Work Queue | `● node:eq20w` (P10 .pen) |
+| [Facility & Supply Operations](./screens/clinical/WARDENX_UI_FACILITY_SUPPLY_OPERATIONS.md) | M21 · M37 | Admin Hierarchy Layout | `● node:lbY0m` (P10 .pen) |
+| [Role Dashboards](./screens/core/WARDENX_UI_ROLE_DASHBOARDS.md) | M33 | Dashboard | `● node:KpBpz` (P10 .pen) |
 
 ---
 
