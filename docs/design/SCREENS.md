@@ -233,7 +233,7 @@ that surface — reusable treatments (ceremonies, masking, states) built once an
 | :-- | :-- | :-- | :-- |
 | D1 | `wardenx-D1-ceremonies.pen` | Guardrail & signing-ceremony library | `◐ node:GyRUU` — 21 frames (signature ×4 · guard-blocked ×2 · step-up ×3 · EPCS 2FA ×5 · cosign ×3 · witness ×3 · destructive ×1) |
 | D2 | `wardenx-D2-sensitivity.pen` | PHI masking / SUD-Part2 / consent / break-glass | `◐ node:wMcvc` — 10 frames (PHI mask↔reveal ×3 · sensitive-row badges table · SUD seal→consent→break-glass→reveal ×4 · consent-gated section · min-necessary redaction) |
-| D3 | `wardenx-D3-states.pen` | Universal empty / loading / error / no-perm / degraded | `⬚` |
+| D3 | `wardenx-D3-states.pen` | Universal empty / loading / error / no-perm / degraded | `◐ node:CUzYC` — 12 frames (state panels ×6: loading·empty·zero-filter·error·no-perm·degraded · skeletons ×3: work-queue·dashboard·patient-workspace · in-context ×3: empty·no-perm·degraded-ribbon) |
 | D4 | `wardenx-D4-steppers.pen` | Multi-step workflows — all steps | `⬚` |
 | D5 | `wardenx-D5-variants.pen` | Role dashboards · discipline care plans · assessments | `⬚` |
 | D6 | `wardenx-D6-subviews.pen` | Heavyweight screens' secondary tabs / panels | `⬚` |
