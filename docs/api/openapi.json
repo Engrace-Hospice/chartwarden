@@ -19331,6 +19331,660 @@
         }
       }
     },
+    "/api/v1/platform/baa-register": {
+      "get": {
+        "operationId": "getApiV1PlatformBaaregister",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1PlatformBaaregister",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/baa-register/{id}": {
+      "patch": {
+        "operationId": "patchApiV1PlatformBaaregisterById",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/feature-flags": {
+      "get": {
+        "operationId": "getApiV1PlatformFeatureflags",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1PlatformFeatureflags",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/feature-flags/{flagKey}/kill-switch": {
+      "post": {
+        "operationId": "postApiV1PlatformFeatureflagsByFlagKeyKillswitch",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "flagKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/onboarding-templates": {
+      "get": {
+        "operationId": "getApiV1PlatformOnboardingtemplates",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1PlatformOnboardingtemplates",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/signup-intents": {
+      "get": {
+        "operationId": "getApiV1PlatformSignupintents",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/signup-intents/{id}/qualify": {
+      "post": {
+        "operationId": "postApiV1PlatformSignupintentsByIdQualify",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/signup-intents/{id}/reject": {
+      "post": {
+        "operationId": "postApiV1PlatformSignupintentsByIdReject",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/support-sessions": {
+      "get": {
+        "operationId": "getApiV1PlatformSupportsessions",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1PlatformSupportsessions",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/support-sessions/{id}/close": {
+      "post": {
+        "operationId": "postApiV1PlatformSupportsessionsByIdClose",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/support-sessions/{id}/elevate": {
+      "post": {
+        "operationId": "postApiV1PlatformSupportsessionsByIdElevate",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/support-sessions/{id}/events": {
+      "get": {
+        "operationId": "getApiV1PlatformSupportsessionsByIdEvents",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenant-invitations": {
+      "get": {
+        "operationId": "getApiV1PlatformTenantinvitations",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1PlatformTenantinvitations",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenant-invitations/{id}": {
+      "delete": {
+        "operationId": "deleteApiV1PlatformTenantinvitationsById",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants": {
+      "get": {
+        "operationId": "getApiV1PlatformTenants",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1PlatformTenants",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}": {
+      "get": {
+        "operationId": "getApiV1PlatformTenantsByOrgSlug",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/dek-rotate": {
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugDekrotate",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/key-ring": {
+      "get": {
+        "operationId": "getApiV1PlatformTenantsByOrgSlugKeyring",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/offboard": {
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugOffboard",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/shred": {
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugShred",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/status": {
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugStatus",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/portal/upcoming": {
       "get": {
         "operationId": "getApiV1PortalUpcoming",
@@ -19360,6 +20014,84 @@
         "parameters": [
           {
             "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/public/signup-intents": {
+      "post": {
+        "operationId": "postApiV1PublicSignupintents",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/public/signup-intents/{tokenHash}/verify-email": {
+      "post": {
+        "operationId": "postApiV1PublicSignupintentsByTokenHashVerifyemail",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "tokenHash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/public/tenant-invitations/{tokenHash}/accept": {
+      "post": {
+        "operationId": "postApiV1PublicTenantinvitationsByTokenHashAccept",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "tokenHash",
             "in": "path",
             "required": true,
             "schema": {
@@ -21299,6 +22031,450 @@
         "parameters": [
           {
             "name": "templateKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/baa": {
+      "get": {
+        "operationId": "getApiV1TenantBaa",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/baa/{id}/attest": {
+      "post": {
+        "operationId": "postApiV1TenantBaaByIdAttest",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/dsar-export-jobs": {
+      "get": {
+        "operationId": "getApiV1TenantDsarexportjobs",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1TenantDsarexportjobs",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/dsar-export-jobs/{id}/deny": {
+      "post": {
+        "operationId": "postApiV1TenantDsarexportjobsByIdDeny",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/dsar-export-jobs/{id}/download": {
+      "get": {
+        "operationId": "getApiV1TenantDsarexportjobsByIdDownload",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/dsar-export-jobs/{id}/extend": {
+      "post": {
+        "operationId": "postApiV1TenantDsarexportjobsByIdExtend",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/dsar-export-jobs/{id}/fulfill": {
+      "post": {
+        "operationId": "postApiV1TenantDsarexportjobsByIdFulfill",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/onboarding": {
+      "get": {
+        "operationId": "getApiV1TenantOnboarding",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/onboarding/{taskId}/block": {
+      "post": {
+        "operationId": "postApiV1TenantOnboardingByTaskIdBlock",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/onboarding/{taskId}/complete": {
+      "post": {
+        "operationId": "postApiV1TenantOnboardingByTaskIdComplete",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/onboarding/{taskId}/start": {
+      "post": {
+        "operationId": "postApiV1TenantOnboardingByTaskIdStart",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/support-consent-grants": {
+      "get": {
+        "operationId": "getApiV1TenantSupportconsentgrants",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1TenantSupportconsentgrants",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/support-consent-grants/{id}/revoke": {
+      "post": {
+        "operationId": "postApiV1TenantSupportconsentgrantsByIdRevoke",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/tenant-export-jobs": {
+      "get": {
+        "operationId": "getApiV1TenantTenantexportjobs",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1TenantTenantexportjobs",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/tenant-export-jobs/{id}/download": {
+      "get": {
+        "operationId": "getApiV1TenantTenantexportjobsByIdDownload",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "parameters": [
+          {
+            "name": "id",
             "in": "path",
             "required": true,
             "schema": {

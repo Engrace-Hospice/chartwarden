@@ -123,6 +123,13 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // `evv_device` rows are not patient data and stay untouched (device erases on workforce departure per M2 D8).
   // The `subjectId` is the patient.
   "evv_record",
+  // M34: a TENANT's control-plane footprint (NOT patient data) on offboarding (D6, §3.5/§8.4). M34 registers
+  // the REAL eraser via the composition-root hook over this deny-stub — it deletes the org's operational
+  // working rows (onboarding_task / support_consent_grant / support_session headers / platform_tenant_baa_record
+  // / tenant_invitation / tenant_signup_intent+token / tenant_export_job+event ledger) and NOTHING ELSE; the
+  // lifecycle/key-ring destruction ledger + the §164.528 disclosure-accounting tables (dsar_export_job,
+  // support_session_event) SURVIVE (§8.4). Unlike every class above, `subjectId` is the ORG being offboarded.
+  "saas_tenant_platform_class",
 ];
 
 export function registerEraser(dataClass: DataClass, eraser: DataEraser): void {

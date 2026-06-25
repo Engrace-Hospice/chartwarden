@@ -6,6 +6,7 @@ import type {
   FaceToFaceReader,
   LevelOfCareReader,
 } from "./admission";
+import type { LatestAssessmentProvider, ScaleSeriesProvider } from "./assessment";
 import type { CarePlanReader } from "./care-plan";
 import type {
   DocumentReader,
@@ -15,6 +16,8 @@ import type {
   PortalDocumentReader,
   RenderedDocumentProvider,
 } from "./documents";
+import type { MedicationOrderProvider, RefillInboxProvider } from "./dosespot";
+import type { MedicationAdministrationProvider, ReconciliationProvider } from "./emar";
 import type {
   BillableEncounterReader,
   EncounterCreator,
@@ -29,28 +32,9 @@ import type {
   EvvMetricsProvider,
   EvvVerificationProvider,
 } from "./evv";
-import type { LatestAssessmentProvider, ScaleSeriesProvider } from "./assessment";
-import type {
-  HopeJ2051Provider,
-  HopeSubmissionProvider,
-  HopeTimepointProvider,
-} from "./hope";
+import type { HopeJ2051Provider, HopeSubmissionProvider, HopeTimepointProvider } from "./hope";
+import type { IdgDecisionProvider, IdgPacketProvider, IdgScheduleProvider } from "./idg";
 import type { OrderProvider, OrderSignatureProvider } from "./orders";
-import type { MedicationOrderProvider, RefillInboxProvider } from "./dosespot";
-import type { MedicationAdministrationProvider, ReconciliationProvider } from "./emar";
-import type {
-  IdgDecisionProvider,
-  IdgPacketProvider,
-  IdgScheduleProvider,
-} from "./idg";
-import type {
-  PortalVisitReader,
-  SupervisoryCadenceReader,
-  VisitAssignmentReader,
-  VisitMetricsProvider,
-  VisitReader,
-  VolunteerComplianceProvider,
-} from "./scheduling";
 import type { PatientMutator, PatientReader } from "./patient";
 // @wardenx/types — Boot-registered SEAM contracts (Phase 0 skeleton).
 //
@@ -61,6 +45,14 @@ import type { PatientMutator, PatientReader } from "./patient";
 // each producer module's published seam contract; Phase 0 ships the minimal shape the
 // bootstrap registry needs to compile and self-validate.
 import type { StepUpFactor } from "./policy/step-up-policy";
+import type {
+  PortalVisitReader,
+  SupervisoryCadenceReader,
+  VisitAssignmentReader,
+  VisitMetricsProvider,
+  VisitReader,
+  VolunteerComplianceProvider,
+} from "./scheduling";
 
 /** Opaque tenant scope every seam call carries (resolved by withOrgContext). */
 export interface OrgScope {
@@ -633,4 +625,13 @@ export type DataClass =
   // artifact, §3.7 / D12). The tenant-config `evv_geofence_policy` and the membership-scoped `evv_device`
   // SURVIVE (not patient data; device erases on workforce departure per M2 D8). `subjectId` is the patient
   // being destroyed; disjoint from every other module's subtree.
-  | "evv_record";
+  | "evv_record"
+  // M34 (SaaS Tenant Platform) per-TENANT control-plane record (NOT patient data): on tenant offboarding
+  // (D6, §3.5/§8.4) M34's eraser deletes the org's operational working rows — `onboarding_task`,
+  // `support_consent_grant`, `support_session` headers, `platform_tenant_baa_record`, `tenant_invitation`,
+  // `tenant_signup_intent`/`tenant_signup_token`, and `tenant_export_job` (+ its event ledger). The
+  // lifecycle/key-ring destruction ledger and the §164.528 disclosure-accounting surfaces (`dsar_export_job`,
+  // `support_session_event`) are NEVER touched (§8.4). Unlike every class above, `subjectId` here is the ORG
+  // being offboarded (the platform control plane has no patient subject). Registered by M34's eraseFn over
+  // the Phase-0 deny-stub via the composition-root hook (same pattern as M40's `mdm_tenant_overlays`).
+  | "saas_tenant_platform_class";

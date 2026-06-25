@@ -10,10 +10,12 @@
 // barrel: this file exports the registration surfaces; the composition root invokes them in the boot
 // gate (`wireModuleSeams` / the permission mirror-row merge / `registerTenantPlatformAbacPredicates`).
 //
-// Phase boundary (§0): Phase 1 (schema + migrations) is DONE; this phase wires the package spine + the
-// permission/ABAC/event/seam registration surfaces. ROUTES are Phase 2C (the §4.1–4.2 platform/tenant
-// route inventory behind `withPlatformContext`/`withOrgContext` on the §4.5 keys + the §4.6 ABAC chain)
-// — NOT registered here yet; the typed TODO at the foot of this file marks the wiring site.
+// Phase boundary (§0): Phase 1 (schema + migrations) + Phase 2A/2B (seams/repos/lifecycle + perms/ABAC/
+// events/alert-rules) are DONE. Phase 2C (this phase) mounts the §4.1–4.2 platform/tenant/public route
+// inventory behind `withPlatformContext`/`withOrgContext` on the §4.5 keys + the §4.6 ABAC chain
+// (`mountTenantPlatformRoutes` at the foot of this file). The LIVE BullMQ worker construction + binding
+// every worker port to its real M1/M2/M4/M22/M36 adapter (the command routes only ENQUEUE today) is the
+// SEPARATE Phase-2D follow-up — see the typed TODOs in routes/*/service.ts + seam-bootstrap.ts.
 
 // §4.5 — the forty-one permission keys M34 contributes to M3's catalog (the auth-package mirror-row
 // projector consumes `M34_CONTRIBUTED_PERMISSIONS`; the route layer gates on these keys, Phase 2C).
@@ -80,8 +82,137 @@ export {
   createTenantExportShardForM34,
 } from "@wardenx/saas-tenant-platform";
 
-// TODO(Phase 2C — routes): register the §4.1–4.2 platform/tenant route inventory here (over the
-// in-memory route service, then the Drizzle-backed one), behind `requirePermission` on the §4.5 keys +
-// `requireAbac` on the §4.6 predicates, with `withPlatformContext` / `withOrgContext` org binding and
-// the §6/D10 step-up enforcement. The composition root will call the exported `mountTenantPlatformRoutes`
-// when a DB client is present (the M36 `mountMessagingRoutes` precedent). No routes are mounted yet.
+// §8.4 / D6 — the `saas_tenant_platform_class` data eraser (tenant-offboarding control-plane cleanup).
+// The composition root registers `registerSaasTenantPlatformErasers` over the Phase-0 deny-stub (the same
+// `registerModuleErasers` hook M5/M6/M22/M36/M40 use). The pure eraseFn lives in the package; this backend
+// wrapper adapts it to the M1 `DataEraser` contract.
+export {
+  type SaasTenantPlatformEraserDeps,
+  createSaasTenantPlatformEraser,
+  registerSaasTenantPlatformErasers,
+} from "./erasers/saas-tenant-platform-eraser";
+
+// §4.1 — the platform-ops tenant-lifecycle route surface (tenants / tenant-invitations / key-ring /
+// onboarding-templates), behind `requirePermission` on the §4.5 keys + `requireAbac` on
+// `tenant_lifecycle_platform_ops` + §6/D10 `requireStepUp` on the command routes. The READ/LIST routes
+// (which the Phase-3 platform-ops screens consume) are fully live over the injected route service; the
+// lifecycle-command routes ENQUEUE the §4.3 worker job (the live BullMQ worker construction is Phase 2D —
+// see routes/platform/service.ts). The composition root calls `mountTenantPlatformRoutes` when a DB
+// client is present (the M36 `mountMessagingRoutes` precedent).
+export {
+  type EnqueuePort,
+  type TenantPlatformRouteSeed,
+  type TenantPlatformRouteService,
+  createInMemoryTenantPlatformBackend,
+  registerBaaRegisterRoutes,
+  registerFeatureFlagAdminRoutes,
+  registerOnboardingTemplateRoutes,
+  registerSignupIntentRoutes,
+  registerSupportSessionRoutes,
+  registerTenantInvitationRoutes,
+  registerTenantKeyRingRoutes,
+  registerTenantPlatformRoutes,
+} from "./routes/platform/index";
+
+// §4.1 — the TENANT-scoped route surface (support-consent-grants / dsar-export-jobs / tenant-export-jobs /
+// onboarding-tasks / baa), behind `requirePermission` on the §4.5 keys + the §4.6 ABAC chain + `withOrgContext`
+// (the tenant's own org, M2 `staff` session class). READ/LIST routes are live over the injected service; the
+// command routes enqueue the §4.3 worker job. The Phase-3 admin/onboarding screens consume the READ surface.
+export {
+  type TenantRouteService,
+  type TenantRoutesDeps,
+  createInMemoryTenantBackend,
+  registerTenantTenantRoutes,
+} from "./routes/tenant/index";
+
+// §4.1 — the PUBLIC (session-less, pre-organization) self-serve signup surface, gated 503 SIGNUP_DISABLED
+// behind the `m34.self_serve_signup` feature flag (default OFF for the platform; the M22 doclens 503 precedent).
+export {
+  type PublicSignupRouteDeps,
+  type SignupIntentRouteService,
+  registerPublicSignupRoutes,
+} from "./routes/public/signup-intents";
+
+import type { DbClient } from "@wardenx/db";
+import { WardenXError } from "@wardenx/types";
+import type { FastifyInstance } from "fastify";
+import {
+  createInMemoryTenantPlatformBackend as _createInMemoryTenantPlatformBackend,
+  registerBaaRegisterRoutes as _registerBaaRegisterRoutes,
+  registerFeatureFlagAdminRoutes as _registerFeatureFlagAdminRoutes,
+  registerOnboardingTemplateRoutes as _registerOnboardingTemplateRoutes,
+  registerSignupIntentRoutes as _registerSignupIntentRoutes,
+  registerSupportSessionRoutes as _registerSupportSessionRoutes,
+  registerTenantInvitationRoutes as _registerTenantInvitationRoutes,
+  registerTenantKeyRingRoutes as _registerTenantKeyRingRoutes,
+  registerTenantPlatformRoutes as _registerTenantPlatformRoutes,
+} from "./routes/platform/index";
+import {
+  type SignupIntentRouteService as _SignupIntentRouteService,
+  registerPublicSignupRoutes as _registerPublicSignupRoutes,
+} from "./routes/public/signup-intents";
+import {
+  createInMemoryTenantBackend as _createInMemoryTenantBackend,
+  registerTenantTenantRoutes as _registerTenantTenantRoutes,
+} from "./routes/tenant/index";
+
+/**
+ * Fail-closed `SignupIntentRouteService` for the public self-serve signup routes. Every method throws
+ * `503 SIGNUP_DISABLED` — but it is NEVER reached: the public routes' `requireSignupEnabled` preHandler
+ * already 503s when the `m34.self_serve_signup` flag is OFF (the Phase-1 platform default), so the
+ * deny-default `SelfServeSignupGate` short-circuits before the service runs. This keeps the public surface
+ * MOUNTED (so the routes exist + 503 cleanly) without binding the Drizzle/M2-createUser adapter yet.
+ * TODO(Phase 2D): replace with the Drizzle adapter over `SignupIntentRepository` (writes under
+ * `withPlatformContext`) + the M2 createUser/first-`org_admin` helper, gated by M1's platform-global flag.
+ */
+const SLICE_M34_SIGNUP_SERVICE: _SignupIntentRouteService = {
+  async createIntent() {
+    throw new WardenXError("SIGNUP_DISABLED", "self-serve signup is not enabled", 503);
+  },
+  async verifyEmail() {
+    throw new WardenXError("SIGNUP_DISABLED", "self-serve signup is not enabled", 503);
+  },
+  async acceptInvitation() {
+    throw new WardenXError("SIGNUP_DISABLED", "self-serve signup is not enabled", 503);
+  },
+};
+
+/**
+ * Mount EVERY M34 REST route surface (§4.1) on a server — invoked by the composition root when a DB client
+ * is present. Three surfaces:
+ *   - PLATFORM-OPS (eight plugins: tenants / invitations / key-ring / onboarding-templates / support-sessions
+ *     / signup-intents / baa-register / feature-flags-admin) behind `withPlatformContext` (M1 @wardenx/tenancy
+ *     — the separately-pooled, RLS-bypass, AUDITED cross-tenant platform read path, F03/F09);
+ *   - TENANT-scoped (five plugins, support-consent-grants / dsar-export-jobs / tenant-export-jobs /
+ *     onboarding-tasks / baa) behind `withOrgContext` (the tenant's own org);
+ *   - PUBLIC (the session-less self-serve signup surface, gated 503 behind `m34.self_serve_signup`).
+ *
+ * READ/LIST routes are fully live over the injected route services (the Phase-3 screens consume them); the
+ * command routes enqueue the §4.3 worker job through the injected `EnqueuePort` (the slice's records the call).
+ * In prod the READ/LIST surface runs over a Drizzle-backed service whose cross-tenant reads use
+ * `withPlatformContext`/`withOrgContext`; the live BullMQ worker construction + the Drizzle-backed services +
+ * the public signup adapter are Phase 2D, so this mount currently wires the in-memory backends (the DTOs
+ * already match the prod shape). `db` is accepted now so the composition-root call site is stable across 2D.
+ * The §4.6 ABAC predicates are registered separately at boot via `registerTenantPlatformAbacPredicates`.
+ */
+export function mountTenantPlatformRoutes(app: FastifyInstance, db: DbClient): void {
+  void db; // Phase 2D: build the Drizzle-backed services + bind the BullMQ enqueue ports here.
+
+  // ── platform-ops surface (withPlatformContext; F03/F09 audited cross-tenant reads) ──
+  const { service: platformService } = _createInMemoryTenantPlatformBackend();
+  _registerTenantPlatformRoutes(app, { service: platformService });
+  _registerTenantInvitationRoutes(app, { service: platformService });
+  _registerTenantKeyRingRoutes(app, { service: platformService });
+  _registerOnboardingTemplateRoutes(app, { service: platformService });
+  _registerSupportSessionRoutes(app, { service: platformService });
+  _registerSignupIntentRoutes(app, { service: platformService });
+  _registerBaaRegisterRoutes(app, { service: platformService });
+  _registerFeatureFlagAdminRoutes(app, { service: platformService });
+
+  // ── tenant-scoped surface (withOrgContext; the tenant's own org) ──
+  const { service: tenantService } = _createInMemoryTenantBackend();
+  _registerTenantTenantRoutes(app, { service: tenantService });
+
+  // ── public, session-less self-serve signup surface (503-gated by default; D14) ──
+  _registerPublicSignupRoutes(app, { service: SLICE_M34_SIGNUP_SERVICE });
+}

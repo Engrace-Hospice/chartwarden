@@ -44,6 +44,15 @@ import { registerSchedulingSeams } from "./modules/17-scheduling/index";
 import { registerEvvSeams } from "./modules/18-evv/index";
 import { registerDocumentErasers, registerDocumentSeams } from "./modules/22-documents/index";
 import {
+  type BootstrapModule34Deps,
+  type TenantPlatformAbacResolver,
+  bootstrapModule34,
+  mountTenantPlatformRoutes,
+  registerSaasTenantPlatformErasers,
+  registerTenantPlatformAbacPredicates,
+  validateModule34Seams,
+} from "./modules/34-saas-tenant-platform/index";
+import {
   createDbMessagingProvider,
   mountMessagingRoutes,
   registerMessagingErasers,
@@ -169,8 +178,65 @@ export function wireModuleSeams(
   // store over the real M39 consent tables (FB-T03); slice/tests keep the in-memory default.
   registerConsentSeams(deps.db ? { store: createDbConsentStore(deps.db) } : {});
   registerConsentAbacPredicates(); // M39 — the 11 §4.8 ABAC predicate resolvers (resolve via the seam)
+  // M34 — the 8 §4.6 ABAC predicate resolvers (the platform-ops tenant surface gates on
+  // `tenant_lifecycle_platform_ops`, role-only; `dsar_export_*` composes the M5 CaseloadProvider seam,
+  // registered above). The grant/flag/onboarding-task resolver methods are exercised by the tenant-scoped
+  // routes (Phase 2D Drizzle-backed); the platform-ops route surface mounted here uses only the role-only
+  // predicate, so a fail-closed slice resolver is sufficient until the Drizzle resolver lands.
+  registerTenantPlatformAbacPredicates({ resolver: SLICE_M34_ABAC_RESOLVER });
+  // M34 — register the PACKAGE-OWNED seams (the D5 `TenantKeyProvider` + the lifecycle/onboarding/support/
+  // export-shard publishes). These live in `@wardenx/saas-tenant-platform`'s own registry (M1 imports the
+  // `TenantKeyProvider` interface, so the live-impl home is the package, not the M1 registry). `bootstrapModule34`
+  // registers them and `validateModule34Seams()` HARD-FAILS boot if the mandatory `TenantKeyProvider` is absent
+  // (D5) — so the platform never serves a request whose PHI ciphertext it cannot key. The lifecycle/onboarding/
+  // support providers stay fail-closed deny-stubs until their Drizzle-backed services land (Phase 2D); only the
+  // key provider must be present for boot. See SLICE_M34_KEY_PROVIDER below for the Phase-2D KMS-backed TODO.
+  bootstrapModule34(SLICE_MODULE_34_SEAM_DEPS);
+  validateModule34Seams();
   // Phase-1 producers append here as they land.
 }
+
+/**
+ * Fail-closed slice `TenantKeyProvider` (D5) so `validateModule34Seams()` passes at boot before the real
+ * KMS-backed key provider lands. Every method THROWS — the platform has no live PHI ciphertext to key in the
+ * slice/local boot, so a resolve is a programming error, not a silent fail-open. This satisfies the mandatory
+ * D5 registration without handing out a real key.
+ *
+ * TODO(Phase 2D — TenantKeyProvider adapter): replace with M34's key-ring service backed by the real KEK/KMS
+ * (the §3.3 tenant-key-destruction-log + per-tenant DEK wrap/unwrap). It is the ONLY seam that hard-fails boot;
+ * the lifecycle/onboarding/support providers + the M35 subscription-entitlement reader bind their real adapters
+ * in the same phase (until then they fail-closed via their typed resolvers).
+ */
+const SLICE_MODULE_34_SEAM_DEPS: BootstrapModule34Deps = {
+  tenantKeyProvider: {
+    async dekForOrg() {
+      throw new Error(
+        "M34 TenantKeyProvider: slice deny-stub — the KMS-backed provider lands Phase 2D",
+      );
+    },
+    async dekForOrgVersion() {
+      throw new Error(
+        "M34 TenantKeyProvider: slice deny-stub — the KMS-backed provider lands Phase 2D",
+      );
+    },
+    async keyRingState() {
+      return "absent";
+    },
+  },
+};
+
+/**
+ * Fail-closed slice resolver for M34's §4.6 ABAC predicates registered at boot. Every owner-fact load
+ * denies (returns null/false) — the platform-ops tenant-lifecycle routes only exercise the role-only
+ * `tenant_lifecycle_platform_ops` predicate, so these methods are never reached for that surface. The
+ * Phase-2D Drizzle-backed resolver (loading grant/flag/onboarding-task facts under RLS) replaces this.
+ */
+const SLICE_M34_ABAC_RESOLVER: TenantPlatformAbacResolver = {
+  hasActiveConsentedSupportSession: async () => false,
+  loadConsentGrant: async () => null,
+  loadFeatureFlag: async () => null,
+  loadOnboardingTask: async () => null,
+};
 
 /**
  * Register every module's REAL data eraser over the Phase-0 deny-stubs. Passed to
@@ -197,6 +263,7 @@ export function wireModuleErasers(): void {
   registerEmarErasers(); // M13-T10 — `emar_record` (eMAR-subtree destruction-cert callback; partition-drop; §7.7; D7/D8)
   registerIdgErasers(); // M14-T07 — `idg_record` (patient-scoped packet/decision/action-item/agenda destruction-cert callback; meetings/minutes survive; §8.4)
   registerDocumentErasers(); // M22-T10 — `documents` (document/intake-subtree destruction-cert callback; DEK crypto-erase §8.6; legal-hold + Part 2 skip; D9/D12)
+  registerSaasTenantPlatformErasers(); // M34 — `saas_tenant_platform_class` (tenant-offboarding control-plane cleanup; subjectId=org; D6/§8.4)
   // Phase-1 data-class owners append here as they land.
 }
 
@@ -252,6 +319,7 @@ if ((import.meta as { main?: boolean }).main) {
           mountMdmRoutes(app, dbHandle.db); // M40 — MDM entity directory + overlay/BAA + platform-ops (FB-T02)
           mountConsentRoutes(app, dbHandle.db); // M39 — consent catalog/records/decision-audit reads (FB-T03)
           mountMessagingRoutes(app, dbHandle.db); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05)
+          mountTenantPlatformRoutes(app, dbHandle.db); // M34 — platform-ops tenant lifecycle / invitations / key-ring / onboarding-templates (reads live; commands enqueue, workers → Phase 2D)
         }
       : undefined,
     registerModuleSeams: () =>
