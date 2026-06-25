@@ -1917,6 +1917,59 @@ HITRUST is a longer-term aspiration (Phase 4+). Current alignment with key contr
 
 -----
 
+## 22. Module 34 — SaaS Tenant Platform Security Addendum
+
+This section extends the §3 threat model and the §8 PHI-handling controls to Module 34 (SaaS Tenant Platform). M34 is the control plane that provisions, keys, and destroys tenants and that governs WardenX-staff access into tenant data — so its threat surface is insider-dominated and its controls are the foundation every other module's PHI sits on. It complements module spec §8.1 / §8.2 / §8.4; the operator-facing procedures live in OPS_RUNBOOK §18, and shred-worker recovery in DR_BCP §14A.2.
+
+### 22.1 STRIDE Deltas (M34 §8.1)
+
+M34's threat surface differs qualitatively from a clinical module: the actors most threatening to it are **insiders** — WardenX platform-ops staff and tenant compliance officers — not external attackers. The §3 STRIDE model is extended with these module-specific deltas:
+
+|Threat|Surface|Mitigation|
+|------|-------|----------|
+|**Spoofing** — a WardenX engineer poses as a tenant compliance officer to self-issue a support grant|`POST /api/v1/tenant/support-consent-grants`|Tenant route refused via `withOrgContext`; platform-ops can only reach a tenant session through the M2 impersonation flow, which is itself `severity=critical`-audited and is **never** permitted to issue grants (impersonation is read-only).|
+|**Tampering** — platform-ops flips `tenant_account.status` to `active` without an executed BAA|DB direct write|RLS + role split: `wardenx_app` cannot UPDATE `tenant_account`; only `tenant_platform_writer` can, and only via the lifecycle service that enforces the BAA precondition. DBA UPDATE is OS-level audited.|
+|**Repudiation** — a support engineer denies a chart access they made|PHI read|Three-table forensic chain: `audit_event` (`actor_kind='platform_ops_via_support_session'`) + `support_session_event` per access + the session→grant linkage (DR_BCP §14A.3).|
+|**Information disclosure** — a support engineer extracts PHI during a session|PHI read in session|Session is time-bounded (≤8 h or `grant.expires_at`), scope-bounded (org or named patients), step-up-bounded (write needs fresh step-up), and `severity=critical`-audited so M36 alerts the grantor in real time.|
+|**Denial of service** — repeated public signup POSTs|`POST /api/v1/public/signup-intents`|Rate limit 5/IP/hour + `m34.self_serve_signup` flag (deny-default in Phase 1) + edge WAF.|
+|**Elevation of privilege** — a tenant org_admin reads another tenant's data via DSAR|DSAR job|RLS scopes `dsar_export_job` to `organization_id`; ABAC `dsar_export_patient_caseload_or_org_admin` re-checks each action; patient_id resolved through M5 (itself RLS-scoped).|
+|**Elevation of privilege** — a compliance officer issues a fraudulent self-grant|Tenant route|Distinct-actor rule (D16): grantor ≠ session actor. Grants are M4-audited; anomalous grant patterns surface in M33.|
+|**Cryptographic compromise** — KEK leak unwraps historical DEKs|KEK storage|KEK lives in the HSM-backed store (§4 / §8.4), not in DB or env. KEK rotation re-wraps every DEK without changing the DEK — application-transparent; `current_dek_kek_id` tracks which KEK wrapped each DEK.|
+|**Forensic evasion** — a destroyed DEK is unrecoverable; prove the destruction was lawful|Post-shred|The M22-stored, M4-audited destruction certificate references the per-module eraseFn receipts and the DEK destruction log. The DEK's absence *is* the proof; the certificate reconstructs the story without the DEK.|
+
+### 22.2 Encryption Boundaries — Per-Tenant DEK Lifecycle (M34 §8.2)
+
+M34 owns the **per-tenant Data Encryption Key (DEK)** that every other module's envelope-encrypted PHI is sealed under. The DEK is wrapped by a KEK held in the HSM (§4.4); only the wrapped ciphertext lives in the database, in `tenant_key_ring.current_dek_kek_wrapped_ciphertext`.
+
+**DEK lifecycle — three SECURITY DEFINER transitions:**
+
+|Stage|Mechanism|Effect|
+|-----|---------|------|
+|**Provision**|`m34_provision_tenant_key_ring(tenant_account_id)`|Inserts `tenant_key_ring` with `current_dek_version='v1'`, KEK-wrapped DEK populated.|
+|**Rotate**|`tenant.dek-rotate` worker|New DEK minted; prior DEK retained in `prior_dek_versions`; re-encryption pass walks every envelope column. KEK rotation (separate) re-wraps without changing the DEK.|
+|**Destroy**|`m34_destroy_tenant_key_ring(...)`|Zeroes `current_dek_kek_wrapped_ciphertext` and clears `prior_dek_versions`; sets `destroyed_at`. **Irreversible** — the cryptographic-shred boundary (DR_BCP §14A.2 Phase 3).|
+
+**The `tenant_platform_writer` SECURITY DEFINER boundary.** The application role `wardenx_app` is deliberately incapable of touching the key material or the lifecycle spine:
+
+- `wardenx_app` **cannot** SELECT `tenant_key_ring.current_dek_kek_wrapped_ciphertext` — `has_column_privilege` is false; only the `tenant_key_ring_metadata_v` view (no ciphertext) is selectable.
+- `wardenx_app` **cannot** UPDATE `tenant_account` — only `tenant_platform_writer` can, via the lifecycle service.
+- `wardenx_app` **cannot** EXECUTE `m34_provision_tenant_key_ring` / `m34_destroy_tenant_key_ring` — these are owned by `tenant_platform_writer` and invoked only through the SECURITY DEFINER functions; `has_function_privilege('wardenx_app', ...)` is false.
+- These boundaries are CI-enforced by the M34 RLS suite (module spec §9.3) — cross-tenant denial and the ciphertext/function privilege checks are gate tests, not optional.
+
+**No new PHI columns.** M34 introduces **no** envelope-encrypted PHI columns — patient references are FK-only (no PHI body). Free-form fields (`grant_reason`, `transition_reason`, `denial_reason`, `requestor_identity_verification_evidence`, `blocker_reason`) get best-effort minimum-necessary validation (§8.5.5) and a "do not paste PHI here" UI guard. Two FK surfaces — `dsar_export_job.patient_id` and `support_session_event.patient_id` — are tagged `phiClass='phi_sensitive'` because the *association* of a patient with a DSAR-in-flight or a WardenX-staff access is itself a potential 42 CFR Part 2 disclosure (ADR-0014 / SEC-046); they inherit M5/M39 Part 2 redaction-by-default and the Part 2-heightened support controls.
+
+### 22.3 Retention-Class Discipline (M34 §8.4)
+
+All thirteen M34-owned tables (seventeen counting helper partitions) are retention class **`compliance`** (D12): they live a minimum of **seven years** from creation regardless of whether the tenant remains active. Destruction is a **column-clear, not a row-delete**:
+
+- DEK destruction at shred clears the **ciphertext columns** in `tenant_key_ring`; the **row remains** with `destroyed_at` set, auditable for the full window.
+- A destroyed tenant carries `tenant_account.status='destroyed'` — not a deleted row.
+- Non-tenant-scoped tables follow architecture §11: `onboarding_task_template` → `compliance`; `tenant_signup_intent` → `operational` (3 yr); `tenant_signup_token` → `operational` (90 d after consumption).
+
+**42 CFR Part 2 retention interaction.** The two `phi_sensitive` surfaces (§22.2) inherit M34's 7-year `compliance` retention, but the *underlying* patient records they reference may carry a **distinct, longer Part 2 retention obligation** held by M5/M39 — which M34 never shortens or overrides. This is the security rationale for the **eraser-refusal gate**: at shred, if any module's eraseFn returns `refused_part_two_retention`, the DEK is **preserved** and the tenant re-deferred to `retained`, because zeroing the DEK would render still-obligated Part 2 ciphertext permanently unrecoverable (operator handling in OPS_RUNBOOK §18.2; recovery boundary in DR_BCP §14A.2). M34's own DSAR/support rows are disclosure-accounting metadata about access — not the Part 2 record of authority.
+
+-----
+
 ## Appendix A — Quick Reference
 
 ### A.1 Security Contact

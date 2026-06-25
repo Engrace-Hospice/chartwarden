@@ -1306,6 +1306,88 @@ Specific events that trigger immediate document updates:
 
 ---
 
+## 14A. Module 34 — SaaS Tenant Platform Addendum
+
+This addendum operationalizes the disaster-recovery and forensic-reconstruction obligations introduced by Module 34 (SaaS Tenant Platform). It is the operator-facing complement to module spec §8.6 (Disaster Recovery) and §7.2 / §7.4 (Cryptographic Shred / Support Session). Where the module spec defines the design, this addendum defines the recovery and reconstruction procedure. The dividing line with §10 catastrophic scenarios holds: a crashed shred worker or a forensic query is recovery work, handled here; a site loss that also takes the key ring is a §10 regional disaster.
+
+### 14A.1 M34 Service-Tier Mapping
+
+Module 34's tables map onto the §3.1 service tiers as below. The governing principle: the per-tenant key ring is the spine — without it, no tenant data decrypts — so it shares Tier-1 status with the tenant account and BAA register. (Module spec §8.6 states the customer-SLA-aligned Tier-1 target as RPO 15 min / RTO 1 hr; the internal Tier-1 target in §3.4 is tighter.)
+
+| M34 asset | Tier | Rationale |
+|---|---|---|
+| `tenant_account`, `tenant_key_ring`, `platform_tenant_baa_record` | **Tier 1** | The platform spine. The DEK ciphertext in `tenant_key_ring` is part of the Tier-1 backup; without it no envelope column decrypts. |
+| `tenant_account_status_event`, `tenant_invitation`, `onboarding_task`, `support_consent_grant`, `support_session`, `support_session_event`, `tenant_key_destruction_log`, `dsar_export_job`, `tenant_export_job` | **Tier 2** | Lifecycle, onboarding, support, and export operational state; reconstructable or deferrable for hours without patient-care impact. |
+| `tenant_signup_intent`, `tenant_signup_token` | **Tier 3** | Pre-provisioning self-serve state; loss re-requests the signup. |
+| `onboarding_task_template` | **Tier 3 (rebuildable)** | Platform reference data; `compliance`-retained but re-seedable from `onboarding_task_template` seed — restore from backup or re-seed, whichever is faster. |
+
+**Key-ring / KEK split across DR.** The DEK ciphertext rides in the Tier-1 PostgreSQL backup (§4.1); the wrapping KEK lives in the HSM and is backed up separately via the HSM vendor procedure (Security Hardening §4 / §8.4). A restore reunites ciphertext + KEK. A **destroyed** tenant's DEK is `NULL` in Tier-1 backups too — once shredded, no backup resurrects the data. This is the cryptographic-shred property holding across DR (module spec §8.6).
+
+### 14A.2 Cryptographic Shred Worker — Recovery & Resumption
+
+The `tenant.shred` worker executes a four-phase sequence (module spec §3.5 / §7.2). Recovery after a crash is governed **entirely** by the per-phase receipts in `tenant_key_destruction_log` — never by guesswork. The worker is idempotent: re-running it resumes from the last completed marker and skips completed phases. The operator's only job is to confirm the last marker and re-invoke.
+
+| Phase | Marker written to `tenant_key_destruction_log` | Action | Recoverable after crash? |
+|---|---|---|---|
+| **Phase 1** | one receipt row per eraseFn (rows-erased + sha256, **or** `refused_part_two_retention`) | every M4-registered eraseFn called | Yes — nothing destroyed yet |
+| **Gate** | `dek_destruction_aborted_part_two_retention` (only if any refusal) | abort before Phase 3; re-defer tenant `destruction_pending → retained` | Yes — DEK preserved |
+| **Phase 2** | `minio_scope_destroyed` | per-tenant MinIO scope destroyed (M1 helper) | Objects gone; ciphertext still sealed under the DEK — recoverable only from the MinIO backup tier (§4.2) |
+| **Phase 3** | `dek_destroyed` | DEK zeroed via `m34_destroy_tenant_key_ring` (`current_dek_kek_wrapped_ciphertext = NULL`, `prior_dek_versions` cleared) | **NO — irreversible boundary** |
+| **Phase 4** | `certificate_finalized` | M4 certificate finalized; `tenant_account.status → destroyed`; `m34.tenant.destroyed` outbox | Yes — idempotent certificate filing |
+
+**Resume procedure:**
+
+```bash
+# 1. Find the last completed phase for the tenant
+psql -h wardenx-db-01 -U postgres -d wardenx -c "
+SELECT phase, recorded_at
+FROM tenant_key_destruction_log
+WHERE organization_id = '<orgId>'
+ORDER BY recorded_at DESC;
+"
+
+# 2. Re-invoke the worker (idempotent). It reads the markers and skips completed phases.
+#    Phases 1-2 incomplete  → safe to re-run end-to-end.
+#    Phase 3 recorded       → DATA ALREADY DESTROYED; re-run only files the Phase 4 certificate.
+DATABASE_URL=... bun packages/saas-tenant-platform/scripts/resume-shred.ts --org-id=<orgId>
+```
+
+**The irreversible boundary is Phase 3.** Before Phase 3, a crash is fully recoverable — no data has been destroyed, and a re-run completes cleanly. After Phase 3, the DEK is gone; even a Tier-1 backup restore cannot resurrect the data, and a Phase-4-only crash leaves you with destroyed data and an unfiled certificate — re-running files it.
+
+**Eraser-refusal gate — do not override.** If any eraseFn returns `refused_part_two_retention` (a 42 CFR Part 2 record under a retention obligation, M4 D8), the worker aborts before Phase 3, records refused-row counts on the destruction certificate, writes the `dek_destruction_aborted_part_two_retention` marker, and re-defers the tenant to `retained`. The DEK is **preserved** — it is the only key for the legally-retained Part 2 ciphertext. The daily `tenant.shred_eligibility_check` re-fires once the Part 2 obligation lapses. **An operator must never manually destroy the DEK to "finish" a shred the gate aborted** — that permanently destroys legally-retained Part 2 records and is a compliance violation, not a recovery action.
+
+### 14A.3 Support-Session Forensic Reconstruction
+
+When a surveyor, auditor, or court asks *"which WardenX engineer accessed patient X's chart, when, and under what authority?"*, the answer is reconstructed deterministically from three tables plus the M4 audit projection. No WardenX engineer can reach tenant PHI without either a support session or break-glass (module spec §7.4 / D21).
+
+```sql
+-- 1. Every platform-ops PHI access of patient X in the window (the critical audit projection)
+SELECT occurred_at, actor_membership_id, action, resource_kind, severity
+FROM audit_event
+WHERE patient_id = '<patientId>'
+  AND actor_kind = 'platform_ops_via_support_session'
+  AND occurred_at BETWEEN '<from>' AND '<to>'
+ORDER BY occurred_at;
+
+-- 2. Tie each access to the session, and the session to the consent that authorized it
+SELECT s.id AS session_id, s.started_at, s.expires_at,
+       e.patient_id, e.occurred_at, e.context,
+       g.id AS grant_id, g.grant_reason, g.scope,
+       g.granted_by_membership_id, s.actor_membership_id
+FROM support_session_event e
+JOIN support_session s        ON s.id = e.support_session_id
+JOIN support_consent_grant g  ON g.id = s.support_consent_grant_id
+WHERE e.patient_id = '<patientId>'
+  AND e.occurred_at BETWEEN '<from>' AND '<to>'
+ORDER BY e.occurred_at;
+```
+
+**Reading the result:** the join proves, for every access, that (a) a tenant compliance officer issued a consent grant, (b) the grant was on file at session start, and (c) the actor on the session was distinct from the grantor (D16). The M4 audit row carries the resource body; the `support_session_event` row carries the PHI-free access metadata. A Part 2-heightened session (module spec §7.4 step 4a) shows `severity=critical` with the Part 2 marker and **no** write events — support over Part 2 patients is read-only.
+
+**Post-shred reconstruction.** The forensic metadata survives a tenant shred: `audit_event`, `support_session`, `support_session_event`, and `support_consent_grant` are `compliance`-retained (7 yr) and reference patients by FK only (§14A.1 / §8.4 of the spec). So even after the patient's PHI body is cryptographically inaccessible, the disclosure-accounting story — who touched what, when, under whose consent — remains fully reconstructable for the full retention window. The break-glass path (no-consent emergency, D21) appears here as `actor_kind='break_glass'`, `severity=critical`, and is reviewed by the compliance officer within 24 h (Ops Runbook break-glass procedure).
+
+---
+
 ## 15. Appendix A — Quick Reference Cards
 
 ### 15.1 SEV-1 First 15 Minutes

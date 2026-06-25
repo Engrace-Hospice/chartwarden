@@ -477,9 +477,9 @@
       "routes": true,
       "enriched": false,
       "screens": false,
-      "tests": false,
+      "tests": true,
       "adapter": null,
-      "liveInfra": false
+      "liveInfra": true
     },
     {
       "id": 35,

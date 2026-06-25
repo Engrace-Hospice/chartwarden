@@ -1877,6 +1877,70 @@ Update triggers:
 
 ---
 
+## 18. Module 34 — SaaS Tenant Platform Operations (Addendum)
+
+This addendum covers the platform-ops procedures introduced by Module 34 (SaaS Tenant Platform). Once M34 is live it is authoritative over the manual fallback in §11.1: provisioning, cryptographic shred, and support sessions are M34-orchestrated, and this section is the operator's checklist for driving and verifying them. Catastrophic shred-worker recovery (crash mid-phase) lives in DR_BCP §14A.2; the security boundaries (DEK lifecycle, `tenant_platform_writer`) live in Security Hardening §22.
+
+### 18.1 Tenant Provisioning Checklist (M34 §7.1)
+
+Phase 1 is platform-ops-driven (Phase 3 self-serve is gated behind `m34.self_serve_signup`, deny-default). For each new tenant:
+
+- [ ] Step-up satisfied (`passkey_recent_5min`) before the call
+- [ ] `POST /api/v1/platform/tenants` with: legal business name, billing contact, breach-notification contact, intended first-admin email, plan label
+- [ ] Provision worker (single-concurrency, **idempotent on `tenant_account_id`**) completed each step:
+  - [ ] `tenant_account(status='provisioning')` inserted
+  - [ ] `m34_provision_tenant_key_ring(...)` (SECURITY DEFINER) created the key ring with `current_dek_version='v1'`, KEK-wrapped DEK populated
+  - [ ] Per-tenant MinIO prefixes created with retention policies per §6.6 (`documents,generated,intake,claims,cost-reports,exports`)
+  - [ ] M2 `createOrganization(...)` returned `orgId`, patched onto `tenant_account.organization_id`
+  - [ ] Eleven canonical `onboarding_task` rows seeded from `onboarding_task_template`
+  - [ ] `tenant_invitation` issued (magic link, `expires_at = NOW()+14d`) and dispatched via M36 PHI-sanitized channel
+  - [ ] `m34.tenant.provisioned` outbox emitted; state `provisioning → onboarding`
+- [ ] **Verification (surveyor query):** `tenant_account_status_event` trail + per-step `audit_event` reconstruct provisioning end-to-end, in order, with actor identity preserved
+- [ ] **BAA gate noted:** the `onboarding → active` transition refuses unless an `executed` BAA exists with >90 days to expiry (§18.3 / M34 §7.5)
+
+**Idempotent resume (per M34 §7.7).** If the worker failed mid-way, re-run it — partial rows survive and it resumes from the last completed step. If the DEK was created but the MinIO prefix was not, the re-run creates the prefix and proceeds. If MinIO is down, the worker fails and backs off; the tenant remains in `provisioning` until manual intervention. Never hand-craft the key ring or MinIO prefixes outside the worker.
+
+### 18.2 Cryptographic Shred Approval Workflow (M34 §7.2)
+
+A tenant is shred-eligible only when **all three** conditions hold. Confirm each before approving:
+
+- [ ] **No legal hold** on the tenant or any in-scope record (a `legal_hold` retention class anywhere blocks)
+- [ ] **Retention window elapsed** (`tenant_account.retention_ends_at <= NOW()`)
+- [ ] **M4 two-approver destruction certificate approved** (the cert requires a second approver per M4 D4)
+
+**Workflow:**
+
+1. The daily `tenant.shred_eligibility_check` cron finds tenants with `retention_ends_at <= NOW()` and no legal hold, emits `m34.tenant.retention_window_reached`, transitions `retained → destruction_pending`, and M36 alert `tenant.shred_pending_approval` routes to the **platform security owner**.
+2. Security owner reviews and either **denies** (returns to `retained` with a deferral note) or **approves**.
+3. Approval triggers `requestDestruction('saas_tenant_platform_class', {orgId})` against M4 → M4 issues a **pending** destruction certificate → the **second approver** approves it (M4 D4).
+4. With the certificate approved, a platform-ops actor invokes `POST /api/v1/platform/tenants/:orgId/shred` with `passkey_recent_2min` step-up **plus the certificate id**.
+5. The `tenant.shred` worker runs the four-phase sequence. **Crash recovery and the Phase-3 irreversible boundary are in DR_BCP §14A.2.**
+
+**Operator guardrails:**
+
+- Never approve while a legal hold is present anywhere in scope.
+- Never bypass the M4 second approver — a single-approver shred is not permitted.
+- If the **eraser-refusal gate** aborts the shred (any eraseFn returned `refused_part_two_retention`), the tenant correctly returns to `retained` with refused-row counts on the certificate. **This is the intended outcome — do not force the DEK destruction.** The DEK is the only key for legally-retained 42 CFR Part 2 ciphertext; `tenant.shred_eligibility_check` re-fires when the Part 2 obligation lapses.
+
+### 18.3 Support-Session Escalation (M34 §7.4)
+
+When a WardenX engineer needs access to a tenant's PHI (e.g., a support ticket requiring chart inspection):
+
+1. The **tenant compliance officer** issues a `support_consent_grant` (`POST /api/v1/tenant/support-consent-grants`) with scope, optional `patient_ids`, `grant_reason`, and `expiresAtIsoOffsetHours ≤ 72`; step-up required. The grant is M4-audited and M36-alerted to platform-ops.
+2. The engineer (`passkey_recent_5min`) opens a session: `POST /api/v1/platform/support-sessions` with the `grant_id`. The ABAC predicate `support_session_actor_distinct_from_grantor` **refuses if actor == grantor** (D16). Session `expires_at = LEAST(grant.expires_at, started_at + 8h)`.
+3. PHI **write** requires per-action elevation: `POST /api/v1/platform/support-sessions/:id/elevate` (`passkey_recent_2min`), M4-audited and M36-alerted to the grantor.
+4. The session ends by tenant revocation (cascades), `expires_at`, or manual close; M36 alert `support_session.expired`.
+
+**Escalation triggers — when to pull in the security owner / compliance officer:**
+
+- **Part 2-heightened session** (grant is `patient_scoped` and an in-scope patient carries an M39 Part 2 designation): the session is **read-only**, every access is `severity=critical` with the Part 2 marker, and elevation is **refused**. If the support task genuinely needs a write, escalate — it cannot be done under support session; the tenant must act.
+- **Unusual grant pattern** (the same compliance officer issuing many grants, or grants for patients outside an obvious support context): surfaces in M33 dashboards — review with compliance.
+- **Break-glass** (no-consent emergency access, D21): `severity=critical`, `actor_kind='break_glass'`; compliance officer reviews within 24 h (cross-ref §8.5 break-glass procedure).
+
+For the forensic reconstruction of who accessed which patient under which grant, use the queries in **DR_BCP §14A.3**.
+
+---
+
 ## Appendix A — Cheat Sheets
 
 ### A.1 "Something Is Wrong" Quick Triage
