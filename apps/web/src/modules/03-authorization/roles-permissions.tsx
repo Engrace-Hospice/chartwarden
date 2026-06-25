@@ -1,9 +1,11 @@
 import {
   AdminSplitLayout,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   PageHeader,
   RightDetailPanel,
+  StatusPill,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/03-authorization — Roles & Permissions (M3, Track A).
@@ -33,6 +35,8 @@ interface PermissionRow {
   action: string;
   category: string;
 }
+
+const label = (s: string): string => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
 export function RolesPermissions(): JSX.Element {
   const client = useApiClient();
@@ -100,17 +104,28 @@ function RoleList({
               textAlign: "left",
               padding: "0.5rem 0.625rem",
               border: "none",
-              borderRadius: "0.375rem",
+              borderRadius: "var(--radius-md)",
               cursor: "pointer",
-              background: r.roleId === selectedId ? "#eff6ff" : "transparent",
+              color: "var(--color-on-surface)",
+              background: r.roleId === selectedId ? "var(--color-primary-tint)" : "transparent",
             }}
           >
             <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{r.name}</div>
-            <div style={{ fontSize: "0.7rem", color: "#6b7280" }}>
-              {r.category}
-              {r.systemLocked ? " · locked" : ""}
-              {r.customized ? " · customized" : ""}
-              {!r.enabled ? " · disabled" : ""}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "0.3rem",
+                fontSize: "0.7rem",
+                color: "var(--color-on-surface-variant)",
+                marginTop: "0.2rem",
+              }}
+            >
+              <span>{label(r.category)}</span>
+              {r.systemLocked ? <StatusPill label="Locked" tone="neutral" glyph="lock" /> : null}
+              {r.customized ? <StatusPill label="Customized" tone="progress" /> : null}
+              {!r.enabled ? <StatusPill label="Disabled" tone="neutral" /> : null}
             </div>
           </button>
         </li>
@@ -142,9 +157,11 @@ function PermissionMatrix({
         <h2 style={{ marginTop: 0, fontSize: "1rem" }}>
           {role.name} — permissions ({role.permissionKeys.length})
         </h2>
-        <ul style={{ columns: 2, fontSize: "0.8rem", fontFamily: "monospace" }}>
+        <ul style={{ columns: 2, fontSize: "0.8rem", margin: 0, padding: 0, listStyle: "none" }}>
           {role.permissionKeys.map((k) => (
-            <li key={k}>{k}</li>
+            <li key={k} className="wx-data-md">
+              {k}
+            </li>
           ))}
         </ul>
       </div>
@@ -162,11 +179,12 @@ function PermissionMatrix({
             style={{
               fontSize: "0.8rem",
               textTransform: "uppercase",
-              color: "#6b7280",
+              letterSpacing: "0.03em",
+              color: "var(--color-on-surface-variant)",
               margin: "0 0 0.25rem",
             }}
           >
-            {category}
+            {label(category)}
           </h3>
           <ul
             style={{
@@ -175,17 +193,31 @@ function PermissionMatrix({
               padding: 0,
               display: "grid",
               gridTemplateColumns: "1fr 1fr",
-              gap: "0.15rem 1rem",
+              gap: "0.2rem 1rem",
             }}
           >
             {perms.map((p) => {
               const on = granted.has(p.key);
               return (
-                <li key={p.key} style={{ fontSize: "0.8rem", color: on ? "#111827" : "#9ca3af" }}>
-                  <span aria-hidden style={{ marginRight: "0.4rem" }}>
-                    {on ? "✓" : "○"}
+                <li
+                  key={p.key}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.4rem",
+                    fontSize: "0.8rem",
+                    color: on ? "var(--color-on-surface)" : "var(--color-muted)",
+                  }}
+                >
+                  {/* §10.10 — grant state shown with a glyph partner, not color alone. */}
+                  <span style={{ color: on ? "var(--color-success)" : "var(--color-muted)" }}>
+                    <Glyph
+                      name={on ? "check" : "dot"}
+                      size={14}
+                      label={on ? "granted" : "not granted"}
+                    />
                   </span>
-                  <span style={{ fontFamily: "monospace" }}>{p.key}</span>
+                  <span className="wx-data-md">{p.key}</span>
                 </li>
               );
             })}
@@ -197,23 +229,38 @@ function PermissionMatrix({
 }
 
 function RoleDetail({ role }: { role: RoleView }): JSX.Element {
-  const row = (label: string, value: string) => (
+  const row = (fieldLabel: string, value: JSX.Element | string) => (
     <div style={{ marginBottom: "0.5rem" }}>
-      <div style={{ fontSize: "0.7rem", color: "#6b7280" }}>{label}</div>
-      <div style={{ fontSize: "0.85rem", wordBreak: "break-word" }}>{value}</div>
+      <div style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>
+        {fieldLabel}
+      </div>
+      <div
+        style={{ fontSize: "0.85rem", wordBreak: "break-word", color: "var(--color-on-surface)" }}
+      >
+        {value}
+      </div>
     </div>
+  );
+  const yesNo = (on: boolean) => (
+    <StatusPill label={on ? "Yes" : "No"} tone={on ? "success" : "neutral"} />
   );
   return (
     <RightDetailPanel title={role.name}>
-      {row("Key", role.key)}
-      {row("Category", role.category)}
-      {row("Scope", role.scopeLevel)}
-      {row("Source", role.organizationId ? "tenant" : "platform template")}
-      {row("System default", role.systemDefault ? "yes" : "no")}
-      {row("System locked", role.systemLocked ? "yes" : "no")}
-      {row("Customized", role.customized ? "yes" : "no")}
-      {row("Enabled", role.enabled ? "yes" : "no")}
-      {row("Permissions", String(role.permissionKeys.length))}
+      {row("Key", <span className="wx-data-md">{role.key}</span>)}
+      {row("Category", label(role.category))}
+      {row("Scope", label(role.scopeLevel))}
+      {row("Source", role.organizationId ? "Tenant" : "Platform template")}
+      {row("System default", yesNo(role.systemDefault))}
+      {row("System locked", yesNo(role.systemLocked))}
+      {row("Customized", yesNo(role.customized))}
+      {row(
+        "Enabled",
+        <StatusPill
+          label={role.enabled ? "Yes" : "No"}
+          tone={role.enabled ? "success" : "error"}
+        />,
+      )}
+      {row("Permissions", <span className="tabular-nums">{role.permissionKeys.length}</span>)}
     </RightDetailPanel>
   );
 }
