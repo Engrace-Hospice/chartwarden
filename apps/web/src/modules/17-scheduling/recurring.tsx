@@ -1,3 +1,11 @@
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/17-scheduling — Recurring Policies (M17 §5.1 `/app/scheduling/recurring`, Track B / ADR-0030).
 // Spec: docs/design/screens — "Use Work Queue". The list of active recurring-visit policies for a patient (from
 // `?patient=`) with their RRULE + status. The create/discontinue write surfaces fill in as those write paths
@@ -6,7 +14,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";
-import { EmptyState, LoadingSpinner, PageHeader, useApiClient, WorkQueueLayout } from "@wardenx/ui";
+import { RECURRING_TONE, stateLabel } from "./scheduling-status";
 
 interface RecurringRow {
   id: string;
@@ -64,24 +72,32 @@ export function SchedulingRecurring(): JSX.Element {
         ) : loading && rows.length === 0 ? (
           <LoadingSpinner />
         ) : active.length === 0 ? (
-          <EmptyState title="No active policies" description="This patient has no active recurring-visit policies." />
+          <EmptyState
+            title="No active policies"
+            description="This patient has no active recurring-visit policies."
+          />
         ) : (
-          <table style={table}>
+          <table>
             <thead>
-              <tr style={tr}>
-                <th style={th}>Purpose</th>
-                <th style={th}>Clinician</th>
-                <th style={th}>RRULE</th>
-                <th style={th}>Status</th>
+              <tr>
+                <th>Purpose</th>
+                <th>Clinician</th>
+                <th>RRULE</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {active.map((r) => (
-                <tr key={r.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                  <td style={td}>{r.visitPurpose}</td>
-                  <td style={mono}>{r.assignedMembershipId.slice(0, 8)}</td>
-                  <td style={mono}>{r.rrule}</td>
-                  <td style={{ ...td, color: r.status === "active" ? "#15803d" : "#6b7280" }}>{r.status}</td>
+                <tr key={r.id}>
+                  <td>{stateLabel(r.visitPurpose)}</td>
+                  <td className="wx-data-md">{r.assignedMembershipId.slice(0, 8)}</td>
+                  <td className="wx-data-md">{r.rrule}</td>
+                  <td>
+                    <StatusPill
+                      label={stateLabel(r.status)}
+                      tone={RECURRING_TONE[r.status] ?? "neutral"}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -91,9 +107,3 @@ export function SchedulingRecurring(): JSX.Element {
     />
   );
 }
-
-const table = { width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" } as const;
-const tr = { textAlign: "left", color: "#6b7280" } as const;
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;
-const mono = { ...td, fontFamily: "monospace", fontSize: "0.8rem" } as const;

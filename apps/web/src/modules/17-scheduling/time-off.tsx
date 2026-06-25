@@ -1,3 +1,11 @@
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/17-scheduling — Time-Off Queue (M17 §5.1 `/app/scheduling/time-off`, Track B / ADR-0030).
 // Spec: docs/design/screens — "Use Work Queue". The supervisor's PTO approval queue: requested time-off with kind +
 // window + state. The one-click approve/deny + per-request conflict count write surfaces fill in as those write
@@ -6,7 +14,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";
-import { EmptyState, LoadingSpinner, PageHeader, useApiClient, WorkQueueLayout } from "@wardenx/ui";
+import { TIMEOFF_TONE, stateLabel } from "./scheduling-status";
 
 interface TimeOffRow {
   id: string;
@@ -17,13 +25,6 @@ interface TimeOffRow {
   state: string;
 }
 
-const stateColor: Record<string, string | undefined> = {
-  requested: "#1d4ed8",
-  approved: "#15803d",
-  denied: "#b91c1c",
-  cancelled: "#6b7280",
-  consumed: "#6b7280",
-};
 const ts = (v: string): string => v.slice(0, 16).replace("T", " ");
 
 export function SchedulingTimeOff(): JSX.Element {
@@ -63,26 +64,34 @@ export function SchedulingTimeOff(): JSX.Element {
         ) : loading && rows.length === 0 ? (
           <LoadingSpinner />
         ) : rows.length === 0 ? (
-          <EmptyState title="No time-off requests" description="There are no time-off requests in this view." />
+          <EmptyState
+            title="No time-off requests"
+            description="There are no time-off requests in this view."
+          />
         ) : (
-          <table style={table}>
+          <table>
             <thead>
-              <tr style={tr}>
-                <th style={th}>Clinician</th>
-                <th style={th}>Kind</th>
-                <th style={th}>Starts</th>
-                <th style={th}>Ends</th>
-                <th style={th}>State</th>
+              <tr>
+                <th>Clinician</th>
+                <th>Kind</th>
+                <th>Starts</th>
+                <th>Ends</th>
+                <th>State</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                  <td style={mono}>{r.membershipId.slice(0, 8)}</td>
-                  <td style={td}>{r.kind}</td>
-                  <td style={td}>{ts(r.startsAt)}</td>
-                  <td style={td}>{ts(r.endsAt)}</td>
-                  <td style={{ ...td, color: stateColor[r.state] }}>{r.state}</td>
+                <tr key={r.id}>
+                  <td className="wx-data-md">{r.membershipId.slice(0, 8)}</td>
+                  <td>{stateLabel(r.kind)}</td>
+                  <td className="tabular-nums">{ts(r.startsAt)}</td>
+                  <td className="tabular-nums">{ts(r.endsAt)}</td>
+                  <td>
+                    <StatusPill
+                      label={stateLabel(r.state)}
+                      tone={TIMEOFF_TONE[r.state] ?? "neutral"}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -92,9 +101,3 @@ export function SchedulingTimeOff(): JSX.Element {
     />
   );
 }
-
-const table = { width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" } as const;
-const tr = { textAlign: "left", color: "#6b7280" } as const;
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;
-const mono = { ...td, fontFamily: "monospace", fontSize: "0.8rem" } as const;

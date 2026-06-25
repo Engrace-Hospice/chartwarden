@@ -1,3 +1,11 @@
+import {
+  DetailPageLayout,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/17-scheduling — Visit Detail (M17 §5.1 `/app/scheduling/visit/:visitId`, Track B / ADR-0030).
 // Spec: docs/design/screens — "Use Detail Page". A single visit's detail: status, scheduled window, purpose/setting,
 // assignment, and the reschedule chain back-ref. The reschedule/cancel/reassign + state-history write surfaces
@@ -7,8 +15,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { useParams } from "react-router-dom";
-import { DetailPageLayout, EmptyState, LoadingSpinner, PageHeader, useApiClient } from "@wardenx/ui";
-import { VISIT_STATUS_COLOR } from "./visit-table";
+import { VISIT_TONE, stateLabel } from "./scheduling-status";
 
 interface VisitDetailView {
   id: string;
@@ -56,25 +63,46 @@ export function VisitDetail(): JSX.Element {
   }, [load]);
 
   return (
-    <DetailPageLayout
-      header={<PageHeader title="Visit Detail" />}
-    >
+    <DetailPageLayout header={<PageHeader title="Visit Detail" />}>
       {error ? (
         <EmptyState title="Unavailable" description={error} />
       ) : loading || !visit ? (
         <LoadingSpinner />
       ) : (
         <dl style={dl}>
-          <Row label="Status" value={<span style={{ color: VISIT_STATUS_COLOR[visit.status] }}>{visit.status}</span>} />
-          <Row label="Service date" value={visit.serviceDate} />
-          <Row label="Scheduled start" value={ts(visit.scheduledStartedAt)} />
-          <Row label="Scheduled end" value={ts(visit.scheduledEndedAt)} />
-          <Row label="Purpose" value={visit.visitPurpose} />
-          <Row label="Setting" value={visit.visitSetting} />
-          <Row label="Clinician" value={visit.assignedMembershipId} />
-          <Row label="Patient" value={visit.patientId} />
+          <Row
+            label="Status"
+            value={
+              <StatusPill
+                label={stateLabel(visit.status)}
+                tone={VISIT_TONE[visit.status] ?? "neutral"}
+              />
+            }
+          />
+          <Row
+            label="Service date"
+            value={<span className="tabular-nums">{visit.serviceDate}</span>}
+          />
+          <Row
+            label="Scheduled start"
+            value={<span className="tabular-nums">{ts(visit.scheduledStartedAt)}</span>}
+          />
+          <Row
+            label="Scheduled end"
+            value={<span className="tabular-nums">{ts(visit.scheduledEndedAt)}</span>}
+          />
+          <Row label="Purpose" value={stateLabel(visit.visitPurpose)} />
+          <Row label="Setting" value={stateLabel(visit.visitSetting)} />
+          <Row
+            label="Clinician"
+            value={<span className="wx-data-md">{visit.assignedMembershipId}</span>}
+          />
+          <Row label="Patient" value={<span className="wx-data-md">{visit.patientId}</span>} />
           {visit.rescheduledIntoVisitId ? (
-            <Row label="Rescheduled into" value={visit.rescheduledIntoVisitId} />
+            <Row
+              label="Rescheduled into"
+              value={<span className="wx-data-md">{visit.rescheduledIntoVisitId}</span>}
+            />
           ) : null}
         </dl>
       )}
@@ -84,9 +112,18 @@ export function VisitDetail(): JSX.Element {
 
 function Row({ label, value }: { label: string; value: ReactNode }): JSX.Element {
   return (
-    <div style={{ display: "flex", gap: "1rem", padding: "0.4rem 0", borderBottom: "1px solid #f3f4f6" }}>
-      <dt style={{ width: "10rem", color: "#6b7280", fontSize: "0.8rem" }}>{label}</dt>
-      <dd style={{ margin: 0, fontSize: "0.85rem", fontFamily: "monospace" }}>{value}</dd>
+    <div
+      style={{
+        display: "flex",
+        gap: "1rem",
+        padding: "0.4rem 0",
+        borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
+      }}
+    >
+      <dt style={{ width: "10rem", color: "var(--color-on-surface-variant)", fontSize: "0.8rem" }}>
+        {label}
+      </dt>
+      <dd style={{ margin: 0, fontSize: "0.85rem", color: "var(--color-on-surface)" }}>{value}</dd>
     </div>
   );
 }
