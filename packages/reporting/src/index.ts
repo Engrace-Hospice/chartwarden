@@ -19,6 +19,23 @@ export * from "./schemas";
 export * from "./translator";
 // The eight Drizzle data ports over the twelve M33-owned tables (§3.3–§3.4).
 export * from "./repositories";
+// The §4.5 platform-shipped data catalogs (the outbox-subscription map the incremental tier reads).
+export * from "./catalog";
+// The three-tier MV-refresh subsystem (§2.4–§2.6 / §4.8): PURE port-injected workers for the
+// `report.mv_refresh` + `report.lag_probe` queues (the live BullMQ wiring binds at app boot in P2C).
+export * from "./refresh";
+// The read-replica session discipline (§8.1.2 / D3 / D14): `withReportSession` over an injected M1
+// `read_replica_session` port (tiered statement_timeout + the D14 lag breaker → cache fallback).
+export * from "./session";
+// The scheduled-delivery subsystem (§2.2 / §2.5–§2.6 / §4.3 / §4.8 W-R-04 / D7): PURE port-injected handlers
+// for the `report.scheduled_run` worker + the M22 render-reply delivery consumer (boot-wired in P2C).
+export * from "./scheduled";
+// The export subsystem (§4.8 / W-R-08 / D10): PURE port-injected handlers for the `report.export_render` /
+// `report.export.csv` paths — the direct chunked CSV streamer (no M22 hop) + the PDF/XLSX M22 render-requests.
+export * from "./export";
+// The drilldown emitter (§5.1.3 / W-R-05 / §4.10 / D16): PURE port-injected handlers for `POST /drilldown/emit`
+// — URL-template resolution + M39 consent narrowing (fail-closed) + the envelope-encrypted audit write.
+export * from "./drilldown";
 // The nine typed M36 alert payloads M33 emits (§4.9). File named `alert-defs` (mirroring the M34
 // `alert-rules.ts` precedent) so the table-ownership check's crude token heuristic does not misread this
 // barrel re-export as a reference to M36's Drizzle table — M33 imports no M36 schema, only TypeBox.
