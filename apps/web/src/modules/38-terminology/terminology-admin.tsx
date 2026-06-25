@@ -4,6 +4,8 @@ import {
   LoadingSpinner,
   PageHeader,
   RightDetailPanel,
+  StatusPill,
+  type StatusTone,
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
@@ -39,11 +41,13 @@ interface Concept {
   endDate: string | null;
 }
 
-const statusColor: Record<Concept["status"], string> = {
-  active: "#15803d",
-  deprecated: "#b45309",
-  retired: "#6b7280",
+// §6.6 concept-status taxonomy → tone (the server owns the as-of-resolved status).
+const STATUS_TONE: Record<string, StatusTone> = {
+  active: "success",
+  deprecated: "warning",
+  retired: "neutral",
 };
+const cap = (s: string): string => s.replace(/\b\w/g, (c) => c.toUpperCase());
 
 export function TerminologyAdmin(): JSX.Element {
   const client = useApiClient();
@@ -148,13 +152,13 @@ function ConceptTable({
     return <EmptyState title="No concepts" description="No concepts match this search." />;
   return (
     <div style={{ padding: "0 1.5rem 1.5rem" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+      <table>
         <thead>
-          <tr style={{ textAlign: "left", color: "#6b7280" }}>
-            <th style={th}>Code</th>
-            <th style={th}>Display</th>
-            <th style={th}>Status</th>
-            <th style={th}>Effective</th>
+          <tr>
+            <th>Code</th>
+            <th>Display</th>
+            <th>Status</th>
+            <th>Effective</th>
           </tr>
         </thead>
         <tbody>
@@ -164,6 +168,7 @@ function ConceptTable({
               // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
               role="button"
               tabIndex={0}
+              aria-pressed={c.code === selectedCode}
               onClick={() => onSelect(c)}
               onKeyDown={(ev) => {
                 if (ev.key === "Enter" || ev.key === " ") {
@@ -173,14 +178,15 @@ function ConceptTable({
               }}
               style={{
                 cursor: "pointer",
-                background: c.code === selectedCode ? "#eff6ff" : undefined,
-                borderTop: "1px solid #f3f4f6",
+                background: c.code === selectedCode ? "var(--color-primary-tint)" : undefined,
               }}
             >
-              <td style={{ ...td, fontFamily: "monospace" }}>{c.code}</td>
-              <td style={td}>{c.display}</td>
-              <td style={{ ...td, color: statusColor[c.status] }}>{c.status}</td>
-              <td style={td}>{c.effectiveDate}</td>
+              <td className="wx-data-md">{c.code}</td>
+              <td>{c.display}</td>
+              <td>
+                <StatusPill label={cap(c.status)} tone={STATUS_TONE[c.status] ?? "neutral"} />
+              </td>
+              <td className="tabular-nums">{c.effectiveDate}</td>
             </tr>
           ))}
         </tbody>
@@ -193,22 +199,28 @@ function ConceptDetail({
   concept,
   onClose,
 }: { concept: Concept; onClose: () => void }): JSX.Element {
-  const row = (label: string, value: string) => (
+  const row = (fieldLabel: string, value: JSX.Element | string) => (
     <div style={{ marginBottom: "0.5rem" }}>
-      <div style={{ fontSize: "0.7rem", color: "#6b7280" }}>{label}</div>
-      <div style={{ fontSize: "0.85rem", wordBreak: "break-word" }}>{value}</div>
+      <div style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>
+        {fieldLabel}
+      </div>
+      <div
+        style={{ fontSize: "0.85rem", wordBreak: "break-word", color: "var(--color-on-surface)" }}
+      >
+        {value}
+      </div>
     </div>
   );
   return (
-    <RightDetailPanel title={concept.code} onClose={onClose}>
+    <RightDetailPanel title={<span className="wx-data-md">{concept.code}</span>} onClose={onClose}>
       {row("System", concept.systemId)}
       {row("Display", concept.display)}
-      {row("Status", concept.status)}
-      {row("Effective", concept.effectiveDate)}
-      {row("End", concept.endDate ?? "—")}
+      {row(
+        "Status",
+        <StatusPill label={cap(concept.status)} tone={STATUS_TONE[concept.status] ?? "neutral"} />,
+      )}
+      {row("Effective", <span className="tabular-nums">{concept.effectiveDate}</span>)}
+      {row("End", concept.endDate ? <span className="tabular-nums">{concept.endDate}</span> : "—")}
     </RightDetailPanel>
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;
