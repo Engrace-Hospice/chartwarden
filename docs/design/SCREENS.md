@@ -225,9 +225,15 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 ## Depth track (D1–D6) — the sub-view / variant surface
 
 The 97 screens above are each built as **one frame**. A [coverage diagnosis](#coverage-diagnosis)
-found the specs declare ~6.35 frames each (~600 total), so ~500 sub-views/variants are unbuilt.
+found the specs declare ~6.35 frames each (~600 total), so ~500 sub-views/variants were unbuilt.
 The **Depth track** ([`pencil-prompts/D1-D6-depth.md`](./pencil-prompts/D1-D6-depth.md)) builds
 that surface — reusable treatments (ceremonies, masking, states) built once and instanced.
+
+> **Depth track COMPLETE (D1–D6): 137 frames** across 6 `.pen` files. Three reusable foundation
+> libraries (D1 ceremonies · D2 sensitivity · D3 states) + the per-screen depth (D4 steppers ·
+> D5 variants · D6 sub-views). Combined with the 97 top-level screens, the corpus now stands at
+> **~234 frames** — the frame-depth surface the diagnosis identified. The D5 discipline plans also
+> closed the M15 breadth gap. Remaining: the ~45–65 missing *whole* screens (a future breadth track).
 
 | Phase | File | Theme | Status |
 | :-- | :-- | :-- | :-- |
@@ -236,7 +242,7 @@ that surface — reusable treatments (ceremonies, masking, states) built once an
 | D3 | `wardenx-D3-states.pen` | Universal empty / loading / error / no-perm / degraded | `◐ node:CUzYC` — 12 frames (state panels ×6: loading·empty·zero-filter·error·no-perm·degraded · skeletons ×3: work-queue·dashboard·patient-workspace · in-context ×3: empty·no-perm·degraded-ribbon) |
 | D4 | `wardenx-D4-steppers.pen` | Multi-step workflows — all steps | `◐ node:ZgXYC` — 33 frames (Admissions ×8 · Recert ×7 · Election ×4 · Death ×4 · Discharge ×4 · Onboarding ×6) |
 | D5 | `wardenx-D5-variants.pen` | Role dashboards · discipline care plans · assessments | `◐ node:T2caK` — 32 frames: discipline plans ×5 (Aide/MSW/Spiritual/Spiritual-declined/Volunteer **[closes M15]**) · role dashboards ×4 (Bereavement/QA/Compliance/Intake) · chart lifecycle ×5 (active/admitted/discharged/deceased/merged) · MAR states grid · assessment scales ×8 (PPS/PAINAD/ESAS-r/Karnofsky/FAST/RASS/Spiritual-FICA/RDOS) · care-plan master IPOC + states ×5 (IPOC/review-overdue/IDG-revision/aide-supervisory-due/amendment) · entry & MAR sub-flows ×4 (PPS-entry/PAINAD-entry/PRN-reassessment/comfort-kit-drawdown) |
-| D6 | `wardenx-D6-subviews.pen` | Heavyweight screens' secondary tabs / panels | `⬚` |
+| D6 | `wardenx-D6-subviews.pen` | Heavyweight screens' secondary tabs / panels | `◐ node:E0REv` — 29 sub-views: Patient Chart ×6 (summary/allergies/problems/meds/documents/financial) · Claims & Billing ×4 (AR/workbench/editor/Medicaid-R&B) · Note Lifecycle ×5 (unsigned/versions/compare/amendment/audit) · IDG Meeting ×4 (agenda/live/packet/decisions) · HQRP ×4 (measures/CAHPS/QAPI-kanban/survey-ready) · Scheduling & EVV ×3 (route/EVV-exceptions/caseload) · eMAR ×3 (med-list/prescribe/reconcile) |
 
 ### Coverage diagnosis
 
