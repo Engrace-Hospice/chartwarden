@@ -1,3 +1,14 @@
+import {
+  EmptyState,
+  FilterBar,
+  KpiCard,
+  KpiStrip,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/11-orders — physician signature inbox (M11 §4.1/§5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_ORDERS.md — "Use Patient Workspace + Work Queue" (signature
 // inbox half). The global queue of orders awaiting a physician signature, KPI'd by kind, sorted by created.
@@ -7,16 +18,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  EmptyState,
-  FilterBar,
-  KpiCard,
-  KpiStrip,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-  WorkQueueLayout,
-} from "@wardenx/ui";
+import { COSIGN_TONE, PRIORITY_TONE, stateLabel } from "./orders-status";
 
 interface OrderRow {
   id: string;
@@ -27,12 +29,6 @@ interface OrderRow {
   cosignStatus: "pending" | "attached" | null;
   createdAt: string;
 }
-
-const priorityColor: Record<string, string | undefined> = {
-  stat: "#b91c1c",
-  asap: "#b45309",
-  routine: undefined,
-};
 
 export function OrdersSignInbox(): JSX.Element {
   const client = useApiClient();
@@ -112,28 +108,54 @@ export function OrdersSignInbox(): JSX.Element {
         ) : loading && items.length === 0 ? (
           <LoadingSpinner />
         ) : rows.length === 0 ? (
-          <EmptyState title="No orders awaiting signature" description="The signature inbox is clear." />
+          <EmptyState
+            title="No orders awaiting signature"
+            description="The signature inbox is clear."
+          />
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+          <table>
             <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                <th style={th}>Order · kind</th>
-                <th style={th}>Priority</th>
-                <th style={th}>Cosign</th>
-                <th style={th}>Created</th>
+              <tr>
+                <th>Order · kind</th>
+                <th>Priority</th>
+                <th>Cosign</th>
+                <th>Created</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((o) => (
                 <tr
                   key={o.id}
+                  // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                  role="button"
+                  tabIndex={0}
                   onClick={() => navigate(`/orders/${o.id}`)}
-                  style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Enter" || ev.key === " ") {
+                      ev.preventDefault();
+                      navigate(`/orders/${o.id}`);
+                    }
+                  }}
+                  style={{ cursor: "pointer" }}
                 >
-                  <td style={td}>{o.kind}</td>
-                  <td style={{ ...td, color: priorityColor[o.priority] }}>{o.priority}</td>
-                  <td style={td}>{o.cosignStatus ?? "—"}</td>
-                  <td style={td}>{o.createdAt.slice(0, 16).replace("T", " ")}</td>
+                  <td>{stateLabel(o.kind)}</td>
+                  <td>
+                    <StatusPill
+                      label={stateLabel(o.priority)}
+                      tone={PRIORITY_TONE[o.priority] ?? "neutral"}
+                    />
+                  </td>
+                  <td>
+                    {o.cosignStatus ? (
+                      <StatusPill
+                        label={stateLabel(o.cosignStatus)}
+                        tone={COSIGN_TONE[o.cosignStatus] ?? "neutral"}
+                      />
+                    ) : (
+                      <span style={{ color: "var(--color-muted)" }}>—</span>
+                    )}
+                  </td>
+                  <td className="tabular-nums">{o.createdAt.slice(0, 16).replace("T", " ")}</td>
                 </tr>
               ))}
             </tbody>
@@ -143,6 +165,3 @@ export function OrdersSignInbox(): JSX.Element {
     />
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;

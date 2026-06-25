@@ -1,3 +1,11 @@
+import {
+  DetailPageLayout,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/11-orders — order detail (M11 §4.1/§5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_ORDERS.md — "Use Detail" (Order Detail region). Shows the
 // per-order facts the §5 detail pane renders: kind/priority/status, ordering physician + drafter, signature
@@ -9,12 +17,13 @@ import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
 import {
-  DetailPageLayout,
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-} from "@wardenx/ui";
+  COSIGN_TONE,
+  ORDER_TONE,
+  PRIORITY_TONE,
+  RESULTS_TONE,
+  TRANSMISSION_TONE,
+  stateLabel,
+} from "./orders-status";
 
 interface OrderDetailView {
   id: string;
@@ -75,8 +84,18 @@ export function OrderDetail(): JSX.Element {
   return (
     <DetailPageLayout
       header={
-        <PageHeader title="Order">
-          {row ? <span style={meta}>{row.kind} · {row.status}</span> : null}
+        <PageHeader
+          title="Order"
+          actions={
+            row ? (
+              <StatusPill
+                label={stateLabel(row.status)}
+                tone={ORDER_TONE[row.status] ?? "neutral"}
+              />
+            ) : undefined
+          }
+        >
+          {row ? <span style={meta}>{stateLabel(row.kind)}</span> : null}
         </PageHeader>
       }
     >
@@ -85,38 +104,79 @@ export function OrderDetail(): JSX.Element {
       ) : loading || !row ? (
         <LoadingSpinner />
       ) : (
-        <dl style={{ display: "grid", gridTemplateColumns: "12rem 1fr", gap: "0.4rem 1rem", fontSize: "0.85rem" }}>
+        <dl
+          style={{
+            display: "grid",
+            gridTemplateColumns: "12rem 1fr",
+            gap: "0.4rem 1rem",
+            fontSize: "0.85rem",
+          }}
+        >
           <dt style={dt}>Kind</dt>
-          <dd style={dd}>{row.kind}</dd>
+          <dd style={dd}>{stateLabel(row.kind)}</dd>
           <dt style={dt}>Priority</dt>
-          <dd style={dd}>{row.priority}</dd>
+          <dd style={dd}>
+            <StatusPill
+              label={stateLabel(row.priority)}
+              tone={PRIORITY_TONE[row.priority] ?? "neutral"}
+            />
+          </dd>
           <dt style={dt}>Status</dt>
-          <dd style={dd}>{row.status}</dd>
+          <dd style={dd}>
+            <StatusPill label={stateLabel(row.status)} tone={ORDER_TONE[row.status] ?? "neutral"} />
+          </dd>
           <dt style={dt}>Drafter discipline</dt>
-          <dd style={dd}>{row.drafterDiscipline}</dd>
+          <dd style={dd}>{stateLabel(row.drafterDiscipline)}</dd>
           <dt style={dt}>Ordering physician</dt>
-          <dd style={dd}>{row.orderingPhysicianMdmId}</dd>
+          <dd style={dd} className="wx-data-md">
+            {row.orderingPhysicianMdmId}
+          </dd>
           <dt style={dt}>Signed</dt>
-          <dd style={dd}>{row.signedAt ? `${ts(row.signedAt)} · ${row.signedBy ?? ""}` : "—"}</dd>
+          <dd style={dd} className="tabular-nums">
+            {row.signedAt ? `${ts(row.signedAt)} · ${row.signedBy ?? ""}` : "—"}
+          </dd>
           <dt style={dt}>Cosignature</dt>
           <dd style={dd}>
-            {row.cosignRequired ? (row.cosignStatus ?? "pending") : "not required"}
+            {row.cosignRequired ? (
+              <StatusPill
+                label={stateLabel(row.cosignStatus ?? "pending")}
+                tone={COSIGN_TONE[row.cosignStatus ?? "pending"] ?? "neutral"}
+              />
+            ) : (
+              <span style={{ color: "var(--color-muted)" }}>Not required</span>
+            )}
           </dd>
           <dt style={dt}>Verbal deadline</dt>
-          <dd style={dd}>{ts(row.verbalDeadlineAt)}</dd>
+          <dd style={dd} className="tabular-nums">
+            {ts(row.verbalDeadlineAt)}
+          </dd>
           <dt style={dt}>Corrects order</dt>
-          <dd style={dd}>{row.replacesOrderId ?? "—"}</dd>
+          <dd style={dd} className="wx-data-md">
+            {row.replacesOrderId ?? "—"}
+          </dd>
           <dt style={dt}>Discontinuation</dt>
-          <dd style={dd}>{row.discontinuationReason ?? "—"}</dd>
+          <dd style={dd}>
+            {row.discontinuationReason ? stateLabel(row.discontinuationReason) : "—"}
+          </dd>
           <dt style={dt}>Completed</dt>
-          <dd style={dd}>{ts(row.completedAt)}</dd>
+          <dd style={dd} className="tabular-nums">
+            {ts(row.completedAt)}
+          </dd>
           {isLab ? (
             <>
               <dt style={dt}>Transmission</dt>
-              <dd style={dd}>{row.transmissionStatus}</dd>
+              <dd style={dd}>
+                <StatusPill
+                  label={stateLabel(row.transmissionStatus)}
+                  tone={TRANSMISSION_TONE[row.transmissionStatus] ?? "neutral"}
+                />
+              </dd>
               <dt style={dt}>Results</dt>
-              <dd style={{ ...dd, color: row.resultsStatus === "results_overdue" ? "#b91c1c" : undefined }}>
-                {row.resultsStatus}
+              <dd style={dd}>
+                <StatusPill
+                  label={stateLabel(row.resultsStatus)}
+                  tone={RESULTS_TONE[row.resultsStatus] ?? "neutral"}
+                />
               </dd>
             </>
           ) : null}
@@ -126,6 +186,10 @@ export function OrderDetail(): JSX.Element {
   );
 }
 
-const meta = { fontSize: "0.75rem", color: "#6b7280", margin: "0.25rem 0" } as const;
-const dt = { fontWeight: 600, color: "#374151" } as const;
+const meta = {
+  fontSize: "0.75rem",
+  color: "var(--color-on-surface-variant)",
+  margin: "0.25rem 0",
+} as const;
+const dt = { fontWeight: 600, color: "var(--color-on-surface)" } as const;
 const dd = { margin: 0 } as const;

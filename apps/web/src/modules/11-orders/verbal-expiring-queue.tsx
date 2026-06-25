@@ -1,3 +1,11 @@
+import {
+  CountdownChip,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/11-orders — verbal-expiring queue (M11 §4.1/§5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_ORDERS.md — "Use Work Queue" (verbal-order workflow). The RN's
 // queue of verbal_pending orders inside the 48h signature window (42 CFR 418.104(b)), sorted by deadline.
@@ -7,13 +15,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-  WorkQueueLayout,
-} from "@wardenx/ui";
+import { stateLabel } from "./orders-status";
 
 interface OrderRow {
   id: string;
@@ -21,22 +23,6 @@ interface OrderRow {
   kind: string;
   status: string;
   verbalDeadlineAt: string | null;
-}
-
-const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
-const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
-
-// Pure countdown formatter — "expired" / "2h 14m" / "1d 3h"; a UX cue, the server owns the deadline.
-function countdown(deadline: string | null, nowMs: number): { label: string; color?: string } {
-  if (!deadline) return { label: "—" };
-  const ms = Date.parse(deadline) - nowMs;
-  if (ms <= 0) return { label: "expired", color: "#b91c1c" };
-  const hours = Math.floor(ms / (60 * 60 * 1000));
-  const mins = Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000));
-  const label = hours >= 24 ? `${Math.floor(hours / 24)}d ${hours % 24}h` : `${hours}h ${mins}m`;
-  if (ms <= TWO_HOURS_MS) return { label, color: "#b91c1c" };
-  if (ms <= TWELVE_HOURS_MS) return { label, color: "#b45309" };
-  return { label };
 }
 
 export function VerbalExpiringQueue(): JSX.Element {
@@ -63,7 +49,6 @@ export function VerbalExpiringQueue(): JSX.Element {
     void load();
   }, [load]);
 
-  const nowMs = Date.now();
   const rows = useMemo(
     () =>
       [...items].sort(
@@ -81,33 +66,54 @@ export function VerbalExpiringQueue(): JSX.Element {
         ) : loading && items.length === 0 ? (
           <LoadingSpinner />
         ) : rows.length === 0 ? (
-          <EmptyState title="No verbal orders pending" description="No verbal orders are awaiting signature." />
+          <EmptyState
+            title="No verbal orders pending"
+            description="No verbal orders are awaiting signature."
+          />
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+          <table>
             <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                <th style={th}>Order · kind</th>
-                <th style={th}>Deadline</th>
-                <th style={th}>Time left</th>
+              <tr>
+                <th>Order · kind</th>
+                <th>Deadline</th>
+                <th>Time left</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((o) => {
-                const c = countdown(o.verbalDeadlineAt, nowMs);
-                return (
-                  <tr
-                    key={o.id}
-                    onClick={() => navigate(`/orders/${o.id}`)}
-                    style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}
-                  >
-                    <td style={td}>{o.kind}</td>
-                    <td style={td}>
-                      {o.verbalDeadlineAt ? o.verbalDeadlineAt.slice(0, 16).replace("T", " ") : "—"}
-                    </td>
-                    <td style={{ ...td, color: c.color, fontWeight: c.color ? 600 : undefined }}>{c.label}</td>
-                  </tr>
-                );
-              })}
+              {rows.map((o) => (
+                <tr
+                  key={o.id}
+                  // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate(`/orders/${o.id}`)}
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Enter" || ev.key === " ") {
+                      ev.preventDefault();
+                      navigate(`/orders/${o.id}`);
+                    }
+                  }}
+                  style={{ cursor: "pointer" }}
+                >
+                  <td>{stateLabel(o.kind)}</td>
+                  <td className="tabular-nums">
+                    {o.verbalDeadlineAt ? o.verbalDeadlineAt.slice(0, 16).replace("T", " ") : "—"}
+                  </td>
+                  <td>
+                    {/* §2.3 verbal-order 48h window (42 CFR 418.104) — amber ≤12h, alert ≤2h, overdue past. */}
+                    {o.verbalDeadlineAt ? (
+                      <CountdownChip
+                        dueAt={o.verbalDeadlineAt}
+                        warnWithinHours={12}
+                        alertWithinHours={2}
+                        label="Sign"
+                      />
+                    ) : (
+                      <span style={{ color: "var(--color-muted)" }}>—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         )
@@ -115,6 +121,3 @@ export function VerbalExpiringQueue(): JSX.Element {
     />
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;

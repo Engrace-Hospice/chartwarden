@@ -1,3 +1,13 @@
+import {
+  CountdownChip,
+  EmptyState,
+  FilterBar,
+  LoadingSpinner,
+  PageHeader,
+  PatientWorkspaceLayout,
+  StatusPill,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/11-orders — patient orders list (M11 §4.1/§5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_ORDERS.md — "Use Patient Workspace + Work Queue" (patient half).
 // Reached from the patient chart "Orders" tab; lists every order for the patient with its §2.2 D2 lifecycle
@@ -7,14 +17,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  EmptyState,
-  FilterBar,
-  LoadingSpinner,
-  PageHeader,
-  PatientWorkspaceLayout,
-  useApiClient,
-} from "@wardenx/ui";
+import { ORDER_TONE, PRIORITY_TONE, stateLabel } from "./orders-status";
 
 interface OrderRow {
   id: string;
@@ -25,15 +28,6 @@ interface OrderRow {
   verbalDeadlineAt: string | null;
   createdAt: string;
 }
-
-const statusColor: Record<string, string | undefined> = {
-  active: "#15803d",
-  verbal_pending: "#b45309",
-  pending_signature: "#b45309",
-  expired_unsigned: "#b91c1c",
-  discontinued: "#6b7280",
-  completed: "#6b7280",
-};
 
 export function PatientOrders(): JSX.Element {
   const client = useApiClient();
@@ -64,7 +58,6 @@ export function PatientOrders(): JSX.Element {
     void load();
   }, [load]);
 
-  const nowMs = Date.now();
   const rows = useMemo(() => {
     const visible = status ? items.filter((o) => o.status === status) : items;
     return [...visible].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
@@ -81,15 +74,19 @@ export function PatientOrders(): JSX.Element {
             </button>
           }
         >
-          <select aria-label="Order status" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <select
+            aria-label="Order status"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+          >
             <option value="">Any status</option>
-            <option value="draft">draft</option>
-            <option value="pending_signature">pending_signature</option>
-            <option value="verbal_pending">verbal_pending</option>
-            <option value="active">active</option>
-            <option value="completed">completed</option>
-            <option value="discontinued">discontinued</option>
-            <option value="expired_unsigned">expired_unsigned</option>
+            <option value="draft">Draft</option>
+            <option value="pending_signature">Pending Signature</option>
+            <option value="verbal_pending">Verbal Pending</option>
+            <option value="active">Active</option>
+            <option value="completed">Completed</option>
+            <option value="discontinued">Discontinued</option>
+            <option value="expired_unsigned">Expired Unsigned</option>
           </select>
         </FilterBar>
       }
@@ -101,42 +98,62 @@ export function PatientOrders(): JSX.Element {
       ) : rows.length === 0 ? (
         <EmptyState title="No orders" description="No active orders for this patient." />
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+        <table>
           <thead>
-            <tr style={{ textAlign: "left", color: "#6b7280" }}>
-              <th style={th}>Order · kind</th>
-              <th style={th}>Priority</th>
-              <th style={th}>Status</th>
-              <th style={th}>Verbal deadline</th>
+            <tr>
+              <th>Order · kind</th>
+              <th>Priority</th>
+              <th>Status</th>
+              <th>Verbal deadline</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((o) => {
-              const overdue =
-                o.status === "verbal_pending" &&
-                o.verbalDeadlineAt != null &&
-                nowMs > Date.parse(o.verbalDeadlineAt);
-              return (
-                <tr
-                  key={o.id}
-                  onClick={() => navigate(`/orders/${o.id}`)}
-                  style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}
-                >
-                  <td style={td}>{o.kind}</td>
-                  <td style={td}>{o.priority}</td>
-                  <td style={{ ...td, color: statusColor[o.status] }}>{o.status}</td>
-                  <td style={{ ...td, color: overdue ? "#b91c1c" : undefined }}>
-                    {o.verbalDeadlineAt ? o.verbalDeadlineAt.slice(0, 16).replace("T", " ") : "—"}
-                  </td>
-                </tr>
-              );
-            })}
+            {rows.map((o) => (
+              <tr
+                key={o.id}
+                // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                role="button"
+                tabIndex={0}
+                onClick={() => navigate(`/orders/${o.id}`)}
+                onKeyDown={(ev) => {
+                  if (ev.key === "Enter" || ev.key === " ") {
+                    ev.preventDefault();
+                    navigate(`/orders/${o.id}`);
+                  }
+                }}
+                style={{ cursor: "pointer" }}
+              >
+                <td>{stateLabel(o.kind)}</td>
+                <td>
+                  <StatusPill
+                    label={stateLabel(o.priority)}
+                    tone={PRIORITY_TONE[o.priority] ?? "neutral"}
+                  />
+                </td>
+                <td>
+                  <StatusPill
+                    label={stateLabel(o.status)}
+                    tone={ORDER_TONE[o.status] ?? "neutral"}
+                  />
+                </td>
+                <td>
+                  {/* §2.3 verbal-order 48h window — only verbal_pending orders run the clock. */}
+                  {o.status === "verbal_pending" && o.verbalDeadlineAt ? (
+                    <CountdownChip
+                      dueAt={o.verbalDeadlineAt}
+                      warnWithinHours={12}
+                      alertWithinHours={2}
+                      label="Sign"
+                    />
+                  ) : (
+                    <span style={{ color: "var(--color-muted)" }}>—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       )}
     </PatientWorkspaceLayout>
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;
