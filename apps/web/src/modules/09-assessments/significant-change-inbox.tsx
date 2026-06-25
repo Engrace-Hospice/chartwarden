@@ -1,3 +1,13 @@
+import {
+  EmptyState,
+  KpiCard,
+  KpiStrip,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/09-assessments — Significant-change inbox, per-patient (M9 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md — "Use Work Queue."
 // The open / escalated significant-change events for this patient: one row per event with its rule, severity,
@@ -8,15 +18,7 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import {
-  EmptyState,
-  KpiCard,
-  KpiStrip,
-  LoadingSpinner,
-  PageHeader,
-  WorkQueueLayout,
-  useApiClient,
-} from "@wardenx/ui";
+import { CHANGE_TONE, SEVERITY_TONE, stateLabel } from "./assessment-status";
 
 interface ChangeRow {
   id: string;
@@ -39,9 +41,12 @@ export function SignificantChangeInbox(): JSX.Element {
       if (!patientId) return;
       setLoading(true);
       setError(null);
-      const { data, error: err } = await client.GET("/api/v1/patients/{patientId}/significant-changes", {
-        params: { path: { patientId } },
-      });
+      const { data, error: err } = await client.GET(
+        "/api/v1/patients/{patientId}/significant-changes",
+        {
+          params: { path: { patientId } },
+        },
+      );
       if (!active) return;
       if (err) {
         setError("Could not load significant changes.");
@@ -74,23 +79,36 @@ export function SignificantChangeInbox(): JSX.Element {
         ) : loading ? (
           <LoadingSpinner />
         ) : items.length === 0 ? (
-          <EmptyState title="No changes" description="No significant changes detected for this patient." />
+          <EmptyState
+            title="No changes"
+            description="No significant changes detected for this patient."
+          />
         ) : (
           <div style={{ padding: "0 1.5rem 1.5rem" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+            <table>
               <thead>
-                <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                  <th style={th}>Rule</th>
-                  <th style={th}>Severity</th>
-                  <th style={th}>Status</th>
+                <tr>
+                  <th>Rule</th>
+                  <th>Severity</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((c) => (
-                  <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                    <td style={td}>{c.ruleId}</td>
-                    <td style={{ ...td, color: c.severity === "high" ? "#b91c1c" : "#92400e" }}>{c.severity}</td>
-                    <td style={td}>{c.status}</td>
+                  <tr key={c.id}>
+                    <td>{stateLabel(c.ruleId)}</td>
+                    <td>
+                      <StatusPill
+                        label={stateLabel(c.severity)}
+                        tone={SEVERITY_TONE[c.severity] ?? "neutral"}
+                      />
+                    </td>
+                    <td>
+                      <StatusPill
+                        label={stateLabel(c.status)}
+                        tone={CHANGE_TONE[c.status] ?? "neutral"}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -101,6 +119,3 @@ export function SignificantChangeInbox(): JSX.Element {
     />
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;
