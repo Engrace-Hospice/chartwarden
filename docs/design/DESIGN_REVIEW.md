@@ -1,4 +1,35 @@
-# WardenX "Lantern" — Design Review (round 1)
+# WardenX "Lantern" — Design Review
+
+> **STATUS: COMPLETE (2026-06-24).** All 22 `.pen` files reviewed; **120/120 frames promoted to
+> `●`** (reviewed, on-system). Remediation outcome below; the round-1 findings + corrected scope
+> follow for the record.
+
+## Remediation outcome
+
+**Key correction from live inspection:** the round-1 claim of "systemic across all 22 files" was
+wrong. Inspecting each file showed **P0–P8 were already conformant** — authoritative tokens, Inter
+KPI values, `muted-foreground` for small labels, and `alert` (red) for controlled-substance (not
+gold). The violations were isolated to the **P9–P14 + D1–D7** files, where this-session
+hand-typed `SetVariables` had drifted and the rebuilt KPI used Fraunces.
+
+| Group | Action |
+| :-- | :-- |
+| **P0–P8** (15 screens' files; 81 screens) | verified clean → promoted `●`, no edits |
+| **P9–P14** (6 files; 32 screens) | F3 tokens + F1 KPI→Inter + F5 KPI-label; F2 gold→alert on P10 NOTR & P12 EPCS → promoted `●` |
+| **D1–D7** (7 depth boards) | F3 tokens (all) + F1 (D5: 22 numbers→Inter) + F2 gold→alert (D1 EPCS/witness, D6 eMAR-C-II, D7 controlled-substance) → promoted `●` |
+
+**What F3 fixed everywhere it applied:** corrected `muted/primary-tint/accent-tint/border` to the
+authoritative hex, and split `warning-bg` from `accent-tint` (they had collided at `#F7ECD8`).
+
+**Accepted as-is (documented, not defects):** F4 soft `--border` hairline dividers (corpus-wide,
+incl. clean P0–P5 — a defensible tonal choice); accent on MSW/Spiritual/Volunteer discipline icons
+and the family-caregiver "delegated access" card (sanctioned humanistic-warmth per §2, not a status
+signal). Residual minor: a few `muted`-on-white small table-header labels in the deskScreen files
+(F5) — readable but below the 4.5:1 ideal; left for a future polish pass.
+
+---
+
+# WardenX "Lantern" — Design Review (round 1 findings, for the record)
 
 Review of the generated Pencil corpus (~370 frames across 22 `.pen` files) against the
 [Lantern design system](./DESIGN.md) — the §10 Hard Rules, the §2 color contract, the §3
