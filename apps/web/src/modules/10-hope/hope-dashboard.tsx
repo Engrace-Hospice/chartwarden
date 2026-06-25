@@ -1,3 +1,15 @@
+import {
+  CountdownChip,
+  DashboardLayout,
+  EmptyState,
+  FilterBar,
+  KpiCard,
+  KpiStrip,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/10-hope — HOPE timepoint dashboard (M10 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_HOPE_ENGINE.md — "Use Dashboard."
 // The operational hub: four counters (Open, Closing 48h, Late, Expired) over the org's open HOPE
@@ -7,16 +19,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  DashboardLayout,
-  EmptyState,
-  FilterBar,
-  KpiCard,
-  KpiStrip,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-} from "@wardenx/ui";
+import { BUCKET_TONE, rfaLabel, stateLabel } from "./hope-status";
 
 interface ScheduleRow {
   id: string;
@@ -42,13 +45,6 @@ function bucketOf(row: ScheduleRow, nowMs: number): Exclude<Bucket, ""> {
   return "open";
 }
 
-const bucketColor: Record<Exclude<Bucket, "">, string | undefined> = {
-  open: "#15803d",
-  closing: "#b45309",
-  late: "#b91c1c",
-  expired: "#6b7280",
-};
-
 export function HopeDashboard(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
@@ -60,7 +56,9 @@ export function HopeDashboard(): JSX.Element {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const { data, error: err } = await client.GET("/api/v1/hope/schedules", { params: { query: {} } });
+    const { data, error: err } = await client.GET("/api/v1/hope/schedules", {
+      params: { query: {} },
+    });
     if (err) {
       setError("Could not load HOPE schedules.");
       setLoading(false);
@@ -102,7 +100,11 @@ export function HopeDashboard(): JSX.Element {
       kpis={
         <KpiStrip>
           <KpiCard label="Open" value={counts.open} onSelect={() => setFilter("open")} />
-          <KpiCard label="Closing 48h" value={counts.closing} onSelect={() => setFilter("closing")} />
+          <KpiCard
+            label="Closing 48h"
+            value={counts.closing}
+            onSelect={() => setFilter("closing")}
+          />
           <KpiCard label="Late" value={counts.late} onSelect={() => setFilter("late")} />
           <KpiCard label="Expired" value={counts.expired} onSelect={() => setFilter("expired")} />
         </KpiStrip>
@@ -115,8 +117,8 @@ export function HopeDashboard(): JSX.Element {
             </button>
           }
         >
-          <span style={{ fontSize: "0.8rem", color: "#6b7280" }}>
-            {filter ? `Filtered: ${filter}` : "All open schedules"}
+          <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
+            {filter ? `Filtered: ${stateLabel(filter)}` : "All open schedules"}
           </span>
         </FilterBar>
       }
@@ -126,26 +128,46 @@ export function HopeDashboard(): JSX.Element {
         ) : loading && items.length === 0 ? (
           <LoadingSpinner />
         ) : rows.length === 0 ? (
-          <EmptyState title="No HOPE schedules" description="No timepoint windows match the current filter." />
+          <EmptyState
+            title="No HOPE schedules"
+            description="No timepoint windows match the current filter."
+          />
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+          <table>
             <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                <th style={th}>RFA</th>
-                <th style={th}>Window closes</th>
-                <th style={th}>State</th>
+              <tr>
+                <th>RFA</th>
+                <th>Window closes</th>
+                <th>State</th>
               </tr>
             </thead>
             <tbody>
               {rows.map(({ row, bucket }) => (
                 <tr
                   key={row.id}
+                  // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                  role="button"
+                  tabIndex={0}
                   onClick={() => navigate(`/patients/${row.patientId}/hope`)}
-                  style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Enter" || ev.key === " ") {
+                      ev.preventDefault();
+                      navigate(`/patients/${row.patientId}/hope`);
+                    }
+                  }}
+                  style={{ cursor: "pointer" }}
                 >
-                  <td style={td}>{row.rfaKind}</td>
-                  <td style={td}>{row.windowClosesAt.slice(0, 16).replace("T", " ")}</td>
-                  <td style={{ ...td, color: bucketColor[bucket] }}>{bucket}</td>
+                  <td>{rfaLabel(row.rfaKind)}</td>
+                  <td>
+                    {/* §2.2.1 window — count down to close; warning at 48h, alert at 12h, overdue when late. */}
+                    <CountdownChip dueAt={row.windowClosesAt} warnWithinHours={48} label="Closes" />
+                  </td>
+                  <td>
+                    <StatusPill
+                      label={stateLabel(bucket)}
+                      tone={BUCKET_TONE[bucket] ?? "neutral"}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -155,6 +177,3 @@ export function HopeDashboard(): JSX.Element {
     />
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;

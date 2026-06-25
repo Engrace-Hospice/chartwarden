@@ -1,3 +1,11 @@
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/10-hope — HOPE submission worklist (M10 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_HOPE_ENGINE.md — "Use Work Queue."
 // Submission batches per ProviderEntity, per-period: status, item/accepted/rejected counts, transmit time.
@@ -7,13 +15,7 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-  WorkQueueLayout,
-} from "@wardenx/ui";
+import { SUBMISSION_TONE, stateLabel } from "./hope-status";
 
 interface SubmissionRow {
   id: string;
@@ -64,32 +66,50 @@ export function SubmissionWorklist(): JSX.Element {
         ) : loading && items.length === 0 ? (
           <LoadingSpinner />
         ) : items.length === 0 ? (
-          <EmptyState title="No submissions" description="No HOPE submission batches have been assembled." />
+          <EmptyState
+            title="No submissions"
+            description="No HOPE submission batches have been assembled."
+          />
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+          <table>
             <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                <th style={th}>Period</th>
-                <th style={th}>Status</th>
-                <th style={th}>Items</th>
-                <th style={th}>Accepted</th>
-                <th style={th}>Rejected</th>
+              <tr>
+                <th>Period</th>
+                <th>Status</th>
+                <th>Items</th>
+                <th>Accepted</th>
+                <th>Rejected</th>
               </tr>
             </thead>
             <tbody>
               {items.map((s) => (
                 <tr
                   key={s.id}
+                  // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                  role="button"
+                  tabIndex={0}
                   onClick={() => navigate(`/hope/submissions/${s.id}`)}
-                  style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Enter" || ev.key === " ") {
+                      ev.preventDefault();
+                      navigate(`/hope/submissions/${s.id}`);
+                    }
+                  }}
+                  style={{ cursor: "pointer" }}
                 >
-                  <td style={td}>{s.submissionPeriod}</td>
-                  <td style={{ ...td, color: s.status === "rejected" ? "#b91c1c" : undefined }}>
-                    {s.status}
+                  <td>{s.submissionPeriod}</td>
+                  <td>
+                    <StatusPill
+                      label={stateLabel(s.status)}
+                      tone={SUBMISSION_TONE[s.status] ?? "neutral"}
+                    />
                   </td>
-                  <td style={td}>{s.itemCount}</td>
-                  <td style={td}>{s.acceptedCount}</td>
-                  <td style={{ ...td, color: s.rejectedCount > 0 ? "#b91c1c" : undefined }}>
+                  <td className="tabular-nums">{s.itemCount}</td>
+                  <td className="tabular-nums">{s.acceptedCount}</td>
+                  <td
+                    className="tabular-nums"
+                    style={{ color: s.rejectedCount > 0 ? "var(--color-error)" : undefined }}
+                  >
                     {s.rejectedCount}
                   </td>
                 </tr>
@@ -101,6 +121,3 @@ export function SubmissionWorklist(): JSX.Element {
     />
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;

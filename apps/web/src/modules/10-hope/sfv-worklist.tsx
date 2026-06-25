@@ -1,3 +1,13 @@
+import {
+  CountdownChip,
+  EmptyState,
+  FilterBar,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/10-hope — SFV worklist (M10 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_HOPE_ENGINE.md — "Use Work Queue."
 // Open / overdue / missed Symptom Follow-Up Visits across the org, sorted by due-at; each row shows the
@@ -6,14 +16,7 @@
 // enforces every scope (ADR-0030 — no authz on the frontend). Leaves only (@wardenx/ui).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import {
-  EmptyState,
-  FilterBar,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-  WorkQueueLayout,
-} from "@wardenx/ui";
+import { SFV_TONE, stateLabel } from "./hope-status";
 
 interface SfvRow {
   id: string;
@@ -68,10 +71,10 @@ export function SfvWorklist(): JSX.Element {
         >
           <select aria-label="SFV state" value={state} onChange={(e) => setState(e.target.value)}>
             <option value="">Any state</option>
-            <option value="open">open</option>
-            <option value="overdue">overdue</option>
-            <option value="missed">missed</option>
-            <option value="completed">completed</option>
+            <option value="open">Open</option>
+            <option value="overdue">Overdue</option>
+            <option value="missed">Missed</option>
+            <option value="completed">Completed</option>
           </select>
         </FilterBar>
       }
@@ -81,27 +84,41 @@ export function SfvWorklist(): JSX.Element {
         ) : loading && items.length === 0 ? (
           <LoadingSpinner />
         ) : items.length === 0 ? (
-          <EmptyState title="No SFVs" description="No symptom-follow-up visits match the current filter." />
+          <EmptyState
+            title="No SFVs"
+            description="No symptom-follow-up visits match the current filter."
+          />
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+          <table>
             <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                <th style={th}>Triggered</th>
-                <th style={th}>Due</th>
-                <th style={th}>Status</th>
+              <tr>
+                <th>Triggered</th>
+                <th>Due</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {items.map((s) => {
+                // Client-derived overdue cue for open SFVs; the server owns the authoritative status.
                 const overdue = s.status === "open" && nowMs > Date.parse(s.dueAt);
+                const effectiveStatus = overdue ? "overdue" : s.status;
                 return (
-                  <tr key={s.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                    <td style={td}>{s.triggeredAt.slice(0, 16).replace("T", " ")}</td>
-                    <td style={{ ...td, color: overdue ? "#b91c1c" : undefined }}>
-                      {s.dueAt.slice(0, 16).replace("T", " ")}
+                  <tr key={s.id}>
+                    <td className="tabular-nums">{s.triggeredAt.slice(0, 16).replace("T", " ")}</td>
+                    <td>
+                      {/* §2.2.3 — 2-calendar-day deadline; count down to the SFV due time. */}
+                      <CountdownChip
+                        dueAt={s.dueAt}
+                        warnWithinHours={48}
+                        alertWithinHours={12}
+                        label="Due"
+                      />
                     </td>
-                    <td style={{ ...td, color: s.status === "missed" ? "#b91c1c" : undefined }}>
-                      {overdue ? "overdue" : s.status}
+                    <td>
+                      <StatusPill
+                        label={stateLabel(effectiveStatus)}
+                        tone={SFV_TONE[effectiveStatus] ?? "neutral"}
+                      />
                     </td>
                   </tr>
                 );
@@ -113,6 +130,3 @@ export function SfvWorklist(): JSX.Element {
     />
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;

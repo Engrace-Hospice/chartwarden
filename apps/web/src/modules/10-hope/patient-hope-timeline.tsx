@@ -1,3 +1,11 @@
+import {
+  DetailPageLayout,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/10-hope — Patient HOPE timeline (M10 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_HOPE_ENGINE.md — "Use Patient Workspace + Documentation Workspace."
 // Per-patient chronology: Admission → HUV1 → HUV2 → SFV(s) → Discharge, newest first — each row carries the
@@ -8,13 +16,7 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  DetailPageLayout,
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-} from "@wardenx/ui";
+import { ASSESSMENT_TONE, J2051_TONE, rfaLabel, stateLabel } from "./hope-status";
 
 interface AssessmentRow {
   id: string;
@@ -42,9 +44,12 @@ export function PatientHopeTimeline(): JSX.Element {
       if (!patientId) return;
       setLoading(true);
       setError(null);
-      const { data, error: err } = await client.GET("/api/v1/patients/{patientId}/hope/assessments", {
-        params: { path: { patientId } },
-      });
+      const { data, error: err } = await client.GET(
+        "/api/v1/patients/{patientId}/hope/assessments",
+        {
+          params: { path: { patientId } },
+        },
+      );
       if (!active) return;
       if (err) {
         setError("Could not load HOPE timeline.");
@@ -76,40 +81,68 @@ export function PatientHopeTimeline(): JSX.Element {
       ) : loading ? (
         <LoadingSpinner />
       ) : items.length === 0 ? (
-        <EmptyState title="No HOPE timepoints" description="No HOPE assessments have been recorded for this patient." />
+        <EmptyState
+          title="No HOPE timepoints"
+          description="No HOPE assessments have been recorded for this patient."
+        />
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+        <table>
           <thead>
-            <tr style={{ textAlign: "left", color: "#6b7280" }}>
-              <th style={th}>RFA</th>
-              <th style={th}>Target date</th>
-              <th style={th}>Author</th>
-              <th style={th}>J2051</th>
-              <th style={th}>Status</th>
+            <tr>
+              <th>RFA</th>
+              <th>Target date</th>
+              <th>Author</th>
+              <th>J2051</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody>
             {items.map((a) => (
               <tr
                 key={a.id}
+                // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                role="button"
+                tabIndex={0}
                 onClick={() => navigate(`/hope/assessments/${a.id}`)}
+                onKeyDown={(ev) => {
+                  if (ev.key === "Enter" || ev.key === " ") {
+                    ev.preventDefault();
+                    navigate(`/hope/assessments/${a.id}`);
+                  }
+                }}
                 style={{
                   cursor: "pointer",
-                  borderTop: "1px solid #f3f4f6",
                   // Superseded (corrected) rows render in strikethrough as a chronology cue (§5.2).
                   textDecoration: a.supersededByAssessmentId ? "line-through" : "none",
                 }}
               >
-                <td style={td}>{a.rfaKind}</td>
-                <td style={td}>{a.targetDate.slice(0, 10)}</td>
-                <td style={td}>{a.authorDiscipline}</td>
-                <td style={{ ...td, color: a.j2051TriggerFired ? "#b91c1c" : undefined }}>
-                  {a.j2051MaxSeverity ?? "—"}
-                  {a.j2051TriggerFired ? " · SFV" : ""}
+                <td>{rfaLabel(a.rfaKind)}</td>
+                <td className="tabular-nums">{a.targetDate.slice(0, 10)}</td>
+                <td>{stateLabel(a.authorDiscipline)}</td>
+                <td>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                    {a.j2051MaxSeverity ? (
+                      <StatusPill
+                        label={stateLabel(a.j2051MaxSeverity)}
+                        tone={J2051_TONE[a.j2051MaxSeverity] ?? "neutral"}
+                      />
+                    ) : (
+                      <span style={{ color: "var(--color-muted)" }}>—</span>
+                    )}
+                    {/* J2051 trigger fired → a 2-day Symptom Follow-Up Visit obligation (§2.3). */}
+                    {a.j2051TriggerFired ? (
+                      <StatusPill label="SFV" tone="warning" glyph="alert" />
+                    ) : null}
+                  </span>
                 </td>
-                <td style={td}>
-                  {a.status}
-                  {a.wasLate ? " · late" : ""}
+                <td>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                    <StatusPill
+                      label={stateLabel(a.status)}
+                      tone={ASSESSMENT_TONE[a.status] ?? "neutral"}
+                    />
+                    {a.wasLate ? <StatusPill label="Late" tone="warning" /> : null}
+                  </span>
                 </td>
               </tr>
             ))}
@@ -120,6 +153,8 @@ export function PatientHopeTimeline(): JSX.Element {
   );
 }
 
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;
-const meta = { fontSize: "0.75rem", color: "#6b7280", margin: "0.25rem 0" } as const;
+const meta = {
+  fontSize: "0.75rem",
+  color: "var(--color-on-surface-variant)",
+  margin: "0.25rem 0",
+} as const;

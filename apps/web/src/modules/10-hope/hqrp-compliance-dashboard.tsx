@@ -1,10 +1,3 @@
-// apps/web/src/modules/10-hope — HQRP compliance dashboard (M10 §5.1/§5.2, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_HOPE_ENGINE.md — "Use Dashboard."
-// "Are we losing the 4 points?" — four KPI cards: HOPE on-time rate, SFV on-time rate, submission
-// acceptance rate, late-completion rate (1 − HOPE on-time). Rates are server-computed (ADR-0030 — no
-// frontend authz). Reads GET /api/v1/hope/dashboard/compliance via the typed client. Leaves only (@wardenx/ui).
-import { useEffect, useState } from "react";
-import type { JSX } from "react";
 import {
   DashboardLayout,
   EmptyState,
@@ -14,6 +7,13 @@ import {
   PageHeader,
   useApiClient,
 } from "@wardenx/ui";
+// apps/web/src/modules/10-hope — HQRP compliance dashboard (M10 §5.1/§5.2, Track B / ADR-0030).
+// Spec: docs/design/screens/clinical/WARDENX_UI_HOPE_ENGINE.md — "Use Dashboard."
+// "Are we losing the 4 points?" — four KPI cards: HOPE on-time rate, SFV on-time rate, submission
+// acceptance rate, late-completion rate (1 − HOPE on-time). Rates are server-computed (ADR-0030 — no
+// frontend authz). Reads GET /api/v1/hope/dashboard/compliance via the typed client. Leaves only (@wardenx/ui).
+import { useEffect, useState } from "react";
+import type { JSX } from "react";
 
 interface Compliance {
   providerEntityId: string | null;
@@ -73,10 +73,17 @@ export function HqrpComplianceDashboard(): JSX.Element {
         ) : loading || !row ? (
           <LoadingSpinner />
         ) : (
-          <p style={{ fontSize: "0.8rem", color: "#6b7280", padding: "0 1.5rem" }}>
-            Rates reflect the {row.providerEntityId ? "selected ProviderEntity" : "whole organization"}.
-            The 90-day trend sparklines and the late-completion-reason distribution chart fill in as the
-            HQRP analytics surface (M30) lands.
+          <p
+            style={{
+              fontSize: "0.8rem",
+              color: "var(--color-on-surface-variant)",
+              padding: "0 1.5rem",
+            }}
+          >
+            Rates reflect the{" "}
+            {row.providerEntityId ? "selected ProviderEntity" : "whole organization"}. The 90-day
+            trend sparklines and the late-completion-reason distribution chart fill in as the HQRP
+            analytics surface (M30) lands.
           </p>
         )
       }
