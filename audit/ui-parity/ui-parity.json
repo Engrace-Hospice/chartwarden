@@ -1,13 +1,13 @@
 {
-  "documentedSpecs": 97,
+  "documentedSpecs": 113,
   "byCategory": {
-    "admin": 14,
+    "admin": 16,
     "core": 11,
-    "clinical": 33,
+    "clinical": 39,
     "platform": 5,
     "portal": 11,
-    "revenue": 9,
-    "compliance": 8,
+    "revenue": 14,
+    "compliance": 11,
     "staffing": 3,
     "mobile": 1,
     "integration": 2

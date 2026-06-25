@@ -6,9 +6,11 @@
 - `screens/admin/WARDENX_UI_AUDIT_LOG_VIEWER.md`
 - `screens/admin/WARDENX_UI_CLINICAL_CONTENT_ADMIN.md`
 - `screens/admin/WARDENX_UI_FEATURE_FLAGS.md`
+- `screens/admin/WARDENX_UI_FHIR_GATEWAY_CLIENTS.md`
 - `screens/admin/WARDENX_UI_FHIR_INTEROP_API.md`
 - `screens/admin/WARDENX_UI_INTEGRATION_MONITORING.md`
 - `screens/admin/WARDENX_UI_MASTER_DATA_MDM.md`
+- `screens/admin/WARDENX_UI_MDM_HEALTH_SYNC.md`
 - `screens/admin/WARDENX_UI_ONBOARDING_WIZARD.md`
 - `screens/admin/WARDENX_UI_ORG_PROVIDER_LOCATION_SETUP.md`
 - `screens/admin/WARDENX_UI_REFERRAL_SOURCE_CRM.md`
@@ -41,11 +43,13 @@
 - `screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md`
 - `screens/clinical/WARDENX_UI_EVV.md`
 - `screens/clinical/WARDENX_UI_FIELD_SAFETY.md`
+- `screens/clinical/WARDENX_UI_FIELD_SAFETY_INCIDENTS.md`
 - `screens/clinical/WARDENX_UI_HOPE_ASSESSMENT.md`
 - `screens/clinical/WARDENX_UI_HQRP_QUALITY.md`
 - `screens/clinical/WARDENX_UI_IDG_MEETING.md`
 - `screens/clinical/WARDENX_UI_IPU_BED_BOARD.md`
 - `screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md`
+- `screens/clinical/WARDENX_UI_ONCALL_ROSTER_PROTOCOLS.md`
 - `screens/clinical/WARDENX_UI_ON_CALL_TRIAGE.md`
 - `screens/clinical/WARDENX_UI_ORDERS.md`
 - `screens/clinical/WARDENX_UI_PATIENT_CHART.md`
@@ -53,6 +57,7 @@
 - `screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md`
 - `screens/clinical/WARDENX_UI_SCHEDULING_VISIT_CALENDAR.md`
 - `screens/clinical/WARDENX_UI_SUPPLIES_DME_COMFORT_KIT.md`
+- `screens/clinical/WARDENX_UI_SUPPLY_DME_INVENTORY.md`
 - `screens/clinical/WARDENX_UI_VOLUNTEER_MANAGEMENT.md`
 - `screens/clinical/WARDENX_UI_WOUND_CARE.md`
 - `screens/platform/WARDENX_UI_OPS_CONSOLE.md`
@@ -73,6 +78,11 @@
 - `screens/revenue/WARDENX_UI_REMITTANCE_ERA_POSTING.md`
 - `screens/revenue/WARDENX_UI_NOE_NOTR_CLAIM_OPS.md`
 - `screens/revenue/WARDENX_UI_PATIENT_STATEMENTS_ASSISTANCE.md`
+- `screens/revenue/WARDENX_UI_MEDICAID_RB_ARRANGEMENT.md`
+- `screens/revenue/WARDENX_UI_MEDICAID_ELIGIBILITY_MCO.md`
+- `screens/revenue/WARDENX_UI_MEDICAID_TRADING_PARTNER_CREDS.md`
+- `screens/revenue/WARDENX_UI_MEDICAID_VALIDATION_OVERRIDE.md`
+- `screens/revenue/WARDENX_UI_CAP_SETTLEMENT.md`
 - `screens/clinical/WARDENX_UI_CERTIFICATION_RECERT_LIFECYCLE.md`
 - `screens/clinical/WARDENX_UI_CLINICAL_NOTE_LIFECYCLE.md`
 - `screens/clinical/WARDENX_UI_EPCS_CONTROLLED_SUBSTANCES.md`
@@ -99,3 +109,9 @@
 - `screens/portal/WARDENX_UI_FACILITY_NURSE_PORTAL.md`
 - `screens/portal/WARDENX_UI_DME_VENDOR_PORTAL.md`
 - `screens/portal/WARDENX_UI_SURVEYOR_ACCESS_PORTAL.md`
+- `screens/clinical/WARDENX_UI_DOSESPOT_PRESCRIBER_ROSTER.md`
+- `screens/clinical/WARDENX_UI_MEDICATION_REFILL_INBOX.md`
+- `screens/clinical/WARDENX_UI_DOSESPOT_TRANSMIT_QUEUE.md`
+- `screens/compliance/WARDENX_UI_CONSENT_RECORD_MANAGER.md`
+- `screens/compliance/WARDENX_UI_CONSENT_RECIPIENTS_DPOA.md`
+- `screens/compliance/WARDENX_UI_CONSENT_EXPIRATION_RENEWAL.md`

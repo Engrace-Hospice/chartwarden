@@ -220,7 +220,69 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 > Each screen spec lists its own **variants** (in its `## Pencil Notes` section) — e.g. Patient
 > Chart wants active / just-admitted / discharged / deceased / merged / SSN-masked-vs-revealed.
 > Generate the variants Pencil-side as frames within the screen's node. Variant count, not screen
-> count, is the true size of the design surface (~250+ frames).
+> count, is the true size of the design surface (~600 frames; see the Depth track below).
+
+## Depth track (D1–D6) — the sub-view / variant surface
+
+The 97 screens above are each built as **one frame**. A [coverage diagnosis](#coverage-diagnosis)
+found the specs declare ~6.35 frames each (~600 total), so ~500 sub-views/variants were unbuilt.
+The **Depth track** ([`pencil-prompts/D1-D6-depth.md`](./pencil-prompts/D1-D6-depth.md)) builds
+that surface — reusable treatments (ceremonies, masking, states) built once and instanced.
+
+> **Depth track COMPLETE (D1–D6): 137 frames** across 6 `.pen` files. Three reusable foundation
+> libraries (D1 ceremonies · D2 sensitivity · D3 states) + the per-screen depth (D4 steppers ·
+> D5 variants · D6 sub-views). Combined with the 97 top-level screens, the corpus now stands at
+> **~234 frames** — the frame-depth surface the diagnosis identified. The D5 discipline plans also
+> closed the M15 breadth gap. Remaining: the ~45–65 missing *whole* screens (a future breadth track).
+
+| Phase | File | Theme | Status |
+| :-- | :-- | :-- | :-- |
+| D1 | `wardenx-D1-ceremonies.pen` | Guardrail & signing-ceremony library | `◐ node:GyRUU` — 21 frames (signature ×4 · guard-blocked ×2 · step-up ×3 · EPCS 2FA ×5 · cosign ×3 · witness ×3 · destructive ×1) |
+| D2 | `wardenx-D2-sensitivity.pen` | PHI masking / SUD-Part2 / consent / break-glass | `◐ node:wMcvc` — 10 frames (PHI mask↔reveal ×3 · sensitive-row badges table · SUD seal→consent→break-glass→reveal ×4 · consent-gated section · min-necessary redaction) |
+| D3 | `wardenx-D3-states.pen` | Universal empty / loading / error / no-perm / degraded | `◐ node:CUzYC` — 12 frames (state panels ×6: loading·empty·zero-filter·error·no-perm·degraded · skeletons ×3: work-queue·dashboard·patient-workspace · in-context ×3: empty·no-perm·degraded-ribbon) |
+| D4 | `wardenx-D4-steppers.pen` | Multi-step workflows — all steps | `◐ node:ZgXYC` — 33 frames (Admissions ×8 · Recert ×7 · Election ×4 · Death ×4 · Discharge ×4 · Onboarding ×6) |
+| D5 | `wardenx-D5-variants.pen` | Role dashboards · discipline care plans · assessments | `◐ node:T2caK` — 32 frames: discipline plans ×5 (Aide/MSW/Spiritual/Spiritual-declined/Volunteer **[closes M15]**) · role dashboards ×4 (Bereavement/QA/Compliance/Intake) · chart lifecycle ×5 (active/admitted/discharged/deceased/merged) · MAR states grid · assessment scales ×8 (PPS/PAINAD/ESAS-r/Karnofsky/FAST/RASS/Spiritual-FICA/RDOS) · care-plan master IPOC + states ×5 (IPOC/review-overdue/IDG-revision/aide-supervisory-due/amendment) · entry & MAR sub-flows ×4 (PPS-entry/PAINAD-entry/PRN-reassessment/comfort-kit-drawdown) |
+| D6 | `wardenx-D6-subviews.pen` | Heavyweight screens' secondary tabs / panels | `◐ node:E0REv` — 29 sub-views: Patient Chart ×6 (summary/allergies/problems/meds/documents/financial) · Claims & Billing ×4 (AR/workbench/editor/Medicaid-R&B) · Note Lifecycle ×5 (unsigned/versions/compare/amendment/audit) · IDG Meeting ×4 (agenda/live/packet/decisions) · HQRP ×4 (measures/CAHPS/QAPI-kanban/survey-ready) · Scheduling & EVV ×3 (route/EVV-exceptions/caseload) · eMAR ×3 (med-list/prescribe/reconcile) |
+| D7 | `wardenx-D7-breadth-depth.pen` | Depth for the **breadth** screens (P12–P14) — the variant surface their specs declare | `◐ node:UyQt9` — **121 variant cards** across all 16 breadth screens (~7–8 each: ceremony/guard states, Part-2 seal/break-glass, empty/loading/no-permission, stepper sub-steps, screen-specific states). Brings the 16 breadth screens to the same depth as the original 97. |
+
+### Coverage diagnosis
+
+Corpus completeness against the 40-module architecture (2026-06-24):
+**100% by screen-count · ~16% by frame-depth (97 of ~600) · ~65% by module-breadth.**
+Breadth gaps: M15 Discipline Care Plans (0 screens), M12/M24/M39 (no dedicated screen), and
+~12 flagship modules compressed to 1 screen. The **depth track** (D1–D6) was built first; the
+**breadth track** (P12–P14, below) then addressed the missing whole screens. M15 was closed by D5.
+
+## Breadth track (P12–P14) — missing whole screens for thin modules
+
+16 NEW top-level screens for modules that had no dedicated surface, grounded in each module spec
+and deduped against the corpus + depth-track sub-views. Plan in
+[`pencil-prompts/P12-P14-breadth.md`](./pencil-prompts/P12-P14-breadth.md). Corpus index now 113.
+
+> **Breadth track COMPLETE (P12–P14): all 16 generated** across 3 `.pen` files. M12 DoseSpot, M24
+> Medicaid, and M39 Consent now have dedicated screens; the thin flagships (M19/M20/M21/M26/M28/M40)
+> each gained their missing surface. Combined: **113 top-level screens + 137 depth frames ≈ 250
+> frames**. The corpus is now comprehensive across all 40 modules by breadth, and deep on the
+> high-traffic surfaces. Remaining work is design review (`◐ → ●`) and frontend reconciliation.
+
+| Screen | Module | Layout pattern | Pencil |
+| :-- | :-- | :-- | :-- |
+| [DoseSpot Prescriber Roster](./screens/clinical/WARDENX_UI_DOSESPOT_PRESCRIBER_ROSTER.md) | M12 | Admin Hierarchy Layout | `◐ node:kEXWg` (P12 .pen) |
+| [Medication Refill Inbox](./screens/clinical/WARDENX_UI_MEDICATION_REFILL_INBOX.md) | M12 | Work Queue | `◐ node:L9tUSV` (P12 .pen) |
+| [DoseSpot Transmit / Failure Queue](./screens/clinical/WARDENX_UI_DOSESPOT_TRANSMIT_QUEUE.md) | M12 | Status Board | `◐ node:Y4HEp` (P12 .pen) |
+| [Consent Record Manager](./screens/compliance/WARDENX_UI_CONSENT_RECORD_MANAGER.md) | M39 | Stepper Workflow | `◐ node:aIMIx` (P12 .pen) |
+| [Consent Recipients & DPOA Agents](./screens/compliance/WARDENX_UI_CONSENT_RECIPIENTS_DPOA.md) | M39 | Detail Page | `◐ node:XMaBy` (P12 .pen) |
+| [Consent Expiration & Renewal](./screens/compliance/WARDENX_UI_CONSENT_EXPIRATION_RENEWAL.md) | M39 | Dashboard | `◐ node:jFySy` (P12 .pen) |
+| [Medicaid R&B Arrangement Manager](./screens/revenue/WARDENX_UI_MEDICAID_RB_ARRANGEMENT.md) | M24 | Admin Hierarchy Layout | `◐ node:V8bGq` (P13 .pen) |
+| [Medicaid Eligibility & MCO Routing](./screens/revenue/WARDENX_UI_MEDICAID_ELIGIBILITY_MCO.md) | M24 | Gated Action Flow | `◐ node:wtqs3` (P13 .pen) |
+| [Medicaid Trading-Partner Credentials](./screens/revenue/WARDENX_UI_MEDICAID_TRADING_PARTNER_CREDS.md) | M24 | Admin Settings Layout | `◐ node:eIAe7` (P13 .pen) |
+| [Medicaid Validation Override](./screens/revenue/WARDENX_UI_MEDICAID_VALIDATION_OVERRIDE.md) | M24 | Work Queue | `◐ node:HFIqN` (P13 .pen) |
+| [Cap Year Close & Settlement](./screens/revenue/WARDENX_UI_CAP_SETTLEMENT.md) | M26 | Stepper Workflow | `◐ node:e7rV0x` (P13 .pen) |
+| [On-Call Roster & Protocols](./screens/clinical/WARDENX_UI_ONCALL_ROSTER_PROTOCOLS.md) | M19 | Work Queue | `◐ node:V6ZmB` (P14 .pen) |
+| [Field Staff Safety Incidents](./screens/clinical/WARDENX_UI_FIELD_SAFETY_INCIDENTS.md) | M20 | Work Queue | `◐ node:eI32Z` (P14 .pen) |
+| [Supply & DME Inventory](./screens/clinical/WARDENX_UI_SUPPLY_DME_INVENTORY.md) | M21 | Work Queue | `◐ node:FkRoZ` (P14 .pen) |
+| [FHIR Gateway & Client Management](./screens/admin/WARDENX_UI_FHIR_GATEWAY_CLIENTS.md) | M28 | Admin Settings Layout | `◐ node:x0R4jb` (P14 .pen) |
+| [MDM Health Check & Sync](./screens/admin/WARDENX_UI_MDM_HEALTH_SYNC.md) | M40 | Status Board | `◐ node:I9nE3S` (P14 .pen) |
 
 ## How to generate a screen in Pencil
 
