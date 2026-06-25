@@ -1,3 +1,10 @@
+import {
+  DetailPageLayout,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/13-emar — IV continuous session (M13 §4.1/§6.1 #5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Detail". The IPU-specific surface
 // (limited Phase-1 utility; primary value lands at M37). Shows the session's ordered row sequence
@@ -8,13 +15,7 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import {
-  DetailPageLayout,
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-} from "@wardenx/ui";
+import { stateLabel } from "./emar-status";
 
 interface IvSessionView {
   sessionId: string;
@@ -37,9 +38,12 @@ export function IvSession(): JSX.Element {
       if (!sessionId) return;
       setLoading(true);
       setError(null);
-      const { data, error: err } = await client.GET("/api/v1/administrations/iv-sessions/{sessionId}", {
-        params: { path: { sessionId } },
-      });
+      const { data, error: err } = await client.GET(
+        "/api/v1/administrations/iv-sessions/{sessionId}",
+        {
+          params: { path: { sessionId } },
+        },
+      );
       if (!active) return;
       if (err) {
         setError("Could not load the IV session.");
@@ -58,7 +62,11 @@ export function IvSession(): JSX.Element {
     <DetailPageLayout
       header={
         <PageHeader title="IV Continuous Session">
-          {row ? <span style={meta}>order {row.medicationOrderId.slice(0, 8)}</span> : null}
+          {row ? (
+            <span style={meta}>
+              order <span className="wx-data-md">{row.medicationOrderId.slice(0, 8)}</span>
+            </span>
+          ) : null}
         </PageHeader>
       }
     >
@@ -69,20 +77,20 @@ export function IvSession(): JSX.Element {
       ) : row.segments.length === 0 ? (
         <EmptyState title="No segments" description="This session has no recorded segments." />
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+        <table>
           <thead>
-            <tr style={{ textAlign: "left", color: "#6b7280" }}>
-              <th style={th}>#</th>
-              <th style={th}>Segment</th>
-              <th style={th}>Recorded</th>
+            <tr>
+              <th>#</th>
+              <th>Segment</th>
+              <th>Recorded</th>
             </tr>
           </thead>
           <tbody>
             {row.segments.map((s, i) => (
-              <tr key={`${s.kind}-${s.recordedAt}`} style={{ borderTop: "1px solid #f3f4f6" }}>
-                <td style={td}>{i + 1}</td>
-                <td style={td}>{s.kind}</td>
-                <td style={td}>{ts(s.recordedAt)}</td>
+              <tr key={`${s.kind}-${s.recordedAt}`}>
+                <td className="tabular-nums">{i + 1}</td>
+                <td>{stateLabel(s.kind)}</td>
+                <td className="tabular-nums">{ts(s.recordedAt)}</td>
               </tr>
             ))}
           </tbody>
@@ -92,6 +100,8 @@ export function IvSession(): JSX.Element {
   );
 }
 
-const meta = { fontSize: "0.75rem", color: "#6b7280", margin: "0.25rem 0" } as const;
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;
+const meta = {
+  fontSize: "0.75rem",
+  color: "var(--color-on-surface-variant)",
+  margin: "0.25rem 0",
+} as const;

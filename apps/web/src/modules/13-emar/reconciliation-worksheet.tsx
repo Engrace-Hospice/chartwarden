@@ -1,3 +1,11 @@
+import {
+  DetailPageLayout,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/13-emar — reconciliation worksheet (M13 §4.1/§6.1 #6, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Detail" (reconciliation worksheet).
 // Read-only per-line view of an admission/transfer/discharge/recert worksheet: the trigger, the line count, and
@@ -9,13 +17,7 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import {
-  DetailPageLayout,
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-} from "@wardenx/ui";
+import { DECISION_TONE, WORKSHEET_TONE, stateLabel } from "./emar-status";
 
 interface DecisionView {
   lineId: string;
@@ -66,10 +68,24 @@ export function ReconciliationWorksheet(): JSX.Element {
   return (
     <DetailPageLayout
       header={
-        <PageHeader title="Medication Reconciliation">
+        <PageHeader
+          title="Medication Reconciliation"
+          actions={
+            row ? (
+              <StatusPill
+                label={stateLabel(row.status)}
+                tone={WORKSHEET_TONE[row.status] ?? "neutral"}
+              />
+            ) : undefined
+          }
+        >
           {row ? (
             <span style={meta}>
-              {row.triggerKind} · {row.status} · {row.decisions.length}/{row.lineCount} decided
+              {stateLabel(row.triggerKind)} ·{" "}
+              <span className="tabular-nums">
+                {row.decisions.length}/{row.lineCount}
+              </span>{" "}
+              decided
             </span>
           ) : null}
         </PageHeader>
@@ -82,20 +98,25 @@ export function ReconciliationWorksheet(): JSX.Element {
       ) : row.lineCount === 0 ? (
         <EmptyState title="No lines" description="This worksheet has no reconciliation lines." />
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+        <table>
           <thead>
-            <tr style={{ textAlign: "left", color: "#6b7280" }}>
-              <th style={th}>Line</th>
-              <th style={th}>Source kind</th>
-              <th style={th}>Decision</th>
+            <tr>
+              <th>Line</th>
+              <th>Source kind</th>
+              <th>Decision</th>
             </tr>
           </thead>
           <tbody>
             {row.decisions.map((d) => (
-              <tr key={d.lineId} style={{ borderTop: "1px solid #f3f4f6" }}>
-                <td style={td}>{d.sourceId.slice(0, 8)}</td>
-                <td style={td}>{d.lineKind}</td>
-                <td style={td}>{d.decision}</td>
+              <tr key={d.lineId}>
+                <td className="wx-data-md">{d.sourceId.slice(0, 8)}</td>
+                <td>{stateLabel(d.lineKind)}</td>
+                <td>
+                  <StatusPill
+                    label={stateLabel(d.decision)}
+                    tone={DECISION_TONE[d.decision] ?? "neutral"}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -105,6 +126,8 @@ export function ReconciliationWorksheet(): JSX.Element {
   );
 }
 
-const meta = { fontSize: "0.75rem", color: "#6b7280", margin: "0.25rem 0" } as const;
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;
+const meta = {
+  fontSize: "0.75rem",
+  color: "var(--color-on-surface-variant)",
+  margin: "0.25rem 0",
+} as const;

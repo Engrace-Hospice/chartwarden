@@ -1,3 +1,11 @@
+import {
+  DetailPageLayout,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/13-emar — comfort kit view (M13 §4.1/§6.1 #7, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Detail" (comfort-kit drawdown). Read-only
 // detail of a deployed comfort kit: the deployment, the admission it serves, and the disposal/return status. The
@@ -8,13 +16,7 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import {
-  DetailPageLayout,
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-} from "@wardenx/ui";
+import { DISPOSAL_TONE, stateLabel } from "./emar-status";
 
 interface DeploymentView {
   id: string;
@@ -56,9 +58,17 @@ export function ComfortKitView(): JSX.Element {
   return (
     <DetailPageLayout
       header={
-        <PageHeader title="Comfort Kit">
-          {row ? <span style={meta}>{row.disposalStatus}</span> : null}
-        </PageHeader>
+        <PageHeader
+          title="Comfort Kit"
+          actions={
+            row ? (
+              <StatusPill
+                label={stateLabel(row.disposalStatus)}
+                tone={DISPOSAL_TONE[row.disposalStatus] ?? "neutral"}
+              />
+            ) : undefined
+          }
+        />
       }
     >
       {error ? (
@@ -66,19 +76,34 @@ export function ComfortKitView(): JSX.Element {
       ) : loading || !row ? (
         <LoadingSpinner />
       ) : (
-        <dl style={{ display: "grid", gridTemplateColumns: "12rem 1fr", gap: "0.4rem 1rem", fontSize: "0.85rem" }}>
+        <dl
+          style={{
+            display: "grid",
+            gridTemplateColumns: "12rem 1fr",
+            gap: "0.4rem 1rem",
+            fontSize: "0.85rem",
+          }}
+        >
           <dt style={dt}>Deployment</dt>
-          <dd style={dd}>{row.id}</dd>
+          <dd style={dd} className="wx-data-md">
+            {row.id}
+          </dd>
           <dt style={dt}>Admission</dt>
-          <dd style={dd}>{row.admissionId}</dd>
+          <dd style={dd} className="wx-data-md">
+            {row.admissionId}
+          </dd>
           <dt style={dt}>Disposal status</dt>
-          <dd style={dd}>{row.disposalStatus}</dd>
+          <dd style={dd}>
+            <StatusPill
+              label={stateLabel(row.disposalStatus)}
+              tone={DISPOSAL_TONE[row.disposalStatus] ?? "neutral"}
+            />
+          </dd>
         </dl>
       )}
     </DetailPageLayout>
   );
 }
 
-const meta = { fontSize: "0.75rem", color: "#6b7280", margin: "0.25rem 0" } as const;
-const dt = { fontWeight: 600, color: "#374151" } as const;
+const dt = { fontWeight: 600, color: "var(--color-on-surface)" } as const;
 const dd = { margin: 0 } as const;

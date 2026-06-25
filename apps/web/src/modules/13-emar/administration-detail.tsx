@@ -1,3 +1,11 @@
+import {
+  DetailPageLayout,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/13-emar — administration detail (M13 §4.1/§6.1 #11, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Detail". Read-only detail of a single
 // administration within the retention-class-C audit boundary: the §2.2 lifecycle status, the §2.5 late-entry
@@ -8,13 +16,7 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import {
-  DetailPageLayout,
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-} from "@wardenx/ui";
+import { ADMIN_STATUS_TONE, lateEntryTone, stateLabel } from "./emar-status";
 
 interface AdministrationView {
   id: string;
@@ -75,12 +77,23 @@ export function AdministrationDetail(): JSX.Element {
   return (
     <DetailPageLayout
       header={
-        <PageHeader title="Administration">
-          {row ? (
-            <span style={meta}>
-              {row.mode} · {row.status}
-            </span>
-          ) : null}
+        <PageHeader
+          title="Administration"
+          actions={
+            row ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                {row.isControlledSubstance ? (
+                  <StatusPill label="Controlled" tone="critical" glyph="alert" />
+                ) : null}
+                <StatusPill
+                  label={stateLabel(row.status)}
+                  tone={ADMIN_STATUS_TONE[row.status] ?? "neutral"}
+                />
+              </span>
+            ) : undefined
+          }
+        >
+          {row ? <span style={meta}>{stateLabel(row.mode)}</span> : null}
         </PageHeader>
       }
     >
@@ -89,50 +102,94 @@ export function AdministrationDetail(): JSX.Element {
       ) : loading || !row ? (
         <LoadingSpinner />
       ) : (
-        <dl style={{ display: "grid", gridTemplateColumns: "14rem 1fr", gap: "0.4rem 1rem", fontSize: "0.85rem" }}>
+        <dl
+          style={{
+            display: "grid",
+            gridTemplateColumns: "14rem 1fr",
+            gap: "0.4rem 1rem",
+            fontSize: "0.85rem",
+          }}
+        >
           <dt style={dt}>Order</dt>
-          <dd style={dd}>{row.medicationOrderId}</dd>
+          <dd style={dd} className="wx-data-md">
+            {row.medicationOrderId}
+          </dd>
           <dt style={dt}>Mode</dt>
-          <dd style={dd}>{row.mode}</dd>
+          <dd style={dd}>{stateLabel(row.mode)}</dd>
           <dt style={dt}>Status</dt>
-          <dd style={{ ...dd, color: row.requiresRnReview ? "#b45309" : undefined }}>
-            {row.status}
-            {row.requiresRnReview ? " · awaiting RN review" : ""}
+          <dd style={dd}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+              <StatusPill
+                label={stateLabel(row.status)}
+                tone={ADMIN_STATUS_TONE[row.status] ?? "neutral"}
+              />
+              {row.requiresRnReview ? (
+                <StatusPill label="Awaiting RN review" tone="warning" />
+              ) : null}
+            </span>
           </dd>
           <dt style={dt}>Actor</dt>
-          <dd style={dd}>{row.actorKind}</dd>
+          <dd style={dd}>{stateLabel(row.actorKind)}</dd>
           <dt style={dt}>Administered</dt>
-          <dd style={dd}>{ts(row.administeredAt)}</dd>
+          <dd style={dd} className="tabular-nums">
+            {ts(row.administeredAt)}
+          </dd>
           <dt style={dt}>Recorded</dt>
-          <dd style={dd}>{ts(row.recordedAt)}</dd>
+          <dd style={dd} className="tabular-nums">
+            {ts(row.recordedAt)}
+          </dd>
           <dt style={dt}>Late-entry tier</dt>
-          <dd style={{ ...dd, color: row.lateEntryTier !== "normal" ? "#b45309" : undefined }}>
-            {row.lateEntryTier}
+          <dd style={dd}>
+            <StatusPill
+              label={stateLabel(row.lateEntryTier)}
+              tone={lateEntryTone(row.lateEntryTier)}
+            />
           </dd>
           <dt style={dt}>Controlled</dt>
-          <dd style={{ ...dd, color: row.isControlledSubstance ? "#b45309" : undefined }}>
-            {row.isControlledSubstance ? "yes" : "no"}
+          <dd style={dd}>
+            {/* §10 — controlled-substance gold `critical` tone. */}
+            {row.isControlledSubstance ? (
+              <StatusPill label="Controlled" tone="critical" glyph="alert" />
+            ) : (
+              <span style={{ color: "var(--color-muted)" }}>No</span>
+            )}
           </dd>
           <dt style={dt}>Administering clinician</dt>
-          <dd style={dd}>{row.administeringClinicianMembershipId ?? "—"}</dd>
+          <dd style={dd} className="wx-data-md">
+            {row.administeringClinicianMembershipId ?? "—"}
+          </dd>
           <dt style={dt}>Witness</dt>
-          <dd style={dd}>{row.witnessMembershipId ?? "—"}</dd>
+          <dd style={dd} className="wx-data-md">
+            {row.witnessMembershipId ?? "—"}
+          </dd>
           <dt style={dt}>BCMA match</dt>
-          <dd style={dd}>{row.barcodeMatchResult ?? "—"}</dd>
+          <dd style={dd}>{row.barcodeMatchResult ? stateLabel(row.barcodeMatchResult) : "—"}</dd>
           <dt style={dt}>Comfort-kit drawdown</dt>
-          <dd style={dd}>{row.isComfortKitDrawdown ? (row.comfortKitDeploymentId ?? "yes") : "—"}</dd>
+          <dd style={dd} className="wx-data-md">
+            {row.isComfortKitDrawdown ? (row.comfortKitDeploymentId ?? "yes") : "—"}
+          </dd>
           <dt style={dt}>IV session</dt>
-          <dd style={dd}>{row.ivSessionId ?? "—"}</dd>
+          <dd style={dd} className="wx-data-md">
+            {row.ivSessionId ?? "—"}
+          </dd>
           <dt style={dt}>Encounter</dt>
-          <dd style={dd}>{row.encounterId ?? "—"}</dd>
+          <dd style={dd} className="wx-data-md">
+            {row.encounterId ?? "—"}
+          </dd>
           <dt style={dt}>Superseded by</dt>
-          <dd style={dd}>{row.supersededById ?? "—"}</dd>
+          <dd style={dd} className="wx-data-md">
+            {row.supersededById ?? "—"}
+          </dd>
         </dl>
       )}
     </DetailPageLayout>
   );
 }
 
-const meta = { fontSize: "0.75rem", color: "#6b7280", margin: "0.25rem 0" } as const;
-const dt = { fontWeight: 600, color: "#374151" } as const;
+const meta = {
+  fontSize: "0.75rem",
+  color: "var(--color-on-surface-variant)",
+  margin: "0.25rem 0",
+} as const;
+const dt = { fontWeight: 600, color: "var(--color-on-surface)" } as const;
 const dd = { margin: 0 } as const;
