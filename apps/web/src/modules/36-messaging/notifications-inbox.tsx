@@ -1,4 +1,12 @@
-import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@wardenx/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  type StatusTone,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/36-messaging — Notifications & Tasks / Worklist (M36, Track A).
 // Spec: docs/design/screens/core/WARDENX_UI_NOTIFICATIONS_TASKS.md — "Use Work Queue."
 // The caller's alert inbox. Backed by GET /api/v1/alerts/inbox via the generated typed client.
@@ -15,12 +23,22 @@ interface AlertItem {
   deliveryStatus: "delivered" | "partial" | "failed" | "pending";
 }
 
-const severityColor: Record<string, string> = {
-  critical: "#b91c1c",
-  warn: "#b45309",
-  high: "#b91c1c",
-  info: "#6b7280",
+// §6.6 — alert severity → tone. An *alert* severity of "critical" is operational urgency (→ error),
+// NOT the reserved gold `critical` tone (safety / controlled-substance only), same call as M04 audit.
+const SEVERITY_TONE: Record<string, StatusTone> = {
+  critical: "error",
+  high: "error",
+  warn: "warning",
+  info: "neutral",
 };
+// Fan-out delivery status (§4 outbox) → tone.
+const DELIVERY_TONE: Record<AlertItem["deliveryStatus"], StatusTone> = {
+  delivered: "success",
+  partial: "warning",
+  failed: "error",
+  pending: "progress",
+};
+const cap = (s: string): string => s.replace(/\b\w/g, (c) => c.toUpperCase());
 
 export function NotificationsInbox(): JSX.Element {
   const client = useApiClient();
@@ -58,26 +76,28 @@ function AlertTable({
     return <EmptyState title="All clear" description="You have no notifications." />;
   return (
     <div style={{ padding: "0 1.5rem 1.5rem" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+      <table>
         <thead>
-          <tr style={{ textAlign: "left", color: "#6b7280" }}>
-            <th style={th}>Severity</th>
-            <th style={th}>Category</th>
-            <th style={th}>Summary</th>
-            <th style={th}>When</th>
-            <th style={th}>Delivery</th>
+          <tr>
+            <th>Severity</th>
+            <th>Category</th>
+            <th>Summary</th>
+            <th>When</th>
+            <th>Delivery</th>
           </tr>
         </thead>
         <tbody>
           {alerts.map((a) => (
-            <tr key={a.alertId} style={{ borderTop: "1px solid #f3f4f6" }}>
-              <td style={{ ...td, color: severityColor[a.severity] ?? "#111827", fontWeight: 600 }}>
-                {a.severity}
+            <tr key={a.alertId}>
+              <td>
+                <StatusPill label={cap(a.severity)} tone={SEVERITY_TONE[a.severity] ?? "neutral"} />
               </td>
-              <td style={td}>{a.category}</td>
-              <td style={td}>{a.summary}</td>
-              <td style={td}>{new Date(a.createdAt).toLocaleString()}</td>
-              <td style={td}>{a.deliveryStatus}</td>
+              <td>{cap(a.category.replace(/_/g, " "))}</td>
+              <td>{a.summary}</td>
+              <td className="tabular-nums">{new Date(a.createdAt).toLocaleString()}</td>
+              <td>
+                <StatusPill label={cap(a.deliveryStatus)} tone={DELIVERY_TONE[a.deliveryStatus]} />
+              </td>
             </tr>
           ))}
         </tbody>
@@ -85,6 +105,3 @@ function AlertTable({
     </div>
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;
