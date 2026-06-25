@@ -1,3 +1,11 @@
+import {
+  DetailPageLayout,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/09-assessments — Scale-license registry, admin (M9 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md — "Use Patient Workspace + Documentation Workspace."
 // One row per (org × scale): status chip (active / pending_renewal / expired), vendor, effective/expiry dates,
@@ -6,13 +14,7 @@
 // via the typed client; the server enforces org-admin scope (ADR-0030 — no authz on the frontend). Leaves only.
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
-import {
-  DetailPageLayout,
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-} from "@wardenx/ui";
+import { LICENSE_TONE, stateLabel } from "./assessment-status";
 
 interface LicenseRow {
   id: string;
@@ -57,29 +59,35 @@ export function ScaleLicenseRegistry(): JSX.Element {
       ) : loading ? (
         <LoadingSpinner />
       ) : items.length === 0 ? (
-        <EmptyState title="No licenses" description="No scale licenses are recorded for this organization." />
+        <EmptyState
+          title="No licenses"
+          description="No scale licenses are recorded for this organization."
+        />
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+        <table>
           <thead>
-            <tr style={{ textAlign: "left", color: "#6b7280" }}>
-              <th style={th}>Scale</th>
-              <th style={th}>Vendor</th>
-              <th style={th}>Effective</th>
-              <th style={th}>Expires</th>
-              <th style={th}>Seats</th>
-              <th style={th}>Status</th>
+            <tr>
+              <th>Scale</th>
+              <th>Vendor</th>
+              <th>Effective</th>
+              <th>Expires</th>
+              <th>Seats</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody>
             {items.map((l) => (
-              <tr key={l.id} style={{ borderTop: "1px solid #f3f4f6", opacity: l.status === "expired" ? 0.6 : 1 }}>
-                <td style={td}>{l.scaleType}</td>
-                <td style={td}>{l.vendor}</td>
-                <td style={td}>{l.effectiveDate.slice(0, 10)}</td>
-                <td style={td}>{l.expiresAt.slice(0, 10)}</td>
-                <td style={td}>{l.seats ?? "—"}</td>
-                <td style={{ ...td, color: l.status === "expired" ? "#b91c1c" : l.status === "pending_renewal" ? "#92400e" : "#166534" }}>
-                  {l.status}
+              <tr key={l.id} style={{ opacity: l.status === "expired" ? 0.6 : 1 }}>
+                <td>{l.scaleType}</td>
+                <td>{l.vendor}</td>
+                <td className="tabular-nums">{l.effectiveDate.slice(0, 10)}</td>
+                <td className="tabular-nums">{l.expiresAt.slice(0, 10)}</td>
+                <td className="tabular-nums">{l.seats ?? "—"}</td>
+                <td>
+                  <StatusPill
+                    label={stateLabel(l.status)}
+                    tone={LICENSE_TONE[l.status] ?? "neutral"}
+                  />
                 </td>
               </tr>
             ))}
@@ -89,6 +97,3 @@ export function ScaleLicenseRegistry(): JSX.Element {
     </DetailPageLayout>
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;

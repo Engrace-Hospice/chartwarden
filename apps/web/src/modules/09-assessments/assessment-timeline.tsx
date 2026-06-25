@@ -1,3 +1,12 @@
+import {
+  DetailPageLayout,
+  EmptyState,
+  Glyph,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/09-assessments — Patient assessment timeline (M9 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md — "Use Patient Workspace + Documentation Workspace."
 // Every scale captured for the patient, newest first: scale badge · captured-at · captured-by discipline ·
@@ -8,13 +17,7 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  DetailPageLayout,
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-} from "@wardenx/ui";
+import { ASSESSMENT_TONE, stateLabel } from "./assessment-status";
 
 interface AssessmentRow {
   id: string;
@@ -69,7 +72,8 @@ export function AssessmentTimeline(): JSX.Element {
       header={
         <PageHeader title="Assessments">
           <span style={meta}>
-            {items.length} captured{pendingCosign > 0 ? ` · ${pendingCosign} awaiting cosignature` : ""}
+            {items.length} captured
+            {pendingCosign > 0 ? ` · ${pendingCosign} awaiting cosignature` : ""}
           </span>
         </PageHeader>
       }
@@ -79,52 +83,80 @@ export function AssessmentTimeline(): JSX.Element {
       ) : loading ? (
         <LoadingSpinner />
       ) : items.length === 0 ? (
-        <EmptyState title="No assessments" description="No clinical scales have been recorded for this patient." />
+        <EmptyState
+          title="No assessments"
+          description="No clinical scales have been recorded for this patient."
+        />
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+        <table>
           <thead>
-            <tr style={{ textAlign: "left", color: "#6b7280" }}>
-              <th style={th}>Scale</th>
-              <th style={th}>Captured</th>
-              <th style={th}>By</th>
-              <th style={th}>Score</th>
-              <th style={th}>Status</th>
+            <tr>
+              <th>Scale</th>
+              <th>Captured</th>
+              <th>By</th>
+              <th>Score</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody>
-            {items.map((a) => (
-              <tr
-                key={a.id}
-                onClick={() => patientId && navigate(`/patients/${patientId}/scales/${a.scaleType}`)}
-                style={{
-                  cursor: "pointer",
-                  borderTop: "1px solid #f3f4f6",
-                  // Cosignature-pending rows render in italic (§5.2).
-                  fontStyle: a.cosignRequired && !a.cosignedAt ? "italic" : "normal",
-                }}
-              >
-                <td style={td}>
-                  {a.scaleType}
-                  {a.sudContext ? " 🔒" : ""}
-                </td>
-                <td style={td}>{a.capturedAt.slice(0, 16).replace("T", " ")}</td>
-                <td style={td}>{a.capturedByDiscipline}</td>
-                <td style={td}>
-                  {a.redacted ? (
-                    <span style={meta}>redacted</span>
-                  ) : (
-                    <>
-                      {a.score ?? "—"}
-                      {a.scoreInterpretation ? ` · ${a.scoreInterpretation}` : ""}
-                    </>
-                  )}
-                </td>
-                <td style={td}>
-                  {a.status}
-                  {a.cosignRequired && !a.cosignedAt ? " · cosign needed" : ""}
-                </td>
-              </tr>
-            ))}
+            {items.map((a) => {
+              const needsCosign = a.cosignRequired && !a.cosignedAt;
+              const open = () =>
+                patientId && navigate(`/patients/${patientId}/scales/${a.scaleType}`);
+              return (
+                <tr
+                  key={a.id}
+                  // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                  role="button"
+                  tabIndex={0}
+                  onClick={open}
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Enter" || ev.key === " ") {
+                      ev.preventDefault();
+                      open();
+                    }
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    // Cosignature-pending rows render in italic (§5.2).
+                    fontStyle: needsCosign ? "italic" : "normal",
+                  }}
+                >
+                  <td>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                      {a.scaleType}
+                      {/* §7.6 SUD context marker — a lock glyph, not an emoji (on-system, grayscale-safe). */}
+                      {a.sudContext ? (
+                        <span style={{ color: "var(--color-on-surface-variant)" }}>
+                          <Glyph name="lock" size={13} label="Substance-use context" />
+                        </span>
+                      ) : null}
+                    </span>
+                  </td>
+                  <td className="tabular-nums">{a.capturedAt.slice(0, 16).replace("T", " ")}</td>
+                  <td>{stateLabel(a.capturedByDiscipline)}</td>
+                  <td>
+                    {a.redacted ? (
+                      <span style={meta}>Redacted</span>
+                    ) : (
+                      <span className="tabular-nums">
+                        {a.score ?? "—"}
+                        {a.scoreInterpretation ? ` · ${a.scoreInterpretation}` : ""}
+                      </span>
+                    )}
+                  </td>
+                  <td>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                      <StatusPill
+                        label={stateLabel(a.status)}
+                        tone={ASSESSMENT_TONE[a.status] ?? "neutral"}
+                      />
+                      {needsCosign ? <StatusPill label="Cosign needed" tone="warning" /> : null}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -132,6 +164,8 @@ export function AssessmentTimeline(): JSX.Element {
   );
 }
 
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;
-const meta = { fontSize: "0.75rem", color: "#6b7280", margin: "0.25rem 0" } as const;
+const meta = {
+  fontSize: "0.75rem",
+  color: "var(--color-on-surface-variant)",
+  margin: "0.25rem 0",
+} as const;

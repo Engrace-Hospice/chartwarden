@@ -1,3 +1,11 @@
+import {
+  DerivedBadge,
+  DetailPageLayout,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/09-assessments — Assessment-summary view (M9 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md — "Use Patient Workspace + Documentation Workspace."
 // The latest value across all scales for a patient — a card per scale with its newest score + interpretation +
@@ -8,13 +16,6 @@
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import {
-  DetailPageLayout,
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-} from "@wardenx/ui";
 
 interface SummaryCard {
   id: string;
@@ -38,9 +39,12 @@ export function AssessmentSummary(): JSX.Element {
       if (!patientId) return;
       setLoading(true);
       setError(null);
-      const { data, error: err } = await client.GET("/api/v1/patients/{patientId}/assessments/summary", {
-        params: { path: { patientId } },
-      });
+      const { data, error: err } = await client.GET(
+        "/api/v1/patients/{patientId}/assessments/summary",
+        {
+          params: { path: { patientId } },
+        },
+      );
       if (!active) return;
       if (err) {
         setError("Could not load the summary.");
@@ -62,9 +66,18 @@ export function AssessmentSummary(): JSX.Element {
       ) : loading ? (
         <LoadingSpinner />
       ) : cards.length === 0 ? (
-        <EmptyState title="No assessments" description="No clinical scales have been recorded for this patient." />
+        <EmptyState
+          title="No assessments"
+          description="No clinical scales have been recorded for this patient."
+        />
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(14rem, 1fr))", gap: "1rem" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(14rem, 1fr))",
+            gap: "1rem",
+          }}
+        >
           {cards.map((c) => (
             <div key={c.id} style={card}>
               <h3 style={h3}>{c.scaleType}</h3>
@@ -72,8 +85,19 @@ export function AssessmentSummary(): JSX.Element {
                 <p style={meta}>Redacted for this caller.</p>
               ) : (
                 <>
-                  <p style={{ fontSize: "1.5rem", fontWeight: 600, margin: "0.25rem 0" }}>{c.score ?? "—"}</p>
+                  <p
+                    className="tabular-nums"
+                    style={{ fontSize: "1.5rem", fontWeight: 600, margin: "0.25rem 0" }}
+                  >
+                    {c.score ?? "—"}
+                  </p>
                   <p style={meta}>{c.scoreInterpretation ?? ""}</p>
+                  {/* §Provenance — the score is server-computed by the scale scoring engine, not hand-entered. */}
+                  {c.score !== null ? (
+                    <div style={{ margin: "0.25rem 0" }}>
+                      <DerivedBadge source="scale scoring" verb="computed from" />
+                    </div>
+                  ) : null}
                 </>
               )}
               <p style={meta}>Captured {c.capturedAt.slice(0, 10)}</p>
@@ -85,6 +109,20 @@ export function AssessmentSummary(): JSX.Element {
   );
 }
 
-const card = { border: "1px solid #f3f4f6", borderRadius: "0.375rem", padding: "1rem" } as const;
-const h3 = { fontSize: "0.8rem", textTransform: "uppercase", color: "#6b7280", margin: "0 0 0.25rem" } as const;
-const meta = { fontSize: "0.75rem", color: "#6b7280", margin: "0.25rem 0" } as const;
+const card = {
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
+  borderRadius: "var(--radius-md)",
+  padding: "1rem",
+} as const;
+const h3 = {
+  fontSize: "0.8rem",
+  textTransform: "uppercase",
+  letterSpacing: "0.03em",
+  color: "var(--color-on-surface-variant)",
+  margin: "0 0 0.25rem",
+} as const;
+const meta = {
+  fontSize: "0.75rem",
+  color: "var(--color-on-surface-variant)",
+  margin: "0.25rem 0",
+} as const;

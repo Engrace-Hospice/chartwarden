@@ -1,3 +1,11 @@
+import {
+  DetailPageLayout,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/09-assessments — Scale-policy editor, admin (M9 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md — "Use Patient Workspace + Documentation Workspace."
 // Per-scale enable/disable state. The threshold/cadence tuners (platform floor read-only · tenant override
@@ -6,13 +14,6 @@
 // org-admin scope and the floor (ADR-0030 — no authz on the frontend). Imports only leaves (@wardenx/ui).
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
-import {
-  DetailPageLayout,
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-} from "@wardenx/ui";
 
 interface PolicyRow {
   scaleType: string;
@@ -52,20 +53,28 @@ export function ScalePolicyEditor(): JSX.Element {
       ) : loading ? (
         <LoadingSpinner />
       ) : items.length === 0 ? (
-        <EmptyState title="No policies" description="No scale policies are configured for this organization." />
+        <EmptyState
+          title="No policies"
+          description="No scale policies are configured for this organization."
+        />
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+        <table>
           <thead>
-            <tr style={{ textAlign: "left", color: "#6b7280" }}>
-              <th style={th}>Scale</th>
-              <th style={th}>Status</th>
+            <tr>
+              <th>Scale</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody>
             {items.map((p) => (
-              <tr key={p.scaleType} style={{ borderTop: "1px solid #f3f4f6" }}>
-                <td style={td}>{p.scaleType}</td>
-                <td style={{ ...td, color: p.enabled ? "#166534" : "#6b7280" }}>{p.enabled ? "enabled" : "disabled"}</td>
+              <tr key={p.scaleType}>
+                <td>{p.scaleType}</td>
+                <td>
+                  <StatusPill
+                    label={p.enabled ? "Enabled" : "Disabled"}
+                    tone={p.enabled ? "success" : "neutral"}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -74,6 +83,3 @@ export function ScalePolicyEditor(): JSX.Element {
     </DetailPageLayout>
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;
