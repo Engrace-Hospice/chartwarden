@@ -249,8 +249,33 @@ that surface — reusable treatments (ceremonies, masking, states) built once an
 Corpus completeness against the 40-module architecture (2026-06-24):
 **100% by screen-count · ~16% by frame-depth (97 of ~600) · ~65% by module-breadth.**
 Breadth gaps: M15 Discipline Care Plans (0 screens), M12/M24/M39 (no dedicated screen), and
-~12 flagship modules compressed to 1 screen. Depth-first remediation (this track) was chosen
-before breadth (the ~45–65 missing whole screens remain a later track).
+~12 flagship modules compressed to 1 screen. The **depth track** (D1–D6) was built first; the
+**breadth track** (P12–P14, below) then addressed the missing whole screens. M15 was closed by D5.
+
+## Breadth track (P12–P14) — missing whole screens for thin modules
+
+16 NEW top-level screens for modules that had no dedicated surface, grounded in each module spec
+and deduped against the corpus + depth-track sub-views. Plan in
+[`pencil-prompts/P12-P14-breadth.md`](./pencil-prompts/P12-P14-breadth.md). Corpus index now 113.
+
+| Screen | Module | Layout pattern | Pencil |
+| :-- | :-- | :-- | :-- |
+| [DoseSpot Prescriber Roster](./screens/clinical/WARDENX_UI_DOSESPOT_PRESCRIBER_ROSTER.md) | M12 | Admin Hierarchy Layout | `⬚` (P12) |
+| [Medication Refill Inbox](./screens/clinical/WARDENX_UI_MEDICATION_REFILL_INBOX.md) | M12 | Work Queue | `⬚` (P12) |
+| [DoseSpot Transmit / Failure Queue](./screens/clinical/WARDENX_UI_DOSESPOT_TRANSMIT_QUEUE.md) | M12 | Status Board | `⬚` (P12) |
+| [Consent Record Manager](./screens/compliance/WARDENX_UI_CONSENT_RECORD_MANAGER.md) | M39 | Stepper Workflow | `⬚` (P12) |
+| [Consent Recipients & DPOA Agents](./screens/compliance/WARDENX_UI_CONSENT_RECIPIENTS_DPOA.md) | M39 | Detail Page | `⬚` (P12) |
+| [Consent Expiration & Renewal](./screens/compliance/WARDENX_UI_CONSENT_EXPIRATION_RENEWAL.md) | M39 | Dashboard | `⬚` (P12) |
+| [Medicaid R&B Arrangement Manager](./screens/revenue/WARDENX_UI_MEDICAID_RB_ARRANGEMENT.md) | M24 | Admin Hierarchy Layout | `⬚` (P13) |
+| [Medicaid Eligibility & MCO Routing](./screens/revenue/WARDENX_UI_MEDICAID_ELIGIBILITY_MCO.md) | M24 | Gated Action Flow | `⬚` (P13) |
+| [Medicaid Trading-Partner Credentials](./screens/revenue/WARDENX_UI_MEDICAID_TRADING_PARTNER_CREDS.md) | M24 | Admin Settings Layout | `⬚` (P13) |
+| [Medicaid Validation Override](./screens/revenue/WARDENX_UI_MEDICAID_VALIDATION_OVERRIDE.md) | M24 | Work Queue | `⬚` (P13) |
+| [Cap Year Close & Settlement](./screens/revenue/WARDENX_UI_CAP_SETTLEMENT.md) | M26 | Stepper Workflow | `⬚` (P13) |
+| [On-Call Roster & Protocols](./screens/clinical/WARDENX_UI_ONCALL_ROSTER_PROTOCOLS.md) | M19 | Work Queue | `⬚` (P14) |
+| [Field Staff Safety Incidents](./screens/clinical/WARDENX_UI_FIELD_SAFETY_INCIDENTS.md) | M20 | Work Queue | `⬚` (P14) |
+| [Supply & DME Inventory](./screens/clinical/WARDENX_UI_SUPPLY_DME_INVENTORY.md) | M21 | Work Queue | `⬚` (P14) |
+| [FHIR Gateway & Client Management](./screens/admin/WARDENX_UI_FHIR_GATEWAY_CLIENTS.md) | M28 | Admin Settings Layout | `⬚` (P14) |
+| [MDM Health Check & Sync](./screens/admin/WARDENX_UI_MDM_HEALTH_SYNC.md) | M40 | Status Board | `⬚` (P14) |
 
 ## How to generate a screen in Pencil
 
