@@ -273,11 +273,11 @@ and deduped against the corpus + depth-track sub-views. Plan in
 | [Consent Record Manager](./screens/compliance/WARDENX_UI_CONSENT_RECORD_MANAGER.md) | M39 | Stepper Workflow | `● node:aIMIx` (P12 .pen) |
 | [Consent Recipients & DPOA Agents](./screens/compliance/WARDENX_UI_CONSENT_RECIPIENTS_DPOA.md) | M39 | Detail Page | `● node:XMaBy` (P12 .pen) |
 | [Consent Expiration & Renewal](./screens/compliance/WARDENX_UI_CONSENT_EXPIRATION_RENEWAL.md) | M39 | Dashboard | `● node:jFySy` (P12 .pen) |
-| [Medicaid R&B Arrangement Manager](./screens/revenue/WARDENX_UI_MEDICAID_RB_ARRANGEMENT.md) | M24 | Admin Hierarchy Layout | `◐ node:V8bGq` (P13 .pen) |
-| [Medicaid Eligibility & MCO Routing](./screens/revenue/WARDENX_UI_MEDICAID_ELIGIBILITY_MCO.md) | M24 | Gated Action Flow | `◐ node:wtqs3` (P13 .pen) |
-| [Medicaid Trading-Partner Credentials](./screens/revenue/WARDENX_UI_MEDICAID_TRADING_PARTNER_CREDS.md) | M24 | Admin Settings Layout | `◐ node:eIAe7` (P13 .pen) |
-| [Medicaid Validation Override](./screens/revenue/WARDENX_UI_MEDICAID_VALIDATION_OVERRIDE.md) | M24 | Work Queue | `◐ node:HFIqN` (P13 .pen) |
-| [Cap Year Close & Settlement](./screens/revenue/WARDENX_UI_CAP_SETTLEMENT.md) | M26 | Stepper Workflow | `◐ node:e7rV0x` (P13 .pen) |
+| [Medicaid R&B Arrangement Manager](./screens/revenue/WARDENX_UI_MEDICAID_RB_ARRANGEMENT.md) | M24 | Admin Hierarchy Layout | `● node:V8bGq` (P13 .pen) |
+| [Medicaid Eligibility & MCO Routing](./screens/revenue/WARDENX_UI_MEDICAID_ELIGIBILITY_MCO.md) | M24 | Gated Action Flow | `● node:wtqs3` (P13 .pen) |
+| [Medicaid Trading-Partner Credentials](./screens/revenue/WARDENX_UI_MEDICAID_TRADING_PARTNER_CREDS.md) | M24 | Admin Settings Layout | `● node:eIAe7` (P13 .pen) |
+| [Medicaid Validation Override](./screens/revenue/WARDENX_UI_MEDICAID_VALIDATION_OVERRIDE.md) | M24 | Work Queue | `● node:HFIqN` (P13 .pen) |
+| [Cap Year Close & Settlement](./screens/revenue/WARDENX_UI_CAP_SETTLEMENT.md) | M26 | Stepper Workflow | `● node:e7rV0x` (P13 .pen) |
 | [On-Call Roster & Protocols](./screens/clinical/WARDENX_UI_ONCALL_ROSTER_PROTOCOLS.md) | M19 | Work Queue | `◐ node:V6ZmB` (P14 .pen) |
 | [Field Staff Safety Incidents](./screens/clinical/WARDENX_UI_FIELD_SAFETY_INCIDENTS.md) | M20 | Work Queue | `◐ node:eI32Z` (P14 .pen) |
 | [Supply & DME Inventory](./screens/clinical/WARDENX_UI_SUPPLY_DME_INVENTORY.md) | M21 | Work Queue | `◐ node:FkRoZ` (P14 .pen) |
