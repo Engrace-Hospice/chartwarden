@@ -1,3 +1,4 @@
+import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/17-scheduling — Day View (M17 §5.1, Track B / ADR-0030).
 // Spec: docs/design/screens — "Use Work Queue". The scheduler's per-clinician day grid: one row per visit for the
 // selected service date with its lifecycle chip + scheduled window. The drag-drop reschedule / publish-all
@@ -8,8 +9,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { EmptyState, LoadingSpinner, PageHeader, useApiClient, WorkQueueLayout } from "@wardenx/ui";
-import { type VisitRow, VISIT_STATUS_COLOR, VisitRows } from "./visit-table";
+import { type VisitRow, VisitRows } from "./visit-table";
 
 export function SchedulingDay(): JSX.Element {
   const client = useApiClient();
@@ -41,7 +41,10 @@ export function SchedulingDay(): JSX.Element {
   }, [load]);
 
   const sorted = useMemo(
-    () => [...visits].sort((a, b) => Date.parse(a.scheduledStartedAt) - Date.parse(b.scheduledStartedAt)),
+    () =>
+      [...visits].sort(
+        (a, b) => Date.parse(a.scheduledStartedAt) - Date.parse(b.scheduledStartedAt),
+      ),
     [visits],
   );
 
@@ -56,7 +59,7 @@ export function SchedulingDay(): JSX.Element {
         ) : sorted.length === 0 ? (
           <EmptyState title="No visits" description="No visits are scheduled for this day." />
         ) : (
-          <VisitRows visits={sorted} onSelect={(id) => navigate(`/scheduling/visits/${id}`)} colorMap={VISIT_STATUS_COLOR} />
+          <VisitRows visits={sorted} onSelect={(id) => navigate(`/scheduling/visits/${id}`)} />
         )
       }
     />

@@ -1,3 +1,4 @@
+import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/17-scheduling — My Visits (M17 §5.1 `/app/me/visits`, Track B / ADR-0030).
 // Spec: docs/design/screens — "Use Work Queue". The clinician's own visits today + upcoming 7 days, mobile-
 // optimized. Caseload scoping is the SERVER's job (the §4.7 `within_caseload_or_unassigned_pool` ABAC + RLS;
@@ -7,8 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
-import { EmptyState, LoadingSpinner, PageHeader, useApiClient, WorkQueueLayout } from "@wardenx/ui";
-import { type VisitRow, VISIT_STATUS_COLOR, VisitRows } from "./visit-table";
+import { type VisitRow, VisitRows } from "./visit-table";
 
 export function MyVisits(): JSX.Element {
   const client = useApiClient();
@@ -44,7 +44,10 @@ export function MyVisits(): JSX.Element {
   }, [load]);
 
   const sorted = useMemo(
-    () => [...visits].sort((a, b) => Date.parse(a.scheduledStartedAt) - Date.parse(b.scheduledStartedAt)),
+    () =>
+      [...visits].sort(
+        (a, b) => Date.parse(a.scheduledStartedAt) - Date.parse(b.scheduledStartedAt),
+      ),
     [visits],
   );
 
@@ -57,9 +60,12 @@ export function MyVisits(): JSX.Element {
         ) : loading && visits.length === 0 ? (
           <LoadingSpinner />
         ) : sorted.length === 0 ? (
-          <EmptyState title="No upcoming visits" description="You have no visits scheduled in the next 7 days." />
+          <EmptyState
+            title="No upcoming visits"
+            description="You have no visits scheduled in the next 7 days."
+          />
         ) : (
-          <VisitRows visits={sorted} onSelect={(id) => navigate(`/scheduling/visits/${id}`)} colorMap={VISIT_STATUS_COLOR} />
+          <VisitRows visits={sorted} onSelect={(id) => navigate(`/scheduling/visits/${id}`)} />
         )
       }
     />

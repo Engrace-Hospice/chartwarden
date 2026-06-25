@@ -1,3 +1,11 @@
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/17-scheduling — Proposals Inbox (M17 §5.1 `/app/scheduling/proposals`, Track B / ADR-0030).
 // Spec: docs/design/screens — "Use Work Queue". The scheduler's pending-proposals inbox: frequency / supervisory /
 // order / IDG-driven proposals awaiting publish. The bulk publish/dismiss write surfaces fill in as those write
@@ -7,7 +15,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";
-import { EmptyState, LoadingSpinner, PageHeader, useApiClient, WorkQueueLayout } from "@wardenx/ui";
+import { PROPOSAL_TONE, stateLabel } from "./scheduling-status";
 
 interface ProposalRow {
   id: string;
@@ -16,13 +24,6 @@ interface ProposalRow {
   proposedForDate: string;
   status: string;
 }
-
-const statusColor: Record<string, string | undefined> = {
-  pending: "#1d4ed8",
-  published: "#15803d",
-  dismissed: "#6b7280",
-  stale: "#b45309",
-};
 
 export function SchedulingProposals(): JSX.Element {
   const client = useApiClient();
@@ -62,24 +63,32 @@ export function SchedulingProposals(): JSX.Element {
         ) : loading && rows.length === 0 ? (
           <LoadingSpinner />
         ) : pending.length === 0 ? (
-          <EmptyState title="No pending proposals" description="There are no proposals awaiting publish." />
+          <EmptyState
+            title="No pending proposals"
+            description="There are no proposals awaiting publish."
+          />
         ) : (
-          <table style={table}>
+          <table>
             <thead>
-              <tr style={tr}>
-                <th style={th}>For date</th>
-                <th style={th}>Purpose</th>
-                <th style={th}>Patient</th>
-                <th style={th}>Status</th>
+              <tr>
+                <th>For date</th>
+                <th>Purpose</th>
+                <th>Patient</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {pending.map((r) => (
-                <tr key={r.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                  <td style={td}>{r.proposedForDate}</td>
-                  <td style={td}>{r.proposedVisitPurpose}</td>
-                  <td style={mono}>{r.patientId.slice(0, 8)}</td>
-                  <td style={{ ...td, color: statusColor[r.status] }}>{r.status}</td>
+                <tr key={r.id}>
+                  <td className="tabular-nums">{r.proposedForDate}</td>
+                  <td>{stateLabel(r.proposedVisitPurpose)}</td>
+                  <td className="wx-data-md">{r.patientId.slice(0, 8)}</td>
+                  <td>
+                    <StatusPill
+                      label={stateLabel(r.status)}
+                      tone={PROPOSAL_TONE[r.status] ?? "neutral"}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -89,9 +98,3 @@ export function SchedulingProposals(): JSX.Element {
     />
   );
 }
-
-const table = { width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" } as const;
-const tr = { textAlign: "left", color: "#6b7280" } as const;
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;
-const mono = { ...td, fontFamily: "monospace", fontSize: "0.8rem" } as const;
