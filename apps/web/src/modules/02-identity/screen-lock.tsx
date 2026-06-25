@@ -94,7 +94,7 @@ export function ScreenLock(): JSX.Element | null {
       <form onSubmit={unlock} style={card}>
         <strong style={{ fontSize: "1rem" }}>WardenX</strong>
         <h1 style={{ margin: 0, fontSize: "1.05rem" }}>Locked</h1>
-        <p style={{ margin: 0, color: "#6b7280", fontSize: "0.85rem" }}>
+        <p style={{ margin: 0, color: "var(--color-on-surface-variant)", fontSize: "0.85rem" }}>
           Your screen locked after inactivity.{" "}
           {email ? (
             <>
@@ -113,7 +113,9 @@ export function ScreenLock(): JSX.Element | null {
           onChange={(ev) => setPassword(ev.target.value)}
           style={field}
         />
-        {error ? <p style={{ color: "#b91c1c", margin: 0, fontSize: "0.85rem" }}>{error}</p> : null}
+        {error ? (
+          <p style={{ color: "var(--color-error)", margin: 0, fontSize: "0.85rem" }}>{error}</p>
+        ) : null}
         <button type="submit" disabled={busy || !password} style={primaryBtn}>
           {busy ? "Unlocking…" : "Unlock"}
         </button>
@@ -149,28 +151,28 @@ const card = {
   gap: "0.75rem",
   width: "min(22rem, 92vw)",
   padding: "1.5rem",
-  background: "#fff",
+  background: "var(--color-surface-lowest)",
   borderRadius: "0.75rem",
   boxShadow: "0 20px 50px rgba(0,0,0,0.25)",
 } as const;
 const field = {
   padding: "0.5rem 0.625rem",
-  border: "1px solid #e5e7eb",
+  border: "1px solid var(--color-outline-variant)",
   borderRadius: "0.5rem",
 } as const;
 const primaryBtn = {
   padding: "0.625rem 1rem",
   border: "none",
   borderRadius: "0.5rem",
-  background: "#1d4ed8",
-  color: "#fff",
+  background: "var(--color-primary)",
+  color: "var(--color-surface-lowest)",
   cursor: "pointer",
   fontWeight: 600,
 } as const;
 const linkBtn = {
   border: "none",
   background: "none",
-  color: "#6b7280",
+  color: "var(--color-on-surface-variant)",
   cursor: "pointer",
   fontSize: "0.8rem",
 } as const;

@@ -1,4 +1,12 @@
-import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout } from "@wardenx/ui";
+import {
+  EmptyState,
+  Glyph,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  type StatusTone,
+  WorkQueueLayout,
+} from "@wardenx/ui";
 import { useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/02-identity — Staff Management (M2, Track A).
 // Spec: docs/design/screens/admin/WARDENX_UI_STAFF_MANAGEMENT.md (Work Queue). Manages the org's member
@@ -24,6 +32,14 @@ interface Member {
   lastLoginAt: string | null;
   accountStatus: "created" | "active" | "suspended" | "deactivated" | null;
 }
+
+// §6.6 — membership status → tone.
+const STATUS_TONE: Record<Member["status"], StatusTone> = {
+  active: "success",
+  suspended: "warning",
+  pending: "progress",
+  revoked: "neutral",
+};
 
 export function StaffManagement(): JSX.Element {
   const client = useApiClient();
@@ -141,8 +157,12 @@ export function StaffManagement(): JSX.Element {
           <button type="submit" disabled={busy || !inviteEmail.trim() || !orgId} style={primaryBtn}>
             {busy ? "Sending…" : "Invite"}
           </button>
-          {notice ? <span style={{ color: "#15803d", fontSize: "0.85rem" }}>{notice}</span> : null}
-          {error ? <span style={{ color: "#b91c1c", fontSize: "0.85rem" }}>{error}</span> : null}
+          {notice ? (
+            <span style={{ color: "var(--color-success)", fontSize: "0.85rem" }}>{notice}</span>
+          ) : null}
+          {error ? (
+            <span style={{ color: "var(--color-error)", fontSize: "0.85rem" }}>{error}</span>
+          ) : null}
         </form>
       }
       table={
@@ -157,7 +177,11 @@ export function StaffManagement(): JSX.Element {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
             <thead>
               <tr
-                style={{ textAlign: "left", color: "#6b7280", borderBottom: "1px solid #e5e7eb" }}
+                style={{
+                  textAlign: "left",
+                  color: "var(--color-on-surface-variant)",
+                  borderBottom: "1px solid var(--color-outline-variant)",
+                }}
               >
                 <th style={th}>Member</th>
                 <th style={th}>Email</th>
@@ -170,16 +194,19 @@ export function StaffManagement(): JSX.Element {
             </thead>
             <tbody>
               {members.map((m) => (
-                <tr key={m.membershipId} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                <tr
+                  key={m.membershipId}
+                  style={{ borderBottom: "1px solid var(--color-outline-variant)" }}
+                >
                   <td style={td}>
                     <MemberName member={m} />
                   </td>
                   <td style={td}>{m.email ?? "—"}</td>
                   <td style={td}>{m.isAdmin ? "Org admin" : "Member"}</td>
-                  <td style={td}>{formatLastLogin(m.lastLoginAt)}</td>
-                  <td style={td}>{m.defaultLocationIds.length}</td>
+                  <td style={{ ...td, ...tabular }}>{formatLastLogin(m.lastLoginAt)}</td>
+                  <td style={{ ...td, ...tabular }}>{m.defaultLocationIds.length}</td>
                   <td style={td}>
-                    <StatusPill status={m.status} />
+                    <StatusPill label={cap(m.status)} tone={STATUS_TONE[m.status]} />
                   </td>
                   <td style={td}>
                     {m.status === "active" ? (
@@ -199,7 +226,7 @@ export function StaffManagement(): JSX.Element {
                       <button
                         type="button"
                         onClick={() => revoke(m)}
-                        style={{ ...linkBtn, color: "#b91c1c" }}
+                        style={{ ...linkBtn, color: "var(--color-error)" }}
                       >
                         Remove
                       </button>
@@ -218,8 +245,10 @@ export function StaffManagement(): JSX.Element {
 function Kpi({ label, value }: { label: string; value: number }): JSX.Element {
   return (
     <div style={kpiCard}>
-      <div style={{ fontSize: "1.5rem", fontWeight: 700 }}>{value}</div>
-      <div style={{ fontSize: "0.8rem", color: "#6b7280" }}>{label}</div>
+      <div className="tabular-nums" style={{ fontSize: "1.5rem", fontWeight: 700 }}>
+        {value}
+      </div>
+      <div style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>{label}</div>
     </div>
   );
 }
@@ -230,15 +259,9 @@ function MemberName({ member }: { member: Member }): JSX.Element {
   const primary = member.displayName ?? member.email ?? member.membershipId.slice(0, 8);
   const isLocked = member.accountStatus === "suspended" || member.accountStatus === "deactivated";
   return (
-    <span>
-      {member.displayName ? primary : <code style={{ fontSize: "0.8rem" }}>{primary}</code>}
-      {isLocked ? (
-        <span
-          style={{ marginLeft: "0.5rem", color: "#b45309", fontSize: "0.7rem", fontWeight: 700 }}
-        >
-          LOCKED
-        </span>
-      ) : null}
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+      {member.displayName ? primary : <span className="wx-data-md">{primary}</span>}
+      {isLocked ? <StatusPill label="Locked" tone="error" glyph="lock" /> : null}
     </span>
   );
 }
@@ -250,24 +273,16 @@ function formatLastLogin(iso: string | null): string {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString();
 }
 
-function StatusPill({ status }: { status: Member["status"] }): JSX.Element {
-  const color =
-    status === "active"
-      ? "#15803d"
-      : status === "suspended"
-        ? "#b45309"
-        : status === "pending"
-          ? "#1d4ed8"
-          : "#6b7280";
-  return <span style={{ color, fontWeight: 600, textTransform: "capitalize" }}>{status}</span>;
-}
+const cap = (s: string): string => s.replace(/\b\w/g, (c) => c.toUpperCase());
 
+const tabular = { fontVariantNumeric: "tabular-nums" } as const;
 const kpiStrip = { display: "flex", gap: "1rem", padding: "0.75rem 1.5rem" } as const;
 const kpiCard = {
   padding: "0.75rem 1rem",
-  border: "1px solid #e5e7eb",
+  border: "1px solid var(--color-outline-variant)",
   borderRadius: "0.5rem",
   minWidth: "7rem",
+  background: "var(--color-surface-lowest)",
 } as const;
 const inviteBar = {
   display: "flex",
@@ -278,7 +293,7 @@ const inviteBar = {
 } as const;
 const field = {
   padding: "0.4rem 0.6rem",
-  border: "1px solid #e5e7eb",
+  border: "1px solid var(--color-outline-variant)",
   borderRadius: "0.5rem",
   minWidth: "16rem",
 } as const;
@@ -288,15 +303,15 @@ const primaryBtn = {
   padding: "0.4rem 0.9rem",
   border: "none",
   borderRadius: "0.5rem",
-  background: "#1d4ed8",
-  color: "#fff",
+  background: "var(--color-primary)",
+  color: "var(--color-surface-lowest)",
   cursor: "pointer",
   fontWeight: 600,
 } as const;
 const linkBtn = {
   border: "none",
   background: "none",
-  color: "#1d4ed8",
+  color: "var(--color-primary)",
   cursor: "pointer",
   fontWeight: 600,
   marginRight: "0.75rem",

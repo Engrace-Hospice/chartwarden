@@ -177,7 +177,7 @@ export function StepUp(): JSX.Element {
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
         <h1 style={{ margin: 0, fontSize: "1.1rem" }}>Confirm it’s you</h1>
-        <p style={{ margin: 0, color: "#6b7280", fontSize: "0.85rem" }}>
+        <p style={{ margin: 0, color: "var(--color-on-surface-variant)", fontSize: "0.85rem" }}>
           {mode === "webauthn"
             ? "This action needs a fresh verification. Use your passkey — your device’s biometrics or security key."
             : "This action needs a fresh verification. Enter the 6-digit code from your authenticator app."}
@@ -189,7 +189,7 @@ export function StepUp(): JSX.Element {
               {busy ? "Waiting for passkey…" : "Verify with a passkey"}
             </button>
             {error ? (
-              <p style={{ color: "#b91c1c", margin: 0, fontSize: "0.85rem" }}>{error}</p>
+              <p style={{ color: "var(--color-error)", margin: 0, fontSize: "0.85rem" }}>{error}</p>
             ) : null}
             <button type="button" onClick={() => setMode("totp")} disabled={busy} style={linkBtn}>
               Use an authenticator code instead
@@ -221,7 +221,7 @@ export function StepUp(): JSX.Element {
               />
             </label>
             {error ? (
-              <p style={{ color: "#b91c1c", margin: 0, fontSize: "0.85rem" }}>{error}</p>
+              <p style={{ color: "var(--color-error)", margin: 0, fontSize: "0.85rem" }}>{error}</p>
             ) : null}
             <button type="submit" disabled={busy || code.length !== 6} style={primaryBtn}>
               {busy ? "Verifying…" : "Verify"}
@@ -245,7 +245,7 @@ export function StepUp(): JSX.Element {
 
 const field = {
   padding: "0.5rem 0.625rem",
-  border: "1px solid #e5e7eb",
+  border: "1px solid var(--color-outline-variant)",
   borderRadius: "0.5rem",
   letterSpacing: "0.3em",
   fontSize: "1.1rem",
@@ -255,8 +255,8 @@ const primaryBtn = {
   padding: "0.625rem 1rem",
   border: "none",
   borderRadius: "0.5rem",
-  background: "#1d4ed8",
-  color: "#fff",
+  background: "var(--color-primary)",
+  color: "var(--color-surface-lowest)",
   cursor: "pointer",
   fontWeight: 600,
 } as const;
@@ -264,7 +264,7 @@ const linkBtn = {
   padding: 0,
   border: "none",
   background: "none",
-  color: "#1d4ed8",
+  color: "var(--color-primary)",
   cursor: "pointer",
   fontSize: "0.8rem",
   textAlign: "center" as const,

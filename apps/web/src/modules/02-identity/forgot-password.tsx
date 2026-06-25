@@ -32,7 +32,7 @@ export function ForgotPassword(): JSX.Element {
       {sent ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           <h1 style={{ margin: 0, fontSize: "1.1rem" }}>Check your email</h1>
-          <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
+          <p style={{ margin: 0, color: "var(--color-on-surface-variant)", fontSize: "0.9rem" }}>
             If an account exists for <strong>{email}</strong>, we’ve sent a link to reset your
             password. The link expires shortly for your security.
           </p>
@@ -43,7 +43,7 @@ export function ForgotPassword(): JSX.Element {
           style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
         >
           <h1 style={{ margin: 0, fontSize: "1.1rem" }}>Reset your password</h1>
-          <p style={{ margin: 0, color: "#6b7280", fontSize: "0.85rem" }}>
+          <p style={{ margin: 0, color: "var(--color-on-surface-variant)", fontSize: "0.85rem" }}>
             Enter your email and we’ll send you a link to set a new password.
           </p>
           <label
@@ -75,15 +75,15 @@ export function ForgotPassword(): JSX.Element {
 
 const field = {
   padding: "0.5rem 0.625rem",
-  border: "1px solid #e5e7eb",
+  border: "1px solid var(--color-outline-variant)",
   borderRadius: "0.5rem",
 } as const;
 const primaryBtn = {
   padding: "0.625rem 1rem",
   border: "none",
   borderRadius: "0.5rem",
-  background: "#1d4ed8",
-  color: "#fff",
+  background: "var(--color-primary)",
+  color: "var(--color-surface-lowest)",
   cursor: "pointer",
   fontWeight: 600,
 } as const;
