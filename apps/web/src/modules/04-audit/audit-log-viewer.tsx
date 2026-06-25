@@ -4,6 +4,8 @@ import {
   LoadingSpinner,
   PageHeader,
   RightDetailPanel,
+  StatusPill,
+  type StatusTone,
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
@@ -41,11 +43,20 @@ interface Filters {
 }
 const EMPTY_FILTERS: Filters = { eventType: "", resourceKind: "", outcome: "", severity: "" };
 
-const severityColor: Record<AuditEvent["severity"], string> = {
-  info: "#6b7280",
-  warn: "#b45309",
-  critical: "#b91c1c",
+// §6.6 status taxonomy: audit outcome + severity → tone. `denied` is a deliberate guard block (warning,
+// not a crash); `failure` is an operational error; audit `critical` severity maps to the error tone (the
+// gold `critical` StatusPill tone is reserved for controlled-substance, §10).
+const OUTCOME_TONE: Record<string, StatusTone> = {
+  success: "success",
+  denied: "warning",
+  failure: "error",
 };
+const SEVERITY_TONE: Record<string, StatusTone> = {
+  info: "neutral",
+  warn: "warning",
+  critical: "error",
+};
+const label = (s: string): string => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
 export function AuditLogViewer(): JSX.Element {
   const client = useApiClient();
@@ -114,9 +125,9 @@ export function AuditLogViewer(): JSX.Element {
             onChange={(e) => setFilters((f) => ({ ...f, outcome: e.target.value }))}
           >
             <option value="">Any outcome</option>
-            <option value="success">success</option>
-            <option value="failure">failure</option>
-            <option value="denied">denied</option>
+            <option value="success">Success</option>
+            <option value="failure">Failure</option>
+            <option value="denied">Denied</option>
           </select>
           <select
             aria-label="Severity"
@@ -124,9 +135,9 @@ export function AuditLogViewer(): JSX.Element {
             onChange={(e) => setFilters((f) => ({ ...f, severity: e.target.value }))}
           >
             <option value="">Any severity</option>
-            <option value="info">info</option>
-            <option value="warn">warn</option>
-            <option value="critical">critical</option>
+            <option value="info">Info</option>
+            <option value="warn">Warn</option>
+            <option value="critical">Critical</option>
           </select>
         </FilterBar>
       }
@@ -170,15 +181,15 @@ function AuditTable({
     );
   return (
     <div style={{ padding: "0 1.5rem 1.5rem" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+      <table>
         <thead>
-          <tr style={{ textAlign: "left", color: "#6b7280" }}>
-            <th style={th}>Timestamp</th>
-            <th style={th}>Actor</th>
-            <th style={th}>Action</th>
-            <th style={th}>Entity</th>
-            <th style={th}>Outcome</th>
-            <th style={th}>Severity</th>
+          <tr>
+            <th>Timestamp</th>
+            <th>Actor</th>
+            <th>Action</th>
+            <th>Entity</th>
+            <th>Outcome</th>
+            <th>Severity</th>
           </tr>
         </thead>
         <tbody>
@@ -188,6 +199,7 @@ function AuditTable({
               // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
               role="button"
               tabIndex={0}
+              aria-pressed={e.id === selectedId}
               onClick={() => onSelect(e)}
               onKeyDown={(ev) => {
                 if (ev.key === "Enter" || ev.key === " ") {
@@ -197,16 +209,24 @@ function AuditTable({
               }}
               style={{
                 cursor: "pointer",
-                background: e.id === selectedId ? "#eff6ff" : undefined,
-                borderTop: "1px solid #f3f4f6",
+                background: e.id === selectedId ? "var(--color-primary-tint)" : undefined,
               }}
             >
-              <td style={td}>{new Date(e.createdAt).toLocaleString()}</td>
-              <td style={td}>{e.actorUserId ?? e.actorKind}</td>
-              <td style={td}>{e.eventType}</td>
-              <td style={td}>{e.resourceKind}</td>
-              <td style={td}>{e.outcome}</td>
-              <td style={{ ...td, color: severityColor[e.severity] }}>{e.severity}</td>
+              <td className="tabular-nums">{new Date(e.createdAt).toLocaleString()}</td>
+              <td className={e.actorUserId ? "wx-data-md" : undefined}>
+                {e.actorUserId ?? label(e.actorKind)}
+              </td>
+              <td>{e.eventType}</td>
+              <td>{e.resourceKind}</td>
+              <td>
+                <StatusPill label={label(e.outcome)} tone={OUTCOME_TONE[e.outcome] ?? "neutral"} />
+              </td>
+              <td>
+                <StatusPill
+                  label={label(e.severity)}
+                  tone={SEVERITY_TONE[e.severity] ?? "neutral"}
+                />
+              </td>
             </tr>
           ))}
         </tbody>
@@ -223,33 +243,76 @@ function AuditTable({
 }
 
 function EventDetail({ event, onClose }: { event: AuditEvent; onClose: () => void }): JSX.Element {
-  const row = (label: string, value: string) => (
+  const row = (fieldLabel: string, value: JSX.Element | string) => (
     <div style={{ marginBottom: "0.5rem" }}>
-      <div style={{ fontSize: "0.7rem", color: "#6b7280" }}>{label}</div>
-      <div style={{ fontSize: "0.85rem", wordBreak: "break-word" }}>{value}</div>
+      <div style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>
+        {fieldLabel}
+      </div>
+      <div
+        style={{ fontSize: "0.85rem", wordBreak: "break-word", color: "var(--color-on-surface)" }}
+      >
+        {value}
+      </div>
     </div>
   );
   return (
     <RightDetailPanel title="Event detail" onClose={onClose}>
-      {row("Timestamp", new Date(event.createdAt).toLocaleString())}
+      {row(
+        "Timestamp",
+        <span className="tabular-nums">{new Date(event.createdAt).toLocaleString()}</span>,
+      )}
       {row(
         "Actor",
-        `${event.actorUserId ?? "—"} (${event.actorKind}${event.actorRole ? `, ${event.actorRole}` : ""})`,
+        <>
+          {event.actorUserId ? <span className="wx-data-md">{event.actorUserId}</span> : "—"} (
+          {label(event.actorKind)}
+          {event.actorRole ? `, ${label(event.actorRole)}` : ""})
+        </>,
       )}
       {row("Action", event.eventType)}
-      {row("Entity", `${event.resourceKind}${event.resourceId ? ` · ${event.resourceId}` : ""}`)}
-      {row("Outcome", event.outcome)}
-      {row("Severity", event.severity)}
-      {row("Retention", event.retentionClass)}
+      {row(
+        "Entity",
+        <>
+          {event.resourceKind}
+          {event.resourceId ? (
+            <>
+              {" · "}
+              <span className="wx-data-md">{event.resourceId}</span>
+            </>
+          ) : null}
+        </>,
+      )}
+      {row(
+        "Outcome",
+        <StatusPill label={label(event.outcome)} tone={OUTCOME_TONE[event.outcome] ?? "neutral"} />,
+      )}
+      {row(
+        "Severity",
+        <StatusPill
+          label={label(event.severity)}
+          tone={SEVERITY_TONE[event.severity] ?? "neutral"}
+        />,
+      )}
+      {row("Retention", label(event.retentionClass))}
       <details style={{ marginTop: "0.75rem" }}>
-        <summary style={{ cursor: "pointer", fontSize: "0.8rem" }}>Context / changes</summary>
+        <summary
+          style={{
+            cursor: "pointer",
+            fontSize: "0.8rem",
+            color: "var(--color-on-surface-variant)",
+          }}
+        >
+          Context / changes
+        </summary>
         <pre
+          className="wx-data-md"
           style={{
             fontSize: "0.7rem",
             overflowX: "auto",
-            background: "#f9fafb",
+            background: "var(--color-surface-low)",
+            color: "var(--color-on-surface)",
             padding: "0.5rem",
-            borderRadius: "0.375rem",
+            borderRadius: "var(--radius-md)",
           }}
         >
           {JSON.stringify(
@@ -262,6 +325,3 @@ function EventDetail({ event, onClose }: { event: AuditEvent; onClose: () => voi
     </RightDetailPanel>
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;
