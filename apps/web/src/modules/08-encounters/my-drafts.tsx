@@ -4,18 +4,21 @@ import {
   KpiStrip,
   LoadingSpinner,
   PageHeader,
+  StatusPill,
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/08-encounters — My Drafts (M8 §5.1, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md — "Use Work Queue."
 // The author's open encounter drafts: one row per in-flight draft with its type · discipline · service
-// date · late-entry tier. A row opens the Encounter Read view (the authoring surface §5.2 fills in as
-// its write path hardens). Reads GET /api/v1/encounters/my-drafts via the typed client; the server
-// scopes to the calling author (ADR-0030 — no authz on the frontend). Imports only leaves (@wardenx/ui).
+// date · late-entry tier. Reconciled to Lantern (R1): the §2.5 late-entry tier is a §6.6 StatusPill
+// (normal calm, escalating tiers warn/alert), ids mono, table No-Line. A row opens the Encounter Read
+// view. Reads GET /api/v1/encounters/my-drafts via the typed client; the server scopes to the calling
+// author (ADR-0030 — no authz on the frontend). Imports only leaves (@wardenx/ui).
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import { lateEntryTone, stateLabel } from "./encounter-status";
 
 interface EncounterRow {
   id: string;
@@ -54,7 +57,9 @@ export function MyDrafts(): JSX.Element {
     };
   }, [client]);
 
-  const lateCount = items.filter((e) => e.lateEntryTier !== "on_time").length;
+  // §2.5 D4 tiers are normal | late_entry | significant_late_entry | administrative_override —
+  // anything but `normal` is a late entry. (Was compared to a non-existent "on_time" tier.)
+  const lateCount = items.filter((e) => e.lateEntryTier !== "normal").length;
 
   return (
     <WorkQueueLayout
@@ -74,13 +79,13 @@ export function MyDrafts(): JSX.Element {
           <EmptyState title="No drafts" description="You have no open encounter drafts." />
         ) : (
           <div style={{ padding: "0 1.5rem 1.5rem" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+            <table>
               <thead>
-                <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                  <th style={th}>Encounter</th>
-                  <th style={th}>Discipline</th>
-                  <th style={th}>Service date</th>
-                  <th style={th}>Late-entry</th>
+                <tr>
+                  <th>Encounter</th>
+                  <th>Discipline</th>
+                  <th>Service date</th>
+                  <th>Late-entry</th>
                 </tr>
               </thead>
               <tbody>
@@ -97,12 +102,17 @@ export function MyDrafts(): JSX.Element {
                         navigate(`/patients/${e.patientId}/encounters/${e.id}`);
                       }
                     }}
-                    style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}
+                    style={{ cursor: "pointer" }}
                   >
-                    <td style={td}>{e.encounterType}</td>
-                    <td style={td}>{e.discipline}</td>
-                    <td style={td}>{e.serviceDate}</td>
-                    <td style={td}>{e.lateEntryTier}</td>
+                    <td>{e.encounterType}</td>
+                    <td>{stateLabel(e.discipline)}</td>
+                    <td className="tabular-nums">{e.serviceDate}</td>
+                    <td>
+                      <StatusPill
+                        label={stateLabel(e.lateEntryTier)}
+                        tone={lateEntryTone(e.lateEntryTier)}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -113,6 +123,3 @@ export function MyDrafts(): JSX.Element {
     />
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;

@@ -3,6 +3,8 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  RightDetailPanel,
+  StatusPill,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/08-encounters — Encounter Read (M8 §5.1/§5.2, Track B / ADR-0030).
@@ -15,6 +17,7 @@ import {
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
+import { COSIGN_TONE, ENCOUNTER_TONE, lateEntryTone, stateLabel } from "./encounter-status";
 
 interface Encounter {
   id: string;
@@ -85,42 +88,70 @@ export function EncounterRead(): JSX.Element {
   return (
     <DetailPageLayout
       header={
-        <PageHeader title={`Encounter — ${encounter.encounterType}`}>
+        <PageHeader
+          title={`Encounter — ${encounter.encounterType}`}
+          actions={
+            <StatusPill
+              label={stateLabel(encounter.status)}
+              tone={ENCOUNTER_TONE[encounter.status] ?? "neutral"}
+            />
+          }
+        >
           <span style={meta}>
-            {encounter.discipline} · {encounter.serviceDate} · {encounter.status}
+            {stateLabel(encounter.discipline)} · {encounter.serviceDate}
             {encounter.isF2f ? " · F2F" : ""}
           </span>
         </PageHeader>
       }
       aside={
-        <aside
-          style={{
-            width: "18rem",
-            flexShrink: 0,
-            borderLeft: "1px solid #e5e7eb",
-            padding: "1.5rem",
-            overflow: "auto",
-          }}
-        >
+        <RightDetailPanel title="Status">
           <h3 style={h3}>Cosignature</h3>
           {cosignStatus ? (
-            <p style={meta}>Status: {cosignStatus}</p>
+            <StatusPill
+              label={stateLabel(cosignStatus)}
+              tone={COSIGN_TONE[cosignStatus] ?? "neutral"}
+            />
           ) : (
             <p style={meta}>No cosignature request for this encounter.</p>
           )}
-          <h3 style={{ ...h3, marginTop: "1rem" }}>Lifecycle</h3>
-          <ul style={{ paddingLeft: "1rem", margin: "0.5rem 0", fontSize: "0.8rem" }}>
-            <li>Status: {encounter.status}</li>
-            <li>Version: v{encounter.version}</li>
-            <li>Late-entry tier: {encounter.lateEntryTier}</li>
+          <h3 style={{ ...h3, marginTop: "1.25rem" }}>Lifecycle</h3>
+          <dl style={lifecycleGrid}>
+            <dt style={dt}>Status</dt>
+            <dd style={dd}>
+              <StatusPill
+                label={stateLabel(encounter.status)}
+                tone={ENCOUNTER_TONE[encounter.status] ?? "neutral"}
+              />
+            </dd>
+            <dt style={dt}>Version</dt>
+            <dd style={dd} className="wx-data-md">
+              v{encounter.version}
+            </dd>
+            <dt style={dt}>Late-entry</dt>
+            <dd style={dd}>
+              <StatusPill
+                label={stateLabel(encounter.lateEntryTier)}
+                tone={lateEntryTone(encounter.lateEntryTier)}
+              />
+            </dd>
             {encounter.signedAt ? (
-              <li>Signed: {encounter.signedAt.slice(0, 16).replace("T", " ")}</li>
+              <>
+                <dt style={dt}>Signed</dt>
+                <dd style={dd} className="tabular-nums">
+                  {encounter.signedAt.slice(0, 16).replace("T", " ")}
+                </dd>
+              </>
             ) : null}
             {encounter.cosignedAt ? (
-              <li>Cosigned: {encounter.cosignedAt.slice(0, 16).replace("T", " ")}</li>
+              <>
+                <dt style={dt}>Cosigned</dt>
+                <dd style={dd} className="tabular-nums">
+                  {encounter.cosignedAt.slice(0, 16).replace("T", " ")}
+                </dd>
+              </>
             ) : null}
-          </ul>
-        </aside>
+          </dl>
+        </RightDetailPanel>
       }
     >
       <div style={card}>
@@ -137,11 +168,18 @@ export function EncounterRead(): JSX.Element {
           <dt style={dt}>Type</dt>
           <dd style={dd}>{encounter.encounterType}</dd>
           <dt style={dt}>Discipline</dt>
-          <dd style={dd}>{encounter.discipline}</dd>
+          <dd style={dd}>{stateLabel(encounter.discipline)}</dd>
           <dt style={dt}>Service date</dt>
-          <dd style={dd}>{encounter.serviceDate}</dd>
+          <dd style={{ ...dd }} className="tabular-nums">
+            {encounter.serviceDate}
+          </dd>
           <dt style={dt}>Status</dt>
-          <dd style={dd}>{encounter.status}</dd>
+          <dd style={dd}>
+            <StatusPill
+              label={stateLabel(encounter.status)}
+              tone={ENCOUNTER_TONE[encounter.status] ?? "neutral"}
+            />
+          </dd>
         </dl>
         <p style={{ ...meta, marginTop: "1rem" }}>
           The authoring, finalize/Layer-2, and signing surfaces (§5.2–5.4) fill in as their write
@@ -155,10 +193,27 @@ export function EncounterRead(): JSX.Element {
 const h3 = {
   fontSize: "0.8rem",
   textTransform: "uppercase",
-  color: "#6b7280",
+  letterSpacing: "0.03em",
+  color: "var(--color-on-surface-variant)",
   margin: "0 0 0.5rem",
 } as const;
-const meta = { fontSize: "0.75rem", color: "#6b7280", margin: "0.25rem 0" } as const;
-const card = { border: "1px solid #f3f4f6", borderRadius: "0.375rem", padding: "1rem" } as const;
-const dt = { fontWeight: 600, color: "#6b7280" } as const;
-const dd = { margin: 0 } as const;
+const meta = {
+  fontSize: "0.75rem",
+  color: "var(--color-on-surface-variant)",
+  margin: "0.25rem 0",
+} as const;
+const card = {
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
+  borderRadius: "var(--radius-md)",
+  padding: "1rem",
+} as const;
+const lifecycleGrid = {
+  display: "grid",
+  gridTemplateColumns: "auto 1fr",
+  alignItems: "center",
+  gap: "0.5rem 1rem",
+  margin: "0.5rem 0 0",
+  fontSize: "0.8rem",
+} as const;
+const dt = { fontWeight: 600, color: "var(--color-on-surface-variant)" } as const;
+const dd = { margin: 0, color: "var(--color-on-surface)" } as const;
