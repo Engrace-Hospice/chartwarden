@@ -278,11 +278,11 @@ and deduped against the corpus + depth-track sub-views. Plan in
 | [Medicaid Trading-Partner Credentials](./screens/revenue/WARDENX_UI_MEDICAID_TRADING_PARTNER_CREDS.md) | M24 | Admin Settings Layout | `● node:eIAe7` (P13 .pen) |
 | [Medicaid Validation Override](./screens/revenue/WARDENX_UI_MEDICAID_VALIDATION_OVERRIDE.md) | M24 | Work Queue | `● node:HFIqN` (P13 .pen) |
 | [Cap Year Close & Settlement](./screens/revenue/WARDENX_UI_CAP_SETTLEMENT.md) | M26 | Stepper Workflow | `● node:e7rV0x` (P13 .pen) |
-| [On-Call Roster & Protocols](./screens/clinical/WARDENX_UI_ONCALL_ROSTER_PROTOCOLS.md) | M19 | Work Queue | `◐ node:V6ZmB` (P14 .pen) |
-| [Field Staff Safety Incidents](./screens/clinical/WARDENX_UI_FIELD_SAFETY_INCIDENTS.md) | M20 | Work Queue | `◐ node:eI32Z` (P14 .pen) |
-| [Supply & DME Inventory](./screens/clinical/WARDENX_UI_SUPPLY_DME_INVENTORY.md) | M21 | Work Queue | `◐ node:FkRoZ` (P14 .pen) |
-| [FHIR Gateway & Client Management](./screens/admin/WARDENX_UI_FHIR_GATEWAY_CLIENTS.md) | M28 | Admin Settings Layout | `◐ node:x0R4jb` (P14 .pen) |
-| [MDM Health Check & Sync](./screens/admin/WARDENX_UI_MDM_HEALTH_SYNC.md) | M40 | Status Board | `◐ node:I9nE3S` (P14 .pen) |
+| [On-Call Roster & Protocols](./screens/clinical/WARDENX_UI_ONCALL_ROSTER_PROTOCOLS.md) | M19 | Work Queue | `● node:V6ZmB` (P14 .pen) |
+| [Field Staff Safety Incidents](./screens/clinical/WARDENX_UI_FIELD_SAFETY_INCIDENTS.md) | M20 | Work Queue | `● node:eI32Z` (P14 .pen) |
+| [Supply & DME Inventory](./screens/clinical/WARDENX_UI_SUPPLY_DME_INVENTORY.md) | M21 | Work Queue | `● node:FkRoZ` (P14 .pen) |
+| [FHIR Gateway & Client Management](./screens/admin/WARDENX_UI_FHIR_GATEWAY_CLIENTS.md) | M28 | Admin Settings Layout | `● node:x0R4jb` (P14 .pen) |
+| [MDM Health Check & Sync](./screens/admin/WARDENX_UI_MDM_HEALTH_SYNC.md) | M40 | Status Board | `● node:I9nE3S` (P14 .pen) |
 
 ## How to generate a screen in Pencil
 
