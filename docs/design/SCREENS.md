@@ -42,23 +42,23 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 
 | Screen | Module(s) | Layout pattern | Pencil |
 | :-- | :-- | :-- | :-- |
-| [App Shell & Role Home](./screens/core/WARDENX_UI_APP_SHELL_HOME.md) | M01 | App Shell (Dashboard content) | `◐ node:AQAhY` (wardenx-P0-foundation.pen) |
-| [Authentication & Session](./screens/core/WARDENX_UI_AUTH.md) | M02 | Auth Flow | `◐ node:a1dbhD` (P0 .pen) |
-| [Global Search Results](./screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md) | M01 · M33 | Work Queue | `◐ node:Cp053` (P0 .pen) |
+| [App Shell & Role Home](./screens/core/WARDENX_UI_APP_SHELL_HOME.md) | M01 | App Shell (Dashboard content) | `● node:AQAhY` (wardenx-P0-foundation.pen) |
+| [Authentication & Session](./screens/core/WARDENX_UI_AUTH.md) | M02 | Auth Flow | `● node:a1dbhD` (P0 .pen) |
+| [Global Search Results](./screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md) | M01 · M33 | Work Queue | `● node:Cp053` (P0 .pen) |
 | [Help & Training](./screens/core/WARDENX_UI_HELP_TRAINING.md) | M01 | Work Queue | `◐ node:nNKhB` (P11 .pen) |
-| [Notifications & Tasks](./screens/core/WARDENX_UI_NOTIFICATIONS_TASKS.md) | M01 · M36 | Work Queue | `◐ node:mK4co` (P0 .pen) |
-| [Reporting & Analytics](./screens/core/WARDENX_UI_REPORTING_ANALYTICS.md) | M33 | Dashboard | `◐ node:H3JUcW` (P0 .pen) |
-| [Staff Messaging](./screens/core/WARDENX_UI_STAFF_MESSAGING.md) | M36 | Conversation View | `◐ node:A016Y` (P0 .pen) |
-| [System / Utility Pages](./screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md) | M01 | System Page | `◐ node:dT1Bt` (P0 .pen) |
+| [Notifications & Tasks](./screens/core/WARDENX_UI_NOTIFICATIONS_TASKS.md) | M01 · M36 | Work Queue | `● node:mK4co` (P0 .pen) |
+| [Reporting & Analytics](./screens/core/WARDENX_UI_REPORTING_ANALYTICS.md) | M33 | Dashboard | `● node:H3JUcW` (P0 .pen) |
+| [Staff Messaging](./screens/core/WARDENX_UI_STAFF_MESSAGING.md) | M36 | Conversation View | `● node:A016Y` (P0 .pen) |
+| [System / Utility Pages](./screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md) | M01 | System Page | `● node:dT1Bt` (P0 .pen) |
 | [User Profile & Preferences](./screens/core/WARDENX_UI_USER_PROFILE_PREFERENCES.md) | M02 | Admin Settings | `◐ node:fGKwq` (P11 .pen) |
-| [Agency Command Center](./screens/core/WARDENX_UI_AGENCY_COMMAND_CENTER.md) | M33 · M01 | Dashboard | `◐ node:LRfYv` (P0 .pen) |
+| [Agency Command Center](./screens/core/WARDENX_UI_AGENCY_COMMAND_CENTER.md) | M33 · M01 | Dashboard | `● node:LRfYv` (P0 .pen) |
 
 ## Clinical — Patient, Care, Assessments, Visits (28)
 
 | Screen | Module(s) | Layout pattern | Pencil |
 | :-- | :-- | :-- | :-- |
-| [Patient Chart](./screens/clinical/WARDENX_UI_PATIENT_CHART.md) | M05 | Patient Workspace | `◐ node:fQjjh` (P0 .pen) |
-| [Patient List / Census](./screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md) | M05 | Work Queue | `◐ node:DNqXm` (P0 .pen) |
+| [Patient Chart](./screens/clinical/WARDENX_UI_PATIENT_CHART.md) | M05 | Patient Workspace | `● node:fQjjh` (P0 .pen) |
+| [Patient List / Census](./screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md) | M05 | Work Queue | `● node:DNqXm` (P0 .pen) |
 | [Patient Clinical Timeline](./screens/clinical/WARDENX_UI_PATIENT_CLINICAL_TIMELINE.md) | M05 | Patient Workspace + Timeline | `◐ node:KfY70` (P1 .pen) |
 | [Admissions / Referral Intake](./screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md) | M06 | Stepper Workflow + Review Workspace | `◐ node:d9ZJU` (P11 .pen) |
 | [Election & Certification](./screens/clinical/WARDENX_UI_ELECTION_CERTIFICATION.md) | M06 | Patient Workspace + Stepper Workflow | `◐ node:LXxxD` (P11 .pen) |

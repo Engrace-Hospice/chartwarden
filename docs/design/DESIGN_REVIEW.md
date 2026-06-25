@@ -7,10 +7,17 @@ type system, and the WardenX systems (Guardrail §7 / Sensitivity §8 / Provenan
 **Date:** 2026-06-24 · **Reviewer:** automated self-review against DESIGN.md · **Scope:** P0–P14
 top-level screens + D1–D7 depth/variant frames.
 
-> **Verdict: HOLD wholesale `◐ → ●` promotion.** The WardenX *systems* and *layout patterns*
-> conform well, but there are **3 systemic primitive-level violations** (KPI typography, gold-as-
-> status, token drift) that touch nearly every screen via the reused components. These are cheap to
-> fix at the component/token level and should be remediated before promotion. Findings below.
+> **Verdict (revised after live inspection): the violations are NOT corpus-wide — they're
+> concentrated in the files generated in the depth/breadth session (P6–P14, D1–D7).** The original
+> **P0–P5** corpus was built with the authoritative tokens, Inter KPI values, and `muted-foreground`
+> for small text — **it conforms** (only the soft `--border` hairline dividers, F4, a defensible
+> tonal choice). The 3 systemic violations (F1 Fraunces-KPI, F2 gold-as-status, F3 token drift)
+> live in the later files where the components/tokens were re-typed by hand. Remediate those ~16
+> files; P0–P5 promote after a spot-check.
+>
+> **Correction:** round-1 of this review said "systemic across all 22 files." Live inspection of
+> P0 (KPI=Inter, tokens=authoritative, labels=muted-foreground) disproved that — the issues are
+> scoped to the **this-session** files, not the original corpus.
 
 ---
 
@@ -38,7 +45,7 @@ top-level screens + D1–D7 depth/variant frames.
 ### F1 — Fraunces on numeric KPI values · **Critical · systemic**
 - **Rule:** §3 — *"Fraunces is reserved for editorial/human moments — **never** for table data or numeric KPIs."*
 - **What:** The reused **KPI** component sets its value text to `--font-primary` (Fraunces). Every KPI strip across the corpus (P0–P14) shows its number in Fraunces. Also affects large numeric displays (PPS %, cap obligation $, assessment scores).
-- **Scope:** ~12 `.pen` files (every file with a KPI component) + bespoke big-number displays.
+- **Scope (corrected):** the files whose KPI component was rebuilt this session with a Fraunces value — **P9, P10, P11, P12, P13, P14**, plus bespoke big-numbers in **D5/D6/D7** (instrument scores, cap obligation). **P0–P8 use Inter for KPI values and do not have F1.**
 - **Fix:** Change the KPI component's *value* font to `--font-secondary` (Inter), with `tabular-nums`. Fraunces stays on the KPI *label*/eyebrow and on titles/names only. One `Update` per file's KPI `Value` node.
 
 ### F2 — Lantern Gold used as a status color · **High · systemic**
@@ -56,8 +63,8 @@ top-level screens + D1–D7 depth/variant frames.
   | `--primary-tint` | `#EAEBF6` | `#ECEDFB` |
   | `--accent-tint` | `#F7ECD8` | `#FBF1DD` |
   | `--surface-low` | `#F1F0EC` | (use surface ramp `surface-low`) |
-- **Scope:** All 22 `.pen` files.
-- **Fix:** Re-run `SetVariables` with the exact DESIGN.md hex in each file — this propagates to every `$--token` reference automatically (no per-node edits). Cheapest high-impact fix; also add the missing dark-mode values.
+- **Scope (corrected):** the **this-session** files only — **P6–P14, D1–D7** (~16 files), where `SetVariables` was hand-typed with approximate hex. **P0–P5 already carry the authoritative values** (verified on P0: `muted #8c877f`, `primary-tint #ecedfb`, `accent-tint #fbf1dd`).
+- **Fix:** Re-run `SetVariables` with the exact DESIGN.md hex in each affected file — this propagates to every `$--token` reference automatically (no per-node edits). Cheapest high-impact fix.
 
 ### F4 — Hairline section dividers vs No-Line · **Medium**
 - **Rule:** §10.1 *"Never section content with default 1px solid borders"*; §10.3 if required, `outline-variant` at **≤15% opacity**, never 100%-opaque.
@@ -71,17 +78,18 @@ top-level screens + D1–D7 depth/variant frames.
 
 ---
 
-## Promotion decision
+## Promotion decision (revised)
 
-No screens promote to `●` this round — F1–F3 are systemic and visible on essentially every screen.
-After the remediation pass (F1 + F2 + F3 are the must-fix set; F4/F5 are polish), re-screenshot a
-sample per pattern and promote by pattern family.
+- **P0–P5 (original corpus): promote to `●` after a quick per-file spot-check.** P0 verified
+  conformant live (KPI=Inter, tokens=authoritative, labels=muted-foreground; only soft F4 dividers).
+  P1–P5 were built in the same session/way — spot-check each and promote.
+- **P6–P14 + D1–D7 (this-session files): hold until F1–F3 remediated**, then promote by pattern.
 
-## Recommended remediation order
-1. **F3 tokens** (one `SetVariables` per file — propagates; fixes color fidelity everywhere).
-2. **F1 KPI font** (one `Update` per file's KPI value node).
-3. **F2 gold→alert** (recolor controlled-substance/EPCS markers).
-4. **F4/F5 polish** (chrome dividers, muted-text contrast, 44px) — can batch with F1/F2.
+## Recommended remediation order (scoped to the ~16 this-session files)
+1. **F3 tokens** — one `SetVariables` (authoritative hex) per affected file; propagates everywhere.
+2. **F1 KPI font** — `Update` the KPI value node → Inter, in P9–P14 (+ D5/D6/D7 bespoke numbers).
+3. **F2 gold→alert** — recolor controlled-substance/EPCS/NOTR markers in P10/P12/D5/D7.
+4. **F4/F5 polish** — soften chrome dividers; lift small `muted` text to `muted-foreground`.
 
-Each `.pen` file must be opened in Pencil.app to edit (one at a time), so remediation is ~22
-open/fix/save cycles, or scoped to the highest-traffic files first.
+Each affected `.pen` file is opened in Pencil.app to edit (one at a time). **Not 22 cycles — ~16,
+and P0–P5 just need a look-and-promote.**
