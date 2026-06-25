@@ -25,6 +25,7 @@ import type { DbClient } from "@wardenx/db";
 //     `withOrgContext` (F09) — the per-job scope is read from {@link M34_QUEUE_SCOPE}; this file wraps the
 //     port-binding + the worker call in that envelope, never a platform bypass for an org-scoped job.
 import {
+  OnboardingRepository,
   TenantAccountRepository,
   TenantExportRepository,
   TenantKeyRingRepository,
@@ -369,10 +370,13 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
   // The OnboardingRepository IS bindable; gatherContext (M2/M27/M40 reads via seams), the outbox publish,
   // the M36 alert router, and the lifecycle activate hook need the integrator's seams/dispatcher.
   const onboardingAdvance: OnboardingAdvancePorts = {
-    repo: unbound(
-      "onboardingAdvance.repo",
-      "bind to new OnboardingRepository(db) (org-scoped) — trivial once the per-job withOrgContext handle is threaded",
-    ) as never,
+    // BOUND: the M34-owned onboarding data port over the org-scoped Drizzle client (`onboarding_task` is
+    // org-scoped, §3.10). The worker closure applies the per-job withOrgContext envelope (F09); this repo
+    // issues plain Drizzle inside whichever transaction the envelope opens. The remaining onboarding ports
+    // (gatherContext / publishOutbox / routeAlert / activateTenant) stay fail-closed thunks until their
+    // cross-module seams + the live outbox dispatcher land — the onboarding worker only throws once it runs
+    // a job, never at construction (so the host boots with the queue connection enabled).
+    repo: new OnboardingRepository(db),
     now,
     gatherContext: () =>
       unbound(

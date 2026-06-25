@@ -409,16 +409,21 @@ if ((import.meta as { main?: boolean }).main) {
     const m34Workers = registerM34Workers(
       buildM34WorkerDeps({ connection: queueConnection, db: dbHandle.db }),
     );
-    void scheduleM34Jobs(queueConnection)
-      .then((scheduleQueues) => {
-        app.addHook("onClose", async () => {
-          await Promise.all(scheduleQueues.map((q) => q.close()));
-        });
-      })
-      .catch((err) => app.log.error(err, "M34 cron-schedule registration failed"));
     app.addHook("onClose", async () => {
       await Promise.all(m34Workers.map((w) => w.close()));
     });
+    // Register the repeatable cron schedules and their close hook BEFORE app.listen() — awaiting here (the
+    // boot block is top-level, so top-level await is legal) so the `onClose` hook is added while the
+    // instance is still pre-listen. The previous `.then()` ran the addHook on a later microtask, after
+    // listen() had already started, which Fastify rejects (FST_ERR_INSTANCE_ALREADY_LISTENING).
+    try {
+      const scheduleQueues = await scheduleM34Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(scheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M34 cron-schedule registration failed");
+    }
     app.log.info(
       { queues: m34Workers.length },
       "M34 §4.3 BullMQ workers constructed (worker ports bind their M1/M4/M22/M36 seams as those accessors land)",

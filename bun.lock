@@ -67,6 +67,13 @@
     "packages/admin-ui-shell": {
       "name": "@wardenx/admin-ui-shell",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/ui": "workspace:*",
+        "react": "^18.3.1",
+      },
+      "devDependencies": {
+        "@types/react": "^18.3.0",
+      },
     },
     "packages/ai-platform": {
       "name": "@wardenx/ai-platform",

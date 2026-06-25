@@ -29,6 +29,7 @@
     "17-scheduling",
     "18-evv",
     "22-documents",
+    "34-saas",
     "36-messaging",
     "38-terminology",
     "40-mdm"
@@ -642,6 +643,97 @@
       "id": "documents.template-library",
       "path": "/admin/forms/templates",
       "permission": "documents.read_templates"
+    },
+    {
+      "module": "34-saas",
+      "moduleId": 34,
+      "id": "saas.tenants",
+      "path": "/tenants",
+      "permission": "tenant.list_platform"
+    },
+    {
+      "module": "34-saas",
+      "moduleId": 34,
+      "id": "saas.tenant-overview",
+      "path": "/tenants/:orgSlug",
+      "permission": "tenant.read_platform"
+    },
+    {
+      "module": "34-saas",
+      "moduleId": 34,
+      "id": "saas.support-sessions",
+      "path": "/support/sessions",
+      "permission": "support_session.list_platform"
+    },
+    {
+      "module": "34-saas",
+      "moduleId": 34,
+      "id": "saas.dsar-queue",
+      "path": "/exports/dsar",
+      "permission": "dsar_export.list_own"
+    },
+    {
+      "module": "34-saas",
+      "moduleId": 34,
+      "id": "saas.tenant-export-queue",
+      "path": "/exports/tenant",
+      "permission": "tenant_export.list_own"
+    },
+    {
+      "module": "34-saas",
+      "moduleId": 34,
+      "id": "saas.onboarding-templates",
+      "path": "/onboarding/templates",
+      "permission": "onboarding_template.list"
+    },
+    {
+      "module": "34-saas",
+      "moduleId": 34,
+      "id": "saas.feature-flags",
+      "path": "/feature-flags",
+      "permission": "feature_flag.read_platform"
+    },
+    {
+      "module": "34-saas",
+      "moduleId": 34,
+      "id": "saas.baa-register",
+      "path": "/baa",
+      "permission": "platform_tenant_baa.read_platform"
+    },
+    {
+      "module": "34-saas",
+      "moduleId": 34,
+      "id": "saas.signups",
+      "path": "/signups",
+      "permission": "signup_intent.list_platform"
+    },
+    {
+      "module": "34-saas",
+      "moduleId": 34,
+      "id": "saas.key-rings",
+      "path": "/key-rings",
+      "permission": "tenant.read_platform"
+    },
+    {
+      "module": "34-saas",
+      "moduleId": 34,
+      "id": "saas.account",
+      "path": "/admin/account",
+      "permission": "tenant.read_own"
+    },
+    {
+      "module": "34-saas",
+      "moduleId": 34,
+      "id": "saas.onboarding",
+      "path": "/admin/onboarding",
+      "permission": "onboarding.read_own"
+    },
+    {
+      "module": "34-saas",
+      "moduleId": 34,
+      "id": "saas.support-grants",
+      "path": "/admin/support-grants",
+      "permission": "support_consent_grant.list_own"
     },
     {
       "module": "36-messaging",
