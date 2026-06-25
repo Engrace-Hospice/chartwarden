@@ -141,6 +141,15 @@ const NON_ORG_SCOPED = new Set<string>([
   "onboarding_task_template",
   "tenant_signup_intent",
   "tenant_signup_token",
+  // M33 Reporting & Dashboards (§3.3 / §3.5): the three PLATFORM-global catalogs carry NO
+  // organization_id BY DESIGN (retention class `platform`; identical rows for every tenant) and get a
+  // read-all RLS policy (SELECT USING(true), writes via report_writer) in 0058 — the M34
+  // onboarding_task_template / M38 code_system precedent. The other nine M33 tables carry
+  // organization_id (report_run's is nullable for cross-tenant platform-wide refreshes) and use the
+  // canonical app.org_id RLS.
+  "report_base_catalog",
+  "report_metric_catalog",
+  "materialized_view_metadata",
 ]);
 // PHI signal: a table referencing a patient is PHI-bearing and MUST be fully org-scoped.
 const PHI_SIGNAL_RE =
