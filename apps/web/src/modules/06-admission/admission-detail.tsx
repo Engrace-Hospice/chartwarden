@@ -1,20 +1,27 @@
 import {
   DetailPageLayout,
   EmptyState,
+  type GateItem,
+  GateStepper,
+  GuardChip,
   LoadingSpinner,
   PageHeader,
   RightDetailPanel,
+  StatusPill,
+  type StatusTone,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/06-admission — Admission Detail (M6 §5.2.4 + §5.2.5 activation gate, Track B).
 // Spec: docs/design/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md — "Use Detail Page."
 // Reads the admission aggregate from GET /api/v1/admissions/:id (which carries the R-AC-01 activation
 // gate — the SAME server-truth gate route 14 enforces, so the §5.2.5 checklist can never diverge),
-// plus the election-periods and compliance-windows sub-lists. Reads only; the server is the only
-// enforcement point (ADR-0030). Imports only leaves (@wardenx/ui).
+// plus the election-periods and compliance-windows sub-lists. Reconciled to Lantern (R1): the §5.2.5
+// activation gate renders as a Guardrail GateStepper (blockers-first, alert glyphs) under a GuardChip
+// summary; states are §6.6 status pills. Reads only; the server is the only enforcement point (ADR-0030).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
+import { ADMISSION_TONE, WINDOW_TONE, stateLabel } from "./admission-status";
 
 interface SummaryRow {
   id: string;
@@ -76,7 +83,15 @@ export function AdmissionDetail(): JSX.Element {
   return (
     <DetailPageLayout
       header={
-        <PageHeader title={`Admission ${admission.id}`} breadcrumb={`State: ${admission.state}`} />
+        <PageHeader
+          title={`Admission ${admission.id}`}
+          actions={
+            <StatusPill
+              label={stateLabel(admission.state)}
+              tone={ADMISSION_TONE[admission.state] ?? "neutral"}
+            />
+          }
+        />
       }
       aside={
         <RightDetailPanel title="Activation gate">
@@ -88,36 +103,34 @@ export function AdmissionDetail(): JSX.Element {
         <RowList rows={periods} empty="No election periods yet." />
       </Section>
       <Section title="Compliance windows">
-        <RowList rows={windows} empty="No open compliance windows." />
+        <RowList rows={windows} empty="No open compliance windows." toneFor={WINDOW_TONE} />
       </Section>
     </DetailPageLayout>
   );
 }
 
+// §5.2.5 activation gate as a Guardrail treatment: a blocked GuardChip summary (or a success pill when
+// ready) over a GateStepper whose rows render server-truth — each unmet precondition is `blocked`
+// (alert glyph, error tint, surfaced first), each met one `complete` (check, struck through).
 function ActivationChecklist({
   gate,
 }: { gate: AdmissionDetailView["activationGate"] }): JSX.Element {
+  const items: GateItem[] = GATE_ROWS.map((row) => ({
+    id: row.code,
+    label: row.label,
+    status: gate.missing.includes(row.code) ? "blocked" : "complete",
+  }));
   return (
-    <div>
-      <p style={{ fontSize: "0.85rem", color: gate.ready ? "#15803d" : "#b45309" }}>
-        {gate.ready ? "All preconditions met — ready to activate." : "Activation blocked."}
-      </p>
-      <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: "0.85rem" }}>
-        {GATE_ROWS.map((row) => {
-          const missing = gate.missing.includes(row.code);
-          return (
-            <li
-              key={row.code}
-              style={{ padding: "0.35rem 0", color: missing ? "#b91c1c" : "#15803d" }}
-            >
-              <span aria-hidden style={{ marginRight: "0.5rem" }}>
-                {missing ? "✗" : "✓"}
-              </span>
-              {row.label}
-            </li>
-          );
-        })}
-      </ul>
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      {gate.ready ? (
+        <StatusPill tone="success" label="Ready to activate" />
+      ) : (
+        <GuardChip
+          tone="error"
+          reason={`${gate.missing.length} precondition${gate.missing.length === 1 ? "" : "s"} block activation`}
+        />
+      )}
+      <GateStepper items={items} ariaLabel="Activation preconditions" />
     </div>
   );
 }
@@ -131,15 +144,26 @@ function Section({ title, children }: { title: string; children: JSX.Element }):
   );
 }
 
-function RowList({ rows, empty }: { rows: SummaryRow[]; empty: string }): JSX.Element {
-  if (rows.length === 0) return <p style={{ fontSize: "0.85rem", color: "#6b7280" }}>{empty}</p>;
+function RowList({
+  rows,
+  empty,
+  toneFor,
+}: {
+  rows: SummaryRow[];
+  empty: string;
+  toneFor?: Record<string, StatusTone>;
+}): JSX.Element {
+  if (rows.length === 0)
+    return <p style={{ fontSize: "0.85rem", color: "var(--color-on-surface-variant)" }}>{empty}</p>;
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+    <table>
       <tbody>
         {rows.map((r) => (
-          <tr key={r.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-            <td style={{ padding: "0.4rem 0.5rem" }}>{r.id}</td>
-            <td style={{ padding: "0.4rem 0.5rem" }}>{r.state}</td>
+          <tr key={r.id}>
+            <td className="wx-data-md">{r.id}</td>
+            <td>
+              <StatusPill label={stateLabel(r.state)} tone={toneFor?.[r.state] ?? "neutral"} />
+            </td>
           </tr>
         ))}
       </tbody>

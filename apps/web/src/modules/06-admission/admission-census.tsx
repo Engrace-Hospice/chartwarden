@@ -5,6 +5,7 @@ import {
   KpiStrip,
   LoadingSpinner,
   PageHeader,
+  StatusPill,
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
@@ -12,10 +13,12 @@ import {
 // Spec: docs/design/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md — "Use Work Queue."
 // Org-scoped admissions queue read from GET /api/v1/admissions (optional state filter) via the
 // generated typed client; a row opens the Admission Detail (§5.2.4). The server enforces every scope
-// (ADR-0030 — no authz on the frontend). Imports only leaves (@wardenx/ui).
+// (ADR-0030 — no authz on the frontend). Reconciled to Lantern (R1): §6.6 status pills, mono ids,
+// No-Line table (global index.css styles carry the tokens). Imports only leaves (@wardenx/ui).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import { ADMISSION_TONE, stateLabel } from "./admission-status";
 
 interface AdmissionRow {
   id: string;
@@ -82,11 +85,11 @@ export function AdmissionCensus(): JSX.Element {
             onChange={(e) => setState(e.target.value)}
           >
             <option value="">Any state</option>
-            <option value="pending">pending</option>
-            <option value="active">active</option>
-            <option value="on_hold">on_hold</option>
-            <option value="discharged">discharged</option>
-            <option value="bereavement">bereavement</option>
+            <option value="pending">Pending</option>
+            <option value="active">Active</option>
+            <option value="on_hold">On hold</option>
+            <option value="discharged">Discharged</option>
+            <option value="bereavement">Bereavement</option>
           </select>
         </FilterBar>
       }
@@ -124,11 +127,11 @@ function AdmissionTable({
     );
   return (
     <div style={{ padding: "0 1.5rem 1.5rem" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+      <table>
         <thead>
-          <tr style={{ textAlign: "left", color: "#6b7280" }}>
-            <th style={th}>Admission</th>
-            <th style={th}>State</th>
+          <tr>
+            <th>Admission</th>
+            <th>State</th>
           </tr>
         </thead>
         <tbody>
@@ -145,10 +148,15 @@ function AdmissionTable({
                   onOpen(a.id);
                 }
               }}
-              style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}
+              style={{ cursor: "pointer" }}
             >
-              <td style={td}>{a.id}</td>
-              <td style={td}>{a.state}</td>
+              <td className="wx-data-md">{a.id}</td>
+              <td>
+                <StatusPill
+                  label={stateLabel(a.state)}
+                  tone={ADMISSION_TONE[a.state] ?? "neutral"}
+                />
+              </td>
             </tr>
           ))}
         </tbody>
@@ -163,6 +171,3 @@ function AdmissionTable({
     </div>
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;

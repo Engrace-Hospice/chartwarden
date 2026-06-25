@@ -6,15 +6,18 @@ import {
   KpiStrip,
   LoadingSpinner,
   PageHeader,
+  StatusPill,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/06-admission — Compliance Dashboard (M6 §5.2.11, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_ELECTION_CERTIFICATION.md — "Use Dashboard."
 // Org-wide compliance windows (F2F / recert / NOR / late-CTI) read from GET /api/v1/compliance-windows
 // via the generated typed client; a row deep-links to the owning admission's Compliance tab. The
-// server enforces every scope (ADR-0030 — no authz on the frontend). Imports only leaves (@wardenx/ui).
+// server enforces every scope (ADR-0030 — no authz on the frontend). Reconciled to Lantern (R1): §6.6
+// status pills (overdue → error tone), mono ids, No-Line table. Imports only leaves (@wardenx/ui).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
+import { WINDOW_TONE, stateLabel } from "./admission-status";
 
 interface WindowRow {
   id: string;
@@ -78,9 +81,9 @@ export function ComplianceDashboard(): JSX.Element {
             onChange={(e) => setState(e.target.value)}
           >
             <option value="">Any state</option>
-            <option value="open">open</option>
-            <option value="overdue">overdue</option>
-            <option value="closed">closed</option>
+            <option value="open">Open</option>
+            <option value="overdue">Overdue</option>
+            <option value="closed">Closed</option>
           </select>
         </FilterBar>
       }
@@ -108,19 +111,19 @@ function WindowTable({
       />
     );
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+    <table>
       <thead>
-        <tr style={{ textAlign: "left", color: "#6b7280" }}>
-          <th style={th}>Window</th>
-          <th style={th}>State</th>
+        <tr>
+          <th>Window</th>
+          <th>State</th>
         </tr>
       </thead>
       <tbody>
         {items.map((w) => (
-          <tr key={w.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-            <td style={td}>{w.id}</td>
-            <td style={{ ...td, color: w.state === "overdue" ? "#b91c1c" : undefined }}>
-              {w.state}
+          <tr key={w.id}>
+            <td className="wx-data-md">{w.id}</td>
+            <td>
+              <StatusPill label={stateLabel(w.state)} tone={WINDOW_TONE[w.state] ?? "neutral"} />
             </td>
           </tr>
         ))}
@@ -128,6 +131,3 @@ function WindowTable({
     </table>
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;
