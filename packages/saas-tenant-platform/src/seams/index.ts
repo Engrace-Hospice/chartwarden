@@ -38,3 +38,9 @@ export type {
   TenantEntitlements,
 } from "./tenant-subscription-entitlement-reader";
 export { denyStubTenantSubscriptionEntitlementReader } from "./tenant-subscription-entitlement-reader";
+export type {
+  TenantOrgCreationProvider,
+  TenantOrgCreationIntent,
+  TenantOrgCreationResult,
+} from "./tenant-org-creation-provider";
+export { denyStubTenantOrgCreationProvider } from "./tenant-org-creation-provider";

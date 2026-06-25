@@ -63,13 +63,39 @@ export {
   getTenantSupportSessionProvider,
   listTenantExportShards,
   registerTenantExportShard,
+  getTenantOrgCreationProvider,
   setTenantKeyProvider,
   setTenantLifecycleProvider,
   setTenantOnboardingProvider,
+  setTenantOrgCreationProvider,
   setTenantSubscriptionEntitlementReader,
   setTenantSupportSessionProvider,
   validateSeams as validateModule34Seams,
 } from "@wardenx/saas-tenant-platform";
+
+// §2.5 r2 / §7.1 step 3 — the forward `TenantOrgCreationProvider` seam (M2 implements it later; deny-stub
+// today). Re-exported so the M2 registration site + the provision-worker consumer have one import.
+export type {
+  TenantOrgCreationIntent,
+  TenantOrgCreationProvider,
+  TenantOrgCreationResult,
+} from "@wardenx/saas-tenant-platform";
+export { denyStubTenantOrgCreationProvider } from "@wardenx/saas-tenant-platform";
+
+// Phase 2D — bind the PACKAGE-OWNED seams (lifecycle / onboarding / support-session + the MANDATORY D5
+// `TenantKeyProvider`) to their real Drizzle-backed implementations over the §3 repositories. The
+// composition root calls `registerM34SeamProviders(deps)` from `wireModuleSeams()` BEFORE
+// `validateModule34Seams()` — replacing the boot `SLICE_MODULE_34_SEAM_DEPS` deny-stubs.
+export {
+  type KekUnwrapPort,
+  type M34SeamRegistrationDeps,
+  type RunInOrgContext,
+  type RunInPlatformContext,
+  TenantKeyDestroyed,
+  TenantKeyMissing,
+  TenantKeyVersionMissing,
+  registerM34SeamProviders,
+} from "./seam-registration";
 
 // §3.8 — M34's own `TenantExportShard` (the inverse-fan-out self-shard) + its store port. The export
 // worker (Phase 2D) registers this via `registerTenantExportShard` alongside every other module's shard.
@@ -81,6 +107,31 @@ export {
   createInMemoryM34ExportShardStore,
   createTenantExportShardForM34,
 } from "@wardenx/saas-tenant-platform";
+
+// Phase 2D — the LIVE composition glue: the seam-provider registration over real repos/tenancy runners,
+// the Drizzle-backed route services, the §4.3 queue producers (EnqueuePort), and the worker deps. The
+// composition root imports these to bind M34's real dependencies (see apps/backend/src/index.ts).
+export {
+  M34_PLATFORM_JOB_ID,
+  M34InfraPortUnbound,
+  buildDrizzlePlatformService,
+  buildDrizzleTenantService,
+  buildM34WorkerDeps,
+  buildPlatformEnqueue,
+  buildTenantEnqueue,
+  registerLiveM34Seams,
+  wireM34Tenancy,
+} from "./wiring";
+
+// Phase 2D — the LIVE BullMQ worker construction + the four cron-schedule producers (the §4.3 jobs). The
+// composition root calls these from a worker-runner section (the M4-T11 `registerAuditWorkers` precedent),
+// guarded by a Valkey connection.
+export {
+  type M34WorkerDeps,
+  M34WorkerPortUnbound,
+  registerM34Workers,
+  scheduleM34Jobs,
+} from "./jobs/saas-jobs";
 
 // §8.4 / D6 — the `saas_tenant_platform_class` data eraser (tenant-offboarding control-plane cleanup).
 // The composition root registers `registerSaasTenantPlatformErasers` over the Phase-0 deny-stub (the same
@@ -137,6 +188,7 @@ import type { DbClient } from "@wardenx/db";
 import { WardenXError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import {
+  type TenantPlatformRouteService as _TenantPlatformRouteService,
   createInMemoryTenantPlatformBackend as _createInMemoryTenantPlatformBackend,
   registerBaaRegisterRoutes as _registerBaaRegisterRoutes,
   registerFeatureFlagAdminRoutes as _registerFeatureFlagAdminRoutes,
@@ -152,6 +204,7 @@ import {
   registerPublicSignupRoutes as _registerPublicSignupRoutes,
 } from "./routes/public/signup-intents";
 import {
+  type TenantRouteService as _TenantRouteService,
   createInMemoryTenantBackend as _createInMemoryTenantBackend,
   registerTenantTenantRoutes as _registerTenantTenantRoutes,
 } from "./routes/tenant/index";
@@ -188,18 +241,26 @@ const SLICE_M34_SIGNUP_SERVICE: _SignupIntentRouteService = {
  *   - PUBLIC (the session-less self-serve signup surface, gated 503 behind `m34.self_serve_signup`).
  *
  * READ/LIST routes are fully live over the injected route services (the Phase-3 screens consume them); the
- * command routes enqueue the §4.3 worker job through the injected `EnqueuePort` (the slice's records the call).
- * In prod the READ/LIST surface runs over a Drizzle-backed service whose cross-tenant reads use
- * `withPlatformContext`/`withOrgContext`; the live BullMQ worker construction + the Drizzle-backed services +
- * the public signup adapter are Phase 2D, so this mount currently wires the in-memory backends (the DTOs
- * already match the prod shape). `db` is accepted now so the composition-root call site is stable across 2D.
- * The §4.6 ABAC predicates are registered separately at boot via `registerTenantPlatformAbacPredicates`.
+ * command routes enqueue the §4.3 worker job through the injected `EnqueuePort`. Phase 2D: the composition
+ * root passes the Drizzle-backed `platformService`/`tenantService` (built by `buildDrizzlePlatformService`
+ * / `buildDrizzleTenantService` in wiring.ts) so the route plugins run over real RLS-scoped reads; when no
+ * services are injected (tests / no-db boot) this falls back to the in-memory slice (the DTOs match the
+ * prod shape). The §4.6 ABAC predicates are registered separately at boot via
+ * `registerTenantPlatformAbacPredicates`.
  */
-export function mountTenantPlatformRoutes(app: FastifyInstance, db: DbClient): void {
-  void db; // Phase 2D: build the Drizzle-backed services + bind the BullMQ enqueue ports here.
+export function mountTenantPlatformRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  services?: {
+    platform?: { service: _TenantPlatformRouteService };
+    tenant?: { service: _TenantRouteService };
+  },
+): void {
+  void db; // the Drizzle services already hold the platform/org-pooled handles (services.* below).
 
   // ── platform-ops surface (withPlatformContext; F03/F09 audited cross-tenant reads) ──
-  const { service: platformService } = _createInMemoryTenantPlatformBackend();
+  // Drizzle-backed when the composition root injects it; the in-memory slice otherwise (tests / no-db).
+  const { service: platformService } = services?.platform ?? _createInMemoryTenantPlatformBackend();
   _registerTenantPlatformRoutes(app, { service: platformService });
   _registerTenantInvitationRoutes(app, { service: platformService });
   _registerTenantKeyRingRoutes(app, { service: platformService });
@@ -210,7 +271,7 @@ export function mountTenantPlatformRoutes(app: FastifyInstance, db: DbClient): v
   _registerFeatureFlagAdminRoutes(app, { service: platformService });
 
   // ── tenant-scoped surface (withOrgContext; the tenant's own org) ──
-  const { service: tenantService } = _createInMemoryTenantBackend();
+  const { service: tenantService } = services?.tenant ?? _createInMemoryTenantBackend();
   _registerTenantTenantRoutes(app, { service: tenantService });
 
   // ── public, session-less self-serve signup surface (503-gated by default; D14) ──

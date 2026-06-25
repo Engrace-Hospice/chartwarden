@@ -20,10 +20,14 @@ import type {
   TenantKeyProvider,
   TenantLifecycleProvider,
   TenantOnboardingProvider,
+  TenantOrgCreationProvider,
   TenantSubscriptionEntitlementReader,
   TenantSupportSessionProvider,
 } from "./seams";
-import { denyStubTenantSubscriptionEntitlementReader } from "./seams";
+import {
+  denyStubTenantOrgCreationProvider,
+  denyStubTenantSubscriptionEntitlementReader,
+} from "./seams";
 import {
   createInMemoryM34ExportShardStore,
   createTenantExportShardForM34,
@@ -55,6 +59,7 @@ let tenantOnboardingProvider: TenantOnboardingProvider | undefined;
 let tenantSupportSessionProvider: TenantSupportSessionProvider | undefined;
 let tenantSubscriptionEntitlementReader: TenantSubscriptionEntitlementReader =
   denyStubTenantSubscriptionEntitlementReader;
+let tenantOrgCreationProvider: TenantOrgCreationProvider = denyStubTenantOrgCreationProvider;
 const tenantExportShards = new Map<string, TenantExportShard>();
 
 // ── registrars (a producer module / M34 boot calls these; mirror the M1 `registerSeam` shape) ──────
@@ -85,6 +90,12 @@ export function setTenantSubscriptionEntitlementReader(
   impl: TenantSubscriptionEntitlementReader,
 ): void {
   tenantSubscriptionEntitlementReader = impl;
+}
+
+/** Register M2's real `TenantOrgCreationProvider` over the deny-stub (when M2's createOrganization locks).
+ *  The provision worker's `ensureOrganization` port binds over this; the deny-stub stays until M2 ships. */
+export function setTenantOrgCreationProvider(impl: TenantOrgCreationProvider): void {
+  tenantOrgCreationProvider = impl;
 }
 
 /** Register a module's `TenantExportShard` keyed by its `moduleKey` (the fan-out registry M34's
@@ -127,6 +138,12 @@ export function getTenantSubscriptionEntitlementReader(): TenantSubscriptionEnti
   return tenantSubscriptionEntitlementReader;
 }
 
+/** Resolve the `TenantOrgCreationProvider` — the deny-stub until M2 registers the real provider (never
+ *  throws; the deny-stub answers `{ kind: 'unavailable' }` and the provision worker degrades cleanly). */
+export function getTenantOrgCreationProvider(): TenantOrgCreationProvider {
+  return tenantOrgCreationProvider;
+}
+
 /** Resolve one module's `TenantExportShard` by key, or `undefined` if no module registered it. */
 export function getTenantExportShard(moduleKey: string): TenantExportShard | undefined {
   return tenantExportShards.get(moduleKey);
@@ -152,6 +169,8 @@ export interface BootstrapModule34Deps {
   readonly tenantSupportSessionProvider?: TenantSupportSessionProvider;
   /** M35's real entitlement reader, when M35 has locked (else the D15 deny-stub stays in place). */
   readonly tenantSubscriptionEntitlementReader?: TenantSubscriptionEntitlementReader;
+  /** M2's real org-creation provider, when M2's createOrganization surface has locked (else deny-stub). */
+  readonly tenantOrgCreationProvider?: TenantOrgCreationProvider;
   /** M34's own export-shard store (Drizzle-backed in prod; in-memory slice store by default). */
   readonly exportShard?: TenantExportShard;
 }
@@ -171,6 +190,7 @@ export function bootstrapModule34(deps: BootstrapModule34Deps): void {
     setTenantSupportSessionProvider(deps.tenantSupportSessionProvider);
   if (deps.tenantSubscriptionEntitlementReader)
     setTenantSubscriptionEntitlementReader(deps.tenantSubscriptionEntitlementReader);
+  if (deps.tenantOrgCreationProvider) setTenantOrgCreationProvider(deps.tenantOrgCreationProvider);
 
   // M34's own export shard (the inverse-fan-out self-registration every PHI module also performs).
   const exportShard =
@@ -209,5 +229,6 @@ export function __resetModule34SeamsForTest(): void {
   tenantOnboardingProvider = undefined;
   tenantSupportSessionProvider = undefined;
   tenantSubscriptionEntitlementReader = denyStubTenantSubscriptionEntitlementReader;
+  tenantOrgCreationProvider = denyStubTenantOrgCreationProvider;
   tenantExportShards.clear();
 }
