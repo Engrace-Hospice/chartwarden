@@ -91,7 +91,8 @@ function ChannelList({
               border: "none",
               borderRadius: "0.375rem",
               cursor: "pointer",
-              background: c.channelId === activeId ? "#eff6ff" : "transparent",
+              background: c.channelId === activeId ? "var(--color-primary-tint)" : "transparent",
+              color: "var(--color-on-surface)",
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
@@ -102,8 +103,9 @@ function ChannelList({
               <span
                 style={{
                   fontSize: "0.7rem",
-                  background: "#1d4ed8",
-                  color: "#fff",
+                  fontWeight: 600,
+                  background: "var(--color-primary)",
+                  color: "var(--color-surface-lowest)",
                   borderRadius: "999px",
                   padding: "0 0.4rem",
                 }}
@@ -170,17 +172,26 @@ function Thread({ channelId }: { channelId: string }): JSX.Element {
         ) : (
           messages.map((m) => (
             <div key={m.messageId}>
-              <div style={{ fontSize: "0.7rem", color: "#6b7280" }}>
-                {m.authorUserId ?? "system"} · {new Date(m.createdAt).toLocaleString()}
+              <div style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>
+                {m.authorUserId ? <span className="wx-data-md">{m.authorUserId}</span> : "system"} ·{" "}
+                <span className="tabular-nums">{new Date(m.createdAt).toLocaleString()}</span>
               </div>
-              <div style={{ fontSize: "0.9rem", whiteSpace: "pre-wrap" }}>{m.body}</div>
+              <div
+                style={{
+                  fontSize: "0.9rem",
+                  whiteSpace: "pre-wrap",
+                  color: "var(--color-on-surface)",
+                }}
+              >
+                {m.body}
+              </div>
             </div>
           ))
         )}
       </div>
       <div
         style={{
-          borderTop: "1px solid #e5e7eb",
+          borderTop: "1px solid var(--color-outline-variant)",
           padding: "0.75rem 1.5rem",
           display: "flex",
           gap: "0.5rem",
@@ -197,7 +208,7 @@ function Thread({ channelId }: { channelId: string }): JSX.Element {
           style={{
             flex: 1,
             padding: "0.5rem 0.75rem",
-            border: "1px solid #e5e7eb",
+            border: "1px solid var(--color-outline-variant)",
             borderRadius: "0.5rem",
           }}
         />
