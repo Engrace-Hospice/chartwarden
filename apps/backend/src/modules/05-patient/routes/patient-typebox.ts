@@ -101,6 +101,16 @@ export const PatientListResponseSchema = Type.Object({
   nextCursor: Type.Union([Type.String(), Type.Null()]),
 });
 
+// GET /api/v1/patients/census-metrics (§4.2 census KPI strip) — the true active census, org-scoped.
+// `total` is the count of all patients in the org; `byStatus` is the count per lifecycle status
+// (prospective / active / on_hold / discharged / deceased). Cross-module KPIs the census frame also
+// shows (admissions/discharges today, GIP, recerts due) are NOT here — they belong to M6/billing and
+// are surfaced as honest placeholders client-side until those reads land.
+export const CensusMetricsResponseSchema = Type.Object({
+  total: Type.Integer(),
+  byStatus: Type.Record(Type.String(), Type.Integer()),
+});
+
 // GET /api/v1/patients/:id/demographics (§3.3) — name parts + USCDI SOGI/race/ethnicity codes +
 // preferred language + aliases. No encrypted fields (ssn/state_id live on /identifiers, masked).
 const NameAliasSchema = Type.Object({

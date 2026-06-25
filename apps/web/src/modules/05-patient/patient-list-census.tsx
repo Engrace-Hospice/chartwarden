@@ -1,4 +1,5 @@
 import {
+  cardSurface,
   ConsentBadge,
   EmptyState,
   FilterBar,
@@ -17,8 +18,8 @@ import {
 // row-select, with Open Chart deep-linking to /patients/:id. No hardcoded colors — the global
 // table styles (index.css) carry the Lantern tokens.
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
-import { useNavigate } from "react-router-dom";
+import type { JSX, ReactNode } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { STATUS_TONE, ageFromDob, statusLabel } from "./patient-status";
 
 interface PatientSummary {
@@ -31,6 +32,99 @@ interface PatientSummary {
   status: string;
 }
 
+interface CensusMetrics {
+  total: number;
+  byStatus: Record<string, number>;
+}
+
+const ADMIT_BTN = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "0.45rem 1rem",
+  borderRadius: "9999px",
+  background: "var(--color-primary)",
+  color: "var(--color-on-primary)",
+  fontSize: "0.85rem",
+  fontWeight: 600,
+  textDecoration: "none",
+} as const;
+
+// §4.2 census KPI strip (frame: wardenx-P0-foundation.pen `DNqXm`). Census is the real active count;
+// the cross-module KPIs show "—" with the owning module noted — honest, never fabricated numbers.
+function CensusKpis({ metrics }: { metrics: CensusMetrics | null }): JSX.Element {
+  const active = metrics?.byStatus?.active ?? 0;
+  const total = metrics?.total ?? 0;
+  return (
+    <div
+      style={{ display: "flex", gap: "1rem", flexWrap: "wrap", padding: "0 1.5rem 0.5rem" }}
+      aria-label="Census metrics"
+    >
+      <KpiCard
+        label="Census"
+        value={metrics ? active : "…"}
+        sub={metrics ? `${total} total in org` : undefined}
+      />
+      <KpiCard label="Admissions" value="—" sub="today · M6 Admission" muted />
+      <KpiCard label="Discharges" value="—" sub="today · M6 Admission" muted />
+      <KpiCard label="GIP" value="—" sub="billing" muted />
+      <KpiCard label="Recerts due" value="—" sub="M6 Certification" muted />
+    </div>
+  );
+}
+
+function KpiCard({
+  label,
+  value,
+  sub,
+  muted,
+}: {
+  label: string;
+  value: ReactNode;
+  sub?: string;
+  muted?: boolean;
+}): JSX.Element {
+  return (
+    <div
+      style={{
+        ...cardSurface,
+        flex: "1 1 8rem",
+        minWidth: 0,
+        padding: "0.875rem 1.125rem",
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.3rem",
+      }}
+    >
+      <span
+        style={{
+          fontSize: "0.6875rem",
+          fontWeight: 600,
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          color: "var(--color-on-surface-variant)",
+        }}
+      >
+        {label}
+      </span>
+      {/* KPI numerals are Inter tabular-nums, not Fraunces (DESIGN.md §3 / review remediation F1). */}
+      <span
+        className="tabular-nums"
+        style={{
+          fontSize: "1.75rem",
+          fontWeight: 600,
+          lineHeight: 1,
+          color: muted ? "var(--color-muted)" : "var(--color-on-surface)",
+        }}
+      >
+        {value}
+      </span>
+      {sub ? (
+        <span style={{ fontSize: "0.72rem", color: "var(--color-on-surface-variant)" }}>{sub}</span>
+      ) : null}
+    </div>
+  );
+}
+
 export function PatientListCensus(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
@@ -41,6 +135,20 @@ export function PatientListCensus(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<PatientSummary | null>(null);
+  const [metrics, setMetrics] = useState<CensusMetrics | null>(null);
+
+  // §4.2 census KPIs — the active count is real (GET /patients/census-metrics); the cross-module KPIs
+  // (admissions/discharges/GIP/recerts) render as honest placeholders until M6/billing reads land.
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const { data } = await client.GET("/api/v1/patients/census-metrics");
+      if (alive && data) setMetrics(data as CensusMetrics);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [client]);
 
   const load = useCallback(
     async (cursor?: string) => {
@@ -71,7 +179,17 @@ export function PatientListCensus(): JSX.Element {
 
   return (
     <WorkQueueLayout
-      header={<PageHeader title="Patients" />}
+      header={
+        <PageHeader
+          title="Patients · Census"
+          actions={
+            <Link to="/referrals" style={ADMIT_BTN}>
+              Admit patient
+            </Link>
+          }
+        />
+      }
+      kpis={<CensusKpis metrics={metrics} />}
       filters={
         <FilterBar
           actions={

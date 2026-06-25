@@ -52,6 +52,12 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
     return service.list(organizationId, query);
   });
 
+  // --- §4.2 census KPI metrics (active count + per-status breakdown; static path beats /:id) ------
+  app.get("/api/v1/patients/census-metrics", { preHandler: [READ] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    return service.censusMetrics(organizationId);
+  });
+
   // --- §4.2 resolve one ------------------------------------------------------------------------
   app.get("/api/v1/patients/:id", { preHandler: [READ] }, async (request) => {
     const { organizationId } = actorOf(request);

@@ -23,6 +23,7 @@ import {
   AddressBodySchema,
   AdmitBodySchema,
   AmendmentBodySchema,
+  CensusMetricsResponseSchema,
   DenyBodySchema,
   PatientAddressesResponseSchema,
   PatientCareTeamResponseSchema,
@@ -1183,6 +1184,10 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "Patient census / list (cursor-paginated, §4.2)",
     query: PatientListQuerySchema,
     response: PatientListResponseSchema,
+  },
+  "GET /api/v1/patients/census-metrics": {
+    summary: "Census KPI metrics — active count + per-status breakdown (§4.2)",
+    response: CensusMetricsResponseSchema,
   },
   "GET /api/v1/patients/:id": {
     summary: "Fetch a patient by id (merge-redirect aware, §4.8)",

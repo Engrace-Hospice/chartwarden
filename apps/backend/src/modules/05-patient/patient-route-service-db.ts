@@ -20,6 +20,7 @@ import type {
   AdmitInput,
   AdmitResult,
   CareTeamView,
+  CensusMetrics,
   DemographicsView,
   IdentifierView,
   PatientPayerView,
@@ -128,6 +129,22 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
       return { items: views, nextCursor: null };
     });
   };
+
+  // §4.2 census KPI strip — a single COUNT…GROUP BY status, org-scoped by RLS under withOrgContext.
+  const censusMetrics = async (organizationId: string): Promise<CensusMetrics> =>
+    withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      const rows = await tx
+        .select({ status: P.status, n: sql<number>`count(*)::int` })
+        .from(P)
+        .groupBy(P.status);
+      const byStatus: Record<string, number> = {};
+      let total = 0;
+      for (const r of rows) {
+        byStatus[r.status] = r.n;
+        total += r.n;
+      }
+      return { total, byStatus };
+    });
 
   const getPatient = async (organizationId: string, id: string): Promise<PatientView | null> =>
     withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
@@ -648,6 +665,7 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
 
   return {
     list,
+    censusMetrics,
     getPatient,
     getDemographics,
     getIdentifiers,
