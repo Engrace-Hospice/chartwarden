@@ -1,64 +1,71 @@
-// apps/web/src/modules/18-evv — shared table + status-chip primitives the M18 §5.1 read screens render
-// (Track B / ADR-0030, M18-T07). Status colors are paired with the text label (WCAG §5.4 — never color-only).
-// Coordinate-free: the read screens never render lat/lng (D10 — coordinates need the separate evv.read_coords
-// path). Leaves only (no @wardenx/ui import needed here — pure presentational shapes).
+import { StatusPill, type StatusTone } from "@wardenx/ui";
+// apps/web/src/modules/18-evv — shared table + status-pill primitives the M18 §5.1 read screens render
+// (Track B / ADR-0030, M18-T07). Reconciled to Lantern (R1): §6.6 StatusPill (tone maps grounded in the
+// @wardenx/types enums) + a No-Line, keyboard-actionable DataTable. Coordinate-free: the read screens never
+// render lat/lng (D10 — coordinates need the separate evv.read_coords path).
 import type { JSX, ReactNode } from "react";
 
-/** §2.2 capture gps-quality / geofence-decision → display color (color-blind-safe; always with the text label). */
-export const EVV_QUALITY_COLOR: Record<string, string | undefined> = {
-  high: "#15803d",
-  acceptable: "#1d4ed8",
-  degraded_attested: "#b45309",
-  outside_geofence: "#b91c1c",
-  suspected_spoof: "#b91c1c",
+// EvvEventGpsQuality = high | acceptable | degraded_attested | outside_geofence | no_geofence_baseline | suspected_spoof.
+export const EVV_QUALITY_TONE: Record<string, StatusTone> = {
+  high: "success",
+  acceptable: "success",
+  degraded_attested: "warning",
+  outside_geofence: "error",
+  no_geofence_baseline: "neutral",
+  suspected_spoof: "error",
 };
 
-/** §2.2.4 D6 missing-resolution status → color. `open` is the only billing-blocking state (ADR-0008). */
-export const EVV_RESOLUTION_COLOR: Record<string, string | undefined> = {
-  open: "#b91c1c",
-  closed_clinician_attested: "#15803d",
-  closed_supervisor_override: "#b45309",
-  closed_system_checkout: "#6b7280",
-  closed_void: "#6b7280",
-  closed_documented_at_encounter: "#15803d",
+// EvvMissingResolutionStatus — `open` is the only billing-blocking state (ADR-0008) → error.
+export const EVV_RESOLUTION_TONE: Record<string, StatusTone> = {
+  open: "error",
+  closed_clinician_attested: "success",
+  closed_supervisor_override: "warning",
+  closed_visit_voided: "neutral",
+  closed_documented_at_encounter: "success",
+  closed_system_checkout_received: "neutral",
 };
 
-/** §2.2.5 D7 aggregator submission status → color. */
-export const EVV_SUBMISSION_COLOR: Record<string, string | undefined> = {
-  pending: "#6b7280",
-  queued: "#6b7280",
-  submitting: "#1d4ed8",
-  submitted: "#1d4ed8",
-  accepted: "#15803d",
-  rejected: "#b91c1c",
-  timeout: "#b91c1c",
-  cancelled: "#6b7280",
+// EvvAggregatorSubmissionStatus = pending | queued | submitting | submitted | accepted | rejected | timeout | cancelled.
+export const EVV_SUBMISSION_TONE: Record<string, StatusTone> = {
+  pending: "neutral",
+  queued: "progress",
+  submitting: "progress",
+  submitted: "progress",
+  accepted: "success",
+  rejected: "error",
+  timeout: "error",
+  cancelled: "neutral",
 };
 
-/** EVV device status → color. */
-export const EVV_DEVICE_COLOR: Record<string, string | undefined> = {
-  pending_approval: "#b45309",
-  approved: "#15803d",
-  rejected: "#b91c1c",
-  suspended: "#b91c1c",
-  retired: "#6b7280",
+// EvvDeviceStatus = pending_approval | approved | suspended | rejected | retired.
+export const EVV_DEVICE_TONE: Record<string, StatusTone> = {
+  pending_approval: "warning",
+  approved: "success",
+  suspended: "error",
+  rejected: "error",
+  retired: "neutral",
 };
 
-export function StatusChip({
-  value,
-  colorMap,
-}: {
-  value: string;
-  colorMap: Record<string, string | undefined>;
-}): JSX.Element {
-  return <span style={{ color: colorMap[value] ?? "#374151" }}>{value}</span>;
+/** Title-case an underscore enum value, e.g. `degraded_attested` → `Degraded Attested`. */
+export function stateLabel(s: string): string {
+  return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-const table = { width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" } as const;
-const th = { textAlign: "left", padding: "0.4rem 0.75rem", color: "#6b7280", fontWeight: 600 } as const;
-const td = { padding: "0.4rem 0.75rem", fontFamily: "monospace" } as const;
+/** Wrap an identifier value in the mono data voice (§3.1). */
+export const mono = (v: ReactNode): JSX.Element => <span className="wx-data-md">{v}</span>;
 
-/** A minimal accessible table: one `<th scope=col>` header row + clickable body rows (WCAG §5.1 ledger). */
+/** A §6.6 status pill driven by a per-domain tone map. */
+export function StatusChip({
+  value,
+  toneMap,
+}: {
+  value: string;
+  toneMap: Record<string, StatusTone>;
+}): JSX.Element {
+  return <StatusPill label={stateLabel(value)} tone={toneMap[value] ?? "neutral"} />;
+}
+
+/** A minimal accessible table: one `<th scope=col>` header row + keyboard-actionable body rows. */
 export function DataTable<T>({
   columns,
   rows,
@@ -71,30 +78,45 @@ export function DataTable<T>({
   onSelect?: (row: T) => void;
 }): JSX.Element {
   return (
-    <table style={table}>
+    <table>
       <thead>
         <tr>
           {columns.map((c) => (
-            <th key={c.header} scope="col" style={th}>
+            <th key={c.header} scope="col">
               {c.header}
             </th>
           ))}
         </tr>
       </thead>
       <tbody>
-        {rows.map((r) => (
-          <tr
-            key={rowKey(r)}
-            onClick={onSelect ? () => onSelect(r) : undefined}
-            style={{ cursor: onSelect ? "pointer" : "default", borderTop: "1px solid #f3f4f6" }}
-          >
-            {columns.map((c) => (
-              <td key={c.header} style={td}>
-                {c.cell(r)}
-              </td>
-            ))}
-          </tr>
-        ))}
+        {rows.map((r) =>
+          onSelect ? (
+            <tr
+              key={rowKey(r)}
+              // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+              role="button"
+              tabIndex={0}
+              onClick={() => onSelect(r)}
+              onKeyDown={(ev) => {
+                if (ev.key === "Enter" || ev.key === " ") {
+                  ev.preventDefault();
+                  onSelect(r);
+                }
+              }}
+              style={{ cursor: "pointer" }}
+            >
+              {columns.map((c) => (
+                <td key={c.header}>{c.cell(r)}</td>
+              ))}
+            </tr>
+          ) : (
+            <tr key={rowKey(r)}>
+              {columns.map((c) => (
+                <td key={c.header}>{c.cell(r)}</td>
+              ))}
+            </tr>
+          ),
+        )}
       </tbody>
     </table>
   );

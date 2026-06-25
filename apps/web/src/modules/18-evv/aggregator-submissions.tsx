@@ -1,3 +1,4 @@
+import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/18-evv — Aggregator Submission Queue (M18 §5.1 `/app/evv/aggregator-submissions`,
 // Track B / ADR-0030). Spec: docs/design/screens — "Use Work Queue". The per-state aggregator submission backlog:
 // one row per `evv_aggregator_submission` with its §2.2.5 D7 status + attempt count. Filter by state_code /
@@ -7,8 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";
-import { EmptyState, LoadingSpinner, PageHeader, useApiClient, WorkQueueLayout } from "@wardenx/ui";
-import { DataTable, EVV_SUBMISSION_COLOR, StatusChip } from "./evv-shared";
+import { DataTable, EVV_SUBMISSION_TONE, StatusChip, mono, stateLabel } from "./evv-shared";
 
 interface SubmissionRow {
   id: string;
@@ -56,18 +56,27 @@ export function EvvAggregatorSubmissions(): JSX.Element {
         ) : loading ? (
           <LoadingSpinner />
         ) : rows.length === 0 ? (
-          <EmptyState title="No submissions" description="No aggregator submissions match your filters." />
+          <EmptyState
+            title="No submissions"
+            description="No aggregator submissions match your filters."
+          />
         ) : (
           <DataTable<SubmissionRow>
             rows={rows}
             rowKey={(r) => r.id}
             columns={[
-              { header: "Submission", cell: (r) => r.id },
+              { header: "Submission", cell: (r) => mono(r.id) },
               { header: "State", cell: (r) => r.stateCode },
-              { header: "Vendor", cell: (r) => r.aggregatorVendor },
-              { header: "Visit", cell: (r) => r.visitId },
-              { header: "Attempts", cell: (r) => String(r.attemptCount) },
-              { header: "Status", cell: (r) => <StatusChip value={r.status} colorMap={EVV_SUBMISSION_COLOR} /> },
+              { header: "Vendor", cell: (r) => stateLabel(r.aggregatorVendor) },
+              { header: "Visit", cell: (r) => mono(r.visitId) },
+              {
+                header: "Attempts",
+                cell: (r) => <span className="tabular-nums">{r.attemptCount}</span>,
+              },
+              {
+                header: "Status",
+                cell: (r) => <StatusChip value={r.status} toneMap={EVV_SUBMISSION_TONE} />,
+              },
             ]}
           />
         )
