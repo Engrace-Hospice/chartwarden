@@ -63,7 +63,7 @@ export function SecurityPasskeys(): JSX.Element {
           gap: "1rem",
         }}
       >
-        <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
+        <p style={{ margin: 0, color: "var(--color-on-surface-variant)", fontSize: "0.9rem" }}>
           Passkeys let you sign in with your device’s biometrics or security key instead of a
           password.
         </p>
@@ -76,7 +76,7 @@ export function SecurityPasskeys(): JSX.Element {
             style={{
               flex: 1,
               padding: "0.5rem 0.625rem",
-              border: "1px solid #e5e7eb",
+              border: "1px solid var(--color-outline-variant)",
               borderRadius: "0.5rem",
             }}
           />
@@ -84,7 +84,9 @@ export function SecurityPasskeys(): JSX.Element {
             {busy ? "Registering…" : "Register a passkey"}
           </button>
         </div>
-        {error ? <p style={{ color: "#b91c1c", margin: 0, fontSize: "0.85rem" }}>{error}</p> : null}
+        {error ? (
+          <p style={{ color: "var(--color-error)", margin: 0, fontSize: "0.85rem" }}>{error}</p>
+        ) : null}
         {passkeys === null ? (
           <LoadingSpinner />
         ) : passkeys.length === 0 ? (
@@ -111,14 +113,21 @@ export function SecurityPasskeys(): JSX.Element {
                   justifyContent: "space-between",
                   alignItems: "center",
                   padding: "0.625rem 0.75rem",
-                  border: "1px solid #e5e7eb",
+                  border: "1px solid var(--color-outline-variant)",
                   borderRadius: "0.5rem",
+                  background: "var(--color-surface-lowest)",
                 }}
               >
                 <span>
                   <strong>{p.name ?? "Passkey"}</strong>
                   {p.deviceType ? (
-                    <span style={{ marginLeft: "0.5rem", fontSize: "0.75rem", color: "#6b7280" }}>
+                    <span
+                      style={{
+                        marginLeft: "0.5rem",
+                        fontSize: "0.75rem",
+                        color: "var(--color-on-surface-variant)",
+                      }}
+                    >
                       {p.deviceType}
                     </span>
                   ) : null}
@@ -128,7 +137,7 @@ export function SecurityPasskeys(): JSX.Element {
                   onClick={() => remove(p.id)}
                   style={{
                     cursor: "pointer",
-                    color: "#b91c1c",
+                    color: "var(--color-error)",
                     background: "none",
                     border: "none",
                   }}
@@ -148,8 +157,8 @@ const primaryBtn = {
   padding: "0.5rem 1rem",
   border: "none",
   borderRadius: "0.5rem",
-  background: "#1d4ed8",
-  color: "#fff",
+  background: "var(--color-primary)",
+  color: "var(--color-surface-lowest)",
   cursor: "pointer",
   fontWeight: 600,
   whiteSpace: "nowrap" as const,

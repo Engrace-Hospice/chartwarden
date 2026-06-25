@@ -45,11 +45,11 @@ export function AcceptInvitation(): JSX.Element {
         </>
       ) : (
         <>
-          <p style={{ color: "#6b7280" }}>
+          <p style={{ color: "var(--color-on-surface-variant)" }}>
             Accept this invitation to activate your membership. You will then set a password and
             enroll multi-factor authentication.
           </p>
-          {status === "error" ? <p style={{ color: "#b91c1c" }}>{message}</p> : null}
+          {status === "error" ? <p style={{ color: "var(--color-error)" }}>{message}</p> : null}
           <button type="button" onClick={accept} disabled={status === "working"} style={primaryBtn}>
             {status === "working" ? "Accepting…" : "Accept invitation"}
           </button>
@@ -64,8 +64,8 @@ const primaryBtn = {
   padding: "0.625rem 1rem",
   border: "none",
   borderRadius: "0.5rem",
-  background: "#1d4ed8",
-  color: "#fff",
+  background: "var(--color-primary)",
+  color: "var(--color-surface-lowest)",
   cursor: "pointer",
   fontWeight: 600,
 } as const;

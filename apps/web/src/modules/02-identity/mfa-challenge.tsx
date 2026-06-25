@@ -53,7 +53,7 @@ export function MfaChallenge(): JSX.Element {
     >
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
         <h1 style={{ margin: 0, fontSize: "1.1rem" }}>Two-factor authentication</h1>
-        <p style={{ margin: 0, color: "#6b7280", fontSize: "0.85rem" }}>
+        <p style={{ margin: 0, color: "var(--color-on-surface-variant)", fontSize: "0.85rem" }}>
           {useBackup
             ? "Enter one of your backup codes."
             : "Enter the 6-digit code from your authenticator app."}
@@ -67,7 +67,9 @@ export function MfaChallenge(): JSX.Element {
           onChange={(ev) => setCode(ev.target.value.trim())}
           style={field}
         />
-        {error ? <p style={{ color: "#b91c1c", margin: 0, fontSize: "0.85rem" }}>{error}</p> : null}
+        {error ? (
+          <p style={{ color: "var(--color-error)", margin: 0, fontSize: "0.85rem" }}>{error}</p>
+        ) : null}
         <button type="submit" disabled={busy || !code} style={primaryBtn}>
           {busy ? "Verifying…" : "Verify"}
         </button>
@@ -78,7 +80,7 @@ export function MfaChallenge(): JSX.Element {
 
 const field = {
   padding: "0.5rem 0.625rem",
-  border: "1px solid #e5e7eb",
+  border: "1px solid var(--color-outline-variant)",
   borderRadius: "0.5rem",
   letterSpacing: "0.1em",
 } as const;
@@ -86,15 +88,15 @@ const primaryBtn = {
   padding: "0.625rem 1rem",
   border: "none",
   borderRadius: "0.5rem",
-  background: "#1d4ed8",
-  color: "#fff",
+  background: "var(--color-primary)",
+  color: "var(--color-surface-lowest)",
   cursor: "pointer",
   fontWeight: 600,
 } as const;
 const linkBtn = {
   background: "none",
   border: "none",
-  color: "#1d4ed8",
+  color: "var(--color-primary)",
   cursor: "pointer",
   fontSize: "0.85rem",
 } as const;

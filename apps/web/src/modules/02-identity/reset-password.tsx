@@ -31,7 +31,7 @@ export function ResetPassword(): JSX.Element {
       >
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           <h1 style={{ margin: 0, fontSize: "1.1rem" }}>Reset link invalid</h1>
-          <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
+          <p style={{ margin: 0, color: "var(--color-on-surface-variant)", fontSize: "0.9rem" }}>
             This password-reset link is invalid or has expired. Request a new one to continue.
           </p>
         </div>
@@ -99,7 +99,9 @@ export function ResetPassword(): JSX.Element {
             style={field}
           />
         </label>
-        {error ? <p style={{ color: "#b91c1c", margin: 0, fontSize: "0.85rem" }}>{error}</p> : null}
+        {error ? (
+          <p style={{ color: "var(--color-error)", margin: 0, fontSize: "0.85rem" }}>{error}</p>
+        ) : null}
         <button type="submit" disabled={busy || !password || !confirm} style={primaryBtn}>
           {busy ? "Saving…" : "Save new password"}
         </button>
@@ -110,15 +112,15 @@ export function ResetPassword(): JSX.Element {
 
 const field = {
   padding: "0.5rem 0.625rem",
-  border: "1px solid #e5e7eb",
+  border: "1px solid var(--color-outline-variant)",
   borderRadius: "0.5rem",
 } as const;
 const primaryBtn = {
   padding: "0.625rem 1rem",
   border: "none",
   borderRadius: "0.5rem",
-  background: "#1d4ed8",
-  color: "#fff",
+  background: "var(--color-primary)",
+  color: "var(--color-surface-lowest)",
   cursor: "pointer",
   fontWeight: 600,
 } as const;

@@ -78,7 +78,9 @@ export function SignIn(): JSX.Element {
             style={field}
           />
         </label>
-        {error ? <p style={{ color: "#b91c1c", margin: 0, fontSize: "0.85rem" }}>{error}</p> : null}
+        {error ? (
+          <p style={{ color: "var(--color-error)", margin: 0, fontSize: "0.85rem" }}>{error}</p>
+        ) : null}
         <button type="submit" disabled={busy || !email || !password} style={primaryBtn}>
           {busy ? "Signing in…" : "Sign in"}
         </button>
@@ -89,12 +91,13 @@ export function SignIn(): JSX.Element {
           alignItems: "center",
           gap: "0.5rem",
           margin: "0.5rem 0",
-          color: "#9ca3af",
+          color: "var(--color-on-surface-variant)",
           fontSize: "0.75rem",
         }}
       >
-        <hr style={{ flex: 1, border: 0, borderTop: "1px solid #e5e7eb" }} /> or{" "}
-        <hr style={{ flex: 1, border: 0, borderTop: "1px solid #e5e7eb" }} />
+        <hr style={{ flex: 1, border: 0, borderTop: "1px solid var(--color-outline-variant)" }} />{" "}
+        or{" "}
+        <hr style={{ flex: 1, border: 0, borderTop: "1px solid var(--color-outline-variant)" }} />
       </div>
       <button type="button" onClick={signInWithPasskey} disabled={busy} style={secondaryBtn}>
         Sign in with a passkey
@@ -105,24 +108,24 @@ export function SignIn(): JSX.Element {
 
 const field = {
   padding: "0.5rem 0.625rem",
-  border: "1px solid #e5e7eb",
+  border: "1px solid var(--color-outline-variant)",
   borderRadius: "0.5rem",
 } as const;
 const primaryBtn = {
   padding: "0.625rem 1rem",
   border: "none",
   borderRadius: "0.5rem",
-  background: "#1d4ed8",
-  color: "#fff",
+  background: "var(--color-primary)",
+  color: "var(--color-surface-lowest)",
   cursor: "pointer",
   fontWeight: 600,
 } as const;
 const secondaryBtn = {
   padding: "0.625rem 1rem",
-  border: "1px solid #1d4ed8",
+  border: "1px solid var(--color-primary)",
   borderRadius: "0.5rem",
-  background: "#fff",
-  color: "#1d4ed8",
+  background: "var(--color-surface-lowest)",
+  color: "var(--color-primary)",
   cursor: "pointer",
   fontWeight: 600,
 } as const;

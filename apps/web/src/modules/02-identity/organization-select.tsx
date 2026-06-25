@@ -105,15 +105,21 @@ export function OrganizationSelect(): JSX.Element {
                   width: "100%",
                   textAlign: "left",
                   padding: "0.75rem 1rem",
-                  border: "1px solid #e5e7eb",
+                  border: "1px solid var(--color-outline-variant)",
                   borderRadius: "0.5rem",
                   cursor: "pointer",
-                  background: "#fff",
+                  background: "var(--color-surface-lowest)",
                 }}
               >
                 <span style={{ fontWeight: 600 }}>{m.organizationName}</span>
                 {m.isAdmin ? (
-                  <span style={{ marginLeft: "0.5rem", fontSize: "0.75rem", color: "#6b7280" }}>
+                  <span
+                    style={{
+                      marginLeft: "0.5rem",
+                      fontSize: "0.75rem",
+                      color: "var(--color-on-surface-variant)",
+                    }}
+                  >
                     admin
                   </span>
                 ) : null}
