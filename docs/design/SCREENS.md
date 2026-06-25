@@ -175,12 +175,12 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 
 | Screen | Module(s) | Layout pattern | Pencil |
 | :-- | :-- | :-- | :-- |
-| [External Physician Portal](./screens/portal/WARDENX_UI_EXTERNAL_PHYSICIAN_PORTAL.md) | M29 · M31 | Portal Dashboard | `◐ node:HIRCS` (P8 .pen) |
-| [Consulting Physician Portal](./screens/portal/WARDENX_UI_CONSULTING_PHYSICIAN_PORTAL.md) | M31 | Portal Dashboard | `◐ node:z58Qbh` (P8 .pen) |
-| [Referral Source Portal](./screens/portal/WARDENX_UI_REFERRAL_SOURCE_PORTAL.md) | M29 | Portal Dashboard | `◐ node:m23Lw` (P8 .pen) |
-| [Facility Nurse Portal](./screens/portal/WARDENX_UI_FACILITY_NURSE_PORTAL.md) | M31 | Portal Dashboard | `◐ node:CzFUq` (P8 .pen) |
-| [DME Vendor Portal](./screens/portal/WARDENX_UI_DME_VENDOR_PORTAL.md) | M31 | Portal Dashboard | `◐ node:r7RLV` (P8 .pen) |
-| [Surveyor Access Portal](./screens/portal/WARDENX_UI_SURVEYOR_ACCESS_PORTAL.md) | M30 | Work Queue | `◐ node:LISN8` (P8 .pen) |
+| [External Physician Portal](./screens/portal/WARDENX_UI_EXTERNAL_PHYSICIAN_PORTAL.md) | M29 · M31 | Portal Dashboard | `● node:HIRCS` (P8 .pen) |
+| [Consulting Physician Portal](./screens/portal/WARDENX_UI_CONSULTING_PHYSICIAN_PORTAL.md) | M31 | Portal Dashboard | `● node:z58Qbh` (P8 .pen) |
+| [Referral Source Portal](./screens/portal/WARDENX_UI_REFERRAL_SOURCE_PORTAL.md) | M29 | Portal Dashboard | `● node:m23Lw` (P8 .pen) |
+| [Facility Nurse Portal](./screens/portal/WARDENX_UI_FACILITY_NURSE_PORTAL.md) | M31 | Portal Dashboard | `● node:CzFUq` (P8 .pen) |
+| [DME Vendor Portal](./screens/portal/WARDENX_UI_DME_VENDOR_PORTAL.md) | M31 | Portal Dashboard | `● node:r7RLV` (P8 .pen) |
+| [Surveyor Access Portal](./screens/portal/WARDENX_UI_SURVEYOR_ACCESS_PORTAL.md) | M30 | Work Queue | `● node:LISN8` (P8 .pen) |
 
 ### P9 — Mobile, Integration & Ops (4)
 
