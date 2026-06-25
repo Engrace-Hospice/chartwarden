@@ -1,22 +1,25 @@
 import {
+  CountdownChip,
   EmptyState,
   KpiCard,
   KpiStrip,
   LoadingSpinner,
   PageHeader,
+  StatusPill,
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/08-encounters — Cosignature Queue (M8 §5.5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md — "Use Work Queue."
-// The RN / Clinical Supervisor cosignature work queue: one row per encounter awaiting cosignature,
-// with an SLA chip derived from hours-since-primary-sign (green ≤12h, yellow 12–24h, orange 24–48h,
-// red >48h, §5.5). A row opens the Encounter Read view. Reads GET /api/v1/encounters/cosignature-queue
-// via the typed client; the server enforces every scope (ADR-0030 — no authz on the frontend).
-// Imports only leaves (@wardenx/ui).
+// The RN / Clinical Supervisor cosignature work queue: one row per encounter awaiting cosignature.
+// Reconciled to Lantern (R1): the §5.5 SLA is a §7.5 CountdownChip counting down to the 48h hard cap
+// (warning → alert → overdue), status is a §6.6 StatusPill, ids are mono, the table is No-Line. Reads
+// GET /api/v1/encounters/cosignature-queue via the typed client; the server enforces every scope
+// (ADR-0030 — no authz on the frontend). Imports only leaves (@wardenx/ui).
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import { ENCOUNTER_TONE, cosignDueAt, cosignOverdue, stateLabel } from "./encounter-status";
 
 interface EncounterRow {
   id: string;
@@ -26,16 +29,6 @@ interface EncounterRow {
   serviceDate: string;
   status: string;
   signedAt: string | null;
-}
-
-// SLA chip per §5.5: hours since the primary signature.
-function slaChip(signedAt: string | null): { label: string; color: string } {
-  if (!signedAt) return { label: "—", color: "#6b7280" };
-  const hours = (Date.now() - new Date(signedAt).getTime()) / 3_600_000;
-  if (hours <= 12) return { label: `${Math.floor(hours)}h`, color: "#15803d" };
-  if (hours <= 24) return { label: `${Math.floor(hours)}h`, color: "#b45309" };
-  if (hours <= 48) return { label: `${Math.floor(hours)}h`, color: "#c2410c" };
-  return { label: `${Math.floor(hours)}h`, color: "#b91c1c" };
 }
 
 export function CosignatureQueue(): JSX.Element {
@@ -65,7 +58,7 @@ export function CosignatureQueue(): JSX.Element {
     };
   }, [client]);
 
-  const overdue = items.filter((e) => slaChip(e.signedAt).color === "#b91c1c").length;
+  const overdue = items.filter((e) => cosignOverdue(e.signedAt)).length;
 
   return (
     <WorkQueueLayout
@@ -88,44 +81,55 @@ export function CosignatureQueue(): JSX.Element {
           />
         ) : (
           <div style={{ padding: "0 1.5rem 1.5rem" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+            <table>
               <thead>
-                <tr style={{ textAlign: "left", color: "#6b7280" }}>
-                  <th style={th}>Encounter</th>
-                  <th style={th}>Discipline</th>
-                  <th style={th}>Service date</th>
-                  <th style={th}>SLA</th>
-                  <th style={th}>Status</th>
+                <tr>
+                  <th>Encounter</th>
+                  <th>Discipline</th>
+                  <th>Service date</th>
+                  <th>Cosign SLA</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((e) => {
-                  const chip = slaChip(e.signedAt);
-                  return (
-                    <tr
-                      key={e.id}
-                      // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => navigate(`/patients/${e.patientId}/encounters/${e.id}`)}
-                      onKeyDown={(ev) => {
-                        if (ev.key === "Enter" || ev.key === " ") {
-                          ev.preventDefault();
-                          navigate(`/patients/${e.patientId}/encounters/${e.id}`);
-                        }
-                      }}
-                      style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}
-                    >
-                      <td style={td}>{e.encounterType}</td>
-                      <td style={td}>{e.discipline}</td>
-                      <td style={td}>{e.serviceDate}</td>
-                      <td style={td}>
-                        <span style={{ color: chip.color, fontWeight: 600 }}>● {chip.label}</span>
-                      </td>
-                      <td style={td}>{e.status}</td>
-                    </tr>
-                  );
-                })}
+                {items.map((e) => (
+                  <tr
+                    key={e.id}
+                    // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => navigate(`/patients/${e.patientId}/encounters/${e.id}`)}
+                    onKeyDown={(ev) => {
+                      if (ev.key === "Enter" || ev.key === " ") {
+                        ev.preventDefault();
+                        navigate(`/patients/${e.patientId}/encounters/${e.id}`);
+                      }
+                    }}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <td>{e.encounterType}</td>
+                    <td>{stateLabel(e.discipline)}</td>
+                    <td className="tabular-nums">{e.serviceDate}</td>
+                    <td>
+                      {e.signedAt ? (
+                        <CountdownChip
+                          dueAt={cosignDueAt(e.signedAt)}
+                          warnWithinHours={36}
+                          alertWithinHours={24}
+                          label="Cosign"
+                        />
+                      ) : (
+                        <span style={{ color: "var(--color-muted)" }}>—</span>
+                      )}
+                    </td>
+                    <td>
+                      <StatusPill
+                        label={stateLabel(e.status)}
+                        tone={ENCOUNTER_TONE[e.status] ?? "neutral"}
+                      />
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -134,6 +138,3 @@ export function CosignatureQueue(): JSX.Element {
     />
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;
