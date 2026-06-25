@@ -37,3 +37,6 @@ WARDENX_MODULE_29_TASKS_T29.zip
 .archon/run-plan.txt
 .archon/commit-msg.txt
 .archon/pr-body.md
+
+# Storybook build output
+storybook-static/

@@ -21,6 +21,7 @@ the design↔implementation coverage gap (2026-06-24).
 | **`@wardenx/ui` layout primitives** | ✅ **Lantern-enforced (R0.2)** | 8 Tier‑1 regions + 8 Tier‑2 layouts now use a web token helper (`packages/ui/src/web/theme/tokens.ts`: `t` CSS-var pointers + `ghostBorder` + `cardSurface`) — **zero hardcoded hex** (theme-reactive incl. dark mode), No-Line edges (tonal surfaces / ghost border ≤15%), Fraunces on titles/names/KPI-labels, Inter `tabular-nums` on KPI values, IBM Plex Mono on identifiers. Type-scale utilities (`.wx-display-lg`…`.wx-data-md`) added to `index.css`. Components (empty-state, correlation-id-badge, error-boundary) tokenized too. |
 | **WardenX system primitives** | ✅ **built (R0.3)** | `packages/ui/src/web/system/`: Guardrail (`GuardChip`, `GateStepper`, `BlockingDialog`, `CeremonyModal` + step-up/EPCS, `CountdownChip`), Sensitivity (`MaskedIdentifier` + reveal, `SealedBlock`, `BreakGlassBanner`, `ConsentBadge`), Provenance (`AiSuggestionCard` halo + Accept/Edit/Dismiss + citation, `DerivedBadge`). Dependency-free inline-SVG `Glyph` set (non-color partners, §10.10); focus-trapped `Modal` scaffold; `wx-ai-pulse` halo + `wardenx-spin` keyframes added to `index.css` (reduced-motion guarded). Token-driven, biome+tsc+arch clean. Maps 1:1 to D1–D3. |
 | **Missing layout patterns** | 🟡 **8 built (R0.4)** | `packages/ui/src/web/layouts/domain-patterns.tsx`: `MarGridLayout` (M13), `SchedulingCalendarLayout` (M17), `StatusBoardLayout`, `AdminHierarchyLayout`, `AdminSettingsLayout`, `PortalDashboardLayout` (Portal family — single-column/large-type/sticky safety), `GatedActionFlowLayout`, `DocumentViewerLayout` — slot-based, token-driven, No-Line, matching the glossary structures. **Deferred to first-use waves:** Bed Board, Media Room, Assistant, Portal List, Admin Console. |
+| **Visual reference (Storybook)** | ✅ **done (R0.5)** | Storybook 10 (`@storybook/react-vite`) hosted in `apps/web` (reuses the Lantern `index.css` + self-hosted fonts + Tailwind v4 plugin); light/dark toolbar via `@storybook/addon-themes`. Stories under `apps/web/src/stories/` cover Regions, Guardrail, Sensitivity, Provenance, and filled Layouts. `bun run storybook` (dev) / `bun run build-storybook` (CI). |
 | **Implemented screens** | ✅ real | **91 screens across 19/40 modules**, all live-wired to backends (62% substantial, 38% lean read-surfaces, **0 stubs**). Write surfaces (modals/forms/mutations) systematically deferred. Every screen references its design spec. |
 | **Build backlog** | — | **~53 designed screens in 21 modules have no web surface at all.** |
 
@@ -45,8 +46,9 @@ M14 idg, M17 scheduling, M18 evv, M22 documents, M36 messaging, M38 terminology,
 
 ## Phased plan
 
-### Phase R0 — Foundation (make Lantern real in code) · **do first, unblocks everything**
-Bounded, high-leverage, no backend dependency.
+### Phase R0 — Foundation (make Lantern real in code) · ✅ **COMPLETE** · unblocks everything
+Bounded, high-leverage, no backend dependency. **All five items landed** (branch
+`feat/r0-frontend-foundation`); each step's status is in the Current-state table above.
 1. **Self-host the 3 webfonts** — `@fontsource/fraunces`, `@fontsource-variable/inter`, `@fontsource-variable/ibm-plex-mono`, imported in `apps/web/src/main.tsx`. *(small, immediate visible win — restores the whole typographic identity)*
 2. **Refactor `@wardenx/ui` to enforce Lantern** — replace every hardcoded hex with the CSS-variable tokens; apply the No-Line rule (tonal surface shifts, drop 1px section borders); Fraunces on titles/names/KPI-labels, Inter on data, IBM Plex Mono on identifiers (mirror exactly the review fixes: Inter on KPI *values*, alert-not-gold for controlled-substance). Add type-scale utilities.
 3. **Build the WardenX system primitives** — the components the corpus is built on:
