@@ -1,3 +1,10 @@
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  PatientWorkspaceLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/12-dosespot — medication-history reconciliation (M12 §4.1/§6.1, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Patient Workspace + Work Queue"
 // (medication reconciliation). The MedHx pulled from DoseSpot is shown as a worksheet: drug + source. Each
@@ -8,13 +15,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import {
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  PatientWorkspaceLayout,
-  useApiClient,
-} from "@wardenx/ui";
+import { stateLabel } from "./medication-status";
 
 interface HistoryRow {
   id: string;
@@ -33,9 +34,12 @@ export function MedicationReconciliation(): JSX.Element {
     if (!patientId) return;
     setLoading(true);
     setError(null);
-    const { data, error: err } = await client.GET("/api/v1/patients/{patientId}/medications/history", {
-      params: { path: { patientId } },
-    });
+    const { data, error: err } = await client.GET(
+      "/api/v1/patients/{patientId}/medications/history",
+      {
+        params: { path: { patientId } },
+      },
+    );
     if (err) {
       setError("Could not load the medication history.");
       setLoading(false);
@@ -50,9 +54,7 @@ export function MedicationReconciliation(): JSX.Element {
   }, [load]);
 
   return (
-    <PatientWorkspaceLayout
-      banner={<PageHeader title="Medication Reconciliation" />}
-    >
+    <PatientWorkspaceLayout banner={<PageHeader title="Medication Reconciliation" />}>
       {error ? (
         <EmptyState title="Unavailable" description={error} />
       ) : loading && items.length === 0 ? (
@@ -63,18 +65,18 @@ export function MedicationReconciliation(): JSX.Element {
           description="No DoseSpot medication-history records for this patient."
         />
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+        <table>
           <thead>
-            <tr style={{ textAlign: "left", color: "#6b7280" }}>
-              <th style={th}>Drug</th>
-              <th style={th}>Source</th>
+            <tr>
+              <th>Drug</th>
+              <th>Source</th>
             </tr>
           </thead>
           <tbody>
             {items.map((r) => (
-              <tr key={r.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                <td style={td}>{r.drugName}</td>
-                <td style={td}>{r.source}</td>
+              <tr key={r.id}>
+                <td>{r.drugName}</td>
+                <td>{stateLabel(r.source)}</td>
               </tr>
             ))}
           </tbody>
@@ -83,6 +85,3 @@ export function MedicationReconciliation(): JSX.Element {
     </PatientWorkspaceLayout>
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;

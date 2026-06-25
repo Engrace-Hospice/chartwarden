@@ -1,3 +1,12 @@
+import {
+  EmptyState,
+  FilterBar,
+  LoadingSpinner,
+  PageHeader,
+  PatientWorkspaceLayout,
+  StatusPill,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/12-dosespot — patient medication list (M12 §4.1/§6.1, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Patient Workspace + Work Queue"
 // (medication list, patient chart). Reached from the patient chart "Medications" tab; lists the patient's
@@ -9,14 +18,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  EmptyState,
-  FilterBar,
-  LoadingSpinner,
-  PageHeader,
-  PatientWorkspaceLayout,
-  useApiClient,
-} from "@wardenx/ui";
+import { MED_ORDER_TONE, controlledLabel, stateLabel } from "./medication-status";
 
 interface MedRow {
   id: string;
@@ -31,14 +33,6 @@ interface MedRow {
   deaSchedule: string | null;
   refillsRemaining: number;
 }
-
-const statusColor: Record<string, string | undefined> = {
-  active: "#15803d",
-  verbal_pending: "#b45309",
-  pending_signature: "#b45309",
-  discontinued: "#6b7280",
-  completed: "#6b7280",
-};
 
 export function PatientMedications(): JSX.Element {
   const client = useApiClient();
@@ -55,9 +49,12 @@ export function PatientMedications(): JSX.Element {
     setError(null);
     // "active" reads the dedicated active-medications surface; any other status reads the filtered list.
     if (status === "active") {
-      const { data, error: err } = await client.GET("/api/v1/patients/{patientId}/medications/active", {
-        params: { path: { patientId } },
-      });
+      const { data, error: err } = await client.GET(
+        "/api/v1/patients/{patientId}/medications/active",
+        {
+          params: { path: { patientId } },
+        },
+      );
       if (err) {
         setError("Could not load medications for this patient.");
         setLoading(false);
@@ -83,7 +80,10 @@ export function PatientMedications(): JSX.Element {
     void load();
   }, [load]);
 
-  const rows = useMemo(() => [...items].sort((a, b) => a.drugName.localeCompare(b.drugName)), [items]);
+  const rows = useMemo(
+    () => [...items].sort((a, b) => a.drugName.localeCompare(b.drugName)),
+    [items],
+  );
 
   return (
     <PatientWorkspaceLayout
@@ -96,13 +96,17 @@ export function PatientMedications(): JSX.Element {
             </button>
           }
         >
-          <select aria-label="Medication status" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <select
+            aria-label="Medication status"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+          >
             <option value="active">Active</option>
-            <option value="draft">draft</option>
-            <option value="pending_signature">pending_signature</option>
-            <option value="verbal_pending">verbal_pending</option>
-            <option value="discontinued">discontinued</option>
-            <option value="completed">completed</option>
+            <option value="draft">Draft</option>
+            <option value="pending_signature">Pending Signature</option>
+            <option value="verbal_pending">Verbal Pending</option>
+            <option value="discontinued">Discontinued</option>
+            <option value="completed">Completed</option>
           </select>
         </FilterBar>
       }
@@ -112,34 +116,60 @@ export function PatientMedications(): JSX.Element {
       ) : loading && items.length === 0 ? (
         <LoadingSpinner />
       ) : rows.length === 0 ? (
-        <EmptyState title="No medications" description="No medications for this patient in this view." />
+        <EmptyState
+          title="No medications"
+          description="No medications for this patient in this view."
+        />
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+        <table>
           <thead>
-            <tr style={{ textAlign: "left", color: "#6b7280" }}>
-              <th style={th}>Drug</th>
-              <th style={th}>Class</th>
-              <th style={th}>Status</th>
-              <th style={th}>Controlled</th>
-              <th style={th}>Refills</th>
+            <tr>
+              <th>Drug</th>
+              <th>Class</th>
+              <th>Status</th>
+              <th>Controlled</th>
+              <th>Refills</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((o) => (
               <tr
                 key={o.id}
+                // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                role="button"
+                tabIndex={0}
                 onClick={() => navigate(`/medication-orders/${o.id}`)}
-                style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}
+                onKeyDown={(ev) => {
+                  if (ev.key === "Enter" || ev.key === " ") {
+                    ev.preventDefault();
+                    navigate(`/medication-orders/${o.id}`);
+                  }
+                }}
+                style={{ cursor: "pointer" }}
               >
-                <td style={td}>
+                <td>
                   {o.drugName} {o.strength} {o.doseForm} · {o.route}
                 </td>
-                <td style={td}>{o.medClass}</td>
-                <td style={{ ...td, color: statusColor[o.status] }}>{o.status}</td>
-                <td style={{ ...td, color: o.isControlledSubstance ? "#b45309" : undefined }}>
-                  {o.isControlledSubstance ? `C-${o.deaSchedule ?? "?"}` : "—"}
+                <td>{stateLabel(o.medClass)}</td>
+                <td>
+                  <StatusPill
+                    label={stateLabel(o.status)}
+                    tone={MED_ORDER_TONE[o.status] ?? "neutral"}
+                  />
                 </td>
-                <td style={td}>{o.refillsRemaining}</td>
+                <td>
+                  {/* §10 — controlled-substance / EPCS is the one place the gold `critical` tone is used. */}
+                  {o.isControlledSubstance ? (
+                    <StatusPill
+                      label={controlledLabel(o.deaSchedule)}
+                      tone="critical"
+                      glyph="alert"
+                    />
+                  ) : (
+                    <span style={{ color: "var(--color-muted)" }}>—</span>
+                  )}
+                </td>
+                <td className="tabular-nums">{o.refillsRemaining}</td>
               </tr>
             ))}
           </tbody>
@@ -148,6 +178,3 @@ export function PatientMedications(): JSX.Element {
     </PatientWorkspaceLayout>
   );
 }
-
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;

@@ -1,3 +1,11 @@
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/12-dosespot — prescribing policy admin (M12 §4.1/§6.1, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (refill SLA & controlled-
 // substance policy admin). Two read-only tenant-config panes for org_admin / compliance_officer: the refill-
@@ -8,13 +16,7 @@
 // GET /api/v1/admin/controlled-substance-policy via the typed client. Leaves only (@wardenx/ui).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import {
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-  WorkQueueLayout,
-} from "@wardenx/ui";
+import { EPCS_TONE, stateLabel } from "./medication-status";
 
 interface RefillPolicyView {
   slaWarnHours: number;
@@ -72,11 +74,12 @@ export function PrescribingPolicy(): JSX.Element {
               <dl style={dl}>
                 <dt style={dt}>Warn after</dt>
                 <dd style={dd}>
-                  {refill.slaWarnHours}h <span style={floor}>(floor {refill.platformFloorWarnHours}h)</span>
+                  <span className="tabular-nums">{refill.slaWarnHours}h</span>{" "}
+                  <span style={floor}>(floor {refill.platformFloorWarnHours}h)</span>
                 </dd>
                 <dt style={dt}>Critical after</dt>
                 <dd style={dd}>
-                  {refill.slaCriticalHours}h{" "}
+                  <span className="tabular-nums">{refill.slaCriticalHours}h</span>{" "}
                   <span style={floor}>(floor {refill.platformFloorCriticalHours}h)</span>
                 </dd>
               </dl>
@@ -85,17 +88,19 @@ export function PrescribingPolicy(): JSX.Element {
               <h3 style={h3}>Controlled-substance policy (21 CFR 1306.22 / D18)</h3>
               <dl style={dl}>
                 <dt style={dt}>Schedule II max refills</dt>
-                <dd style={dd}>{controlled.scheduleIiMaxRefills}</dd>
+                <dd style={dd} className="tabular-nums">
+                  {controlled.scheduleIiMaxRefills}
+                </dd>
                 <dt style={dt}>Schedule III–V max refills</dt>
-                <dd style={dd}>{controlled.scheduleIiiToVMaxRefills}</dd>
+                <dd style={dd} className="tabular-nums">
+                  {controlled.scheduleIiiToVMaxRefills}
+                </dd>
                 <dt style={dt}>EPCS certification</dt>
-                <dd
-                  style={{
-                    ...dd,
-                    color: controlled.epcsCertificationStatus === "certified" ? "#15803d" : "#b45309",
-                  }}
-                >
-                  {controlled.epcsCertificationStatus}
+                <dd style={dd}>
+                  <StatusPill
+                    label={stateLabel(controlled.epcsCertificationStatus)}
+                    tone={EPCS_TONE[controlled.epcsCertificationStatus] ?? "neutral"}
+                  />
                 </dd>
               </dl>
             </section>
@@ -107,7 +112,13 @@ export function PrescribingPolicy(): JSX.Element {
 }
 
 const h3 = { fontSize: "0.9rem", fontWeight: 600, margin: "0 0 0.5rem" } as const;
-const dl = { display: "grid", gridTemplateColumns: "14rem 1fr", gap: "0.4rem 1rem", fontSize: "0.85rem", margin: 0 } as const;
-const dt = { fontWeight: 600, color: "#374151" } as const;
+const dl = {
+  display: "grid",
+  gridTemplateColumns: "14rem 1fr",
+  gap: "0.4rem 1rem",
+  fontSize: "0.85rem",
+  margin: 0,
+} as const;
+const dt = { fontWeight: 600, color: "var(--color-on-surface)" } as const;
 const dd = { margin: 0 } as const;
-const floor = { color: "#9ca3af", fontSize: "0.75rem" } as const;
+const floor = { color: "var(--color-muted)", fontSize: "0.75rem" } as const;
