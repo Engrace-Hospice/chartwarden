@@ -1,4 +1,12 @@
-import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@wardenx/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  RightDetailPanel,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/05-patient — Global Search Results (cross-cutting; M5 owns it, M5→M2 edge).
 // Spec: docs/design/screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md — "Use Work Queue."
 // FB-T11 (partial): the live facets are the M5 **patient** facet (GET /api/v1/patients?q=) and the
@@ -12,6 +20,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { authClient } from "../02-identity/auth-client";
+import { STATUS_TONE, statusLabel } from "./patient-status";
 
 type Facet = "all" | "patient" | "staff";
 
@@ -224,7 +233,11 @@ export function GlobalSearchResults(): JSX.Element {
           </div>
         )
       }
-      detail={<PreviewPane selection={selected} onOpen={navigate} />}
+      detail={
+        selected ? (
+          <PreviewPane selection={selected} onOpen={navigate} onClose={() => setSelected(null)} />
+        ) : undefined
+      }
     />
   );
 }
@@ -235,7 +248,7 @@ function EmptyQuery({
 }: { recent: string[]; onPick: (t: string) => void }): JSX.Element {
   return (
     <div style={{ padding: "1.5rem" }}>
-      <p style={{ color: "#6b7280", marginTop: 0 }}>
+      <p style={{ color: "var(--color-on-surface-variant)", marginTop: 0 }}>
         Search patients by name or MRN, and staff in your organization. Results are scoped to what
         you are permitted to see.
       </p>
@@ -274,11 +287,18 @@ function PatientGroup({
           {hits.map((p) => (
             <li key={p.id}>
               <button type="button" onClick={() => onSelect(p)} style={rowBtn}>
-                <span style={{ fontWeight: 600 }}>
-                  {p.lastName}, {p.firstName}
+                <span style={rowTop}>
+                  <span style={{ fontWeight: 600, color: "var(--color-on-surface)" }}>
+                    {p.lastName}, {p.firstName}
+                  </span>
+                  <StatusPill
+                    label={statusLabel(p.status)}
+                    tone={STATUS_TONE[p.status] ?? "neutral"}
+                  />
                 </span>
                 <span style={meta}>
-                  MRN {p.mrn} · DOB {p.dob} · {p.status}
+                  MRN <span className="wx-data-md">{p.mrn}</span> · DOB{" "}
+                  <span className="tabular-nums">{p.dob}</span>
                 </span>
               </button>
             </li>
@@ -310,12 +330,16 @@ function StaffGroup({
           {hits.map((m) => (
             <li key={m.membershipId}>
               <button type="button" onClick={() => onSelect(m)} style={rowBtn}>
-                <span style={{ fontWeight: 600, fontFamily: "monospace", fontSize: "0.85rem" }}>
-                  {m.userId.slice(0, 8)}
+                <span style={rowTop}>
+                  <span className="wx-data-md" style={{ fontWeight: 600 }}>
+                    {m.userId.slice(0, 8)}
+                  </span>
+                  <StatusPill
+                    label={statusLabel(m.status)}
+                    tone={m.status === "active" ? "success" : "neutral"}
+                  />
                 </span>
-                <span style={meta}>
-                  {m.isAdmin ? "Org admin" : "Member"} · {m.status}
-                </span>
+                <span style={meta}>{m.isAdmin ? "Org admin" : "Member"}</span>
               </button>
             </li>
           ))}
@@ -332,14 +356,19 @@ function StaffGroup({
 
 function FutureFacets(): JSX.Element {
   return (
-    <section style={{ borderTop: "1px dashed #e5e7eb", paddingTop: "0.75rem" }}>
+    <section
+      style={{
+        borderTop: "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
+        paddingTop: "0.75rem",
+      }}
+    >
       {FUTURE_FACETS.map((f) => (
         <div
           key={f.label}
           style={{ display: "flex", justifyContent: "space-between", padding: "0.35rem 0" }}
         >
-          <span style={{ color: "#9ca3af" }}>{f.label}</span>
-          <span style={{ color: "#9ca3af", fontSize: "0.8rem" }}>
+          <span style={{ color: "var(--color-muted)" }}>{f.label}</span>
+          <span style={{ color: "var(--color-muted)", fontSize: "0.8rem" }}>
             available when {f.blocked} ships
           </span>
         </div>
@@ -351,59 +380,63 @@ function FutureFacets(): JSX.Element {
 function PreviewPane({
   selection,
   onOpen,
+  onClose,
 }: {
-  selection: Selection;
+  selection: NonNullable<Selection>;
   onOpen: (to: string) => void;
-}): JSX.Element | null {
-  if (!selection) {
-    return (
-      <aside style={preview}>
-        <p style={{ color: "#9ca3af" }}>Select a result to preview it.</p>
-      </aside>
-    );
-  }
+  onClose: () => void;
+}): JSX.Element {
   if (selection.kind === "patient") {
     const p = selection.hit;
     return (
-      <aside style={preview}>
-        <h3 style={{ margin: "0 0 0.25rem" }}>
-          {p.lastName}, {p.firstName}
-        </h3>
-        <dl style={dl}>
-          <Field label="MRN" value={p.mrn} />
-          <Field label="DOB" value={p.dob} />
-          <Field label="Status" value={p.status} />
-        </dl>
-        <button type="button" onClick={() => onOpen(`/patients/${p.id}`)} style={primaryBtn}>
-          Open chart
-        </button>
-      </aside>
+      <RightDetailPanel title={`${p.lastName}, ${p.firstName}`} onClose={onClose}>
+        <div style={fieldStack}>
+          <StatusPill label={statusLabel(p.status)} tone={STATUS_TONE[p.status] ?? "neutral"} />
+          <Field label="MRN">
+            <span className="wx-data-md">{p.mrn}</span>
+          </Field>
+          <Field label="DOB">
+            <span className="tabular-nums">{p.dob}</span>
+          </Field>
+          <button type="button" onClick={() => onOpen(`/patients/${p.id}`)} style={primaryBtn}>
+            Open chart
+          </button>
+        </div>
+      </RightDetailPanel>
     );
   }
   const m = selection.hit;
   return (
-    <aside style={preview}>
-      <h3 style={{ margin: "0 0 0.25rem" }}>{m.isAdmin ? "Org admin" : "Member"}</h3>
-      <dl style={dl}>
-        <Field label="User" value={m.userId} />
-        <Field label="Status" value={m.status} />
-      </dl>
-      <button type="button" onClick={() => onOpen("/admin/staff")} style={primaryBtn}>
-        Open staff management
-      </button>
-    </aside>
+    <RightDetailPanel title={m.isAdmin ? "Org admin" : "Member"} onClose={onClose}>
+      <div style={fieldStack}>
+        <StatusPill
+          label={statusLabel(m.status)}
+          tone={m.status === "active" ? "success" : "neutral"}
+        />
+        <Field label="User">
+          <span className="wx-data-md" style={{ wordBreak: "break-all" }}>
+            {m.userId}
+          </span>
+        </Field>
+        <button type="button" onClick={() => onOpen("/admin/staff")} style={primaryBtn}>
+          Open staff management
+        </button>
+      </div>
+    </RightDetailPanel>
   );
 }
 
-function Field({ label, value }: { label: string; value: string }): JSX.Element {
+function Field({ label, children }: { label: string; children: JSX.Element }): JSX.Element {
   return (
-    <>
-      <dt style={{ color: "#6b7280", fontSize: "0.75rem" }}>{label}</dt>
-      <dd style={{ margin: "0 0 0.5rem", wordBreak: "break-all" }}>{value}</dd>
-    </>
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+      <span style={fieldLabel}>{label}</span>
+      <span style={{ color: "var(--color-on-surface)" }}>{children}</span>
+    </div>
   );
 }
 
+// No-Line Lantern tokens (DESIGN.md §10): ghost borders at ~15% + tonal surfaces, zero hardcoded hex.
+const ghost = "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)";
 const controls = {
   display: "flex",
   gap: "0.75rem",
@@ -411,44 +444,40 @@ const controls = {
   padding: "0 1.5rem 0.75rem",
   flexWrap: "wrap" as const,
 } as const;
-const field = {
-  flex: 1,
-  padding: "0.45rem 0.7rem",
-  border: "1px solid #e5e7eb",
-  borderRadius: "0.5rem",
-  minWidth: "16rem",
-} as const;
+// Input borders/padding/radius come from the global element styles (index.css); only layout here.
+const field = { flex: 1, minWidth: "16rem" } as const;
 const primaryBtn = {
-  padding: "0.45rem 0.9rem",
+  padding: "0.5rem 1rem",
   border: "none",
-  borderRadius: "0.5rem",
-  background: "#1d4ed8",
-  color: "#fff",
+  borderRadius: "9999px",
+  background: "var(--color-primary)",
+  color: "var(--color-on-primary)",
   cursor: "pointer",
   fontWeight: 600,
 } as const;
 const facetOn = {
   padding: "0.35rem 0.75rem",
-  border: "1px solid #1d4ed8",
-  borderRadius: "0.5rem",
-  background: "#1d4ed8",
-  color: "#fff",
+  border: "1px solid var(--color-primary)",
+  borderRadius: "9999px",
+  background: "var(--color-primary)",
+  color: "var(--color-on-primary)",
   cursor: "pointer",
   fontSize: "0.85rem",
 } as const;
 const facetOff = {
   padding: "0.35rem 0.75rem",
-  border: "1px solid #e5e7eb",
-  borderRadius: "0.5rem",
-  background: "#fff",
-  color: "#374151",
+  border: ghost,
+  borderRadius: "9999px",
+  background: "var(--color-surface-low)",
+  color: "var(--color-on-surface-variant)",
   cursor: "pointer",
   fontSize: "0.85rem",
 } as const;
 const groupHead = {
   fontSize: "0.8rem",
   textTransform: "uppercase" as const,
-  color: "#6b7280",
+  letterSpacing: "0.03em",
+  color: "var(--color-on-surface-variant)",
   margin: "0 0 0.5rem",
 } as const;
 const list = {
@@ -462,29 +491,41 @@ const list = {
 const rowBtn = {
   display: "flex",
   flexDirection: "column" as const,
-  alignItems: "flex-start",
+  alignItems: "stretch",
   width: "100%",
   textAlign: "left" as const,
+  gap: "0.2rem",
   padding: "0.5rem 0.6rem",
-  border: "1px solid #f3f4f6",
-  borderRadius: "0.5rem",
-  background: "#fff",
+  border: ghost,
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-low)",
   cursor: "pointer",
 } as const;
-const meta = { color: "#6b7280", fontSize: "0.8rem" } as const;
-const mutedNote = { color: "#9ca3af", margin: "0.25rem 0", fontSize: "0.85rem" } as const;
+const rowTop = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "0.5rem",
+} as const;
+const meta = { color: "var(--color-on-surface-variant)", fontSize: "0.8rem" } as const;
+const mutedNote = {
+  color: "var(--color-muted)",
+  margin: "0.25rem 0",
+  fontSize: "0.85rem",
+} as const;
 const chip = {
   padding: "0.3rem 0.7rem",
-  border: "1px solid #e5e7eb",
-  borderRadius: "999px",
-  background: "#f9fafb",
+  border: ghost,
+  borderRadius: "9999px",
+  background: "var(--color-surface-low)",
   cursor: "pointer",
   fontSize: "0.85rem",
 } as const;
-const preview = {
-  width: "20rem",
-  borderLeft: "1px solid #e5e7eb",
-  padding: "1.25rem",
-  overflow: "auto",
+const fieldStack = { display: "flex", flexDirection: "column" as const, gap: "0.85rem" } as const;
+const fieldLabel = {
+  fontSize: "0.6875rem",
+  fontWeight: 600,
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+  color: "var(--color-on-surface-variant)",
 } as const;
-const dl = { margin: "0 0 1rem" } as const;

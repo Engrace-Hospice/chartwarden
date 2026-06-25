@@ -2,8 +2,12 @@ import {
   CenteredStatusLayout,
   LeftNavRail,
   LoadingSpinner,
+  MaskedIdentifier,
   PatientBanner,
   PatientWorkspaceLayout,
+  SealedBlock,
+  StatusPill,
+  type StatusTone,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/05-patient — Patient Chart (M5, Track A).
@@ -15,6 +19,7 @@ import {
 import { useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useParams } from "react-router-dom";
+import { STATUS_TONE, statusLabel } from "./patient-status";
 
 interface PatientSummary {
   id: string;
@@ -99,7 +104,7 @@ export function PatientChart(): JSX.Element {
           name={`${p.lastName}, ${p.firstName}`}
           mrn={p.mrn}
           dob={p.dob}
-          codeStatus={<span style={{ color: "#9ca3af" }}>—</span>}
+          codeStatus={<span style={{ color: "var(--color-muted)" }}>—</span>}
         />
       }
     >
@@ -135,9 +140,10 @@ export function PatientChart(): JSX.Element {
                 style={{
                   padding: "0.4rem 0.5rem",
                   borderRadius: "0.375rem",
-                  color: s.ready ? "#111827" : "#9ca3af",
+                  color: s.ready ? "var(--color-on-surface)" : "var(--color-muted)",
                   cursor: s.ready ? "pointer" : "default",
-                  background: s.ready && s.label === section ? "#eef2ff" : "transparent",
+                  background:
+                    s.ready && s.label === section ? "var(--color-primary-tint)" : "transparent",
                   fontWeight: s.ready && s.label === section ? 600 : 400,
                 }}
                 title={s.ready ? undefined : "Available when this module ships"}
@@ -184,9 +190,20 @@ function SummaryTab({ patient }: { patient: PatientSummary }): JSX.Element {
         <dt style={dt}>Date of birth</dt>
         <dd style={dd}>{patient.dob}</dd>
         <dt style={dt}>Status</dt>
-        <dd style={dd}>{patient.status}</dd>
+        <dd style={dd}>
+          <StatusPill
+            label={statusLabel(patient.status)}
+            tone={STATUS_TONE[patient.status] ?? "neutral"}
+          />
+        </dd>
       </dl>
-      <p style={{ marginTop: "1.5rem", color: "#6b7280", fontSize: "0.85rem" }}>
+      <p
+        style={{
+          marginTop: "1.5rem",
+          color: "var(--color-on-surface-variant)",
+          fontSize: "0.85rem",
+        }}
+      >
         Clinical sections (problems, visits, orders, medications, assessments) populate as their
         modules ship.
       </p>
@@ -261,7 +278,9 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
   if (status === "loading") return <LoadingSpinner />;
   if (status === "error" || !demographics || !identifiers) {
     return (
-      <p style={{ color: "#b91c1c", fontSize: "0.9rem" }}>Demographics could not be loaded.</p>
+      <p style={{ color: "var(--color-error)", fontSize: "0.9rem" }}>
+        Demographics could not be loaded.
+      </p>
     );
   }
 
@@ -316,7 +335,7 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
         <dt style={dt}>Preferred language</dt>
         <dd style={dd}>{orDash(d.preferredLanguageCode)}</dd>
       </dl>
-      <p style={{ color: "#9ca3af", fontSize: "0.78rem", margin: "0.3rem 0 0" }}>
+      <p style={{ color: "var(--color-muted)", fontSize: "0.78rem", margin: "0.3rem 0 0" }}>
         SOGI / race / ethnicity values are USCDI codes; M38 resolves them to display labels.
       </p>
 
@@ -325,7 +344,7 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
         style={{ borderCollapse: "collapse", fontSize: "0.85rem", width: "100%", maxWidth: 560 }}
       >
         <thead>
-          <tr style={{ textAlign: "left", color: "#6b7280" }}>
+          <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
             <th style={th}>Type</th>
             <th style={th}>Value</th>
             <th style={th}>Issuer</th>
@@ -333,11 +352,20 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
         </thead>
         <tbody>
           {identifiers.map((i) => (
-            <tr key={i.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+            <tr
+              key={i.id}
+              style={{
+                borderTop:
+                  "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
+              }}
+            >
               <td style={td}>
                 {i.kind.toUpperCase()}
                 {i.kind === "mrn" ? (
-                  <span style={{ color: "#9ca3af" }} title="MRN is immutable after creation">
+                  <span
+                    style={{ color: "var(--color-muted)" }}
+                    title="MRN is immutable after creation"
+                  >
                     {" "}
                     · immutable
                   </span>
@@ -345,9 +373,13 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
               </td>
               <td style={td}>
                 {i.sensitive ? (
-                  <span title="Full value requires phi.read_ssn (M5 SSN decryption follow-up)">
-                    xxx-xx-{i.last4 ?? "####"} <span style={{ color: "#9ca3af" }}>(masked)</span>
-                  </span>
+                  // §3.3/§8 masked identifier — read-only mask (no onReveal until the M5 SSN
+                  // decryption follow-up wires the phi.read_ssn step-up).
+                  <MaskedIdentifier
+                    value="" // full value lives server-side (envelope-encrypted); never sent until reveal
+                    masked={`xxx-xx-${i.last4 ?? "####"}`}
+                    label={`${i.kind.toUpperCase()} (masked)`}
+                  />
                 ) : (
                   orDash(i.value)
                 )}
@@ -357,7 +389,7 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
           ))}
         </tbody>
       </table>
-      <p style={{ color: "#9ca3af", fontSize: "0.78rem", margin: "0.4rem 0 0" }}>
+      <p style={{ color: "var(--color-muted)", fontSize: "0.78rem", margin: "0.4rem 0 0" }}>
         SSN / state-ID are envelope-encrypted and shown masked; full reveal requires the
         <code style={{ margin: "0 0.25rem" }}>phi.read_ssn</code> permission.
       </p>
@@ -470,7 +502,11 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
 
   if (status === "loading" && addresses === null) return <LoadingSpinner />;
   if (status === "error" || addresses === null) {
-    return <p style={{ color: "#b91c1c", fontSize: "0.9rem" }}>Addresses could not be loaded.</p>;
+    return (
+      <p style={{ color: "var(--color-error)", fontSize: "0.9rem" }}>
+        Addresses could not be loaded.
+      </p>
+    );
   }
 
   const current = addresses.filter((a) => a.current);
@@ -482,7 +518,13 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
 
       <h3 style={h3}>Current</h3>
       {current.length === 0 ? (
-        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>
+        <p
+          style={{
+            color: "var(--color-on-surface-variant)",
+            fontSize: "0.88rem",
+            margin: "0.25rem 0 0",
+          }}
+        >
           No current address on file.
         </p>
       ) : (
@@ -500,7 +542,8 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
             <li
               key={a.id}
               style={{
-                border: "1px solid #e5e7eb",
+                border:
+                  "1px solid color-mix(in srgb, var(--color-outline-variant) 50%, transparent)",
                 borderRadius: "0.5rem",
                 padding: "0.6rem 0.75rem",
                 fontSize: "0.88rem",
@@ -515,17 +558,14 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
                 }}
               >
                 <span style={{ fontWeight: 600, textTransform: "capitalize" }}>{a.kind}</span>
-                {a.isPrimary ? <span style={badge("#eef2ff", "#4338ca")}>primary</span> : null}
+                {a.isPrimary ? <span style={badge("primary")}>primary</span> : null}
                 {a.geocodeLat && a.geocodeLng ? (
-                  <span
-                    style={badge("#ecfdf5", "#047857")}
-                    title={`${a.geocodeLat}, ${a.geocodeLng}`}
-                  >
+                  <span style={badge("success")} title={`${a.geocodeLat}, ${a.geocodeLng}`}>
                     geocoded
                   </span>
                 ) : (
                   <span
-                    style={badge("#f3f4f6", "#6b7280")}
+                    style={badge("neutral")}
                     title="The M5 geocode job fills coordinates asynchronously"
                   >
                     geocoding…
@@ -535,7 +575,9 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
               <div>
                 <AddressLine a={a} />
               </div>
-              <div style={{ color: "#9ca3af", fontSize: "0.78rem", marginTop: "0.2rem" }}>
+              <div
+                style={{ color: "var(--color-muted)", fontSize: "0.78rem", marginTop: "0.2rem" }}
+              >
                 since {a.effectiveFrom}
               </div>
             </li>
@@ -602,7 +644,14 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
               </option>
             ))}
           </select>
-          <label style={{ display: "flex", gap: "0.3rem", alignItems: "center", color: "#374151" }}>
+          <label
+            style={{
+              display: "flex",
+              gap: "0.3rem",
+              alignItems: "center",
+              color: "var(--color-on-surface)",
+            }}
+          >
             <input
               type="checkbox"
               checked={form.isPrimary}
@@ -612,12 +661,12 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
           </label>
         </div>
         {form.isPrimary && current.some((a) => a.isPrimary) ? (
-          <p style={{ color: "#92400e", fontSize: "0.78rem", margin: 0 }}>
+          <p style={{ color: "var(--color-warning)", fontSize: "0.78rem", margin: 0 }}>
             The current primary address will be closed and moved to history.
           </p>
         ) : null}
         {saveError ? (
-          <p style={{ color: "#b91c1c", fontSize: "0.8rem", margin: 0 }}>{saveError}</p>
+          <p style={{ color: "var(--color-error)", fontSize: "0.8rem", margin: 0 }}>{saveError}</p>
         ) : null}
         <button
           type="submit"
@@ -625,12 +674,14 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
           style={{
             alignSelf: "flex-start",
             padding: "0.4rem 0.9rem",
-            borderRadius: "0.375rem",
-            border: "1px solid #4338ca",
-            background: saving ? "#c7d2fe" : "#4f46e5",
-            color: "#fff",
+            borderRadius: "9999px",
+            border: "none",
+            background: "var(--color-primary)",
+            color: "var(--color-on-primary)",
+            opacity: saving ? 0.6 : 1,
             cursor: saving ? "default" : "pointer",
             fontSize: "0.85rem",
+            fontWeight: 600,
           }}
         >
           {saving ? "Saving…" : "Add address"}
@@ -649,7 +700,7 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
             }}
           >
             <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280" }}>
+              <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
                 <th style={th}>Type</th>
                 <th style={th}>Address</th>
                 <th style={th}>From</th>
@@ -658,10 +709,19 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
             </thead>
             <tbody>
               {history.map((a) => (
-                <tr key={a.id} style={{ borderTop: "1px solid #f3f4f6", color: "#6b7280" }}>
+                <tr
+                  key={a.id}
+                  style={{
+                    borderTop:
+                      "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
+                    color: "var(--color-on-surface-variant)",
+                  }}
+                >
                   <td style={td}>
                     {a.kind}
-                    {a.isPrimary ? <span style={{ color: "#9ca3af" }}> · was primary</span> : null}
+                    {a.isPrimary ? (
+                      <span style={{ color: "var(--color-muted)" }}> · was primary</span>
+                    ) : null}
                   </td>
                   <td style={td}>
                     <AddressLine a={a} />
@@ -674,7 +734,7 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
           </table>
         </>
       ) : null}
-      <p style={{ color: "#9ca3af", fontSize: "0.78rem", margin: "0.6rem 0 0" }}>
+      <p style={{ color: "var(--color-muted)", fontSize: "0.78rem", margin: "0.6rem 0 0" }}>
         Addresses are append-only (D5): a change keeps the prior row as history rather than
         overwriting it.
       </p>
@@ -740,14 +800,18 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
 
   if (status === "loading") return <LoadingSpinner />;
   if (status === "error" || payers === null) {
-    return <p style={{ color: "#b91c1c", fontSize: "0.9rem" }}>Coverage could not be loaded.</p>;
+    return (
+      <p style={{ color: "var(--color-error)", fontSize: "0.9rem" }}>
+        Coverage could not be loaded.
+      </p>
+    );
   }
 
   const current = payers.filter((p) => p.current);
   const history = payers.filter((p) => !p.current);
   const payerName = (p: PatientPayer) =>
     names[p.payerId] ?? (
-      <span style={{ color: "#9ca3af" }} title={`M40 payer ${p.payerId}`}>
+      <span style={{ color: "var(--color-muted)" }} title={`M40 payer ${p.payerId}`}>
         {p.payerId.slice(0, 8)}…
       </span>
     );
@@ -758,7 +822,13 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
 
       <h3 style={h3}>Active coverage</h3>
       {current.length === 0 ? (
-        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>
+        <p
+          style={{
+            color: "var(--color-on-surface-variant)",
+            fontSize: "0.88rem",
+            margin: "0.25rem 0 0",
+          }}
+        >
           No active coverage on file.
         </p>
       ) : (
@@ -776,7 +846,8 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
             <li
               key={p.id}
               style={{
-                border: "1px solid #e5e7eb",
+                border:
+                  "1px solid color-mix(in srgb, var(--color-outline-variant) 50%, transparent)",
                 borderRadius: "0.5rem",
                 padding: "0.6rem 0.75rem",
                 fontSize: "0.88rem",
@@ -792,18 +863,20 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
               >
                 <span style={{ fontWeight: 600 }}>{payerName(p)}</span>
                 {p.rank === 1 ? (
-                  <span style={badge("#eef2ff", "#4338ca")}>primary</span>
+                  <span style={badge("primary")}>primary</span>
                 ) : (
-                  <span style={badge("#f3f4f6", "#6b7280")}>rank {p.rank}</span>
+                  <span style={badge("neutral")}>rank {p.rank}</span>
                 )}
-                <span style={badge("#ecfdf5", "#047857")}>{p.coverageKind}</span>
+                <span style={badge("success")}>{p.coverageKind}</span>
               </div>
-              <div style={{ color: "#374151" }}>
+              <div style={{ color: "var(--color-on-surface)" }}>
                 Member ID {p.subscriberId}
                 {p.groupNumber ? ` · Group ${p.groupNumber}` : ""}
                 {p.binPcn ? ` · BIN/PCN ${p.binPcn}` : ""}
               </div>
-              <div style={{ color: "#9ca3af", fontSize: "0.78rem", marginTop: "0.2rem" }}>
+              <div
+                style={{ color: "var(--color-muted)", fontSize: "0.78rem", marginTop: "0.2rem" }}
+              >
                 since {p.effectiveFrom}
               </div>
             </li>
@@ -823,7 +896,7 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
             }}
           >
             <thead>
-              <tr style={{ textAlign: "left", color: "#6b7280" }}>
+              <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
                 <th style={th}>Payer</th>
                 <th style={th}>Kind</th>
                 <th style={th}>Member ID</th>
@@ -833,7 +906,14 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
             </thead>
             <tbody>
               {history.map((p) => (
-                <tr key={p.id} style={{ borderTop: "1px solid #f3f4f6", color: "#6b7280" }}>
+                <tr
+                  key={p.id}
+                  style={{
+                    borderTop:
+                      "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
+                    color: "var(--color-on-surface-variant)",
+                  }}
+                >
                   <td style={td}>{payerName(p)}</td>
                   <td style={td}>{p.coverageKind}</td>
                   <td style={td}>{p.subscriberId}</td>
@@ -845,7 +925,7 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
           </table>
         </>
       ) : null}
-      <p style={{ color: "#9ca3af", fontSize: "0.78rem", margin: "0.6rem 0 0" }}>
+      <p style={{ color: "var(--color-muted)", fontSize: "0.78rem", margin: "0.6rem 0 0" }}>
         Payer names resolve from M40 master data; an unresolved row shows its raw payer id.
       </p>
     </>
@@ -934,7 +1014,11 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
 
   if (status === "loading") return <LoadingSpinner />;
   if (status === "error" || team === null) {
-    return <p style={{ color: "#b91c1c", fontSize: "0.9rem" }}>Care team could not be loaded.</p>;
+    return (
+      <p style={{ color: "var(--color-error)", fontSize: "0.9rem" }}>
+        Care team could not be loaded.
+      </p>
+    );
   }
 
   const assignments = [...team.assignments].sort((a, b) => Number(b.current) - Number(a.current));
@@ -949,7 +1033,13 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
 
       <h3 style={h3}>Clinical assignments</h3>
       {activeAssignments.length === 0 ? (
-        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>
+        <p
+          style={{
+            color: "var(--color-on-surface-variant)",
+            fontSize: "0.88rem",
+            margin: "0.25rem 0 0",
+          }}
+        >
           No active assignments on file.
         </p>
       ) : (
@@ -967,7 +1057,8 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
             <li
               key={a.id}
               style={{
-                border: "1px solid #e5e7eb",
+                border:
+                  "1px solid color-mix(in srgb, var(--color-outline-variant) 50%, transparent)",
                 borderRadius: "0.5rem",
                 padding: "0.6rem 0.75rem",
                 fontSize: "0.88rem",
@@ -982,15 +1073,18 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
                 }}
               >
                 <span style={{ fontWeight: 600 }}>{roleLabel(a.role)}</span>
-                {a.role === "primary_rn" ? (
-                  <span style={badge("#eef2ff", "#4338ca")}>primary RN</span>
-                ) : null}
+                {a.role === "primary_rn" ? <span style={badge("primary")}>primary RN</span> : null}
               </div>
-              <div style={{ color: "#374151" }} title={`M2 user ${a.clinicianUserId}`}>
+              <div
+                style={{ color: "var(--color-on-surface)" }}
+                title={`M2 user ${a.clinicianUserId}`}
+              >
                 Clinician{" "}
                 <code style={{ fontSize: "0.82rem" }}>{a.clinicianUserId.slice(0, 8)}…</code>
               </div>
-              <div style={{ color: "#9ca3af", fontSize: "0.78rem", marginTop: "0.2rem" }}>
+              <div
+                style={{ color: "var(--color-muted)", fontSize: "0.78rem", marginTop: "0.2rem" }}
+              >
                 assigned {a.assignedAt}
               </div>
             </li>
@@ -1000,7 +1094,13 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
 
       <h3 style={h3}>Caregivers</h3>
       {caregivers.length === 0 ? (
-        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>
+        <p
+          style={{
+            color: "var(--color-on-surface-variant)",
+            fontSize: "0.88rem",
+            margin: "0.25rem 0 0",
+          }}
+        >
           No caregivers on file.
         </p>
       ) : (
@@ -1018,7 +1118,8 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
             <li
               key={c.id}
               style={{
-                border: "1px solid #e5e7eb",
+                border:
+                  "1px solid color-mix(in srgb, var(--color-outline-variant) 50%, transparent)",
                 borderRadius: "0.5rem",
                 padding: "0.6rem 0.75rem",
                 fontSize: "0.88rem",
@@ -1035,11 +1136,11 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
                 <span style={{ fontWeight: 600 }}>
                   {c.lastName}, {c.firstName}
                 </span>
-                <span style={badge("#ecfdf5", "#047857")}>{titleCase(c.relationship)}</span>
-                {c.isPrimary ? <span style={badge("#eef2ff", "#4338ca")}>primary</span> : null}
+                <span style={badge("success")}>{titleCase(c.relationship)}</span>
+                {c.isPrimary ? <span style={badge("primary")}>primary</span> : null}
                 {c.isLegalRepresentative ? (
                   <span
-                    style={badge("#fef3c7", "#92400e")}
+                    style={badge("warning")}
                     title={`Legal-representative authority: ${titleCase(c.lrAuthority)}`}
                   >
                     legal rep · {titleCase(c.lrAuthority)}
@@ -1047,7 +1148,7 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
                 ) : null}
               </div>
               {c.phone || c.email ? (
-                <div style={{ color: "#374151" }}>
+                <div style={{ color: "var(--color-on-surface)" }}>
                   {[c.phone, c.email].filter(Boolean).join(" · ")}
                 </div>
               ) : null}
@@ -1058,7 +1159,13 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
 
       <h3 style={h3}>Emergency contacts</h3>
       {team.emergencyContacts.length === 0 ? (
-        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>
+        <p
+          style={{
+            color: "var(--color-on-surface-variant)",
+            fontSize: "0.88rem",
+            margin: "0.25rem 0 0",
+          }}
+        >
           No emergency contacts on file.
         </p>
       ) : (
@@ -1066,7 +1173,7 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
           style={{ borderCollapse: "collapse", fontSize: "0.85rem", width: "100%", maxWidth: 640 }}
         >
           <thead>
-            <tr style={{ textAlign: "left", color: "#6b7280" }}>
+            <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
               <th style={th}>#</th>
               <th style={th}>Name</th>
               <th style={th}>Relationship</th>
@@ -1075,7 +1182,13 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
           </thead>
           <tbody>
             {team.emergencyContacts.map((c) => (
-              <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+              <tr
+                key={c.id}
+                style={{
+                  borderTop:
+                    "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
+                }}
+              >
                 <td style={td}>{c.priority}</td>
                 <td style={td}>{c.name}</td>
                 <td style={td}>{c.relationship}</td>
@@ -1093,7 +1206,7 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
             style={{
               margin: "0.25rem 0 0",
               paddingLeft: "1.1rem",
-              color: "#6b7280",
+              color: "var(--color-on-surface-variant)",
               fontSize: "0.82rem",
             }}
           >
@@ -1112,7 +1225,7 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
         </>
       ) : null}
 
-      <p style={{ color: "#9ca3af", fontSize: "0.78rem", margin: "0.6rem 0 0" }}>
+      <p style={{ color: "var(--color-muted)", fontSize: "0.78rem", margin: "0.6rem 0 0" }}>
         Staff display names resolve from the M2 roster once it exposes them (Staff Management
         enrichment / M34); until then an assignment shows its care-team role and the clinician id.
       </p>
@@ -1154,6 +1267,22 @@ const FLAG_LABELS: Record<string, string> = {
 };
 const flagLabel = (f: string) => FLAG_LABELS[f] ?? titleCase(f);
 
+// Consent lifecycle → §6.6 status taxonomy tone.
+function consentTone(s: string): StatusTone {
+  switch (s) {
+    case "active":
+      return "success";
+    case "pending":
+    case "proposed":
+      return "progress";
+    case "revoked":
+    case "rejected":
+      return "error";
+    default: // expired / superseded / withdrawn
+      return "neutral";
+  }
+}
+
 function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
   const client = useApiClient();
   const [flags, setFlags] = useState<PrivacyFlags | null>(null);
@@ -1185,7 +1314,9 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
   if (status === "loading") return <LoadingSpinner />;
   if (status === "error" || flags === null) {
     return (
-      <p style={{ color: "#b91c1c", fontSize: "0.9rem" }}>Privacy flags could not be loaded.</p>
+      <p style={{ color: "var(--color-error)", fontSize: "0.9rem" }}>
+        Privacy flags could not be loaded.
+      </p>
     );
   }
 
@@ -1197,28 +1328,34 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
 
       <h3 style={h3}>Active restrictions</h3>
       {flags.flags.length === 0 ? (
-        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>
+        <p
+          style={{
+            color: "var(--color-on-surface-variant)",
+            fontSize: "0.88rem",
+            margin: "0.25rem 0 0",
+          }}
+        >
           No privacy restrictions on file.
         </p>
       ) : (
         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", margin: "0.4rem 0 0" }}>
           {flags.sudRestricted ? (
             <span
-              style={badge("#fef2f2", "#b91c1c")}
+              style={badge("danger")}
               title="42 CFR Part 2 — SUD records require a Part 2 consent to disclose"
             >
               {flagLabel("sud")}
             </span>
           ) : null}
           {nonSud.map((f) => (
-            <span key={f} style={badge("#fef3c7", "#92400e")}>
+            <span key={f} style={badge("warning")}>
               {flagLabel(f)}
             </span>
           ))}
         </div>
       )}
       {flags.capturedAt ? (
-        <p style={{ color: "#9ca3af", fontSize: "0.78rem", margin: "0.4rem 0 0" }}>
+        <p style={{ color: "var(--color-muted)", fontSize: "0.78rem", margin: "0.4rem 0 0" }}>
           Snapshot captured {flags.capturedAt.slice(0, 10)} · recomputed from consent (M39).
         </p>
       ) : null}
@@ -1227,25 +1364,21 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
         <>
           <h3 style={h3}>Substance use (42 CFR Part 2)</h3>
           {flags.sudDisclosable ? (
-            <p style={{ color: "#374151", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>
+            <p
+              style={{
+                color: "var(--color-on-surface)",
+                fontSize: "0.88rem",
+                margin: "0.25rem 0 0",
+              }}
+            >
               A Part 2 consent is on file — SUD-categorized records are disclosable to authorized
               care.
             </p>
           ) : (
-            // §7.6 fail-closed: no Part-2 consent → the protected detail is redacted, not fabricated.
-            <div
-              style={{
-                border: "1px solid #fecaca",
-                background: "#fef2f2",
-                borderRadius: "0.5rem",
-                padding: "0.6rem 0.75rem",
-                margin: "0.4rem 0 0",
-                fontSize: "0.85rem",
-                color: "#991b1b",
-              }}
-            >
-              <strong>Redacted.</strong> Substance-use (42 CFR Part 2) records are restricted.
-              Disclosure requires a §2.31 Part 2 consent on file; none is active for this patient.
+            // §7.6 fail-closed: no Part-2 consent → the protected detail is sealed, not fabricated.
+            // The §8 SealedBlock shows the redaction AS redaction (visible lock), never a blank.
+            <div style={{ margin: "0.4rem 0 0" }}>
+              <SealedBlock message="Substance-use (42 CFR Part 2) records are restricted. Disclosure requires a §2.31 Part 2 consent on file; none is active for this patient." />
             </div>
           )}
         </>
@@ -1253,7 +1386,13 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
 
       <h3 style={h3}>Active consents</h3>
       {consents === null || consents.length === 0 ? (
-        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>
+        <p
+          style={{
+            color: "var(--color-on-surface-variant)",
+            fontSize: "0.88rem",
+            margin: "0.25rem 0 0",
+          }}
+        >
           No active consents on file.
         </p>
       ) : (
@@ -1261,7 +1400,7 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
           style={{ borderCollapse: "collapse", fontSize: "0.85rem", width: "100%", maxWidth: 640 }}
         >
           <thead>
-            <tr style={{ textAlign: "left", color: "#6b7280" }}>
+            <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
               <th style={th}>Type</th>
               <th style={th}>Status</th>
               <th style={th}>Effective</th>
@@ -1270,10 +1409,16 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
           </thead>
           <tbody>
             {consents.map((c) => (
-              <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+              <tr
+                key={c.id}
+                style={{
+                  borderTop:
+                    "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
+                }}
+              >
                 <td style={td}>{titleCase(c.typeKey)}</td>
                 <td style={td}>
-                  <span style={badge("#ecfdf5", "#047857")}>{c.status}</span>
+                  <StatusPill label={titleCase(c.status)} tone={consentTone(c.status)} />
                 </td>
                 <td style={td}>{c.effectiveAt ? c.effectiveAt.slice(0, 10) : "—"}</td>
                 <td style={td}>{c.expiresAt ? c.expiresAt.slice(0, 10) : "—"}</td>
@@ -1282,7 +1427,7 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
           </tbody>
         </table>
       )}
-      <p style={{ color: "#9ca3af", fontSize: "0.78rem", margin: "0.6rem 0 0" }}>
+      <p style={{ color: "var(--color-muted)", fontSize: "0.78rem", margin: "0.6rem 0 0" }}>
         Privacy flags are a denormalized snapshot recomputed from consent (M39); Part 2 / SUD detail
         fails closed when no qualifying consent is on file.
       </p>
@@ -1293,20 +1438,37 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
 const input = {
   padding: "0.35rem 0.5rem",
   borderRadius: "0.375rem",
-  border: "1px solid #d1d5db",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 60%, transparent)",
   fontSize: "0.85rem",
 } as const;
-const badge = (bg: string, fg: string) =>
+// Category chip (No-Line, theme-reactive): a semantic tone → tonal background + on-tone text.
+// Lifecycle status uses <StatusPill>; this is for non-status category tags (primary, rank, kind).
+type ChipTone = "primary" | "success" | "warning" | "danger" | "neutral";
+const CHIP_BG: Record<ChipTone, string> = {
+  primary: "var(--color-primary-tint)",
+  success: "color-mix(in srgb, var(--color-success) 12%, transparent)",
+  warning: "color-mix(in srgb, var(--color-warning) 14%, transparent)",
+  danger: "color-mix(in srgb, var(--color-error) 12%, transparent)",
+  neutral: "var(--color-surface-container)",
+};
+const CHIP_FG: Record<ChipTone, string> = {
+  primary: "var(--color-primary)",
+  success: "var(--color-success)",
+  warning: "var(--color-warning)",
+  danger: "var(--color-error)",
+  neutral: "var(--color-on-surface-variant)",
+};
+const badge = (tone: ChipTone) =>
   ({
-    background: bg,
-    color: fg,
-    borderRadius: "0.25rem",
-    padding: "0.05rem 0.4rem",
+    background: CHIP_BG[tone],
+    color: CHIP_FG[tone],
+    borderRadius: "9999px",
+    padding: "0.05rem 0.45rem",
     fontSize: "0.72rem",
     fontWeight: 600,
   }) as const;
 
-const dt = { color: "#6b7280", margin: 0 } as const;
+const dt = { color: "var(--color-on-surface-variant)", margin: 0 } as const;
 const dd = { margin: 0 } as const;
 const grid = {
   display: "grid",
@@ -1315,6 +1477,10 @@ const grid = {
   fontSize: "0.9rem",
   margin: "0.25rem 0 0",
 } as const;
-const h3 = { fontSize: "0.92rem", margin: "1.25rem 0 0.4rem", color: "#374151" } as const;
+const h3 = {
+  fontSize: "0.92rem",
+  margin: "1.25rem 0 0.4rem",
+  color: "var(--color-on-surface)",
+} as const;
 const th = { padding: "0.3rem 0.5rem", fontWeight: 500 } as const;
 const td = { padding: "0.3rem 0.5rem" } as const;
