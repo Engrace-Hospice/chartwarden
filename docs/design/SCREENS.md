@@ -258,6 +258,12 @@ Breadth gaps: M15 Discipline Care Plans (0 screens), M12/M24/M39 (no dedicated s
 and deduped against the corpus + depth-track sub-views. Plan in
 [`pencil-prompts/P12-P14-breadth.md`](./pencil-prompts/P12-P14-breadth.md). Corpus index now 113.
 
+> **Breadth track COMPLETE (P12–P14): all 16 generated** across 3 `.pen` files. M12 DoseSpot, M24
+> Medicaid, and M39 Consent now have dedicated screens; the thin flagships (M19/M20/M21/M26/M28/M40)
+> each gained their missing surface. Combined: **113 top-level screens + 137 depth frames ≈ 250
+> frames**. The corpus is now comprehensive across all 40 modules by breadth, and deep on the
+> high-traffic surfaces. Remaining work is design review (`◐ → ●`) and frontend reconciliation.
+
 | Screen | Module | Layout pattern | Pencil |
 | :-- | :-- | :-- | :-- |
 | [DoseSpot Prescriber Roster](./screens/clinical/WARDENX_UI_DOSESPOT_PRESCRIBER_ROSTER.md) | M12 | Admin Hierarchy Layout | `◐ node:kEXWg` (P12 .pen) |
@@ -271,11 +277,11 @@ and deduped against the corpus + depth-track sub-views. Plan in
 | [Medicaid Trading-Partner Credentials](./screens/revenue/WARDENX_UI_MEDICAID_TRADING_PARTNER_CREDS.md) | M24 | Admin Settings Layout | `◐ node:eIAe7` (P13 .pen) |
 | [Medicaid Validation Override](./screens/revenue/WARDENX_UI_MEDICAID_VALIDATION_OVERRIDE.md) | M24 | Work Queue | `◐ node:HFIqN` (P13 .pen) |
 | [Cap Year Close & Settlement](./screens/revenue/WARDENX_UI_CAP_SETTLEMENT.md) | M26 | Stepper Workflow | `◐ node:e7rV0x` (P13 .pen) |
-| [On-Call Roster & Protocols](./screens/clinical/WARDENX_UI_ONCALL_ROSTER_PROTOCOLS.md) | M19 | Work Queue | `⬚` (P14) |
-| [Field Staff Safety Incidents](./screens/clinical/WARDENX_UI_FIELD_SAFETY_INCIDENTS.md) | M20 | Work Queue | `⬚` (P14) |
-| [Supply & DME Inventory](./screens/clinical/WARDENX_UI_SUPPLY_DME_INVENTORY.md) | M21 | Work Queue | `⬚` (P14) |
-| [FHIR Gateway & Client Management](./screens/admin/WARDENX_UI_FHIR_GATEWAY_CLIENTS.md) | M28 | Admin Settings Layout | `⬚` (P14) |
-| [MDM Health Check & Sync](./screens/admin/WARDENX_UI_MDM_HEALTH_SYNC.md) | M40 | Status Board | `⬚` (P14) |
+| [On-Call Roster & Protocols](./screens/clinical/WARDENX_UI_ONCALL_ROSTER_PROTOCOLS.md) | M19 | Work Queue | `◐ node:V6ZmB` (P14 .pen) |
+| [Field Staff Safety Incidents](./screens/clinical/WARDENX_UI_FIELD_SAFETY_INCIDENTS.md) | M20 | Work Queue | `◐ node:eI32Z` (P14 .pen) |
+| [Supply & DME Inventory](./screens/clinical/WARDENX_UI_SUPPLY_DME_INVENTORY.md) | M21 | Work Queue | `◐ node:FkRoZ` (P14 .pen) |
+| [FHIR Gateway & Client Management](./screens/admin/WARDENX_UI_FHIR_GATEWAY_CLIENTS.md) | M28 | Admin Settings Layout | `◐ node:x0R4jb` (P14 .pen) |
+| [MDM Health Check & Sync](./screens/admin/WARDENX_UI_MDM_HEALTH_SYNC.md) | M40 | Status Board | `◐ node:I9nE3S` (P14 .pen) |
 
 ## How to generate a screen in Pencil
 
