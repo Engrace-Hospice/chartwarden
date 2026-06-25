@@ -267,12 +267,12 @@ and deduped against the corpus + depth-track sub-views. Plan in
 
 | Screen | Module | Layout pattern | Pencil |
 | :-- | :-- | :-- | :-- |
-| [DoseSpot Prescriber Roster](./screens/clinical/WARDENX_UI_DOSESPOT_PRESCRIBER_ROSTER.md) | M12 | Admin Hierarchy Layout | `◐ node:kEXWg` (P12 .pen) |
-| [Medication Refill Inbox](./screens/clinical/WARDENX_UI_MEDICATION_REFILL_INBOX.md) | M12 | Work Queue | `◐ node:L9tUSV` (P12 .pen) |
-| [DoseSpot Transmit / Failure Queue](./screens/clinical/WARDENX_UI_DOSESPOT_TRANSMIT_QUEUE.md) | M12 | Status Board | `◐ node:Y4HEp` (P12 .pen) |
-| [Consent Record Manager](./screens/compliance/WARDENX_UI_CONSENT_RECORD_MANAGER.md) | M39 | Stepper Workflow | `◐ node:aIMIx` (P12 .pen) |
-| [Consent Recipients & DPOA Agents](./screens/compliance/WARDENX_UI_CONSENT_RECIPIENTS_DPOA.md) | M39 | Detail Page | `◐ node:XMaBy` (P12 .pen) |
-| [Consent Expiration & Renewal](./screens/compliance/WARDENX_UI_CONSENT_EXPIRATION_RENEWAL.md) | M39 | Dashboard | `◐ node:jFySy` (P12 .pen) |
+| [DoseSpot Prescriber Roster](./screens/clinical/WARDENX_UI_DOSESPOT_PRESCRIBER_ROSTER.md) | M12 | Admin Hierarchy Layout | `● node:kEXWg` (P12 .pen) |
+| [Medication Refill Inbox](./screens/clinical/WARDENX_UI_MEDICATION_REFILL_INBOX.md) | M12 | Work Queue | `● node:L9tUSV` (P12 .pen) |
+| [DoseSpot Transmit / Failure Queue](./screens/clinical/WARDENX_UI_DOSESPOT_TRANSMIT_QUEUE.md) | M12 | Status Board | `● node:Y4HEp` (P12 .pen) |
+| [Consent Record Manager](./screens/compliance/WARDENX_UI_CONSENT_RECORD_MANAGER.md) | M39 | Stepper Workflow | `● node:aIMIx` (P12 .pen) |
+| [Consent Recipients & DPOA Agents](./screens/compliance/WARDENX_UI_CONSENT_RECIPIENTS_DPOA.md) | M39 | Detail Page | `● node:XMaBy` (P12 .pen) |
+| [Consent Expiration & Renewal](./screens/compliance/WARDENX_UI_CONSENT_EXPIRATION_RENEWAL.md) | M39 | Dashboard | `● node:jFySy` (P12 .pen) |
 | [Medicaid R&B Arrangement Manager](./screens/revenue/WARDENX_UI_MEDICAID_RB_ARRANGEMENT.md) | M24 | Admin Hierarchy Layout | `◐ node:V8bGq` (P13 .pen) |
 | [Medicaid Eligibility & MCO Routing](./screens/revenue/WARDENX_UI_MEDICAID_ELIGIBILITY_MCO.md) | M24 | Gated Action Flow | `◐ node:wtqs3` (P13 .pen) |
 | [Medicaid Trading-Partner Credentials](./screens/revenue/WARDENX_UI_MEDICAID_TRADING_PARTNER_CREDS.md) | M24 | Admin Settings Layout | `◐ node:eIAe7` (P13 .pen) |

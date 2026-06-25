@@ -115,7 +115,7 @@
           "type": "text",
           "id": "S5nWc",
           "name": "Label",
-          "fill": "$--muted",
+          "fill": "$--muted-foreground",
           "content": "LABEL",
           "fontFamily": "$--font-secondary",
           "fontSize": 11,
@@ -128,7 +128,7 @@
           "name": "Value",
           "fill": "$--foreground",
           "content": "0",
-          "fontFamily": "$--font-primary",
+          "fontFamily": "$--font-secondary",
           "fontSize": 28,
           "fontWeight": "600"
         },
@@ -792,15 +792,15 @@
                                   "type": "ref",
                                   "ref": "ab7yo",
                                   "name": "b",
-                                  "fill": "$--accent-tint",
+                                  "fill": "$--color-alert-bg",
                                   "descendants": {
                                     "zOZ2l": {
                                       "icon": "medication",
-                                      "fill": "$--accent"
+                                      "fill": "$--color-alert"
                                     },
                                     "mrF6Z": {
                                       "content": "Morphine 15mg · C-II",
-                                      "fill": "$--accent"
+                                      "fill": "$--color-alert"
                                     }
                                   }
                                 }
@@ -1232,7 +1232,7 @@
                           "id": "E8andM",
                           "name": "bn",
                           "width": "fill_container",
-                          "fill": "$--accent-tint",
+                          "fill": "$--color-alert-bg",
                           "cornerRadius": "$--radius-m",
                           "gap": 8,
                           "padding": [
@@ -1248,13 +1248,13 @@
                               "height": 16,
                               "icon": "lock",
                               "library": "Material Symbols Rounded",
-                              "fill": "$--accent"
+                              "fill": "$--color-alert"
                             },
                             {
                               "type": "text",
                               "id": "Dcr3d",
                               "name": "t",
-                              "fill": "$--accent",
+                              "fill": "$--color-alert",
                               "textGrowth": "fixed-width",
                               "width": "fill_container",
                               "content": "Schedule II controlled substance. Approval requires the EPCS 2FA ceremony before a new order is minted.",
@@ -3479,15 +3479,15 @@
                                   "type": "ref",
                                   "ref": "ab7yo",
                                   "name": "b",
-                                  "fill": "$--accent-tint",
+                                  "fill": "$--color-alert-bg",
                                   "descendants": {
                                     "zOZ2l": {
                                       "icon": "check_circle",
-                                      "fill": "$--accent"
+                                      "fill": "$--color-alert"
                                     },
                                     "mrF6Z": {
                                       "content": "EPCS on · C-II",
-                                      "fill": "$--accent"
+                                      "fill": "$--color-alert"
                                     }
                                   }
                                 }
@@ -7883,15 +7883,15 @@
     },
     "--muted": {
       "type": "color",
-      "value": "#8A8784"
+      "value": "#8c877f"
     },
     "--muted-foreground": {
       "type": "color",
-      "value": "#56534F"
+      "value": "#56524c"
     },
     "--border": {
       "type": "color",
-      "value": "#E5E3DE"
+      "value": "#d7d3cb"
     },
     "--primary": {
       "type": "color",
@@ -7903,7 +7903,7 @@
     },
     "--primary-tint": {
       "type": "color",
-      "value": "#EAEBF6"
+      "value": "#ecedfb"
     },
     "--primary-foreground": {
       "type": "color",
@@ -7915,7 +7915,7 @@
     },
     "--accent-tint": {
       "type": "color",
-      "value": "#F7ECD8"
+      "value": "#fbf1dd"
     },
     "--color-success": {
       "type": "color",
@@ -7923,7 +7923,7 @@
     },
     "--color-success-bg": {
       "type": "color",
-      "value": "#E3F3EB"
+      "value": "#e3f4ec"
     },
     "--color-warning": {
       "type": "color",
@@ -7931,7 +7931,7 @@
     },
     "--color-warning-bg": {
       "type": "color",
-      "value": "#F7ECD8"
+      "value": "#fff4e0"
     },
     "--color-error": {
       "type": "color",
@@ -7939,7 +7939,7 @@
     },
     "--color-error-bg": {
       "type": "color",
-      "value": "#FBE7E8"
+      "value": "#fbe7e9"
     },
     "--color-alert": {
       "type": "color",
@@ -7947,7 +7947,7 @@
     },
     "--color-alert-bg": {
       "type": "color",
-      "value": "#FCE6E5"
+      "value": "#fcebea"
     },
     "--color-info": {
       "type": "color",
@@ -7955,7 +7955,7 @@
     },
     "--color-info-bg": {
       "type": "color",
-      "value": "#EAEBF6"
+      "value": "#ecedfb"
     },
     "--font-primary": {
       "type": "string",
