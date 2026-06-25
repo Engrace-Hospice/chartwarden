@@ -1,3 +1,11 @@
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/14-idg — IDG Schedule (per-location) (M14 §4.1/§5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace". The
 // IDG Coordinator's per-location view of the next weeks of meetings: one row per scheduled meeting with its
@@ -9,13 +17,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import {
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-  WorkQueueLayout,
-} from "@wardenx/ui";
+import { MEETING_TONE, stateLabel } from "./idg-status";
 
 interface MeetingRow {
   id: string;
@@ -25,15 +27,6 @@ interface MeetingRow {
   scheduledEnd: string;
 }
 
-const statusColor: Record<string, string | undefined> = {
-  scheduled: "#374151",
-  packets_building: "#b45309",
-  packets_ready: "#15803d",
-  live: "#1d4ed8",
-  adjourned: "#6b7280",
-  cancelled: "#b91c1c",
-  rescheduled: "#6b7280",
-};
 const ts = (v: string): string => v.slice(0, 16).replace("T", " ");
 
 export function IdgSchedule(): JSX.Element {
@@ -98,24 +91,38 @@ export function IdgSchedule(): JSX.Element {
             description="No IDG meetings are scheduled for this location in the next 8 weeks."
           />
         ) : (
-          <table style={table}>
+          <table>
             <thead>
-              <tr style={tr}>
-                <th style={th}>Start</th>
-                <th style={th}>End</th>
-                <th style={th}>Status</th>
+              <tr>
+                <th>Start</th>
+                <th>End</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {sorted.map((m) => (
                 <tr
                   key={m.id}
+                  // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                  role="button"
+                  tabIndex={0}
                   onClick={() => navigate(`/idg/meetings/${m.id}`)}
-                  style={{ cursor: "pointer", borderTop: "1px solid #f3f4f6" }}
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Enter" || ev.key === " ") {
+                      ev.preventDefault();
+                      navigate(`/idg/meetings/${m.id}`);
+                    }
+                  }}
+                  style={{ cursor: "pointer" }}
                 >
-                  <td style={td}>{ts(m.scheduledStart)}</td>
-                  <td style={td}>{ts(m.scheduledEnd)}</td>
-                  <td style={{ ...td, color: statusColor[m.status] }}>{m.status}</td>
+                  <td className="tabular-nums">{ts(m.scheduledStart)}</td>
+                  <td className="tabular-nums">{ts(m.scheduledEnd)}</td>
+                  <td>
+                    <StatusPill
+                      label={stateLabel(m.status)}
+                      tone={MEETING_TONE[m.status] ?? "neutral"}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -125,8 +132,3 @@ export function IdgSchedule(): JSX.Element {
     />
   );
 }
-
-const table = { width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" } as const;
-const tr = { textAlign: "left", color: "#6b7280" } as const;
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;

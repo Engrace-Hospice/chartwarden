@@ -1,3 +1,11 @@
+import {
+  DetailPageLayout,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/14-idg — Minutes (per meeting) (M14 §4.1/§5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace" (minutes
 // reading surface). The finalized (or in-progress) minutes view for a meeting. The full attendance /
@@ -9,13 +17,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import {
-  DetailPageLayout,
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-} from "@wardenx/ui";
+import { MINUTES_TONE, stateLabel } from "./idg-status";
 
 interface MinutesView {
   id: string;
@@ -53,7 +55,21 @@ export function Minutes(): JSX.Element {
   const isFinal = minutes?.status === "final";
 
   return (
-    <DetailPageLayout header={<PageHeader title="IDG Minutes" breadcrumb={minutes?.status} />}>
+    <DetailPageLayout
+      header={
+        <PageHeader
+          title="IDG Minutes"
+          actions={
+            minutes ? (
+              <StatusPill
+                label={stateLabel(minutes.status)}
+                tone={MINUTES_TONE[minutes.status] ?? "neutral"}
+              />
+            ) : undefined
+          }
+        />
+      }
+    >
       {error ? (
         <EmptyState title="Unavailable" description={error} />
       ) : loading && minutes === null ? (
@@ -62,18 +78,33 @@ export function Minutes(): JSX.Element {
         <EmptyState title="Not found" description="No minutes for this meeting." />
       ) : (
         <section style={{ maxWidth: "40rem" }}>
-          <p style={{ fontSize: "0.9rem", color: isFinal ? "#15803d" : "#b45309", fontWeight: 600 }}>
+          <p
+            style={{
+              fontSize: "0.9rem",
+              color: isFinal ? "var(--color-success)" : "var(--color-warning)",
+              fontWeight: 600,
+            }}
+          >
             {isFinal
               ? "Finalized — these minutes are immutable; amendments are tracked separately."
               : "In progress — minutes finalize on adjournment."}
           </p>
           <dl style={{ margin: 0, fontSize: "0.9rem" }}>
             <dt style={dt}>Minutes</dt>
-            <dd style={dd}>{minutes.id}</dd>
+            <dd style={dd} className="wx-data-md">
+              {minutes.id}
+            </dd>
             <dt style={dt}>Meeting</dt>
-            <dd style={dd}>{minutes.meetingId}</dd>
+            <dd style={dd} className="wx-data-md">
+              {minutes.meetingId}
+            </dd>
             <dt style={dt}>Status</dt>
-            <dd style={dd}>{minutes.status}</dd>
+            <dd style={dd}>
+              <StatusPill
+                label={stateLabel(minutes.status)}
+                tone={MINUTES_TONE[minutes.status] ?? "neutral"}
+              />
+            </dd>
           </dl>
         </section>
       )}
@@ -81,5 +112,5 @@ export function Minutes(): JSX.Element {
   );
 }
 
-const dt = { color: "#6b7280", marginTop: "0.75rem" } as const;
+const dt = { color: "var(--color-on-surface-variant)", marginTop: "0.75rem" } as const;
 const dd = { margin: "0.1rem 0 0", fontWeight: 600, wordBreak: "break-all" } as const;

@@ -1,3 +1,11 @@
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  PatientWorkspaceLayout,
+  StatusPill,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/14-idg — Per-Patient Packet (read-only chart embed) (M14 §4.1/§5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace" (packet
 // reading surface). A read-only view of one patient's IDG packet digest within a meeting (freeze state +
@@ -9,13 +17,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import {
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  PatientWorkspaceLayout,
-  useApiClient,
-} from "@wardenx/ui";
 
 interface PacketView {
   packetId: string;
@@ -61,19 +62,35 @@ export function PatientPacket(): JSX.Element {
       ) : loading && packet === null ? (
         <LoadingSpinner />
       ) : packet === null ? (
-        <EmptyState title="Not found" description="No IDG packet for this patient in this meeting." />
+        <EmptyState
+          title="Not found"
+          description="No IDG packet for this patient in this meeting."
+        />
       ) : (
         <section style={{ padding: "1.5rem", maxWidth: "32rem" }}>
           <dl style={{ margin: 0, fontSize: "0.9rem" }}>
             <dt style={dt}>Packet</dt>
-            <dd style={dd}>{packet.packetId}</dd>
+            <dd style={dd} className="wx-data-md">
+              {packet.packetId}
+            </dd>
             <dt style={dt}>Meeting</dt>
-            <dd style={dd}>{packet.meetingId}</dd>
+            <dd style={dd} className="wx-data-md">
+              {packet.meetingId}
+            </dd>
             <dt style={dt}>Patient</dt>
-            <dd style={dd}>{packet.patientId}</dd>
+            <dd style={dd} className="wx-data-md">
+              {packet.patientId}
+            </dd>
             <dt style={dt}>State</dt>
-            <dd style={{ ...dd, color: packet.frozenAt ? "#6b7280" : "#b45309" }}>
-              {packet.frozenAt ? `frozen ${ts(packet.frozenAt)}` : "draft (pre-adjournment)"}
+            <dd style={dd}>
+              {packet.frozenAt ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+                  <StatusPill label="Frozen" tone="neutral" />
+                  <span className="tabular-nums">{ts(packet.frozenAt)}</span>
+                </span>
+              ) : (
+                <StatusPill label="Draft (pre-adjournment)" tone="warning" />
+              )}
             </dd>
           </dl>
         </section>
@@ -82,5 +99,5 @@ export function PatientPacket(): JSX.Element {
   );
 }
 
-const dt = { color: "#6b7280", marginTop: "0.75rem" } as const;
+const dt = { color: "var(--color-on-surface-variant)", marginTop: "0.75rem" } as const;
 const dd = { margin: "0.1rem 0 0", fontWeight: 600, wordBreak: "break-all" } as const;

@@ -1,3 +1,11 @@
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/14-idg — My Action Items (M14 §4.1/§5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace". The
 // caller's queue of IDG action items assigned to them (`assignee=me` resolves to the caller's membership
@@ -8,13 +16,7 @@
 // client. Leaves only (@wardenx/ui).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
-import {
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-  WorkQueueLayout,
-} from "@wardenx/ui";
+import { ACTION_TONE, stateLabel } from "./idg-status";
 
 interface ActionItemRow {
   id: string;
@@ -25,13 +27,6 @@ interface ActionItemRow {
   linkedArtifactKind: string | null;
 }
 
-const statusColor: Record<string, string | undefined> = {
-  open: "#b45309",
-  in_progress: "#1d4ed8",
-  completed: "#15803d",
-  cancelled: "#6b7280",
-  auto_closed: "#15803d",
-};
 const ts = (v: string): string => v.slice(0, 10);
 
 export function MyActionItems(): JSX.Element {
@@ -78,30 +73,43 @@ export function MyActionItems(): JSX.Element {
         ) : loading && items.length === 0 ? (
           <LoadingSpinner />
         ) : sorted.length === 0 ? (
-          <EmptyState title="No action items" description="You have no IDG action items assigned." />
+          <EmptyState
+            title="No action items"
+            description="You have no IDG action items assigned."
+          />
         ) : (
-          <table style={table}>
+          <table>
             <thead>
-              <tr style={tr}>
-                <th style={th}>Due</th>
-                <th style={th}>Patient</th>
-                <th style={th}>Linked</th>
-                <th style={th}>Status</th>
+              <tr>
+                <th>Due</th>
+                <th>Patient</th>
+                <th>Linked</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {sorted.map((a) => {
                 const overdue =
-                  (a.status === "open" || a.status === "in_progress") && Date.parse(a.dueDate) < now;
+                  (a.status === "open" || a.status === "in_progress") &&
+                  Date.parse(a.dueDate) < now;
                 return (
-                  <tr key={a.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                    <td style={{ ...td, color: overdue ? "#b91c1c" : undefined }}>
-                      {ts(a.dueDate)}
-                      {overdue ? " · overdue" : ""}
+                  <tr key={a.id}>
+                    <td>
+                      <span
+                        style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                      >
+                        <span className="tabular-nums">{ts(a.dueDate)}</span>
+                        {overdue ? <StatusPill label="Overdue" tone="error" /> : null}
+                      </span>
                     </td>
-                    <td style={td}>{a.patientId ? a.patientId.slice(0, 8) : "—"}</td>
-                    <td style={td}>{a.linkedArtifactKind ?? "—"}</td>
-                    <td style={{ ...td, color: statusColor[a.status] }}>{a.status}</td>
+                    <td className="wx-data-md">{a.patientId ? a.patientId.slice(0, 8) : "—"}</td>
+                    <td>{a.linkedArtifactKind ? stateLabel(a.linkedArtifactKind) : "—"}</td>
+                    <td>
+                      <StatusPill
+                        label={stateLabel(a.status)}
+                        tone={ACTION_TONE[a.status] ?? "neutral"}
+                      />
+                    </td>
                   </tr>
                 );
               })}
@@ -112,8 +120,3 @@ export function MyActionItems(): JSX.Element {
     />
   );
 }
-
-const table = { width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" } as const;
-const tr = { textAlign: "left", color: "#6b7280" } as const;
-const th = { padding: "0.5rem 0.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 0.5rem" } as const;
