@@ -1465,4 +1465,20 @@ PHI exposure suspected
 
 ---
 
+## Appendix C — Module 33 (Reporting & Dashboards) DR Addendum
+
+Module 33 is classified **Tier 3 — Revenue & Reporting** (§3.1): **24 hr RTO / 1 hr RPO** internal, **48 hr RTO / 4 hr RPO** customer-committed (§3.4). Loss impedes billing/reporting but **not clinical care** — M33 holds no source-of-truth patient data and reads exclusively from the hot-standby replica.
+
+**No restore-critical PHI.** M33's only first-class state is **tenant config**: report definitions, saved views, schedules, and shares. Everything else is **derived and re-buildable**:
+
+- **Materialized views are NOT backed up as data.** Each MV re-seeds from its migration DDL (`packages/reporting/src/mv/*.sql`) and then re-refreshes from the owner-module outbox streams (operational retention class, ~90 days). After a restore, run the migration to re-create the MV shells, then trigger a full refresh; the MVs converge to current within one refresh cycle.
+- **Run history** (`report_run`, `report_schedule_run`) and **tile cache** (`dashboard_tile_cache`) are operational, not authoritative — a lost row simply re-runs on the next cron tick or re-populates on next read. They are excluded from RPO accounting.
+- **`report_drilldown_audit`** is the one exception: it is **compliance retention class** (6-year HIPAA §164.530(j) / 7-year survey floor, strictest wins) and rides the standard encrypted-backup path with the rest of the audit estate, **not** the disposable reporting tier.
+
+**Freshness SLO caveat.** Although M33 is care-non-critical, its **freshness SLO** is part of the operational definition of "running normally" because M30 (HQRP) measure exposure and survey-readiness dashboards fan out through M33. A recovered-but-stale M33 (replica lag or un-refreshed MVs) is a degraded state surfaced to admins even when the RTO clock has stopped — see the OPS_RUNBOOK M33 replica-lag / MV-refresh procedures.
+
+**Recovery sequence (Tier 3 window):** (1) restore tenant config from the primary backup, (2) re-run M33 MV migrations to re-create MV shells, (3) trigger a full MV refresh (replays from owner-module outbox), (4) confirm replica lag inside the freshness SLO, (5) re-enable scheduled-report cron (in-flight runs that failed mid-incident retry on their next scheduled tick — at-most-once per `(schedule_id, scheduled_for)` prevents duplicates).
+
+---
+
 **End of WARDENX_DR_BCP v0.1.**
