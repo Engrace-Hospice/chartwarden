@@ -69,6 +69,20 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
       "links row. Fully real — email/password + passkey both go through Better Auth; no placeholders.",
   },
   {
+    screenId: "identity.mfa-challenge",
+    screen: "Authentication & Session — Two-factor verification",
+    module: "M02",
+    frameNode: "a1dbhD",
+    penFile: "wardenx-P0-foundation.pen",
+    status: "matched",
+    notes:
+      "Rebuilt to the frame's 'Card Two-factor verification' (same a1dbhD frame as Sign in): branded " +
+      "card, Fraunces title + subtitle, a segmented 6-digit mono OTP input (auto-advance + paste), " +
+      "full-width pill Verify. Fully real (TOTP + backup code via Better Auth). The frame's 'Resend " +
+      "code' link — which implies SMS/email OTP — is replaced by the functional backup-code toggle " +
+      "(our 2FA is authenticator/TOTP, which has no resend).",
+  },
+  {
     screenId: "messaging.notifications",
     screen: "Notifications & Tasks",
     module: "M01 · M36",

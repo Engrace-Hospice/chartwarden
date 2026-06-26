@@ -12,7 +12,9 @@
  * HARD-FAILS (real defects, like the other audit reports):
  *   - UNKNOWN FRAME NODE — a registry `frameNode` does not appear in docs/design/SCREENS.md
  *                          (a typo'd / stale frame reference).
- *   - DUP FRAME / SCREEN — two registry rows map the same frame node or the same screen id.
+ *   - DUP SCREEN        — two registry rows map the same screen id. (Two screens MAY share one frame
+ *                          node — a single Pencil frame can hold several screen-cards, e.g. the auth
+ *                          frame's Sign in + 2FA cards — so that is allowed.)
  *   - UNKNOWN SCREEN     — a registry `screenId` is neither a registered apps/web screen nor a
  *                          `shell.*` app-shell surface (a dangling mapping).
  *
@@ -56,18 +58,14 @@ if (existsSync(modulesDir)) {
 
 // ---- validate the registry -----------------------------------------------------------------
 const failures: string[] = [];
-const seenFrame = new Map<string, string>();
 const seenScreen = new Map<string, string>();
 for (const e of FRAME_FIDELITY) {
   if (!frameNodes.has(e.frameNode))
     failures.push(
       `UNKNOWN FRAME NODE: "${e.screen}" maps node:${e.frameNode}, not found in docs/design/SCREENS.md`,
     );
-  if (seenFrame.has(e.frameNode))
-    failures.push(
-      `DUP FRAME: node:${e.frameNode} mapped by both "${e.screen}" and "${seenFrame.get(e.frameNode)}"`,
-    );
-  else seenFrame.set(e.frameNode, e.screen);
+  // NB: two screens may share one frame node (a frame can hold several screen-cards), so frame-node
+  // reuse is allowed — only a duplicate SCREEN id is a defect.
   if (seenScreen.has(e.screenId))
     failures.push(
       `DUP SCREEN: id "${e.screenId}" mapped by both "${e.screen}" and "${seenScreen.get(e.screenId)}"`,
@@ -123,7 +121,7 @@ function renderMarkdown(): string {
   L.push(
     failures.length
       ? failures.map((f) => `- ❌ ${f}`).join("\n")
-      : "- ✅ Every mapped frame node exists in SCREENS.md, no duplicate frame/screen mappings, every screen id resolves.",
+      : "- ✅ Every mapped frame node exists in SCREENS.md, no duplicate screen mappings, every screen id resolves.",
   );
   L.push("");
   return L.join("\n");
