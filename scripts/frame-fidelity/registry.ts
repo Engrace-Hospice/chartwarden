@@ -45,6 +45,20 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
       "Role-curated dashboard widgets (My Patients, AR snapshot, cosign queue) await their modules.",
   },
   {
+    screenId: "orders.patient-list",
+    screen: "Orders",
+    module: "M11",
+    frameNode: "pQiC0",
+    penFile: "wardenx-P1-clinical.pen",
+    status: "partial",
+    notes:
+      "Rebuilt to the frame's Patient Workspace: banner + module rail | orders table (kind · priority · " +
+      "status · live 48h verbal countdown, row-select) | right rail with the selected order's detail + " +
+      "Open order. All real (M11 order lifecycle data + CountdownChip on the real verbal deadline). Honest " +
+      "gap: the list carries the order KIND, not the clinical order text (drug/dose) the frame shows — that " +
+      "lives on /orders/:id — so rows label by kind, never a fabricated drug name.",
+  },
+  {
     screenId: "encounter.read",
     screen: "Encounter / Visit Documentation",
     module: "M08",
