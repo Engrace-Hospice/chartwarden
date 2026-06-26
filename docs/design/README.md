@@ -14,11 +14,12 @@ module specs (`docs/modules/`), but it is grounded in them.
 | :-- | :-- | :-- |
 | **Visual design system** | [`DESIGN.md`](./DESIGN.md) | *What does it look like and how does it behave?* The "Lantern" identity — color/type/spacing/elevation tokens, component patterns, and the WardenX-defining Guardrail / Sensitivity / Provenance systems + hard rules. |
 | **Structural patterns** | [`WARDENX_UI_LAYOUT_PATTERNS.md`](./WARDENX_UI_LAYOUT_PATTERNS.md) | *What is each named layout?* The glossary of regions, base patterns, modifiers, and composition rules. |
-| **Screen specs** | [`screens/**`](./WARDENX_UI_COMPLETE_SCREEN_INDEX.md) | *What does each screen contain?* 69 specs across core / clinical / revenue / admin / portal / platform, each declaring a layout pattern + fields + states + `Pencil Notes` variants. |
+| **Screen specs** | [`screens/**`](./WARDENX_UI_COMPLETE_SCREEN_INDEX.md) | *What does each screen contain?* 113 specs across core / clinical / revenue / admin / portal / platform, each declaring a layout pattern + fields + states + `Pencil Notes` variants. |
 | **Screen index** | [`WARDENX_UI_COMPLETE_SCREEN_INDEX.md`](./WARDENX_UI_COMPLETE_SCREEN_INDEX.md) | The canonical list (drives the `docs:ui` parity gate). |
 | **Module ↔ Pencil ledger** | [`SCREENS.md`](./SCREENS.md) | *Which module owns it, and is it designed yet?* Maps every screen to M1–M40 + pattern + Pencil status. |
-| **Pencil prompts** | [`pencil-prompts/`](./pencil-prompts/) | *How do we generate it?* Phase-batched (P0→P5) per-screen prompts fusing design system + pattern + spec, plus the Pencil MCP workflow. |
+| **Pencil prompts** | [`pencil-prompts/`](./pencil-prompts/) | *How do we generate it?* Phase-batched (P0→P14 core+breadth, D1→D7 depth) per-screen prompts fusing design system + pattern + spec, plus the Pencil MCP workflow. |
 | **Frontend status** | [`DEFERRED_SCREENS.md`](./DEFERRED_SCREENS.md) | *Is it built in the app?* Implementation tracking (Track B / ADR-0030). |
+| **Frame fidelity** | [`FRAME_FIDELITY_PLAYBOOK.md`](./FRAME_FIDELITY_PLAYBOOK.md) | *Does a built screen's layout match its Pencil frame?* The repeatable process + the `bun run frame:fidelity` tracker (`audit/frame-fidelity/`). |
 
 ## The four-layer model
 
@@ -33,9 +34,10 @@ pencil-prompts/**        →  the three above, fused into a generation prompt fo
 
 ## Working order
 
-1. **Read [`DESIGN.md`](./DESIGN.md) first** — it is the visual source of truth (the
-   implementation mirror lives in `packages/ui/src/core/theme/colors.ts` +
-   `apps/web/src/index.css`, currently bootstrap placeholders to be reconciled to Lantern).
+1. **Read [`DESIGN.md`](./DESIGN.md) first** — it is the visual source of truth. The implementation
+   mirror (`packages/ui/src/core/theme/colors.ts` + `apps/web/src/index.css` + the `@wardenx/ui`
+   web layer) is **reconciled to Lantern** (R0/R1): self-hosted fonts, CSS-var tokens incl. twilight
+   dark mode, the §6.6 StatusPill + Guardrail/Sensitivity/Provenance primitives, and No-Line rules.
 2. To **add or change a screen**: edit/author its spec under `screens/**` (keep the
    `## Layout Pattern` + `Use <name>.` heading — the `docs:ui` gate enforces it), add it to the
    index, and add a row to `SCREENS.md`.

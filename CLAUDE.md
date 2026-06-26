@@ -78,6 +78,15 @@ the prose docs in `docs/architecture/`.
   `arch:fitness` runs it in `--check` mode (`arch:ui-parity`) to keep `audit/ui-parity/` fresh and
   to hard-fail on duplicate screen id/path, an unknown `requiredPermission`, or a `screens.ts` not
   wired into `main.tsx`. Writes `audit/ui-parity/UI_PARITY.md` (+ `.json`).
+- `scripts/report-frame-fidelity.ts` — **frame-fidelity report**: tracks how far each *built* screen
+  has been visually matched to its Pencil frame — the layout-fidelity gap the R0/R1 Lantern
+  reconciliation left open (it matched the design *language*, not each screen's *composition*). The
+  hand-maintained `scripts/frame-fidelity/registry.ts` maps a built screen → its `SCREENS.md` frame
+  node → status (`pending`/`partial`/`matched`); the process is in
+  `docs/design/FRAME_FIDELITY_PLAYBOOK.md`. Regenerate with `bun run frame:fidelity`; `arch:fitness`
+  runs `--check` mode (`arch:frame-fidelity`) to keep `audit/frame-fidelity/` fresh and to hard-fail
+  on an unknown frame node, a duplicate mapping, or a dangling screen id. Writes
+  `audit/frame-fidelity/FRAME_FIDELITY.md` (+ `.json`).
 
 ### Governance & history
 
