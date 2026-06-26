@@ -110,6 +110,19 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
       "line shows the channel's real scope instead.",
   },
   {
+    screenId: "system.pages",
+    screen: "System / Utility Pages",
+    module: "M01",
+    frameNode: "dT1Bt",
+    penFile: "wardenx-P0-foundation.pen",
+    status: "matched",
+    notes:
+      "All 7 chromeless states (404/403/500/offline/maintenance/session-expired/suspended) render the " +
+      "System Page pattern matched to the frame: a circular tonal icon badge holding a Lantern inline-SVG " +
+      "Glyph (replacing the old emoji — §10.10), Fraunces headline, muted explanation, forward action, mono " +
+      "correlation id. CenteredStatusLayout enhanced to draw the badge.",
+  },
+  {
     screenId: "search.global",
     screen: "Global Search Results",
     module: "M01 · M33",

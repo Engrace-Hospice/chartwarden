@@ -71,8 +71,10 @@ for (const e of FRAME_FIDELITY) {
       `DUP SCREEN: id "${e.screenId}" mapped by both "${e.screen}" and "${seenScreen.get(e.screenId)}"`,
     );
   else seenScreen.set(e.screenId, e.screen);
-  // `shell.*` ids are app-shell surfaces (not module screens); everything else must be registered.
-  if (!e.screenId.startsWith("shell.") && !screenIds.has(e.screenId))
+  // `shell.*` / `system.*` ids are app-shell surfaces (the chromeless system pages + the role home,
+  // registered outside apps/web/src/modules); everything else must be a registered module screen.
+  const exempt = e.screenId.startsWith("shell.") || e.screenId.startsWith("system.");
+  if (!exempt && !screenIds.has(e.screenId))
     failures.push(
       `UNKNOWN SCREEN: registry id "${e.screenId}" ("${e.screen}") is not a registered apps/web screen`,
     );

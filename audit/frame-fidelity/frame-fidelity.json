@@ -1,10 +1,10 @@
 {
   "totalFrames": 120,
-  "mapped": 8,
+  "mapped": 9,
   "byStatus": {
     "pending": 0,
     "partial": 6,
-    "matched": 2
+    "matched": 3
   },
   "entries": [
     {
@@ -60,6 +60,15 @@
       "penFile": "wardenx-P0-foundation.pen",
       "status": "partial",
       "notes": "Rebuilt to the frame's Conversation View: a 'Messages' list (avatar + title + scope + unread dot, active row indigo-tinted) | a thread of chat bubbles (mine right/indigo via the real session user id, others left/paper) under a patient-scoped chip header, over a rounded composer. All real M36 data; the list's last-message preview/time isn't exposed by the channels read yet, so the secondary line shows the channel's real scope instead."
+    },
+    {
+      "screenId": "system.pages",
+      "screen": "System / Utility Pages",
+      "module": "M01",
+      "frameNode": "dT1Bt",
+      "penFile": "wardenx-P0-foundation.pen",
+      "status": "matched",
+      "notes": "All 7 chromeless states (404/403/500/offline/maintenance/session-expired/suspended) render the System Page pattern matched to the frame: a circular tonal icon badge holding a Lantern inline-SVG Glyph (replacing the old emoji — §10.10), Fraunces headline, muted explanation, forward action, mono correlation id. CenteredStatusLayout enhanced to draw the badge."
     },
     {
       "screenId": "search.global",

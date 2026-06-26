@@ -5,8 +5,8 @@
 > Lantern reconciliation left open. Do not hand-edit; edit the registry and regenerate.
 > Process: `docs/design/FRAME_FIDELITY_PLAYBOOK.md`.
 
-**Coverage:** 8 screen(s) mapped to frames · 120 frames in the design ledger.
-**By status:** 🟢 2 matched · 🟡 6 partial · ⚪ 0 pending.
+**Coverage:** 9 screen(s) mapped to frames · 120 frames in the design ledger.
+**By status:** 🟢 3 matched · 🟡 6 partial · ⚪ 0 pending.
 
 ## Mapped screens
 
@@ -20,6 +20,7 @@
 | 🟡 partial | Patient Chart | M05 | `node:fQjjh` | wardenx-P0-foundation.pen | Banner (avatar + Fraunces name + DOB·age meta + MRN/status chips + Message action), icon nav rail, and Summary card composition + right Alerts/Tasks rail all match the frame. Problems / benefit-period / alerts / tasks cards are honest placeholders (Care Plan, Admission, Tasks modules). |
 | 🟡 partial | Patient List / Census | M05 | `node:DNqXm` | wardenx-P0-foundation.pen | Header (title + Admit action), KPI strip, work table, and right detail panel match the frame. Census KPI is the REAL active count (GET /patients/census-metrics); Admissions/Discharges/GIP/Recerts KPIs are honest '—' placeholders noting their owning module (M6 / billing). |
 | 🟡 partial | Staff Messaging | M36 | `node:A016Y` | wardenx-P0-foundation.pen | Rebuilt to the frame's Conversation View: a 'Messages' list (avatar + title + scope + unread dot, active row indigo-tinted) | a thread of chat bubbles (mine right/indigo via the real session user id, others left/paper) under a patient-scoped chip header, over a rounded composer. All real M36 data; the list's last-message preview/time isn't exposed by the channels read yet, so the secondary line shows the channel's real scope instead. |
+| 🟢 matched | System / Utility Pages | M01 | `node:dT1Bt` | wardenx-P0-foundation.pen | All 7 chromeless states (404/403/500/offline/maintenance/session-expired/suspended) render the System Page pattern matched to the frame: a circular tonal icon badge holding a Lantern inline-SVG Glyph (replacing the old emoji — §10.10), Fraunces headline, muted explanation, forward action, mono correlation id. CenteredStatusLayout enhanced to draw the badge. |
 
 ## Hard-fail consistency checks
 
