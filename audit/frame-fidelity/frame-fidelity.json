@@ -1,9 +1,9 @@
 {
   "totalFrames": 120,
-  "mapped": 15,
+  "mapped": 16,
   "byStatus": {
     "pending": 0,
-    "partial": 12,
+    "partial": 13,
     "matched": 3
   },
   "entries": [
@@ -15,6 +15,15 @@
       "penFile": "wardenx-P0-foundation.pen",
       "status": "partial",
       "notes": "Role-home launcher reconciled to Lantern (Fraunces headline, No-Line tiles on warm paper). Role-curated dashboard widgets (My Patients, AR snapshot, cosign queue) await their modules."
+    },
+    {
+      "screenId": "idg.meeting-detail",
+      "screen": "IDG Meeting",
+      "module": "M14",
+      "frameNode": "Wqf1e",
+      "penFile": "wardenx-P1-clinical.pen",
+      "status": "partial",
+      "notes": "Rebuilt to the frame's 3-pane meeting view: a meeting header (status + packets-ready + Live surface) over a packet list | the selected patient's review packet | a right rail (attendance/quorum + schedule). REAL: meeting lifecycle/schedule, the packet-readiness list + freeze state, packets-ready count. Honest gaps: the packets read carries patient + freeze state, NOT the packet content (as-presented summary / eligibility / recommendations live on the full packet, /packets/:patientId) — so the center is a section scaffold + Open full packet; and attendance/quorum isn't on these reads (it's on the live meeting surface), so that rail is an honest placeholder."
     },
     {
       "screenId": "hope.assessment-detail",
