@@ -1,23 +1,25 @@
 import {
+  cardSurface,
   EmptyState,
+  ghostBorder,
+  Glyph,
   LoadingSpinner,
-  PageHeader,
-  RightDetailPanel,
   StatusPill,
-  WorkQueueLayout,
+  t,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/05-patient — Global Search Results (cross-cutting; M5 owns it, M5→M2 edge).
 // Spec: docs/design/screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md — "Use Work Queue."
-// FB-T11 (partial): the live facets are the M5 **patient** facet (GET /api/v1/patients?q=) and the
-// M2 **staff** facet (GET /api/v1/orgs/:id/members?q=). Later facets (documents/orders/visits/commands)
-// render as labeled "available when <module> ships" rows — visible, never fabricated. The server stays
-// the only enforcement point: patient hits are RLS/caseload-scoped, the staff facet is behind
-// member.manage (a 403 degrades to a clear note). The patient list carries no SSN/MBI, so the spec's
-// "SSN never shown / MBI masked" holds by construction. Imports leaves (@wardenx/ui) + the M2 auth
-// client for the active org (M5 dependsOn M2 — a declared edge; this is an HTTP-only read, no schema).
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent, JSX } from "react";
+// Matched to the P0 Pencil frame (wardenx-P0-foundation.pen `Cp053`): a centered results column of
+// per-scope No-Line cards, each a list of rows (avatar + name + meta + status + chevron) that
+// navigate straight to the record. FB-T11 (partial): the live facets are the M5 **patient** facet
+// (GET /api/v1/patients?q=) and the M2 **staff** facet (GET /api/v1/orgs/:id/members?q=). Later
+// scopes (documents/orders/visits/commands) render as honest "available when <module> ships" rows —
+// visible, never fabricated. The server stays the only enforcement point: patient hits are
+// RLS/caseload-scoped, the staff facet is behind member.manage (a 403 degrades to a clear note). The
+// patient list carries no SSN/MBI, so the spec's "SSN never shown / MBI masked" holds by construction.
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { FormEvent, JSX, ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { authClient } from "../02-identity/auth-client";
 import { STATUS_TONE, statusLabel } from "./patient-status";
@@ -38,12 +40,11 @@ interface StaffHit {
   status: string;
   isAdmin: boolean;
 }
-type Selection = { kind: "patient"; hit: PatientHit } | { kind: "staff"; hit: StaffHit } | null;
 
-// Facets the merged data layer can't serve yet — shown so the scope is honest, not fabricated.
+// Scopes the merged data layer can't serve yet — shown so the search's reach is honest, not fabricated.
 const FUTURE_FACETS = [
   { label: "Documents", blocked: "M22 Documents" },
-  { label: "Orders", blocked: "M16 Orders" },
+  { label: "Orders & claims", blocked: "M16 Orders" },
   { label: "Visits / encounters", blocked: "M19 Encounters" },
   { label: "Navigation & commands", blocked: "the command palette" },
 ] as const;
@@ -72,6 +73,12 @@ function pushRecent(term: string): string[] {
   return next;
 }
 
+// Initials for a result avatar (No-Line tinted circle, §3.3). Falls back to the first 2 chars.
+function initialsOf(...parts: string[]): string {
+  const words = parts.flatMap((p) => p.split(/[\s,]+/)).filter(Boolean);
+  return (words.slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("") || "·").slice(0, 2);
+}
+
 export function GlobalSearchResults(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
@@ -86,7 +93,6 @@ export function GlobalSearchResults(): JSX.Element {
   const [patientError, setPatientError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [recent, setRecent] = useState<string[]>(() => readRecent());
-  const [selected, setSelected] = useState<Selection>(null);
 
   // Resolve the active org once (for the staff facet path); null when no org is bound.
   const orgRef = useRef<string | null | undefined>(undefined);
@@ -102,13 +108,11 @@ export function GlobalSearchResults(): JSX.Element {
       if (!needle) {
         setPatients(null);
         setStaff(null);
-        setSelected(null);
         return;
       }
       setLoading(true);
       setPatientError(null);
       setStaffError(null);
-      setSelected(null);
 
       // Patient facet — RLS/caseload-scoped server-side.
       const patientReq = client
@@ -171,40 +175,38 @@ export function GlobalSearchResults(): JSX.Element {
     (showPatients ? (patients?.length ?? 0) : 0) + (showStaff ? (staff?.length ?? 0) : 0);
 
   return (
-    <WorkQueueLayout
-      header={<PageHeader title={hasQuery ? `Results for “${urlQuery}”` : "Search"} />}
-      filters={
-        <div style={controls}>
-          <form onSubmit={submit} style={{ display: "flex", gap: "0.5rem", flex: 1 }}>
-            <input
-              aria-label="Search patients and staff"
-              placeholder="Search patients (name / MRN) and staff…"
-              value={term}
-              onChange={(e) => setTerm(e.target.value)}
-              style={field}
-            />
-            <button type="submit" style={primaryBtn}>
-              Search
+    // Centered results column on warm paper (frame `Cp053`): a narrow reading width, not full-bleed.
+    <div style={{ height: "100%", overflow: "auto", background: t.background }}>
+      <div style={{ maxWidth: "52rem", margin: "0 auto", padding: "1.75rem 1.5rem 3rem" }}>
+        <form onSubmit={submit} style={searchForm}>
+          <input
+            aria-label="Search patients and staff"
+            placeholder="Search patients (name / MRN) and staff…"
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+            style={searchInput}
+          />
+          <button type="submit" style={primaryBtn}>
+            Search
+          </button>
+        </form>
+
+        <div role="tablist" aria-label="Result scope" style={facetRow}>
+          {(["all", "patient", "staff"] as Facet[]).map((f) => (
+            <button
+              key={f}
+              type="button"
+              role="tab"
+              aria-selected={facet === f}
+              onClick={() => setFacet(f)}
+              style={facet === f ? facetOn : facetOff}
+            >
+              {f === "all" ? "All" : f === "patient" ? "Patients" : "Staff"}
             </button>
-          </form>
-          <div role="tablist" aria-label="Result type" style={{ display: "flex", gap: "0.25rem" }}>
-            {(["all", "patient", "staff"] as Facet[]).map((f) => (
-              <button
-                key={f}
-                type="button"
-                role="tab"
-                aria-selected={facet === f}
-                onClick={() => setFacet(f)}
-                style={facet === f ? facetOn : facetOff}
-              >
-                {f === "all" ? "All" : f === "patient" ? "Patients" : "Staff"}
-              </button>
-            ))}
-          </div>
+          ))}
         </div>
-      }
-      table={
-        !hasQuery ? (
+
+        {!hasQuery ? (
           <EmptyQuery recent={recent} onPick={(t) => setParams({ q: t })} />
         ) : loading ? (
           <LoadingSpinner />
@@ -214,31 +216,30 @@ export function GlobalSearchResults(): JSX.Element {
             description="Searching your caseload and organization. Try a different name or MRN."
           />
         ) : (
-          <div style={{ padding: "0 1.5rem 1.5rem" }}>
+          <>
+            <p style={summaryLine}>
+              {total} result{total === 1 ? "" : "s"} for “{urlQuery}” · across patients, staff,
+              documents, orders
+            </p>
             {showPatients ? (
               <PatientGroup
                 hits={patients}
                 error={patientError}
-                onSelect={(hit) => setSelected({ kind: "patient", hit })}
+                onOpen={(id) => navigate(`/patients/${id}`)}
               />
             ) : null}
             {showStaff ? (
               <StaffGroup
                 hits={staff}
                 error={staffError}
-                onSelect={(hit) => setSelected({ kind: "staff", hit })}
+                onOpen={() => navigate("/admin/staff")}
               />
             ) : null}
             <FutureFacets />
-          </div>
-        )
-      }
-      detail={
-        selected ? (
-          <PreviewPane selection={selected} onOpen={navigate} onClose={() => setSelected(null)} />
-        ) : undefined
-      }
-    />
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -247,8 +248,8 @@ function EmptyQuery({
   onPick,
 }: { recent: string[]; onPick: (t: string) => void }): JSX.Element {
   return (
-    <div style={{ padding: "1.5rem" }}>
-      <p style={{ color: "var(--color-on-surface-variant)", marginTop: 0 }}>
+    <div style={{ paddingTop: "0.5rem" }}>
+      <p style={{ color: t.onSurfaceVariant, marginTop: 0 }}>
         Search patients by name or MRN, and staff in your organization. Results are scoped to what
         you are permitted to see.
       </p>
@@ -256,9 +257,9 @@ function EmptyQuery({
         <section style={{ marginTop: "1rem" }}>
           <h2 style={groupHead}>Recent searches</h2>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
-            {recent.map((t) => (
-              <button key={t} type="button" onClick={() => onPick(t)} style={chip}>
-                {t}
+            {recent.map((term) => (
+              <button key={term} type="button" onClick={() => onPick(term)} style={chip}>
+                {term}
               </button>
             ))}
           </div>
@@ -268,264 +269,258 @@ function EmptyQuery({
   );
 }
 
+// A §6.2 Lantern card grouping one search scope's rows (No-Line; rows divided by ghost hairlines).
+function GroupCard({
+  label,
+  count,
+  children,
+}: { label: string; count?: number; children: ReactNode }): JSX.Element {
+  return (
+    <section style={{ marginBottom: "1.5rem" }}>
+      <h2 style={groupHead}>
+        {label}
+        {count != null ? ` · ${count}` : ""}
+      </h2>
+      <div style={{ ...cardSurface, padding: "0 1rem" }}>{children}</div>
+    </section>
+  );
+}
+
+// One result row: tinted-initials avatar + name/meta column + optional status pill + a go chevron.
+function ResultRow({
+  first,
+  initials,
+  title,
+  titleMono,
+  meta,
+  pill,
+  onClick,
+}: {
+  first: boolean;
+  initials: string;
+  title: ReactNode;
+  titleMono?: boolean;
+  meta: ReactNode;
+  pill?: ReactNode;
+  onClick: () => void;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{ ...rowBtn, borderTop: first ? "none" : ghostBorder }}
+    >
+      <span style={avatar} aria-hidden>
+        {initials}
+      </span>
+      <span style={rowText}>
+        <span style={rowTitle} className={titleMono ? "wx-data-md" : undefined}>
+          {title}
+        </span>
+        <span style={rowMeta}>{meta}</span>
+      </span>
+      {pill}
+      <span style={{ color: t.muted, display: "inline-flex" }}>
+        <Glyph name="arrow-right" size={18} />
+      </span>
+    </button>
+  );
+}
+
 function PatientGroup({
   hits,
   error,
-  onSelect,
+  onOpen,
 }: {
   hits: PatientHit[] | null;
   error: string | null;
-  onSelect: (hit: PatientHit) => void;
+  onOpen: (id: string) => void;
 }): JSX.Element {
   return (
-    <section style={{ marginBottom: "1.25rem" }}>
-      <h2 style={groupHead}>Patients {hits ? `(${hits.length})` : ""}</h2>
+    <GroupCard label="Patients" count={error ? undefined : (hits?.length ?? 0)}>
       {error ? (
-        <p style={mutedNote}>{error}</p>
+        <p style={mutedRow}>{error}</p>
       ) : hits && hits.length > 0 ? (
-        <ul style={list}>
-          {hits.map((p) => (
-            <li key={p.id}>
-              <button type="button" onClick={() => onSelect(p)} style={rowBtn}>
-                <span style={rowTop}>
-                  <span style={{ fontWeight: 600, color: "var(--color-on-surface)" }}>
-                    {p.lastName}, {p.firstName}
-                  </span>
-                  <StatusPill
-                    label={statusLabel(p.status)}
-                    tone={STATUS_TONE[p.status] ?? "neutral"}
-                  />
-                </span>
-                <span style={meta}>
-                  MRN <span className="wx-data-md">{p.mrn}</span> · DOB{" "}
-                  <span className="tabular-nums">{p.dob}</span>
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        hits.map((p, i) => (
+          <ResultRow
+            key={p.id}
+            first={i === 0}
+            initials={initialsOf(p.firstName, p.lastName)}
+            title={`${p.lastName}, ${p.firstName}`}
+            meta={
+              <>
+                MRN <span className="wx-data-md">{p.mrn}</span> · DOB{" "}
+                <span className="tabular-nums">{p.dob}</span>
+              </>
+            }
+            pill={
+              <StatusPill label={statusLabel(p.status)} tone={STATUS_TONE[p.status] ?? "neutral"} />
+            }
+            onClick={() => onOpen(p.id)}
+          />
+        ))
       ) : (
-        <p style={mutedNote}>No patient matches.</p>
+        <p style={mutedRow}>No patient matches.</p>
       )}
-    </section>
+    </GroupCard>
   );
 }
 
 function StaffGroup({
   hits,
   error,
-  onSelect,
+  onOpen,
 }: {
   hits: StaffHit[] | null;
   error: string | null;
-  onSelect: (hit: StaffHit) => void;
+  onOpen: () => void;
 }): JSX.Element {
   return (
-    <section style={{ marginBottom: "1.25rem" }}>
-      <h2 style={groupHead}>Staff {hits ? `(${hits.length})` : ""}</h2>
+    <GroupCard label="Staff" count={error ? undefined : (hits?.length ?? 0)}>
       {error ? (
-        <p style={mutedNote}>{error}</p>
+        <p style={mutedRow}>{error}</p>
       ) : hits && hits.length > 0 ? (
-        <ul style={list}>
-          {hits.map((m) => (
-            <li key={m.membershipId}>
-              <button type="button" onClick={() => onSelect(m)} style={rowBtn}>
-                <span style={rowTop}>
-                  <span className="wx-data-md" style={{ fontWeight: 600 }}>
-                    {m.userId.slice(0, 8)}
-                  </span>
-                  <StatusPill
-                    label={statusLabel(m.status)}
-                    tone={m.status === "active" ? "success" : "neutral"}
-                  />
-                </span>
-                <span style={meta}>{m.isAdmin ? "Org admin" : "Member"}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        hits.map((m, i) => (
+          <ResultRow
+            key={m.membershipId}
+            first={i === 0}
+            initials={initialsOf(m.userId)}
+            title={m.userId.slice(0, 8)}
+            titleMono
+            meta={m.isAdmin ? "Org admin" : "Member"}
+            pill={
+              <StatusPill
+                label={statusLabel(m.status)}
+                tone={m.status === "active" ? "success" : "neutral"}
+              />
+            }
+            onClick={onOpen}
+          />
+        ))
       ) : (
-        <p style={mutedNote}>
-          No staff matches. Name &amp; email search arrives with the staff-roster enrichment
-          (FB-T12).
+        <p style={mutedRow}>
+          No staff matches. Name &amp; email search arrives with the staff-roster enrichment (FB-T12).
         </p>
       )}
-    </section>
+    </GroupCard>
   );
 }
 
+// The not-yet-searchable scopes, listed honestly (the frame shows Documents / Orders & Claims groups;
+// ours name the owning module instead of inventing rows).
 function FutureFacets(): JSX.Element {
   return (
-    <section
-      style={{
-        borderTop: "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
-        paddingTop: "0.75rem",
-      }}
-    >
-      {FUTURE_FACETS.map((f) => (
-        <div
-          key={f.label}
-          style={{ display: "flex", justifyContent: "space-between", padding: "0.35rem 0" }}
-        >
-          <span style={{ color: "var(--color-muted)" }}>{f.label}</span>
-          <span style={{ color: "var(--color-muted)", fontSize: "0.8rem" }}>
-            available when {f.blocked} ships
-          </span>
+    <GroupCard label="Other scopes">
+      {FUTURE_FACETS.map((f, i) => (
+        <div key={f.label} style={{ ...futureRow, borderTop: i === 0 ? "none" : ghostBorder }}>
+          <span style={{ color: t.onSurfaceVariant }}>{f.label}</span>
+          <span style={{ color: t.muted, fontSize: "0.8rem" }}>available when {f.blocked} ships</span>
         </div>
       ))}
-    </section>
+    </GroupCard>
   );
 }
 
-function PreviewPane({
-  selection,
-  onOpen,
-  onClose,
-}: {
-  selection: NonNullable<Selection>;
-  onOpen: (to: string) => void;
-  onClose: () => void;
-}): JSX.Element {
-  if (selection.kind === "patient") {
-    const p = selection.hit;
-    return (
-      <RightDetailPanel title={`${p.lastName}, ${p.firstName}`} onClose={onClose}>
-        <div style={fieldStack}>
-          <StatusPill label={statusLabel(p.status)} tone={STATUS_TONE[p.status] ?? "neutral"} />
-          <Field label="MRN">
-            <span className="wx-data-md">{p.mrn}</span>
-          </Field>
-          <Field label="DOB">
-            <span className="tabular-nums">{p.dob}</span>
-          </Field>
-          <button type="button" onClick={() => onOpen(`/patients/${p.id}`)} style={primaryBtn}>
-            Open chart
-          </button>
-        </div>
-      </RightDetailPanel>
-    );
-  }
-  const m = selection.hit;
-  return (
-    <RightDetailPanel title={m.isAdmin ? "Org admin" : "Member"} onClose={onClose}>
-      <div style={fieldStack}>
-        <StatusPill
-          label={statusLabel(m.status)}
-          tone={m.status === "active" ? "success" : "neutral"}
-        />
-        <Field label="User">
-          <span className="wx-data-md" style={{ wordBreak: "break-all" }}>
-            {m.userId}
-          </span>
-        </Field>
-        <button type="button" onClick={() => onOpen("/admin/staff")} style={primaryBtn}>
-          Open staff management
-        </button>
-      </div>
-    </RightDetailPanel>
-  );
-}
-
-function Field({ label, children }: { label: string; children: JSX.Element }): JSX.Element {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
-      <span style={fieldLabel}>{label}</span>
-      <span style={{ color: "var(--color-on-surface)" }}>{children}</span>
-    </div>
-  );
-}
-
-// No-Line Lantern tokens (DESIGN.md §10): ghost borders at ~15% + tonal surfaces, zero hardcoded hex.
-const ghost = "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)";
-const controls = {
+const searchForm = {
   display: "flex",
-  gap: "0.75rem",
   alignItems: "center",
-  padding: "0 1.5rem 0.75rem",
-  flexWrap: "wrap" as const,
+  gap: "0.5rem",
+  padding: "0.5rem 0.75rem",
+  background: t.surfaceLow,
+  borderRadius: t.radiusLg,
+  marginBottom: "0.75rem",
 } as const;
-// Input borders/padding/radius come from the global element styles (index.css); only layout here.
-const field = { flex: 1, minWidth: "16rem" } as const;
+const searchInput = {
+  flex: 1,
+  minWidth: 0,
+  border: "none",
+  background: "transparent",
+  outline: "none",
+  fontSize: "0.95rem",
+  color: t.onSurface,
+} as const;
 const primaryBtn = {
   padding: "0.5rem 1rem",
   border: "none",
   borderRadius: "9999px",
-  background: "var(--color-primary)",
-  color: "var(--color-on-primary)",
+  background: t.primary,
+  color: t.onPrimary,
   cursor: "pointer",
   fontWeight: 600,
 } as const;
+const facetRow = { display: "flex", gap: "0.25rem", marginBottom: "1.25rem" } as const;
 const facetOn = {
-  padding: "0.35rem 0.75rem",
-  border: "1px solid var(--color-primary)",
+  padding: "0.3rem 0.8rem",
+  border: "none",
   borderRadius: "9999px",
-  background: "var(--color-primary)",
-  color: "var(--color-on-primary)",
+  background: t.primary,
+  color: t.onPrimary,
   cursor: "pointer",
   fontSize: "0.85rem",
+  fontWeight: 600,
 } as const;
 const facetOff = {
-  padding: "0.35rem 0.75rem",
-  border: ghost,
+  padding: "0.3rem 0.8rem",
+  border: "none",
   borderRadius: "9999px",
-  background: "var(--color-surface-low)",
-  color: "var(--color-on-surface-variant)",
+  background: t.surfaceContainer,
+  color: t.onSurfaceVariant,
   cursor: "pointer",
   fontSize: "0.85rem",
+} as const;
+const summaryLine = {
+  color: t.onSurfaceVariant,
+  fontSize: "0.85rem",
+  margin: "0 0 1rem",
 } as const;
 const groupHead = {
-  fontSize: "0.8rem",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.03em",
-  color: "var(--color-on-surface-variant)",
-  margin: "0 0 0.5rem",
-} as const;
-const list = {
-  listStyle: "none",
-  margin: 0,
-  padding: 0,
-  display: "flex",
-  flexDirection: "column" as const,
-  gap: "0.25rem",
-} as const;
-const rowBtn = {
-  display: "flex",
-  flexDirection: "column" as const,
-  alignItems: "stretch",
-  width: "100%",
-  textAlign: "left" as const,
-  gap: "0.2rem",
-  padding: "0.5rem 0.6rem",
-  border: ghost,
-  borderRadius: "var(--radius-md)",
-  background: "var(--color-surface-low)",
-  cursor: "pointer",
-} as const;
-const rowTop = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "0.5rem",
-} as const;
-const meta = { color: "var(--color-on-surface-variant)", fontSize: "0.8rem" } as const;
-const mutedNote = {
-  color: "var(--color-muted)",
-  margin: "0.25rem 0",
-  fontSize: "0.85rem",
-} as const;
-const chip = {
-  padding: "0.3rem 0.7rem",
-  border: ghost,
-  borderRadius: "9999px",
-  background: "var(--color-surface-low)",
-  cursor: "pointer",
-  fontSize: "0.85rem",
-} as const;
-const fieldStack = { display: "flex", flexDirection: "column" as const, gap: "0.85rem" } as const;
-const fieldLabel = {
   fontSize: "0.6875rem",
   fontWeight: 600,
   textTransform: "uppercase" as const,
-  letterSpacing: "0.04em",
-  color: "var(--color-on-surface-variant)",
+  letterSpacing: "0.06em",
+  color: t.muted,
+  margin: "0 0 0.5rem 0.25rem",
+} as const;
+const rowBtn = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.75rem",
+  width: "100%",
+  textAlign: "left" as const,
+  padding: "0.75rem 0.25rem",
+  border: "none",
+  background: "transparent",
+  cursor: "pointer",
+} as const;
+const avatar = {
+  width: "2rem",
+  height: "2rem",
+  flexShrink: 0,
+  borderRadius: "9999px",
+  background: t.primaryTint,
+  color: t.primary,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontFamily: t.fontDisplay,
+  fontWeight: 600,
+  fontSize: "0.8rem",
+} as const;
+const rowText = { display: "flex", flexDirection: "column" as const, gap: "0.1rem", flex: 1, minWidth: 0 } as const;
+const rowTitle = { fontWeight: 600, color: t.onSurface } as const;
+const rowMeta = { color: t.onSurfaceVariant, fontSize: "0.8rem" } as const;
+const futureRow = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  padding: "0.6rem 0.25rem",
+} as const;
+const mutedRow = { color: t.muted, margin: 0, padding: "0.75rem 0.25rem", fontSize: "0.85rem" } as const;
+const chip = {
+  padding: "0.3rem 0.7rem",
+  border: ghostBorder,
+  borderRadius: "9999px",
+  background: t.surfaceLow,
+  cursor: "pointer",
+  fontSize: "0.85rem",
 } as const;

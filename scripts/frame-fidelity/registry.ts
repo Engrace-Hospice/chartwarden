@@ -57,6 +57,19 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
       "benefit-period / alerts / tasks cards are honest placeholders (Care Plan, Admission, Tasks modules).",
   },
   {
+    screenId: "search.global",
+    screen: "Global Search Results",
+    module: "M01 · M33",
+    frameNode: "Cp053",
+    penFile: "wardenx-P0-foundation.pen",
+    status: "partial",
+    notes:
+      "Rebuilt to the frame's centered results column: per-scope No-Line cards with avatar + name + " +
+      "meta + status + chevron rows that navigate to the record. Patient + staff scopes are REAL " +
+      "(RLS/caseload + member.manage scoped); documents/orders/visits/commands are honest 'available " +
+      "when <module> ships' rows.",
+  },
+  {
     screenId: "patient.census",
     screen: "Patient List / Census",
     module: "M05",

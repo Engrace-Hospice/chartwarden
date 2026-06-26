@@ -1,9 +1,9 @@
 {
   "totalFrames": 120,
-  "mapped": 3,
+  "mapped": 4,
   "byStatus": {
     "pending": 0,
-    "partial": 3,
+    "partial": 4,
     "matched": 0
   },
   "entries": [
@@ -24,6 +24,15 @@
       "penFile": "wardenx-P0-foundation.pen",
       "status": "partial",
       "notes": "Banner (avatar + Fraunces name + DOB·age meta + MRN/status chips + Message action), icon nav rail, and Summary card composition + right Alerts/Tasks rail all match the frame. Problems / benefit-period / alerts / tasks cards are honest placeholders (Care Plan, Admission, Tasks modules)."
+    },
+    {
+      "screenId": "search.global",
+      "screen": "Global Search Results",
+      "module": "M01 · M33",
+      "frameNode": "Cp053",
+      "penFile": "wardenx-P0-foundation.pen",
+      "status": "partial",
+      "notes": "Rebuilt to the frame's centered results column: per-scope No-Line cards with avatar + name + meta + status + chevron rows that navigate to the record. Patient + staff scopes are REAL (RLS/caseload + member.manage scoped); documents/orders/visits/commands are honest 'available when <module> ships' rows."
     },
     {
       "screenId": "patient.census",
