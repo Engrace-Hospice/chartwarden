@@ -29,6 +29,7 @@
     "17-scheduling",
     "18-evv",
     "22-documents",
+    "33-reporting",
     "34-saas",
     "36-messaging",
     "38-terminology",
@@ -643,6 +644,41 @@
       "id": "documents.template-library",
       "path": "/admin/forms/templates",
       "permission": "documents.read_templates"
+    },
+    {
+      "module": "33-reporting",
+      "moduleId": 33,
+      "id": "reporting.catalog",
+      "path": "/reports",
+      "permission": "report.dashboard.list"
+    },
+    {
+      "module": "33-reporting",
+      "moduleId": 33,
+      "id": "reporting.dashboard",
+      "path": "/reports/dashboards/:dashboardId",
+      "permission": "report.dashboard.read"
+    },
+    {
+      "module": "33-reporting",
+      "moduleId": 33,
+      "id": "reporting.role-dashboard",
+      "path": "/reports/role/:roleKey",
+      "permission": "report.dashboard.read"
+    },
+    {
+      "module": "33-reporting",
+      "moduleId": 33,
+      "id": "reporting.schedules",
+      "path": "/reports/schedules",
+      "permission": "report.schedule.list"
+    },
+    {
+      "module": "33-reporting",
+      "moduleId": 33,
+      "id": "reporting.admin",
+      "path": "/reports/admin",
+      "permission": "report.admin.mv_list"
     },
     {
       "module": "34-saas",

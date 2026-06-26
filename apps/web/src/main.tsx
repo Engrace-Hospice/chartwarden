@@ -29,6 +29,7 @@ import { idgScreens } from "./modules/14-idg";
 import { schedulingScreens } from "./modules/17-scheduling";
 import { evvScreens } from "./modules/18-evv";
 import { documentScreens } from "./modules/22-documents";
+import { reportingScreens } from "./modules/33-reporting";
 import { saasScreens } from "./modules/34-saas";
 import { messagingScreens } from "./modules/36-messaging";
 import { terminologyScreens } from "./modules/38-terminology";
@@ -56,6 +57,7 @@ registry.register(idgScreens); // M14 Interdisciplinary Group / IDG (Track B, M1
 registry.register(schedulingScreens); // M17 Scheduling & Route Optimization (Track B, M17-T08)
 registry.register(evvScreens); // M18 Electronic Visit Verification (Track B, M18-T07)
 registry.register(documentScreens); // M22 Document Management (Track B, M22-T10)
+registry.register(reportingScreens); // M33 Reporting & Analytics (R2, ADR-0030)
 registry.register(saasScreens); // M34 SaaS Tenant Platform (R2, ADR-0030)
 registry.register(messagingScreens); // M36 Messaging (Track A)
 registry.register(terminologyScreens); // M38 Terminology (Track A)
