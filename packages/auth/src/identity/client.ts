@@ -31,6 +31,8 @@ export interface PasskeyInfo {
 
 /** The current session's user, as the client reports it (the subset screens need). */
 export interface SessionUser {
+  /** The user's stable id (Better Auth's user PK) — present on every session user at runtime. */
+  readonly id: string;
   readonly email: string;
   readonly name?: string | null;
 }

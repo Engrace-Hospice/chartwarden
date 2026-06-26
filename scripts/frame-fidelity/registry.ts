@@ -57,6 +57,33 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
       "benefit-period / alerts / tasks cards are honest placeholders (Care Plan, Admission, Tasks modules).",
   },
   {
+    screenId: "messaging.notifications",
+    screen: "Notifications & Tasks",
+    module: "M01 · M36",
+    frameNode: "mK4co",
+    penFile: "wardenx-P0-foundation.pen",
+    status: "partial",
+    notes:
+      "Rebuilt to the frame: Fraunces title, Notifications/Tasks/Mentions pill tabs + an inline stats " +
+      "strip, and a §6.2 No-Line card of rows (severity glyph + summary + source chip + status pill + " +
+      "relative time). The Notifications tab is the REAL alert inbox (GET /api/v1/alerts/inbox) with " +
+      "live Unread/Urgent/Failed stats; Tasks & Mentions are honest placeholders (Tasks/worklist module).",
+  },
+  {
+    screenId: "messaging.staff",
+    screen: "Staff Messaging",
+    module: "M36",
+    frameNode: "A016Y",
+    penFile: "wardenx-P0-foundation.pen",
+    status: "partial",
+    notes:
+      "Rebuilt to the frame's Conversation View: a 'Messages' list (avatar + title + scope + unread dot, " +
+      "active row indigo-tinted) | a thread of chat bubbles (mine right/indigo via the real session user " +
+      "id, others left/paper) under a patient-scoped chip header, over a rounded composer. All real M36 " +
+      "data; the list's last-message preview/time isn't exposed by the channels read yet, so the secondary " +
+      "line shows the channel's real scope instead.",
+  },
+  {
     screenId: "search.global",
     screen: "Global Search Results",
     module: "M01 · M33",
