@@ -1,9 +1,9 @@
 {
   "totalFrames": 120,
-  "mapped": 10,
+  "mapped": 12,
   "byStatus": {
     "pending": 0,
-    "partial": 7,
+    "partial": 9,
     "matched": 3
   },
   "entries": [
@@ -15,6 +15,24 @@
       "penFile": "wardenx-P0-foundation.pen",
       "status": "partial",
       "notes": "Role-home launcher reconciled to Lantern (Fraunces headline, No-Line tiles on warm paper). Role-curated dashboard widgets (My Patients, AR snapshot, cosign queue) await their modules."
+    },
+    {
+      "screenId": "encounter.read",
+      "screen": "Encounter / Visit Documentation",
+      "module": "M08",
+      "frameNode": "AohyV",
+      "penFile": "wardenx-P1-clinical.pen",
+      "status": "partial",
+      "notes": "Rebuilt to the frame's Patient Workspace: banner | visit-note document (note title + status, a vitals strip, a SUBJECTIVE/OBJECTIVE/ASSESSMENT/PLAN scaffold) | right rail (Sign-off + EVV/visit), over a sticky footer (cosign guard + actions). REAL: header (type/discipline/date/status/late-entry/version), cosignature state, signed/cosigned timestamps, patient banner. Honest placeholders — the encounter read DTO exposes NO note body or vitals, so those cells/sections render '—' (never a fabricated note); EVV/visit join (M17/M18) isn't on the DTO; footer uses real nav, not the unbuilt Save-draft / Sign-note write paths."
+    },
+    {
+      "screenId": "assessment.timeline",
+      "screen": "Clinical Assessments Suite",
+      "module": "M09",
+      "frameNode": "aSIwN",
+      "penFile": "wardenx-P1-clinical.pen",
+      "status": "partial",
+      "notes": "Rebuilt to the frame's Patient Workspace: banner | scale list | selected scale's score + capture history | a right-rail score trend. REAL throughout (scales, per-capture total scores + interpretation, captured-at/by, cosign-needed, SUD/redacted, the trend bars computed from the real score series). Honest substitution — the timeline exposes each capture's TOTAL score, not the per-item breakdown the frame's symptom bars show, so the center shows the score + history rather than fabricating per-symptom values."
     },
     {
       "screenId": "care-plan.view",
