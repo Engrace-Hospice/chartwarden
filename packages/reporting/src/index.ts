@@ -40,3 +40,6 @@ export * from "./drilldown";
 // `alert-rules.ts` precedent) so the table-ownership check's crude token heuristic does not misread this
 // barrel re-export as a reference to M36's Drizzle table — M33 imports no M36 schema, only TypeBox.
 export * from "./alert-defs";
+// The M4 destruction-registry eraseFn (§3.7 / D6 / §8.4): the pure tenant-offboarding sequence over an
+// injected store + the in-memory store; the backend wrapper adapts it to the M1 `DataEraser` contract.
+export * from "./eraser";

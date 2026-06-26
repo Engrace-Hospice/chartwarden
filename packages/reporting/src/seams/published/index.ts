@@ -6,3 +6,20 @@
 export type { MetricsProvider } from "./metrics-provider";
 export type { DashboardCatalogProvider } from "./dashboard-catalog-provider";
 export type { ScheduledReportProvider } from "./scheduled-report-provider";
+
+// The live (port-injected) implementations the composition root binds into the M1 SeamRegistry at boot (P2C).
+export {
+  type CascadeScheduleRow,
+  type CascadeSchedulePatch,
+  type DashboardCatalogProviderDeps,
+  type DashboardMetricExecutorPort,
+  type MetricsProviderDeps,
+  type RecipientCascadeDecision,
+  type ReportingPublishedSeamDeps,
+  type ScheduleCascadeStore,
+  type ScheduledReportProviderDeps,
+  DashboardCatalogProviderImpl,
+  MetricsProviderImpl,
+  ScheduledReportProviderImpl,
+  decideRecipientCascade,
+} from "./providers";

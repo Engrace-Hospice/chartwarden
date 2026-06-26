@@ -28,3 +28,44 @@ export {
   registerM33AbacPredicates,
   resolveReportableScope,
 } from "./abac-predicates";
+
+// §4.1/§4.2 — the route surface (READ + WRITE + EXPORT/DRILLDOWN). The composition root mounts these over
+// the Drizzle-backed route services when a DB client is present (the M34 `mountTenantPlatformRoutes`
+// precedent); each mount aggregates its per-file `register*Routes` Fastify plugins.
+export {
+  mountM33ReadRoutes,
+  mountM33WriteRoutes,
+  mountM33ExportDrilldownRoutes,
+} from "./routes/index";
+
+// §3.7 / D6 — the M4 destruction-registry `reporting_class` eraser (tenant-offboarding operational-row
+// cleanup; the compliance-class `report_drilldown_audit` is destruction-blocked). Registered over the
+// Phase-0 deny-stub by the composition root's `registerModuleErasers` hook.
+export {
+  type ReportingEraserDeps,
+  createReportingEraser,
+  registerReportingErasers,
+} from "./erasers/reporting-eraser";
+
+// §4.8 — the LIVE BullMQ worker construction + cron-schedule registration. Constructed at boot ONLY when a
+// Valkey connection is present (the M34 `registerM34Workers`/`scheduleM34Jobs` worker-runner precedent).
+export {
+  type M33WorkerDeps,
+  M33WorkerPortUnbound,
+  buildM33WorkerDeps,
+  buildM33WorkerPorts,
+  registerM33Workers,
+  scheduleM33Jobs,
+} from "./jobs/m33-jobs";
+
+// Phase-2C composition glue (the M34 wiring.ts precedent): the tenancy allowlist registration, the §4.8
+// read-side queue producer, and the Drizzle-backed route-service builders the composition root assembles.
+export {
+  type M33InfraPortUnbound,
+  M33_PLATFORM_JOB_ID,
+  buildDrizzleM33ExportDrilldownService,
+  buildDrizzleM33ReadService,
+  buildDrizzleM33WriteService,
+  buildM33ReadEnqueue,
+  wireM33Tenancy,
+} from "./wiring";

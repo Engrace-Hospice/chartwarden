@@ -21558,6 +21558,46 @@
         }
       }
     },
+    "/api/v1/reporting/drilldown/bulk_export": {
+      "post": {
+        "operationId": "postApiV1ReportingDrilldownBulkexport",
+        "tags": [
+          "33-reporting"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/reporting/drilldown/emit": {
+      "post": {
+        "operationId": "postApiV1ReportingDrilldownEmit",
+        "tags": [
+          "33-reporting"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/reporting/metrics": {
       "get": {
         "operationId": "getApiV1ReportingMetrics",
@@ -22030,6 +22070,93 @@
     "/api/v1/reporting/views/{id}/archive": {
       "post": {
         "operationId": "postApiV1ReportingViewsByIdArchive",
+        "tags": [
+          "33-reporting"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/reporting/views/{id}/export.csv": {
+      "post": {
+        "operationId": "postApiV1ReportingViewsByIdExportcsv",
+        "tags": [
+          "33-reporting"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/reporting/views/{id}/export.pdf": {
+      "post": {
+        "operationId": "postApiV1ReportingViewsByIdExportpdf",
+        "tags": [
+          "33-reporting"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/reporting/views/{id}/export.xlsx": {
+      "post": {
+        "operationId": "postApiV1ReportingViewsByIdExportxlsx",
         "tags": [
           "33-reporting"
         ],

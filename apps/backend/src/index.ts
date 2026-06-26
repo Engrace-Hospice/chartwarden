@@ -46,6 +46,21 @@ import { registerSchedulingSeams } from "./modules/17-scheduling/index";
 import { registerEvvSeams } from "./modules/18-evv/index";
 import { registerDocumentErasers, registerDocumentSeams } from "./modules/22-documents/index";
 import {
+  buildDrizzleM33ExportDrilldownService,
+  buildDrizzleM33ReadService,
+  buildDrizzleM33WriteService,
+  buildM33ReadEnqueue,
+  buildM33WorkerDeps,
+  mountM33ExportDrilldownRoutes,
+  mountM33ReadRoutes,
+  mountM33WriteRoutes,
+  registerM33AbacPredicates,
+  registerM33Workers,
+  registerReportingErasers,
+  scheduleM33Jobs,
+  wireM33Tenancy,
+} from "./modules/33-reporting/index";
+import {
   type BootstrapModule34Deps,
   type TenantPlatformAbacResolver,
   bootstrapModule34,
@@ -189,6 +204,15 @@ export function wireModuleSeams(
   // store over the real M39 consent tables (FB-T03); slice/tests keep the in-memory default.
   registerConsentSeams(deps.db ? { store: createDbConsentStore(deps.db) } : {});
   registerConsentAbacPredicates(); // M39 — the 11 §4.8 ABAC predicate resolvers (resolve via the seam)
+  // M33 — the two §4.7 ABAC predicate resolvers (`reportable_scope` D8 cross-cutting read scope +
+  // `dashboard_visibility` §4.7.2 saved-view ladder). Defaults to the deny-stub resolver until P2C binds
+  // the real M2 `SupervisorReader` / M5 `CaseloadProvider` reach + the Drizzle `report_view` facts — with
+  // the deny-stub every actor collapses to `self` scope (fail-closed), which is the correct posture.
+  registerM33AbacPredicates();
+  // M33 — register the platform job id on the @wardenx/tenancy allowlist so the §4.8 platform-scoped
+  // workers (the on-PRIMARY MV refresh, the lag probe, the tenant eraser) may enter withPlatformContext
+  // (the allowlist starts empty → fail-closed). The M34 `wireM34Tenancy` precedent.
+  wireM33Tenancy();
   // M34 — the 8 §4.6 ABAC predicate resolvers (the platform-ops tenant surface gates on
   // `tenant_lifecycle_platform_ops`, role-only; `dsar_export_*` composes the M5 CaseloadProvider seam,
   // registered above). The grant/flag/onboarding-task resolver methods are exercised by the tenant-scoped
@@ -300,6 +324,7 @@ export function wireModuleErasers(): void {
   registerIdgErasers(); // M14-T07 — `idg_record` (patient-scoped packet/decision/action-item/agenda destruction-cert callback; meetings/minutes survive; §8.4)
   registerDocumentErasers(); // M22-T10 — `documents` (document/intake-subtree destruction-cert callback; DEK crypto-erase §8.6; legal-hold + Part 2 skip; D9/D12)
   registerSaasTenantPlatformErasers(); // M34 — `saas_tenant_platform_class` (tenant-offboarding control-plane cleanup; subjectId=org; D6/§8.4)
+  registerReportingErasers(); // M33 — `reporting_class` (tenant-offboarding operational-row cleanup; subjectId=org; report_drilldown_audit destruction-blocked; D6/§8.4)
   // Phase-1 data-class owners append here as they land.
 }
 
@@ -382,6 +407,22 @@ if ((import.meta as { main?: boolean }).main) {
               enqueue: m34TenantEnqueue.enqueue,
             }),
           });
+          // M33 (Phase 2C) — mount the Reporting READ + WRITE + EXPORT/DRILLDOWN surfaces over the DRIZZLE
+          // route services. Reads run under withReportSession (replica-over-primary, RLS-scoped, read-only,
+          // tiered statement_timeout); writes run under withOrgContext on the primary. The MV-admin command
+          // routes enqueue the on-PRIMARY `report.mv_refresh` job through the SAME Valkey connection the
+          // workers run on. Deny-stub-safe infra ports (tile/export SQL executor, M22 render outbox, the
+          // per-tenant DEK encrypt, the cron-parser adapter) forward-seam or fail closed until they bind.
+          const m33ReadEnqueue = buildM33ReadEnqueue(queueConnection);
+          mountM33ReadRoutes(
+            app,
+            buildDrizzleM33ReadService({ db: dbHandle.db, enqueue: m33ReadEnqueue.enqueue }).service,
+          );
+          mountM33WriteRoutes(app, buildDrizzleM33WriteService({ db: dbHandle.db }).service);
+          mountM33ExportDrilldownRoutes(
+            app,
+            buildDrizzleM33ExportDrilldownService({ db: dbHandle.db }).service,
+          );
         }
       : undefined,
     registerModuleSeams: () =>
@@ -428,6 +469,29 @@ if ((import.meta as { main?: boolean }).main) {
       { queues: m34Workers.length },
       "M34 §4.3 BullMQ workers constructed (worker ports bind their M1/M4/M22/M36 seams as those accessors land)",
     );
+
+    // ── M33 §4.8 reporting workers + cron schedules (the same worker-runner shape) ──────────────────────
+    // Construct the §4.8 BullMQ Workers (mv_refresh / scheduled_run / export_render / drilldown_audit_flush /
+    // lag_probe) + the two repeatable cron schedules (the 30s lag probe + the nightly MV-refresh tick). The
+    // worker ports bind their bindable adapters (the M33 repos + the on-PRIMARY REFRESH / lag sample) and
+    // fail closed on the still-missing cross-module infra (outbox dispatcher / envelope-DEK / replica session).
+    const m33Workers = registerM33Workers(
+      buildM33WorkerDeps({ connection: queueConnection, db: dbHandle.db }),
+    );
+    app.addHook("onClose", async () => {
+      await Promise.all(m33Workers.map((w) => w.close()));
+    });
+    // Register the repeatable cron schedules + their close hook BEFORE app.listen() (the M34
+    // FST_ERR_INSTANCE_ALREADY_LISTENING gotcha — await here so the hook is added while pre-listen).
+    try {
+      const m33ScheduleQueues = await scheduleM33Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m33ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M33 cron-schedule registration failed");
+    }
+    app.log.info({ queues: m33Workers.length }, "M33 §4.8 BullMQ reporting workers constructed");
   }
 
   const port = Number(process.env.PORT ?? 3000);
