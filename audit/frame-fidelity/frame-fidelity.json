@@ -1,10 +1,10 @@
 {
   "totalFrames": 120,
-  "mapped": 6,
+  "mapped": 7,
   "byStatus": {
     "pending": 0,
     "partial": 6,
-    "matched": 0
+    "matched": 1
   },
   "entries": [
     {
@@ -24,6 +24,15 @@
       "penFile": "wardenx-P0-foundation.pen",
       "status": "partial",
       "notes": "Banner (avatar + Fraunces name + DOB·age meta + MRN/status chips + Message action), icon nav rail, and Summary card composition + right Alerts/Tasks rail all match the frame. Problems / benefit-period / alerts / tasks cards are honest placeholders (Care Plan, Admission, Tasks modules)."
+    },
+    {
+      "screenId": "identity.sign-in",
+      "screen": "Authentication & Session — Sign in",
+      "module": "M02",
+      "frameNode": "a1dbhD",
+      "penFile": "wardenx-P0-foundation.pen",
+      "status": "matched",
+      "notes": "Rebuilt to the frame's 'Card Sign in': gold hearth mark + Fraunces 'WardenX' lockup, Sign in title + subtitle, filled fields, full-width pill button, and a 'Forgot password? · Use a passkey' links row. Fully real — email/password + passkey both go through Better Auth; no placeholders."
     },
     {
       "screenId": "messaging.notifications",

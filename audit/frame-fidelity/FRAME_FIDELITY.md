@@ -5,14 +5,15 @@
 > Lantern reconciliation left open. Do not hand-edit; edit the registry and regenerate.
 > Process: `docs/design/FRAME_FIDELITY_PLAYBOOK.md`.
 
-**Coverage:** 6 screen(s) mapped to frames · 120 frames in the design ledger.
-**By status:** 🟢 0 matched · 🟡 6 partial · ⚪ 0 pending.
+**Coverage:** 7 screen(s) mapped to frames · 120 frames in the design ledger.
+**By status:** 🟢 1 matched · 🟡 6 partial · ⚪ 0 pending.
 
 ## Mapped screens
 
 | Status | Screen | Module | Frame | `.pen` | Notes |
 |:--|---|:--:|---|---|---|
 | 🟡 partial | App Shell & Role Home | M01 | `node:AQAhY` | wardenx-P0-foundation.pen | Role-home launcher reconciled to Lantern (Fraunces headline, No-Line tiles on warm paper). Role-curated dashboard widgets (My Patients, AR snapshot, cosign queue) await their modules. |
+| 🟢 matched | Authentication & Session — Sign in | M02 | `node:a1dbhD` | wardenx-P0-foundation.pen | Rebuilt to the frame's 'Card Sign in': gold hearth mark + Fraunces 'WardenX' lockup, Sign in title + subtitle, filled fields, full-width pill button, and a 'Forgot password? · Use a passkey' links row. Fully real — email/password + passkey both go through Better Auth; no placeholders. |
 | 🟡 partial | Global Search Results | M01 · M33 | `node:Cp053` | wardenx-P0-foundation.pen | Rebuilt to the frame's centered results column: per-scope No-Line cards with avatar + name + meta + status + chevron rows that navigate to the record. Patient + staff scopes are REAL (RLS/caseload + member.manage scoped); documents/orders/visits/commands are honest 'available when <module> ships' rows. |
 | 🟡 partial | Notifications & Tasks | M01 · M36 | `node:mK4co` | wardenx-P0-foundation.pen | Rebuilt to the frame: Fraunces title, Notifications/Tasks/Mentions pill tabs + an inline stats strip, and a §6.2 No-Line card of rows (severity glyph + summary + source chip + status pill + relative time). The Notifications tab is the REAL alert inbox (GET /api/v1/alerts/inbox) with live Unread/Urgent/Failed stats; Tasks & Mentions are honest placeholders (Tasks/worklist module). |
 | 🟡 partial | Patient Chart | M05 | `node:fQjjh` | wardenx-P0-foundation.pen | Banner (avatar + Fraunces name + DOB·age meta + MRN/status chips + Message action), icon nav rail, and Summary card composition + right Alerts/Tasks rail all match the frame. Problems / benefit-period / alerts / tasks cards are honest placeholders (Care Plan, Admission, Tasks modules). |

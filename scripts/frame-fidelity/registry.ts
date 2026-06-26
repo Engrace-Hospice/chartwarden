@@ -57,6 +57,18 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
       "benefit-period / alerts / tasks cards are honest placeholders (Care Plan, Admission, Tasks modules).",
   },
   {
+    screenId: "identity.sign-in",
+    screen: "Authentication & Session — Sign in",
+    module: "M02",
+    frameNode: "a1dbhD",
+    penFile: "wardenx-P0-foundation.pen",
+    status: "matched",
+    notes:
+      "Rebuilt to the frame's 'Card Sign in': gold hearth mark + Fraunces 'WardenX' lockup, Sign in " +
+      "title + subtitle, filled fields, full-width pill button, and a 'Forgot password? · Use a passkey' " +
+      "links row. Fully real — email/password + passkey both go through Better Auth; no placeholders.",
+  },
+  {
     screenId: "messaging.notifications",
     screen: "Notifications & Tasks",
     module: "M01 · M36",
