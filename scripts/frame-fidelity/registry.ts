@@ -45,6 +45,22 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
       "Role-curated dashboard widgets (My Patients, AR snapshot, cosign queue) await their modules.",
   },
   {
+    screenId: "emar.patient-emar",
+    screen: "Medications — Prescribing & eMAR",
+    module: "M13",
+    frameNode: "ANbhv",
+    penFile: "wardenx-P1-clinical.pen",
+    status: "partial",
+    notes:
+      "Rebuilt to the frame's MAR Grid: Patient Workspace (banner + module rail) | the Medication " +
+      "Administration Record grid (rows = medication orders, columns = dose times, cells = the dose's §2.2 " +
+      "status, selectable) + a recent-administrations strip | a right 'Administer' rail (five-rights " +
+      "scaffold). REAL: scheduled-dose grid + administration history + late-entry/controlled/RN-review " +
+      "pills. Honest gaps: dose rows carry the medication ORDER id, not the drug/dose text the frame shows " +
+      "(no fabricated drug name); the administration WRITE paths (single-dose/PRN/witness) aren't built, so " +
+      "Record administration is an inert scaffold naming the write path.",
+  },
+  {
     screenId: "orders.patient-list",
     screen: "Orders",
     module: "M11",
