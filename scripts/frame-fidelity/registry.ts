@@ -45,6 +45,23 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
       "Role-curated dashboard widgets (My Patients, AR snapshot, cosign queue) await their modules.",
   },
   {
+    screenId: "hope.assessment-detail",
+    screen: "HOPE Assessment",
+    module: "M10",
+    frameNode: "KQ8kz",
+    penFile: "wardenx-P1-clinical.pen",
+    status: "partial",
+    notes:
+      "Rebuilt to the frame's Patient Workspace: banner | HOPE timepoint rail (real patient HOPE timeline) " +
+      "| the timepoint's section list + clinical-context snapshot | a right rail (validation & triggers + " +
+      "iQIES submission), over a sticky footer (submission guard + actions). REAL: timepoint rail, status/" +
+      "target/author/signed metadata, J2051 max-severity + SFV trigger, the D8 PPS/ESAS-r snapshot, and the " +
+      "validation findings. Honest gap: per-section completion isn't exposed (section data is opaque " +
+      "server-side except Section J/J2051), so the section list shows J2051 real and the rest 'completion " +
+      "not exposed —', never fabricated completeness. NB the frame maps to hope.assessment-detail (the " +
+      "section view), not the patient HOPE timeline.",
+  },
+  {
     screenId: "emar.patient-emar",
     screen: "Medications — Prescribing & eMAR",
     module: "M13",
