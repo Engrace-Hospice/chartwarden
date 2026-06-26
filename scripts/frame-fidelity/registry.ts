@@ -45,6 +45,22 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
       "Role-curated dashboard widgets (My Patients, AR snapshot, cosign queue) await their modules.",
   },
   {
+    screenId: "care-plan.view",
+    screen: "Care Plan",
+    module: "M07",
+    frameNode: "UaKVf",
+    penFile: "wardenx-P1-clinical.pen",
+    status: "partial",
+    notes:
+      "Rebuilt to the frame's Patient Workspace: patient banner + module nav rail | a document-style " +
+      "'Interdisciplinary care plan' card (every problem with its goals + interventions inline) | a right " +
+      "rail (IDG review + AI suggestion), over a sticky footer (IDG-quorum guard + actions). REAL: " +
+      "problems/goals/interventions, version+signers, patient banner. Honest substitutions — AI suggestion " +
+      "is a placeholder (M29 Clinical Copilot not built, no fabricated suggestion); no next-review date in " +
+      "the API (CoP note + signers shown instead); footer uses the real nav actions (Version history / " +
+      "summary / open draft) rather than the frame's unbuilt Save-draft / Submit-for-IDG write paths.",
+  },
+  {
     screenId: "patient.chart",
     screen: "Patient Chart",
     module: "M05",
