@@ -1,0 +1,39 @@
+{
+  "totalFrames": 120,
+  "mapped": 3,
+  "byStatus": {
+    "pending": 0,
+    "partial": 3,
+    "matched": 0
+  },
+  "entries": [
+    {
+      "screenId": "shell.role-home",
+      "screen": "App Shell & Role Home",
+      "module": "M01",
+      "frameNode": "AQAhY",
+      "penFile": "wardenx-P0-foundation.pen",
+      "status": "partial",
+      "notes": "Role-home launcher reconciled to Lantern (Fraunces headline, No-Line tiles on warm paper). Role-curated dashboard widgets (My Patients, AR snapshot, cosign queue) await their modules."
+    },
+    {
+      "screenId": "patient.chart",
+      "screen": "Patient Chart",
+      "module": "M05",
+      "frameNode": "fQjjh",
+      "penFile": "wardenx-P0-foundation.pen",
+      "status": "partial",
+      "notes": "Banner (avatar + Fraunces name + DOB·age meta + MRN/status chips + Message action), icon nav rail, and Summary card composition + right Alerts/Tasks rail all match the frame. Problems / benefit-period / alerts / tasks cards are honest placeholders (Care Plan, Admission, Tasks modules)."
+    },
+    {
+      "screenId": "patient.census",
+      "screen": "Patient List / Census",
+      "module": "M05",
+      "frameNode": "DNqXm",
+      "penFile": "wardenx-P0-foundation.pen",
+      "status": "partial",
+      "notes": "Header (title + Admit action), KPI strip, work table, and right detail panel match the frame. Census KPI is the REAL active count (GET /patients/census-metrics); Admissions/Discharges/GIP/Recerts KPIs are honest '—' placeholders noting their owning module (M6 / billing)."
+    }
+  ],
+  "failures": []
+}
