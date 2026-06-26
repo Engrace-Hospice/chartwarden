@@ -1,4 +1,5 @@
 import {
+  cardSurface,
   CeremonyModal,
   EmptyState,
   FilterBar,
@@ -8,11 +9,14 @@ import {
   PageHeader,
   RightDetailPanel,
   StatusPill,
+  t,
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/34-saas — Feature Flags admin (M34, §4.7 / D13, platform-ops surface).
-// Spec: docs/design/screens — M34 §5.1 screen inventory. "Use Work Queue."
+// Spec: docs/design/screens — M34 §5.1 screen inventory. Matched to the P4 Pencil frame
+// (wardenx-P4-admin-platform.pen `bxUqf`): a KPI strip (total / enabled / kill-switches / per-tenant)
+// over the flags Work Queue + a right detail panel + the §6/D10 kill-switch ceremony. "Use Work Queue."
 // Lists platform-global + per-tenant feature flags via GET /api/v1/platform/feature-flags, and arms
 // the kill-switch toggle as a confirm-by-typing Guardrail ceremony. The write is step-up-gated server
 // side (feature_flag.kill_switch + passkey_recent_5min, §6/D10); the screen mirrors that gravity with
@@ -117,6 +121,7 @@ export function FeatureFlags(): JSX.Element {
     <>
       <WorkQueueLayout
         header={<PageHeader title="Feature Flags" />}
+        kpis={<FlagKpis flags={flags} />}
         filters={
           <FilterBar
             actions={
@@ -198,6 +203,71 @@ export function FeatureFlags(): JSX.Element {
         />
       ) : null}
     </>
+  );
+}
+
+// §4.7 KPI strip (frame `bxUqf`) — counts derived from the loaded page (no separate count endpoint;
+// the loaded set is the platform flag inventory). Enabled = a truthy boolean flag not kill-switched.
+function FlagKpis({ flags }: { flags: FeatureFlagView[] }): JSX.Element {
+  const total = flags.length;
+  const enabled = flags.filter(
+    (f) => f.valueType === "boolean" && f.value === true && !f.killSwitchActive,
+  ).length;
+  const killed = flags.filter((f) => f.killSwitchActive).length;
+  const perTenant = flags.filter((f) => f.organizationId !== null).length;
+  return (
+    <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", padding: "0 1.5rem 0.5rem" }}>
+      <KpiCard label="Total flags" value={total} sub="loaded" />
+      <KpiCard label="Enabled" value={enabled} sub="boolean · on" />
+      <KpiCard label="Kill switches" value={killed} sub="armed" alert={killed > 0} />
+      <KpiCard label="Per-tenant" value={perTenant} sub="org-scoped" />
+    </div>
+  );
+}
+
+function KpiCard({
+  label,
+  value,
+  sub,
+  alert,
+}: { label: string; value: number; sub?: string; alert?: boolean }): JSX.Element {
+  return (
+    <div
+      style={{
+        ...cardSurface,
+        flex: "1 1 8rem",
+        minWidth: 0,
+        padding: "0.875rem 1.125rem",
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.3rem",
+      }}
+    >
+      <span
+        style={{
+          fontSize: "0.6875rem",
+          fontWeight: 600,
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          color: t.onSurfaceVariant,
+        }}
+      >
+        {label}
+      </span>
+      {/* KPI numerals are Inter tabular-nums (DESIGN.md §3). */}
+      <span
+        className="tabular-nums"
+        style={{
+          fontSize: "1.75rem",
+          fontWeight: 600,
+          lineHeight: 1,
+          color: alert ? t.alert : t.onSurface,
+        }}
+      >
+        {value}
+      </span>
+      {sub ? <span style={{ fontSize: "0.72rem", color: t.onSurfaceVariant }}>{sub}</span> : null}
+    </div>
   );
 }
 

@@ -34,6 +34,21 @@ export interface FrameFidelityEntry {
 
 export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
   {
+    screenId: "saas.feature-flags",
+    screen: "Feature Flags",
+    module: "M34",
+    frameNode: "bxUqf",
+    penFile: "wardenx-P4-admin-platform.pen",
+    status: "partial",
+    notes:
+      "Added the frame's KPI strip (total / enabled / kill-switches / per-tenant, counted from the loaded " +
+      "flags) over the existing flags Work Queue — table (key · scope · kind · value · kill-switch state) + " +
+      "right detail panel + the §6/D10 confirm-by-typing kill-switch CeremonyModal. All real (GET " +
+      "/platform/feature-flags). Honest gaps: no separate count endpoint, so KPIs reflect the loaded page; " +
+      "the frame's per-row enable TOGGLES aren't replicated as a generic write (only the step-up-gated " +
+      "kill-switch is a real write path) — the kill-switch ceremony is kept instead.",
+  },
+  {
     screenId: "shell.role-home",
     screen: "App Shell & Role Home",
     module: "M01",
