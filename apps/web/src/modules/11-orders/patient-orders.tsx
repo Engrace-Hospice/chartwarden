@@ -3,8 +3,6 @@ import {
   CountdownChip,
   EmptyState,
   ghostBorder,
-  Glyph,
-  LeftNavRail,
   LoadingSpinner,
   PatientBanner,
   PatientWorkspaceLayout,
@@ -23,7 +21,8 @@ import {
 // kind, never a fabricated drug name.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import { ChartModuleRail } from "../../shell/chart-module-rail";
 import { ORDER_TONE, PRIORITY_TONE, stateLabel } from "./orders-status";
 
 interface OrderRow {
@@ -42,35 +41,6 @@ interface PatientSummary {
   dob: string;
   status: string;
 }
-
-type NavIconName = "summary" | "carePlan" | "stethoscope" | "checklist" | "orders" | "pill" | "folder" | "idg";
-const NAV_ICON_PATHS: Record<NavIconName, string> = {
-  summary: "M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z",
-  carePlan: "M9 4h6v3H9z M7 5H5v15h14V5h-2 M9 11h6 M9 15h4",
-  stethoscope: "M6 4v5a4 4 0 0 0 8 0V4 M10 16a4 4 0 0 0 8 0v-2 M18 14a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
-  checklist: "M4 6h9 M4 12h9 M4 18h9 M17 5l1.5 1.5L21 4 M17 11l1.5 1.5L21 10",
-  orders: "M7 3h7l4 4v14H7z M14 3v4h4 M10 13h5 M10 17h5",
-  pill: "M5 13l8-8a4 4 0 0 1 6 6l-8 8a4 4 0 0 1-6-6z M9 9l6 6",
-  folder: "M3 6h6l2 2h10v11H3z",
-  idg: "M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M3 19c0-3 2.7-5 6-5s6 2 6 5 M16 11a3 3 0 0 0 0-6 M15 14c3 .2 5 2.2 5 5",
-};
-function NavIcon({ name }: { name: NavIconName }): JSX.Element {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flexShrink: 0 }}>
-      <path d={NAV_ICON_PATHS[name]} />
-    </svg>
-  );
-}
-const NAV_ITEMS: { label: string; icon: NavIconName; current?: boolean }[] = [
-  { label: "Summary", icon: "summary" },
-  { label: "Care Plan", icon: "carePlan" },
-  { label: "Encounters", icon: "stethoscope" },
-  { label: "Assessments", icon: "checklist" },
-  { label: "Orders", icon: "orders", current: true },
-  { label: "Medications", icon: "pill" },
-  { label: "Documents", icon: "folder" },
-  { label: "IDG History", icon: "idg" },
-];
 
 export function PatientOrders(): JSX.Element {
   const client = useApiClient();
@@ -130,23 +100,7 @@ export function PatientOrders(): JSX.Element {
   return (
     <PatientWorkspaceLayout banner={banner}>
       <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
-        {/* Module nav rail */}
-        <LeftNavRail ariaLabel="Patient modules">
-          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.125rem" }}>
-            {NAV_ITEMS.map((it) => {
-              const inner = (<><NavIcon name={it.icon} />{it.label}</>);
-              return (
-                <li key={it.label}>
-                  {it.current ? (
-                    <span style={{ ...navItem, ...navItemActive }} aria-current="page">{inner}</span>
-                  ) : (
-                    <Link to={`/patients/${patientId}`} style={navItem}>{inner}</Link>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </LeftNavRail>
+        <ChartModuleRail patientId={patientId ?? ""} current="orders" />
 
         {/* Center — orders table */}
         <div style={{ flex: 1, overflow: "auto", padding: "1.5rem", minWidth: 0 }}>
@@ -253,8 +207,6 @@ function MonoChip({ children }: { children: ReactNode }): JSX.Element {
   return <span style={{ fontFamily: t.fontMono, fontSize: "0.78rem", color: t.onSurfaceVariant, background: t.surfaceContainer, borderRadius: "9999px", padding: "0.15rem 0.55rem" }}>{children}</span>;
 }
 
-const navItem: CSSProperties = { display: "flex", alignItems: "center", gap: "0.625rem", padding: "0.5rem 0.75rem", borderRadius: "0.5rem", fontSize: "0.8125rem", fontWeight: 500, textDecoration: "none", color: t.onSurfaceVariant };
-const navItemActive: CSSProperties = { background: t.primaryTint, color: t.primary, fontWeight: 600 };
 const rightRail: CSSProperties = { width: "19rem", flexShrink: 0, overflow: "auto", padding: "1.5rem", background: t.surfaceLow };
 const railTitle: CSSProperties = { margin: "0 0 0.625rem", fontFamily: t.fontDisplay, fontWeight: 500, fontSize: "1rem", color: t.onSurface };
 const orderRow: CSSProperties = { display: "flex", alignItems: "center", gap: "0.75rem", width: "100%", padding: "0.75rem 0", border: "none", background: "transparent", cursor: "pointer", fontSize: "0.85rem" };
