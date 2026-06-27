@@ -1,7 +1,7 @@
 {
   "totals": {
-    "Implemented": 21,
-    "Partial": 2,
+    "Implemented": 22,
+    "Partial": 1,
     "Placeholder": 17
   },
   "rows": [
@@ -414,10 +414,10 @@
     {
       "id": 30,
       "module": "M30 HQRP & Quality",
-      "status": "Partial",
+      "status": "Placeholder",
       "spec": true,
-      "schema": true,
-      "migration": true,
+      "schema": false,
+      "migration": false,
       "routes": false,
       "enriched": false,
       "screens": false,
@@ -456,16 +456,16 @@
     {
       "id": 33,
       "module": "M33 Reporting & Dashboards",
-      "status": "Placeholder",
+      "status": "Implemented",
       "spec": true,
-      "schema": false,
-      "migration": false,
-      "routes": false,
-      "enriched": false,
-      "screens": false,
-      "tests": false,
+      "schema": true,
+      "migration": true,
+      "routes": true,
+      "enriched": true,
+      "screens": true,
+      "tests": true,
       "adapter": null,
-      "liveInfra": false
+      "liveInfra": true
     },
     {
       "id": 34,
@@ -475,8 +475,8 @@
       "schema": true,
       "migration": true,
       "routes": true,
-      "enriched": false,
-      "screens": false,
+      "enriched": true,
+      "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": true

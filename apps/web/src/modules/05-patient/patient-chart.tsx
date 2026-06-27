@@ -8,8 +8,10 @@ import {
   SealedBlock,
   StatusPill,
   type StatusTone,
+  cardSurface,
   useApiClient,
 } from "@wardenx/ui";
+import type { paths } from "@wardenx/ui";
 // apps/web/src/modules/05-patient — Patient Chart (M5, Track A).
 // Spec: docs/design/screens/clinical/WARDENX_UI_PATIENT_CHART.md — "Use Patient Workspace."
 // The patient-scoped hub: sticky Patient Banner + a module nav rail + a center summary. This builds
@@ -17,8 +19,8 @@ import {
 // cross-module tabs (Encounters, Orders, eMAR, …) graft on as those modules land (Track B). Backed by
 // GET /api/v1/patients/:id (+ /demographics, /identifiers) via the typed client.
 import { useEffect, useState } from "react";
-import type { FormEvent, JSX } from "react";
-import { useParams } from "react-router-dom";
+import type { FormEvent, JSX, ReactNode } from "react";
+import { Link, useParams } from "react-router-dom";
 import { STATUS_TONE, statusLabel } from "./patient-status";
 
 interface PatientSummary {
@@ -31,23 +33,81 @@ interface PatientSummary {
   status: string;
 }
 
+// Module-nav-rail icons. The P0 frame (wardenx-P0-foundation.pen `fQjjh`) pairs every rail row with a
+// Material-Symbols glyph; the shared @wardenx/ui Glyph kit is a small curated set without these
+// per-module icons, so this is a module-local 24×24 stroke set mirroring the frame's intent. Nav
+// chrome only — clinical-state glyphs still come from the canonical kit.
+type NavIconName =
+  | "summary"
+  | "person"
+  | "pin"
+  | "shield"
+  | "groups"
+  | "lock"
+  | "carePlan"
+  | "stethoscope"
+  | "checklist"
+  | "orders"
+  | "pill"
+  | "folder"
+  | "cert"
+  | "idg";
+
+const NAV_ICON_PATHS: Record<NavIconName, string> = {
+  summary: "M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z",
+  person: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 20c0-4 4-6 8-6s8 2 8 6",
+  pin: "M12 21s7-6 7-11a7 7 0 1 0-14 0c0 5 7 11 7 11z M12 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z",
+  shield: "M12 3l7 3v5c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6z",
+  groups:
+    "M8 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M2 20c0-3 2.7-5 6-5 M16 13a3 3 0 1 0 0-6 M14 15c3.3 0 6 2 6 5",
+  lock: "M6 10V8a6 6 0 0 1 12 0v2 M5 10h14v10H5z",
+  carePlan: "M9 4h6v3H9z M7 5H5v15h14V5h-2 M9 11h6 M9 15h4",
+  stethoscope:
+    "M6 4v5a4 4 0 0 0 8 0V4 M10 16a4 4 0 0 0 8 0v-2 M18 14a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
+  checklist: "M4 6h9 M4 12h9 M4 18h9 M17 5l1.5 1.5L21 4 M17 11l1.5 1.5L21 10",
+  orders: "M7 3h7l4 4v14H7z M14 3v4h4 M10 13h5 M10 17h5",
+  pill: "M5 13l8-8a4 4 0 0 1 6 6l-8 8a4 4 0 0 1-6-6z M9 9l6 6",
+  folder: "M3 6h6l2 2h10v11H3z",
+  cert: "M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18z M8.5 12l2.5 2.5 4.5-5",
+  idg: "M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M3 19c0-3 2.7-5 6-5s6 2 6 5 M16 11a3 3 0 0 0 0-6 M15 14c3 .2 5 2.2 5 5",
+};
+
+function NavIcon({ name }: { name: NavIconName }): JSX.Element {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      style={{ flexShrink: 0 }}
+    >
+      <path d={NAV_ICON_PATHS[name]} />
+    </svg>
+  );
+}
+
 // Module nav rail (spec). Only sections whose module is built are active now; the rest are
 // placeholders that light up in Track B as their module lands.
-const NAV_SECTIONS: { label: string; ready: boolean }[] = [
-  { label: "Summary", ready: true },
-  { label: "Demographics & Identifiers", ready: true },
-  { label: "Addresses", ready: true },
-  { label: "Coverage / Payers", ready: true },
-  { label: "Care Team & Assignments", ready: true },
-  { label: "Privacy Flags", ready: true },
-  { label: "Care Plan", ready: false },
-  { label: "Encounters / Visits", ready: false },
-  { label: "Assessments", ready: false },
-  { label: "Orders", ready: false },
-  { label: "Medications / eMAR", ready: false },
-  { label: "Documents", ready: false },
-  { label: "Election & Certification", ready: false },
-  { label: "IDG History", ready: false },
+const NAV_SECTIONS: { label: string; ready: boolean; icon: NavIconName }[] = [
+  { label: "Summary", ready: true, icon: "summary" },
+  { label: "Demographics & Identifiers", ready: true, icon: "person" },
+  { label: "Addresses", ready: true, icon: "pin" },
+  { label: "Coverage / Payers", ready: true, icon: "shield" },
+  { label: "Care Team & Assignments", ready: true, icon: "groups" },
+  { label: "Privacy Flags", ready: true, icon: "lock" },
+  { label: "Care Plan", ready: false, icon: "carePlan" },
+  { label: "Encounters / Visits", ready: false, icon: "stethoscope" },
+  { label: "Assessments", ready: false, icon: "checklist" },
+  { label: "Orders", ready: false, icon: "orders" },
+  { label: "Medications / eMAR", ready: false, icon: "pill" },
+  { label: "Documents", ready: false, icon: "folder" },
+  { label: "Election & Certification", ready: false, icon: "cert" },
+  { label: "IDG History", ready: false, icon: "idg" },
 ];
 
 export function PatientChart(): JSX.Element {
@@ -97,14 +157,27 @@ export function PatientChart(): JSX.Element {
   }
 
   const p = state.patient;
+  const age = ageYears(p.dob);
   return (
     <PatientWorkspaceLayout
       banner={
         <PatientBanner
-          name={`${p.lastName}, ${p.firstName}`}
-          mrn={p.mrn}
-          dob={p.dob}
-          codeStatus={<span style={{ color: "var(--color-muted)" }}>—</span>}
+          name={`${p.firstName} ${p.lastName}`}
+          meta={`DOB ${p.dob}${age != null ? ` · ${age}y` : ""}`}
+          chips={
+            <>
+              {/* Identifier in the mono face (§3.1) + the lifecycle status as a §6.6 pill. The frame's
+                  clinical flags (allergies, code status, benefit period) graft on as their modules land —
+                  shown honestly, never fabricated. */}
+              <MonoChip title="Medical record number">{p.mrn}</MonoChip>
+              <StatusPill label={statusLabel(p.status)} tone={STATUS_TONE[p.status] ?? "neutral"} />
+            </>
+          }
+          actions={
+            <Link to="/messaging" style={MESSAGE_BTN}>
+              Message
+            </Link>
+          }
         />
       }
     >
@@ -138,16 +211,26 @@ export function PatientChart(): JSX.Element {
                 }
                 aria-current={s.ready && s.label === section ? "page" : undefined}
                 style={{
-                  padding: "0.4rem 0.5rem",
-                  borderRadius: "0.375rem",
-                  color: s.ready ? "var(--color-on-surface)" : "var(--color-muted)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.625rem",
+                  padding: "0.5rem 0.75rem",
+                  borderRadius: "0.5rem",
+                  fontSize: "0.8125rem",
+                  color:
+                    s.ready && s.label === section
+                      ? "var(--color-primary)"
+                      : s.ready
+                        ? "var(--color-on-surface-variant)"
+                        : "var(--color-muted)",
                   cursor: s.ready ? "pointer" : "default",
                   background:
                     s.ready && s.label === section ? "var(--color-primary-tint)" : "transparent",
-                  fontWeight: s.ready && s.label === section ? 600 : 400,
+                  fontWeight: s.ready && s.label === section ? 600 : 500,
                 }}
                 title={s.ready ? undefined : "Available when this module ships"}
               >
+                <NavIcon name={s.icon} />
                 {s.label}
               </li>
             ))}
@@ -173,41 +256,148 @@ export function PatientChart(): JSX.Element {
   );
 }
 
+// Summary view — reconciled to the P0 frame (wardenx-P0-foundation.pen `fQjjh`): a main column of
+// Lantern §6.2 cards (At a glance · Active problems · Benefit period) beside a right rail of
+// Alerts / Open tasks cards. The frame's clinical cards are populated by modules not yet built, so
+// they render honest "arrives with module X" states rather than fabricated clinical content — the
+// layout matches the design while the data stays truthful.
 function SummaryTab({ patient }: { patient: PatientSummary }): JSX.Element {
+  const age = ageYears(patient.dob);
   return (
-    <>
-      <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>Summary</h2>
-      <dl
+    <div style={{ display: "flex", gap: "1.5rem", alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "max-content 1fr",
-          gap: "0.4rem 1rem",
-          fontSize: "0.9rem",
+          flex: "1 1 24rem",
+          display: "flex",
+          flexDirection: "column",
+          gap: "1rem",
+          minWidth: 0,
         }}
       >
-        <dt style={dt}>MRN</dt>
-        <dd style={dd}>{patient.mrn}</dd>
-        <dt style={dt}>Date of birth</dt>
-        <dd style={dd}>{patient.dob}</dd>
-        <dt style={dt}>Status</dt>
-        <dd style={dd}>
-          <StatusPill
-            label={statusLabel(patient.status)}
-            tone={STATUS_TONE[patient.status] ?? "neutral"}
-          />
-        </dd>
-      </dl>
-      <p
+        <Card title="At a glance">
+          <dl
+            style={{
+              display: "grid",
+              gridTemplateColumns: "max-content 1fr",
+              gap: "0.5rem 1.25rem",
+              fontSize: "0.875rem",
+              margin: 0,
+            }}
+          >
+            <dt style={dt}>Status</dt>
+            <dd style={dd}>
+              <StatusPill
+                label={statusLabel(patient.status)}
+                tone={STATUS_TONE[patient.status] ?? "neutral"}
+              />
+            </dd>
+            <dt style={dt}>MRN</dt>
+            <dd style={{ ...dd, fontFamily: "var(--font-mono)" }}>{patient.mrn}</dd>
+            <dt style={dt}>Date of birth</dt>
+            <dd style={dd}>
+              {patient.dob}
+              {age != null ? ` · ${age}y` : ""}
+            </dd>
+          </dl>
+        </Card>
+        <Card title="Active problems">
+          <EmptyNote>The problem list populates with the Care Plan module.</EmptyNote>
+        </Card>
+        <Card title="Benefit period &amp; deadlines">
+          <EmptyNote>
+            Certification windows and deadlines populate with the Admission module.
+          </EmptyNote>
+        </Card>
+      </div>
+
+      <aside
         style={{
-          marginTop: "1.5rem",
-          color: "var(--color-on-surface-variant)",
-          fontSize: "0.85rem",
+          flex: "0 0 19rem",
+          width: "19rem",
+          display: "flex",
+          flexDirection: "column",
+          gap: "1rem",
         }}
       >
-        Clinical sections (problems, visits, orders, medications, assessments) populate as their
-        modules ship.
-      </p>
-    </>
+        <Card title="Alerts">
+          <EmptyNote>Clinical alerts surface here as their modules ship.</EmptyNote>
+        </Card>
+        <Card title="Open tasks">
+          <EmptyNote>Task routing arrives with the Tasks module.</EmptyNote>
+        </Card>
+      </aside>
+    </div>
+  );
+}
+
+// Whole-years age from a YYYY-MM-DD DOB; null when unparseable or out of a sane range.
+function ageYears(dob: string): number | null {
+  const d = new Date(dob);
+  if (Number.isNaN(d.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+  return age >= 0 && age < 150 ? age : null;
+}
+
+// A mono identifier rendered as a tonal pill (§3.1 mono face on a No-Line surface-container chip).
+function MonoChip({ children, title }: { children: ReactNode; title?: string }): JSX.Element {
+  return (
+    <span
+      title={title}
+      style={{
+        fontFamily: "var(--font-mono)",
+        fontSize: "0.78rem",
+        color: "var(--color-on-surface-variant)",
+        background: "var(--color-surface-container)",
+        borderRadius: "9999px",
+        padding: "0.15rem 0.55rem",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+const MESSAGE_BTN = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "0.4rem 0.9rem",
+  borderRadius: "9999px",
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.8125rem",
+  fontWeight: 600,
+  textDecoration: "none",
+} as const;
+
+// §6.2 Lantern Card: surface-lowest + radius-xl + shadow-soft (No-Line), Fraunces card title.
+function Card({ title, children }: { title: ReactNode; children: ReactNode }): JSX.Element {
+  return (
+    <section style={{ ...cardSurface, padding: "1.25rem 1.5rem" }}>
+      <h2
+        style={{
+          margin: "0 0 0.75rem",
+          fontFamily: "var(--font-display)",
+          fontWeight: 500,
+          fontSize: "1rem",
+          color: "var(--color-on-surface)",
+        }}
+      >
+        {title}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+// Honest empty/placeholder line for a card whose data comes from a not-yet-built module.
+function EmptyNote({ children }: { children: ReactNode }): JSX.Element {
+  return (
+    <p style={{ margin: 0, color: "var(--color-on-surface-variant)", fontSize: "0.85rem" }}>
+      {children}
+    </p>
   );
 }
 
@@ -472,18 +662,21 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
     e.preventDefault();
     setSaving(true);
     setSaveError(null);
-    const body: Record<string, unknown> = {
+    type AddressBody = NonNullable<
+      paths["/api/v1/patients/{id}/addresses"]["post"]["requestBody"]
+    >["content"]["application/json"];
+    const body: AddressBody = {
       line1: form.line1,
       city: form.city,
       postalCode: form.postalCode,
-      kind: form.kind,
+      kind: form.kind as AddressBody["kind"],
       isPrimary: form.isPrimary,
     };
     if (form.line2) body.line2 = form.line2;
     if (form.state) body.state = form.state.toUpperCase();
     const res = await client.POST("/api/v1/patients/{id}/addresses", {
       params: { path: { id: patientId } },
-      body: body as never,
+      body,
     });
     setSaving(false);
     if (res.error)

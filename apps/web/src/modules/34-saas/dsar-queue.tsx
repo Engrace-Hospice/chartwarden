@@ -11,6 +11,7 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
+import type { paths } from "@wardenx/ui";
 // apps/web/src/modules/34-saas — DSAR queue (M34 SaaS Tenant Platform, R2 Phase-3).
 // Route: /exports/dsar. The HIPAA §164.524 right-of-access queue — one row per data-subject-access
 // export job, with the 30-day fulfillment SLA rendered as a CountdownChip so aging is legible at a
@@ -71,12 +72,14 @@ export function DsarQueue(): JSX.Element {
     setLoading(true);
     setError(null);
     setSelected(null);
-    const query: Record<string, string | number> = { limit: 50 };
+    const query: NonNullable<
+      paths["/api/v1/tenant/dsar-export-jobs"]["get"]["parameters"]["query"]
+    > = { limit: 50 };
     if (patientId.trim()) query.patientId = patientId.trim();
-    if (status) query.status = status;
+    if (status) query.status = status as typeof query.status;
     const { data, error: err } = await client.GET("/api/v1/tenant/dsar-export-jobs", {
       params: { query },
-    } as never);
+    });
     if (err) {
       setError("Could not load the DSAR queue.");
       setLoading(false);

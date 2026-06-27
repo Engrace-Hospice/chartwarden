@@ -147,6 +147,13 @@ function scanEvasions(): Violation[] {
     const ownAndDeps = new Set<number>([mod.id, ...mod.dependsOn]);
     for (const file of mod.codePaths.flatMap((p) => listFiles(p))) {
       if (file.startsWith(SCHEMA_DIR)) continue;
+      // Live RLS isolation harnesses (packages/db/migrations/__tests__/*.live.test.ts) apply the
+      // FULL migration set and intentionally seed/query EVERY module's tables as superuser to prove
+      // cross-tenant RLS denial — that is their entire purpose. They are test infrastructure, not a
+      // module reaching into another's tables in production, so cross-module raw-SQL references here
+      // are by design, not an ownership evasion. (The original rls-isolation + m34 harnesses only
+      // escaped this scan by luck — neither happened to contain a literal that trips `inRawSql`.)
+      if (/migrations\/__tests__\/.*\.live\.test\.ts$/.test(file)) continue;
       const src = readFileSync(join(REPO_ROOT, file), "utf8");
       const isHelperPath = HELPER_PATHS.some((p) => file.startsWith(p));
 

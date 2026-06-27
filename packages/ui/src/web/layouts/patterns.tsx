@@ -93,7 +93,22 @@ export function CenteredStatusLayout({
         }}
       >
         {icon ? (
-          <div className="wx-system-icon" style={{ fontSize: "2rem" }}>
+          // Circular tonal badge holding the status glyph (System Page frame, dT1Bt). The icon
+          // inherits `currentColor`, so a <Glyph> renders in the muted on-surface-variant tone.
+          <div
+            className="wx-system-icon"
+            style={{
+              width: "3.5rem",
+              height: "3.5rem",
+              borderRadius: "9999px",
+              background: t.surfaceContainer,
+              color: t.onSurfaceVariant,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "1.5rem",
+            }}
+          >
             {icon}
           </div>
         ) : null}

@@ -15,6 +15,7 @@ export {
   registerPredicate,
   resetAbacRegistry,
 } from "./registry";
+export { isStepUpRecent } from "./step-up";
 export {
   type AbacContext,
   type AbacEvaluator,

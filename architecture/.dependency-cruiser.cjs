@@ -190,6 +190,54 @@ module.exports = {
         ]),
       },
     },
+    {
+      name: "no-direct-m33-schema-import-from-other-modules",
+      comment:
+        "Other modules must consume M33 (Reporting & Dashboards) via its published seams, never " +
+        "by reaching into its schema directly. M33's Drizzle tables live in the central barrel " +
+        "(packages/db/src/schema/reporting) per repo convention; only M33's own logic package and " +
+        "the db barrel itself may import them. (M33 spec §13.)",
+      severity: "error",
+      from: {
+        pathNot: anyOf([
+          "packages/reporting",
+          "packages/db",
+          "apps/backend/src/modules/33-reporting",
+        ]),
+      },
+      to: { path: p("packages/db/src/schema/reporting") },
+    },
+    {
+      name: "no-m33-import-of-clinical-schemas",
+      comment:
+        "M33 is a read-only analytics consumer: it aggregates clinical + revenue data exclusively " +
+        "through the owning modules' read seams / repositories, never by reaching into their PHI " +
+        "schemas directly. Clinical Drizzle tables live in the central barrel under their per-module " +
+        "schema dirs. (M33 spec §13.)",
+      severity: "error",
+      from: {
+        path: anyOf([
+          "packages/reporting",
+          "apps/backend/src/modules/33-reporting",
+        ]),
+      },
+      to: {
+        path: anyOf([
+          "packages/db/src/schema/patient",
+          "packages/db/src/schema/admission",
+          "packages/db/src/schema/care-plan",
+          "packages/db/src/schema/encounter",
+          "packages/db/src/schema/assessment",
+          "packages/db/src/schema/orders",
+          "packages/db/src/schema/dosespot",
+          "packages/db/src/schema/emar",
+          "packages/db/src/schema/hope",
+          "packages/db/src/schema/idg",
+          "packages/db/src/schema/evv",
+          "packages/db/src/schema/scheduling",
+        ]),
+      },
+    },
     ...vendorRules,
     ...helperTableRules,
     ...moduleBoundaryRules,

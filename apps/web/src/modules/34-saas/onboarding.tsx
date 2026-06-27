@@ -75,12 +75,16 @@ export function Onboarding(): JSX.Element {
 
   const advance = useCallback(
     async (taskId: string, verb: "start" | "complete") => {
-      await client.POST(
-        `/api/v1/tenant/onboarding/{taskId}/${verb}` as never,
-        {
+      // Two distinct OpenAPI paths — branch on the verb so each call is typed against its literal path.
+      if (verb === "start") {
+        await client.POST("/api/v1/tenant/onboarding/{taskId}/start", {
           params: { path: { taskId } },
-        } as never,
-      );
+        });
+      } else {
+        await client.POST("/api/v1/tenant/onboarding/{taskId}/complete", {
+          params: { path: { taskId } },
+        });
+      }
       await load();
     },
     [client, load],

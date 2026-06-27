@@ -1,3 +1,4 @@
+import { ASSESSMENT_DISCIPLINES, disciplineCanRecordScale } from "@wardenx/assessments";
 // apps/backend/src/modules/09-assessments/routes/assessments-routes.ts — M9-T05 the §4.1 route inventory
 // (18 routes) behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @wardenx/auth,
 // M3) on the §4.6 keys M9 registers into M3's catalog (M9_CONTRIBUTED_PERMISSIONS). Org binding is
@@ -12,11 +13,9 @@
 // `redacted` projection on reads — M09-F05 keeps SUD off the write predicate). §2.3: the correction route
 // carries the parent row version in `If-Match` → 412 STALE_VERSION on skew.
 import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
-import { ASSESSMENT_DISCIPLINES, disciplineCanRecordScale } from "@wardenx/assessments";
 import { UnauthorizedError } from "@wardenx/types";
 import type { ScaleType } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { ifMatchVersionOf, requireIfMatch } from "./concurrency";
 import {
   AcknowledgeChangeSchema,
   AssessmentListQuerySchema,
@@ -38,6 +37,7 @@ import {
   UpdateScalePolicySchema,
   parse,
 } from "./assessments-typebox";
+import { ifMatchVersionOf, requireIfMatch } from "./concurrency";
 import type { AssessmentRouteService } from "./service";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
@@ -47,7 +47,11 @@ export interface AssessmentRouteDeps {
   service: AssessmentRouteService;
 }
 
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string; roles: readonly string[] } {
+function actorOf(request: FastifyRequest): {
+  organizationId: string;
+  userId: string;
+  roles: readonly string[];
+} {
   const ctx = request.context;
   if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
   return { organizationId: ctx.organizationId, userId: ctx.userId, roles: ctx.roles };
@@ -81,10 +85,13 @@ const POLICY_ADMIN = P("assessment.policy_admin");
 // §4.7 — the D8 discipline matrix ABAC guard M9 owns (target = the body's `scaleType`).
 const bodyScaleTarget = (request: { body?: unknown }): AbacTarget => {
   const body = request.body;
-  const scaleType = body && typeof body === "object" ? (body as { scaleType?: unknown }).scaleType : undefined;
+  const scaleType =
+    body && typeof body === "object" ? (body as { scaleType?: unknown }).scaleType : undefined;
   return typeof scaleType === "string" ? { scaleType } : {};
 };
-const ABAC_DISCIPLINE = requireAbac("assessment.author", "discipline_can_record_scale", { getTarget: bodyScaleTarget }) as PreHandler;
+const ABAC_DISCIPLINE = requireAbac("assessment.author", "discipline_can_record_scale", {
+  getTarget: bodyScaleTarget,
+}) as PreHandler;
 // §4.7 — the cosigner_role_match ABAC guard M9 owns (target = request.params → id).
 const ABAC_COSIGN = requireAbac("assessment.cosign", "cosigner_role_match") as PreHandler;
 // §2.3 / §7.7 — the correction route carries the parent row version in If-Match.
@@ -94,112 +101,186 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
   const { service } = deps;
 
   // 1 — record a scale (§10 task-#5 pipeline; discipline matrix ABAC; idempotent via Idempotency-Key).
-  app.post("/api/v1/patients/:patientId/assessments", { preHandler: [AUTHOR, ABAC_DISCIPLINE] }, async (request, reply) => {
-    const { organizationId, userId, roles } = actorOf(request);
-    const { patientId } = parse(PatientParamsSchema, request.params);
-    const body = parse(RecordAssessmentSchema, request.body);
-    const res = await service.recordAssessment(organizationId, userId, patientId, {
-      admissionId: body.admissionId,
-      scaleType: body.scaleType,
-      capturedAt: body.capturedAt,
-      data: body.data,
-      recorderDiscipline: recorderDisciplineFor(roles, body.scaleType),
-      sourceEncounterId: body.sourceEncounterId,
-      actingAs: body.actingAs,
-      actingConsentId: body.actingConsentId,
-      sudContext: body.sudContext,
-    });
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/patients/:patientId/assessments",
+    { preHandler: [AUTHOR, ABAC_DISCIPLINE] },
+    async (request, reply) => {
+      const { organizationId, userId, roles } = actorOf(request);
+      const { patientId } = parse(PatientParamsSchema, request.params);
+      const body = parse(RecordAssessmentSchema, request.body);
+      const res = await service.recordAssessment(organizationId, userId, patientId, {
+        admissionId: body.admissionId,
+        scaleType: body.scaleType,
+        capturedAt: body.capturedAt,
+        data: body.data,
+        recorderDiscipline: recorderDisciplineFor(roles, body.scaleType),
+        sourceEncounterId: body.sourceEncounterId,
+        actingAs: body.actingAs,
+        actingConsentId: body.actingConsentId,
+        sudContext: body.sudContext,
+      });
+      return reply.code(201).send(res);
+    },
+  );
 
   // 2 — correction-of-record (append-only supersede; §2.3 If-Match → 412 STALE_VERSION).
-  app.post("/api/v1/patients/:patientId/assessments/:id/corrections", { preHandler: [AMEND, ABAC_DISCIPLINE, IF_MATCH] }, async (request, reply) => {
-    const { organizationId, userId, roles } = actorOf(request);
-    const { patientId, id } = parse(PatientAssessmentParamsSchema, request.params);
-    const body = parse(CorrectAssessmentSchema, request.body);
-    const res = await service.correctAssessment(organizationId, userId, patientId, id, ifMatchVersionOf(request), {
-      admissionId: body.admissionId,
-      scaleType: body.scaleType,
-      capturedAt: body.capturedAt,
-      data: body.data,
-      recorderDiscipline: recorderDisciplineFor(roles, body.scaleType),
-      sourceEncounterId: body.sourceEncounterId,
-      actingAs: body.actingAs,
-      actingConsentId: body.actingConsentId,
-      sudContext: body.sudContext,
-      correctionReason: body.correctionReason,
-    });
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/patients/:patientId/assessments/:id/corrections",
+    { preHandler: [AMEND, ABAC_DISCIPLINE, IF_MATCH] },
+    async (request, reply) => {
+      const { organizationId, userId, roles } = actorOf(request);
+      const { patientId, id } = parse(PatientAssessmentParamsSchema, request.params);
+      const body = parse(CorrectAssessmentSchema, request.body);
+      const res = await service.correctAssessment(
+        organizationId,
+        userId,
+        patientId,
+        id,
+        ifMatchVersionOf(request),
+        {
+          admissionId: body.admissionId,
+          scaleType: body.scaleType,
+          capturedAt: body.capturedAt,
+          data: body.data,
+          recorderDiscipline: recorderDisciplineFor(roles, body.scaleType),
+          sourceEncounterId: body.sourceEncounterId,
+          actingAs: body.actingAs,
+          actingConsentId: body.actingConsentId,
+          sudContext: body.sudContext,
+          correctionReason: body.correctionReason,
+        },
+      );
+      return reply.code(201).send(res);
+    },
+  );
 
   // 3 — patient assessment timeline (cursor pagination).
-  app.get("/api/v1/patients/:patientId/assessments", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { patientId } = parse(PatientParamsSchema, request.params);
-    parse(AssessmentListQuerySchema, request.query);
-    return service.listAssessments(organizationId, patientId);
-  });
+  app.get(
+    "/api/v1/patients/:patientId/assessments",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "assessment", patientIdParam: "patientId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { patientId } = parse(PatientParamsSchema, request.params);
+      parse(AssessmentListQuerySchema, request.query);
+      return service.listAssessments(organizationId, patientId);
+    },
+  );
 
   // 18 — scale-summary surface (static path BEFORE the :id param route so it is not captured by it).
-  app.get("/api/v1/patients/:patientId/assessments/summary", { preHandler: [READ_SUMMARY] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { patientId } = parse(PatientParamsSchema, request.params);
-    return service.summary(organizationId, patientId);
-  });
+  app.get(
+    "/api/v1/patients/:patientId/assessments/summary",
+    {
+      preHandler: [READ_SUMMARY],
+      config: { auditRead: { resourceKind: "assessment", patientIdParam: "patientId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { patientId } = parse(PatientParamsSchema, request.params);
+      return service.summary(organizationId, patientId);
+    },
+  );
 
   // 4 — read one assessment row.
-  app.get("/api/v1/patients/:patientId/assessments/:id", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { patientId, id } = parse(PatientAssessmentParamsSchema, request.params);
-    return service.getAssessment(organizationId, patientId, id);
-  });
+  app.get(
+    "/api/v1/patients/:patientId/assessments/:id",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "assessment", patientIdParam: "patientId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { patientId, id } = parse(PatientAssessmentParamsSchema, request.params);
+      return service.getAssessment(organizationId, patientId, id);
+    },
+  );
 
   // 5 — latest capture of one scale.
-  app.get("/api/v1/patients/:patientId/scales/:scaleType/latest", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { patientId, scaleType } = parse(PatientScaleParamsSchema, request.params);
-    return service.latestScale(organizationId, patientId, scaleType);
-  });
+  app.get(
+    "/api/v1/patients/:patientId/scales/:scaleType/latest",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "assessment_scale", patientIdParam: "patientId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { patientId, scaleType } = parse(PatientScaleParamsSchema, request.params);
+      return service.latestScale(organizationId, patientId, scaleType);
+    },
+  );
 
   // 6 — scored series over a [from, to] window.
-  app.get("/api/v1/patients/:patientId/scales/:scaleType/series", { preHandler: [READ_TREND] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { patientId, scaleType } = parse(PatientScaleParamsSchema, request.params);
-    const q = parse(SeriesQuerySchema, request.query);
-    return service.seriesScale(organizationId, patientId, scaleType, q.from, q.to);
-  });
+  app.get(
+    "/api/v1/patients/:patientId/scales/:scaleType/series",
+    {
+      preHandler: [READ_TREND],
+      config: { auditRead: { resourceKind: "assessment_scale", patientIdParam: "patientId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { patientId, scaleType } = parse(PatientScaleParamsSchema, request.params);
+      const q = parse(SeriesQuerySchema, request.query);
+      return service.seriesScale(organizationId, patientId, scaleType, q.from, q.to);
+    },
+  );
 
   // 7 — latest-vs-window delta.
-  app.get("/api/v1/patients/:patientId/scales/:scaleType/delta", { preHandler: [READ_TREND] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { patientId, scaleType } = parse(PatientScaleParamsSchema, request.params);
-    const q = parse(DeltaQuerySchema, request.query);
-    return service.deltaScale(organizationId, patientId, scaleType, q.from, q.to);
-  });
+  app.get(
+    "/api/v1/patients/:patientId/scales/:scaleType/delta",
+    {
+      preHandler: [READ_TREND],
+      config: { auditRead: { resourceKind: "assessment_scale", patientIdParam: "patientId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { patientId, scaleType } = parse(PatientScaleParamsSchema, request.params);
+      const q = parse(DeltaQuerySchema, request.query);
+      return service.deltaScale(organizationId, patientId, scaleType, q.from, q.to);
+    },
+  );
 
   // 8 — LPN cosignature (§7.4; cosigner_role_match ABAC).
-  app.post("/api/v1/assessments/:id/cosignatures", { preHandler: [COSIGN, ABAC_COSIGN] }, async (request, reply) => {
-    const { organizationId, userId, roles } = actorOf(request);
-    const { id } = parse(AssessmentParamsSchema, request.params);
-    const cosignerDiscipline = disciplinesOf(roles)[0] ?? (roles.includes("clinical_supervisor") ? "clinical_supervisor" : "");
-    const res = await service.cosign(organizationId, userId, id, cosignerDiscipline);
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/assessments/:id/cosignatures",
+    { preHandler: [COSIGN, ABAC_COSIGN] },
+    async (request, reply) => {
+      const { organizationId, userId, roles } = actorOf(request);
+      const { id } = parse(AssessmentParamsSchema, request.params);
+      const cosignerDiscipline =
+        disciplinesOf(roles)[0] ??
+        (roles.includes("clinical_supervisor") ? "clinical_supervisor" : "");
+      const res = await service.cosign(organizationId, userId, id, cosignerDiscipline);
+      return reply.code(201).send(res);
+    },
+  );
 
   // 9 — significant-change worklist for a patient (cursor pagination).
-  app.get("/api/v1/patients/:patientId/significant-changes", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { patientId } = parse(PatientParamsSchema, request.params);
-    return service.listSignificantChanges(organizationId, patientId);
-  });
+  app.get(
+    "/api/v1/patients/:patientId/significant-changes",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "assessment", patientIdParam: "patientId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { patientId } = parse(PatientParamsSchema, request.params);
+      return service.listSignificantChanges(organizationId, patientId);
+    },
+  );
 
   // 10 — acknowledge a significant-change event (open|escalated → acknowledged).
-  app.post("/api/v1/significant-changes/:eventId/acknowledge", { preHandler: [ACK_CHANGE] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { eventId } = parse(ChangeEventParamsSchema, request.params);
-    parse(AcknowledgeChangeSchema, request.body);
-    return service.acknowledgeChange(organizationId, eventId);
-  });
+  app.post(
+    "/api/v1/significant-changes/:eventId/acknowledge",
+    { preHandler: [ACK_CHANGE] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { eventId } = parse(ChangeEventParamsSchema, request.params);
+      parse(AcknowledgeChangeSchema, request.body);
+      return service.acknowledgeChange(organizationId, eventId);
+    },
+  );
 
   // 11 — internal: LatestAssessmentProvider batch (system principal; M7/M10).
   app.get("/api/v1/internal/assessments/latest-batch", { preHandler: [READ] }, async (request) => {
@@ -222,20 +303,28 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
   });
 
   // 14 — admin: register a scale license (idempotent via Idempotency-Key, M09-F06).
-  app.post("/api/v1/admin/scales/licenses", { preHandler: [LICENSE_ADMIN] }, async (request, reply) => {
-    const { organizationId } = actorOf(request);
-    const body = parse(CreateLicenseSchema, request.body);
-    const res = await service.createLicense(organizationId, body);
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/admin/scales/licenses",
+    { preHandler: [LICENSE_ADMIN] },
+    async (request, reply) => {
+      const { organizationId } = actorOf(request);
+      const body = parse(CreateLicenseSchema, request.body);
+      const res = await service.createLicense(organizationId, body);
+      return reply.code(201).send(res);
+    },
+  );
 
   // 15 — admin: update a scale license (partial; idempotent via Idempotency-Key, M09-F06).
-  app.patch("/api/v1/admin/scales/licenses/:id", { preHandler: [LICENSE_ADMIN] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(LicenseParamsSchema, request.params);
-    const body = parse(UpdateLicenseSchema, request.body);
-    return service.updateLicense(organizationId, id, body);
-  });
+  app.patch(
+    "/api/v1/admin/scales/licenses/:id",
+    { preHandler: [LICENSE_ADMIN] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(LicenseParamsSchema, request.params);
+      const body = parse(UpdateLicenseSchema, request.body);
+      return service.updateLicense(organizationId, id, body);
+    },
+  );
 
   // 16 — admin: scale-policy registry (the enabled/disabled scales for the tenant).
   app.get("/api/v1/admin/scales/policies", { preHandler: [POLICY_READ] }, async (request) => {
@@ -244,10 +333,14 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
   });
 
   // 17 — admin: enable/disable a scale (idempotent via Idempotency-Key, M09-F06).
-  app.patch("/api/v1/admin/scales/policies/:scaleType", { preHandler: [POLICY_ADMIN] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { scaleType } = parse(ScalePolicyParamsSchema, request.params);
-    const body = parse(UpdateScalePolicySchema, request.body);
-    return service.updatePolicy(organizationId, scaleType, body.enabled);
-  });
+  app.patch(
+    "/api/v1/admin/scales/policies/:scaleType",
+    { preHandler: [POLICY_ADMIN] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { scaleType } = parse(ScalePolicyParamsSchema, request.params);
+      const body = parse(UpdateScalePolicySchema, request.body);
+      return service.updatePolicy(organizationId, scaleType, body.enabled);
+    },
+  );
 }

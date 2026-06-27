@@ -38,6 +38,12 @@ export type AdmitResult =
       readonly matchedOn: string;
     };
 
+/** Census KPI counts (§4.2) — `total` patients in the org + a per-status breakdown. */
+export interface CensusMetrics {
+  readonly total: number;
+  readonly byStatus: Record<string, number>;
+}
+
 /** A minimal patient view a read returns. */
 export interface PatientView {
   readonly id: string;
@@ -248,6 +254,7 @@ export interface PatientRouteService {
     organizationId: string,
     query: PatientListQuery,
   ): Promise<{ items: PatientView[]; nextCursor: string | null }>;
+  censusMetrics(organizationId: string): Promise<CensusMetrics>;
   listAddresses(organizationId: string, patientId: string): Promise<AddressView[] | null>;
   listPayers(organizationId: string, patientId: string): Promise<PatientPayerView[] | null>;
   getCareTeam(organizationId: string, patientId: string): Promise<CareTeamView | null>;
@@ -466,6 +473,18 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
       const page = filtered.slice(offset, offset + limit);
       const nextOffset = offset + page.length;
       return { items: page, nextCursor: nextOffset < filtered.length ? String(nextOffset) : null };
+    },
+
+    async censusMetrics(organizationId) {
+      // §7.5: org-scoped (prod relies on RLS; the slice filters by organizationId).
+      const byStatus: Record<string, number> = {};
+      let total = 0;
+      for (const p of patients.values()) {
+        if (p.organizationId !== organizationId) continue;
+        total += 1;
+        byStatus[p.status] = (byStatus[p.status] ?? 0) + 1;
+      }
+      return { total, byStatus };
     },
 
     async listAddresses(organizationId, patientId) {

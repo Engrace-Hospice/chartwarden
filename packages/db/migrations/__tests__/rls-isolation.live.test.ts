@@ -174,6 +174,44 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
     expect(r.rows[0].n).toBe(1);
   });
 
+  it("break_glass_event: org B sees none of org A's glass; cross-tenant write rejected (M3 §3.5)", async () => {
+    // Break-glass persistence (audit #M3): the durable store writes break_glass_event under
+    // withOrgContext; prove the `break_glass_event_org` policy isolates it like every org-scoped table.
+    const bgUser = "33333333-3333-3333-3333-333333333333";
+    await db.query(
+      "INSERT INTO \"user\" (id,email) VALUES ($1,'bg@x.test') ON CONFLICT DO NOTHING",
+      [bgUser],
+    );
+    const ins = await withOrg(ORG_A, () =>
+      db.query(
+        "INSERT INTO break_glass_event (organization_id,actor_user_id,reason,expires_at) " +
+          "VALUES ($1,$2,'emergency',now()+interval '4 hours') RETURNING id",
+        [ORG_A, bgUser],
+      ),
+    );
+    const eventId = ins.rows[0].id as string;
+    // org A sees its own open glass…
+    const a = await withOrg(ORG_A, () =>
+      db.query("SELECT count(*)::int AS n FROM break_glass_event WHERE id=$1", [eventId]),
+    );
+    expect(a.rows[0].n).toBe(1);
+    // …org B sees none of it…
+    const b = await withOrg(ORG_B, () =>
+      db.query("SELECT count(*)::int AS n FROM break_glass_event WHERE id=$1", [eventId]),
+    );
+    expect(b.rows[0].n).toBe(0);
+    // …and org B cannot open glass in org A's name (WITH CHECK).
+    await expect(
+      withOrg(ORG_B, () =>
+        db.query(
+          "INSERT INTO break_glass_event (organization_id,actor_user_id,reason,expires_at) " +
+            "VALUES ($1,$2,'x',now()+interval '1 hour')",
+          [ORG_A, bgUser],
+        ),
+      ),
+    ).rejects.toThrow();
+  });
+
   it("audit_event is append-only to the app role (UPDATE + DELETE both denied)", async () => {
     await expect(
       withOrg(ORG_A, () => db.query("UPDATE audit_event SET created_at = now()")),
@@ -1825,8 +1863,20 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
         [MEM_A17, USER_A17, ORG_A, MEM_B17, USER_B17, ORG_B],
       );
       // One visit per org (superuser → RLS bypassed).
-      await db.query(`INSERT INTO visit ${VCOLS} VALUES (${VSEED})`, [VIS_A17, ORG_A, PE_A17, LOC_A17, MEM_A17]);
-      await db.query(`INSERT INTO visit ${VCOLS} VALUES (${VSEED})`, [VIS_B17, ORG_B, PE_B17, LOC_B17, MEM_B17]);
+      await db.query(`INSERT INTO visit ${VCOLS} VALUES (${VSEED})`, [
+        VIS_A17,
+        ORG_A,
+        PE_A17,
+        LOC_A17,
+        MEM_A17,
+      ]);
+      await db.query(`INSERT INTO visit ${VCOLS} VALUES (${VSEED})`, [
+        VIS_B17,
+        ORG_B,
+        PE_B17,
+        LOC_B17,
+        MEM_B17,
+      ]);
       // One state-history row on Org A's visit (append-only; reason is denylisted, to_state structural).
       await db.query(
         `INSERT INTO visit_state_history (id,organization_id,provider_entity_id,location_id,visit_id,from_state,to_state,reason)

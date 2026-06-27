@@ -1,10 +1,16 @@
 import { defineConfig } from "drizzle-kit";
 
 /**
- * WardenX — Drizzle Kit config (Phase 0).
- * The central multi-tenant PostgreSQL schema barrel lives in packages/db (M1-owned).
- * No tables exist yet (Phase 0 is structure only); this wires the generator so the
- * first real schema in Phase 1 produces migrations under packages/db/migrations/.
+ * WardenX — Drizzle Kit config.
+ * The central multi-tenant PostgreSQL schema barrel lives in packages/db (M1-owned); generated
+ * migrations land under packages/db/migrations/ (453 tables across 40 modules as of R2).
+ *
+ * MIGRATION AUTHORITY (audit #8): `scripts/db/migrate.ts` is the SOLE authoritative migrator — it
+ * applies EVERY `packages/db/migrations/*.sql` in lexical order, so it covers all SQL regardless of
+ * the Drizzle journal. The Drizzle `meta/_journal.json` is INTENTIONALLY FROZEN (it trails the SQL
+ * corpus) because parallel feature branches reserve disjoint migration-number ranges and the
+ * lexical-apply migrator tolerates the gaps; `drizzle-kit migrate` (which reads the journal) is NOT
+ * the project's migration path. Use `drizzle-kit` only to GENERATE new migration SQL, never to apply.
  */
 export default defineConfig({
   schema: "./packages/db/src/schema/index.ts",

@@ -1,10 +1,12 @@
 import type { ScreenRegistryModule } from "@wardenx/types";
-import { CenteredStatusLayout, useCorrelationId } from "@wardenx/ui";
+import { CenteredStatusLayout, Glyph, useCorrelationId } from "@wardenx/ui";
 // apps/web/src/shell — System / Utility Pages (M1 cross-cutting, Track A).
 // Spec: docs/design/screens/core/WARDENX_UI_SYSTEM_UTILITY_PAGES.md — "Use System Page."
-// One pattern (CenteredStatusLayout), several states: 403/404/500/offline/maintenance/expired/
-// suspended. PHI-free, always a forward action. These are M1 (the app shell owns them), registered
-// chromeless (standalone, outside the app chrome — they must work pre-auth too).
+// Matched to the P0 Pencil frame (wardenx-P0-foundation.pen `dT1Bt`): each state is a System Page —
+// a circular tonal icon badge (Lantern inline-SVG Glyph, NOT emoji — §10.10) + Fraunces headline +
+// muted explanation + a forward action. One pattern (CenteredStatusLayout), several states:
+// 403/404/500/offline/maintenance/expired/suspended. PHI-free, always a forward action. These are
+// M1 (the app shell owns them), registered chromeless (standalone — they must work pre-auth too).
 import type { JSX } from "react";
 import type { ComponentType } from "react";
 import { Link } from "react-router-dom";
@@ -14,7 +16,7 @@ const GoHome = (): JSX.Element => <Link to="/">Go home</Link>;
 export function NotFound(): JSX.Element {
   return (
     <CenteredStatusLayout
-      icon="🔍"
+      icon={<Glyph name="info" size={24} />}
       headline="We couldn’t find that"
       explanation="The page you’re looking for doesn’t exist."
       actions={<GoHome />}
@@ -25,7 +27,7 @@ export function NotFound(): JSX.Element {
 export function Forbidden(): JSX.Element {
   return (
     <CenteredStatusLayout
-      icon="🔒"
+      icon={<Glyph name="lock" size={24} />}
       headline="You don’t have access to this"
       explanation="Your account doesn’t have permission to view this page."
       actions={<GoHome />}
@@ -37,7 +39,7 @@ export function ServerError(): JSX.Element {
   const correlationId = useCorrelationId();
   return (
     <CenteredStatusLayout
-      icon="⚠️"
+      icon={<Glyph name="alert" size={24} />}
       headline="Something went wrong"
       explanation="An unexpected error occurred. Please try again."
       actions={<GoHome />}
@@ -49,7 +51,7 @@ export function ServerError(): JSX.Element {
 export function Offline(): JSX.Element {
   return (
     <CenteredStatusLayout
-      icon="📡"
+      icon={<Glyph name="block" size={24} />}
       headline="You’re offline"
       explanation="Check your connection and try again."
       actions={
@@ -64,7 +66,7 @@ export function Offline(): JSX.Element {
 export function Maintenance(): JSX.Element {
   return (
     <CenteredStatusLayout
-      icon="🛠️"
+      icon={<Glyph name="clock" size={24} />}
       headline="WardenX is undergoing maintenance"
       explanation="We’ll be back shortly. Thank you for your patience."
     />
@@ -74,7 +76,7 @@ export function Maintenance(): JSX.Element {
 export function SessionExpired(): JSX.Element {
   return (
     <CenteredStatusLayout
-      icon="⏳"
+      icon={<Glyph name="clock" size={24} />}
       headline="Your session ended"
       explanation="For your security, you were signed out."
       actions={<Link to="/login/organization">Sign in</Link>}
@@ -85,7 +87,7 @@ export function SessionExpired(): JSX.Element {
 export function Suspended(): JSX.Element {
   return (
     <CenteredStatusLayout
-      icon="🚫"
+      icon={<Glyph name="block" size={24} />}
       headline="Organization access unavailable"
       explanation="This organization’s access is currently unavailable. Please contact your administrator."
     />

@@ -52,7 +52,7 @@ export function OnboardingTemplates(): JSX.Element {
     setError(null);
     const { data, error: err } = await client.GET("/api/v1/platform/onboarding-templates", {
       params: { query: { limit: 100 } },
-    } as never);
+    });
     if (err) {
       setError("Could not load onboarding templates.");
       setLoading(false);
@@ -240,7 +240,7 @@ function TemplateEditor({
         canonicalOrder: Number(order),
         isCanonical: false,
       },
-    } as never);
+    });
     setSaving(false);
     if (err) {
       setSaveError("Could not save the template.");
