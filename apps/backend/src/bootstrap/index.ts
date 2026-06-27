@@ -16,6 +16,7 @@ import { wireErasers } from "./erasers/providers";
 import { validateErasers } from "./erasers/registry";
 import { applyErrorHandler } from "./plugins/error-handler";
 import { applyIdempotency, createInMemoryIdempotencyStore } from "./plugins/idempotency";
+import { buildLoggerOptions } from "./plugins/logger";
 import { applyRequestContext } from "./plugins/request-context";
 import { type SecurityOptions, applySecurityBaseline } from "./plugins/security";
 import { type ReadinessProbe, defaultReadinessProbe, registerHealthRoutes } from "./routes/health";
@@ -103,7 +104,7 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
   bootSeams(deps.registerModuleSeams, deps.registerModuleErasers);
 
   const app = Fastify({
-    logger: { level: process.env.LOG_LEVEL ?? "info" },
+    logger: buildLoggerOptions(), // PHI-safe: path-only URLs + redacted auth headers/cookies
     bodyLimit: deps.bodyLimit ?? TEN_MB,
   });
 

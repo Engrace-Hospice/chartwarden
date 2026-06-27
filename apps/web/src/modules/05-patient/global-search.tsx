@@ -1,10 +1,10 @@
 import {
-  cardSurface,
   EmptyState,
-  ghostBorder,
   Glyph,
   LoadingSpinner,
   StatusPill,
+  cardSurface,
+  ghostBorder,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -49,34 +49,32 @@ const FUTURE_FACETS = [
   { label: "Navigation & commands", blocked: "the command palette" },
 ] as const;
 
-const RECENT_KEY = "wardenx.search.recent";
+// Recent search terms carry PHI (patient names / MRNs), so they MUST NOT be persisted — no
+// localStorage/sessionStorage, which would survive in browser storage long after the session and
+// leak through a shared/forensic device. They live in process memory only (this module-scoped
+// array), so they vanish on reload/navigation away. Capped at 6, most-recent-first.
+const recentTerms: string[] = [];
 
 function readRecent(): string[] {
-  try {
-    const raw = window.localStorage.getItem(RECENT_KEY);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
-    return Array.isArray(parsed)
-      ? parsed.filter((v): v is string => typeof v === "string").slice(0, 6)
-      : [];
-  } catch {
-    return [];
-  }
+  return [...recentTerms];
 }
 
 function pushRecent(term: string): string[] {
-  const next = [term, ...readRecent().filter((t) => t !== term)].slice(0, 6);
-  try {
-    window.localStorage.setItem(RECENT_KEY, JSON.stringify(next));
-  } catch {
-    /* private mode / no storage — recents are best-effort */
-  }
+  const next = [term, ...recentTerms.filter((t) => t !== term)].slice(0, 6);
+  recentTerms.length = 0;
+  recentTerms.push(...next);
   return next;
 }
 
 // Initials for a result avatar (No-Line tinted circle, §3.3). Falls back to the first 2 chars.
 function initialsOf(...parts: string[]): string {
   const words = parts.flatMap((p) => p.split(/[\s,]+/)).filter(Boolean);
-  return (words.slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("") || "·").slice(0, 2);
+  return (
+    words
+      .slice(0, 2)
+      .map((w) => w[0]?.toUpperCase() ?? "")
+      .join("") || "·"
+  ).slice(0, 2);
 }
 
 export function GlobalSearchResults(): JSX.Element {
@@ -229,11 +227,7 @@ export function GlobalSearchResults(): JSX.Element {
               />
             ) : null}
             {showStaff ? (
-              <StaffGroup
-                hits={staff}
-                error={staffError}
-                onOpen={() => navigate("/admin/staff")}
-              />
+              <StaffGroup hits={staff} error={staffError} onOpen={() => navigate("/admin/staff")} />
             ) : null}
             <FutureFacets />
           </>
@@ -399,7 +393,8 @@ function StaffGroup({
         ))
       ) : (
         <p style={mutedRow}>
-          No staff matches. Name &amp; email search arrives with the staff-roster enrichment (FB-T12).
+          No staff matches. Name &amp; email search arrives with the staff-roster enrichment
+          (FB-T12).
         </p>
       )}
     </GroupCard>
@@ -414,7 +409,9 @@ function FutureFacets(): JSX.Element {
       {FUTURE_FACETS.map((f, i) => (
         <div key={f.label} style={{ ...futureRow, borderTop: i === 0 ? "none" : ghostBorder }}>
           <span style={{ color: t.onSurfaceVariant }}>{f.label}</span>
-          <span style={{ color: t.muted, fontSize: "0.8rem" }}>available when {f.blocked} ships</span>
+          <span style={{ color: t.muted, fontSize: "0.8rem" }}>
+            available when {f.blocked} ships
+          </span>
         </div>
       ))}
     </GroupCard>
@@ -506,7 +503,13 @@ const avatar = {
   fontWeight: 600,
   fontSize: "0.8rem",
 } as const;
-const rowText = { display: "flex", flexDirection: "column" as const, gap: "0.1rem", flex: 1, minWidth: 0 } as const;
+const rowText = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.1rem",
+  flex: 1,
+  minWidth: 0,
+} as const;
 const rowTitle = { fontWeight: 600, color: t.onSurface } as const;
 const rowMeta = { color: t.onSurfaceVariant, fontSize: "0.8rem" } as const;
 const futureRow = {
@@ -515,7 +518,12 @@ const futureRow = {
   alignItems: "center",
   padding: "0.6rem 0.25rem",
 } as const;
-const mutedRow = { color: t.muted, margin: 0, padding: "0.75rem 0.25rem", fontSize: "0.85rem" } as const;
+const mutedRow = {
+  color: t.muted,
+  margin: 0,
+  padding: "0.75rem 0.25rem",
+  fontSize: "0.85rem",
+} as const;
 const chip = {
   padding: "0.3rem 0.7rem",
   border: ghostBorder,
