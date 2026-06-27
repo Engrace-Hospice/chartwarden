@@ -897,6 +897,7 @@ export const MODULES: ModuleDef[] = [
     codePaths: [
       "packages/reporting",
       "apps/backend/src/modules/33-reporting",
+      "apps/web/src/modules/33-reporting",
     ],
     // M33 consumes every clinical/billing module THROUGH SEAMS (the runtime M1 SeamRegistry getSeam +
     // the outbox) — never an import edge — so the broad "all clinical + billing" relationship inventory
@@ -926,6 +927,7 @@ export const MODULES: ModuleDef[] = [
       "packages/saas-tenant-platform",
       "packages/admin-ui-shell",
       "apps/backend/src/modules/34-saas-tenant-platform",
+      "apps/web/src/modules/34-saas",
     ],
     // M1 (Foundation) is a genuine compile-time edge: M34's repositories import the @wardenx/db client
     // + schema barrel and the backend module imports the apps/backend/src/bootstrap seam registry

@@ -851,6 +851,7 @@ exports.MODULES = [
     codePaths: [
       "packages/reporting",
       "apps/backend/src/modules/33-reporting",
+      "apps/web/src/modules/33-reporting",
     ],
     // M33 consumes clinical/billing producers THROUGH SEAMS (runtime getSeam + outbox), NOT imports, so
     // the broad relationship inventory drops out of dependsOn (ADR-0005). Real edges: M1 (@wardenx/db +
@@ -878,6 +879,7 @@ exports.MODULES = [
       "packages/saas-tenant-platform",
       "packages/admin-ui-shell",
       "apps/backend/src/modules/34-saas-tenant-platform",
+      "apps/web/src/modules/34-saas",
     ],
     // M1 edge is real: M34 repos import the @wardenx/db client + schema barrel and the backend module
     // imports apps/backend/src/bootstrap (getSeam) — both M1-owned — plus M1 envelope/MinIO/idempotency.
