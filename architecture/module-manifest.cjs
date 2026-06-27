@@ -794,7 +794,7 @@ exports.MODULES = [
       "packages/quality",
       "packages/cahps-vendors",
     ],
-    dependsOn: [10, 23, 27, 36, 38],
+    dependsOn: [1, 2, 3, 4, 10, 23, 27, 36, 38],
     ownedTables: [
       "cahps_decedent_sample",
       "cahps_result_summary",
