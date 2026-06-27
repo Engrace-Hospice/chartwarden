@@ -4,10 +4,16 @@ export type { AppShellProps } from "./app";
 export { AppLayout, HomeScreen } from "./layout";
 export { createScreenRegistry } from "./screen-registry";
 export type { WebScreen, WebScreenDescriptor, WebScreenModule } from "./screen-registry";
-export { ActorSessionProvider, SessionProvider, useSession } from "./session";
-export type { ActorSessionProviderProps, Session, SessionProviderProps } from "./session";
-export { canSeeScreen, toSession } from "./actor-session";
-export type { ActorContextResponse } from "./actor-session";
+export { ActorSessionProvider, SessionProvider, useSession, useSessionState } from "./session";
+export type {
+  ActorSessionProviderProps,
+  Session,
+  SessionProviderProps,
+  SessionState,
+  SessionStatus,
+} from "./session";
+export { canSeeScreen, guardChromedRoute, toSession } from "./actor-session";
+export type { ActorContextResponse, RouteGuardOutcome } from "./actor-session";
 export {
   systemScreens,
   NotFound,

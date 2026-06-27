@@ -2,6 +2,20 @@
 // no sibling imports) so both the React provider (session.tsx) and the pure mapping/gating helper
 // (actor-session.ts) can depend on it without forming an import cycle.
 
+/**
+ * Resolution state of the browser session (FB-T15 / audit #6). The shell must distinguish
+ * "still loading the actor context" from "resolved, but signed out" — otherwise a loading null
+ * is indistinguishable from an anonymous null and chromed routes render fail-open. The route
+ * guard branches on this: loading → spinner, anonymous → redirect to /login, authenticated → render.
+ */
+export type SessionStatus = "loading" | "anonymous" | "authenticated";
+
+/** The session context value: the resolution status plus the resolved Session (null unless authenticated). */
+export interface SessionState {
+  status: SessionStatus;
+  session: Session | null;
+}
+
 export interface Session {
   userId: string;
   organizationId: string;

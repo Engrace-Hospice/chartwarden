@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   type ActorContextResponse,
   canSeeScreen,
+  guardChromedRoute,
   needsOrgSelection,
   toSession,
 } from "./actor-session";
@@ -91,9 +92,23 @@ describe("FB-T15 canSeeScreen — role-scoped nav/tile gating", () => {
     expect(canSeeScreen({ requiredPermission: "audit.read" }, session)).toBe(false);
   });
 
-  it("when the permission set is unknown (no session yet) gated screens stay visible — the shell adds no authz", () => {
-    expect(canSeeScreen({ requiredPermission: "audit.read" }, null)).toBe(true);
+  it("when the permission set is unknown (no session yet) gated screens FAIL CLOSED — hidden (audit #6)", () => {
+    expect(canSeeScreen({ requiredPermission: "audit.read" }, null)).toBe(false);
     const noPerms: Session = { userId: "u", organizationId: "org_a" };
-    expect(canSeeScreen({ requiredPermission: "audit.read" }, noPerms)).toBe(true);
+    expect(canSeeScreen({ requiredPermission: "audit.read" }, noPerms)).toBe(false);
+  });
+});
+
+describe("guardChromedRoute — chromed-route session guard (audit #6)", () => {
+  it("shows a spinner while the session is loading (no chrome flash, no premature redirect)", () => {
+    expect(guardChromedRoute("loading")).toBe("loading");
+  });
+
+  it("redirects an anonymous actor to sign-in", () => {
+    expect(guardChromedRoute("anonymous")).toBe("redirect");
+  });
+
+  it("allows an authenticated actor into the app frame", () => {
+    expect(guardChromedRoute("authenticated")).toBe("allow");
   });
 });

@@ -4,7 +4,7 @@
 // Session, and decides nav / Role-Home tile visibility from the actor's effective permissions.
 // The server is ALWAYS the authoritative enforcer; this only drives what the shell renders.
 import type { paths } from "@wardenx/ui";
-import type { Session } from "./session-types";
+import type { Session, SessionStatus } from "./session-types";
 
 /** The wire shape of `GET /api/v1/auth/context` (generated contract). */
 export type ActorContextResponse =
@@ -36,16 +36,33 @@ export function needsOrgSelection(session: Session | null): boolean {
 
 /**
  * Is a screen visible to the current actor? A screen with no `requiredPermission` is always
- * visible. When the actor's effective permission set is known, a gated screen shows only if the
- * actor holds the key — the SAME key the server enforces on the underlying route. When it is
- * unknown (session not yet resolved, or an environment without the context endpoint), screens
- * stay visible: the shell never adds authz of its own, and the server denies the routes anyway.
+ * visible. A gated screen shows only when the actor's effective permission set is known AND holds
+ * the key — the SAME key the server enforces on the underlying route. When the permission set is
+ * unknown (session not yet resolved, or an environment without the context endpoint), a gated screen
+ * FAILS CLOSED — it stays hidden (audit #6). The route guard already keeps the nav from rendering at
+ * all until the session is authenticated, so this is the defensive second line; the server remains
+ * the authoritative enforcer either way.
  */
 export function canSeeScreen(
   screen: { requiredPermission?: string },
   session: Session | null,
 ): boolean {
   if (!screen.requiredPermission) return true;
-  if (!session?.permissions) return true;
+  if (!session?.permissions) return false; // unknown perms → fail closed (was fail-open)
   return session.permissions.includes(screen.requiredPermission);
+}
+
+/** What a chromed-route guard should do for a given session status (audit #6). */
+export type RouteGuardOutcome = "loading" | "redirect" | "allow";
+
+/**
+ * The chromed-route guard decision (pure, so it is unit-testable in the node env). `loading` →
+ * render a spinner (don't flash chrome or redirect before we know); `redirect` → send an anonymous
+ * actor to sign-in; `allow` → render the authenticated app frame. The org-binding sub-case
+ * (authenticated but no org) is handled downstream by `needsOrgSelection` inside the layout.
+ */
+export function guardChromedRoute(status: SessionStatus): RouteGuardOutcome {
+  if (status === "loading") return "loading";
+  if (status === "anonymous") return "redirect";
+  return "allow";
 }
