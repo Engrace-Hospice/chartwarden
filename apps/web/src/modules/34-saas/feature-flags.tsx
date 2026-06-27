@@ -1,5 +1,4 @@
 import {
-  cardSurface,
   CeremonyModal,
   EmptyState,
   FilterBar,
@@ -9,10 +8,12 @@ import {
   PageHeader,
   RightDetailPanel,
   StatusPill,
-  t,
   WorkQueueLayout,
+  cardSurface,
+  t,
   useApiClient,
 } from "@wardenx/ui";
+import type { paths } from "@wardenx/ui";
 // apps/web/src/modules/34-saas — Feature Flags admin (M34, §4.7 / D13, platform-ops surface).
 // Spec: docs/design/screens — M34 §5.1 screen inventory. Matched to the P4 Pencil frame
 // (wardenx-P4-admin-platform.pen `bxUqf`): a KPI strip (total / enabled / kill-switches / per-tenant)
@@ -70,11 +71,13 @@ export function FeatureFlags(): JSX.Element {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const query: Record<string, string | number> = { limit: 50 };
-    if (flagKind) query.flagKind = flagKind;
+    const query: NonNullable<
+      paths["/api/v1/platform/feature-flags"]["get"]["parameters"]["query"]
+    > = { limit: 50 };
+    if (flagKind) query.flagKind = flagKind as typeof query.flagKind;
     if (orgFilter.trim()) query.organizationId = orgFilter.trim();
     const { data, error: err } = await client.GET("/api/v1/platform/feature-flags", {
-      params: { query } as never,
+      params: { query },
     });
     if (err) {
       setError("Could not load feature flags.");
@@ -103,8 +106,8 @@ export function FeatureFlags(): JSX.Element {
           params: { path: { flagKey: flag.flagKey } },
           body: {
             killSwitchActive: !flag.killSwitchActive,
-            organizationId: flag.organizationId,
-          } as never,
+            reason: `Kill switch toggled via platform feature-flags console for ${flag.flagKey}`,
+          },
         },
       );
       setCommitting(false);

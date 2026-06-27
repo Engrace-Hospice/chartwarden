@@ -66,7 +66,7 @@ export function ReportingAdmin(): JSX.Element {
     setLoading(true);
     setError(null);
     const [mvRes, lagRes] = await Promise.all([
-      client.GET("/api/v1/reporting/admin/mvs", { params: { query: { limit: 100 } } as never }),
+      client.GET("/api/v1/reporting/admin/mvs", { params: { query: { limit: 100 } } }),
       client.GET("/api/v1/reporting/admin/lag"),
     ]);
     if (mvRes.error) {
@@ -144,13 +144,26 @@ function LagGauge({ lag }: { lag: ReplicaLag | null }): JSX.Element {
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-        <span style={{ fontSize: "0.6875rem", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--color-on-surface-variant)" }}>
+        <span
+          style={{
+            fontSize: "0.6875rem",
+            fontWeight: 600,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+            color: "var(--color-on-surface-variant)",
+          }}
+        >
           Read-replica posture
         </span>
         {lag ? (
-          <StatusPill label={lagLabel(lag.lagSeconds, lag.breakerOpen)} tone={lagTone(lag.lagSeconds, lag.breakerOpen)} />
+          <StatusPill
+            label={lagLabel(lag.lagSeconds, lag.breakerOpen)}
+            tone={lagTone(lag.lagSeconds, lag.breakerOpen)}
+          />
         ) : (
-          <span style={{ fontSize: "0.85rem", color: "var(--color-on-surface-variant)" }}>Unavailable</span>
+          <span style={{ fontSize: "0.85rem", color: "var(--color-on-surface-variant)" }}>
+            Unavailable
+          </span>
         )}
       </div>
       {lag ? (
@@ -158,13 +171,28 @@ function LagGauge({ lag }: { lag: ReplicaLag | null }): JSX.Element {
           <Gauge label="Lag" value={`${Math.round(lag.lagSeconds)}s`} />
           <Gauge label="Threshold" value={`${Math.round(lag.thresholdSeconds)}s`} />
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <span style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>Breaker</span>
-            <span style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.9rem" }}>
-              <Glyph name={lag.breakerOpen ? "alert" : "check-circle"} size={16} label="breaker state" />
+            <span style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>
+              Breaker
+            </span>
+            <span
+              style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.9rem" }}
+            >
+              <Glyph
+                name={lag.breakerOpen ? "alert" : "check-circle"}
+                size={16}
+                label="breaker state"
+              />
               {lag.breakerOpen ? "Open" : "Closed"}
             </span>
           </div>
-          <span className="tabular-nums" style={{ marginLeft: "auto", fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>
+          <span
+            className="tabular-nums"
+            style={{
+              marginLeft: "auto",
+              fontSize: "0.75rem",
+              color: "var(--color-on-surface-variant)",
+            }}
+          >
             {asOfLabel(lag.sampledAt)}
           </span>
         </>
@@ -177,7 +205,10 @@ function Gauge({ label, value }: { label: string; value: string }): JSX.Element 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
       <span style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>{label}</span>
-      <span className="tabular-nums" style={{ fontSize: "1.25rem", fontWeight: 600, color: "var(--color-on-surface)" }}>
+      <span
+        className="tabular-nums"
+        style={{ fontSize: "1.25rem", fontWeight: 600, color: "var(--color-on-surface)" }}
+      >
         {value}
       </span>
     </div>
@@ -239,7 +270,10 @@ function MvCatalog({
                       label={freshnessLabel(mv.lastRefreshedAt, failedState)}
                       tone={freshnessTone(mv.lastRefreshedAt, failedState)}
                     />
-                    <span className="tabular-nums" style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>
+                    <span
+                      className="tabular-nums"
+                      style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}
+                    >
                       {asOfLabel(mv.lastRefreshedAt)}
                     </span>
                   </div>
@@ -248,7 +282,12 @@ function MvCatalog({
                 <td className="tabular-nums">{mv.lastRefreshDurationMs ?? "—"}</td>
                 <td>
                   <div style={{ display: "flex", gap: "0.5rem" }}>
-                    <button type="button" onClick={() => onRefresh(mv.mvKey)} disabled={busy} style={{ fontSize: "0.75rem" }}>
+                    <button
+                      type="button"
+                      onClick={() => onRefresh(mv.mvKey)}
+                      disabled={busy}
+                      style={{ fontSize: "0.75rem" }}
+                    >
                       {busy ? "…" : "Refresh"}
                     </button>
                     <button

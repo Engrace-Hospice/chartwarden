@@ -5345,6 +5345,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Platform BAA register — optional tenant filter (§4.1) */
         get: operations["getApiV1PlatformBaaregister"];
         put?: never;
         post: operations["postApiV1PlatformBaaregister"];
@@ -5377,6 +5378,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Platform feature-flag registry — optional org filter (§4.1) */
         get: operations["getApiV1PlatformFeatureflags"];
         put?: never;
         post: operations["postApiV1PlatformFeatureflags"];
@@ -5395,6 +5397,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Toggle a feature flag's kill switch (org-scoped or platform-wide) */
         post: operations["postApiV1PlatformFeatureflagsByFlagKeyKillswitch"];
         delete?: never;
         options?: never;
@@ -5409,8 +5412,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Platform onboarding-template catalog (cursor-paginated) */
         get: operations["getApiV1PlatformOnboardingtemplates"];
         put?: never;
+        /** Create or update a platform onboarding template */
         post: operations["postApiV1PlatformOnboardingtemplates"];
         delete?: never;
         options?: never;
@@ -5569,6 +5574,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Platform tenant inventory — status/search filters (§4.1) */
         get: operations["getApiV1PlatformTenants"];
         put?: never;
         post: operations["postApiV1PlatformTenants"];
@@ -6087,6 +6093,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Materialized-view admin registry (cursor-paginated) */
         get: operations["getApiV1ReportingAdminMvs"];
         put?: never;
         post?: never;
@@ -6167,6 +6174,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Reporting dashboard catalog (cursor-paginated) */
         get: operations["getApiV1ReportingDashboards"];
         put?: never;
         post?: never;
@@ -6297,6 +6305,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Resolve a tile's drilldown URL template + dimension context into a signed drilldown */
         post: operations["postApiV1ReportingDrilldownEmit"];
         delete?: never;
         options?: never;
@@ -6343,6 +6352,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Report schedules — optional status filter (§4.1) */
         get: operations["getApiV1ReportingSchedules"];
         put?: never;
         post: operations["postApiV1ReportingSchedules"];
@@ -6957,6 +6967,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Tenant DSAR export job queue (cursor-paginated) */
         get: operations["getApiV1TenantDsarexportjobs"];
         put?: never;
         post: operations["postApiV1TenantDsarexportjobs"];
@@ -7103,6 +7114,7 @@ export interface paths {
         };
         get: operations["getApiV1TenantSupportconsentgrants"];
         put?: never;
+        /** Issue a tenant-scoped support-access consent grant (§6/D10 step-up enforced server-side) */
         post: operations["postApiV1TenantSupportconsentgrants"];
         delete?: never;
         options?: never;
@@ -7133,6 +7145,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Tenant data-export job queue (cursor-paginated) */
         get: operations["getApiV1TenantTenantexportjobs"];
         put?: never;
         post: operations["postApiV1TenantTenantexportjobs"];
@@ -17166,7 +17179,12 @@ export interface operations {
     };
     getApiV1PlatformBaaregister: {
         parameters: {
-            query?: never;
+            query?: {
+                tenantAccountId?: string;
+                status?: "executed" | "pending" | "terminated" | "missing";
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -17228,7 +17246,12 @@ export interface operations {
     };
     getApiV1PlatformFeatureflags: {
         parameters: {
-            query?: never;
+            query?: {
+                organizationId?: string;
+                flagKind?: "product" | "rollout" | "kill_switch" | "migration";
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -17275,7 +17298,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    killSwitchActive: boolean;
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -17290,7 +17320,10 @@ export interface operations {
     };
     getApiV1PlatformOnboardingtemplates: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -17315,7 +17348,18 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    key: string;
+                    title: string;
+                    description?: string;
+                    canonicalOrder: number;
+                    /** @constant */
+                    isCanonical?: false;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -17562,7 +17606,14 @@ export interface operations {
     };
     getApiV1PlatformTenants: {
         parameters: {
-            query?: never;
+            query?: {
+                status?: "signup_intent" | "provisioning" | "onboarding" | "active" | "suspended" | "at_risk" | "offboarding_initiated" | "final_export_pending" | "retained" | "destruction_pending" | "destroyed";
+                planLabel?: string;
+                createdAfter?: string;
+                search?: string;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -18411,7 +18462,11 @@ export interface operations {
     };
     getApiV1ReportingAdminMvs: {
         parameters: {
-            query?: never;
+            query?: {
+                status?: "registered" | "active" | "suspended" | "retired";
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -18517,7 +18572,10 @@ export interface operations {
     };
     getApiV1ReportingDashboards: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -18735,7 +18793,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    tileKey: string;
+                    /** Format: uuid */
+                    reportViewId?: string;
+                    dimensionContext: {
+                        [key: string]: string;
+                    };
+                    queryFilters?: unknown;
+                    patientIds?: string[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -18792,7 +18863,11 @@ export interface operations {
     };
     getApiV1ReportingSchedules: {
         parameters: {
-            query?: never;
+            query?: {
+                status?: "active" | "paused" | "cancelled";
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -19855,7 +19930,12 @@ export interface operations {
     };
     getApiV1TenantDsarexportjobs: {
         parameters: {
-            query?: never;
+            query?: {
+                patientId?: string;
+                status?: "requested" | "generating" | "review_pending" | "fulfilled" | "denied" | "extended";
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -20094,7 +20174,16 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    scope: "organization_scoped" | "patient_scoped";
+                    patientIdsInScope?: string[];
+                    grantReason: string;
+                    expiresAtIsoOffsetHours: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -20131,7 +20220,11 @@ export interface operations {
     };
     getApiV1TenantTenantexportjobs: {
         parameters: {
-            query?: never;
+            query?: {
+                status?: "requested" | "generating" | "fulfilled" | "expired" | "cancelled";
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;

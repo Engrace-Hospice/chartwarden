@@ -8,6 +8,7 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
+import type { paths } from "@wardenx/ui";
 // apps/web/src/modules/34-saas — Platform-tenant BAA register (M34, §3.8 / D11, platform-ops surface).
 // Spec: docs/design/screens — M34 §5.1 screen inventory. "Use Work Queue."
 // Lists the platform→tenant Business Associate Agreement records across tenants (DISTINCT from M40's
@@ -57,11 +58,12 @@ export function BaaRegister(): JSX.Element {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const query: Record<string, string | number> = { limit: 50 };
-    if (status) query.status = status;
+    const query: NonNullable<paths["/api/v1/platform/baa-register"]["get"]["parameters"]["query"]> =
+      { limit: 50 };
+    if (status) query.status = status as typeof query.status;
     if (tenantFilter.trim()) query.tenantAccountId = tenantFilter.trim();
     const { data, error: err } = await client.GET("/api/v1/platform/baa-register", {
-      params: { query } as never,
+      params: { query },
     });
     if (err) {
       setError("Could not load the BAA register.");

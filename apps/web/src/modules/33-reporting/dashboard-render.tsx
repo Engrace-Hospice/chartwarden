@@ -99,7 +99,8 @@ export function DashboardRender(): JSX.Element {
           title={detail.displayName}
           breadcrumb={
             <>
-              <span className="wx-data-md">{detail.dashboardId}</span> · {statusLabel(detail.shareScope)}
+              <span className="wx-data-md">{detail.dashboardId}</span> ·{" "}
+              {statusLabel(detail.shareScope)}
             </>
           }
           actions={
@@ -165,7 +166,7 @@ function TileFrame({ tile }: { tile: TileDescriptor }): JSX.Element {
   const drilldown = useCallback(async () => {
     setDrillBusy(true);
     const { data, error: err } = await client.POST("/api/v1/reporting/drilldown/emit", {
-      body: { tileKey: tile.tileKey, dimensionContext: {} } as never,
+      body: { tileKey: tile.tileKey, dimensionContext: {} },
     });
     setDrillBusy(false);
     if (err) return;
@@ -188,22 +189,49 @@ function TileFrame({ tile }: { tile: TileDescriptor }): JSX.Element {
         gap: "0.75rem",
       }}
     >
-      <header style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "0.5rem" }}>
+      <header
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: "0.5rem",
+        }}
+      >
         <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-          <h2 style={{ margin: 0, fontFamily: "var(--font-display)", fontSize: "1rem", fontWeight: 500 }}>
+          <h2
+            style={{
+              margin: 0,
+              fontFamily: "var(--font-display)",
+              fontSize: "1rem",
+              fontWeight: 500,
+            }}
+          >
             {tile.displayName ?? tile.tileKey}
           </h2>
-          <span className="wx-data-md" style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>
+          <span
+            className="wx-data-md"
+            style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}
+          >
             {tile.tileKey}
           </span>
         </div>
         {result ? (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.25rem" }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-end",
+              gap: "0.25rem",
+            }}
+          >
             <StatusPill
               label={freshnessSecondsLabel(result.dataFreshnessSeconds, breaker)}
               tone={freshnessSecondsTone(result.dataFreshnessSeconds, breaker)}
             />
-            <span className="tabular-nums" style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>
+            <span
+              className="tabular-nums"
+              style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}
+            >
               {asOfLabel(result.asOf)}
             </span>
           </div>
@@ -213,7 +241,14 @@ function TileFrame({ tile }: { tile: TileDescriptor }): JSX.Element {
       {loading ? (
         <LoadingSpinner />
       ) : failed ? (
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--color-on-surface-variant)" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            color: "var(--color-on-surface-variant)",
+          }}
+        >
           <Glyph name="alert" size={16} label="Tile unavailable" />
           <span style={{ fontSize: "0.85rem" }}>Tile unavailable.</span>
         </div>
@@ -230,10 +265,25 @@ function TileFrame({ tile }: { tile: TileDescriptor }): JSX.Element {
               aggregate rows
             </span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
-            <DerivedBadge source={`${statusLabel(result?.scopeApplied.scopeKind ?? "org")} scope`} verb="computed from" />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "0.5rem",
+            }}
+          >
+            <DerivedBadge
+              source={`${statusLabel(result?.scopeApplied.scopeKind ?? "org")} scope`}
+              verb="computed from"
+            />
             {hasDrilldown ? (
-              <button type="button" onClick={() => void drilldown()} disabled={drillBusy} style={{ fontSize: "0.75rem" }}>
+              <button
+                type="button"
+                onClick={() => void drilldown()}
+                disabled={drillBusy}
+                style={{ fontSize: "0.75rem" }}
+              >
                 {drillBusy ? "Resolving…" : "Drill into source →"}
               </button>
             ) : null}

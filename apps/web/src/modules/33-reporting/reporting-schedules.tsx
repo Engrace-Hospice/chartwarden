@@ -7,6 +7,7 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
+import type { paths } from "@wardenx/ui";
 // apps/web/src/modules/33-reporting — M33 Reporting & Analytics, the SCHEDULE MANAGEMENT queue (R2).
 // Spec §5.1.6 (`/reports/schedules`) — the scheduled-delivery pipeline (D7): list schedules (My
 // Schedules / Affecting Me tabs), then read a selected schedule's run ledger. Backed by GET
@@ -73,11 +74,12 @@ export function ReportingSchedules(): JSX.Element {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const query: Record<string, string | number> = { limit: 50 };
-    if (statusFilter) query.status = statusFilter;
+    const query: NonNullable<paths["/api/v1/reporting/schedules"]["get"]["parameters"]["query"]> = {
+      limit: 50,
+    };
+    if (statusFilter) query.status = statusFilter as typeof query.status;
     const { data, error: err } = await client.GET("/api/v1/reporting/schedules", {
-      // The live route reads the status filter the OpenAPI path does not yet type (§4.1).
-      params: { query } as never,
+      params: { query },
     });
     if (err) {
       setError("Schedules unavailable.");
@@ -104,7 +106,11 @@ export function ReportingSchedules(): JSX.Element {
             </button>
           }
         >
-          <div role="tablist" aria-label="Schedule scope" style={{ display: "flex", gap: "0.25rem" }}>
+          <div
+            role="tablist"
+            aria-label="Schedule scope"
+            style={{ display: "flex", gap: "0.25rem" }}
+          >
             <TabButton active={tab === "mine"} onClick={() => setTab("mine")}>
               My Schedules
             </TabButton>
@@ -183,7 +189,9 @@ function ScheduleTable({
   if (error) return <EmptyState title="Unavailable" description={error} />;
   if (loading) return <LoadingSpinner />;
   if (schedules.length === 0)
-    return <EmptyState title="No schedules" description="No scheduled reports match this filter." />;
+    return (
+      <EmptyState title="No schedules" description="No scheduled reports match this filter." />
+    );
   return (
     <div style={{ padding: "0 1.5rem" }}>
       <table>
@@ -263,7 +271,14 @@ function RunLedger({ scheduleId }: { scheduleId: string }): JSX.Element {
   }, [load]);
 
   return (
-    <section style={{ padding: "0 1.5rem 1.5rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+    <section
+      style={{
+        padding: "0 1.5rem 1.5rem",
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.75rem",
+      }}
+    >
       <h2
         style={{
           margin: 0,

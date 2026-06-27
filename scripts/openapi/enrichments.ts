@@ -35,39 +35,24 @@ import {
   PatientPrivacyFlagsResponseSchema,
   PatientSummarySchema,
 } from "../../apps/backend/src/modules/05-patient/routes/patient-typebox";
-import {
-  ListMessagesQuerySchema,
-  SendMessageBodySchema,
-} from "../../apps/backend/src/modules/36-messaging/routes/messaging-typebox";
 import { OrderListQuerySchema } from "../../apps/backend/src/modules/11-orders/routes/orders-typebox";
 import {
-  AdministrationListQuerySchema as EmarAdministrationListQuerySchema,
   AdministrationListResponseSchema,
   AdministrationPolicyViewSchema,
   AdministrationViewSchema,
   DeploymentListResponseSchema,
-  DeploymentQuerySchema as EmarDeploymentQuerySchema,
   DeploymentViewSchema,
+  AdministrationListQuerySchema as EmarAdministrationListQuerySchema,
+  DeploymentQuerySchema as EmarDeploymentQuerySchema,
+  MissedDoseQuerySchema as EmarMissedDoseQuerySchema,
+  ScheduledDoseQuerySchema as EmarScheduledDoseQuerySchema,
+  WorksheetQuerySchema as EmarWorksheetQuerySchema,
   IvSessionViewSchema,
   MissedDoseListResponseSchema,
-  MissedDoseQuerySchema as EmarMissedDoseQuerySchema,
   ScheduledDoseListResponseSchema,
-  ScheduledDoseQuerySchema as EmarScheduledDoseQuerySchema,
   WorksheetListResponseSchema,
-  WorksheetQuerySchema as EmarWorksheetQuerySchema,
   WorksheetViewSchema,
 } from "../../apps/backend/src/modules/13-emar/routes/emar-typebox";
-import {
-  DocumentListQuerySchema as M22DocumentListQuerySchema,
-  DocumentListResponseSchema as M22DocumentListResponseSchema,
-  DocumentViewSchema as M22DocumentViewSchema,
-  FormTemplateListResponseSchema as M22FormTemplateListResponseSchema,
-  IntakeBatchViewSchema as M22IntakeBatchViewSchema,
-  IntakeJobListResponseSchema as M22IntakeJobListResponseSchema,
-  TemplateListQuerySchema as M22TemplateListQuerySchema,
-  VersionListQuerySchema as M22VersionListQuerySchema,
-  VersionListResponseSchema as M22VersionListResponseSchema,
-} from "../../apps/backend/src/modules/22-documents/routes/documents-typebox";
 import {
   ActionItemListQuerySchema as IdgActionItemListQuerySchema,
   ActionItemListResponseSchema as IdgActionItemListResponseSchema,
@@ -105,17 +90,57 @@ import {
   AggregatorListQuery as EvvAggregatorListQuery,
   EvvAggregatorSubmissionListResponse,
   EvvDeviceListResponse,
+  EventGetQuery as EvvEventGetQuery,
+  EventListQuery as EvvEventListQuery,
   EvvEventListResponse,
   EvvEventView,
   EvvGeofencePolicyView,
-  EvvMetricsView,
-  EvvMissingResolutionListResponse,
-  EventGetQuery as EvvEventGetQuery,
-  EventListQuery as EvvEventListQuery,
   MembershipIdQuery as EvvMembershipIdQuery,
   MetricsQuery as EvvMetricsQuery,
+  EvvMetricsView,
   MissingResolutionListQuery as EvvMissingResolutionListQuery,
+  EvvMissingResolutionListResponse,
 } from "../../apps/backend/src/modules/18-evv/routes/evv-typebox";
+import {
+  DocumentListQuerySchema as M22DocumentListQuerySchema,
+  DocumentListResponseSchema as M22DocumentListResponseSchema,
+  DocumentViewSchema as M22DocumentViewSchema,
+  FormTemplateListResponseSchema as M22FormTemplateListResponseSchema,
+  IntakeBatchViewSchema as M22IntakeBatchViewSchema,
+  IntakeJobListResponseSchema as M22IntakeJobListResponseSchema,
+  TemplateListQuerySchema as M22TemplateListQuerySchema,
+  VersionListQuerySchema as M22VersionListQuerySchema,
+  VersionListResponseSchema as M22VersionListResponseSchema,
+} from "../../apps/backend/src/modules/22-documents/routes/documents-typebox";
+// M33 Reporting & Dashboards — the read query + drilldown body the Track B screens call (FB read paths).
+import {
+  DashboardListQuerySchema,
+  MvListQuerySchema,
+} from "../../apps/backend/src/modules/33-reporting/routes/reporting-typebox";
+import {
+  DrilldownEmitRequest,
+  ScheduleListQuery,
+} from "../../apps/backend/src/modules/33-reporting/routes/write-typebox";
+import {
+  BaaRegisterListQuerySchema,
+  FeatureFlagListQuerySchema,
+  OnboardingTemplateListQuerySchema,
+  UpsertOnboardingTemplateRequest,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/platform-typebox";
+import {
+  DsarListQuerySchema,
+  TenantExportListQuerySchema,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/tenant/tenant-typebox";
+// M34 SaaS Tenant Platform — platform-ops + tenant read queries + the write bodies the admin screens call.
+import {
+  KillSwitchRequest,
+  SupportConsentGrantRequest,
+  TenantListQuerySchema,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/typebox";
+import {
+  ListMessagesQuerySchema,
+  SendMessageBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/messaging-typebox";
 import { SearchQuerySchema as TerminologySearchQuerySchema } from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
 import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
 
@@ -415,7 +440,9 @@ const AssessmentViewDtoSchema = Type.Object({
   redacted: Type.Boolean(),
   version: Type.Integer(),
 });
-const AssessmentListResponseSchema = Type.Object({ assessments: Type.Array(AssessmentViewDtoSchema) });
+const AssessmentListResponseSchema = Type.Object({
+  assessments: Type.Array(AssessmentViewDtoSchema),
+});
 const AssessmentSummaryResponseSchema = Type.Object({
   patientId: Type.String(),
   latest: Type.Array(AssessmentViewDtoSchema),
@@ -498,7 +525,10 @@ const HopeAssessmentViewSchema = Type.Object({
   signedBy: Type.Union([Type.String(), Type.Null()]),
   correctsAssessmentId: Type.Union([Type.String(), Type.Null()]),
   supersededByAssessmentId: Type.Union([Type.String(), Type.Null()]),
-  snapshot: Type.Union([Type.Record(Type.String(), Type.Union([Type.Number(), Type.Null()])), Type.Null()]),
+  snapshot: Type.Union([
+    Type.Record(Type.String(), Type.Union([Type.Number(), Type.Null()])),
+    Type.Null(),
+  ]),
   version: Type.Integer(),
 });
 const HopeSfvViewSchema = Type.Object({
@@ -533,7 +563,9 @@ const HopeValidationResponseSchema = Type.Object({
     Type.Object({ ruleId: Type.String(), severity: Type.String(), message: Type.String() }),
   ),
 });
-const HopeScheduleListResponseSchema = Type.Object({ schedules: Type.Array(HopeScheduleViewSchema) });
+const HopeScheduleListResponseSchema = Type.Object({
+  schedules: Type.Array(HopeScheduleViewSchema),
+});
 const HopeAssessmentListResponseSchema = Type.Object({
   assessments: Type.Array(HopeAssessmentViewSchema),
 });
@@ -547,7 +579,9 @@ const HopeScheduleListQuerySchema = Type.Object({
   rfaKind: Type.Optional(Type.String()),
 });
 const HopeSfvWorklistQuerySchema = Type.Object({ state: Type.Optional(Type.String()) });
-const HopeSubmissionListQuerySchema = Type.Object({ providerEntityId: Type.Optional(Type.String()) });
+const HopeSubmissionListQuerySchema = Type.Object({
+  providerEntityId: Type.Optional(Type.String()),
+});
 const HopeDashboardQuerySchema = Type.Object({ providerEntityId: Type.Optional(Type.String()) });
 
 // ── M11 Orders read DTOs (Track B, M11-T08) ────────────────────────────────────────────────────────
@@ -783,20 +817,24 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   // Registry / Policy Editor, M9-T07). Read responses only; the write routes keep their route-level
   // TypeBox request bodies (already in the contract). SUD redaction is server-side (§7.6).
   "GET /api/v1/patients/:patientId/assessments": {
-    summary: "Patient assessment timeline — every captured scale, newest first; §7.6 SUD-redacted per caller (§5.2)",
+    summary:
+      "Patient assessment timeline — every captured scale, newest first; §7.6 SUD-redacted per caller (§5.2)",
     response: AssessmentListResponseSchema,
   },
   "GET /api/v1/patients/:patientId/assessments/summary": {
-    summary: "Assessment summary — latest value per scale family across all scales; SUD-redacted per caller (§5.2)",
+    summary:
+      "Assessment summary — latest value per scale family across all scales; SUD-redacted per caller (§5.2)",
     response: AssessmentSummaryResponseSchema,
   },
   "GET /api/v1/patients/:patientId/scales/:scaleType/series": {
-    summary: "Per-scale scored series over a [from,to] window with significant-change markers (§5.2)",
+    summary:
+      "Per-scale scored series over a [from,to] window with significant-change markers (§5.2)",
     query: ScaleSeriesQuerySchema,
     response: ScaleSeriesResponseSchema,
   },
   "GET /api/v1/patients/:patientId/significant-changes": {
-    summary: "Per-patient significant-change worklist — open/escalated changes with ack state (§5.2)",
+    summary:
+      "Per-patient significant-change worklist — open/escalated changes with ack state (§5.2)",
     response: SignificantChangeListResponseSchema,
   },
   "GET /api/v1/admin/scales/licenses": {
@@ -833,7 +871,8 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: HopeValidationResponseSchema,
   },
   "GET /api/v1/hope/sfv": {
-    summary: "SFV worklist — open/overdue/missed symptom-follow-up visits across the org (§5.1/§5.2)",
+    summary:
+      "SFV worklist — open/overdue/missed symptom-follow-up visits across the org (§5.1/§5.2)",
     query: HopeSfvWorklistQuerySchema,
     response: HopeSfvListResponseSchema,
   },
@@ -851,7 +890,8 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: HopeSubmissionViewSchema,
   },
   "GET /api/v1/hope/dashboard/compliance": {
-    summary: "HQRP compliance dashboard — on-time / SFV on-time / submission acceptance rates (§5.2)",
+    summary:
+      "HQRP compliance dashboard — on-time / SFV on-time / submission acceptance rates (§5.2)",
     query: HopeDashboardQuerySchema,
     response: HopeComplianceViewSchema,
   },
@@ -864,7 +904,8 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: OrderListResponseSchema,
   },
   "GET /api/v1/orders/:id": {
-    summary: "Order detail — lifecycle status, signatures, verbal deadline, transmission/results state (§4.1)",
+    summary:
+      "Order detail — lifecycle status, signatures, verbal deadline, transmission/results state (§4.1)",
     response: OrderViewSchema,
   },
   "GET /api/v1/orders/pending-signature": {
@@ -872,11 +913,13 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: OrderListResponseSchema,
   },
   "GET /api/v1/orders/verbal-expiring": {
-    summary: "RN verbal-expiring queue — verbal_pending orders with a live 48h countdown (§4.1 / §5.2 D3)",
+    summary:
+      "RN verbal-expiring queue — verbal_pending orders with a live 48h countdown (§4.1 / §5.2 D3)",
     response: OrderListResponseSchema,
   },
   "GET /api/v1/orders/cosign-pending": {
-    summary: "RN cosign-pending queue — orders awaiting an RN/supervisor cosignature (§4.1 / §5.2 §2.5)",
+    summary:
+      "RN cosign-pending queue — orders awaiting an RN/supervisor cosignature (§4.1 / §5.2 §2.5)",
     response: OrderListResponseSchema,
   },
   "GET /api/v1/orders/results-pending-review": {
@@ -892,7 +935,8 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: StandingOrderViewSchema,
   },
   "GET /api/v1/admin/orders/verbal-policy": {
-    summary: "Org verbal-order policy — window hours, cosign kinds, platform floor (§4.1 / §2.3 D3)",
+    summary:
+      "Org verbal-order policy — window hours, cosign kinds, platform floor (§4.1 / §2.3 D3)",
     response: VerbalPolicyViewSchema,
   },
   // M12 DoseSpot prescribing (Track B — Patient Medications / Medication Detail / Sign Inbox / Verbal-Orders
@@ -901,12 +945,14 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   // the contract). The server is authoritative for the §2.2 D2 lifecycle, the §2.7 D9 refill state, and the
   // controlled-substance / EPCS posture (`dosespot.epcs` OFF in Phase 1).
   "GET /api/v1/medication-orders": {
-    summary: "List medication orders by patient / prescriber / med-class / status (§4.1; ABAC caseload_or_scope)",
+    summary:
+      "List medication orders by patient / prescriber / med-class / status (§4.1; ABAC caseload_or_scope)",
     query: MedicationOrderListQuerySchema,
     response: MedicationOrderListResponseSchema,
   },
   "GET /api/v1/medication-orders/:id": {
-    summary: "Medication-order detail — lifecycle status, signatures, controlled/EPCS posture, refills (§4.1)",
+    summary:
+      "Medication-order detail — lifecycle status, signatures, controlled/EPCS posture, refills (§4.1)",
     response: MedicationOrderViewSchema,
   },
   "GET /api/v1/medication-orders/:id/transmission": {
@@ -918,7 +964,8 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: MedicationOrderListResponseSchema,
   },
   "GET /api/v1/patients/:patientId/medications/history": {
-    summary: "Medication-history records for a patient (DoseSpot MedHx; §4.1 / §6.1 reconciliation)",
+    summary:
+      "Medication-history records for a patient (DoseSpot MedHx; §4.1 / §6.1 reconciliation)",
     response: MedicationHistoryListResponseSchema,
   },
   "GET /api/v1/refills": {
@@ -926,11 +973,13 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: RefillListResponseSchema,
   },
   "GET /api/v1/refills/:id": {
-    summary: "Refill detail — source order + request fields for approve/deny (§4.1; ABAC refill_inbox_scope)",
+    summary:
+      "Refill detail — source order + request fields for approve/deny (§4.1; ABAC refill_inbox_scope)",
     response: RefillRequestViewSchema,
   },
   "GET /api/v1/admin/dosespot-prescribers": {
-    summary: "Per-tenant DoseSpot prescriber roster — DEA schedules, IAL2 status, enrollment (§4.1 / §6.1)",
+    summary:
+      "Per-tenant DoseSpot prescriber roster — DEA schedules, IAL2 status, enrollment (§4.1 / §6.1)",
     response: PrescriberRosterListResponseSchema,
   },
   "GET /api/v1/admin/refill-inbox-policy": {
@@ -938,7 +987,8 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: RefillInboxPolicyViewSchema,
   },
   "GET /api/v1/admin/controlled-substance-policy": {
-    summary: "Controlled-substance policy — refill caps + EPCS certification status (§4.1 / 21 CFR 1306.22 / D18)",
+    summary:
+      "Controlled-substance policy — refill caps + EPCS certification status (§4.1 / 21 CFR 1306.22 / D18)",
     response: ControlledSubstancePolicyViewSchema,
   },
   // M13 eMAR administration (Track B — Patient eMAR / Administration Detail / IV Continuous Session /
@@ -948,16 +998,19 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   // authoritative for the §2.2 lifecycle, the §2.5 late-entry tier, the §2.9 BCMA match result, and the §7.2
   // SUD read gate (SUD-flagged rows skipped without a Part 2 release).
   "GET /api/v1/administrations": {
-    summary: "List a patient's administrations — eMAR projection + caregiver-attested cosign rows (§4.1 / §6.1)",
+    summary:
+      "List a patient's administrations — eMAR projection + caregiver-attested cosign rows (§4.1 / §6.1)",
     query: EmarAdministrationListQuerySchema,
     response: AdministrationListResponseSchema,
   },
   "GET /api/v1/administrations/:id": {
-    summary: "Administration detail — lifecycle, late-entry tier, witness pair, BCMA match (§4.1 / §6.1 #11)",
+    summary:
+      "Administration detail — lifecycle, late-entry tier, witness pair, BCMA match (§4.1 / §6.1 #11)",
     response: AdministrationViewSchema,
   },
   "GET /api/v1/administrations/iv-sessions/:sessionId": {
-    summary: "IV continuous session — the ordered start→rate_change→stop segment sequence (§4.1 / §6.1 #5)",
+    summary:
+      "IV continuous session — the ordered start→rate_change→stop segment sequence (§4.1 / §6.1 #5)",
     response: IvSessionViewSchema,
   },
   "GET /api/v1/scheduled-doses": {
@@ -971,12 +1024,14 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: MissedDoseListResponseSchema,
   },
   "GET /api/v1/reconciliation/worksheets": {
-    summary: "Reconciliation worksheets for a patient (admission/transfer/discharge/recert; §4.1 / §6.1 #6)",
+    summary:
+      "Reconciliation worksheets for a patient (admission/transfer/discharge/recert; §4.1 / §6.1 #6)",
     query: EmarWorksheetQuerySchema,
     response: WorksheetListResponseSchema,
   },
   "GET /api/v1/reconciliation/worksheets/:id": {
-    summary: "Reconciliation worksheet — per-line sources + decisions + finalize readiness (§4.1 / §6.1 #6)",
+    summary:
+      "Reconciliation worksheet — per-line sources + decisions + finalize readiness (§4.1 / §6.1 #6)",
     response: WorksheetViewSchema,
   },
   "GET /api/v1/comfort-kits/deployments": {
@@ -985,11 +1040,13 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: DeploymentListResponseSchema,
   },
   "GET /api/v1/comfort-kits/deployments/:id": {
-    summary: "Comfort-kit deployment detail — remaining quantity + replenishment + disposal (§4.1 / §6.1 #7)",
+    summary:
+      "Comfort-kit deployment detail — remaining quantity + replenishment + disposal (§4.1 / §6.1 #7)",
     response: DeploymentViewSchema,
   },
   "GET /api/v1/admin/administration-policy": {
-    summary: "Tenant administration policy — grace window, PRN reassessment defaults (§4.1 / §6.1 #12)",
+    summary:
+      "Tenant administration policy — grace window, PRN reassessment defaults (§4.1 / §6.1 #12)",
     response: AdministrationPolicyViewSchema,
   },
   // M22 Document Management (Track B — DOC.Explorer / DOC.VersionHistory / INTAKE.BatchDetail /
@@ -998,29 +1055,35 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   // contract). The SERVER is authoritative for §4.6 RBAC + §4.7 ABAC, legal-hold blocks (§8.6), the
   // §4.12 signed-URL TTL floor, and SUD redaction — the screens never decide authorization.
   "GET /api/v1/documents": {
-    summary: "List documents — filtered by patient / aggregate / retention class, cursor-paginated (§4.1 / §5.1 DOC.Explorer)",
+    summary:
+      "List documents — filtered by patient / aggregate / retention class, cursor-paginated (§4.1 / §5.1 DOC.Explorer)",
     query: M22DocumentListQuerySchema,
     response: M22DocumentListResponseSchema,
   },
   "GET /api/v1/documents/:id": {
-    summary: "Document metadata + current version metadata (§4.1 / §5.1 DOC.SignedUrlPreview header)",
+    summary:
+      "Document metadata + current version metadata (§4.1 / §5.1 DOC.SignedUrlPreview header)",
     response: M22DocumentViewSchema,
   },
   "GET /api/v1/documents/:id/versions": {
-    summary: "Version history — author/version chain for the side-by-side diff (§4.1 / §5.1 DOC.VersionHistory)",
+    summary:
+      "Version history — author/version chain for the side-by-side diff (§4.1 / §5.1 DOC.VersionHistory)",
     query: M22VersionListQuerySchema,
     response: M22VersionListResponseSchema,
   },
   "GET /api/v1/intake/uploads/:id": {
-    summary: "Intake batch — pipeline status + page count for the DocLens review queue (§4.1 / §5.1 INTAKE.BatchDetail)",
+    summary:
+      "Intake batch — pipeline status + page count for the DocLens review queue (§4.1 / §5.1 INTAKE.BatchDetail)",
     response: M22IntakeBatchViewSchema,
   },
   "GET /api/v1/intake/uploads/:id/jobs": {
-    summary: "Extraction jobs for a batch — per-job pipeline status, cursor-paginated (§4.1 / §5.1 INTAKE.BatchDetail)",
+    summary:
+      "Extraction jobs for a batch — per-job pipeline status, cursor-paginated (§4.1 / §5.1 INTAKE.BatchDetail)",
     response: M22IntakeJobListResponseSchema,
   },
   "GET /api/v1/form-templates": {
-    summary: "Browse the platform-floor form templates with version metadata (§4.1 / §5.1 FORM.TemplateLibrary)",
+    summary:
+      "Browse the platform-floor form templates with version metadata (§4.1 / §5.1 FORM.TemplateLibrary)",
     query: M22TemplateListQuerySchema,
     response: M22FormTemplateListResponseSchema,
   },
@@ -1237,7 +1300,8 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   // M14 IDG (Track B — read surfaces the §5 screens consume; M14-T07). Reads only — the lifecycle / decision /
   // attendance / agenda / action-item / amendment write surfaces fill in as those write paths harden.
   "GET /api/v1/idg/schedule": {
-    summary: "Meeting schedule for a location/range — next-weeks meetings, location-scoped (§4.1 / §5)",
+    summary:
+      "Meeting schedule for a location/range — next-weeks meetings, location-scoped (§4.1 / §5)",
     query: IdgScheduleQuerySchema,
     response: IdgScheduleListResponseSchema,
   },
@@ -1250,7 +1314,8 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: IdgPacketListResponseSchema,
   },
   "GET /api/v1/idg/meetings/:meetingId/packets/:patientId": {
-    summary: "One patient's packet digest in a meeting — chart-embed read (§4.1 / §5; SUD-redacted server-side)",
+    summary:
+      "One patient's packet digest in a meeting — chart-embed read (§4.1 / §5; SUD-redacted server-side)",
     response: IdgPacketDigestViewSchema,
   },
   "GET /api/v1/idg/action-items": {
@@ -1266,16 +1331,19 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   // metrics screens consume; M17-T08). Reads only — the create/publish/edit/reschedule/cancel/reassign/approve
   // write routes keep their route-level TypeBox request bodies (already in the contract).
   "GET /api/v1/visits": {
-    summary: "Visits in caseload/scope — clinician/patient/status/date-window filtered (§4.1 / §5.1)",
+    summary:
+      "Visits in caseload/scope — clinician/patient/status/date-window filtered (§4.1 / §5.1)",
     query: SchedVisitListQuerySchema,
     response: SchedVisitListResponseSchema,
   },
   "GET /api/v1/visits/:visitId": {
-    summary: "One visit's detail — status + scheduled window + assignment (§4.1 / §5.1 visit detail)",
+    summary:
+      "One visit's detail — status + scheduled window + assignment (§4.1 / §5.1 visit detail)",
     response: SchedVisitViewSchema,
   },
   "GET /api/v1/visit-proposals": {
-    summary: "The scheduler proposal inbox — pending frequency/order/IDG/supervisory proposals (§5.1)",
+    summary:
+      "The scheduler proposal inbox — pending frequency/order/IDG/supervisory proposals (§5.1)",
     query: SchedProposalListQuerySchema,
     response: SchedProposalListResponseSchema,
   },
@@ -1310,7 +1378,8 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: SchedMapViewResponseSchema,
   },
   "GET /api/v1/metrics/visits": {
-    summary: "Org-wide visit metrics — on-time / no-show / reschedule rates (§5.1 scheduling-metrics)",
+    summary:
+      "Org-wide visit metrics — on-time / no-show / reschedule rates (§5.1 scheduling-metrics)",
     query: SchedMetricsQuerySchema,
     response: SchedVisitMetricsResponseSchema,
   },
@@ -1327,32 +1396,98 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: EvvEventListResponse,
   },
   "GET /api/v1/evv/events/:eventId": {
-    summary: "EVV single-event detail — raw + computed fields, coordinates redacted unless evv.read_coords (§5.1 event)",
+    summary:
+      "EVV single-event detail — raw + computed fields, coordinates redacted unless evv.read_coords (§5.1 event)",
     query: EvvEventGetQuery,
     response: EvvEventView,
   },
   "GET /api/v1/evv/devices": {
-    summary: "EVV devices — self or team list with approval/integrity status (§5.1 devices/pending, me/evv/devices)",
+    summary:
+      "EVV devices — self or team list with approval/integrity status (§5.1 devices/pending, me/evv/devices)",
     query: EvvMembershipIdQuery,
     response: EvvDeviceListResponse,
   },
   "GET /api/v1/evv/geofence-policy": {
-    summary: "EVV geofence policy — tenant tighten-only default + per-address overrides (§5.1 geofence-policy)",
+    summary:
+      "EVV geofence policy — tenant tighten-only default + per-address overrides (§5.1 geofence-policy)",
     response: EvvGeofencePolicyView,
   },
   "GET /api/v1/evv/missing-resolutions": {
-    summary: "EVV missing-resolution queue — open + recently-closed late-checkout resolutions (§5.1 missing-resolutions)",
+    summary:
+      "EVV missing-resolution queue — open + recently-closed late-checkout resolutions (§5.1 missing-resolutions)",
     query: EvvMissingResolutionListQuery,
     response: EvvMissingResolutionListResponse,
   },
   "GET /api/v1/evv/aggregator-submissions": {
-    summary: "EVV aggregator submission queue — per-state submission status + rejection detail (§5.1 aggregator-submissions)",
+    summary:
+      "EVV aggregator submission queue — per-state submission status + rejection detail (§5.1 aggregator-submissions)",
     query: EvvAggregatorListQuery,
     response: EvvAggregatorSubmissionListResponse,
   },
   "GET /api/v1/evv/metrics": {
-    summary: "EVV metrics — compliance / late-checkout / geofence-deviation / GPS-spoof / aggregator-acceptance rates (§5.1 dashboard, metrics)",
+    summary:
+      "EVV metrics — compliance / late-checkout / geofence-deviation / GPS-spoof / aggregator-acceptance rates (§5.1 dashboard, metrics)",
     query: EvvMetricsQuery,
     response: EvvMetricsView,
+  },
+
+  // M33 Reporting & Dashboards (Track B — Reporting Catalog / Admin / Schedules / Dashboards, M33-T*).
+  // Typing the read queries + the drilldown body the screens call removes the `as never` client casts.
+  "GET /api/v1/reporting/dashboards": {
+    summary: "Reporting dashboard catalog (cursor-paginated)",
+    query: DashboardListQuerySchema,
+  },
+  "GET /api/v1/reporting/admin/mvs": {
+    summary: "Materialized-view admin registry (cursor-paginated)",
+    query: MvListQuerySchema,
+  },
+  "GET /api/v1/reporting/schedules": {
+    summary: "Report schedules — optional status filter (§4.1)",
+    query: ScheduleListQuery,
+  },
+  "POST /api/v1/reporting/drilldown/emit": {
+    summary: "Resolve a tile's drilldown URL template + dimension context into a signed drilldown",
+    body: DrilldownEmitRequest,
+  },
+
+  // M34 SaaS Tenant Platform (Track B — Tenant Inventory / BAA Register / Feature Flags / Onboarding /
+  // Support Grants / Tenant + DSAR Export queues). Typing the read queries + write bodies the admin
+  // screens call removes the `as never` client casts.
+  "GET /api/v1/platform/tenants": {
+    summary: "Platform tenant inventory — status/search filters (§4.1)",
+    query: TenantListQuerySchema,
+  },
+  "GET /api/v1/platform/baa-register": {
+    summary: "Platform BAA register — optional tenant filter (§4.1)",
+    query: BaaRegisterListQuerySchema,
+  },
+  "GET /api/v1/platform/feature-flags": {
+    summary: "Platform feature-flag registry — optional org filter (§4.1)",
+    query: FeatureFlagListQuerySchema,
+  },
+  "POST /api/v1/platform/feature-flags/:flagKey/kill-switch": {
+    summary: "Toggle a feature flag's kill switch (org-scoped or platform-wide)",
+    body: KillSwitchRequest,
+  },
+  "GET /api/v1/platform/onboarding-templates": {
+    summary: "Platform onboarding-template catalog (cursor-paginated)",
+    query: OnboardingTemplateListQuerySchema,
+  },
+  "POST /api/v1/platform/onboarding-templates": {
+    summary: "Create or update a platform onboarding template",
+    body: UpsertOnboardingTemplateRequest,
+  },
+  "GET /api/v1/tenant/tenant-export-jobs": {
+    summary: "Tenant data-export job queue (cursor-paginated)",
+    query: TenantExportListQuerySchema,
+  },
+  "GET /api/v1/tenant/dsar-export-jobs": {
+    summary: "Tenant DSAR export job queue (cursor-paginated)",
+    query: DsarListQuerySchema,
+  },
+  "POST /api/v1/tenant/support-consent-grants": {
+    summary:
+      "Issue a tenant-scoped support-access consent grant (§6/D10 step-up enforced server-side)",
+    body: SupportConsentGrantRequest,
   },
 };

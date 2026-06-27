@@ -144,7 +144,7 @@ function KpiTile({ tile }: { tile: TileDescriptor }): JSX.Element {
   const onSelect = useCallback(async () => {
     if (!result?.drilldownUrlTemplate) return;
     const { data, error: err } = await client.POST("/api/v1/reporting/drilldown/emit", {
-      body: { tileKey: tile.tileKey, dimensionContext: {} } as never,
+      body: { tileKey: tile.tileKey, dimensionContext: {} },
     });
     if (err) return;
     const res = data as unknown as { targetUrl?: string; outcome?: string };
@@ -161,12 +161,22 @@ function KpiTile({ tile }: { tile: TileDescriptor }): JSX.Element {
         onSelect={result?.drilldownUrlTemplate ? () => void onSelect() : undefined}
       />
       {result ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem", paddingLeft: "0.25rem" }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.15rem",
+            paddingLeft: "0.25rem",
+          }}
+        >
           <StatusPill
             label={freshnessSecondsLabel(result.dataFreshnessSeconds)}
             tone={freshnessSecondsTone(result.dataFreshnessSeconds)}
           />
-          <span className="tabular-nums" style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>
+          <span
+            className="tabular-nums"
+            style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}
+          >
             {asOfLabel(result.asOf)} · {statusLabel(result.scopeApplied.scopeKind)}
           </span>
         </div>

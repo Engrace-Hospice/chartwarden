@@ -1,5 +1,4 @@
 import {
-  cardSurface,
   CenteredStatusLayout,
   LeftNavRail,
   LoadingSpinner,
@@ -9,8 +8,10 @@ import {
   SealedBlock,
   StatusPill,
   type StatusTone,
+  cardSurface,
   useApiClient,
 } from "@wardenx/ui";
+import type { paths } from "@wardenx/ui";
 // apps/web/src/modules/05-patient — Patient Chart (M5, Track A).
 // Spec: docs/design/screens/clinical/WARDENX_UI_PATIENT_CHART.md — "Use Patient Workspace."
 // The patient-scoped hub: sticky Patient Banner + a module nav rail + a center summary. This builds
@@ -57,10 +58,12 @@ const NAV_ICON_PATHS: Record<NavIconName, string> = {
   person: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 20c0-4 4-6 8-6s8 2 8 6",
   pin: "M12 21s7-6 7-11a7 7 0 1 0-14 0c0 5 7 11 7 11z M12 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z",
   shield: "M12 3l7 3v5c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6z",
-  groups: "M8 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M2 20c0-3 2.7-5 6-5 M16 13a3 3 0 1 0 0-6 M14 15c3.3 0 6 2 6 5",
+  groups:
+    "M8 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M2 20c0-3 2.7-5 6-5 M16 13a3 3 0 1 0 0-6 M14 15c3.3 0 6 2 6 5",
   lock: "M6 10V8a6 6 0 0 1 12 0v2 M5 10h14v10H5z",
   carePlan: "M9 4h6v3H9z M7 5H5v15h14V5h-2 M9 11h6 M9 15h4",
-  stethoscope: "M6 4v5a4 4 0 0 0 8 0V4 M10 16a4 4 0 0 0 8 0v-2 M18 14a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
+  stethoscope:
+    "M6 4v5a4 4 0 0 0 8 0V4 M10 16a4 4 0 0 0 8 0v-2 M18 14a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
   checklist: "M4 6h9 M4 12h9 M4 18h9 M17 5l1.5 1.5L21 4 M17 11l1.5 1.5L21 10",
   orders: "M7 3h7l4 4v14H7z M14 3v4h4 M10 13h5 M10 17h5",
   pill: "M5 13l8-8a4 4 0 0 1 6 6l-8 8a4 4 0 0 1-6-6z M9 9l6 6",
@@ -167,10 +170,7 @@ export function PatientChart(): JSX.Element {
                   clinical flags (allergies, code status, benefit period) graft on as their modules land —
                   shown honestly, never fabricated. */}
               <MonoChip title="Medical record number">{p.mrn}</MonoChip>
-              <StatusPill
-                label={statusLabel(p.status)}
-                tone={STATUS_TONE[p.status] ?? "neutral"}
-              />
+              <StatusPill label={statusLabel(p.status)} tone={STATUS_TONE[p.status] ?? "neutral"} />
             </>
           }
           actions={
@@ -662,18 +662,21 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
     e.preventDefault();
     setSaving(true);
     setSaveError(null);
-    const body: Record<string, unknown> = {
+    type AddressBody = NonNullable<
+      paths["/api/v1/patients/{id}/addresses"]["post"]["requestBody"]
+    >["content"]["application/json"];
+    const body: AddressBody = {
       line1: form.line1,
       city: form.city,
       postalCode: form.postalCode,
-      kind: form.kind,
+      kind: form.kind as AddressBody["kind"],
       isPrimary: form.isPrimary,
     };
     if (form.line2) body.line2 = form.line2;
     if (form.state) body.state = form.state.toUpperCase();
     const res = await client.POST("/api/v1/patients/{id}/addresses", {
       params: { path: { id: patientId } },
-      body: body as never,
+      body,
     });
     setSaving(false);
     if (res.error)

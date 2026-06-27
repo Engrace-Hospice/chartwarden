@@ -19382,7 +19382,62 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "parameters": [],
+        "summary": "Platform BAA register — optional tenant filter (§4.1)",
+        "parameters": [
+          {
+            "name": "tenantAccountId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "executed",
+                  "type": "string"
+                },
+                {
+                  "const": "pending",
+                  "type": "string"
+                },
+                {
+                  "const": "terminated",
+                  "type": "string"
+                },
+                {
+                  "const": "missing",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -19449,7 +19504,62 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "parameters": [],
+        "summary": "Platform feature-flag registry — optional org filter (§4.1)",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "flagKind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "product",
+                  "type": "string"
+                },
+                {
+                  "const": "rollout",
+                  "type": "string"
+                },
+                {
+                  "const": "kill_switch",
+                  "type": "string"
+                },
+                {
+                  "const": "migration",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -19487,6 +19597,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
+        "summary": "Toggle a feature flag's kill switch (org-scoped or platform-wide)",
         "parameters": [
           {
             "name": "flagKey",
@@ -19507,6 +19618,30 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "killSwitchActive",
+                  "reason"
+                ],
+                "properties": {
+                  "killSwitchActive": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -19516,7 +19651,28 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "parameters": [],
+        "summary": "Platform onboarding-template catalog (cursor-paginated)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -19534,6 +19690,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
+        "summary": "Create or update a platform onboarding template",
         "parameters": [],
         "responses": {
           "200": {
@@ -19544,6 +19701,46 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "key",
+                  "title",
+                  "canonicalOrder"
+                ],
+                "properties": {
+                  "key": {
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "type": "string"
+                  },
+                  "title": {
+                    "minLength": 1,
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  "description": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "canonicalOrder": {
+                    "minimum": 0,
+                    "maximum": 1000,
+                    "type": "integer"
+                  },
+                  "isCanonical": {
+                    "const": false,
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -19824,7 +20021,108 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "parameters": [],
+        "summary": "Platform tenant inventory — status/search filters (§4.1)",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "signup_intent",
+                  "type": "string"
+                },
+                {
+                  "const": "provisioning",
+                  "type": "string"
+                },
+                {
+                  "const": "onboarding",
+                  "type": "string"
+                },
+                {
+                  "const": "active",
+                  "type": "string"
+                },
+                {
+                  "const": "suspended",
+                  "type": "string"
+                },
+                {
+                  "const": "at_risk",
+                  "type": "string"
+                },
+                {
+                  "const": "offboarding_initiated",
+                  "type": "string"
+                },
+                {
+                  "const": "final_export_pending",
+                  "type": "string"
+                },
+                {
+                  "const": "retained",
+                  "type": "string"
+                },
+                {
+                  "const": "destruction_pending",
+                  "type": "string"
+                },
+                {
+                  "const": "destroyed",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "planLabel",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAfter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -21199,7 +21497,53 @@
         "tags": [
           "33-reporting"
         ],
-        "parameters": [],
+        "summary": "Materialized-view admin registry (cursor-paginated)",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "registered",
+                  "type": "string"
+                },
+                {
+                  "const": "active",
+                  "type": "string"
+                },
+                {
+                  "const": "suspended",
+                  "type": "string"
+                },
+                {
+                  "const": "retired",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -21326,7 +21670,28 @@
         "tags": [
           "33-reporting"
         ],
-        "parameters": [],
+        "summary": "Reporting dashboard catalog (cursor-paginated)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -21584,6 +21949,7 @@
         "tags": [
           "33-reporting"
         ],
+        "summary": "Resolve a tile's drilldown URL template + dimension context into a signed drilldown",
         "parameters": [],
         "responses": {
           "200": {
@@ -21594,6 +21960,48 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "tileKey",
+                  "dimensionContext"
+                ],
+                "properties": {
+                  "tileKey": {
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "type": "string"
+                  },
+                  "reportViewId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "dimensionContext": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "queryFilters": {},
+                  "patientIds": {
+                    "maxItems": 5000,
+                    "type": "array",
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -21653,7 +22061,49 @@
         "tags": [
           "33-reporting"
         ],
-        "parameters": [],
+        "summary": "Report schedules — optional status filter (§4.1)",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "active",
+                  "type": "string"
+                },
+                {
+                  "const": "paused",
+                  "type": "string"
+                },
+                {
+                  "const": "cancelled",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -23239,7 +23689,70 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "parameters": [],
+        "summary": "Tenant DSAR export job queue (cursor-paginated)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "requested",
+                  "type": "string"
+                },
+                {
+                  "const": "generating",
+                  "type": "string"
+                },
+                {
+                  "const": "review_pending",
+                  "type": "string"
+                },
+                {
+                  "const": "fulfilled",
+                  "type": "string"
+                },
+                {
+                  "const": "denied",
+                  "type": "string"
+                },
+                {
+                  "const": "extended",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -23518,6 +24031,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
+        "summary": "Issue a tenant-scoped support-access consent grant (§6/D10 step-up enforced server-side)",
         "parameters": [],
         "responses": {
           "200": {
@@ -23528,6 +24042,54 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "scope",
+                  "grantReason",
+                  "expiresAtIsoOffsetHours"
+                ],
+                "properties": {
+                  "scope": {
+                    "anyOf": [
+                      {
+                        "const": "organization_scoped",
+                        "type": "string"
+                      },
+                      {
+                        "const": "patient_scoped",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "patientIdsInScope": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  },
+                  "grantReason": {
+                    "minLength": 20,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "expiresAtIsoOffsetHours": {
+                    "minimum": 0.5,
+                    "maximum": 72,
+                    "type": "number"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -23567,7 +24129,57 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "parameters": [],
+        "summary": "Tenant data-export job queue (cursor-paginated)",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "requested",
+                  "type": "string"
+                },
+                {
+                  "const": "generating",
+                  "type": "string"
+                },
+                {
+                  "const": "fulfilled",
+                  "type": "string"
+                },
+                {
+                  "const": "expired",
+                  "type": "string"
+                },
+                {
+                  "const": "cancelled",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"

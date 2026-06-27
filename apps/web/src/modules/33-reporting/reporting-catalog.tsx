@@ -52,7 +52,7 @@ export function ReportingCatalog(): JSX.Element {
     setLoading(true);
     setError(null);
     const [dashRes, lagRes] = await Promise.all([
-      client.GET("/api/v1/reporting/dashboards", { params: { query: { limit: 100 } } as never }),
+      client.GET("/api/v1/reporting/dashboards", { params: { query: { limit: 100 } } }),
       client.GET("/api/v1/reporting/admin/lag"),
     ]);
     if (dashRes.error) {
@@ -88,11 +88,19 @@ export function ReportingCatalog(): JSX.Element {
             description="No reporting dashboards are available in your scope yet."
           />
         ) : (
-          <div style={{ padding: "0 1.5rem 1.5rem", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-            {featured.length > 0 ? (
-              <CatalogSection title="Featured" dashboards={featured} />
-            ) : null}
-            <CatalogSection title="All dashboards" dashboards={rest.length > 0 ? rest : dashboards} />
+          <div
+            style={{
+              padding: "0 1.5rem 1.5rem",
+              display: "flex",
+              flexDirection: "column",
+              gap: "1.5rem",
+            }}
+          >
+            {featured.length > 0 ? <CatalogSection title="Featured" dashboards={featured} /> : null}
+            <CatalogSection
+              title="All dashboards"
+              dashboards={rest.length > 0 ? rest : dashboards}
+            />
           </div>
         )
       }
@@ -210,7 +218,14 @@ function CatalogCard({ dashboard }: { dashboard: DashboardSummary }): JSX.Elemen
         color: "inherit",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "0.5rem",
+        }}
+      >
         <span style={{ fontFamily: "var(--font-display)", fontSize: "1rem", fontWeight: 500 }}>
           {dashboard.displayName}
         </span>
@@ -219,7 +234,14 @@ function CatalogCard({ dashboard }: { dashboard: DashboardSummary }): JSX.Elemen
           tone={dashboard.authorship === "system" ? "neutral" : "progress"}
         />
       </div>
-      <div style={{ display: "flex", gap: "1rem", fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: "1rem",
+          fontSize: "0.8rem",
+          color: "var(--color-on-surface-variant)",
+        }}
+      >
         <span className="tabular-nums">{dashboard.tileCount} tiles</span>
         <span>{statusLabel(dashboard.shareScope)}</span>
         {dashboard.isOrgDefault ? <span>Org default</span> : null}

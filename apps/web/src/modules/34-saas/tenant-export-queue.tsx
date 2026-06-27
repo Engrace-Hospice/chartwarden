@@ -9,6 +9,7 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
+import type { paths } from "@wardenx/ui";
 // apps/web/src/modules/34-saas — tenant-export queue (M34 SaaS Tenant Platform, R2 Phase-3).
 // Route: /exports/tenant. The org-scoped full-tenant-export queue (D9 — the NDJSON-per-table + PDFs +
 // manifest.json archive used for migration / BAA-termination / compliance-audit / surveyor requests).
@@ -68,11 +69,13 @@ export function TenantExportQueue(): JSX.Element {
     setLoading(true);
     setError(null);
     setSelected(null);
-    const query: Record<string, string | number> = { limit: 50 };
-    if (status) query.status = status;
+    const query: NonNullable<
+      paths["/api/v1/tenant/tenant-export-jobs"]["get"]["parameters"]["query"]
+    > = { limit: 50 };
+    if (status) query.status = status as typeof query.status;
     const { data, error: err } = await client.GET("/api/v1/tenant/tenant-export-jobs", {
       params: { query },
-    } as never);
+    });
     if (err) {
       setError("Could not load the tenant-export queue.");
       setLoading(false);
