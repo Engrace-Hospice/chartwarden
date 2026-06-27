@@ -162,4 +162,5 @@ export * from "./plugins/idempotency";
 export * from "./routes/health";
 export * from "./routes/system";
 export * from "./plugins/authenticate";
+export * from "./env";
 export type * from "./interfaces";

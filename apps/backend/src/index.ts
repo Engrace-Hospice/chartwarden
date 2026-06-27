@@ -17,7 +17,12 @@ import type { SessionContextStore } from "@wardenx/auth";
 import { type DbClient, createDbClient } from "@wardenx/db";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
 import type { ConnectionOptions } from "bullmq";
-import { buildServer, createSessionAuthenticate, getSeam } from "./bootstrap/index";
+import {
+  assertProductionEnv,
+  buildServer,
+  createSessionAuthenticate,
+  getSeam,
+} from "./bootstrap/index";
 import {
   mountIdentityRoutes,
   registerIdentityErasers,
@@ -345,6 +350,10 @@ export function wireModuleErasers(): void {
 // Start only when run directly (not when imported by tests/tooling).
 // `import.meta.main` is a Bun runtime flag; cast keeps tsc happy without bun-types.
 if ((import.meta as { main?: boolean }).main) {
+  // audit #M2 — fail closed if a production secret is missing/weak (BETTER_AUTH_SECRET, TRUSTED_ORIGINS,
+  // TWO_FACTOR_ENCRYPTION_KEY, DATABASE_URL, BETTER_AUTH_URL). No-op in dev/test. Runs first so a
+  // misconfigured production deploy refuses to boot rather than serving with a weak/absent secret.
+  assertProductionEnv();
   // M4-T10 — fail closed if the consolidated audit action catalog has a D9 namespace/uniqueness
   // violation (§4.6.7) before the server serves a single request.
   assertAuditActionCatalog();
@@ -430,7 +439,8 @@ if ((import.meta as { main?: boolean }).main) {
           const m33ReadEnqueue = buildM33ReadEnqueue(queueConnection);
           mountM33ReadRoutes(
             app,
-            buildDrizzleM33ReadService({ db: dbHandle.db, enqueue: m33ReadEnqueue.enqueue }).service,
+            buildDrizzleM33ReadService({ db: dbHandle.db, enqueue: m33ReadEnqueue.enqueue })
+              .service,
           );
           mountM33WriteRoutes(app, buildDrizzleM33WriteService({ db: dbHandle.db }).service);
           mountM33ExportDrilldownRoutes(
