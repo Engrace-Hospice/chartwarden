@@ -161,14 +161,16 @@ export interface BreakGlassStore {
   listForOrg(organizationId: string): Promise<BreakGlassView[]> | BreakGlassView[];
   /**
    * The active, unexpired bypass covering (actor, target) for this org — the read the §2.2
-   * break-glass branch makes on every ABAC denial. Returns null when no glass is open.
+   * break-glass branch makes on every ABAC denial. Returns null when no glass is open. May be
+   * async: the Drizzle store queries `break_glass_event`; the in-memory store stays synchronous.
+   * The break-glass checker (contract.ts) awaits whichever it gets.
    */
   findActiveGrant(
     organizationId: string,
     actorUserId: string,
     targetPatientId: string | null,
     nowMs: number,
-  ): BreakGlassGrantRef | null;
+  ): Promise<BreakGlassGrantRef | null> | BreakGlassGrantRef | null;
 }
 
 // --- Auditor engagements -----------------------------------------------------------------

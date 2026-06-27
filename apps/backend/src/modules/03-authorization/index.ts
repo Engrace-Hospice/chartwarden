@@ -58,6 +58,7 @@ export {
 export { registerAuthorizationRoutes } from "./routes/authz-routes";
 export { createDbRoleStore } from "./role-store";
 export { createDbMembershipRoleStore } from "./membership-role-store";
+export { createDbBreakGlassStore } from "./break-glass-store";
 
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
@@ -65,28 +66,34 @@ import { createInMemoryAuditExecutor } from "../02-identity/index";
 import {
   type AuthzRouteDeps,
   createInMemoryAuditorSessionMinter as _auditorMinter,
-  createInMemoryBreakGlassStore as _breakGlass,
   createInMemoryEngagementStore as _engagements,
   createFixedPermissionResolver as _fixedPerms,
   createInMemoryComplianceNotifier as _notifier,
 } from "./authz-ports";
+import { createDbBreakGlassStore as _dbBreakGlass } from "./break-glass-store";
+import { registerBreakGlassContract as _registerBreakGlass } from "./contract";
 import { createDbMembershipRoleStore as _dbMembershipRoles } from "./membership-role-store";
 import { createDbRoleStore as _dbRoleStore } from "./role-store";
 import { registerAuthorizationRoutes as _registerAuthzRoutes } from "./routes/authz-routes";
 
 /**
  * Mount the M3 authorization REST routes on a server (composition root, via buildServer's
- * registerModuleRoutes hook, when a DB client is present). The role catalog runs on the REAL Drizzle
- * RoleStore + MembershipRoleStore (real Drizzle); the remaining route deps (break-glass, engagements,
- * auditor sessions, compliance notifier, anti-escalation resolver, audit sink) are still in-memory and
- * are replaced by their Drizzle stores in follow-up PRs — progressive wiring of the backend surface.
- * requirePermission is the live RBAC resolver (registerDbEffectivePermissionResolver).
+ * registerModuleRoutes hook, when a DB client is present). The role catalog + break-glass run on the
+ * REAL Drizzle stores; mounting also registers the §2.2 break-glass BRANCH (`registerBreakGlassContract`)
+ * over that durable store + db, so an ABAC-denied access under open glass is allowed AND audited at
+ * `critical` (audit #M3 — previously test-only/in-memory). The remaining route deps (engagements,
+ * auditor sessions, compliance notifier, anti-escalation resolver, the route audit sink) are still
+ * in-memory and land in follow-up M3 wiring. requirePermission is the live RBAC resolver.
  */
 export function mountAuthorizationRoutes(app: FastifyInstance, db: DbClient): void {
+  const breakGlass = _dbBreakGlass(db);
+  // §2.2 / §7.4 — wire the break-glass branch over the durable store; the per-access critical row is
+  // written under withOrgContext (db) so RLS scopes it. Idempotent (sets the contract's seams).
+  _registerBreakGlass({ store: breakGlass, db });
   const deps: AuthzRouteDeps = {
     roles: _dbRoleStore(db),
     membershipRoles: _dbMembershipRoles(db),
-    breakGlass: _breakGlass().store,
+    breakGlass,
     engagements: _engagements().store,
     auditorSessions: _auditorMinter().minter,
     notifier: _notifier().notifier,

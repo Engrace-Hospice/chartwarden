@@ -14,15 +14,23 @@
 // row through the mandated audit() helper (the field denylist runs there).
 import type { AuditContext, AuditExecutor } from "@wardenx/audit";
 import { setBreakGlassAuditHook, setBreakGlassChecker } from "@wardenx/auth";
+import type { DbClient } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import { auditBreakGlassAccess } from "./audit/authz-audit";
 import type { BreakGlassStore } from "./authz-ports";
 
-/** Injected dependencies for the break-glass branch wiring. */
+/**
+ * Injected dependencies for the break-glass branch wiring. Provide EITHER `db` (production — the
+ * per-access critical row is written under `withOrgContext` so RLS scopes it) OR `audit` (a direct
+ * executor for the slice/tests). `db` takes precedence when both are given.
+ */
 export interface BreakGlassContractDeps {
   /** M3's break-glass store — `findActiveGrant` powers the §2.2 branch. */
   store: BreakGlassStore;
-  /** Audit sink for the per-access `m3.breakglass.access` critical rows. */
-  audit: AuditExecutor;
+  /** Production: the DB client; the per-access `m3.breakglass.access` row is written under withOrgContext. */
+  db?: DbClient;
+  /** Slice/test: a direct audit executor (no org-context wrapping). */
+  audit?: AuditExecutor;
   /** Injected clock (epoch ms) so the active-window check is deterministic in tests. */
   now?: () => number;
 }
@@ -56,10 +64,22 @@ export function registerBreakGlassContract(deps: BreakGlassContractDeps): void {
     };
     const resourceId =
       typeof access.target.patientId === "string" ? access.target.patientId : undefined;
-    await auditBreakGlassAccess(deps.audit, auditCtx, {
-      eventId: access.grant.eventId,
-      resourceType: access.action,
-      resourceId,
-    });
+    const write = (executor: AuditExecutor) =>
+      auditBreakGlassAccess(executor, auditCtx, {
+        eventId: access.grant.eventId,
+        resourceType: access.action,
+        resourceId,
+      });
+    // Production: write the critical row inside withOrgContext so RLS scopes it (the tx is the executor).
+    // Slice/tests: write directly through the injected executor. `db` wins when both are present.
+    if (deps.db) {
+      await withOrgContext(
+        deps.db,
+        { organizationId: access.context.organizationId, userId: access.context.userId },
+        (tx) => write(tx),
+      );
+    } else if (deps.audit) {
+      await write(deps.audit);
+    }
   });
 }
