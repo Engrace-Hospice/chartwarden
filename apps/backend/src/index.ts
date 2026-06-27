@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { audit } from "@wardenx/audit";
 // @wardenx/backend — Fastify host entry + COMPOSITION ROOT (not in any module codePath, so
 // exempt from the module-boundary import rules — it may import every module's init). It builds
 // the server, runs the seam/eraser boot gate, and registers each Phase-1 module's real seams
@@ -246,7 +248,7 @@ export function wireModuleSeams(
   // key-ring repo + the injected KEK-unwrap port — the KEK adapter itself is the one typed-TODO, fail-closed
   // on call). Without a DB client (tests / no-db boot) the fail-closed slice key provider keeps boot green.
   if (deps.db) {
-    registerLiveM34Seams({ db: deps.db, auditBypass: m34FailClosedBypassAuditor });
+    registerLiveM34Seams({ db: deps.db, auditBypass: m34PlatformBypassAuditor });
   } else {
     bootstrapModule34(SLICE_MODULE_34_SEAM_DEPS);
   }
@@ -261,17 +263,29 @@ export function wireModuleSeams(
 }
 
 /**
- * Fail-closed M34 `platform.bypass_invoked` auditor (Phase 2D typed-TODO). M1's @wardenx/tenancy requires a
- * `PlatformBypassAuditor` for EVERY `withPlatformContext` entry, so that "every cross-tenant read is audited"
- * is a type-level guarantee. M4's audit-chain bypass-auditor handle has no boot accessor yet, so this THROWS
- * on first call — which means the platform-ops cross-tenant surface 5xxs rather than serving an UNAUDITED
- * read. That is the correct posture: a present-but-fail-closed auditor, never a silent no-op. The platform-ops
- * READ/LIST + command routes light up the instant M4 exposes the real `platform.bypass_invoked` emitter here.
- * TODO(integrator — M4 bypass auditor): bind the @wardenx/audit chain-append over the platform tx.
+ * M34 `platform.bypass_invoked` auditor (audit #9). M1's @wardenx/tenancy requires a `PlatformBypassAuditor`
+ * for EVERY `withPlatformContext` entry, so "every cross-tenant read is audited" is a type-level guarantee.
+ * This binds M4's audit helper over the platform tx the bypass runs on: it writes one `platform.bypass_invoked`
+ * row (organizationId null — a cross-tenant action has no single org; actorKind `system`; the caller's jobId +
+ * reason in context) at the event's own severity, atomically with the platform work. If the write fails it
+ * propagates, so the cross-tenant read fails rather than serving an UNAUDITED bypass (the fail-closed posture).
  */
-const m34FailClosedBypassAuditor: PlatformBypassAuditor<DbClient> = async () => {
-  throw new Error(
-    "M34 platform-bypass auditor: Phase-2D typed-TODO — bind the M4 `platform.bypass_invoked` emitter (no boot accessor yet)",
+export const m34PlatformBypassAuditor: PlatformBypassAuditor<DbClient> = async (tx, event) => {
+  await audit(
+    tx,
+    {
+      organizationId: null,
+      userId: null,
+      actorKind: "system",
+      correlationId: `platform-bypass:${event.jobId}:${randomUUID()}`,
+    },
+    {
+      eventType: "platform.bypass_invoked",
+      resourceKind: "tenant",
+      outcome: "success",
+      severity: event.severity,
+      context: { jobId: event.jobId, reason: event.reason },
+    },
   );
 };
 
@@ -423,7 +437,7 @@ if ((import.meta as { main?: boolean }).main) {
             platform: buildDrizzlePlatformService({
               platformDb: dbHandle.db,
               enqueue: m34PlatformEnqueue.enqueue,
-              auditBypass: m34FailClosedBypassAuditor,
+              auditBypass: m34PlatformBypassAuditor,
             }),
             tenant: buildDrizzleTenantService({
               db: dbHandle.db,
