@@ -9,6 +9,7 @@ import {
   createDbSessionContextStore,
   createIdentityAuth,
   getIdentitySession,
+  registerAbacRegistry,
   registerDbEffectivePermissionResolver,
   registerIdentityAuth,
 } from "@wardenx/auth";
@@ -22,7 +23,10 @@ import {
   registerIdentityErasers,
   registerIdentitySeams,
 } from "./modules/02-identity/index";
-import { mountAuthorizationRoutes } from "./modules/03-authorization/index";
+import {
+  mountAuthorizationRoutes,
+  registerAuthorizationAbacPredicates,
+} from "./modules/03-authorization/index";
 import {
   assertAuditActionCatalog,
   mountAuditRoutes,
@@ -123,6 +127,10 @@ export function wireModuleSeams(
   // M3 — register the live RBAC resolver (DB-backed effective permissions) when a DB client is present,
   // turning `requirePermission` from fail-closed to real resolution. Slice/tests keep the default.
   if (deps.db) registerDbEffectivePermissionResolver(deps.db);
+  // M3 — register M3's own `step_up_recent` ABAC predicate (§4.2.1 — the step-up freshness gate every
+  // `requireStepUp` route resolves through). It reads M2's SessionContextResolver seam (registered just
+  // above) lazily at request time, so registration order only requires the seam present by first request.
+  registerAuthorizationAbacPredicates();
   // M38 — TerminologyProvider (§4.5). Production backs it with the Drizzle store over the real M38
   // tables (FB-T01); slice/tests keep the in-memory default.
   registerTerminologySeams(deps.db ? { store: createDbTerminologyStore(deps.db) } : {});
@@ -238,6 +246,12 @@ export function wireModuleSeams(
     bootstrapModule34(SLICE_MODULE_34_SEAM_DEPS);
   }
   validateModule34Seams();
+  // M3 — flip the Authorization Contract's ABAC evaluator from its fail-closed DENY_ALL default to the
+  // named-predicate registry, NOW that every module above has registered its predicates. Without this
+  // single call, every `requireAbac`/`requireStepUp` route denies in production: the predicates exist
+  // but the evaluator was never pointed at the registry that holds them. Idempotent (sets the evaluator
+  // seam), so test re-boots that call wireModuleSeams() repeatedly stay safe.
+  registerAbacRegistry();
   // Phase-1 producers append here as they land.
 }
 
