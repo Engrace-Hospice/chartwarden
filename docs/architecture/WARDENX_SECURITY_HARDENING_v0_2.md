@@ -2036,4 +2036,18 @@ All thirteen M34-owned tables (seventeen counting helper partitions) are retenti
 
 -----
 
+## Appendix C — Module 33 (Reporting & Dashboards) PHI-Minimization
+
+M33 is the tenant-facing reporting plane. Its governing security rule is **minimum-necessary / HIPAA §164.502(b)**, consistent with this document's "send minimum necessary, prefer structured summaries" principle and "non-critical features (AI, reporting) shed under load before clinical." The invariant: **no row-level PHI ever leaves M33's own SQL.** Three enforcement layers, verified by `packages/reporting/__tests__/phi-minimization.test.ts`:
+
+1. **Aggregate-by-default.** `report_base_catalog.output_class ∈ {aggregate, list_summary, list_phi}`; M33 ships only `aggregate` + `list_summary` at lock. `list_phi` is **disallowed at lock** (Phase-3-reserved, needs a separate not-yet-specified authorization predicate). The translator (`src/translator/*`) compiles a tenant's typed spec into a single parameterized SELECT against a whitelisted MV wrapper: dimensions become the GROUP BY, measures become aggregate expressions — **no un-aggregated row column is ever projected**, and the base catalog never lists a raw identifier (`patient.first_name`, `mrn`, `ssn`, `address`) as a dimension or measure.
+2. **CI lint on metric definitions.** Every `report_metric_catalog.measure_expression` is scanned at build for direct PHI column references outside an aggregation function, and rejected. Dependency-cruiser additionally blocks M33 source from importing `packages/db/src/schema/patient` columns and from naming a raw `report_mv.` literal (reads go through the SECURITY DEFINER wrapper only).
+3. **Drilldown = navigation, not data.** To reach PHI a user **navigates out** of M33 to the owner module (e.g. M8), which **independently re-enforces RLS + ABAC + consent at its own ingress** — M33 never vouches downstream. M33 first narrows the candidate URL via M39 `ConsentEvaluator.evaluateForReporting` (fail-closed: on any consent-evaluator error it excludes the **entire** candidate cohort, never widens). The drilldown-audit row's filter context (`query_filters_cipher`) is **envelope-encrypted under the per-tenant DEK** before storage; if the DEK is unavailable the drilldown is **denied**, never persisted in plaintext. Audit metadata stores **patient-ID hashes only**, never raw PHI.
+
+**Bulk export.** CSV export streams **aggregate columns only** (the translator's whitelisted output keys — smuggled MV columns are projected away) with a hard 250k-row cap; over-cap refuses with 413 **before** a byte streams; XLSX routes through M22 chunked. A **step-up** is required on bulk drilldown export.
+
+**Egress posture.** **Direct BI-tool egress (PowerBI/Tableau/external SQL) is explicitly rejected** as a §164.502(b) minimum-necessary risk — shallow external RBAC cannot reproduce M33's ABAC + consent narrowing — and is deferred to Phase 2 behind a dedicated authorization predicate. Aggregate reads still generate **§164.528 disclosure-accounting** audit-reads (strict-side interpretation per architecture §10.5), linked to the eventual owner-module visit by `drilldown_trace_id`. M33 owns **no secrets** beyond the replica connection string (from the platform vault).
+
+-----
+
 **End of WARDENX_SECURITY_HARDENING v0.1.**

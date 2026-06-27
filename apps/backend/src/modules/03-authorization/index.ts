@@ -55,6 +55,10 @@ export {
   type BreakGlassContractDeps,
   registerBreakGlassContract,
 } from "./contract";
+export {
+  M3_STEP_UP_PREDICATE,
+  registerAuthorizationAbacPredicates,
+} from "./abac-predicates";
 export { registerAuthorizationRoutes } from "./routes/authz-routes";
 export { createDbRoleStore } from "./role-store";
 export { createDbMembershipRoleStore } from "./membership-role-store";

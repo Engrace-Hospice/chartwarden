@@ -7,3 +7,4 @@
 //                           route satisfies, enforced by the §2.5 build-time lint.
 export * from "./audit-read";
 export * from "./require-read-audit";
+export * from "./route-config";

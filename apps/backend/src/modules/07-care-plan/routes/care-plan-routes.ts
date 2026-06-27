@@ -94,16 +94,23 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
   const sudDisclosureAllowed = deps.sudDisclosureAllowed ?? (async () => false);
 
   // ── Care plan (patient-scoped) ─────────────────────────────────────────────────────────────────
-  app.get("/api/v1/patients/:patientId/care-plan", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { patientId } = parse(PatientParamsSchema, request.params);
-    const allowSud = await sudDisclosureAllowed({ organizationId, patientId, planId: "" });
-    const row = await service.getCarePlanForPatient(organizationId, patientId, {
-      sudDisclosureAllowed: allowSud,
-    });
-    if (!row) return { carePlan: null };
-    return row;
-  });
+  app.get(
+    "/api/v1/patients/:patientId/care-plan",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "care_plan", patientIdParam: "patientId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { patientId } = parse(PatientParamsSchema, request.params);
+      const allowSud = await sudDisclosureAllowed({ organizationId, patientId, planId: "" });
+      const row = await service.getCarePlanForPatient(organizationId, patientId, {
+        sudDisclosureAllowed: allowSud,
+      });
+      if (!row) return { carePlan: null };
+      return row;
+    },
+  );
 
   app.post(
     "/api/v1/patients/:patientId/care-plan",

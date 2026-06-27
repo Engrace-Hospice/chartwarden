@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { audit } from "@wardenx/audit";
 // @wardenx/backend — Fastify host entry + COMPOSITION ROOT (not in any module codePath, so
 // exempt from the module-boundary import rules — it may import every module's init). It builds
 // the server, runs the seam/eraser boot gate, and registers each Phase-1 module's real seams
@@ -9,6 +11,7 @@ import {
   createDbSessionContextStore,
   createIdentityAuth,
   getIdentitySession,
+  registerAbacRegistry,
   registerDbEffectivePermissionResolver,
   registerIdentityAuth,
 } from "@wardenx/auth";
@@ -16,13 +19,21 @@ import type { SessionContextStore } from "@wardenx/auth";
 import { type DbClient, createDbClient } from "@wardenx/db";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
 import type { ConnectionOptions } from "bullmq";
-import { buildServer, createSessionAuthenticate, getSeam } from "./bootstrap/index";
+import {
+  assertProductionEnv,
+  buildServer,
+  createSessionAuthenticate,
+  getSeam,
+} from "./bootstrap/index";
 import {
   mountIdentityRoutes,
   registerIdentityErasers,
   registerIdentitySeams,
 } from "./modules/02-identity/index";
-import { mountAuthorizationRoutes } from "./modules/03-authorization/index";
+import {
+  mountAuthorizationRoutes,
+  registerAuthorizationAbacPredicates,
+} from "./modules/03-authorization/index";
 import {
   assertAuditActionCatalog,
   mountAuditRoutes,
@@ -45,6 +56,21 @@ import { registerIdgErasers, registerIdgSeams } from "./modules/14-idg/index";
 import { registerSchedulingSeams } from "./modules/17-scheduling/index";
 import { registerEvvSeams } from "./modules/18-evv/index";
 import { registerDocumentErasers, registerDocumentSeams } from "./modules/22-documents/index";
+import {
+  buildDrizzleM33ExportDrilldownService,
+  buildDrizzleM33ReadService,
+  buildDrizzleM33WriteService,
+  buildM33ReadEnqueue,
+  buildM33WorkerDeps,
+  mountM33ExportDrilldownRoutes,
+  mountM33ReadRoutes,
+  mountM33WriteRoutes,
+  registerM33AbacPredicates,
+  registerM33Workers,
+  registerReportingErasers,
+  scheduleM33Jobs,
+  wireM33Tenancy,
+} from "./modules/33-reporting/index";
 import {
   type BootstrapModule34Deps,
   type TenantPlatformAbacResolver,
@@ -108,6 +134,10 @@ export function wireModuleSeams(
   // M3 — register the live RBAC resolver (DB-backed effective permissions) when a DB client is present,
   // turning `requirePermission` from fail-closed to real resolution. Slice/tests keep the default.
   if (deps.db) registerDbEffectivePermissionResolver(deps.db);
+  // M3 — register M3's own `step_up_recent` ABAC predicate (§4.2.1 — the step-up freshness gate every
+  // `requireStepUp` route resolves through). It reads M2's SessionContextResolver seam (registered just
+  // above) lazily at request time, so registration order only requires the seam present by first request.
+  registerAuthorizationAbacPredicates();
   // M38 — TerminologyProvider (§4.5). Production backs it with the Drizzle store over the real M38
   // tables (FB-T01); slice/tests keep the in-memory default.
   registerTerminologySeams(deps.db ? { store: createDbTerminologyStore(deps.db) } : {});
@@ -189,6 +219,15 @@ export function wireModuleSeams(
   // store over the real M39 consent tables (FB-T03); slice/tests keep the in-memory default.
   registerConsentSeams(deps.db ? { store: createDbConsentStore(deps.db) } : {});
   registerConsentAbacPredicates(); // M39 — the 11 §4.8 ABAC predicate resolvers (resolve via the seam)
+  // M33 — the two §4.7 ABAC predicate resolvers (`reportable_scope` D8 cross-cutting read scope +
+  // `dashboard_visibility` §4.7.2 saved-view ladder). Defaults to the deny-stub resolver until P2C binds
+  // the real M2 `SupervisorReader` / M5 `CaseloadProvider` reach + the Drizzle `report_view` facts — with
+  // the deny-stub every actor collapses to `self` scope (fail-closed), which is the correct posture.
+  registerM33AbacPredicates();
+  // M33 — register the platform job id on the @wardenx/tenancy allowlist so the §4.8 platform-scoped
+  // workers (the on-PRIMARY MV refresh, the lag probe, the tenant eraser) may enter withPlatformContext
+  // (the allowlist starts empty → fail-closed). The M34 `wireM34Tenancy` precedent.
+  wireM33Tenancy();
   // M34 — the 8 §4.6 ABAC predicate resolvers (the platform-ops tenant surface gates on
   // `tenant_lifecycle_platform_ops`, role-only; `dsar_export_*` composes the M5 CaseloadProvider seam,
   // registered above). The grant/flag/onboarding-task resolver methods are exercised by the tenant-scoped
@@ -209,26 +248,44 @@ export function wireModuleSeams(
   // key-ring repo + the injected KEK-unwrap port — the KEK adapter itself is the one typed-TODO, fail-closed
   // on call). Without a DB client (tests / no-db boot) the fail-closed slice key provider keeps boot green.
   if (deps.db) {
-    registerLiveM34Seams({ db: deps.db, auditBypass: m34FailClosedBypassAuditor });
+    registerLiveM34Seams({ db: deps.db, auditBypass: m34PlatformBypassAuditor });
   } else {
     bootstrapModule34(SLICE_MODULE_34_SEAM_DEPS);
   }
   validateModule34Seams();
+  // M3 — flip the Authorization Contract's ABAC evaluator from its fail-closed DENY_ALL default to the
+  // named-predicate registry, NOW that every module above has registered its predicates. Without this
+  // single call, every `requireAbac`/`requireStepUp` route denies in production: the predicates exist
+  // but the evaluator was never pointed at the registry that holds them. Idempotent (sets the evaluator
+  // seam), so test re-boots that call wireModuleSeams() repeatedly stay safe.
+  registerAbacRegistry();
   // Phase-1 producers append here as they land.
 }
 
 /**
- * Fail-closed M34 `platform.bypass_invoked` auditor (Phase 2D typed-TODO). M1's @wardenx/tenancy requires a
- * `PlatformBypassAuditor` for EVERY `withPlatformContext` entry, so that "every cross-tenant read is audited"
- * is a type-level guarantee. M4's audit-chain bypass-auditor handle has no boot accessor yet, so this THROWS
- * on first call — which means the platform-ops cross-tenant surface 5xxs rather than serving an UNAUDITED
- * read. That is the correct posture: a present-but-fail-closed auditor, never a silent no-op. The platform-ops
- * READ/LIST + command routes light up the instant M4 exposes the real `platform.bypass_invoked` emitter here.
- * TODO(integrator — M4 bypass auditor): bind the @wardenx/audit chain-append over the platform tx.
+ * M34 `platform.bypass_invoked` auditor (audit #9). M1's @wardenx/tenancy requires a `PlatformBypassAuditor`
+ * for EVERY `withPlatformContext` entry, so "every cross-tenant read is audited" is a type-level guarantee.
+ * This binds M4's audit helper over the platform tx the bypass runs on: it writes one `platform.bypass_invoked`
+ * row (organizationId null — a cross-tenant action has no single org; actorKind `system`; the caller's jobId +
+ * reason in context) at the event's own severity, atomically with the platform work. If the write fails it
+ * propagates, so the cross-tenant read fails rather than serving an UNAUDITED bypass (the fail-closed posture).
  */
-const m34FailClosedBypassAuditor: PlatformBypassAuditor<DbClient> = async () => {
-  throw new Error(
-    "M34 platform-bypass auditor: Phase-2D typed-TODO — bind the M4 `platform.bypass_invoked` emitter (no boot accessor yet)",
+export const m34PlatformBypassAuditor: PlatformBypassAuditor<DbClient> = async (tx, event) => {
+  await audit(
+    tx,
+    {
+      organizationId: null,
+      userId: null,
+      actorKind: "system",
+      correlationId: `platform-bypass:${event.jobId}:${randomUUID()}`,
+    },
+    {
+      eventType: "platform.bypass_invoked",
+      resourceKind: "tenant",
+      outcome: "success",
+      severity: event.severity,
+      context: { jobId: event.jobId, reason: event.reason },
+    },
   );
 };
 
@@ -300,12 +357,17 @@ export function wireModuleErasers(): void {
   registerIdgErasers(); // M14-T07 — `idg_record` (patient-scoped packet/decision/action-item/agenda destruction-cert callback; meetings/minutes survive; §8.4)
   registerDocumentErasers(); // M22-T10 — `documents` (document/intake-subtree destruction-cert callback; DEK crypto-erase §8.6; legal-hold + Part 2 skip; D9/D12)
   registerSaasTenantPlatformErasers(); // M34 — `saas_tenant_platform_class` (tenant-offboarding control-plane cleanup; subjectId=org; D6/§8.4)
+  registerReportingErasers(); // M33 — `reporting_class` (tenant-offboarding operational-row cleanup; subjectId=org; report_drilldown_audit destruction-blocked; D6/§8.4)
   // Phase-1 data-class owners append here as they land.
 }
 
 // Start only when run directly (not when imported by tests/tooling).
 // `import.meta.main` is a Bun runtime flag; cast keeps tsc happy without bun-types.
 if ((import.meta as { main?: boolean }).main) {
+  // audit #M2 — fail closed if a production secret is missing/weak (BETTER_AUTH_SECRET, TRUSTED_ORIGINS,
+  // TWO_FACTOR_ENCRYPTION_KEY, DATABASE_URL, BETTER_AUTH_URL). No-op in dev/test. Runs first so a
+  // misconfigured production deploy refuses to boot rather than serving with a weak/absent secret.
+  assertProductionEnv();
   // M4-T10 — fail closed if the consolidated audit action catalog has a D9 namespace/uniqueness
   // violation (§4.6.7) before the server serves a single request.
   assertAuditActionCatalog();
@@ -375,13 +437,30 @@ if ((import.meta as { main?: boolean }).main) {
             platform: buildDrizzlePlatformService({
               platformDb: dbHandle.db,
               enqueue: m34PlatformEnqueue.enqueue,
-              auditBypass: m34FailClosedBypassAuditor,
+              auditBypass: m34PlatformBypassAuditor,
             }),
             tenant: buildDrizzleTenantService({
               db: dbHandle.db,
               enqueue: m34TenantEnqueue.enqueue,
             }),
           });
+          // M33 (Phase 2C) — mount the Reporting READ + WRITE + EXPORT/DRILLDOWN surfaces over the DRIZZLE
+          // route services. Reads run under withReportSession (replica-over-primary, RLS-scoped, read-only,
+          // tiered statement_timeout); writes run under withOrgContext on the primary. The MV-admin command
+          // routes enqueue the on-PRIMARY `report.mv_refresh` job through the SAME Valkey connection the
+          // workers run on. Deny-stub-safe infra ports (tile/export SQL executor, M22 render outbox, the
+          // per-tenant DEK encrypt, the cron-parser adapter) forward-seam or fail closed until they bind.
+          const m33ReadEnqueue = buildM33ReadEnqueue(queueConnection);
+          mountM33ReadRoutes(
+            app,
+            buildDrizzleM33ReadService({ db: dbHandle.db, enqueue: m33ReadEnqueue.enqueue })
+              .service,
+          );
+          mountM33WriteRoutes(app, buildDrizzleM33WriteService({ db: dbHandle.db }).service);
+          mountM33ExportDrilldownRoutes(
+            app,
+            buildDrizzleM33ExportDrilldownService({ db: dbHandle.db }).service,
+          );
         }
       : undefined,
     registerModuleSeams: () =>
@@ -428,6 +507,29 @@ if ((import.meta as { main?: boolean }).main) {
       { queues: m34Workers.length },
       "M34 §4.3 BullMQ workers constructed (worker ports bind their M1/M4/M22/M36 seams as those accessors land)",
     );
+
+    // ── M33 §4.8 reporting workers + cron schedules (the same worker-runner shape) ──────────────────────
+    // Construct the §4.8 BullMQ Workers (mv_refresh / scheduled_run / export_render / drilldown_audit_flush /
+    // lag_probe) + the two repeatable cron schedules (the 30s lag probe + the nightly MV-refresh tick). The
+    // worker ports bind their bindable adapters (the M33 repos + the on-PRIMARY REFRESH / lag sample) and
+    // fail closed on the still-missing cross-module infra (outbox dispatcher / envelope-DEK / replica session).
+    const m33Workers = registerM33Workers(
+      buildM33WorkerDeps({ connection: queueConnection, db: dbHandle.db }),
+    );
+    app.addHook("onClose", async () => {
+      await Promise.all(m33Workers.map((w) => w.close()));
+    });
+    // Register the repeatable cron schedules + their close hook BEFORE app.listen() (the M34
+    // FST_ERR_INSTANCE_ALREADY_LISTENING gotcha — await here so the hook is added while pre-listen).
+    try {
+      const m33ScheduleQueues = await scheduleM33Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m33ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M33 cron-schedule registration failed");
+    }
+    app.log.info({ queues: m33Workers.length }, "M33 §4.8 BullMQ reporting workers constructed");
   }
 
   const port = Number(process.env.PORT ?? 3000);

@@ -2029,4 +2029,47 @@ done
 
 ---
 
+## Appendix C — Module 33 (Reporting & Dashboards) Operations
+
+M33 reads **exclusively from the hot-standby replica** via `withReportSession` (`default_transaction_read_only=TRUE`, `application_name='m33_tile'`, tiered `statement_timeout`). It owns no clinical write path; its ops surface is **replica freshness**, **MV refresh health**, and **scheduled-report delivery**.
+
+### C.1 Replica-lag monitoring
+
+A lag-probe singleton queries `pg_stat_replication` every **30 s**. Freshness SLO: steady-state **p50 < 2 s / p95 < 30 s**.
+
+- **Warn at 600 s (10 min)** of lag, with **two-consecutive-probe hysteresis** (one spike does not alarm). On breach the probe emits **`m33.lag.exceeded`** → M36 warn alert to the admin channel → a top-of-page degradation banner appears, and tiles stamp a lag-adjusted `dataFreshnessSeconds` (or fall back to the Valkey `on_demand` cache). Recovery is symmetric: **`m33.lag.recovered`** clears the banner.
+- **Align with the platform alert ladder:** replication lag **>60 s SEV-3 / >5 min SEV-2 / >30 min SEV-1**. M33's 10-min warn sits between SEV-3 and SEV-2 — it degrades the reporting surface gracefully well before the SEV-2 page.
+- **User-facing lag is rounded to the nearest minute** (no timing-oracle); admin surfaces see precise seconds.
+- **Scrape:** `m33_replica_lag_seconds`, `m33_replica_lag_state{fresh|degraded|stale}`.
+
+### C.2 MV-refresh failure handling
+
+Three refresh tiers live in `materialized_view_metadata.refresh_strategy`: `nightly` (02:00 tenant-local cron), `incremental` (outbox-subscriber, 5-second debounce per MV), `on_demand` (Valkey 5-min TTL). All refreshes run `REFRESH MATERIALIZED VIEW CONCURRENTLY` on the **`report.mv_refresh`** BullMQ queue, keyed on `mv_key` (max one in-flight refresh per MV; redelivered events inside the debounce window do not re-refresh).
+
+- **Backoff + retry:** a failed refresh retries with BullMQ backoff and increments `consecutive_failures`. **Alert gate: 3 consecutive non-critical failures OR 1 critical-tier failure** → **`m33.mv.refresh_exhausted`** → M36 **critical** alert to `report_admin` / `org_admin`. Success emits `m33.mv.refresh_succeeded` and resets the counter.
+- **SLO:** per-MV refresh **p50 < 60 s / p95 < 300 s / p99 < 900 s** (900 s = alert threshold).
+- **Admin manual refresh:** the console `/reports/admin/mvs` shows per-MV status with a **`Refresh now`** trigger (perm `report.admin.mv_refresh`, `platform_admin_scope`), **rate-limited 1/min**.
+- **Scrape:** `m33_mv_refresh_total`, `m33_mv_consecutive_failures`.
+
+### C.3 Scheduled-report failure triage
+
+Scheduled runs (`report_schedule_run`: `queued → running → rendered_pending → rendered_complete → delivered → failed`) emit a render request to M22 and deliver via M36. Triage by typed `failed` reason:
+
+| Reason | Meaning | Action |
+|---|---|---|
+| `STATEMENT_TIMEOUT` | Query exceeded the 300 s scheduled tier | Refine the definition's filters / row_limit; re-run. Sinks to `failed`. |
+| `M22_RENDER_FAILED` | M22 render errored | Auto-retries **≤ 3**, then **auto-pauses** the schedule; investigate M22 health, then resume. |
+| `RECIPIENT_LOST_ACCESS` | A recipient's access was revoked between schedule and send | **Non-fatal** — that recipient is dropped, the run still delivers to the rest (`recipient_count_after_revoke_check`). |
+| `MV_REFRESH_LAG` | The backing MV last refreshed > 24 h ago | The run **proceeds on the last snapshot** with an `mvStale=true` footer; fix the underlying refresh failure (§C.2). |
+
+**At-most-once** per `(schedule_id, scheduled_for)` (unique index) — a `failed` run never blocks the next scheduled run for the same schedule, and a redelivery cannot double-send.
+
+### C.4 Chaos drills (§9.8)
+
+- **Replica down** → fall back to primary with a 30 s timeout + banner; reporting stays read-only.
+- **Refresh-worker-pool down** → manual `Refresh now` still works; freshness chips go red.
+- **Primary failover** → reconnect < 30 s; in-flight scheduled runs retry on the next cron tick.
+
+---
+
 **End of WARDENX_OPS_RUNBOOK v0.1.**

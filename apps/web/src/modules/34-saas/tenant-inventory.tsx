@@ -7,6 +7,7 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
+import type { paths } from "@wardenx/ui";
 // apps/web/src/modules/34-saas — M34 SaaS Tenant Platform, the MARQUEE platform-ops inventory (R2).
 // Spec §5.1 (`/tenants` row) — the cross-tenant inventory with status filter, legal-name search, and a
 // "New tenant" CTA. Backed by GET /api/v1/platform/tenants (cursor-paginated CursorPage<TenantSummary>)
@@ -61,12 +62,13 @@ export function TenantInventory(): JSX.Element {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const query: Record<string, string | number> = { limit: 50 };
-    if (status) query.status = status;
+    const query: NonNullable<paths["/api/v1/platform/tenants"]["get"]["parameters"]["query"]> = {
+      limit: 50,
+    };
+    if (status) query.status = status as typeof query.status;
     if (search.trim()) query.search = search.trim();
     const { data, error: err } = await client.GET("/api/v1/platform/tenants", {
-      // The OpenAPI path declares no query schema yet; the live route reads these filters (§4.1).
-      params: { query } as never,
+      params: { query },
     });
     if (err) {
       setError("Tenant inventory unavailable.");

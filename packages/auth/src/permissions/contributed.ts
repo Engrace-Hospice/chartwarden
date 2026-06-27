@@ -2490,6 +2490,226 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M34 contributed permission keys (forty-one). */
 export type M34ContributedPermissionKey = keyof typeof M34_CONTRIBUTED_PERMISSIONS;
 
+/**
+ * Module 33 (Reporting & Dashboards) contributed permission keys (M33 §4.6) — the THIRTY-THREE keys
+ * M33 owns + registers into M3's catalog. Categories: `reporting` (1–28) + `reporting_admin` (29–33).
+ * Mirror of the M33-owned source of truth (apps/backend/src/modules/33-reporting/permission-keys.ts).
+ * Defaults: read tiles/dashboards/exports/drilldowns gate on the §4.7 `reportable_scope` envelope (D8);
+ * saved-view read/edit/share gate on `dashboard_visibility`; the rest are pure-RBAC (`none`).
+ */
+export const M33_CONTRIBUTED_PERMISSIONS = {
+  // --- dashboards + tiles (reporting) ---
+  "report.dashboard.list": {
+    resource: "report_dashboard",
+    action: "list",
+    category: "reporting",
+    abac: "none",
+  },
+  "report.dashboard.read": {
+    resource: "report_dashboard",
+    action: "read",
+    category: "reporting",
+    abac: "reportable_scope",
+  },
+  "report.tile.read": {
+    resource: "report_tile",
+    action: "read",
+    category: "reporting",
+    abac: "reportable_scope",
+  },
+  // --- report bases + metric catalog (reporting) ---
+  "report.base.list": {
+    resource: "report_base_catalog",
+    action: "list",
+    category: "reporting",
+    abac: "none",
+  },
+  "report.base.read": {
+    resource: "report_base_catalog",
+    action: "read",
+    category: "reporting",
+    abac: "none",
+  },
+  "report.metric.list": {
+    resource: "report_metric_catalog",
+    action: "list",
+    category: "reporting",
+    abac: "none",
+  },
+  // --- report definitions (reporting) ---
+  "report.definition.list": {
+    resource: "report_definition",
+    action: "list",
+    category: "reporting",
+    abac: "none",
+  },
+  "report.definition.read": {
+    resource: "report_definition",
+    action: "read",
+    category: "reporting",
+    abac: "none",
+  },
+  "report.definition.write": {
+    resource: "report_definition",
+    action: "write",
+    category: "reporting",
+    abac: "none",
+  },
+  "report.definition.publish": {
+    resource: "report_definition",
+    action: "publish",
+    category: "reporting",
+    abac: "none",
+  },
+  "report.definition.archive": {
+    resource: "report_definition",
+    action: "archive",
+    category: "reporting",
+    abac: "none",
+  },
+  // --- saved views (reporting) ---
+  "report.view.list": {
+    resource: "report_view",
+    action: "list",
+    category: "reporting",
+    abac: "none",
+  },
+  "report.view.read": {
+    resource: "report_view",
+    action: "read",
+    category: "reporting",
+    abac: "dashboard_visibility",
+  },
+  "report.view.write": {
+    resource: "report_view",
+    action: "write",
+    category: "reporting",
+    abac: "dashboard_visibility",
+  },
+  "report.view.archive": {
+    resource: "report_view",
+    action: "archive",
+    category: "reporting",
+    abac: "dashboard_visibility",
+  },
+  "report.view.set_org_default": {
+    resource: "report_view",
+    action: "set_org_default",
+    category: "reporting",
+    abac: "none",
+  },
+  // --- view sharing (reporting) ---
+  "report.share.write": {
+    resource: "report_view_share",
+    action: "write",
+    category: "reporting",
+    abac: "dashboard_visibility",
+  },
+  "report.share.org": {
+    resource: "report_view_share",
+    action: "share_org",
+    category: "reporting",
+    abac: "none",
+  },
+  // --- scheduled reports (reporting) ---
+  "report.schedule.list": {
+    resource: "report_schedule",
+    action: "list",
+    category: "reporting",
+    abac: "none",
+  },
+  "report.schedule.read": {
+    resource: "report_schedule",
+    action: "read",
+    category: "reporting",
+    abac: "none",
+  },
+  "report.schedule.write": {
+    resource: "report_schedule",
+    action: "write",
+    category: "reporting",
+    abac: "none",
+  },
+  "report.schedule.cancel": {
+    resource: "report_schedule",
+    action: "cancel",
+    category: "reporting",
+    abac: "none",
+  },
+  "report.schedule.delete_all_runs": {
+    resource: "report_schedule",
+    action: "delete_all_runs",
+    category: "reporting",
+    abac: "none",
+  },
+  // --- exports (reporting) ---
+  "report.export.csv": {
+    resource: "report_export",
+    action: "export_csv",
+    category: "reporting",
+    abac: "reportable_scope",
+  },
+  "report.export.pdf": {
+    resource: "report_export",
+    action: "export_pdf",
+    category: "reporting",
+    abac: "reportable_scope",
+  },
+  "report.export.xlsx": {
+    resource: "report_export",
+    action: "export_xlsx",
+    category: "reporting",
+    abac: "reportable_scope",
+  },
+  // --- drilldowns (reporting) ---
+  "report.drilldown.read": {
+    resource: "report_drilldown",
+    action: "read",
+    category: "reporting",
+    abac: "reportable_scope",
+  },
+  "report.drilldown.bulk_export": {
+    resource: "report_drilldown",
+    action: "bulk_export",
+    category: "reporting",
+    abac: "reportable_scope",
+  },
+  // --- platform / compliance admin (reporting_admin) ---
+  "report.admin.mv_list": {
+    resource: "materialized_view_metadata",
+    action: "list",
+    category: "reporting_admin",
+    abac: "none",
+  },
+  "report.admin.mv_refresh": {
+    resource: "materialized_view_metadata",
+    action: "refresh",
+    category: "reporting_admin",
+    abac: "none",
+  },
+  "report.admin.mv_suspend": {
+    resource: "materialized_view_metadata",
+    action: "suspend",
+    category: "reporting_admin",
+    abac: "none",
+  },
+  "report.admin.lag_read": {
+    resource: "replica_lag",
+    action: "read",
+    category: "reporting_admin",
+    abac: "none",
+  },
+  "report.admin.audit_read": {
+    resource: "report_drilldown_audit",
+    action: "read",
+    category: "reporting_admin",
+    abac: "none",
+  },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M33 contributed permission keys (thirty-three). */
+export type M33ContributedPermissionKey = keyof typeof M33_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -2602,6 +2822,11 @@ export function m34ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M34_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M33 contributed keys into `permission`-table mirror rows (M33 §4.6). */
+export function m33ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M33_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -2631,5 +2856,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m18ContributedPermissionMirrorRows(),
     ...m22ContributedPermissionMirrorRows(),
     ...m34ContributedPermissionMirrorRows(),
+    ...m33ContributedPermissionMirrorRows(),
   ];
 }

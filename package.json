@@ -33,6 +33,7 @@
     "test": "vitest run",
     "test:rls:live": "vitest run packages/db/migrations/__tests__/rls-isolation.live.test.ts",
     "test:rls:live:m34": "vitest run packages/db/migrations/__tests__/m34-rls-isolation.live.test.ts",
+    "test:rls:live:m33": "vitest run packages/db/migrations/__tests__/m33-rls-isolation.live.test.ts",
     "test:auth:live": "vitest run apps/backend/__tests__/auth.live.test.ts",
     "scaffold": "bun run scripts/scaffold-from-manifest.ts",
     "scaffold:check": "bun run scripts/scaffold-from-manifest.ts --check",
@@ -47,9 +48,12 @@
     "arch:plan-integrity": "bun run scripts/check-plan-integrity.ts",
     "arch:status-matrix": "bun run scripts/report-implementation-status.ts --check",
     "arch:ui-parity": "bun run scripts/report-ui-parity.ts --check",
-    "arch:fitness": "bun run arch:parity && bun run arch:boundaries && bun run arch:tables && bun run arch:tenancy && bun run arch:ddl && bun run arch:gaps && bun run arch:ai-governance && bun run arch:plan-integrity && bun run arch:status-matrix && bun run arch:ui-parity && bun run docs:ui && bun run openapi:check",
+    "arch:frame-fidelity": "bun run scripts/report-frame-fidelity.ts --check",
+    "arch:fitness": "bun run arch:parity && bun run arch:boundaries && bun run arch:tables && bun run arch:tenancy && bun run arch:ddl && bun run arch:gaps && bun run arch:ai-governance && bun run arch:plan-integrity && bun run arch:status-matrix && bun run arch:ui-parity && bun run arch:frame-fidelity && bun run docs:ui && bun run openapi:check",
     "status:matrix": "bun run scripts/report-implementation-status.ts",
     "ui:parity": "bun run scripts/report-ui-parity.ts",
+    "frame:fidelity": "bun run scripts/report-frame-fidelity.ts",
+    "frame:fidelity:check": "bun run scripts/report-frame-fidelity.ts --check",
     "docs:ui": "bun run scripts/check-ui-screens.ts",
     "openapi:emit": "bun run scripts/openapi/emit.ts",
     "openapi:check": "bun run scripts/openapi/emit.ts --check",
@@ -60,19 +64,22 @@
     "@biomejs/biome": "^1.9.4",
     "@types/node": "^22.10.0",
     "dependency-cruiser": "^16.0.0",
-    "drizzle-kit": "^0.30.0",
+    "drizzle-kit": "^0.31.10",
     "openapi-typescript": "^7.4.0",
     "typescript": "^5.7.0",
-    "vitest": "^2.1.0"
+    "vitest": "^3.2.6"
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.0",
     "better-auth": "^1.2.0",
     "bullmq": "^5.34.0",
-    "drizzle-orm": "^0.38.0",
+    "drizzle-orm": "^0.45.2",
     "fastify": "^5.2.0"
   },
   "trustedDependencies": [
     "@biomejs/biome"
-  ]
+  ],
+  "overrides": {
+    "esbuild": "^0.25.0"
+  }
 }

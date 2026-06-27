@@ -98,7 +98,7 @@ export function SupportGrants(): JSX.Element {
           grantReason: "Tenant-initiated support access grant",
           expiresAtIsoOffsetHours: 72,
         },
-      } as never);
+      });
       setCeremonyOpen(false);
       await load();
     },

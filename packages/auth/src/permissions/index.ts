@@ -140,6 +140,13 @@ export {
   M22_CONTRIBUTED_PERMISSIONS,
   m22ContributedPermissionMirrorRows,
 } from "./contributed";
+// M33 — Module 33's reporting permission keys registered into M3's catalog (§4.6 handshake), in a
+// dedicated const so each module's contribution stays attributable (§3.3 ownership model).
+export {
+  type M33ContributedPermissionKey,
+  M33_CONTRIBUTED_PERMISSIONS,
+  m33ContributedPermissionMirrorRows,
+} from "./contributed";
 // M34 — Module 34's forty-one permission keys registered into M3's catalog (§4.5 handshake), in a
 // dedicated const so each module's contribution stays attributable (§3.3 ownership model).
 export {

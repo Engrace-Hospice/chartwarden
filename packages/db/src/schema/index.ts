@@ -476,3 +476,18 @@ export * from "./documents/index";
 // the M4 write-audit triggers + the key-ring SECURITY DEFINER functions land in migrations
 // 0051–0055; this barrel is schema only.
 export * from "./saas/index";
+// M33 Reporting (M33 spec §3.3). M33 owns 12 tables. THREE are PLATFORM-global catalogs with NO
+// organization_id (retention class `platform`, immutable except by migration → on the check-tenancy
+// NON_ORG_SCOPED allowlist): report_base_catalog, report_metric_catalog, materialized_view_metadata.
+// The other nine are org-scoped and carry organization_id (report_run's is NULLABLE — cross-tenant
+// platform-wide refreshes carry no org). Three are PARTITION BY RANGE monthly — the Drizzle shape
+// here is logical (composite PK incl. the partition key); the PARTITION BY + monthly children land in
+// the M33 RLS migration: report_schedule_run (scheduled_for), report_run (started_at) and the insert-
+// only, destruction-blocked report_drilldown_audit (accessed_at, retention class `compliance`).
+// dashboard_tile_cache is transient/non-partitioned. The `report_mv.*` materialized views are raw
+// CREATE MATERIALIZED VIEW SQL in the migration (invisible to ownership/orphan checks), not Drizzle
+// tables. Cross-module refs (M2 membership, M22 document) are plain uuid app-validated; only intra-M33
+// FKs (mv_key / base_key / definition / view / schedule chains) carry SQL FKs. RLS + grants + the M4
+// write-audit triggers (report_drilldown_audit.query_filters_cipher denylisted, §3.6) land in the M33
+// RLS migration; this barrel is schema only.
+export * from "./reporting/index";

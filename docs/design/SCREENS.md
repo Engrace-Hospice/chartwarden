@@ -22,15 +22,23 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 | `●` | Generated + reviewed, on-system |
 | `node:<id>` | Pencil node id once generated |
 
-> **Status: ALL 97 screens generated in Pencil** (`◐`), across 12 phase files
-> (`wardenx-P0-foundation.pen` … `wardenx-P11-core-clinical-cleanup.pen`), each screenshot-verified
-> against the Lantern design system. The full P0–P5 core corpus, the P6–P10 gap-fill expansion
-> (compliance/privacy/quality, EPCS+staffing+patient-billing, external portals, mobile/integration/
-> ops, cert+billing-ops+note-lifecycle+facility+role-dashboards), and the P11 cleanup of the 7
-> index entries the original P0–P5 prompts had skipped (help/training, user profile, admissions
-> intake, election & cert, eligibility/CTI, document mgmt, DocLens) are all complete. Every named
-> pattern in the [layout glossary](./WARDENX_UI_LAYOUT_PATTERNS.md) is represented. The corpus is
-> closed at **97/97**. Next step is design review (`◐` → `●`) and frontend implementation.
+> **Status: corpus COMPLETE + design-reviewed (`●`).** All **113 top-level screens** are generated
+> and promoted to `●` (reviewed, on-system) — the original 97 (P0–P11 core + gap-fill) plus the
+> 16 breadth screens (P12–P14). On top of those sit the **depth track** (D1–D7: ceremonies,
+> sensitivity, states, steppers, variants, sub-views, and breadth-depth variant cards) — **22 `.pen`
+> files in all** (`wardenx-P0-foundation.pen` … `wardenx-P14-ops-gateway-mdm.pen` + `wardenx-D1-*`
+> … `wardenx-D7-*`). Every named pattern in the [layout glossary](./WARDENX_UI_LAYOUT_PATTERNS.md)
+> is represented.
+>
+> **This file tracks design/Pencil status only.** Whether a screen is *built* in `apps/web` is in
+> [`DEFERRED_SCREENS.md`](./DEFERRED_SCREENS.md); whether a *built* screen's layout actually matches
+> its Pencil frame is tracked by the **frame-fidelity** system — see
+> [`FRAME_FIDELITY_PLAYBOOK.md`](./FRAME_FIDELITY_PLAYBOOK.md) and the generated
+> `audit/frame-fidelity/FRAME_FIDELITY.md` (`bun run frame:fidelity`).
+>
+> ⚠️ The Pencil node ids below are recorded per `.pen` file. Frame screenshots are reached through
+> the Pencil MCP, which serves whichever `.pen` is **open in the editor** — verifying a node id in a
+> file other than the open one requires opening that file first.
 
 > **Generation order** follows the phase batches in [`pencil-prompts/`](./pencil-prompts/)
 > (P0 foundation → P5 portal/mobile). Generate via the Pencil MCP into an open `.pen` file;
@@ -146,7 +154,8 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 
 > Added to close the gap vs. a comprehensive hospice EHR — whole domains the original 69 specs
 > never covered (compliance/privacy, EPCS, staffing/HR, external portals, mobile, integration,
-> cert/billing-ops). Specs live in `screens/**`; Pencil generation is the next batch (`⬚`).
+> cert/billing-ops). Specs live in `screens/**`; all are **generated + design-reviewed** (`●`,
+> rows below).
 
 ### P6 — Compliance, Privacy & Quality (8)
 
@@ -233,7 +242,8 @@ that surface — reusable treatments (ceremonies, masking, states) built once an
 > libraries (D1 ceremonies · D2 sensitivity · D3 states) + the per-screen depth (D4 steppers ·
 > D5 variants · D6 sub-views). Combined with the 97 top-level screens, the corpus now stands at
 > **~234 frames** — the frame-depth surface the diagnosis identified. The D5 discipline plans also
-> closed the M15 breadth gap. Remaining: the ~45–65 missing *whole* screens (a future breadth track).
+> closed the M15 breadth gap. The ~45–65 missing *whole* screens were then addressed by the
+> **breadth track (P12–P14, below)**, and depth for those was added by D7.
 
 | Phase | File | Theme | Status |
 | :-- | :-- | :-- | :-- |
@@ -263,7 +273,8 @@ and deduped against the corpus + depth-track sub-views. Plan in
 > Medicaid, and M39 Consent now have dedicated screens; the thin flagships (M19/M20/M21/M26/M28/M40)
 > each gained their missing surface. Combined: **113 top-level screens + 137 depth frames ≈ 250
 > frames**. The corpus is now comprehensive across all 40 modules by breadth, and deep on the
-> high-traffic surfaces. Remaining work is design review (`◐ → ●`) and frontend reconciliation.
+> high-traffic surfaces. Design review is now **complete** (all rows `●`); the open work is the
+> frontend build (`DEFERRED_SCREENS.md`) and per-screen frame fidelity (`FRAME_FIDELITY_PLAYBOOK.md`).
 
 | Screen | Module | Layout pattern | Pencil |
 | :-- | :-- | :-- | :-- |

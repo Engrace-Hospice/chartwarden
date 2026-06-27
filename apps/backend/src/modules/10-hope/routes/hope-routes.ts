@@ -67,10 +67,19 @@ const ADMIN_REGEN = P("hope.admin.regenerate_schedules");
 
 // §4.7 — the three ABAC predicates M10 owns (discipline is read from session context, not the body).
 const noTarget = (): AbacTarget => ({});
-const ABAC_AUTHOR = requireAbac("hope.timepoint.write", "hope.authorDisciplineAllowed", { getTarget: noTarget }) as PreHandler;
-const ABAC_SIGN = requireAbac("hope.timepoint.sign", "hope.authorDisciplineAllowed", { getTarget: noTarget }) as PreHandler;
-const ABAC_SFV = requireAbac("hope.timepoint.write", "hope.sfvAuthorAllowed", { getTarget: noTarget }) as PreHandler;
-const ABAC_CORRECT = requireAbac("hope.timepoint.correct", "hope.correctionAuthorAllowed") as PreHandler; // target = :id
+const ABAC_AUTHOR = requireAbac("hope.timepoint.write", "hope.authorDisciplineAllowed", {
+  getTarget: noTarget,
+}) as PreHandler;
+const ABAC_SIGN = requireAbac("hope.timepoint.sign", "hope.authorDisciplineAllowed", {
+  getTarget: noTarget,
+}) as PreHandler;
+const ABAC_SFV = requireAbac("hope.timepoint.write", "hope.sfvAuthorAllowed", {
+  getTarget: noTarget,
+}) as PreHandler;
+const ABAC_CORRECT = requireAbac(
+  "hope.timepoint.correct",
+  "hope.correctionAuthorAllowed",
+) as PreHandler; // target = :id
 
 export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): void {
   const { service } = deps;
@@ -79,7 +88,11 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   app.get("/api/v1/hope/schedules", { preHandler: [READ_SCHEDULE] }, async (request) => {
     const { organizationId } = actorOf(request);
     const q = parse(ScheduleListQuerySchema, request.query);
-    return service.listSchedules(organizationId, { patientId: q.patientId, status: q.status, rfaKind: q.rfaKind });
+    return service.listSchedules(organizationId, {
+      patientId: q.patientId,
+      status: q.status,
+      rfaKind: q.rfaKind,
+    });
   });
 
   // 2 — schedule detail with derived state.
@@ -98,28 +111,43 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   });
 
   // 4 — record a new HOPE timepoint (draft); RN/NP/MD-only author (§4.7); idempotent via Idempotency-Key.
-  app.post("/api/v1/admissions/:admissionId/hope/timepoints", { preHandler: [WRITE, ABAC_AUTHOR] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const { admissionId } = parse(AdmissionParamsSchema, request.params);
-    const body = parse(RecordTimepointSchema, request.body);
-    const res = await service.recordTimepoint(organizationId, userId, admissionId, {
-      rfaKind: body.rfaKind, targetDate: body.targetDate, authorDiscipline: body.authorDiscipline,
-      data: body.data, sourceEncounterId: body.sourceEncounterId, dischargeReason: body.dischargeReason,
-    });
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/admissions/:admissionId/hope/timepoints",
+    { preHandler: [WRITE, ABAC_AUTHOR] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { admissionId } = parse(AdmissionParamsSchema, request.params);
+      const body = parse(RecordTimepointSchema, request.body);
+      const res = await service.recordTimepoint(organizationId, userId, admissionId, {
+        rfaKind: body.rfaKind,
+        targetDate: body.targetDate,
+        authorDiscipline: body.authorDiscipline,
+        data: body.data,
+        sourceEncounterId: body.sourceEncounterId,
+        dischargeReason: body.dischargeReason,
+      });
+      return reply.code(201).send(res);
+    },
+  );
 
   // 5 — record an SFV completion (RFA 04); RN/NP-only author (§4.7); matches an open SFV row.
-  app.post("/api/v1/admissions/:admissionId/hope/sfv", { preHandler: [WRITE, ABAC_SFV] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const { admissionId } = parse(AdmissionParamsSchema, request.params);
-    const body = parse(RecordSfvSchema, request.body);
-    const res = await service.recordSfv(organizationId, userId, admissionId, {
-      triggeringAssessmentId: body.triggeringAssessmentId, targetDate: body.targetDate,
-      authorDiscipline: body.authorDiscipline, data: body.data, adminOverride: body.adminOverride,
-    });
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/admissions/:admissionId/hope/sfv",
+    { preHandler: [WRITE, ABAC_SFV] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { admissionId } = parse(AdmissionParamsSchema, request.params);
+      const body = parse(RecordSfvSchema, request.body);
+      const res = await service.recordSfv(organizationId, userId, admissionId, {
+        triggeringAssessmentId: body.triggeringAssessmentId,
+        targetDate: body.targetDate,
+        authorDiscipline: body.authorDiscipline,
+        data: body.data,
+        adminOverride: body.adminOverride,
+      });
+      return reply.code(201).send(res);
+    },
+  );
 
   // 6 — update a draft assessment.
   app.put("/api/v1/hope/assessments/:id", { preHandler: [WRITE] }, async (request) => {
@@ -130,23 +158,34 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   });
 
   // 7 — sign a draft (→ signed; runs the D4 J2051 trigger; snapshots PPS/ESAS-r); RN/NP/MD-only.
-  app.post("/api/v1/hope/assessments/:id/sign", { preHandler: [SIGN, ABAC_SIGN] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(AssessmentParamsSchema, request.params);
-    parse(SignTimepointSchema, request.body);
-    return service.signTimepoint(organizationId, userId, id);
-  });
+  app.post(
+    "/api/v1/hope/assessments/:id/sign",
+    { preHandler: [SIGN, ABAC_SIGN] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(AssessmentParamsSchema, request.params);
+      parse(SignTimepointSchema, request.body);
+      return service.signTimepoint(organizationId, userId, id);
+    },
+  );
 
   // 8 — insert a correction RFA (original superseded); original-signer or clinical-lead (§4.7).
-  app.post("/api/v1/hope/assessments/:id/correct", { preHandler: [CORRECT, ABAC_CORRECT] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(AssessmentParamsSchema, request.params);
-    const body = parse(CorrectTimepointSchema, request.body);
-    const res = await service.correctTimepoint(organizationId, userId, id, {
-      correctionReason: body.correctionReason, targetDate: body.targetDate, authorDiscipline: body.authorDiscipline, data: body.data,
-    });
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/hope/assessments/:id/correct",
+    { preHandler: [CORRECT, ABAC_CORRECT] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(AssessmentParamsSchema, request.params);
+      const body = parse(CorrectTimepointSchema, request.body);
+      const res = await service.correctTimepoint(organizationId, userId, id, {
+        correctionReason: body.correctionReason,
+        targetDate: body.targetDate,
+        authorDiscipline: body.authorDiscipline,
+        data: body.data,
+      });
+      return reply.code(201).send(res);
+    },
+  );
 
   // 9 — read a single assessment (sections, snapshot, validation findings).
   app.get("/api/v1/hope/assessments/:id", { preHandler: [READ_TIMEPOINT] }, async (request) => {
@@ -156,20 +195,31 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   });
 
   // 10 — patient HOPE timeline.
-  app.get("/api/v1/patients/:patientId/hope/assessments", { preHandler: [READ_TIMEPOINT] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { patientId } = parse(PatientParamsSchema, request.params);
-    return service.listPatientAssessments(organizationId, patientId);
-  });
+  app.get(
+    "/api/v1/patients/:patientId/hope/assessments",
+    {
+      preHandler: [READ_TIMEPOINT],
+      config: { auditRead: { resourceKind: "hope_assessment", patientIdParam: "patientId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { patientId } = parse(PatientParamsSchema, request.params);
+      return service.listPatientAssessments(organizationId, patientId);
+    },
+  );
 
   // 11 — request the printable HOPE summary (emits `m10.hope.summary_requested`; M22 renders).
-  app.post("/api/v1/hope/assessments/:id/summary-pdf", { preHandler: [READ_TIMEPOINT] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(AssessmentParamsSchema, request.params);
-    parse(SummaryPdfSchema, request.body);
-    const res = await service.requestSummaryPdf(organizationId, userId, id);
-    return reply.code(202).send(res);
-  });
+  app.post(
+    "/api/v1/hope/assessments/:id/summary-pdf",
+    { preHandler: [READ_TIMEPOINT] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(AssessmentParamsSchema, request.params);
+      parse(SummaryPdfSchema, request.body);
+      const res = await service.requestSummaryPdf(organizationId, userId, id);
+      return reply.code(202).send(res);
+    },
+  );
 
   // 12 — open / overdue / missed SFV worklist.
   app.get("/api/v1/hope/sfv", { preHandler: [READ_SFV] }, async (request) => {
@@ -186,11 +236,15 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   });
 
   // 14 — on-demand pre-submission validation findings for one row.
-  app.get("/api/v1/hope/assessments/:id/validation", { preHandler: [READ_TIMEPOINT] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(AssessmentParamsSchema, request.params);
-    return service.getValidation(organizationId, id);
-  });
+  app.get(
+    "/api/v1/hope/assessments/:id/validation",
+    { preHandler: [READ_TIMEPOINT] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(AssessmentParamsSchema, request.params);
+      return service.getValidation(organizationId, id);
+    },
+  );
 
   // 15 — submission batch list per ProviderEntity.
   app.get("/api/v1/hope/submissions", { preHandler: [READ_SUBMISSION] }, async (request) => {
@@ -207,32 +261,48 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   });
 
   // 17 — retry a rejected submission (re-validates, re-assembles).
-  app.post("/api/v1/hope/submissions/:id/retry", { preHandler: [SUBMISSION_MANAGE] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(SubmissionParamsSchema, request.params);
-    parse(RetrySubmissionSchema, request.body);
-    return service.retrySubmission(organizationId, id);
-  });
+  app.post(
+    "/api/v1/hope/submissions/:id/retry",
+    { preHandler: [SUBMISSION_MANAGE] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(SubmissionParamsSchema, request.params);
+      parse(RetrySubmissionSchema, request.body);
+      return service.retrySubmission(organizationId, id);
+    },
+  );
 
   // 18 — force-assemble a submission outside the cron cadence.
-  app.post("/api/v1/hope/submissions/assemble", { preHandler: [SUBMISSION_MANAGE] }, async (request, reply) => {
-    const { organizationId } = actorOf(request);
-    const body = parse(AssembleSubmissionSchema, request.body);
-    const res = await service.assembleSubmission(organizationId, body.providerEntityId);
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/hope/submissions/assemble",
+    { preHandler: [SUBMISSION_MANAGE] },
+    async (request, reply) => {
+      const { organizationId } = actorOf(request);
+      const body = parse(AssembleSubmissionSchema, request.body);
+      const res = await service.assembleSubmission(organizationId, body.providerEntityId);
+      return reply.code(201).send(res);
+    },
+  );
 
   // 19 — org-level HQRP compliance posture.
-  app.get("/api/v1/hope/dashboard/compliance", { preHandler: [DASHBOARD_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(DashboardQuerySchema, request.query);
-    return service.complianceDashboard(organizationId, q.providerEntityId);
-  });
+  app.get(
+    "/api/v1/hope/dashboard/compliance",
+    { preHandler: [DASHBOARD_READ] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(DashboardQuerySchema, request.query);
+      return service.complianceDashboard(organizationId, q.providerEntityId);
+    },
+  );
 
   // 20 — admin: recompute schedules for an admission (post-hoc date correction).
-  app.post("/api/v1/hope/admin/regenerate-schedules", { preHandler: [ADMIN_REGEN] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const body = parse(RegenerateSchedulesSchema, request.body);
-    return service.regenerateSchedules(organizationId, body.admissionId);
-  });
+  app.post(
+    "/api/v1/hope/admin/regenerate-schedules",
+    { preHandler: [ADMIN_REGEN] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const body = parse(RegenerateSchedulesSchema, request.body);
+      return service.regenerateSchedules(organizationId, body.admissionId);
+    },
+  );
 }

@@ -4,6 +4,7 @@ import {
   CorrelationIdProvider,
   ErrorBoundary,
   FeatureFlagProvider,
+  LoadingSpinner,
   SystemStatusProvider,
 } from "@wardenx/ui";
 import type { ApiClient, FeatureFlags, SystemStatusComponent } from "@wardenx/ui";
@@ -13,12 +14,13 @@ import type { ApiClient, FeatureFlags, SystemStatusComponent } from "@wardenx/ui
 // imports a feature module — modules register their screens at composition (apps/web/src/main.tsx).
 import { createElement, useMemo } from "react";
 import type { JSX, ReactNode } from "react";
-import { RouterProvider, createBrowserRouter } from "react-router-dom";
+import { Navigate, RouterProvider, createBrowserRouter } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
+import { guardChromedRoute } from "./actor-session";
 import { AppLayout } from "./layout";
 import { RoleHome } from "./role-home";
 import type { WebScreen } from "./screen-registry";
-import { ActorSessionProvider } from "./session";
+import { ActorSessionProvider, useSessionState } from "./session";
 import type { Session } from "./session";
 
 export interface AppShellProps {
@@ -42,6 +44,20 @@ function newCorrelationId(): string {
   return "cid-shell";
 }
 
+/**
+ * Route guard for the chromed app frame (audit #6): no chromed route renders until the session is
+ * resolved. While loading we show a spinner (no chrome flash, no premature redirect); an anonymous
+ * actor is sent to the chromeless /login flow; an authenticated actor renders the layout (which then
+ * applies the pre-org `needsOrgSelection` redirect). The server still enforces every route.
+ */
+function RequireChrome({ children }: { children: ReactNode }): JSX.Element {
+  const { status } = useSessionState();
+  const outcome = guardChromedRoute(status);
+  if (outcome === "loading") return <LoadingSpinner label="Loading workspace…" />;
+  if (outcome === "redirect") return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
 export function AppShell({
   registry,
   client,
@@ -61,7 +77,11 @@ export function AppShell({
       ...chromeless.map((s) => ({ path: s.path, element: createElement(s.screen) })),
       {
         path: "/",
-        element: <AppLayout screens={chromed} overlay={chromeOverlay} />,
+        element: (
+          <RequireChrome>
+            <AppLayout screens={chromed} overlay={chromeOverlay} />
+          </RequireChrome>
+        ),
         children: [
           { index: true, element: <RoleHome screens={chromed} /> },
           ...chromed.map((s) => ({

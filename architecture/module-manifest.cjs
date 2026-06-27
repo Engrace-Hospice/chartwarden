@@ -848,12 +848,15 @@ exports.MODULES = [
   {
     id: 33,
     name: "Reporting & Dashboards",
-    codePaths: ["apps/backend/src/modules/33-reporting"],
-    // "all clinical + billing modules" — read-only consumer; encoded as broad reader (see fitness note).
-    dependsOn: [
-      5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 30, 38,
-      40,
+    codePaths: [
+      "packages/reporting",
+      "apps/backend/src/modules/33-reporting",
+      "apps/web/src/modules/33-reporting",
     ],
+    // M33 consumes clinical/billing producers THROUGH SEAMS (runtime getSeam + outbox), NOT imports, so
+    // the broad relationship inventory drops out of dependsOn (ADR-0005). Real edges: M1 (@wardenx/db +
+    // bootstrap getSeam), M2/M3/M4 (auth/audit/tenancy), M36 (@wardenx/messaging). Keep in sync with .ts.
+    dependsOn: [1, 2, 3, 4, 36],
     ownedTables: [
       "dashboard_tile_cache",
       "materialized_view_metadata",
@@ -876,6 +879,7 @@ exports.MODULES = [
       "packages/saas-tenant-platform",
       "packages/admin-ui-shell",
       "apps/backend/src/modules/34-saas-tenant-platform",
+      "apps/web/src/modules/34-saas",
     ],
     // M1 edge is real: M34 repos import the @wardenx/db client + schema barrel and the backend module
     // imports apps/backend/src/bootstrap (getSeam) — both M1-owned — plus M1 envelope/MinIO/idempotency.

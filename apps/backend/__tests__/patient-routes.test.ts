@@ -187,6 +187,26 @@ describe("M5-T09 — patient routes (§4.2, §4.7 gating, §7.1/§7.4/§7.7)", (
     await app.close();
   });
 
+  it("§4.2 census-metrics returns the org's active count + per-status breakdown (denies without read)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/patients/census-metrics",
+      headers: EDIT,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.total).toBe(1);
+    expect(body.byStatus.active).toBe(1);
+    const denied = await app.inject({
+      method: "GET",
+      url: "/api/v1/patients/census-metrics",
+      headers: NOPERM,
+    });
+    expect(denied.statusCode).toBe(403);
+    await app.close();
+  });
+
   it("§4.2 list q-filter matches by name/MRN (and denies without patient.read)", async () => {
     const { app } = makeServer();
     const hit = await app.inject({

@@ -42,69 +42,131 @@ const AMEND_REVIEW = requirePermission("patient.amend_review") as PreHandler;
 
 const notFound = (what: string) => new WardenXError("NOT_FOUND", `${what} not found`, 404);
 
+// §2.5 read-audit: a single-patient chart read. `patientIdParam: "id"` joins the read to the patient
+// for the §164.528 accounting query. Per-tab routes extend this with the field names they surface.
+const PATIENT_READ = { resourceKind: "patient", patientIdParam: "id" } as const;
+
 export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDeps): void {
   const { service } = deps;
 
   // --- §4.2 census / list (cursor-paginated; org-scoped server-side) ---------------------------
-  app.get("/api/v1/patients", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const query = parse(PatientListQuerySchema, request.query);
-    return service.list(organizationId, query);
-  });
+  app.get(
+    "/api/v1/patients",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "patient", list: true } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const query = parse(PatientListQuerySchema, request.query);
+      return service.list(organizationId, query);
+    },
+  );
+
+  // --- §4.2 census KPI metrics (active count + per-status breakdown; static path beats /:id) ------
+  app.get(
+    "/api/v1/patients/census-metrics",
+    {
+      preHandler: [READ],
+      // Aggregate counts + per-status totals only; no patient-identifying fields surfaced (§2.5 waiver).
+      config: {
+        auditRead: { none: "aggregate census counts only; no patient-identifying fields surfaced" },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.censusMetrics(organizationId);
+    },
+  );
 
   // --- §4.2 resolve one ------------------------------------------------------------------------
-  app.get("/api/v1/patients/:id", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(LooseIdParamsSchema, request.params);
-    const p = await service.getPatient(organizationId, id);
-    if (p === null) throw notFound("patient"); // §7.5: a non-caseload/other-org patient is 404, no leak
-    return p;
-  });
+  app.get(
+    "/api/v1/patients/:id",
+    { preHandler: [READ], config: { auditRead: PATIENT_READ } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(LooseIdParamsSchema, request.params);
+      const p = await service.getPatient(organizationId, id);
+      if (p === null) throw notFound("patient"); // §7.5: a non-caseload/other-org patient is 404, no leak
+      return p;
+    },
+  );
 
   // --- §3.3 demographics tab (legal name parts + SOGI/race/ethnicity codes + language + aliases) --
-  app.get("/api/v1/patients/:id/demographics", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(LooseIdParamsSchema, request.params);
-    const d = await service.getDemographics(organizationId, id);
-    if (d === null) throw notFound("patient"); // §7.5 non-leak: other-org / non-existent → 404
-    return d;
-  });
+  app.get(
+    "/api/v1/patients/:id/demographics",
+    {
+      preHandler: [READ],
+      config: {
+        auditRead: {
+          ...PATIENT_READ,
+          fields: ["legal_name", "sogi", "race", "ethnicity", "language", "aliases"],
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(LooseIdParamsSchema, request.params);
+      const d = await service.getDemographics(organizationId, id);
+      if (d === null) throw notFound("patient"); // §7.5 non-leak: other-org / non-existent → 404
+      return d;
+    },
+  );
 
   // --- §3.3/§2.2 identifiers tab (ssn/state_id MASKED — value_encrypted never serialized) ---------
-  app.get("/api/v1/patients/:id/identifiers", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(LooseIdParamsSchema, request.params);
-    const rows = await service.getIdentifiers(organizationId, id);
-    if (rows === null) throw notFound("patient");
-    return { identifiers: rows };
-  });
+  app.get(
+    "/api/v1/patients/:id/identifiers",
+    {
+      preHandler: [READ],
+      config: { auditRead: { ...PATIENT_READ, fields: ["mrn", "ssn", "state_id", "mbi"] } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(LooseIdParamsSchema, request.params);
+      const rows = await service.getIdentifiers(organizationId, id);
+      if (rows === null) throw notFound("patient");
+      return { identifiers: rows };
+    },
+  );
 
   // --- §3.4 coverage / payers tab (ranked coverages; payer NAME resolved client-side via M40) -----
-  app.get("/api/v1/patients/:id/payers", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(LooseIdParamsSchema, request.params);
-    const rows = await service.listPayers(organizationId, id);
-    if (rows === null) throw notFound("patient"); // §7.5 non-leak
-    return { payers: rows };
-  });
+  app.get(
+    "/api/v1/patients/:id/payers",
+    {
+      preHandler: [READ],
+      config: { auditRead: { ...PATIENT_READ, fields: ["payer", "member_id"] } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(LooseIdParamsSchema, request.params);
+      const rows = await service.listPayers(organizationId, id);
+      if (rows === null) throw notFound("patient"); // §7.5 non-leak
+      return { payers: rows };
+    },
+  );
 
   // --- §3.4/§3.5 care team & assignments tab (assignment roster + caregivers + emergency contacts) -
-  app.get("/api/v1/patients/:id/care-team", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(LooseIdParamsSchema, request.params);
-    const team = await service.getCareTeam(organizationId, id);
-    if (team === null) throw notFound("patient"); // §7.5 non-leak
-    return team;
-  });
+  app.get(
+    "/api/v1/patients/:id/care-team",
+    { preHandler: [READ], config: { auditRead: PATIENT_READ } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(LooseIdParamsSchema, request.params);
+      const team = await service.getCareTeam(organizationId, id);
+      if (team === null) throw notFound("patient"); // §7.5 non-leak
+      return team;
+    },
+  );
 
   // --- §3.5/§7.6 privacy flags tab (active restrictions snapshot; SUD fail-closed disclosability) --
-  app.get("/api/v1/patients/:id/privacy-flags", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(LooseIdParamsSchema, request.params);
-    const flags = await service.getPrivacyFlags(organizationId, id);
-    if (flags === null) throw notFound("patient"); // §7.5 non-leak
-    return flags;
-  });
+  app.get(
+    "/api/v1/patients/:id/privacy-flags",
+    { preHandler: [READ], config: { auditRead: PATIENT_READ } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(LooseIdParamsSchema, request.params);
+      const flags = await service.getPrivacyFlags(organizationId, id);
+      if (flags === null) throw notFound("patient"); // §7.5 non-leak
+      return flags;
+    },
+  );
 
   // --- §4.2 admit (runs the §7.1 match pipeline; hard dup → 409) --------------------------------
   app.post("/api/v1/patients", { preHandler: [CREATE] }, async (request, reply) => {
@@ -124,13 +186,20 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
   });
 
   // --- §3.3 addresses tab (D5 append-only history; current rows + history) ----------------------
-  app.get("/api/v1/patients/:id/addresses", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(LooseIdParamsSchema, request.params);
-    const rows = await service.listAddresses(organizationId, id);
-    if (rows === null) throw notFound("patient"); // §7.5 non-leak
-    return { addresses: rows };
-  });
+  app.get(
+    "/api/v1/patients/:id/addresses",
+    {
+      preHandler: [READ],
+      config: { auditRead: { ...PATIENT_READ, fields: ["address"], list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(LooseIdParamsSchema, request.params);
+      const rows = await service.listAddresses(organizationId, id);
+      if (rows === null) throw notFound("patient"); // §7.5 non-leak
+      return { addresses: rows };
+    },
+  );
 
   // --- §4.2 add address (§7.4 cascade) ---------------------------------------------------------
   app.post("/api/v1/patients/:id/addresses", { preHandler: [EDIT] }, async (request, reply) => {

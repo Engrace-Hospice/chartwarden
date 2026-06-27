@@ -667,4 +667,12 @@ export type DataClass =
   // `support_session_event`) are NEVER touched (§8.4). Unlike every class above, `subjectId` here is the ORG
   // being offboarded (the platform control plane has no patient subject). Registered by M34's eraseFn over
   // the Phase-0 deny-stub via the composition-root hook (same pattern as M40's `mdm_tenant_overlays`).
-  | "saas_tenant_platform_class";
+  | "saas_tenant_platform_class"
+  // M33 (Reporting & Dashboards) per-TENANT reporting footprint (NOT patient data): on tenant offboarding
+  // (§3.7 / D6 / §8.4) M33's eraseFn deletes the org's OPERATIONAL rows (report_schedule + run ledgers,
+  // dashboard_tile_cache, report_view/report_share, report_definition/report_definition_version) in FK-safe
+  // order, REFUSES the compliance-class `report_drilldown_audit` (D9 survey-evidence, destruction-blocked),
+  // and leaves the PLATFORM catalogs (report_base_catalog/report_metric_catalog/materialized_view_metadata)
+  // untouched (shared reference data, migration-retired only). Like M34, `subjectId` here is the ORG being
+  // offboarded. Registered by M33's eraseFn over the Phase-0 deny-stub via the composition-root hook.
+  | "reporting_class";
