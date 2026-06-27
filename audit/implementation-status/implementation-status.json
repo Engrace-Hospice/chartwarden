@@ -1,8 +1,8 @@
 {
   "totals": {
     "Implemented": 22,
-    "Partial": 1,
-    "Placeholder": 17
+    "Partial": 2,
+    "Placeholder": 16
   },
   "rows": [
     {
@@ -414,10 +414,10 @@
     {
       "id": 30,
       "module": "M30 HQRP & Quality",
-      "status": "Placeholder",
+      "status": "Partial",
       "spec": true,
-      "schema": false,
-      "migration": false,
+      "schema": true,
+      "migration": true,
       "routes": false,
       "enriched": false,
       "screens": false,
