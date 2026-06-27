@@ -52,7 +52,7 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
   // --- §4.2 census / list (cursor-paginated; org-scoped server-side) ---------------------------
   app.get(
     "/api/v1/patients",
-    { preHandler: [READ], config: { auditRead: { resourceKind: "patient" } } },
+    { preHandler: [READ], config: { auditRead: { resourceKind: "patient", list: true } } },
     async (request) => {
       const { organizationId } = actorOf(request);
       const query = parse(PatientListQuerySchema, request.query);
@@ -188,7 +188,10 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
   // --- §3.3 addresses tab (D5 append-only history; current rows + history) ----------------------
   app.get(
     "/api/v1/patients/:id/addresses",
-    { preHandler: [READ], config: { auditRead: { ...PATIENT_READ, fields: ["address"] } } },
+    {
+      preHandler: [READ],
+      config: { auditRead: { ...PATIENT_READ, fields: ["address"], list: true } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(LooseIdParamsSchema, request.params);

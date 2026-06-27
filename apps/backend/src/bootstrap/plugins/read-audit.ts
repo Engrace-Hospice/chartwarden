@@ -5,14 +5,29 @@
 // caught omission, never a silent gap. The declaration contract has existed (declareReadAudit /
 // assertReadAuditDeclared) but nothing enforced it, so the obligation was dormant (audit finding #4).
 //
-// This plugin makes it a FAIL-CLOSED BOOT GATE. An `onRoute` hook fires as each route registers; for
-// any GOVERNED PHI read route (a GET/HEAD under an enforced path prefix) it requires the route to
-// carry `config.auditRead` — an emission config or a `{ none: <justification> }` waiver — and refuses
-// registration otherwise. The server therefore cannot boot while a PHI read route lacks its
-// declaration. Coverage is keyed off the actually-registered (mounted) routes, so it can never drift
-// from an out-of-date static list. Write routes are out of scope here — the M4 write-audit triggers
-// (generateAuditTrigger) cover mutations at the table.
-import { type RouteReadAudit, declareReadAudit, routeReadAuditMode } from "@wardenx/audit";
+// This plugin does TWO things:
+//   1. COVERAGE (fail-closed boot gate): an `onRoute` hook refuses to register any GOVERNED PHI read
+//      route (a GET/HEAD under an enforced path prefix) that lacks `config.auditRead` — an emission
+//      config or a `{ none: <justification> }` waiver. The server cannot boot while a PHI read route
+//      is undeclared. Keyed off the actually-registered routes, so it can never drift from a stale list.
+//   2. EMISSION: a `preSerialization` hook writes the actual read event for every successful (2xx)
+//      response whose route carries an EMISSION config — `auditPhiRead` for a single chart open or
+//      `auditListRead` (count + filter) for a list — through `withOrgContext` so the row is org-scoped
+//      under RLS, exactly like every other audit write. Emission is best-effort: a failure is logged,
+//      never fatal, so an audit hiccup can't take a read offline. Requires a DB client; without one
+//      (slice/tests) only coverage runs.
+// Write routes are out of scope — the M4 write-audit triggers (generateAuditTrigger) cover mutations.
+import {
+  type AuditContext,
+  type RouteReadAudit,
+  type RouteReadAuditEmit,
+  auditListRead,
+  auditPhiRead,
+  declareReadAudit,
+  routeReadAuditMode,
+} from "@wardenx/audit";
+import type { DbClient } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import type { FastifyInstance } from "fastify";
 
 declare module "fastify" {
@@ -53,15 +68,31 @@ export function isGovernedReadRoute(
   return prefixes.some((p) => url === p || url.startsWith(`${p}/`) || url.startsWith(`${p}?`));
 }
 
+/** The emission config for a route, or `null` when the route is absent/waived (no event to emit). */
+function emissionConfig(value: RouteReadAudit | undefined): RouteReadAuditEmit | null {
+  if (!value || "none" in value) return null;
+  return value;
+}
+
+/** Row count for a list read — an `items` array (cursor-page convention), a bare array, or the first array property. */
+function rowCount(payload: unknown): number {
+  if (Array.isArray(payload)) return payload.length;
+  if (payload && typeof payload === "object") {
+    const obj = payload as Record<string, unknown>;
+    if (Array.isArray(obj.items)) return obj.items.length;
+    for (const v of Object.values(obj)) if (Array.isArray(v)) return v.length;
+  }
+  return 0;
+}
+
 /**
- * Install the read-audit coverage gate: an `onRoute` hook that refuses to register any governed PHI
- * read route lacking `config.auditRead`, and otherwise records its declaration so the §2.5 registry
- * reflects the mounted surface. Add this BEFORE the module routes are registered (the hook only sees
- * routes registered after it). `enforcedPrefixes` is the set of PHI path prefixes under coverage.
+ * Install the read-audit coverage gate (+ emission when a DB client is present). Add BEFORE the module
+ * routes are registered: the `onRoute` coverage hook only sees routes registered after it. `enforcedPrefixes`
+ * is the set of PHI path prefixes under coverage; `db` enables the `preSerialization` emission hook.
  */
 export function applyReadAuditCoverage(
   app: FastifyInstance,
-  opts: { enforcedPrefixes: readonly string[] },
+  opts: { enforcedPrefixes: readonly string[]; db?: DbClient },
 ): void {
   app.addHook("onRoute", (route) => {
     if (!isGovernedReadRoute(route.method, route.url, opts.enforcedPrefixes)) return;
@@ -76,5 +107,56 @@ export function applyReadAuditCoverage(
     // Records the intent (and throws if a waiver omits its justification) so a boot-time
     // assertReadAuditDeclared() / the M4 accounting can see the mounted PHI read surface.
     declareReadAudit(routeId, mode);
+  });
+
+  // EMISSION — write the actual read event on a successful response (needs a DB client to insert).
+  const db = opts.db;
+  if (!db) return;
+  app.addHook("preSerialization", async (request, reply, payload) => {
+    try {
+      const cfg = emissionConfig(request.routeOptions?.config?.auditRead);
+      if (!cfg) return payload; // non-PHI route, or a justified waiver → nothing to emit
+      if (reply.statusCode < 200 || reply.statusCode >= 300) return payload; // only successful reads
+      const ctx = request.context;
+      if (!ctx?.organizationId) return payload; // unauthenticated/no-org — the route denied anyway
+      const params = (request.params ?? {}) as Record<string, string>;
+      const patientId = cfg.patientIdParam ? params[cfg.patientIdParam] : undefined;
+      const auditCtx: AuditContext = {
+        organizationId: ctx.organizationId,
+        userId: ctx.userId || null,
+        correlationId: ctx.correlationId,
+        requestId: request.id,
+        sourceIp: ctx.ip,
+        userAgent: ctx.userAgent,
+      };
+      await withOrgContext(
+        db,
+        { organizationId: ctx.organizationId, userId: ctx.userId || "" },
+        async (tx) => {
+          if (cfg.list) {
+            await auditListRead(tx, auditCtx, {
+              resourceKind: cfg.resourceKind,
+              count: rowCount(payload),
+              filter: request.query as Record<string, unknown> | undefined,
+              patientId,
+            });
+          } else {
+            // A single chart open: account it against the resource (defaults to the patient, §164.528).
+            const resourceId =
+              (cfg.resourceIdParam ? params[cfg.resourceIdParam] : undefined) ?? patientId ?? "";
+            await auditPhiRead(tx, auditCtx, {
+              resourceKind: cfg.resourceKind,
+              resourceId,
+              patientId,
+              fields: cfg.fields,
+            });
+          }
+        },
+      );
+    } catch (err) {
+      // Best-effort: a read-audit write failure is logged, never fatal (a hiccup must not 500 a read).
+      request.log.error({ err }, "read-audit emission failed");
+    }
+    return payload;
   });
 }

@@ -13,8 +13,18 @@ export interface RouteReadAuditEmit {
   readonly resourceKind: string;
   /** Route param holding the touched patient's id (enables the §164.528 accounting join). */
   readonly patientIdParam?: string;
+  /**
+   * Route param holding the specific resource's id (a single chart open). Defaults to
+   * `patientIdParam` when omitted — a patient-scoped read is accounted against the patient.
+   */
+  readonly resourceIdParam?: string;
   /** Field names the route surfaces — recorded in context, NEVER the values (§2.3). */
   readonly fields?: readonly string[];
+  /**
+   * True for a high-volume LIST read: the emitter records ONE aggregate `<kind>.list_viewed`
+   * event (count + filter) via `auditListRead`, not one `<kind>.viewed` per row (§3.4).
+   */
+  readonly list?: boolean;
 }
 
 /** An explicit, justified waiver: the route surfaces no accountable PHI (e.g. aggregate counts). */

@@ -127,9 +127,13 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
   applySecurityBaseline(app, deps.security); // CORS + rate-limit read the (now-auth'd) context
   applyErrorHandler(app);
   applyIdempotency(app, deps.idempotencyStore ?? createInMemoryIdempotencyStore());
-  // PHI read-audit coverage (M4 §2.5): refuse to register a GET/HEAD under a covered PHI prefix that
-  // lacks a config.auditRead declaration. Added before any routes so the hook sees them all.
-  applyReadAuditCoverage(app, { enforcedPrefixes: deps.readAuditPrefixes ?? ["/api/v1/patients"] });
+  // PHI read-audit (M4 §2.5): coverage gate refuses a GET/HEAD under a covered PHI prefix lacking a
+  // config.auditRead declaration; with a DB client it also EMITS the read event per successful response.
+  // Added before any routes so the onRoute coverage hook sees them all.
+  applyReadAuditCoverage(app, {
+    enforcedPrefixes: deps.readAuditPrefixes ?? ["/api/v1/patients"],
+    db: deps.db,
+  });
 
   // --- routes ---
   app.get("/healthz", async () => ({ status: "ok" })); // legacy probe (boot smoke test)
