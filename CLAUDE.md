@@ -1,9 +1,18 @@
 # WardenX — Repository Guide
 
 Multi-tenant hospice EHR SaaS. This repo is the **specification corpus + architecture-fitness
-kit + staged implementation monorepo**: Phase 0 gates/scaffold are in place, and landed Phase 1
-waves include real implementation for M2-M8, M36, M38, M39, and M40. Later-wave modules remain
-explicit placeholders until their plans land.
+kit + staged implementation monorepo**: Phase 0 gates/scaffold are in place, and **22 of 40 modules
+now have real implementation on `main`** — M2–M14, M17, M18, M22 (clinical), M33 Reporting & M34 SaaS
+Platform (R2), plus M36/M38/M39/M40. Remaining modules stay explicit placeholders until their plans land.
+
+The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104, see
+[`audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md`](./audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md)):
+production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
+browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit
+coverage gate** (`apps/backend/src/bootstrap/plugins/read-audit.ts`) + request-time emission;
+fail-closed **production env validation** (`apps/backend/src/bootstrap/env.ts`); the real M34
+`platform.bypass_invoked` auditor; **durable break-glass persistence** (Drizzle store + live §2.2
+branch); and dependency-vuln bumps (`bun audit` 7→1, drizzle-orm SQL-injection fix).
 Use this guide to locate authoritative documents.
 
 > **Building/extending the code?** Start at [`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md)
@@ -93,7 +102,8 @@ the prose docs in `docs/architecture/`.
 - `docs/adr/` — Architecture Decision Records (ADR-0001…).
 - `docs/reviews/` — audit/review prompt templates.
 - `docs/REMEDIATION_SUMMARY.md`, `audit/` — point-in-time audit reports. These reference module
-  specs **by filename**; resolve those filenames under `docs/modules/`.
+  specs **by filename**; resolve those filenames under `docs/modules/`. The latest external review is
+  `audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md`; its findings are remediated and merged (PRs #103/#104).
 
 ## Authority rule
 
