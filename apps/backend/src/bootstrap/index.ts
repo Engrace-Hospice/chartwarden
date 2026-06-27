@@ -17,6 +17,7 @@ import { validateErasers } from "./erasers/registry";
 import { applyErrorHandler } from "./plugins/error-handler";
 import { applyIdempotency, createInMemoryIdempotencyStore } from "./plugins/idempotency";
 import { buildLoggerOptions } from "./plugins/logger";
+import { applyReadAuditCoverage } from "./plugins/read-audit";
 import { applyRequestContext } from "./plugins/request-context";
 import { type SecurityOptions, applySecurityBaseline } from "./plugins/security";
 import { type ReadinessProbe, defaultReadinessProbe, registerHealthRoutes } from "./routes/health";
@@ -43,6 +44,13 @@ export interface ServerDeps {
   security?: SecurityOptions;
   /** Request body size cap (SEC-065); default 10 MB. */
   bodyLimit?: number;
+  /**
+   * PHI path prefixes under read-audit coverage (M4 §2.5). Every GET/HEAD registered under one of
+   * these refuses to register unless it carries `config.auditRead` (audit finding #4 — fail-closed
+   * at boot). Defaults to the mounted PHI patient surface; the composition root widens it as more
+   * PHI read modules adopt the `config.auditRead` annotation.
+   */
+  readAuditPrefixes?: readonly string[];
   /**
    * The production DB client (AUTH-T01, ADR-0033). The composition root builds it from DATABASE_URL
    * and injects it here; it is consumed by the Better Auth mount (AUTH-T02) + repositories. Absent in
@@ -119,6 +127,9 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
   applySecurityBaseline(app, deps.security); // CORS + rate-limit read the (now-auth'd) context
   applyErrorHandler(app);
   applyIdempotency(app, deps.idempotencyStore ?? createInMemoryIdempotencyStore());
+  // PHI read-audit coverage (M4 §2.5): refuse to register a GET/HEAD under a covered PHI prefix that
+  // lacks a config.auditRead declaration. Added before any routes so the hook sees them all.
+  applyReadAuditCoverage(app, { enforcedPrefixes: deps.readAuditPrefixes ?? ["/api/v1/patients"] });
 
   // --- routes ---
   app.get("/healthz", async () => ({ status: "ok" })); // legacy probe (boot smoke test)

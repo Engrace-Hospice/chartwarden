@@ -68,11 +68,18 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   });
 
   // 3. GET /api/v1/patients/:patientId/consents — active consents (consent.read + caseload §4.11).
-  app.get("/api/v1/patients/:patientId/consents", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { patientId } = parse(PatientIdParamsSchema, request.params);
-    return { data: await service.listConsentsForPatient(organizationId, patientId) };
-  });
+  app.get(
+    "/api/v1/patients/:patientId/consents",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "consent", patientIdParam: "patientId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { patientId } = parse(PatientIdParamsSchema, request.params);
+      return { data: await service.listConsentsForPatient(organizationId, patientId) };
+    },
+  );
 
   // 4. GET /api/v1/consents/:consentId — full record (consent.read).
   app.get("/api/v1/consents/:consentId", { preHandler: [READ] }, async (request) => {
