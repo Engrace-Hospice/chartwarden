@@ -43,3 +43,38 @@ export { mountM26Routes } from "./routes/mount";
 // §4.3 — the six published-seam implementations (registered into the M1 SeamRegistry when M26's keys
 // become M1 SeamContracts members; until then M26 is reachable cross-module via its §4.10 outbox events).
 export { type M26SeamImpls, buildM26SeamImpls } from "./seam-impls";
+
+// §3.7 / D14 — the M4 destruction-registry `cap` eraser (per-patient redact-to-sentinel retaining aggregates;
+// + the tenant-offboarding destruction entry). Registered over the Phase-0 deny-stub by the composition root.
+export {
+  CAP_DATA_CLASS,
+  type CapEraserDeps,
+  createCapEraser,
+  createDrizzleCapRedactStore,
+  eraseCapForTenant,
+  registerCapErasers,
+} from "./erasers/cap-eraser";
+
+// §4.4 — the upstream-event consumer surface (m25 remittance / m23 claim / m5/m6 freeze / m36 alert).
+// Forward-declared (the M25 posture); the live Drizzle accrual store binds with the M5/M6 readers.
+export {
+  type CapConsumerStore,
+  type M26ConsumeReport,
+  createInMemoryCapConsumerStore,
+  dispatchM26UpstreamEvent,
+  M26_UPSTREAM_SUBSCRIPTIONS,
+  registerM26Consumers,
+} from "./consumers/index";
+
+// §4.8 — the six BullMQ cron queues + the worker/schedule construction (the M25 cron-runner shape; the M2
+// active-org enumerator + the M36 alert router bind at boot, fail-closed until then).
+export {
+  type ActiveOrgListPort as M26ActiveOrgListPort,
+  type WorkerAlertPort as M26WorkerAlertPort,
+  type M26WorkerDeps,
+  M26_CRON_QUEUES,
+  M26_JOB_SCHEDULES,
+  M26_QUEUE_PARAMS,
+  registerM26CronWorkers,
+  scheduleM26Jobs,
+} from "./jobs/index";

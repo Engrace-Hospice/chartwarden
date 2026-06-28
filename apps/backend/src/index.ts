@@ -148,6 +148,9 @@ import {
   buildDrizzleM26WriteService,
   mountM26Routes,
   registerM26AbacPredicates,
+  registerCapErasers,
+  registerM26CronWorkers,
+  scheduleM26Jobs,
 } from "./modules/26-cap/index";
 // M23 (Billing — Medicare) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route
 // mount over the Drizzle read/write services + the boot-time claim-assembly service, the §3.7 `billing_record`
@@ -508,6 +511,7 @@ export function wireModuleErasers(): void {
   registerCostReportErasers(); // M27 — `cost_report_class` (tenant-offboarding operational-config cleanup; subjectId=org; submitted/accepted cost reports are survey-evidence, destruction-gated; §3.7/§8.4)
   registerBillingErasers({ registerEraser }); // M23 — `billing_record` (per-PATIENT destruction-cert callback; in-flight/surveyor-hold guard; MAC secret crypto-shred is the org-destruction path; §3.7/§8.4). registerEraser is INJECTED (M23 may not import the M1 bootstrap registry); in-memory slice store until the Drizzle BillingEraseStore binds.
   registerRemittanceErasers({ registerEraser }); // M25 — `remittance` (per-PATIENT PR-ledger destruction-cert callback; the line/adjustment/remark history rolls off via the M4 partition manager, not per-patient; §3.7/§8.4). registerEraser INJECTED; in-memory slice store until the Drizzle PR-ledger destruction store binds (the M23 posture).
+  registerCapErasers({ registerEraser }); // M26 — `cap` (per-PATIENT redact-to-sentinel destruction-cert callback; D14 — aggregates survive right-to-erasure so CMS-side cap reconciliation stays reproducible; §3.7/§8.4). registerEraser INJECTED; in-memory slice store until the privileged Drizzle redaction store binds (the M25 posture).
   // Phase-1 data-class owners append here as they land.
 }
 
@@ -981,6 +985,24 @@ if ((import.meta as { main?: boolean }).main) {
       app.log.error(err, "M25 cron-schedule registration failed");
     }
     app.log.info({ queues: m25Workers.length }, "M25 §4.8 BullMQ remittance crons constructed");
+
+    // ── M26 §4.8 Cap-Management crons (nightly projection recompute · cap-year auto-close · stale-PS&R
+    // watchdog). Constructed over the same Valkey connection + db; the M2 active-org enumerator + the M36
+    // alert router stay on their fail-closed/no-op defaults until bound (a cron tick fails closed, never at
+    // import — the M25 deferred-bind posture). Idempotent recompute/close via the §2.6 unique constraints.
+    const m26Workers = registerM26CronWorkers({ connection: queueConnection, db: dbHandle.db });
+    app.addHook("onClose", async () => {
+      await Promise.all(m26Workers.map((w) => w.close()));
+    });
+    try {
+      const m26ScheduleQueues = await scheduleM26Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m26ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M26 cron-schedule registration failed");
+    }
+    app.log.info({ queues: m26Workers.length }, "M26 §4.8 BullMQ cap crons constructed");
   }
 
   const port = Number(process.env.PORT ?? 3000);

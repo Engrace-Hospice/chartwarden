@@ -367,7 +367,7 @@
       "screens": false,
       "tests": true,
       "adapter": null,
-      "liveInfra": false
+      "liveInfra": true
     },
     {
       "id": 27,
