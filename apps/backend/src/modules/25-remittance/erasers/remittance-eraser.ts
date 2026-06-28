@@ -36,13 +36,29 @@ export function createRemittanceEraser(store: RemittanceEraseStore): DataEraser 
   };
 }
 
+/**
+ * The in-memory slice store — counts a requested erase but persists nothing (the M23 in-memory eraser
+ * precedent). Lets the composition root register a REAL eraser over the Phase-0 deny-stub at boot before the
+ * Drizzle destruction store binds (the per-patient PR-ledger DELETE runs under the M4 cert workflow's
+ * privileged context — a deferred bind, same as M23's BillingEraseStore).
+ */
+export function createInMemoryRemittanceEraseStore(): RemittanceEraseStore {
+  return {
+    async erasePrLedgerForPatient() {
+      return 0;
+    },
+  };
+}
+
 /** Deps for the M25 eraser registration. */
 export interface RemittanceEraserDeps {
   readonly registerEraser: RegisterEraserHook;
-  readonly store: RemittanceEraseStore;
+  /** The destruction store (defaults to the in-memory slice until the Drizzle store binds). */
+  readonly store?: RemittanceEraseStore;
 }
 
 /** Register the real M25 eraser over the Phase-0 deny-stub (composition-root `registerModuleErasers` hook). */
 export function registerRemittanceErasers(deps: RemittanceEraserDeps): void {
-  deps.registerEraser(REMITTANCE_DATA_CLASS, createRemittanceEraser(deps.store));
+  const store = deps.store ?? createInMemoryRemittanceEraseStore();
+  deps.registerEraser(REMITTANCE_DATA_CLASS, createRemittanceEraser(store));
 }

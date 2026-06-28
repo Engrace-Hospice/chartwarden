@@ -50,8 +50,9 @@ export {
 export { mountM25Routes } from "./routes/mount";
 
 // §4.4 — the upstream outbox consumers (m23.claim.rejected, m18.evv.aggregator_rejected,
-// m22.document.rendered → denial seed / EVV back-link / document back-reference). Pure handlers over an
-// injected store; module-only (NOT wired into the dispatcher subscription yet — the M23 conservative posture).
+// m22.document.rendered → denial seed / EVV back-link / document back-reference). The pure handlers + the
+// frozen subscription-map + `registerM25Consumers` (the boot dispatcher forward-declares one binding per
+// topic; no live inbound relay loop exists yet — the identical posture every module is in, RULE 3(d)).
 export {
   type DenialSeedStore,
   type DenialOpenedEmission,
@@ -60,16 +61,34 @@ export {
   handleEvvAggregatorRejected,
   handleDocumentRendered,
 } from "./consumers/handlers";
+export {
+  type M25ConsumerPorts,
+  type M25ConsumeReport,
+  M25_SUBSCRIPTION_MAP,
+  M25_UPSTREAM_SUBSCRIPTIONS,
+  dispatchM25UpstreamEvent,
+  registerM25Consumers,
+} from "./consumers/index";
 
-// §4.8 — the nightly cron handlers (denial-aging rebucket + threshold alerts; appeal-deadline T-30/14/7/1
-// alerts). Pure over injected stores; the BullMQ/cron binding lands at boot (module-only here).
+// §4.8 — the nightly cron handlers + the LIVE BullMQ cron-worker boot surface. The composition root
+// constructs the §4.8 cron Workers + the repeatable schedules over the injected Valkey connection +
+// Drizzle db; the M2 active-org enumerator + M36 alert router ports stay fail-closed-unbound at boot (RULE
+// 4 — the typed thunks throw only when a CRON TICK RUNS, so boot stays green). Nothing runs at import.
 export {
   type DenialAgingStore,
   type AppealDeadlineStore,
   type AlertEmission,
-  runDenialAging,
+  type M25WorkerDeps,
+  type WorkerAlertPort,
+  type ActiveOrgListPort,
+  M25_CRON_QUEUES,
+  M25_JOB_SCHEDULES,
+  buildM25WorkerDeps,
+  registerM25CronWorkers,
   runAppealDeadlineWatch,
-} from "./jobs/m25-jobs";
+  runDenialAging,
+  scheduleM25Jobs,
+} from "./jobs/index";
 
 // §3.7 / §8.4 — the M4 `remittance` destruction eraser (PR-ledger per-patient erase; the line history rolls
 // off via the M4 partition manager). Registered over the Phase-0 deny-stub via the injected registerEraser
@@ -79,6 +98,7 @@ export {
   type RemittanceEraserDeps,
   type RegisterEraserHook,
   REMITTANCE_DATA_CLASS,
+  createInMemoryRemittanceEraseStore,
   createRemittanceEraser,
   registerRemittanceErasers,
 } from "./erasers/remittance-eraser";

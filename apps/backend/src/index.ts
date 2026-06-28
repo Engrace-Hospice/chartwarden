@@ -127,8 +127,12 @@ import {
   M25_OUTBOX_EVENTS,
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
+  buildM25WorkerDeps,
   mountM25Routes,
   registerM25AbacPredicates,
+  registerM25CronWorkers,
+  registerRemittanceErasers,
+  scheduleM25Jobs,
 } from "./modules/25-remittance/index";
 // M23 (Billing — Medicare) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route
 // mount over the Drizzle read/write services + the boot-time claim-assembly service, the §3.7 `billing_record`
@@ -483,6 +487,7 @@ export function wireModuleErasers(): void {
   registerQualityErasers(); // M30 — `quality_class` (tenant-offboarding operational-row cleanup; subjectId=org; compliance-class survey evidence destruction-blocked; D6/§8.4)
   registerCostReportErasers(); // M27 — `cost_report_class` (tenant-offboarding operational-config cleanup; subjectId=org; submitted/accepted cost reports are survey-evidence, destruction-gated; §3.7/§8.4)
   registerBillingErasers({ registerEraser }); // M23 — `billing_record` (per-PATIENT destruction-cert callback; in-flight/surveyor-hold guard; MAC secret crypto-shred is the org-destruction path; §3.7/§8.4). registerEraser is INJECTED (M23 may not import the M1 bootstrap registry); in-memory slice store until the Drizzle BillingEraseStore binds.
+  registerRemittanceErasers({ registerEraser }); // M25 — `remittance` (per-PATIENT PR-ledger destruction-cert callback; the line/adjustment/remark history rolls off via the M4 partition manager, not per-patient; §3.7/§8.4). registerEraser INJECTED; in-memory slice store until the Drizzle PR-ledger destruction store binds (the M23 posture).
   // Phase-1 data-class owners append here as they land.
 }
 
@@ -880,6 +885,24 @@ if ((import.meta as { main?: boolean }).main) {
       app.log.error(err, "M23 cron-schedule registration failed");
     }
     app.log.info({ queues: m23Workers.length }, "M23 §4.8 BullMQ billing workers constructed");
+    // ── M25 §4.8 Remittance crons (denial-aging rebucket + appeal-deadline watch) — same worker-runner
+    // shape. buildM25WorkerDeps binds only the connection + db; the M2 active-org enumerator (the per-org
+    // cron fan-out source, under withPlatformContext) + the M36 alert router stay fail-closed-unbound at boot
+    // (RULE 4 — the typed thunks in cron-workers.ts throw only when a CRON TICK RUNS, so boot stays green).
+    const m25WorkerDeps = buildM25WorkerDeps({ connection: queueConnection, db: dbHandle.db });
+    const m25Workers = registerM25CronWorkers(m25WorkerDeps);
+    app.addHook("onClose", async () => {
+      await Promise.all(m25Workers.map((w) => w.close()));
+    });
+    try {
+      const m25ScheduleQueues = await scheduleM25Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m25ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M25 cron-schedule registration failed");
+    }
+    app.log.info({ queues: m25Workers.length }, "M25 §4.8 BullMQ remittance crons constructed");
   }
 
   const port = Number(process.env.PORT ?? 3000);
