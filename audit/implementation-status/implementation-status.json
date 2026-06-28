@@ -323,7 +323,7 @@
       "routes": true,
       "enriched": false,
       "screens": false,
-      "tests": false,
+      "tests": true,
       "adapter": true,
       "liveInfra": false
     },

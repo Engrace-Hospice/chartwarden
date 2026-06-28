@@ -43,6 +43,7 @@ export type ClaimTransitionEvent =
   | "ack_277ca_rejected"
   | "ack_277ca_partial"
   | "remittance_paid"
+  | "remittance_partial_paid"
   | "remittance_denied"
   | "appeal_succeeded"
   | "replacement_accepted"
@@ -89,8 +90,12 @@ export const CLAIM_TRANSITIONS: readonly ClaimTransition[] = [
   { from: "ack_pending", event: "ack_277ca_rejected", to: "ack_rejected" },
   { from: "ack_pending", event: "ack_277ca_partial", to: "ack_partial" },
 
-  // ACK_ACCEPTED: 835 remittance posts payment/denial; or a replacement/void supersedes it (D14).
+  // ACK_ACCEPTED: 835 remittance posts payment (full/partial)/denial; or a replacement/void supersedes
+  // it (D14). The partial-pay edge is driven by `m25.remittance.claim_partial_paid` (M25 deny-stubbed
+  // today — the m25-remit-posted consumer un-stubs at M25 lock; the edge is present so the machine is
+  // complete and the consumer is a drop-in).
   { from: "ack_accepted", event: "remittance_paid", to: "paid" },
+  { from: "ack_accepted", event: "remittance_partial_paid", to: "partial_paid" },
   { from: "ack_accepted", event: "remittance_denied", to: "denied" },
   { from: "ack_accepted", event: "replacement_accepted", to: "replaced" },
   { from: "ack_accepted", event: "void_accepted", to: "voided" },
@@ -101,6 +106,12 @@ export const CLAIM_TRANSITIONS: readonly ClaimTransition[] = [
   // PAID: post-payment correction (817) or post-payment void (818).
   { from: "paid", event: "replacement_accepted", to: "replaced" },
   { from: "paid", event: "void_accepted", to: "voided" },
+
+  // PARTIAL_PAID: same post-payment paths as PAID (a TOB 817 corrects, a TOB 818 voids); an M25 appeal
+  // on the underpaid portion can re-post full payment.
+  { from: "partial_paid", event: "replacement_accepted", to: "replaced" },
+  { from: "partial_paid", event: "void_accepted", to: "voided" },
+  { from: "partial_paid", event: "appeal_succeeded", to: "paid" },
 
   // DENIED: an M25 appeal succeeds + 835 re-posts with payment.
   { from: "denied", event: "appeal_succeeded", to: "paid" },

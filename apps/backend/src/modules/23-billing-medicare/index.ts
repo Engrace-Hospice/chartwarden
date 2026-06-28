@@ -109,6 +109,29 @@ export {
   scheduleM23Jobs,
 } from "./jobs/index";
 
+// §D13 — the AI-block surfaces: the boot validator over M32's prompt-template registry (empty-safe, NOT
+// boot-wired — no precedent module wires one; exported + tested directly), the owned-table matcher, the
+// only-admitted read-only `validation_ai_advisory` reader seam + its deny-stub, and the AI-governance audit
+// channel classifier. The per-route `actor_kind='ai_*'` reject lives in ./routes/actor.ts; the import
+// boundary is the `m23-billing-no-ai-platform` dependency-cruiser rule.
+export {
+  type AiAdvisoryReader,
+  type BillingAuditChannel,
+  type M23OwnedTableFamily,
+  type PromptTemplateDescriptor,
+  type PromptTemplateRegistry,
+  type ValidationAiAdvisoryDto,
+  ADVISORY_DISPLAY_EVENT_TYPE,
+  AiBlockViolationError,
+  M23_OWNED_TABLE_EXACT,
+  M23_OWNED_TABLE_FAMILIES,
+  auditChannelForBillingEvent,
+  buildAdvisoryDisplayAuditEvent,
+  denyAiAdvisoryReader,
+  outputTypeTargetsBilling,
+  validateAiBlockForBilling,
+} from "./ai-block";
+
 /**
  * Boot-contract accessor — returns the §4.10 + §4.6 contract surfaces for boot-catalog UPSERT convenience
  * (the M27 precedent). The composition root imports `M23_OUTBOX_EVENTS` + the permission catalog directly;
