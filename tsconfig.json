@@ -36,6 +36,9 @@
       "path": "./packages/cahps-vendors"
     },
     {
+      "path": "./packages/cap-management"
+    },
+    {
       "path": "./packages/consent"
     },
     {

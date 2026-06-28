@@ -758,7 +758,9 @@ export const MODULES: ModuleDef[] = [
   {
     id: 26,
     name: "Cap Management",
-    codePaths: ["apps/backend/src/modules/26-cap"],
+    codePaths: ["packages/cap-management", "apps/backend/src/modules/26-cap"],
+    // ADR-0005: genuine compile-time edges only; the broader read-direction inventory (M1-6/M25/M38/M40
+    // foundation + seam/outbox consumers) is no-edge per D1/D4 — do not bulk-apply the §13 relationship list.
     dependsOn: [23, 36],
     ownedTables: [
       "cap_beneficiary_accrual",
