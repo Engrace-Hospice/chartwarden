@@ -353,7 +353,7 @@
       "screens": true,
       "tests": true,
       "adapter": true,
-      "liveInfra": false
+      "liveInfra": true
     },
     {
       "id": 26,
@@ -493,7 +493,7 @@
       "screens": false,
       "tests": false,
       "adapter": null,
-      "liveInfra": false
+      "liveInfra": true
     },
     {
       "id": 36,
