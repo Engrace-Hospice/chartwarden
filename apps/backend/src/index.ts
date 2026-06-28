@@ -118,6 +118,22 @@ import {
   registerM27Workers,
   scheduleM27Jobs,
 } from "./modules/27-cost-report/index";
+// M25 (Remittance & Denials) boot surface — the §4.5 outbox catalog, the §4.7 ABAC resolvers
+// (`claim_assigned_to_actor`, `appeal_within_deadline`), and the §4.1 route mount over the Drizzle
+// read/write services. The write service's transactional outbox publisher + the read service's M38
+// terminology lookup stay on their fail-closed defaults at boot (no-op emit / deny-stub lookup) until those
+// binds land — a documented follow-up (the M23/M27 deferred-bind posture); routes are fully live otherwise.
+import {
+  M25_OUTBOX_EVENTS,
+  buildDrizzleM25ReadService,
+  buildDrizzleM25WriteService,
+  buildM25WorkerDeps,
+  mountM25Routes,
+  registerM25AbacPredicates,
+  registerM25CronWorkers,
+  registerRemittanceErasers,
+  scheduleM25Jobs,
+} from "./modules/25-remittance/index";
 // M23 (Billing — Medicare) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route
 // mount over the Drizzle read/write services + the boot-time claim-assembly service, the §3.7 `billing_record`
 // eraser (registerEraser INJECTED — M23 cannot import the M1 bootstrap registry), and the §4.8 BullMQ workers
@@ -324,6 +340,10 @@ export function wireModuleSeams(
   // owner-fact resolver binds under RLS; with no db it defaults to the deny-stub (default-deny). The M5
   // CaseloadProvider axis behind `claim_in_billing_manager_caseload` stays fail-closed until that seam binds.
   registerM23AbacPredicates({ db: deps.db });
+  // M25 — the two §4.7 ABAC resolvers (`claim_assigned_to_actor` denial worklist-ownership;
+  // `appeal_within_deadline` the hard T-0 block on submit). Pass the DB handle so the Drizzle fact resolver
+  // binds under RLS; with no db it defaults to the deny-stub (default-deny).
+  registerM25AbacPredicates({ db: deps.db });
   // M33 — register the platform job id on the @wardenx/tenancy allowlist so the §4.8 platform-scoped
   // workers (the on-PRIMARY MV refresh, the lag probe, the tenant eraser) may enter withPlatformContext
   // (the allowlist starts empty → fail-closed). The M34 `wireM34Tenancy` precedent.
@@ -467,6 +487,7 @@ export function wireModuleErasers(): void {
   registerQualityErasers(); // M30 — `quality_class` (tenant-offboarding operational-row cleanup; subjectId=org; compliance-class survey evidence destruction-blocked; D6/§8.4)
   registerCostReportErasers(); // M27 — `cost_report_class` (tenant-offboarding operational-config cleanup; subjectId=org; submitted/accepted cost reports are survey-evidence, destruction-gated; §3.7/§8.4)
   registerBillingErasers({ registerEraser }); // M23 — `billing_record` (per-PATIENT destruction-cert callback; in-flight/surveyor-hold guard; MAC secret crypto-shred is the org-destruction path; §3.7/§8.4). registerEraser is INJECTED (M23 may not import the M1 bootstrap registry); in-memory slice store until the Drizzle BillingEraseStore binds.
+  registerRemittanceErasers({ registerEraser }); // M25 — `remittance` (per-PATIENT PR-ledger destruction-cert callback; the line/adjustment/remark history rolls off via the M4 partition manager, not per-patient; §3.7/§8.4). registerEraser INJECTED; in-memory slice store until the Drizzle PR-ledger destruction store binds (the M23 posture).
   // Phase-1 data-class owners append here as they land.
 }
 
@@ -501,6 +522,7 @@ if ((import.meta as { main?: boolean }).main) {
   // A duplicate `eventName` across contributions fails boot here (OutboxEventCollisionError — fail-closed).
   const bootOutboxCatalog = buildBootOutboxCatalog([
     M23_OUTBOX_EVENTS,
+    M25_OUTBOX_EVENTS,
     M27_OUTBOX_EVENTS,
     M30_OUTBOX_EVENTS,
     M33_OUTBOX_EVENTS,
@@ -649,6 +671,17 @@ if ((import.meta as { main?: boolean }).main) {
             assemblyService: buildM23BootAssemblyService(dbHandle.db, {
               outbox: m23OutboxPublisher,
             }),
+          });
+          // M25 (Remittance & Denials) — mount the §4.1 route plugins over the Drizzle READ + WRITE
+          // services. Each mutation opens its own withOrgContext (RLS scopes every statement to app.org_id),
+          // validates the §2.2 transition via the pure domain machines, and version-checks the PATCH surfaces
+          // (§2.5). The §4.5 m25.* transactional outbox publisher + the M38 terminology lookup stay on their
+          // fail-closed defaults (no-op emit / deny-stub) until those binds land — the routes (reads, manual-
+          // match, the denial/appeal state ladders, the overlay edit) are fully live; only the cross-module
+          // event fan-out + the M38 plain-language merge are deferred (the M23/M27 deferred-bind posture).
+          mountM25Routes(app, {
+            readService: buildDrizzleM25ReadService(dbHandle.db),
+            writeService: buildDrizzleM25WriteService(dbHandle.db),
           });
         }
       : undefined,
@@ -852,6 +885,24 @@ if ((import.meta as { main?: boolean }).main) {
       app.log.error(err, "M23 cron-schedule registration failed");
     }
     app.log.info({ queues: m23Workers.length }, "M23 §4.8 BullMQ billing workers constructed");
+    // ── M25 §4.8 Remittance crons (denial-aging rebucket + appeal-deadline watch) — same worker-runner
+    // shape. buildM25WorkerDeps binds only the connection + db; the M2 active-org enumerator (the per-org
+    // cron fan-out source, under withPlatformContext) + the M36 alert router stay fail-closed-unbound at boot
+    // (RULE 4 — the typed thunks in cron-workers.ts throw only when a CRON TICK RUNS, so boot stays green).
+    const m25WorkerDeps = buildM25WorkerDeps({ connection: queueConnection, db: dbHandle.db });
+    const m25Workers = registerM25CronWorkers(m25WorkerDeps);
+    app.addHook("onClose", async () => {
+      await Promise.all(m25Workers.map((w) => w.close()));
+    });
+    try {
+      const m25ScheduleQueues = await scheduleM25Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m25ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M25 cron-schedule registration failed");
+    }
+    app.log.info({ queues: m25Workers.length }, "M25 §4.8 BullMQ remittance crons constructed");
   }
 
   const port = Number(process.env.PORT ?? 3000);

@@ -30,6 +30,7 @@
     "18-evv",
     "22-documents",
     "23-billing-medicare",
+    "25-remittance",
     "33-reporting",
     "34-saas",
     "36-messaging",
@@ -771,6 +772,34 @@
       "id": "billing.surveyor-audit",
       "path": "/admin/billing-audit",
       "permission": "billing.claim.read"
+    },
+    {
+      "module": "25-remittance",
+      "moduleId": 25,
+      "id": "remittance.worklist",
+      "path": "/remittance",
+      "permission": "remittance.read"
+    },
+    {
+      "module": "25-remittance",
+      "moduleId": 25,
+      "id": "remittance.denials",
+      "path": "/remittance/denials",
+      "permission": "denial.worklist.read"
+    },
+    {
+      "module": "25-remittance",
+      "moduleId": 25,
+      "id": "remittance.appeals",
+      "path": "/remittance/appeals",
+      "permission": "appeal.read"
+    },
+    {
+      "module": "25-remittance",
+      "moduleId": 25,
+      "id": "remittance.taxonomy",
+      "path": "/remittance/taxonomy",
+      "permission": "taxonomy.read"
     },
     {
       "module": "33-reporting",

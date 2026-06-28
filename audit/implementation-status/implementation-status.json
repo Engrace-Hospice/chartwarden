@@ -1,8 +1,8 @@
 {
   "totals": {
-    "Implemented": 25,
+    "Implemented": 26,
     "Partial": 1,
-    "Placeholder": 14
+    "Placeholder": 13
   },
   "rows": [
     {
@@ -344,16 +344,16 @@
     {
       "id": 25,
       "module": "M25 Remittance & Denials",
-      "status": "Placeholder",
+      "status": "Implemented",
       "spec": true,
-      "schema": false,
-      "migration": false,
-      "routes": false,
+      "schema": true,
+      "migration": true,
+      "routes": true,
       "enriched": false,
-      "screens": false,
-      "tests": false,
-      "adapter": false,
-      "liveInfra": false
+      "screens": true,
+      "tests": true,
+      "adapter": true,
+      "liveInfra": true
     },
     {
       "id": 26,
@@ -493,7 +493,7 @@
       "screens": false,
       "tests": false,
       "adapter": null,
-      "liveInfra": false
+      "liveInfra": true
     },
     {
       "id": 36,

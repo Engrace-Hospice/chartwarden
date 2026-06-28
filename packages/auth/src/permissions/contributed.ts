@@ -2905,6 +2905,158 @@ export const M23_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M23 contributed permission keys (twenty-eight). */
 export type M23ContributedPermissionKey = keyof typeof M23_CONTRIBUTED_PERMISSIONS;
 
+/**
+ * The twenty-two permission keys Module 25 (Remittance & Denials) registers into M3's catalog (§4.6).
+ * Grouped under the `billing` category (the revenue-cycle surface, alongside M23). The `abac` default is
+ * the dominant §4.7 predicate per key; M25 owns `claim_assigned_to_actor` + `appeal_within_deadline` (the
+ * two new predicates, registered at boot) and reuses `provider_entity_scope` / `caseload_or_scope` /
+ * `inOrg`. The step-up requirement on adjustment-override / appeal-submit / close-with-write-off (D15) is
+ * enforced at the route layer (M2 SESSION_POLICY), not in the catalog `abac` field. The `*_internal` seam
+ * keys are reached only by the `m25.system_principal` (architecture §17), not the user-facing gateway.
+ */
+export const M25_CONTRIBUTED_PERMISSIONS = {
+  // --- remittance surface ---
+  "remittance.read": {
+    resource: "remittance_advice",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "remittance.replay": {
+    resource: "remittance_advice",
+    action: "replay",
+    category: "billing",
+    abac: "none",
+  },
+  "remittance.manual_match": {
+    resource: "remittance_line",
+    action: "manual_match",
+    category: "billing",
+    abac: "claim_assigned_to_actor",
+  },
+  "remittance.adjustment.override": {
+    resource: "remittance_adjustment",
+    action: "override",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "remittance.read_internal": {
+    resource: "remittance_advice",
+    action: "read_internal",
+    category: "billing",
+    abac: "none",
+  },
+  // --- denial worklist surface ---
+  "denial.worklist.read": {
+    resource: "denial_case",
+    action: "worklist_read",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "denial.read": {
+    resource: "denial_case",
+    action: "read",
+    category: "billing",
+    abac: "claim_assigned_to_actor",
+  },
+  "denial.assign": {
+    resource: "denial_case",
+    action: "assign",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "denial.escalate": {
+    resource: "denial_case",
+    action: "escalate",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "denial.resolve": {
+    resource: "denial_case",
+    action: "resolve",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "denial.close_with_write_off": {
+    resource: "denial_case",
+    action: "close_with_write_off",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "denial.reopen": {
+    resource: "denial_case",
+    action: "reopen",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "denial.read_internal": {
+    resource: "denial_case",
+    action: "read_internal",
+    category: "billing",
+    abac: "none",
+  },
+  // --- appeal surface ---
+  "appeal.read": {
+    resource: "appeal_case",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "appeal.create": {
+    resource: "appeal_case",
+    action: "create",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "appeal.attach_document": {
+    resource: "appeal_case",
+    action: "attach_document",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "appeal.submit": {
+    resource: "appeal_case",
+    action: "submit",
+    category: "billing",
+    abac: "appeal_within_deadline",
+  },
+  "appeal.decide": {
+    resource: "appeal_case",
+    action: "decide",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "appeal.withdraw": {
+    resource: "appeal_case",
+    action: "withdraw",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  // --- taxonomy surface ---
+  "taxonomy.read": {
+    resource: "denial_taxonomy",
+    action: "read",
+    category: "billing",
+    abac: "inOrg",
+  },
+  "taxonomy.edit": {
+    resource: "denial_taxonomy",
+    action: "edit",
+    category: "billing",
+    abac: "inOrg",
+  },
+  // --- patient-responsibility internal seam ---
+  "pr.read_internal": {
+    resource: "patient_responsibility_ledger",
+    action: "read_internal",
+    category: "billing",
+    abac: "none",
+  },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M25 contributed permission keys (twenty-two). */
+export type M25ContributedPermissionKey = keyof typeof M25_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -3027,6 +3179,11 @@ export function m23ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M23_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M25 contributed keys into `permission`-table mirror rows (M25 §4.6). */
+export function m25ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M25_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -3058,5 +3215,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m34ContributedPermissionMirrorRows(),
     ...m33ContributedPermissionMirrorRows(),
     ...m23ContributedPermissionMirrorRows(),
+    ...m25ContributedPermissionMirrorRows(),
   ];
 }

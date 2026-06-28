@@ -25,6 +25,7 @@ import {
   M18_CONTRIBUTED_PERMISSIONS,
   M22_CONTRIBUTED_PERMISSIONS,
   M23_CONTRIBUTED_PERMISSIONS,
+  M25_CONTRIBUTED_PERMISSIONS,
   M33_CONTRIBUTED_PERMISSIONS,
   M34_CONTRIBUTED_PERMISSIONS,
   M36_CONTRIBUTED_PERMISSIONS,
@@ -98,9 +99,10 @@ describe("M3-T10 catalog ↔ DB mirror — merged M3 + contributed", () => {
         Object.keys(M18_CONTRIBUTED_PERMISSIONS).length +
         Object.keys(M22_CONTRIBUTED_PERMISSIONS).length +
         Object.keys(M23_CONTRIBUTED_PERMISSIONS).length +
+        Object.keys(M25_CONTRIBUTED_PERMISSIONS).length +
         Object.keys(M33_CONTRIBUTED_PERMISSIONS).length +
         Object.keys(M34_CONTRIBUTED_PERMISSIONS).length,
     );
-    expect(new Set(keys).size).toBe(keys.length); // no collision across the twenty-two sets
+    expect(new Set(keys).size).toBe(keys.length); // no collision across the twenty-three sets
   });
 });

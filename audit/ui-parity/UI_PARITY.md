@@ -4,7 +4,7 @@
 > corpus is consistent; this shows how much of it is BUILT in `apps/web`. Do not hand-edit —
 > the `ui:parity --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 22 module screen-sets registered · 127 screens wired in `apps/web`.
+**Coverage:** 113 documented screen specs · 23 module screen-sets registered · 131 screens wired in `apps/web`.
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -130,6 +130,10 @@
 | 23-billing-medicare | `billing.overrides` | `/billing/overrides` | `billing.validation.read_override` | ✅ |
 | 23-billing-medicare | `billing.metrics` | `/billing/metrics` | `billing.claim.read_metrics` | ✅ |
 | 23-billing-medicare | `billing.surveyor-audit` | `/admin/billing-audit` | `billing.claim.read` | ✅ |
+| 25-remittance | `remittance.worklist` | `/remittance` | `remittance.read` | ✅ |
+| 25-remittance | `remittance.denials` | `/remittance/denials` | `denial.worklist.read` | ✅ |
+| 25-remittance | `remittance.appeals` | `/remittance/appeals` | `appeal.read` | ✅ |
+| 25-remittance | `remittance.taxonomy` | `/remittance/taxonomy` | `taxonomy.read` | ✅ |
 | 33-reporting | `reporting.catalog` | `/reports` | `report.dashboard.list` | ✅ |
 | 33-reporting | `reporting.dashboard` | `/reports/dashboards/:dashboardId` | `report.dashboard.read` | ✅ |
 | 33-reporting | `reporting.role-dashboard` | `/reports/role/:roleKey` | `report.dashboard.read` | ✅ |

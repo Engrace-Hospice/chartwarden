@@ -521,3 +521,15 @@ export * from "./cost-report/index";
 // loader-only writes). No PHI/MBI is ever stored or audit-captured (D13, §3.6, §8.7). Tables/enums in
 // migrations 0074–0076; RLS/grants 0077; platform wage-index 0078; M4 write-audit triggers 0079; seed 0080.
 export * from "./billing/index";
+
+// M25 Remittance & Denials: 11 owned tables (§3.3) — remittance_advice/remittance_line/
+// remittance_service_line/remittance_adjustment/remittance_remark (the four-level X12 5010 835 posting
+// hierarchy) + denial_case/denial_case_assignment/denial_taxonomy_overlay (the denial worklist) +
+// appeal_case/appeal_case_event (the five-tier Medicare appeal hierarchy) + patient_responsibility_ledger.
+// EVERY table is org-scoped (organization_id NOT NULL) → canonical app.org_id RLS; denial_taxonomy_overlay
+// is strictly org-scoped (M25-F09 — NO platform-default NULL-org rows; platform CARC/RARC live in M38).
+// remittance_line/service_line/adjustment/remark are MONTHLY PARTITION BY RANGE(received_at) (D11) — DDL in
+// SQL only. No MBI/PHI is audit-captured (D13); free_text/override_payload/narrative columns are denylisted
+// (§3.6). Enums are m25_-prefixed. Enums + non-partitioned tables migration 0081; partitioned lines 0082;
+// RLS/grants 0083; M4 write-audit + appeal closed-row immutability triggers 0084.
+export * from "./remittance/index";
