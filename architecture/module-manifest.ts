@@ -736,7 +736,7 @@ export const MODULES: ModuleDef[] = [
     id: 25,
     name: "Remittance & Denials",
     codePaths: ["packages/x12-835-client", "apps/backend/src/modules/25-remittance"],
-    dependsOn: [23, 36],
+    dependsOn: [1, 23, 36],
     ownedTables: [
       "appeal_case",
       "appeal_case_event",

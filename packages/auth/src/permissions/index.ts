@@ -161,3 +161,10 @@ export {
   M23_CONTRIBUTED_PERMISSIONS,
   m23ContributedPermissionMirrorRows,
 } from "./contributed";
+// M25 — Module 25's twenty-two Remittance & Denials permission keys registered into M3's catalog (§4.6
+// handshake), in a dedicated const so each module's contribution stays attributable (§3.3 ownership model).
+export {
+  type M25ContributedPermissionKey,
+  M25_CONTRIBUTED_PERMISSIONS,
+  m25ContributedPermissionMirrorRows,
+} from "./contributed";
