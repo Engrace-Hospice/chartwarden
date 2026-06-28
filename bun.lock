@@ -120,6 +120,15 @@
         "@wardenx/types": "workspace:*",
       },
     },
+    "packages/cap-management": {
+      "name": "@wardenx/cap-management",
+      "version": "0.0.0",
+      "dependencies": {
+        "@sinclair/typebox": "^0.34.0",
+        "@wardenx/db": "workspace:*",
+        "@wardenx/types": "workspace:*",
+      },
+    },
     "packages/consent": {
       "name": "@wardenx/consent",
       "version": "0.0.0",
@@ -842,6 +851,8 @@
     "@wardenx/billing": ["@wardenx/billing@workspace:packages/billing"],
 
     "@wardenx/cahps-vendors": ["@wardenx/cahps-vendors@workspace:packages/cahps-vendors"],
+
+    "@wardenx/cap-management": ["@wardenx/cap-management@workspace:packages/cap-management"],
 
     "@wardenx/consent": ["@wardenx/consent@workspace:packages/consent"],
 

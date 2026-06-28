@@ -3057,6 +3057,31 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M25 contributed permission keys (twenty-two). */
 export type M25ContributedPermissionKey = keyof typeof M25_CONTRIBUTED_PERMISSIONS;
 
+// M26 — Module 26's fourteen Cap Management permission keys registered into M3's catalog (§4.6). The
+// route-level §4.7 ABAC predicates (cap_period_open / cap_period_in_settlement / cap_period_settled /
+// cap_period_methodology_unlocked / cap_platform_admin) are composed at the route layer; the per-key
+// `abac` here is the DEFAULT only ('none' — RBAC-gated; per-patient reads additionally compose
+// caseload_or_scope at the route). category 'billing' (cap is a revenue-cycle surface).
+export const M26_CONTRIBUTED_PERMISSIONS = {
+  "cap.period.read": { resource: "cap_period", action: "read", category: "billing", abac: "none" },
+  "cap.period.manage": { resource: "cap_period", action: "manage", category: "billing", abac: "none" },
+  "cap.projection.read": { resource: "cap_projection_snapshot", action: "read", category: "billing", abac: "none" },
+  "cap.projection.recompute": { resource: "cap_projection_snapshot", action: "recompute", category: "billing", abac: "none" },
+  "cap.accrual.read": { resource: "cap_beneficiary_accrual", action: "read", category: "billing", abac: "none" },
+  "cap.event.read": { resource: "cap_threshold_event", action: "read", category: "billing", abac: "none" },
+  "cap.event.acknowledge": { resource: "cap_threshold_event", action: "acknowledge", category: "billing", abac: "none" },
+  "cap.psr.import": { resource: "cap_psr_import", action: "import", category: "billing", abac: "none" },
+  "cap.psr.read": { resource: "cap_psr_import", action: "read", category: "billing", abac: "none" },
+  "cap.psr.reconcile": { resource: "cap_psr_reconciliation", action: "reconcile", category: "billing", abac: "none" },
+  "cap.settlement.read": { resource: "cap_settlement", action: "read", category: "billing", abac: "none" },
+  "cap.settlement.manage": { resource: "cap_settlement", action: "manage", category: "billing", abac: "none" },
+  "cap.platform_constant.read": { resource: "cap_period_platform_constant", action: "read", category: "platform", abac: "none" },
+  "cap.platform_constant.manage": { resource: "cap_period_platform_constant", action: "manage", category: "platform", abac: "none" },
+} satisfies Record<string, PermissionDef>;
+
+/** Union of the M26 contributed permission keys (fourteen). */
+export type M26ContributedPermissionKey = keyof typeof M26_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -3184,6 +3209,11 @@ export function m25ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M25_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M26 contributed keys into `permission`-table mirror rows (M26 §4.6). */
+export function m26ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M26_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -3216,5 +3246,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m33ContributedPermissionMirrorRows(),
     ...m23ContributedPermissionMirrorRows(),
     ...m25ContributedPermissionMirrorRows(),
+    ...m26ContributedPermissionMirrorRows(),
   ];
 }
