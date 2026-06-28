@@ -67,5 +67,6 @@ export {
   buildDrizzleM33ReadService,
   buildDrizzleM33WriteService,
   buildM33ReadEnqueue,
+  registerReportingMetricsSeam,
   wireM33Tenancy,
 } from "./wiring";

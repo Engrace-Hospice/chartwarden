@@ -29,9 +29,11 @@ import {
   type ReadReplicaSessionPort,
   type ReplicaLagGatePort,
   type ReportingDb,
+  MetricsProviderImpl,
 } from "@wardenx/reporting";
 import { registerPlatformJob } from "@wardenx/tenancy";
 
+import { registerSeam } from "../../bootstrap/index";
 import {
   type CronPort,
   type M33ExportDrilldownRouteService,
@@ -142,6 +144,20 @@ function buildLiveReplicaSession(db: DbClient): ReadReplicaSessionPort {
       });
     },
   };
+}
+
+/**
+ * Register M33's PUBLISHED `MetricsProvider` seam (#107 item 2 / §4.3) into the M1 SeamRegistry — the embedded
+ * dashboard-metric read M30/M34/M37 resolve via `getSeam`. With NO MV executor bound it returns the forward-
+ * seam EMPTY value (`value: null`, `isForwardSeamDenyStub: true`) over the authoritative unit from
+ * `report_metric_catalog` — never a fabricated number; the real value lands when M33's MV read path binds. The
+ * read runs under the replica-over-primary session (RLS-scoped to the caller's org). When no db is present the
+ * M1 fail-closed deny-stub stands. Called by the composition root in `wireModuleSeams` (the M10
+ * `registerHopeSeams` precedent).
+ */
+export function registerReportingMetricsSeam(db: DbClient | undefined): void {
+  if (!db) return;
+  registerSeam("MetricsProvider", new MetricsProviderImpl({ replica: buildLiveReplicaSession(db) }));
 }
 
 /**

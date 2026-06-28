@@ -78,6 +78,7 @@ import {
   registerM33AbacPredicates,
   registerM33Workers,
   registerReportingErasers,
+  registerReportingMetricsSeam,
   scheduleM33Jobs,
   wireM33Tenancy,
 } from "./modules/33-reporting/index";
@@ -200,6 +201,10 @@ export function wireModuleSeams(
   // measure-recompute worker consumes — registered over a DEDICATED Drizzle aggregate reader when a db is
   // present (org-scoped COUNTS only, D6); slice/tests without a db keep it on the fail-closed deny-stub.
   registerHopeSeams(deps.db ? { db: deps.db } : {});
+  // M33 — register the PUBLISHED MetricsProvider seam (#107 item 2) so M30/M34/M37 can embed dashboard
+  // metrics via getSeam. Returns forward-seam-empty (value:null) until M33's MVs materialize; the M1
+  // fail-closed deny-stub stands when no db is present.
+  registerReportingMetricsSeam(deps.db);
   // M11 — the two §2.8 D14 / §4.3 owned seams (OrderSignatureProvider — the polymorphic clinical-signature
   // WRITE primitive M12 routes medication-order signatures through, D4 — + OrderProvider — the read-side
   // counterpart M14/M23/M30/M7 consume). Slice/tests keep the in-memory store; the Drizzle-backed store lands
