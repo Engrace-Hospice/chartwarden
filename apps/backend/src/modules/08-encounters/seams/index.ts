@@ -33,6 +33,7 @@ export {
   type StoredEncounterFacts,
   createInMemoryEncounterReaderStore,
 } from "./store";
+export { createDrizzleEncounterReaderStore } from "./drizzle-store";
 export {
   EncounterNotFoundError,
   createBillableEncounterReader,

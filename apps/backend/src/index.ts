@@ -55,7 +55,11 @@ import {
 } from "./modules/05-patient/index";
 import { registerAdmissionErasers, registerAdmissionSeams } from "./modules/06-admission/index";
 import { registerCarePlanErasers, registerCarePlanSeams } from "./modules/07-care-plan/index";
-import { registerEncounterErasers, registerEncounterSeams } from "./modules/08-encounters/index";
+import {
+  createDrizzleEncounterReaderStore,
+  registerEncounterErasers,
+  registerEncounterSeams,
+} from "./modules/08-encounters/index";
 import { registerAssessmentErasers, registerAssessmentSeams } from "./modules/09-assessments/index";
 import { registerHopeErasers, registerHopeSeams } from "./modules/10-hope/index";
 import { registerOrderErasers, registerOrderSeams } from "./modules/11-orders/index";
@@ -193,7 +197,10 @@ export function wireModuleSeams(
   // M8 — the four §4.7 owned seams (billable/signed/mileage/creator). M8 also CONSUMES M7's CarePlanReader
   // (registered just above) for the encounter authoring picker + the overdue sign-gate. Slice/tests keep
   // the in-memory store; the Drizzle-backed store lands with M8's routes/repos (M8-T09+).
-  registerEncounterSeams();
+  // M8 — back the §4.7 reader seams with the Drizzle store when a db is present (#107): the live
+  // SignedEncountersReader.signedEncountersForPatientSince over the real encounter table (the prior in-memory
+  // default returned empty, zeroing M30's HVLDL numerator). Slice/tests keep the in-memory store.
+  registerEncounterSeams(deps.db ? { store: createDrizzleEncounterReaderStore(deps.db) } : {});
   // M9 — the two §4.7 / D7 owned seams (LatestAssessmentProvider + ScaleSeriesProvider) M7/M10/M14/M28/M32
   // consume for latest-scale reads + trend series/deltas. Slice/tests keep the in-memory store; the
   // Drizzle-backed store lands with M9's routes/repos (M9-T05+).

@@ -370,7 +370,11 @@ export async function resolveHvldlMeasureInput(
       new Date(death.deathAt).getTime() - HVLDL_LAST_DAYS_WINDOW_DAYS * MS_PER_DAY,
     ).toISOString();
 
-    const digests = await seams.encounters.signedEncountersForPatientSince(death.patientId, since);
+    const digests = await seams.encounters.signedEncountersForPatientSince(
+      organizationId,
+      death.patientId,
+      since,
+    );
     const count = digests.filter(
       (e) =>
         qualifying.has(e.discipline) &&
