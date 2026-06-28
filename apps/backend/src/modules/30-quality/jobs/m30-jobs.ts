@@ -52,6 +52,7 @@ import {
   type MeasureRegistration,
   InfectionRepository,
   type NightlyRecomputeCronPorts,
+  type OutbreakDetectionJob,
   type OutbreakDetectionPorts,
   type ProcessingLogPort,
   type QualityHopeConsumer,
@@ -807,9 +808,11 @@ export function registerM30Workers(deps: M30WorkerDeps): Worker[] {
   // the insert + soft-supersede + debounce-drain all carry `app.org_id` (without it the RLS WITH CHECK denies
   // the insert). The HOPE seam (`deps.hope`) self-scopes on its own connection (the M10 org-rollup store opens
   // its own withOrgContext). `userId` is the system sentinel '' — the M4 write-audit trigger NULLIFs it (a
-  // system recompute has no acting user). The other three §4.8 work queues keep the base client for now:
-  // risk_register_refresh runs `REFRESH MATERIALIZED VIEW CONCURRENTLY` (illegal inside a tx), and
-  // cahps_export / outbreak_detection per-job envelopes are a follow-up (#107).
+  // system recompute has no acting user). outbreak_detection is wrapped the SAME way below (it WRITES
+  // infection_outbreak_case under the RLS WITH CHECK). The other two work queues keep the base client:
+  // risk_register_refresh runs `REFRESH MATERIALIZED VIEW CONCURRENTLY` (illegal inside a tx), and cahps_export
+  // performs vendor I/O (adapter render/push) that must not sit inside an open tx — a separate split is a
+  // follow-up (#107).
   const measureRecomputeWorker = new Worker(
     M30_QUEUES.measureRecompute,
     async (job) => {
@@ -826,17 +829,31 @@ export function registerM30Workers(deps: M30WorkerDeps): Worker[] {
     { connection, concurrency: M30_QUEUE_PARAMS.measureRecompute.concurrency },
   );
 
+  // #107 — outbreak_detection inserts infection_outbreak_case (RLS WITH CHECK app.org_id) + clusters from the
+  // org's surveillance events: same per-job withOrgContext envelope as measure_recompute (pure DB, tx-safe).
+  const outbreakDetectionWorker = new Worker(
+    M30_QUEUES.outbreakDetection,
+    async (job) => {
+      const data = job.data as OutbreakDetectionJob;
+      return withOrgContext(
+        deps.db,
+        { organizationId: data.organizationId, userId: M30_WORKER_SYSTEM_USER_ID },
+        (tx) =>
+          outbreakDetectionProcessor(
+            buildM30WorkerPorts({ ...deps, db: tx as unknown as DbClient }).outbreakDetection,
+          )(data),
+      );
+    },
+    { connection, concurrency: M30_QUEUE_PARAMS.outbreakDetection.concurrency },
+  );
+
   return [
     measureRecomputeWorker,
+    outbreakDetectionWorker,
     mk(
       M30_QUEUES.cahpsExport,
       cahpsExportProcessor(ports.cahpsExport),
       M30_QUEUE_PARAMS.cahpsExport.concurrency,
-    ),
-    mk(
-      M30_QUEUES.outbreakDetection,
-      outbreakDetectionProcessor(ports.outbreakDetection),
-      M30_QUEUE_PARAMS.outbreakDetection.concurrency,
     ),
     mk(
       M30_QUEUES.riskRegisterRefresh,
