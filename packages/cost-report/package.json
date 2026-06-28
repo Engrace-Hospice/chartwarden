@@ -8,9 +8,11 @@
   },
   "types": "./src/index.ts",
   "dependencies": {
+    "@sinclair/typebox": "^0.34.0",
     "@wardenx/db": "workspace:*",
+    "@wardenx/gusto-client": "workspace:*",
     "@wardenx/types": "workspace:*",
     "@wardenx/xero-client": "workspace:*",
-    "@wardenx/gusto-client": "workspace:*"
+    "decimal.js": "^10.6.0"
   }
 }

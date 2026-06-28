@@ -26,6 +26,18 @@ export * from "./seam-registration";
 // §3.7 the destruction eraseFn contract + the survey-evidence destruction gate.
 export * from "./eraser";
 
+// ── P2 pure domain (M27 Phase-2) ──────────────────────────────────────────────────────────────────
+// §3.1 shared domain kernels: penny-exact money/ratio (D8), snapshot canonicalization + hash (D10), lifecycle reducer (§2.2).
+export * from "./domain";
+// §4.2 / D3 the 21 CMS-1984-14 worksheet TypeBox schemas + the code → schema resolver.
+export * from "./worksheets";
+// §3.1 / D8 the deterministic cost-allocation chain: step-down, ancillary RCC, program apportionment, settlement.
+export * from "./allocation";
+// D11 / §2.4 ECR/PI generation: fixed-field records, ECR writer, Print Image renderer, snapshot → artifacts adapter.
+export * from "./ecr";
+// §11.B / D9 pre-submission validation: rule model, 28 default rules, MAC profiles, rule engine, suggestion stub.
+export * from "./validation";
+
 // Re-export the adapter client factories M27 owns (D6) so downstream wiring imports from the package root.
 export { xeroClientFactory } from "@wardenx/xero-client";
 export { gustoClientFactory } from "@wardenx/gusto-client";
