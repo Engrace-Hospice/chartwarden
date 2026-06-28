@@ -230,8 +230,11 @@ export function buildDrizzlePlatformService(deps: {
   platformDb: DbClient;
   enqueue: PlatformEnqueuePort;
   auditBypass: PlatformBypassAuditor<PlatformTx>;
+  /** #107 — the live transactional-outbox publisher (callerModule-pinned 'm34'). When omitted the lifecycle
+   *  outbox stays fail-closed (the §2.5 emit throws, never a silent no-op). */
+  outbox?: OutboxPublishPort;
 }): { service: TenantPlatformRouteService } {
-  const outbox: OutboxPublishPort = {
+  const outbox: OutboxPublishPort = deps.outbox ?? {
     async publish(_tx, input) {
       throw new M34InfraPortUnbound(
         "outbox.publish",

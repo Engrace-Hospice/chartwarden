@@ -450,9 +450,11 @@ if ((import.meta as { main?: boolean }).main) {
   const txOutboxPublisher = buildTxOutboxPublisher(bootOutboxCatalog);
   // Per-module adapters that pin `callerModule` (the module-scoped `WriteOutboxPort` omits it; the
   // dispatcher's namespace check requires it). Each forwards the caller's open tx + envelope to the shared
-  // publisher. M30 and M33 ONLY — M34's port stays unbound.
+  // publisher. M30/M33/M34 — M34's lifecycle outbox now binds too (#107; its emit is gated to the conformant
+  // `m34.tenant.provisioned` event, so no mutation rolls back).
   const m30OutboxPublisher = bindCallerModule(txOutboxPublisher, "m30");
   const m33OutboxPublisher = bindCallerModule(txOutboxPublisher, "m33");
+  const m34OutboxPublisher = bindCallerModule(txOutboxPublisher, "m34");
   // AUTH-T02/T03: when a DB client is present, build the Better Auth instance + the authenticate hook
   // (getIdentitySession → SessionContextResolver seam → request.context). The seam is resolved lazily
   // at request time, after bootSeams() has registered it.
@@ -507,6 +509,7 @@ if ((import.meta as { main?: boolean }).main) {
               platformDb: dbHandle.db,
               enqueue: m34PlatformEnqueue.enqueue,
               auditBypass: m34PlatformBypassAuditor,
+              outbox: m34OutboxPublisher,
             }),
             tenant: buildDrizzleTenantService({
               db: dbHandle.db,

@@ -139,15 +139,15 @@ const SCG = schema.supportConsentGrant;
 const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
 const isoReq = (d: Date): string => d.toISOString();
 
-/** Catalog-valid `m34.tenant.*` outbox names (a subset of the lifecycle-effect names land in the catalog). */
-const CATALOG_LIFECYCLE_EVENTS = new Set<string>([
-  "m34.tenant.provisioned",
-  "m34.tenant.suspended",
-  "m34.tenant.offboarding_initiated",
-  "m34.tenant.retained",
-  "m34.tenant.destruction_pending",
-  "m34.tenant.destroyed",
-]);
+// The lifecycle MACHINE emits a wider set of `m34.tenant.*` effect names than events-by-m34.ts catalogs, and
+// the per-event payload schemas differ from the generic payload below. With the live transactional-outbox
+// dispatcher now bound (#107), a non-conformant publish would ROLL BACK the lifecycle mutation — so this gate
+// emits ONLY the event whose generic payload provably conforms to its registered schema: `m34.tenant.provisioned`
+// ({ tenantAccountId, orgId, legalBusinessName, billingContactEmail } — an exact match). The other lifecycle
+// transitions (suspension/offboarding/retention/destruction) need per-event payloads (reason / purpose /
+// initiatedByMembershipId / initiatedAt …) threaded from the command context + their catalog entries — a noted
+// follow-up (#107) — so they stay un-emitted (the mutation still lands) rather than rolling back.
+const CATALOG_LIFECYCLE_EVENTS = new Set<string>(["m34.tenant.provisioned"]);
 
 export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDeps): {
   service: TenantPlatformRouteService;
