@@ -36,6 +36,10 @@ import { messagingScreens } from "./modules/36-messaging";
 import { terminologyScreens } from "./modules/38-terminology";
 import { mdmScreens } from "./modules/40-mdm";
 import { AppShell, createScreenRegistry, systemScreens } from "./shell";
+import { initTheme } from "./shell/theme";
+
+// Apply the resolved Lantern theme (stored choice, else OS preference) before the first paint — no flash.
+initTheme();
 
 const registry = createScreenRegistry();
 const client = createApiClient();

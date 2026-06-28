@@ -50,6 +50,13 @@
   --color-outline: #6e6a62;
   --color-outline-variant: #d7d3cb;
 
+  /* On-emphasis — text/icons on a SATURATED brand/status fill (primary button, break-glass banner,
+     status-flood CTA). White in light; twilight ink in dark (the dark status colors are light
+     pastels, so white-on-them fails contrast — dark text is correct, mirroring --color-on-primary). */
+  --color-on-emphasis: #ffffff;
+  /* Scrim — modal/overlay backdrop. Dims the content behind in both themes. */
+  --color-scrim: rgba(17, 24, 39, 0.55);
+
   /* Legacy aliases (kept so existing wx-* refs resolve) */
   --color-brand: var(--color-primary);
   --color-line: var(--color-outline-variant);
@@ -99,6 +106,10 @@
   --color-muted: #7e7a72;
   --color-outline: #8a857c;
   --color-outline-variant: #45444e;
+  /* Dark on-emphasis = twilight ink (dark text on the light-pastel dark-mode fills). */
+  --color-on-emphasis: #15151b;
+  /* Scrim slightly stronger over the darker canvas. */
+  --color-scrim: rgba(0, 0, 0, 0.62);
 }
 
 @layer base {
@@ -208,6 +219,27 @@
     color: var(--color-on-surface-variant);
     font-size: 0.875rem;
     white-space: nowrap;
+  }
+  /* Header icon button (theme toggle) — tonal, no hard border (No-Line §10.3). */
+  .wx-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--color-on-surface-variant);
+    cursor: pointer;
+  }
+  .wx-icon-btn:hover {
+    background: var(--color-surface-container);
+    color: var(--color-on-surface);
+  }
+  .wx-icon-btn:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
   }
   .wx-body {
     display: flex;

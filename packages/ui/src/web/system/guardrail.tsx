@@ -284,7 +284,7 @@ function PrimaryButton({
         borderRadius: "9999px",
         border: "none",
         background: disabled ? t.surfaceContainer : tone === "error" ? t.error : t.primary,
-        color: disabled ? t.muted : "#ffffff",
+        color: disabled ? t.muted : t.onEmphasis,
         fontWeight: 600,
         cursor: disabled ? "not-allowed" : "pointer",
       }}

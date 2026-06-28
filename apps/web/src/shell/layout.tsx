@@ -1,4 +1,4 @@
-import { DegradedBanner, EmptyState } from "@wardenx/ui";
+import { DegradedBanner, EmptyState, Glyph } from "@wardenx/ui";
 // apps/web/src/shell — app-shell chrome (M1, ADR-0030). Renders the primary nav (built from the
 // registered screens), the degraded-mode banner, a header with the session identity, and the routed
 // <Outlet/>. Imports only @wardenx/ui (leaf) + react-router — never a feature module.
@@ -8,6 +8,7 @@ import { Link, Navigate, Outlet, useNavigate } from "react-router-dom";
 import { canSeeScreen, needsOrgSelection } from "./actor-session";
 import type { WebScreenDescriptor } from "./screen-registry";
 import { useSession } from "./session";
+import { useTheme } from "./theme";
 
 export interface AppLayoutProps {
   screens: WebScreenDescriptor[];
@@ -35,6 +36,7 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
         <span className="wx-actor">
           {session ? (session.displayName ?? session.userId) : "Not signed in"}
         </span>
+        <ThemeToggle />
       </header>
       <div className="wx-body">
         <nav className="wx-nav" aria-label="Primary">
@@ -79,6 +81,24 @@ function TopNavSearch(): JSX.Element {
         onChange={(e) => setQ(e.target.value)}
       />
     </form>
+  );
+}
+
+/** Light ⇄ twilight-dark toggle (DESIGN.md §11). Persists the choice; sun in dark, moon in light. */
+function ThemeToggle(): JSX.Element {
+  const { mode, toggle } = useTheme();
+  const dark = mode === "dark";
+  return (
+    <button
+      type="button"
+      className="wx-icon-btn"
+      onClick={toggle}
+      aria-pressed={dark}
+      aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
+      title={dark ? "Light theme" : "Dark theme"}
+    >
+      <Glyph name={dark ? "sun" : "moon"} size={18} />
+    </button>
   );
 }
 

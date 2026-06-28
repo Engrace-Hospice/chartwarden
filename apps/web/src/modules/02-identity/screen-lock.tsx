@@ -139,7 +139,7 @@ const overlay = {
   position: "fixed" as const,
   inset: 0,
   zIndex: 1000,
-  background: "rgba(17, 24, 39, 0.55)",
+  background: "var(--color-scrim)",
   backdropFilter: "blur(4px)",
   display: "flex",
   alignItems: "center",
@@ -153,7 +153,7 @@ const card = {
   padding: "1.5rem",
   background: "var(--color-surface-lowest)",
   borderRadius: "0.75rem",
-  boxShadow: "0 20px 50px rgba(0,0,0,0.25)",
+  boxShadow: "var(--shadow-float)",
 } as const;
 const field = {
   padding: "0.5rem 0.625rem",

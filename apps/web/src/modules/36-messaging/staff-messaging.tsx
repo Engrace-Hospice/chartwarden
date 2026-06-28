@@ -214,7 +214,7 @@ function Thread({ channel, meId }: { channel: ChannelSummary; meId: string | nul
               >
                 <div style={mine ? bubbleMine : bubbleTheirs}>
                   <span style={{ whiteSpace: "pre-wrap" }}>{m.body}</span>
-                  <span style={{ ...bubbleMeta, color: mine ? "rgba(255,255,255,0.75)" : t.muted }}>
+                  <span style={{ ...bubbleMeta, color: mine ? `color-mix(in srgb, ${t.onEmphasis} 75%, transparent)` : t.muted }}>
                     {mine ? "You" : <span className="wx-data-md">{m.authorUserId?.slice(0, 8)}</span>}{" "}
                     · {relTime(m.createdAt)}
                   </span>
