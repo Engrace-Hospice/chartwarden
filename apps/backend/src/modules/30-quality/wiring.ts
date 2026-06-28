@@ -18,7 +18,31 @@
 import type { ConnectionOptions } from "bullmq";
 import { Queue } from "bullmq";
 
+import { registerPlatformJob } from "@wardenx/tenancy";
+
 import type { M30WriteQueueName, RecomputeEnqueuePort } from "./routes/write-service";
+
+/**
+ * The platform job id M30's §4.8 platform-scoped CRON fan-outs (nightly recompute, monthly CAHPS sample,
+ * daily risk-register refresh, SRA reminders) enter `withPlatformContext` under to enumerate active orgs.
+ * Registered on the `@wardenx/tenancy` PLATFORM_CONTEXT_ALLOWLIST by {@link wireM30Tenancy} at boot (the
+ * allowlist starts empty → fail-closed). The M33 `M33_PLATFORM_JOB_ID` / M34 `M34_PLATFORM_JOB_ID` precedent.
+ *
+ * NOTE (issue #107, item 5): this registration is the necessary PREREQUISITE for the cron fan-outs, but it
+ * is inert until the integrator binds the M2 active-org enumerator (`M30WorkerDeps.activeOrgs`) that actually
+ * calls `withPlatformContext(M30_PLATFORM_JOB_ID, …)`. Until then the crons construct + boot green but their
+ * `listActiveOrgs` port fails closed (never a silent no-op).
+ */
+export const M30_PLATFORM_JOB_ID = "m30.platform_crons";
+
+/**
+ * Register M30's platform job id on the `@wardenx/tenancy` PLATFORM_CONTEXT_ALLOWLIST so the §4.8 cron
+ * fan-outs may enter `withPlatformContext` (idempotent `Set.add`). Mirrors `wireM33Tenancy` / `wireM34Tenancy`;
+ * called once at boot by the composition root.
+ */
+export function wireM30Tenancy(): void {
+  registerPlatformJob(M30_PLATFORM_JOB_ID);
+}
 
 /** Raised by a still-unbound Phase-2C infra port (the fail-closed signal — never a silent no-op). */
 export class M30InfraPortUnbound extends Error {

@@ -73,7 +73,12 @@ export {
 
 // Integrate-phase composition glue (the M33 wiring.ts precedent): the §4.8 recompute/risk-refresh BullMQ
 // producer the R-04 / R-96 command routes enqueue onto.
-export { M30InfraPortUnbound, buildM30RecomputeEnqueue } from "./wiring";
+export {
+  M30InfraPortUnbound,
+  M30_PLATFORM_JOB_ID,
+  buildM30RecomputeEnqueue,
+  wireM30Tenancy,
+} from "./wiring";
 
 // §4.8 — the LIVE BullMQ worker/cron boot surface (the M33 `registerM33Workers` / `scheduleM33Jobs`
 // precedent). The composition root constructs the four §4.8 work-queue Workers + the four standalone cron
