@@ -25,6 +25,7 @@ import {
   createSessionAuthenticate,
   getSeam,
 } from "./bootstrap/index";
+import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
 import {
   type OutboxPublishPort,
   type OutboxTx,
@@ -83,6 +84,7 @@ import {
   buildDrizzleM30ReadService,
   buildDrizzleM30WriteService,
   M30_OUTBOX_EVENTS,
+  M30_PLATFORM_JOB_ID,
   buildM30RecomputeEnqueue,
   buildM30WorkerDeps,
   mountM30Routes,
@@ -661,10 +663,20 @@ if ((import.meta as { main?: boolean }).main) {
         );
       },
     };
+    // #107 item 2 — bind the active-org enumerator so the §4.8 cron fan-outs enumerate every active tenant
+    // under withPlatformContext (allowlisted via wireM30Tenancy above; audited by the shared platform-bypass
+    // auditor — its event records the M30 jobId, so the "M34" name is incidental, the auditor is module-agnostic).
+    const m30ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: dbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M30_PLATFORM_JOB_ID,
+      reason: "M30 §4.8 cron fan-out (active-org enumeration)",
+    });
     const m30WorkerDeps = buildM30WorkerDeps({
       connection: queueConnection,
       db: dbHandle.db,
       hopeProvider: m30HopeConsumer,
+      activeOrgs: m30ActiveOrgs,
     });
     const m30Workers = [...registerM30Workers(m30WorkerDeps), ...registerM30CronWorkers(m30WorkerDeps)];
     app.addHook("onClose", async () => {
