@@ -1,8 +1,8 @@
 {
   "totals": {
     "Implemented": 23,
-    "Partial": 1,
-    "Placeholder": 16
+    "Partial": 2,
+    "Placeholder": 15
   },
   "rows": [
     {
@@ -372,15 +372,15 @@
     {
       "id": 27,
       "module": "M27 Cost Report",
-      "status": "Placeholder",
+      "status": "Partial",
       "spec": true,
-      "schema": false,
-      "migration": false,
+      "schema": true,
+      "migration": true,
       "routes": false,
       "enriched": false,
       "screens": false,
       "tests": false,
-      "adapter": false,
+      "adapter": true,
       "liveInfra": false
     },
     {

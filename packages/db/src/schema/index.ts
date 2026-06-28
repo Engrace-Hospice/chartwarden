@@ -502,3 +502,12 @@ export * from "./reporting/index";
 // three-column rule wins over the spec proposal). risk_register_view is a materialized view (not an
 // owned base table) defined in the migration.
 export * from "./quality/index";
+// M27 Cost Report (M27 spec §3.3, D22). M27 owns 14 tables (the cost_report root + worksheet/snapshot/
+// validation cluster + bad-debt/statistics/imports/mapping/submission/compliance-window). EVERY table
+// carries organization_id and gets standard app.org_id RLS (ADR-0010 canonical posture) EXCEPT
+// cost_report_validation_rule whose organization_id is NULLABLE (platform-default rows) — it is on the
+// check-tenancy NON_ORG_SCOPED allowlist with a platform-OR-org RLS policy. NONE are partitioned (M27 is
+// low row-count). No PHI (D18) — aggregate financial/statistical only. Tables/enums/FKs/indexes land in
+// migration 0069; RLS + grants in 0070; the M4 write-audit triggers (raw_payload_cipher /
+// materialized_inputs / worksheet_snapshot denylisted, §3.6) in 0071.
+export * from "./cost-report/index";

@@ -779,6 +779,10 @@ export const MODULES: ModuleDef[] = [
       "packages/gusto-client",
       "apps/backend/src/modules/27-cost-report",
     ],
+    // ADR-0005: genuine compile-time edges only; the broader relationship inventory (M1/M2/M3/M4
+    // foundation, M6/M8/M12/M13/M22/M36/M40 seam+outbox consumers, M23/M26 forward-seam deny-stubs) is
+    // in the spec "Depends on:" header (seam/outbox/foundation consumers are no-edge per D1/D4 — do not
+    // bulk-apply). M23/M26 are not yet locked → consumed as deny-stubs (D12/D13).
     dependsOn: [23, 26, 38],
     ownedTables: [
       "bad_debt_record",

@@ -121,6 +121,12 @@
     "packages/cost-report": {
       "name": "@wardenx/cost-report",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/db": "workspace:*",
+        "@wardenx/gusto-client": "workspace:*",
+        "@wardenx/types": "workspace:*",
+        "@wardenx/xero-client": "workspace:*",
+      },
     },
     "packages/db": {
       "name": "@wardenx/db",
