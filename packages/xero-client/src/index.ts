@@ -6,51 +6,86 @@
 // M29 consumes the factory at M29 lock for non-cost-report uses (AR sync) so OAuth refresh is
 // centralized and two modules never hold two token sets for one tenant connection.
 //
-// P1 scope: the typed adapter CONTRACT + a fail-closed factory stub. The live `xero-node` wiring +
-// per-tenant token store + refresh-on-401 land in P3 (PR C1); they stay confined to THIS package.
+// Structure (PR C1): the typed adapter CONTRACT + the real raw→normalized mapping (`normalize.ts`,
+// tested-shape) + a refresh-on-401 wrapper (`oauth.ts`) + a per-tenant token-store PORT (`token-store.ts`)
+// + the `LiveXeroClient` shape (`client.ts`). The factory is fail-closed by DEFAULT (no transport, no
+// token store) but accepts injected ports via `createXeroClientFactory`. The live `xero-node` transport +
+// per-tenant token store land at tenant onboarding (M34) behind the `TODO(M34-oauth)` boundary in
+// `oauth.ts` / `token-store.ts`; they stay confined to THIS package. No SDK import, no network here.
 
-/** A normalized GL account row (post-adapter; no Xero SDK shapes leak past this boundary). */
-export interface NormalizedAccount {
-  glCode: string;
-  glName: string;
-  debitCents: number;
-  creditCents: number;
-  period?: string;
+// The shared adapter CONTRACT types live in ./types (extracted to avoid an index↔client import cycle).
+export type {
+  NormalizedAccount,
+  NormalizedTrialBalance,
+  XeroClient,
+  XeroClientFactory,
+} from "./types";
+import type { XeroClient, XeroClientFactory } from "./types";
+
+// Fail-closed sentinel + raw endpoint constants.
+export { XERO_NOT_CONNECTED, XERO_API_BASE_URL, XERO_TRIAL_BALANCE_PATH, XERO_ACCOUNTS_PATH } from "./constants";
+
+// Per-tenant OAuth token-store port + fail-closed default.
+export { NO_TOKEN_STORE } from "./token-store";
+export type { TokenStore, XeroTokens } from "./token-store";
+
+// Raw transport port + refresh-on-401 wrapper.
+export { NO_XERO_HTTP_PORT, requestWithRefresh } from "./oauth";
+export type { XeroHttpPort, XeroRequest, XeroRawResponse, XeroSession } from "./oauth";
+
+// Pure raw→normalized mapping (tested-shape).
+export {
+  normalizeTrialBalance,
+  normalizeChartOfAccounts,
+  dollarsToCents,
+  XERO_MALFORMED_RESPONSE,
+} from "./normalize";
+
+// The live per-tenant client shape.
+export { LiveXeroClient } from "./client";
+export type { LiveXeroClientDeps } from "./client";
+
+import { XERO_NOT_CONNECTED } from "./constants";
+import { NO_TOKEN_STORE, type TokenStore } from "./token-store";
+import { NO_XERO_HTTP_PORT, type XeroHttpPort } from "./oauth";
+import { LiveXeroClient } from "./client";
+
+/** Injected ports the factory binds: the raw transport + the per-tenant token store. */
+export interface XeroClientFactoryDeps {
+  readonly tokenStore: TokenStore;
+  readonly http: XeroHttpPort;
 }
-
-/** A normalized trial balance for a fiscal-year window. */
-export interface NormalizedTrialBalance {
-  fromDate: string;
-  toDate: string;
-  accounts: NormalizedAccount[];
-  totalDebitsCents: number;
-  totalCreditsCents: number;
-  balanced: boolean;
-}
-
-/** The typed per-tenant Xero client surface M27's trial-balance-pull worker consumes. */
-export interface XeroClient {
-  getTrialBalance(input: { fromDate: string; toDate: string }): Promise<NormalizedTrialBalance>;
-  getChartOfAccounts(): Promise<NormalizedAccount[]>;
-  /** Automatic on 401; exposed for explicit reconnect flows. */
-  refreshTokens(): Promise<void>;
-}
-
-/** The published `XeroClientFactory` seam shape (mirrors `@wardenx/cost-report`'s seam interface). */
-export interface XeroClientFactory {
-  forTenant(input: { organizationId: string; xeroTenantId?: string }): Promise<XeroClient>;
-}
-
-/** Thrown when a tenant has not connected Xero (no stored OAuth tokens). */
-export const XERO_NOT_CONNECTED = "XERO_NOT_CONNECTED" as const;
 
 /**
- * P1 fail-closed factory stub. The live implementation (token store + `xero-node` + refresh wrapper)
- * lands in P3 (PR C1) inside this package. Until then `forTenant` throws `XERO_NOT_CONNECTED` so callers
- * surface the reconnect prompt rather than silently succeeding.
+ * Build a `XeroClientFactory` over injected ports. `forTenant` resolves the tenant's tokens via the store;
+ * a `null` result (tenant not connected) throws {@link XERO_NOT_CONNECTED} so callers surface the reconnect
+ * prompt rather than silently succeeding. When tokens resolve it returns a {@link LiveXeroClient} bound to
+ * the injected transport with refresh-on-401. The default {@link xeroClientFactory} passes the fail-closed
+ * ports; M27's composition root passes live ports once tenant OAuth onboarding lands in M34.
  */
-export const xeroClientFactory: XeroClientFactory = {
-  async forTenant() {
-    throw new Error(XERO_NOT_CONNECTED);
-  },
-};
+export function createXeroClientFactory(deps: XeroClientFactoryDeps): XeroClientFactory {
+  return {
+    async forTenant(input): Promise<XeroClient> {
+      const tokens = await deps.tokenStore.getTokensForTenant(input.organizationId, input.xeroTenantId);
+      if (tokens === null) {
+        throw new Error(XERO_NOT_CONNECTED);
+      }
+      return new LiveXeroClient({
+        organizationId: input.organizationId,
+        tokens,
+        tokenStore: deps.tokenStore,
+        http: deps.http,
+      });
+    },
+  };
+}
+
+/**
+ * Fail-closed default factory. Built on the {@link NO_TOKEN_STORE} + {@link NO_XERO_HTTP_PORT} ports, so
+ * `forTenant` throws {@link XERO_NOT_CONNECTED} until M27's boot injects live ports via
+ * {@link createXeroClientFactory}. Preserves the original P1 stub's fail-closed behavior.
+ */
+export const xeroClientFactory: XeroClientFactory = createXeroClientFactory({
+  tokenStore: NO_TOKEN_STORE,
+  http: NO_XERO_HTTP_PORT,
+});

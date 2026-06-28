@@ -1,7 +1,7 @@
 {
   "totals": {
-    "Implemented": 23,
-    "Partial": 2,
+    "Implemented": 24,
+    "Partial": 1,
     "Placeholder": 15
   },
   "rows": [
@@ -372,11 +372,11 @@
     {
       "id": 27,
       "module": "M27 Cost Report",
-      "status": "Partial",
+      "status": "Implemented",
       "spec": true,
       "schema": true,
       "migration": true,
-      "routes": false,
+      "routes": true,
       "enriched": false,
       "screens": false,
       "tests": false,

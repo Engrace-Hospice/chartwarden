@@ -38,6 +38,11 @@ export * from "./ecr";
 // §11.B / D9 pre-submission validation: rule model, 28 default rules, MAC profiles, rule engine, suggestion stub.
 export * from "./validation";
 
+// §3.3 BACKEND SURFACE — the twelve Drizzle repositories (data ports over the 14 M27-owned tables). Each
+// takes a `CostReportDb` (pooled client or a `withOrgContext` tx handle) and issues plain Drizzle queries;
+// the read/write services own the `withOrgContext` scoping + outbox. Pure data access — no Fastify.
+export * from "./repositories";
+
 // Re-export the adapter client factories M27 owns (D6) so downstream wiring imports from the package root.
 export { xeroClientFactory } from "@wardenx/xero-client";
 export { gustoClientFactory } from "@wardenx/gusto-client";
