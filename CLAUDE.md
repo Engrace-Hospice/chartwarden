@@ -3,7 +3,15 @@
 Multi-tenant hospice EHR SaaS. This repo is the **specification corpus + architecture-fitness
 kit + staged implementation monorepo**: Phase 0 gates/scaffold are in place, and **22 of 40 modules
 now have real implementation on `main`** — M2–M14, M17, M18, M22 (clinical), M33 Reporting & M34 SaaS
-Platform (R2), plus M36/M38/M39/M40. Remaining modules stay explicit placeholders until their plans land.
+Platform (R2), plus M36/M38/M39/M40. **M30 HQRP & Quality is now built on `feat/r2-m30-hqrp`** (18
+frozen `quality/` tables + migrations 0062–0068; `@wardenx/quality` domain core + `@wardenx/cahps-vendors`;
+47 routes in `apps/backend/src/modules/30-quality`; the 29-entry `MEASURE_CATALOG`/measure registry —
+HCI 10 indicators + composite, HVLDL, HOPE-derived TFP, operational; CAHPS/QAPI/SRA/incidents/mortality/
+infection surveillance) — its status matrix is 🟢 and it lands on `main` once integrated. By design M30
+keeps four seams as **fail-closed deferrals** (lazy thunks that throw, never silent): the §4.10 outbox-row
+emits, the M40 provider-entity resolver, the M33 `MetricsProvider`, and the worker cron allowlist; the
+measure registry is bound, but the awkward `hci_composite` per-family `resolveInput` still needs the
+integrator to special-case it. Remaining modules stay explicit placeholders until their plans land.
 
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104, see
 [`audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md`](./audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md)):

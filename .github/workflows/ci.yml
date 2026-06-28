@@ -139,6 +139,38 @@ jobs:
       - name: M33 RLS cross-tenant denial proof (real Postgres + real RLS, §3.5)
         run: bun run test:rls:live:m33
 
+  rls-live-m30:
+    name: M30 RLS cross-tenant isolation (live Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Own fresh Postgres service: the M30 §3.5 suite applies the full migration set + resets
+        # cluster-global roles, so it must run against a clean cluster (NOT shared with rls-live,
+        # rls-live-m34, or rls-live-m33 — two migration-applying suites can't share one cluster: roles
+        # are global but DROP OWNED BY only cleans the current database, and a DROP SCHEMA CASCADE over
+        # a populated schema blows max_locks_per_transaction).
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wardenx_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+      - name: Install dependencies (frozen lockfile)
+        run: bun install --frozen-lockfile
+      - name: M30 RLS cross-tenant denial proof (real Postgres + real RLS, §3.5 / §3.7)
+        run: bun run test:rls:live:m30
+
   auth-live:
     name: Better Auth live (Postgres) — schema reconciliation + sign-in (AUTH-T06)
     runs-on: ubuntu-latest

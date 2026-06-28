@@ -109,6 +109,10 @@
     "packages/cahps-vendors": {
       "name": "@wardenx/cahps-vendors",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/quality": "workspace:*",
+        "@wardenx/types": "workspace:*",
+      },
     },
     "packages/consent": {
       "name": "@wardenx/consent",
@@ -241,6 +245,10 @@
     "packages/quality": {
       "name": "@wardenx/quality",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/db": "workspace:*",
+        "@wardenx/types": "workspace:*",
+      },
     },
     "packages/reporting": {
       "name": "@wardenx/reporting",

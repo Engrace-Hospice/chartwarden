@@ -491,3 +491,14 @@ export * from "./saas/index";
 // write-audit triggers (report_drilldown_audit.query_filters_cipher denylisted, §3.6) land in the M33
 // RLS migration; this barrel is schema only.
 export * from "./reporting/index";
+// M30 HQRP & Quality (M30 spec §3.3). M30 owns 18 tables across three subdomains: measures (5),
+// compliance-program (9), safety-surveillance (4). EVERY table carries organization_id NOT NULL and
+// gets standard app.org_id RLS (M34-F02 / ADR-0010 canonical posture) — NONE are on the check-tenancy
+// NON_ORG_SCOPED allowlist. Four are monthly-partitioned (cahps_decedent_sample, incident_report,
+// mortality_review, infection_surveillance_event) — the Drizzle shape is logical (composite PK incl.
+// the partition key); PARTITION BY + RLS + grants + M4 write-audit triggers land in the M30 migrations.
+// incident_report + infection_surveillance_event carry a bare patient_id (PHI), so per ARCH-011 they
+// also carry provider_entity_id + location_id (location_id added beyond §3.3's column list — the
+// three-column rule wins over the spec proposal). risk_register_view is a materialized view (not an
+// owned base table) defined in the migration.
+export * from "./quality/index";
