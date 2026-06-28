@@ -25,6 +25,7 @@ import {
   caseloadDenyStub,
   certificationReaderDenyStub,
   consentEvaluatorDenyStub,
+  deathDischargeReaderDenyStub,
   documentReaderDenyStub,
   documentRendererDenyStub,
   documentStorageProviderDenyStub,
@@ -254,6 +255,16 @@ export const REQUIRED_SEAMS = [
     ownerModule: 6,
     phi: true,
     denyStub: admissionCensusReaderDenyStub,
+  },
+  // M6 (Admission) death-discharge census reader (§4.11). A read-only DTO surface over M6's `discharge_event`
+  // death rows (joined to `admission` for the patient id), consumed by M30's HVLDL measure-recompute worker as
+  // the measure denominator instead of importing M6's schema. Patient-linked decedent census → phi: true;
+  // boot-validated and fail-closed until M6 registers the real Drizzle-backed reader.
+  {
+    key: "DeathDischargeReader",
+    ownerModule: 6,
+    phi: true,
+    denyStub: deathDischargeReaderDenyStub,
   },
   // M7 (Care Plan / IPOC) reader seam (§7.8). A read-only DTO surface over M7's PHI tables
   // (problems/goals/interventions + the version clock), consumed by M8 (encounter authoring + sign

@@ -15,6 +15,7 @@ export type {
   CertificationReader,
   DataClass,
   DataEraser,
+  DeathDischargeReader,
   DocumentReader,
   DocumentRenderer,
   DocumentStorageProvider,

@@ -43,6 +43,8 @@ import {
   type CahpsExportPorts,
   type CahpsMonthlySampleCronPorts,
   CahpsRepository,
+  type ComputeHvldlInput,
+  type HvldlDecedentInput,
   type HopeSfvOnTimeRateInput,
   type HopeSubmissionAcceptanceRateInput,
   type MeasureRecomputeJob,
@@ -64,6 +66,10 @@ import {
   type TimelyFollowUpNonPainInput,
   type TimelyFollowUpPainInput,
   buildMeasureRegistry,
+  HCI_THRESHOLDS_v2025,
+  HVLDL_MIN_QUALIFYING_VISITS,
+  HVLDL_QUALIFYING_DISCIPLINES_v2025,
+  HVLDL_QUALIFYING_DISCIPLINES_v2028,
   M30_JOB_SCHEDULES,
   M30_QUEUES,
   M30_QUEUE_PARAMS,
@@ -77,7 +83,11 @@ import {
   sraRemindersCronProcessor,
   unboundWorkerPort,
 } from "@wardenx/quality";
-import type { HopeRollupPeriod } from "@wardenx/types";
+import type {
+  DeathDischargeReader,
+  HopeRollupPeriod,
+  SignedEncountersReader,
+} from "@wardenx/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { sql } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
@@ -125,6 +135,18 @@ export interface M30WorkerDeps {
    * narrow the active set (e.g. a per-FY subset).
    */
   readonly registrations?: ReadonlyMap<string, MeasureRegistration>;
+  /**
+   * The M6 death-discharge census reader the HVLDL recompute reads its denominator from (§4.11). Resolved
+   * via `getSeam` at the composition root (M6-owned, leaf-typed); the impl self-scopes each call to the
+   * org on its own connection. Fail-closed thunk when absent (HVLDL recompute denies until bound).
+   */
+  readonly deathDischargeReader?: DeathDischargeReader;
+  /**
+   * The M8 signed-encounter reader the HVLDL recompute counts EVV-verified qualifying-discipline visits in
+   * the last days of life through (§4.7 `SignedEncountersReader`). Resolved via `getSeam` at the composition
+   * root; the impl self-scopes each call. Fail-closed thunk when absent.
+   */
+  readonly signedEncounters?: SignedEncountersReader;
   /** Injected clock (deterministic in tests; the package processors stamp every instant through this). */
   now?: () => Date;
 }
@@ -265,6 +287,116 @@ export async function resolveHopeMeasureInput(
   }
 }
 
+// ── the HVLDL measure-input resolver (binds `measureRecompute.data.resolveInput` for the 'hvldl' measure) ─
+
+/** The HVLDL last-days-of-life window (§1.1 / §4.11) — three CALENDAR days, the CMS predicate's bound. */
+const HVLDL_LAST_DAYS_WINDOW_DAYS = 3;
+
+/** Milliseconds in one calendar day (the `deathAt − N days` lower-bound math the reader scan opens at). */
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * The federal fiscal year a reporting period falls in (FY starts Oct 1; an Oct–Dec instant belongs to the
+ * NEXT calendar year's FY). Derived from `periodEnd` — the period the value reports for — so the qualifying-
+ * discipline list tracks the reporting FY (the FY2028 CMS expansion adds chaplain + aide, a constant-only
+ * change per D3). Until FY2028 the only registered HVLDL variant is FY2025 (rn + msw).
+ */
+function federalFiscalYearOf(isoInstant: string): number {
+  const d = new Date(isoInstant);
+  const month0 = d.getUTCMonth();
+  const year = d.getUTCFullYear();
+  return month0 >= 9 ? year + 1 : year;
+}
+
+/** The HVLDL qualifying-discipline set for the reporting period's FY (rn + msw FY2025; + chaplain/aide FY2028). */
+function hvldlQualifyingDisciplinesForPeriod(periodEnd: string): ReadonlySet<string> {
+  const disciplines =
+    federalFiscalYearOf(periodEnd) >= 2028
+      ? HVLDL_QUALIFYING_DISCIPLINES_v2028
+      : HVLDL_QUALIFYING_DISCIPLINES_v2025;
+  return new Set<string>(disciplines);
+}
+
+/**
+ * The HVLDL (`hvldl`) measure-input provider (§4.11 / D20) the `m30.measure_recompute` worker reaches when a
+ * recompute names the HVLDL code. It builds the decedent census the pure {@link computeHvldl} reduces:
+ *
+ *   • the DENOMINATOR is EVERY decedent M6's death-discharge census returns for the reporting period (CMS
+ *     does not exclude any source — the calculator counts them all);
+ *   • each decedent's `qualifyingDisciplineVisitsInLastDays` is the count of M8 signed encounters that are
+ *     (a) by a qualifying discipline for the period's FY, (b) on a service date in the last-days window
+ *     (service date at-or-before the death date, the reader scan opened `HVLDL_LAST_DAYS_WINDOW_DAYS` days
+ *     before death), and (c) EVV-VERIFIED (`evvBracketState === 'evv_present'`) — an EVV-missing-documented
+ *     visit does NOT count toward the predicate.
+ *
+ * The two seams self-scope on their own connections (the M6 reader sets its org GUC itself; the M8 reader is
+ * resolved within the worker's tenant context), so each runs one org's census — nothing crosses a tenant
+ * boundary. The per-decedent N reads are acceptable for a nightly recompute job.
+ *
+ * KNOWN LIMITATION (§4.11 external-source breakdown): M6's frozen `discharge_event` models only the death
+ * fact — no source / cosign columns — so the reader returns `source='internal_clinician_recorded'` with an
+ * undefined cosign status for every decedent. HVLDL still computes correctly (the external subset is empty,
+ * so the §4.11 Risk-Register flag never fires); the `source`/`cosignStatus` ride through the contract so the
+ * resolver lights up the breakdown once M6 models HL7-external death intake (no change needed here).
+ */
+export async function resolveHvldlMeasureInput(
+  request: {
+    readonly registration: MeasureRegistration;
+    readonly organizationId: string;
+    readonly providerEntityId: string;
+    readonly periodStart: string;
+    readonly periodEnd: string;
+  },
+  seams: {
+    readonly deathDischargeReader: DeathDischargeReader;
+    readonly encounters: SignedEncountersReader;
+  },
+): Promise<ComputeHvldlInput> {
+  const { organizationId, providerEntityId, periodStart, periodEnd } = request;
+  const qualifying = hvldlQualifyingDisciplinesForPeriod(periodEnd);
+
+  const deaths = await seams.deathDischargeReader.listDeathDischargesInPeriod(organizationId, {
+    from: periodStart,
+    to: periodEnd,
+  });
+
+  const decedents: HvldlDecedentInput[] = [];
+  for (const death of deaths) {
+    // The reader scan opens at `deathAt − 3 calendar days`; the upper bound is enforced below by the
+    // service-date-at-or-before-death predicate (`serviceDate` is a `yyyy-mm-dd`; the death day is the
+    // ISO instant's date prefix — lexical compare is correct for ISO calendar dates).
+    const deathDate = death.deathAt.slice(0, 10);
+    const since = new Date(
+      new Date(death.deathAt).getTime() - HVLDL_LAST_DAYS_WINDOW_DAYS * MS_PER_DAY,
+    ).toISOString();
+
+    const digests = await seams.encounters.signedEncountersForPatientSince(death.patientId, since);
+    const count = digests.filter(
+      (e) =>
+        qualifying.has(e.discipline) &&
+        e.serviceDate <= deathDate &&
+        e.evvBracketState === "evv_present",
+    ).length;
+
+    decedents.push({
+      patientId: death.patientId,
+      source: death.source,
+      cosignStatus: death.cosignStatus,
+      qualifyingDisciplineVisitsInLastDays: count,
+    });
+  }
+
+  return {
+    organizationId,
+    providerEntityId,
+    periodStart,
+    periodEnd,
+    decedents,
+    nationalAvg: HCI_THRESHOLDS_v2025.hvldlNationalAvg,
+    minQualifyingVisits: HVLDL_MIN_QUALIFYING_VISITS,
+  };
+}
+
 // ── the per-queue port bundles (bind what we can; throw-on-call for the genuinely-missing infra) ────────
 
 /** The bound port bundles `registerM30Workers` drives the four §4.8 work-queue processors with. */
@@ -316,6 +448,30 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
       unboundWorkerPort("processingLog.markProcessed", "bind to the M1-owned `processing_log` table accessor"),
   };
 
+  // ── HVLDL measure-input seams (M6 death census + M8 signed encounters) — fail-closed thunk until bound ──
+  // The composition root resolves both via `getSeam`. Each self-scopes on its own connection, so they ride
+  // through the per-job port rebuild unchanged. Absent ⇒ a LAZY throw so an HVLDL recompute denies on RUN
+  // (never at port-bundle construction — the M34 eager-bind gotcha); other measure codes never touch them.
+  const deathDischargeReader: DeathDischargeReader = deps.deathDischargeReader ?? {
+    listDeathDischargesInPeriod: () =>
+      unboundWorkerPort(
+        "measureRecompute.hvldl.deathDischargeReader",
+        "bind the M6 DeathDischargeReader (the HVLDL death-discharge denominator census) via getSeam at the composition root",
+      ),
+  };
+  const signedEncounters: SignedEncountersReader = deps.signedEncounters ?? {
+    signedEncountersForPatientSince: () =>
+      unboundWorkerPort(
+        "measureRecompute.hvldl.signedEncounters.signedEncountersForPatientSince",
+        "bind the M8 SignedEncountersReader (the EVV-verified qualifying-visit source for HVLDL) via getSeam",
+      ),
+    renderPayloadFor: () =>
+      unboundWorkerPort(
+        "measureRecompute.hvldl.signedEncounters.renderPayloadFor",
+        "the HVLDL resolver only calls signedEncountersForPatientSince; renderPayloadFor is unused on this path",
+      ),
+  };
+
   // ── m30.measure_recompute (withOrgContext) — §7.1 / V-8 ────────────────────────────────────────────────
   // BOUND: the `quality_measure_value` store + the debounce-queue drain + the LIVE M10 HOPE consumer + the
   // V-5 snapshot hash + id mint. UNBOUND (lazy): the per-family measure-input provider (no stable accessor —
@@ -333,9 +489,15 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
     data: {
       // BOUND (HOPE-family): the four HOPE measures (tfp_pi / tfp_npsi / hope_sfv_on_time_rate /
       // hope_submission_acceptance_rate) shape the live M10 org-rollup COUNTS into their calculator input
-      // (see {@link resolveHopeMeasureInput}). Any OTHER measure code stays fail-closed — the non-HOPE
-      // families' M5–M18 read seams are the integrator's remaining lazy-unbound shaping work.
-      resolveInput: (request, seams) => resolveHopeMeasureInput(request, seams),
+      // (see {@link resolveHopeMeasureInput}). BOUND (HVLDL): the `hvldl` measure shapes the M6 death census
+      // × M8 EVV-verified qualifying visits into the decedent census (see {@link resolveHvldlMeasureInput}) —
+      // its two seams are closed over from `deps` (the worker's `{ hope }` seam arg carries only the HOPE
+      // consumer). Any OTHER measure code stays fail-closed — the remaining families' M5–M18 read seams are
+      // the integrator's remaining lazy-unbound shaping work.
+      resolveInput: (request, seams) =>
+        request.registration.code === "hvldl"
+          ? resolveHvldlMeasureInput(request, { deathDischargeReader, encounters: signedEncounters })
+          : resolveHopeMeasureInput(request, seams),
     },
     values: {
       findCurrent: (measureCode, providerEntityId, periodStart, periodEnd) =>
@@ -737,6 +899,9 @@ export function buildM30WorkerDeps(deps: {
   processingLog?: ProcessingLogPort;
   activeOrgs?: ActiveOrgListPort;
   registrations?: ReadonlyMap<string, MeasureRegistration>;
+  /** The M6 HVLDL death-census reader + the M8 signed-encounter reader (resolved via `getSeam`). */
+  deathDischargeReader?: DeathDischargeReader;
+  signedEncounters?: SignedEncountersReader;
 }): M30WorkerDeps {
   return {
     connection: deps.connection,
@@ -746,6 +911,8 @@ export function buildM30WorkerDeps(deps: {
     cahpsAdapters: deps.cahpsAdapters,
     processingLog: deps.processingLog,
     activeOrgs: deps.activeOrgs,
+    deathDischargeReader: deps.deathDischargeReader,
+    signedEncounters: deps.signedEncounters,
     // Default to the FULL catalog→calculator registry (the integrator may still override). With this the
     // measure-recompute worker resolves a calculator by measure code instead of failing closed on an empty map.
     registrations: deps.registrations ?? buildMeasureRegistry(),
@@ -761,9 +928,12 @@ export function buildM30WorkerDeps(deps: {
 //     it in bootstrap/seams so the DEK resolves (never plaintext caregiver PHI at rest, §3.6/§8).
 //   • the live M36 alert router (the SRA-reminders `alerts.dispatch`, RULE 3e) — alerts ship as defs + fire
 //     through the outbox; M36 is the consumer.
-//   • the per-family measure-input provider (`measureRecompute.data.resolveInput`) — shape each measure's
-//     calculator input from the M5–M18 read seams + the live M10 HOPE rollups, and pass the measure
-//     registry (`deps.registrations`, each catalog descriptor bound to its concrete pure calculator).
+//   • the per-family measure-input provider (`measureRecompute.data.resolveInput`) — the HOPE-derived four +
+//     HVLDL are now bound; shape the REMAINING measures' calculator input from the M5–M18 read seams, and
+//     pass the measure registry (`deps.registrations`, each catalog descriptor bound to its pure calculator).
+//   • the HVLDL seams (`deps.deathDischargeReader` = M6 DeathDischargeReader; `deps.signedEncounters` = M8
+//     SignedEncountersReader) — bind both via `getSeam` at boot so the HVLDL recompute resolves its census
+//     (each self-scopes on its own connection); until then an `hvldl` recompute denies fail-closed on run.
 //   • the M2 platform active-org enumerator (`cron.orgs`), the death-feed decedent reader (cahps candidates),
 //     and the platform open-SRA-cycle scan (`sraReminders.cycles`) under `withPlatformContext`.
 //   • the per-org recompute/refresh ENQUEUE producers (`nightlyRecompute.enqueue` / `riskRegisterRefreshCron

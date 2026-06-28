@@ -181,8 +181,11 @@ export function wireModuleSeams(
   );
   registerPatientSeams(); // M5 — CaseloadProvider (§4.1, + caseload_membership predicate); PatientReader/Mutator land T08
   // M6 — the six §4.7 admission reader seams (election/CTI/F2F/LOC/status/census). Slice/tests keep the
-  // in-memory store; the Drizzle-backed store lands with M6's routes/repos (M6-T06+).
-  registerAdmissionSeams();
+  // in-memory store; the Drizzle-backed store lands with M6's routes/repos (M6-T06+). PLUS the §4.11
+  // DeathDischargeReader the M30 measure-recompute worker consumes for the HVLDL denominator — registered over
+  // a DEDICATED Drizzle reader when a db is present (it self-scopes each call, HARD RULE 3); slice/tests
+  // without a db keep it on the fail-closed deny-stub.
+  registerAdmissionSeams(deps.db ? { db: deps.db } : {});
   // M7 — the §7.8 CarePlanReader (encounter-relevance picker + the 5-/15-day overdue sign-gate M8
   // consumes). Slice/tests keep the in-memory store + real clock; the Drizzle-backed store lands with
   // M7's routes/repos (M7-T05+).
@@ -683,11 +686,22 @@ if ((import.meta as { main?: boolean }).main) {
       jobId: M30_PLATFORM_JOB_ID,
       reason: "M30 §4.8 cron fan-out (active-org enumeration)",
     });
+    // The two §4.11 HVLDL consumed seams — the M6 death-discharge census (denominator) + the M8
+    // signed-encounter reader (the EVV-verified qualifying-visit numerator source). Both are M-owned,
+    // leaf-typed, and already registered by wireModuleSeams above (DeathDischargeReader over its dedicated
+    // Drizzle reader when a db is present, else its fail-closed deny-stub; SignedEncountersReader over M8's
+    // in-memory store). Resolved here via `getSeam` (RULE 4) and handed to the worker deps the same way the
+    // M10 HOPE consumer is — each self-scopes on its own connection, so an HVLDL recompute reads its census
+    // without M30 touching M6/M8 schema directly.
+    const m30DeathDischargeReader = getSeam("DeathDischargeReader");
+    const m30SignedEncounters = getSeam("SignedEncountersReader");
     const m30WorkerDeps = buildM30WorkerDeps({
       connection: queueConnection,
       db: dbHandle.db,
       hopeProvider: m30HopeConsumer,
       activeOrgs: m30ActiveOrgs,
+      deathDischargeReader: m30DeathDischargeReader,
+      signedEncounters: m30SignedEncounters,
     });
     const m30Workers = [...registerM30Workers(m30WorkerDeps), ...registerM30CronWorkers(m30WorkerDeps)];
     app.addHook("onClose", async () => {
