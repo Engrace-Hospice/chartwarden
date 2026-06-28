@@ -1,0 +1,32 @@
+// apps/backend/src/modules/25-remittance/routes/mount.ts — M25 route mount (§4.1) + plugin barrel.
+//
+// The five §4.1 route plugins (remittance / denials / appeals / taxonomy / internal). `mountM25Routes` is
+// the single composition-root entry (the M27 `mountM27Routes` precedent), mounted behind the same
+// authenticate/security/error chain as every other module's routes; each plugin is also re-exported so a
+// route test can mount one group over a fresh in-memory backend. Every route already gates on its §4.6
+// `requirePermission` key; the manual-match / denial-detail compose the §4.7 ABAC chain, the override /
+// close-write-off / appeal-submit compose the §D15 step-up, and every mutating route declares
+// `Idempotency-Key` (§F05).
+import type { FastifyInstance } from "fastify";
+import { registerAppealRoutes } from "./appeals.routes";
+import { registerDenialRoutes } from "./denials.routes";
+import { registerInternalRoutes } from "./internal.routes";
+import { registerRemittanceRoutes } from "./remittance.routes";
+import { registerTaxonomyRoutes } from "./taxonomy.routes";
+import type { M25RouteServices } from "./index";
+
+export { registerRemittanceRoutes, type RemittanceRouteDeps } from "./remittance.routes";
+export { registerDenialRoutes, type DenialRouteDeps } from "./denials.routes";
+export { registerAppealRoutes, type AppealRouteDeps } from "./appeals.routes";
+export { registerTaxonomyRoutes, type TaxonomyRouteDeps } from "./taxonomy.routes";
+export { registerInternalRoutes, type InternalRouteDeps } from "./internal.routes";
+
+/** Mount every M25 §4.1 route plugin over the Drizzle-backed (or in-memory slice) read + write services. */
+export function mountM25Routes(app: FastifyInstance, services: M25RouteServices): void {
+  const { readService, writeService } = services;
+  registerRemittanceRoutes(app, { readService, writeService });
+  registerDenialRoutes(app, { readService, writeService });
+  registerAppealRoutes(app, { readService, writeService });
+  registerTaxonomyRoutes(app, { readService, writeService });
+  registerInternalRoutes(app, { readService });
+}

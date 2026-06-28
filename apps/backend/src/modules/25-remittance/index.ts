@@ -32,3 +32,19 @@ export {
   denyStubM25AbacResolver,
   registerM25AbacPredicates,
 } from "./abac-predicates";
+
+// §4.1 — the route plugins + the Drizzle-backed read/write service builders. The composition root mounts
+// these over the Drizzle services when a DB client is present (the M27 `mountM27Routes` precedent); the
+// write service's outbox port + the read service's M38 terminology lookup are injected at boot (deny-stub /
+// no-op until wired).
+export {
+  type M25RouteServices,
+  type M25ReadService,
+  type M25WriteService,
+  type WriteOutboxPort,
+  type OutboxEmission,
+  type TerminologyLookupPort,
+  buildDrizzleM25ReadService,
+  buildDrizzleM25WriteService,
+} from "./routes/index";
+export { mountM25Routes } from "./routes/mount";
