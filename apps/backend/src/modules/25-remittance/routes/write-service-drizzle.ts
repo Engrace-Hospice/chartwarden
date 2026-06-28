@@ -32,7 +32,7 @@ import type {
   WriteOutboxPort,
 } from "./write-service";
 
-const NOOP_OUTBOX: WriteOutboxPort = { async emit() {} };
+const NOOP_OUTBOX: WriteOutboxPort = { async publish() {} };
 
 /** The real Drizzle transaction handle (has .select/.update/.insert), inferred from the db client. */
 type M25Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
@@ -67,13 +67,17 @@ export function buildDrizzleM25WriteService(
     return rows[0];
   }
 
-  /** Versioned denial transition: validate the edge, then `UPDATE … WHERE id AND version`. */
+  /**
+   * Versioned denial transition: validate the edge, `UPDATE … WHERE id AND version`, then run the optional
+   * `emit` IN THE SAME TX (so the §4.5 outbox row commits with the mutation — the D2 posture).
+   */
   async function transitionDenial(
     actor: M25WriteActor,
     id: string,
     to: DenialState,
     ifMatch: number,
     extra: Record<string, unknown>,
+    emit?: (tx: M25Tx) => Promise<void>,
   ): Promise<VersionedResult> {
     return withOrgContext(db, actor, async (tx) => {
       const cur = await denialState(tx, id);
@@ -84,6 +88,7 @@ export function buildDrizzleM25WriteService(
         .where(and(eq(DC.id, id), eq(DC.version, ifMatch)))
         .returning({ id: DC.id, version: DC.version });
       if (!updated[0]) throw new VersionConflictError(cur.version);
+      if (emit) await emit(tx);
       return { id: updated[0].id, version: updated[0].version };
     });
   }
@@ -97,10 +102,13 @@ export function buildDrizzleM25WriteService(
           throw new WardenXError("INVALID_STATE", "only a failed advice can be replayed", 409);
         }
         await tx.update(RA).set({ parseStatus: "queued" }).where(eq(RA.id, adviceId));
-      });
-      await outbox.emit(actor.organizationId, {
-        eventName: "m25.edi.835_received",
-        payload: { remittanceAdviceId: adviceId, replay: true },
+        await outbox.publish(tx, {
+          eventName: "m25.edi.835_received",
+          organizationId: actor.organizationId,
+          aggregateKind: "remittance_advice",
+          aggregateId: adviceId,
+          payload: { remittanceAdviceId: adviceId, replay: true },
+        });
       });
     },
 
@@ -122,10 +130,13 @@ export function buildDrizzleM25WriteService(
             matchedByMembershipId: actor.membershipId,
           })
           .where(eq(RL.id, lineId));
-      });
-      await outbox.emit(actor.organizationId, {
-        eventName: "m25.remittance.manual_match_recorded",
-        payload: { remittanceLineId: lineId, claimId: input.proposedClaimId, matchedByMembershipId: actor.membershipId },
+        await outbox.publish(tx, {
+          eventName: "m25.remittance.manual_match_recorded",
+          organizationId: actor.organizationId,
+          aggregateKind: "remittance_line",
+          aggregateId: lineId,
+          payload: { remittanceLineId: lineId, claimId: input.proposedClaimId, matchedByMembershipId: actor.membershipId },
+        });
       });
     },
 
@@ -177,16 +188,25 @@ export function buildDrizzleM25WriteService(
     },
 
     async closeWriteOffDenial(actor, id, input: ReasonInput, ifMatch) {
-      const result = await transitionDenial(actor, id, "closed", ifMatch, {
-        closedAt: sql`now()`,
-        closureOutcome: "written_off",
-        overridePayload: { reason: input.reason, by: actor.membershipId },
-      });
-      await outbox.emit(actor.organizationId, {
-        eventName: "m25.patient_responsibility.recorded",
-        payload: { denialCaseId: id, writeOff: true },
-      });
-      return result;
+      return transitionDenial(
+        actor,
+        id,
+        "closed",
+        ifMatch,
+        {
+          closedAt: sql`now()`,
+          closureOutcome: "written_off",
+          overridePayload: { reason: input.reason, by: actor.membershipId },
+        },
+        (tx) =>
+          outbox.publish(tx, {
+            eventName: "m25.patient_responsibility.recorded",
+            organizationId: actor.organizationId,
+            aggregateKind: "denial_case",
+            aggregateId: id,
+            payload: { ledgerId: id, patientId: id, prAmount: 0 },
+          }),
+      );
     },
 
     async reopenDenial(actor, id, _input: ReasonInput, ifMatch) {
@@ -260,19 +280,32 @@ export function buildDrizzleM25WriteService(
     },
 
     async submitAppeal(actor, id, input: AppealSubmitInput, ifMatch) {
-      const result = await transitionAppeal(actor, id, "submitted", ifMatch, {
-        submittedAt: sql`now()`,
-        appealNarrative: { narrative: input.appealNarrative, documents: input.attachedDocumentIds },
-      });
-      await outbox.emit(actor.organizationId, {
-        eventName: "m25.appeal.submitted",
-        payload: { appealCaseId: id, submittedAt: new Date().toISOString() },
-      });
-      await outbox.emit(actor.organizationId, {
-        eventName: "m25.appeal_packet.render_requested",
-        payload: { appealCaseId: id, payload: {} },
-      });
-      return result;
+      return transitionAppeal(
+        actor,
+        id,
+        "submitted",
+        ifMatch,
+        {
+          submittedAt: sql`now()`,
+          appealNarrative: { narrative: input.appealNarrative, documents: input.attachedDocumentIds },
+        },
+        async (tx, cur) => {
+          await outbox.publish(tx, {
+            eventName: "m25.appeal.submitted",
+            organizationId: actor.organizationId,
+            aggregateKind: "appeal_case",
+            aggregateId: id,
+            payload: { appealCaseId: id, denialCaseId: cur.denialCaseId, tier: cur.tier, submittedAt: new Date(0).toISOString() },
+          });
+          await outbox.publish(tx, {
+            eventName: "m25.appeal_packet.render_requested",
+            organizationId: actor.organizationId,
+            aggregateKind: "appeal_case",
+            aggregateId: id,
+            payload: { appealCaseId: id, tier: cur.tier, payload: {} },
+          });
+        },
+      );
     },
 
     async ackAppeal(actor, id, ifMatch) {
@@ -317,14 +350,17 @@ export function buildDrizzleM25WriteService(
             });
           }
         }
-        return { id: updated[0].id, version: updated[0].version, denialCaseId: cur.denialCaseId, claimId: cur.claimId, tier: cur.tier };
+        if (input.outcome === "favorable") {
+          await outbox.publish(tx, {
+            eventName: "m25.denial.resolved_favorable_via_appeal",
+            organizationId: actor.organizationId,
+            aggregateKind: "appeal_case",
+            aggregateId: id,
+            payload: { denialCaseId: cur.denialCaseId, appealCaseId: id, claimId: cur.claimId, tier: cur.tier },
+          });
+        }
+        return { id: updated[0].id, version: updated[0].version };
       });
-      if (input.outcome === "favorable") {
-        await outbox.emit(actor.organizationId, {
-          eventName: "m25.denial.resolved_favorable_via_appeal",
-          payload: { denialCaseId: result.denialCaseId, appealCaseId: id, claimId: result.claimId, tier: result.tier },
-        });
-      }
       return { id: result.id, version: result.version };
     },
 
@@ -391,13 +427,17 @@ export function buildDrizzleM25WriteService(
     return rows[0];
   }
 
-  /** Versioned appeal transition: validate the edge, then `UPDATE … WHERE id AND version`. */
+  /**
+   * Versioned appeal transition: validate the edge, `UPDATE … WHERE id AND version`, then run the optional
+   * `emit` IN THE SAME TX (the §4.5 outbox row commits with the mutation — the D2 posture).
+   */
   async function transitionAppeal(
     actor: M25WriteActor,
     id: string,
     to: "submitted" | "under_review" | "withdrawn" | "closed",
     ifMatch: number,
     extra: Record<string, unknown>,
+    emit?: (tx: M25Tx, cur: Awaited<ReturnType<typeof appealRow>>) => Promise<void>,
   ): Promise<VersionedResult> {
     return withOrgContext(db, actor, async (tx) => {
       const cur = await appealRow(tx, id);
@@ -408,6 +448,7 @@ export function buildDrizzleM25WriteService(
         .where(and(eq(AC.id, id), eq(AC.version, ifMatch)))
         .returning({ id: AC.id, version: AC.version });
       if (!updated[0]) throw new VersionConflictError(cur.version);
+      if (emit) await emit(tx, cur);
       return { id: updated[0].id, version: updated[0].version };
     });
   }
