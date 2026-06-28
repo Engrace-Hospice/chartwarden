@@ -194,11 +194,12 @@ export function wireModuleSeams(
   // consume for latest-scale reads + trend series/deltas. Slice/tests keep the in-memory store; the
   // Drizzle-backed store lands with M9's routes/repos (M9-T05+).
   registerAssessmentSeams();
-  // M10 — the three §2 / D10 owned seams (HopeTimepointProvider + HopeJ2051Provider + HopeSubmissionProvider)
-  // M14/M22/M30/M32 consume for open HOPE windows, J2051 trigger/SFV obligations, and per-PE submission
-  // status. Slice/tests keep the in-memory store; the Drizzle-backed store lands with M10's routes/repos
-  // (M10-T06+).
-  registerHopeSeams();
+  // M10 — the three PER-ENTITY §2 / D10 owned seams (HopeTimepointProvider + HopeJ2051Provider +
+  // HopeSubmissionProvider) M14/M22/M30/M32 consume for open HOPE windows, J2051 trigger/SFV obligations,
+  // and per-PE submission status (in-memory store). PLUS the ORG-LEVEL HopeOrgRollupProvider (#107) the M30
+  // measure-recompute worker consumes — registered over a DEDICATED Drizzle aggregate reader when a db is
+  // present (org-scoped COUNTS only, D6); slice/tests without a db keep it on the fail-closed deny-stub.
+  registerHopeSeams(deps.db ? { db: deps.db } : {});
   // M11 — the two §2.8 D14 / §4.3 owned seams (OrderSignatureProvider — the polymorphic clinical-signature
   // WRITE primitive M12 routes medication-order signatures through, D4 — + OrderProvider — the read-side
   // counterpart M14/M23/M30/M7 consume). Slice/tests keep the in-memory store; the Drizzle-backed store lands
@@ -642,30 +643,27 @@ if ((import.meta as { main?: boolean }).main) {
     // `processing_log` accessor) stays a LAZY fail-closed thunk inside the package wiring — those job paths
     // throw `M30WorkerPortUnbound` only when a JOB RUNS; boot stays green (the M34 eager-bind gotcha).
     //
-    // The §4.4 / M10-real HOPE consumer: M30 needs org-wide rollups (timepoint-completion / submission
-    // posture / open-SFV count) but M10 publishes PER-ENTITY readers (HopeTimepointProvider /
-    // HopeSubmissionProvider / HopeJ2051Provider). The live seams are resolved lazily here (so a missing M10
-    // surface fails fast at run time, never at boot) and held; the org-wide projection over them needs a
-    // patient/admission enumerator M30 has no seam for yet, so each rollup is fail-closed until that lands —
-    // and the recompute worker never reaches `hope` until `registrations` + `resolveInput` are bound anyway.
+    // The §4.4 / M10-real HOPE consumer: M30 needs ORG-WIDE rollups (timepoint completion / submission
+    // posture / SFV timeliness / J2051 timely-follow-up / open-SFV count). M10 now publishes a dedicated
+    // org-scoped aggregate seam for exactly this — `HopeOrgRollupProvider` (#107) — alongside its per-entity
+    // readers. Each method delegates LAZILY to `getSeam("HopeOrgRollupProvider")` at call time (RULE 4 — so a
+    // not-yet-registered M10 surface fails closed via the registry deny-stub at run time, never at boot), and
+    // the recompute worker never reaches `hope` until `registrations` + `resolveInput` are bound anyway.
     const m30HopeConsumer: QualityHopeConsumer = {
-      async timepointCompletionRollup() {
-        void getSeam("HopeTimepointProvider"); // LIVE M10 seam (RULE 4) — held; org-wide projection deferred
-        throw new Error(
-          "M30 hope.timepointCompletionRollup: M10 HopeTimepointProvider is per-entity; the org-wide rollup needs a patient enumerator seam not yet wired (fail-closed)",
-        );
+      timepointCompletionRollup(organizationId, period) {
+        return getSeam("HopeOrgRollupProvider").timepointCompletionRollup(organizationId, period);
       },
-      async submissionPostureRollup() {
-        void getSeam("HopeSubmissionProvider"); // LIVE M10 seam (RULE 4) — held; org-wide projection deferred
-        throw new Error(
-          "M30 hope.submissionPostureRollup: M10 HopeSubmissionProvider is per-PE; the org-wide rollup needs a provider-entity enumerator seam not yet wired (fail-closed)",
-        );
+      submissionPostureRollup(organizationId, period) {
+        return getSeam("HopeOrgRollupProvider").submissionPostureRollup(organizationId, period);
       },
-      async openSfvObligationCount() {
-        void getSeam("HopeJ2051Provider"); // LIVE M10 seam (RULE 4) — held; org-wide projection deferred
-        throw new Error(
-          "M30 hope.openSfvObligationCount: M10 HopeJ2051Provider is per-patient; the org-wide count needs a patient enumerator seam not yet wired (fail-closed)",
-        );
+      sfvTimelinessRollup(organizationId, period) {
+        return getSeam("HopeOrgRollupProvider").sfvTimelinessRollup(organizationId, period);
+      },
+      j2051FollowUpRollup(organizationId, period) {
+        return getSeam("HopeOrgRollupProvider").j2051FollowUpRollup(organizationId, period);
+      },
+      openSfvObligationCount(organizationId) {
+        return getSeam("HopeOrgRollupProvider").openSfvObligationCount(organizationId);
       },
     };
     // #107 item 2 — bind the active-org enumerator so the §4.8 cron fan-outs enumerate every active tenant

@@ -7,13 +7,21 @@
 // boot deny-stubs (before validateSeams()), driven from the composition root's wireModuleSeams(). All
 // three share ONE injected HopeSeamStore (in-memory slice here; Drizzle in prod, reads under the
 // consumer's RLS) — mirrors the M9 seams/index.ts precedent.
+import type { DbClient } from "@wardenx/db";
 import type {
   HopeJ2051Provider,
+  HopeOrgRollupProvider,
   HopeSubmissionProvider,
   HopeTimepointProvider,
   LatestAssessmentProvider,
 } from "@wardenx/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
+import { createHopeOrgRollupProvider } from "./org-rollup-provider";
+import {
+  type HopeOrgRollupStore,
+  createDrizzleHopeOrgRollupStore,
+  createInMemoryHopeOrgRollupStore,
+} from "./org-rollup-store";
 import {
   createHopeJ2051Provider,
   createHopeSubmissionProvider,
@@ -31,23 +39,54 @@ export {
   createHopeSubmissionProvider,
   createHopeTimepointProvider,
 } from "./providers";
+export { createHopeOrgRollupProvider } from "./org-rollup-provider";
+export {
+  type HopeOrgRollupSeed,
+  type HopeOrgRollupStore,
+  type J2051SeverityEntry,
+  type J2051TriggerRow,
+  type SfvTimelinessRow,
+  type SubmissionPostureRow,
+  type TimepointCompletionRow,
+  createDrizzleHopeOrgRollupStore,
+  createInMemoryHopeOrgRollupStore,
+} from "./org-rollup-store";
 
 /** Deps for M10's owned-seam registration (slice defaults to the in-memory store). */
 export interface HopeSeamDeps {
   /** The §2 / D10 data port (Drizzle over M10's tables in prod; in-memory slice in tests). */
   store?: HopeSeamStore;
+  /** The pooled Drizzle client (#107). When present, the ORG-LEVEL `HopeOrgRollupProvider` is registered
+   * over a Drizzle aggregate reader; absent, the org-rollup seam stays unregistered (boot deny-stub). */
+  db?: DbClient;
+  /** Explicit org-rollup aggregate reader (an in-memory double in tests). Takes precedence over {@link db};
+   * when neither is supplied the org-rollup seam falls through to the fail-closed boot deny-stub. */
+  orgRollupStore?: HopeOrgRollupStore;
 }
 
 /**
- * Register M10's three §2 / D10 owned seams into the M1 registry over their boot deny-stubs (M10-T05;
- * before validateSeams()). All three share one {@link HopeSeamStore} so a single Drizzle adapter backs the
- * whole HOPE read surface. Called by the composition root's wireModuleSeams().
+ * Register M10's §2 / D10 owned seams into the M1 registry over their boot deny-stubs (M10-T05; before
+ * validateSeams()). The three PER-ENTITY readers share one {@link HopeSeamStore}. The ORG-LEVEL
+ * {@link HopeOrgRollupProvider} (#107) is registered over its DEDICATED Drizzle aggregate reader when a db /
+ * store is present (M30's measure-recompute consumes it); without one it stays on the fail-closed deny-stub.
+ * Called by the composition root's wireModuleSeams().
  */
 export function registerHopeSeams(deps: HopeSeamDeps = {}): void {
   const store = deps.store ?? createInMemoryHopeSeamStore().store;
   registerSeam("HopeTimepointProvider", createHopeTimepointProvider(store));
   registerSeam("HopeJ2051Provider", createHopeJ2051Provider(store));
   registerSeam("HopeSubmissionProvider", createHopeSubmissionProvider(store));
+
+  const orgRollupStore =
+    deps.orgRollupStore ?? (deps.db ? createDrizzleHopeOrgRollupStore(deps.db) : undefined);
+  if (orgRollupStore) {
+    registerSeam("HopeOrgRollupProvider", createHopeOrgRollupProvider(orgRollupStore));
+  }
+}
+
+/** Typed resolver for M10's ORG-LEVEL HopeOrgRollupProvider (registered when a db/store is present). */
+export function getHopeOrgRollupProvider(): HopeOrgRollupProvider {
+  return getSeam("HopeOrgRollupProvider");
 }
 
 /** Typed resolver for M10's HopeTimepointProvider (sound: registered real impl; validateSeams guards it). */

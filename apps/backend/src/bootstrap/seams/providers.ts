@@ -32,6 +32,7 @@ import type {
   ExtractionProvenanceReader,
   FaceToFaceReader,
   HopeJ2051Provider,
+  HopeOrgRollupProvider,
   HopeSubmissionProvider,
   HopeTimepointProvider,
   IdgDecisionProvider,
@@ -470,6 +471,25 @@ export const hopeSubmissionProviderDenyStub: HopeSubmissionProvider = {
   },
   submission() {
     throw new NotImplementedError("HopeSubmissionProvider");
+  },
+};
+
+/** M10 — ORG-LEVEL aggregate HOPE rollup (M30 measure-recompute; aggregate-only COUNTS, D6). Denies until M10 registers it. */
+export const hopeOrgRollupProviderDenyStub: HopeOrgRollupProvider = {
+  timepointCompletionRollup() {
+    throw new NotImplementedError("HopeOrgRollupProvider");
+  },
+  submissionPostureRollup() {
+    throw new NotImplementedError("HopeOrgRollupProvider");
+  },
+  sfvTimelinessRollup() {
+    throw new NotImplementedError("HopeOrgRollupProvider");
+  },
+  j2051FollowUpRollup() {
+    throw new NotImplementedError("HopeOrgRollupProvider");
+  },
+  openSfvObligationCount() {
+    throw new NotImplementedError("HopeOrgRollupProvider");
   },
 };
 

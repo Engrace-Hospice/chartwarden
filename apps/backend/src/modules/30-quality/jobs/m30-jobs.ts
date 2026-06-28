@@ -42,6 +42,8 @@ import {
   type CahpsExportPorts,
   type CahpsMonthlySampleCronPorts,
   CahpsRepository,
+  type HopeSfvOnTimeRateInput,
+  type HopeSubmissionAcceptanceRateInput,
   type MeasureRecomputePorts,
   type MeasureRegistration,
   InfectionRepository,
@@ -56,6 +58,9 @@ import {
   RiskRegisterRepository,
   type SraRemindersCronPorts,
   type CahpsAdapterResolvePort,
+  type ThresholdRule,
+  type TimelyFollowUpNonPainInput,
+  type TimelyFollowUpPainInput,
   buildMeasureRegistry,
   M30_JOB_SCHEDULES,
   M30_QUEUES,
@@ -70,6 +75,7 @@ import {
   sraRemindersCronProcessor,
   unboundWorkerPort,
 } from "@wardenx/quality";
+import type { HopeRollupPeriod } from "@wardenx/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { sql } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
@@ -139,6 +145,124 @@ function hashSnapshot(snapshot: unknown): string {
   return createHash("sha256").update(canonicalJson(snapshot)).digest("hex");
 }
 
+// ── the HOPE-family measure-input resolver (binds `measureRecompute.data.resolveInput` for the 4 HOPE measures) ─
+
+/**
+ * The per-measure `ThresholdRule` the four HOPE-family calculators each take in their input. No per-FY HOPE
+ * threshold table exists in @wardenx/quality (unlike `HCI_THRESHOLDS_v2025`), so the resolver supplies a
+ * documented platform default per measure. All four are higher-is-better (`gte`).
+ *
+ * ★ ASSUMPTION (flagged): only `hope_submission_acceptance_rate`'s 0.90 is CMS-sourced (the §1.3 APU floor —
+ *   the calculator's own doc-comment states "CMS APU floor is 90%"). The other three 0.90 targets are
+ *   PLATFORM DEFAULTS pending a CMS HOPE technical-spec refresh (the `HCI_THRESHOLDS_v2025` precedent — a
+ *   single reviewed constant a tenant may TIGHTEN via `qapi_indicator`, never loosen below). When the FY2028
+ *   HOPE measure specs publish, replace these with a versioned `HOPE_THRESHOLDS_v<FY>` table in the package.
+ */
+const HOPE_MEASURE_THRESHOLDS: Readonly<Record<string, ThresholdRule>> = {
+  tfp_pi: { value: 0.9, direction: "gte", label: "timely SFV follow-up for pain impact (platform default)" },
+  tfp_npsi: {
+    value: 0.9,
+    direction: "gte",
+    label: "timely SFV follow-up for non-pain symptom impact (platform default)",
+  },
+  hope_sfv_on_time_rate: { value: 0.9, direction: "gte", label: "HOPE SFV on-time rate (platform default)" },
+  hope_submission_acceptance_rate: {
+    value: 0.9,
+    direction: "gte",
+    label: "HOPE submission acceptance — CMS APU floor (§1.3)",
+  },
+};
+
+/** Resolve the documented threshold for a HOPE-family measure (fail-closed if a code has no default). */
+function hopeThresholdFor(measureCode: string): ThresholdRule {
+  const rule = HOPE_MEASURE_THRESHOLDS[measureCode];
+  if (rule === undefined) {
+    return unboundWorkerPort(
+      "measureRecompute.data.resolveInput.threshold",
+      `no HOPE-family threshold default registered for measure '${measureCode}' — add it to HOPE_MEASURE_THRESHOLDS`,
+    );
+  }
+  return rule;
+}
+
+/**
+ * The per-family measure-input provider for the FOUR HOPE-family measures (the `MeasureInputProviderPort`
+ * the `m30.measure_recompute` worker calls at its single seam reach, §7.1). It shapes the LIVE M10
+ * `HopeOrgRollupProvider` org-rollup COUNTS (the one consumed seam — §4.4 / D6 AGGREGATE-ONLY, no patient
+ * rows cross) into each calculator's already-fetched input + the per-measure threshold.
+ *
+ * The rollup window is `[periodStart, periodEnd)` (the `ComputeMeasureInput` base — inclusive-from /
+ * exclusive-to, mapped straight onto `HopeRollupPeriod.from`/`.to`). Org scope is the explicit
+ * `organizationId` (the producer's Drizzle reader also runs under the worker's `withOrgContext` RLS).
+ *
+ * Any OTHER measure code stays FAIL-CLOSED: the non-HOPE families (HCI / HVLDL / the operational measures)
+ * consume the M5–M18 read seams the integrator has not bound here yet, so an attempt to recompute one
+ * throws the typed `unboundWorkerPort` rather than computing on an empty input.
+ */
+export async function resolveHopeMeasureInput(
+  request: {
+    readonly registration: MeasureRegistration;
+    readonly organizationId: string;
+    readonly providerEntityId: string;
+    readonly periodStart: string;
+    readonly periodEnd: string;
+  },
+  seams: { readonly hope: QualityHopeConsumer },
+): Promise<unknown> {
+  const { organizationId, providerEntityId, periodStart, periodEnd } = request;
+  const code = request.registration.code;
+  const period: HopeRollupPeriod = { from: periodStart, to: periodEnd };
+  const base = { organizationId, providerEntityId, periodStart, periodEnd } as const;
+
+  switch (code) {
+    case "tfp_pi": {
+      const rollup = await seams.hope.j2051FollowUpRollup(organizationId, period);
+      const input: TimelyFollowUpPainInput = {
+        ...base,
+        qualifyingPainImpactTriggers: rollup.painTriggers,
+        followUpVisitsWithinWindow: rollup.painFollowUpsInWindow,
+        threshold: hopeThresholdFor(code),
+      };
+      return input;
+    }
+    case "tfp_npsi": {
+      const rollup = await seams.hope.j2051FollowUpRollup(organizationId, period);
+      const input: TimelyFollowUpNonPainInput = {
+        ...base,
+        qualifyingNonPainImpactTriggers: rollup.nonPainTriggers,
+        followUpVisitsWithinWindow: rollup.nonPainFollowUpsInWindow,
+        threshold: hopeThresholdFor(code),
+      };
+      return input;
+    }
+    case "hope_sfv_on_time_rate": {
+      const rollup = await seams.hope.sfvTimelinessRollup(organizationId, period);
+      const input: HopeSfvOnTimeRateInput = {
+        ...base,
+        sfvDue: rollup.sfvDue,
+        sfvOnTime: rollup.sfvOnTime,
+        threshold: hopeThresholdFor(code),
+      };
+      return input;
+    }
+    case "hope_submission_acceptance_rate": {
+      const rollup = await seams.hope.submissionPostureRollup(organizationId, period);
+      const input: HopeSubmissionAcceptanceRateInput = {
+        ...base,
+        submissions: rollup.submissions,
+        acceptedSubmissions: rollup.acceptedSubmissions,
+        threshold: hopeThresholdFor(code),
+      };
+      return input;
+    }
+    default:
+      return unboundWorkerPort(
+        "measureRecompute.data.resolveInput",
+        `no measure-input provider bound for '${code}' — only the four HOPE-family measures (tfp_pi / tfp_npsi / hope_sfv_on_time_rate / hope_submission_acceptance_rate) resolve from the live M10 HOPE rollups; the non-HOPE families need the M5–M18 read seams`,
+      );
+  }
+}
+
 // ── the per-queue port bundles (bind what we can; throw-on-call for the genuinely-missing infra) ────────
 
 /** The bound port bundles `registerM30Workers` drives the four §4.8 work-queue processors with. */
@@ -205,11 +329,11 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
     registrations: deps.registrations ?? buildMeasureRegistry(),
     hope: deps.hope, // LIVE — the one consumed seam (§4.4 / M10-real)
     data: {
-      resolveInput: () =>
-        unboundWorkerPort(
-          "measureRecompute.data.resolveInput",
-          "bind to the per-family measure-input provider (the M5–M18 read seams + the live M10 HOPE rollups shaped to each calculator's input) — the composition root owns the per-measure shaping",
-        ),
+      // BOUND (HOPE-family): the four HOPE measures (tfp_pi / tfp_npsi / hope_sfv_on_time_rate /
+      // hope_submission_acceptance_rate) shape the live M10 org-rollup COUNTS into their calculator input
+      // (see {@link resolveHopeMeasureInput}). Any OTHER measure code stays fail-closed — the non-HOPE
+      // families' M5–M18 read seams are the integrator's remaining lazy-unbound shaping work.
+      resolveInput: (request, seams) => resolveHopeMeasureInput(request, seams),
     },
     values: {
       findCurrent: (measureCode, providerEntityId, periodStart, periodEnd) =>

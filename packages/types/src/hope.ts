@@ -286,6 +286,73 @@ export interface HopeSubmissionProvider {
   submission(submissionId: HopeSubmissionId): Promise<HopeSubmissionStatusView | null>;
 }
 
+// ── ORG-LEVEL HOPE rollup seam (M30 HQRP measure-recompute consumes; aggregate-only, D6) ──────────────
+//
+// M10's three seams above are PER-ENTITY (patient / admission / provider-entity keyed). M30's
+// `m30.measure_recompute` worker needs ORG-WIDE rolled-up COUNTS to compute the four HOPE-family measures
+// (timepoint on-time, submission acceptance, SFV timeliness, J2051 timely-follow-up split pain/non-pain).
+// This seam is that org-scoped aggregate, published by M10 over a dedicated Drizzle aggregate reader
+// (distinct from the per-entity in-memory store). It is AGGREGATE-ONLY: every method returns COUNTS, never
+// a patient row (D6 — no patient-linked HOPE content crosses to M30). Org scope is an explicit
+// `organizationId` param; the Drizzle reader runs under the caller's RLS (the worker's `withOrgContext`)
+// with a belt-and-suspenders `WHERE organization_id = $org` predicate too.
+
+/**
+ * The PAIN/NON-PAIN discriminator for J2051 symptom-impact triggers. The J2051 evaluator treats
+ * `symptomCode` as an opaque label; PAIN is exactly this code, and any OTHER code (anxiety /
+ * shortness_of_breath / nausea_vomiting / …) is NON-PAIN. This is the single correctness ASSUMPTION the
+ * org-rollup's pain/non-pain split binds to — the producer's Drizzle aggregate partitions
+ * `hope_assessment.data.J.J2051.entries[].symptomCode` against this constant. (M30 TFP-PI vs TFP-NPSI.)
+ */
+export const HOPE_J2051_PAIN_SYMPTOM_CODE = "pain";
+
+/** The inclusive-from / exclusive-to reporting window an org-rollup method aggregates over (ISO-8601). */
+export interface HopeRollupPeriod {
+  readonly from: IsoInstant;
+  readonly to: IsoInstant;
+}
+
+/**
+ * §2 / D10 / D6 — the ORG-LEVEL HOPE rollup M30's `m30.measure_recompute` worker consumes to compute the
+ * four HOPE-family HQRP measures. M10 OWNS + publishes this (registered over the deny-stub at M10 init);
+ * M30 binds it via `getSeam('HopeOrgRollupProvider')`. AGGREGATE-ONLY — every method returns COUNTS, never
+ * a patient row (no patient-linked HOPE content crosses, D6). The producer's Drizzle aggregate reader runs
+ * under the caller's RLS, scoped additionally by the explicit `organizationId`.
+ */
+export interface HopeOrgRollupProvider {
+  /** Timepoint-completion split for the HOPE-on-time measure: windows completed on-time vs late in the period. */
+  timepointCompletionRollup(
+    organizationId: string,
+    period: HopeRollupPeriod,
+  ): Promise<{ readonly onTime: number; readonly late: number }>;
+  /** Submission posture for the acceptance measure: iQIES submissions vs those accepted in the period (APU signal). */
+  submissionPostureRollup(
+    organizationId: string,
+    period: HopeRollupPeriod,
+  ): Promise<{ readonly submissions: number; readonly acceptedSubmissions: number }>;
+  /** SFV timeliness for the on-time-SFV measure: SFVs due vs completed within the 2-calendar-day window. */
+  sfvTimelinessRollup(
+    organizationId: string,
+    period: HopeRollupPeriod,
+  ): Promise<{ readonly sfvDue: number; readonly sfvOnTime: number }>;
+  /**
+   * J2051 timely-follow-up split for the TFP-PI / TFP-NPSI measures: qualifying (moderate-or-severe)
+   * pain vs non-pain symptom-impact triggers, and how many of each had an in-window SFV. The pain/non-pain
+   * partition is keyed on {@link HOPE_J2051_PAIN_SYMPTOM_CODE}.
+   */
+  j2051FollowUpRollup(
+    organizationId: string,
+    period: HopeRollupPeriod,
+  ): Promise<{
+    readonly painTriggers: number;
+    readonly painFollowUpsInWindow: number;
+    readonly nonPainTriggers: number;
+    readonly nonPainFollowUpsInWindow: number;
+  }>;
+  /** Point-in-time count of open (not-yet-completed) SFV obligations for the org (the survey-readiness signal). */
+  openSfvObligationCount(organizationId: string): Promise<number>;
+}
+
 /**
  * §2.4 — internal marker the M1 outbox dispatcher uses to type-check M10 subscribers. M10 performs no
  * direct cross-module writes at the boundary; all downstream communication is the `m10.*` outbox.
