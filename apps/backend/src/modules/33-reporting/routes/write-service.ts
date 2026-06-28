@@ -16,6 +16,7 @@
 //     so both backends refuse the same illegal mutations identically. The pure assertion helpers below are
 //     the single home for each rule.
 //   - org/actor/owner binding is ALWAYS the server-assembled {@link M33WriteActor} (context, never body).
+import type { DbClient } from "@wardenx/db";
 import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
 import type { M33WriteActor } from "./actor";
 import { type CursorPage, paginate } from "./concurrency";
@@ -248,13 +249,37 @@ export const acceptAllRecipientReader: RecipientReaderPort = {
 };
 
 /**
+ * The structural org-context transaction handle the §4.10 outbox row is inserted through: the SAME
+ * `withOrgContext` tx the mutation already opened (transactional outbox — the event row commits atomically
+ * with the write). Pinned to `DbClient` to MIRROR the bootstrap `OutboxTx`
+ * (apps/backend/src/bootstrap/outbox-persister.ts) the composition root binds; `WriteTx`
+ * (write-service-drizzle.ts) is also `DbClient`, so the tx the service passes satisfies this exactly.
+ */
+export type WriteOutboxTx = DbClient;
+
+/**
  * The transactional-outbox emit port. M33 is OUTBOX-ONLY across module boundaries (D6); the command
- * routes emit the §4.10 `m33.*` events through this port in the SAME unit of work as the mutation. The
- * port is optional + best-effort here (the runtime dispatcher wiring is P2C — the M34 precedent where the
- * outbox catalog is static and the dispatcher binds at boot); when unbound the mutation still lands.
+ * routes emit the §4.10 `m33.*` events through this port in the SAME unit of work as the mutation.
+ *
+ * Mirrors the bootstrap `OutboxPublishPort`'s `publish(tx, input)` shape (the M34 precedent): the caller
+ * hands its open `tx` plus the catalog-routing fields (`organizationId` — the non-null tenant uuid the
+ * `outbox_event` row is keyed on, `aggregateKind`/`aggregateId` — the non-null aggregate uuid) and the
+ * `payload`. `callerModule` is fixed to `m33` by the composition-root adapter that binds this to
+ * `buildTxOutboxPublisher`, so callers pass only the fields below. A non-conformant payload THROWS in the
+ * dispatcher and rolls the mutation's tx back. The port is optional + best-effort here (the runtime
+ * dispatcher binds at boot); when unbound the mutation still lands (zero regression).
  */
 export interface WriteOutboxPort {
-  emit(event: { eventName: string; payload: Record<string, unknown> }): Promise<void>;
+  publish(
+    tx: WriteOutboxTx,
+    input: {
+      readonly eventName: string;
+      readonly payload: Record<string, unknown>;
+      readonly organizationId: string;
+      readonly aggregateKind: string;
+      readonly aggregateId: string;
+    },
+  ): Promise<void>;
 }
 
 // ── the route service the handlers compose over ───────────────────────────────────────────────────────

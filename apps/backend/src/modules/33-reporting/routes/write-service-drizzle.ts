@@ -182,8 +182,23 @@ export function createDrizzleM33WriteBackend(deps: M33WriteDrizzleDeps): {
       fn,
     );
 
-  const emit = async (eventName: string, payload: Record<string, unknown>): Promise<void> => {
-    if (deps.outbox) await deps.outbox.emit({ eventName, payload });
+  /**
+   * Emit a §4.10 `m33.*` event through the (optional) transactional-outbox port, on the CALLER'S tx so the
+   * row commits in the same unit of work as the mutation. `organizationId`/`aggregateKind`/`aggregateId`
+   * route the persisted `outbox_event` row (the org-scoped table requires both uuids non-null); the
+   * `payload` is Value.Check'd against the registered catalog schema by the dispatcher (refuse-on-failure).
+   */
+  const emit = async (
+    tx: WriteTx,
+    input: {
+      eventName: string;
+      payload: Record<string, unknown>;
+      organizationId: string;
+      aggregateKind: string;
+      aggregateId: string;
+    },
+  ): Promise<void> => {
+    if (deps.outbox) await deps.outbox.publish(tx, input);
   };
 
   /** §2.3 RECIPIENT_NOT_IN_ORG — refuse a schedule whose recipients are not active org memberships. */
@@ -328,12 +343,18 @@ export function createDrizzleM33WriteBackend(deps: M33WriteDrizzleDeps): {
           latestVersionId: versionId,
         });
         if (!newDef) throw new ConflictError("the definition was modified concurrently; retry");
-        await emit("m33.report_definition.published", {
-          definitionId,
-          versionId,
-          baseKey: def.baseKey,
+        await emit(tx, {
+          eventName: "m33.report_definition.published",
           organizationId: actor.organizationId,
-          publishedByMembershipId: actor.membershipId,
+          aggregateKind: "report_definition",
+          aggregateId: definitionId,
+          payload: {
+            definitionId,
+            versionId,
+            baseKey: def.baseKey,
+            organizationId: actor.organizationId,
+            publishedByMembershipId: actor.membershipId,
+          },
         });
         return { definition: mapDefinition(newDef), version: mapVersion(newVersion) };
       });
@@ -432,11 +453,17 @@ export function createDrizzleM33WriteBackend(deps: M33WriteDrizzleDeps): {
           share = mapShare(row);
         }
         if (args.shareScope === "org") {
-          await emit("m33.report_view.shared_org", {
-            viewId: id,
-            viewName: updated.displayName,
-            sharedByMembershipId: actor.membershipId,
+          await emit(tx, {
+            eventName: "m33.report_view.shared_org",
             organizationId: actor.organizationId,
+            aggregateKind: "report_view",
+            aggregateId: id,
+            payload: {
+              viewId: id,
+              viewName: updated.displayName,
+              sharedByMembershipId: actor.membershipId,
+              organizationId: actor.organizationId,
+            },
           });
         }
         return { view: mapView(updated), share };
@@ -499,13 +526,19 @@ export function createDrizzleM33WriteBackend(deps: M33WriteDrizzleDeps): {
           nextRunAt: first,
           status: "active",
         });
-        await emit("m33.report_schedule.created", {
-          scheduleId: row.id,
-          viewId: args.reportViewId,
-          ownerMembershipId: actor.membershipId,
-          cronExpression: args.cronExpression,
-          recipientCount: args.recipientMembershipIds.length,
+        await emit(tx, {
+          eventName: "m33.report_schedule.created",
           organizationId: actor.organizationId,
+          aggregateKind: "report_schedule",
+          aggregateId: row.id,
+          payload: {
+            scheduleId: row.id,
+            viewId: args.reportViewId,
+            ownerMembershipId: actor.membershipId,
+            cronExpression: args.cronExpression,
+            recipientCount: args.recipientMembershipIds.length,
+            organizationId: actor.organizationId,
+          },
         });
         return mapSchedule(row);
       });

@@ -172,7 +172,9 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       "A PIP cycle was closed with the two-person co-sign (R-31); M33 reflects the closure, M22 renders the minutes/outcome PDF on request.",
     payloadSchema: Type.Object({
       orgId: id,
-      projectId: id,
+      // `qapi_pip.linked_project_id` is a nullable FK — a PIP need not hang off a chartered project, so the
+      // event carries `null` (not an empty id) when unlinked. Matches the column's nullability (M1-T10).
+      projectId: nullableId,
       pipId: id,
       outcome: id,
       closedAt: isoInstant,
