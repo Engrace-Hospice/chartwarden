@@ -7,15 +7,24 @@
 // stale version throws VERSION_CONFLICT; a missing row throws NOT_FOUND.
 import type { M25WriteActor } from "./actor";
 
-/** An outbox emission within the command's transaction. PHI-free payload by construction (§3.6). */
+/** A §4.5 `m25.*` transactional-outbox emission. PHI-free payload by construction (§3.6). */
 export interface OutboxEmission {
   readonly eventName: string;
   readonly payload: Record<string, unknown>;
+  readonly organizationId: string;
+  /** The aggregate the event is about (the dispatcher's routing key). */
+  readonly aggregateKind: string;
+  readonly aggregateId: string;
 }
 
-/** The injected transactional-outbox port (the composition root binds the live M1 dispatcher). */
+/**
+ * The §4.5 transactional-outbox port (the composition root binds the catalog-validating M1 publisher pinned
+ * to callerModule `m25`). `publish` writes the `outbox_event` row on the CALLER'S tx so it commits in the
+ * SAME unit of work as the mutation (the D2 outbox-only posture); the dispatcher Value.Check's the payload
+ * against the registered catalog schema. Best-effort / optional — a no-op default until the publisher binds.
+ */
 export interface WriteOutboxPort {
-  emit(organizationId: string, emission: OutboxEmission): Promise<void>;
+  publish(tx: unknown, emission: OutboxEmission): Promise<void>;
 }
 
 /** The result of a versioned command: the new version (for the client's next If-Match). */

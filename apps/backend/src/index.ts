@@ -125,14 +125,18 @@ import {
 // binds land — a documented follow-up (the M23/M27 deferred-bind posture); routes are fully live otherwise.
 import {
   M25_OUTBOX_EVENTS,
+  type TerminologyLookupPort,
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
+  M25_PLATFORM_JOB_ID,
+  type WorkerAlertPort as M25WorkerAlertPort,
   buildM25WorkerDeps,
   mountM25Routes,
   registerM25AbacPredicates,
   registerM25CronWorkers,
   registerRemittanceErasers,
   scheduleM25Jobs,
+  wireM25Tenancy,
 } from "./modules/25-remittance/index";
 // M23 (Billing — Medicare) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route
 // mount over the Drizzle read/write services + the boot-time claim-assembly service, the §3.7 `billing_record`
@@ -354,6 +358,7 @@ export function wireModuleSeams(
   // for the cron fan-out; inert until the M2 active-org enumerator binds (issue #107, item 5). The
   // wireM33Tenancy / wireM34Tenancy precedent.
   wireM30Tenancy();
+  wireM25Tenancy(); // M25 — allowlist the cron job id so the denial-aging/appeal-deadline fan-outs may enter withPlatformContext
   // M34 — the 8 §4.6 ABAC predicate resolvers (the platform-ops tenant surface gates on
   // `tenant_lifecycle_platform_ops`, role-only; `dsar_export_*` composes the M5 CaseloadProvider seam,
   // registered above). The grant/flag/onboarding-task resolver methods are exercised by the tenant-scoped
@@ -534,6 +539,7 @@ if ((import.meta as { main?: boolean }).main) {
   // publisher. M30/M33/M34 — M34's lifecycle outbox now binds too (#107; its emit is gated to the conformant
   // `m34.tenant.provisioned` event, so no mutation rolls back).
   const m23OutboxPublisher = bindCallerModule(txOutboxPublisher, "m23");
+  const m25OutboxPublisher = bindCallerModule(txOutboxPublisher, "m25");
   const m27OutboxPublisher = bindCallerModule(txOutboxPublisher, "m27");
   const m30OutboxPublisher = bindCallerModule(txOutboxPublisher, "m30");
   const m33OutboxPublisher = bindCallerModule(txOutboxPublisher, "m33");
@@ -679,9 +685,31 @@ if ((import.meta as { main?: boolean }).main) {
           // fail-closed defaults (no-op emit / deny-stub) until those binds land — the routes (reads, manual-
           // match, the denial/appeal state ladders, the overlay edit) are fully live; only the cross-module
           // event fan-out + the M38 plain-language merge are deferred (the M23/M27 deferred-bind posture).
+          // Bind the M38 CARC/RARC catalog floor (the taxonomy view's category + default plain-language)
+          // over the registered TerminologyProvider seam (resolved lazily per lookup, so registration order
+          // is irrelevant). The per-tenant overlay still layers on top; an unknown code degrades to 'unmapped'.
+          // getSeam returns `unknown` for seams outside the typed SeamContracts — cast to the minimal lookup
+          // shape M25 needs (the M38 ResolvedConcept's display + loosely-typed properties).
+          const terminologyProvider = getSeam("TerminologyProvider") as {
+            lookup(
+              system: string,
+              code: string,
+            ): Promise<{ display: string; properties?: Record<string, unknown> } | null>;
+          };
+          const m25Terminology: TerminologyLookupPort = {
+            async lookup(carcCode) {
+              const concept = await terminologyProvider.lookup("carc", carcCode);
+              if (!concept) return null;
+              const props = concept.properties;
+              return {
+                category: typeof props?.category === "string" ? props.category : "unmapped",
+                plainLanguage: concept.display,
+              };
+            },
+          };
           mountM25Routes(app, {
-            readService: buildDrizzleM25ReadService(dbHandle.db),
-            writeService: buildDrizzleM25WriteService(dbHandle.db),
+            readService: buildDrizzleM25ReadService(dbHandle.db, m25Terminology),
+            writeService: buildDrizzleM25WriteService(dbHandle.db, m25OutboxPublisher),
           });
         }
       : undefined,
@@ -889,7 +917,34 @@ if ((import.meta as { main?: boolean }).main) {
     // shape. buildM25WorkerDeps binds only the connection + db; the M2 active-org enumerator (the per-org
     // cron fan-out source, under withPlatformContext) + the M36 alert router stay fail-closed-unbound at boot
     // (RULE 4 — the typed thunks in cron-workers.ts throw only when a CRON TICK RUNS, so boot stays green).
-    const m25WorkerDeps = buildM25WorkerDeps({ connection: queueConnection, db: dbHandle.db });
+    // Bind the active-org enumerator (the cron fan-out source; allowlisted via wireM25Tenancy, audited by
+    // the shared module-agnostic platform-bypass auditor) + the M36 AlertEmitter so the crons enumerate
+    // every active tenant under withPlatformContext and fire the §4.9 typed alerts.
+    const m25ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: dbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M25_PLATFORM_JOB_ID,
+      reason: "M25 §4.8 cron fan-out (active-org enumeration)",
+    });
+    const m25AlertEmitter = getSeam("AlertEmitter") as {
+      emit(orgId: string, input: { eventType: string; payload: Record<string, unknown>; severity: string; correlationId: string }): Promise<unknown>;
+    };
+    const m25Alerts: M25WorkerAlertPort = {
+      dispatch: async ({ alertCode, severity, organizationId, payload }) => {
+        await m25AlertEmitter.emit(organizationId, {
+          eventType: alertCode,
+          payload,
+          severity,
+          correlationId: `m25-cron:${alertCode}`,
+        });
+      },
+    };
+    const m25WorkerDeps = buildM25WorkerDeps({
+      connection: queueConnection,
+      db: dbHandle.db,
+      activeOrgs: m25ActiveOrgs,
+      alerts: m25Alerts,
+    });
     const m25Workers = registerM25CronWorkers(m25WorkerDeps);
     app.addHook("onClose", async () => {
       await Promise.all(m25Workers.map((w) => w.close()));

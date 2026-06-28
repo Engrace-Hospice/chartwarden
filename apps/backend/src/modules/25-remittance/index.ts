@@ -49,6 +49,10 @@ export {
 } from "./routes/index";
 export { mountM25Routes } from "./routes/mount";
 
+// §4.8 platform tenancy — the cron job id + the PLATFORM_CONTEXT_ALLOWLIST registration the active-org
+// enumerator's `withPlatformContext` fan-out requires (the M30/M33/M34 wiring.ts precedent).
+export { M25_PLATFORM_JOB_ID, wireM25Tenancy } from "./wiring";
+
 // §4.4 — the upstream outbox consumers (m23.claim.rejected, m18.evv.aggregator_rejected,
 // m22.document.rendered → denial seed / EVV back-link / document back-reference). The pure handlers + the
 // frozen subscription-map + `registerM25Consumers` (the boot dispatcher forward-declares one binding per
