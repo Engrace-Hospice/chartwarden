@@ -43,6 +43,18 @@ export const t = {
   onEmphasis: "var(--color-on-emphasis)",
   scrim: "var(--color-scrim)",
 
+  // Spacing scale (4px base, §4.1). Use for padding/gap/margin in inline styles so rhythm is
+  // consistent and named, not guessed. (5→6 is the intentional 24→28px No-Line list step.)
+  space1: "var(--space-1)", // 4 — tight icon gaps
+  space2: "var(--space-2)", // 8 — inline element spacing
+  space3: "var(--space-3)", // 12 — dense list/row padding
+  space4: "var(--space-4)", // 16 — standard card padding
+  space5: "var(--space-5)", // 24 — card internal sections
+  space6: "var(--space-6)", // 28 — list-item separation (no divider)
+  space7: "var(--space-7)", // 32 — section gaps
+  space8: "var(--space-8)", // 40 — major section separation
+  space9: "var(--space-9)", // 48 — page vertical rhythm
+
   // Type — Lantern trio (§3)
   fontDisplay: "var(--font-display)", // Fraunces — names, titles, KPI labels, empty states
   fontSans: "var(--font-sans)", // Inter — all functional text + numerals (tabular-nums)
