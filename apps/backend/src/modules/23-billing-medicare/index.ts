@@ -34,25 +34,85 @@ export {
   M23_PERMISSION_KEY_LIST,
 } from "./permission-keys";
 
-// ── P2/P3 boot surfaces (NOT YET IMPLEMENTED — stubs land per the M27 precedent) ──────────────────────
-// §4.7  — registerM23AbacPredicates: the four predicate resolvers (provider_entity_billing_scope /
-//         claim_in_billing_manager_caseload / override_role_eligible / regulatory_required_rule_protected)
-//         registered into M3's named-predicate registry; deny-stub without a db handle. (P3)
-// §4.1  — mountM23Routes + buildDrizzleM23ReadService / buildDrizzleM23WriteService over the Drizzle repos. (P3)
-// §4.8  — registerM23Workers / registerM23CronWorkers / scheduleM23Jobs over the injected Valkey connection
-//         (claim.submit[.retry], noe.submit, notr.submit, ack.pull-999, ack.pull-277ca, eligibility.refresh,
-//         noe/notr.window-watch, eligibility.stale-watch, mac-portal.health, revalidate.consumer). (P3)
-// §3.7  — registerBillingErasers: the M4 destruction-registry eraser for the M23 operational classes
-//         (the seven-year compliance-class billing-record tables are destruction-blocked). (P3)
-//
-// The composition root (apps/backend/src/index.ts) is NOT edited in P1 — Integrate/P3 wires the above. Until
-// then importing this module yields the two contract surfaces only, which is what the M1 boot catalog +
-// the M3 permission-mirror projector consume.
+// §4.7 — the four ABAC predicate resolvers (`provider_entity_billing_scope`,
+// `claim_in_billing_manager_caseload`, `override_role_eligible`, `regulatory_required_rule_protected`)
+// M23 owns + registers into M3's named-predicate registry. `registerM23AbacPredicates` is invoked at boot by
+// the composition root, idempotently; passing `{ db }` resolves owner facts via the Drizzle resolver under
+// RLS. With no db handle it defaults to the fail-closed deny-stub (the M27 precedent).
+export {
+  type ReadingM23AbacDeps,
+  type ReadingM23AbacResolver,
+  type M23RegisteredAbacPredicate,
+  M23_REGISTERED_ABAC_PREDICATES,
+  buildDrizzleM23AbacResolver,
+  denyStubM23AbacResolver,
+  registerM23AbacPredicates,
+} from "./abac-predicates";
+
+// §4.1 — the route plugins + the Drizzle-backed READ + WRITE route-service builders + the boot-time
+// claim-assembly service. The composition root mounts these over the Drizzle services when a DB client is
+// present (the M27 `mountM27Routes` precedent). The assembly service's cross-module reader seams are
+// fail-closed deny-stubs at boot (RULE 4) until they register in the M1 SeamRegistry.
+export {
+  type M23CombinedRouteService,
+  type M23RouteServices,
+  type M23ReadRouteService,
+  type M23WriteRouteService,
+  type M23ReadServicePorts,
+  type M23WriteServicePorts,
+  type WriteOutboxPort,
+  buildDrizzleM23ReadService,
+  buildDrizzleM23WriteService,
+} from "./routes/index";
+export { mountM23Routes } from "./routes/mount";
+export { buildM23BootAssemblyService } from "./services/boot-assembly";
+
+// §3.7 / §8.4 — the M4 destruction-registry `billing_record` eraser. Registered over the Phase-0 deny-stub by
+// the composition root's `registerModuleErasers` hook; M23 cannot import the M1 bootstrap registry, so the
+// `registerEraser` hook is INJECTED by the composition root (the eraser import-boundary note).
+export {
+  type BillingEraserDeps,
+  type RegisterEraserHook,
+  BILLING_DATA_CLASS,
+  createBillingEraser,
+  registerBillingErasers,
+} from "./erasers/billing-eraser";
+
+// §4.4 / §4.10 — the upstream outbox consumers (M5/M6/M8/M18/M40 LIVE; M25/M26 forward-seam deny-stubs). Like
+// the M27 consumers posture, `registerM23Consumers` ships module-only (NOT wired into the boot dispatcher
+// subscription from the composition root — conservative until the dispatcher subscription is active).
+export {
+  type M23ConsumerPorts,
+  type M23UpstreamSubscription,
+  M23_OUTBOX_SUBSCRIPTIONS,
+  dispatchM23UpstreamEvent,
+  registerM23Consumers,
+} from "./consumers/index";
+
+// §4.8 — the LIVE BullMQ worker/cron boot surface. The composition root constructs the §4.8 work-queue
+// Workers + the cron consumers + the repeatable cron-schedule Queues over the injected Valkey connection,
+// binding only `{ connection, db }`; every infra/seam/x12/portal port stays fail-closed-unbound at boot
+// (RULE 4 — the typed thunks throw only when a JOB RUNS, so boot stays green). Nothing here runs at import.
+export {
+  M23_CRON_QUEUES,
+  type M23CronQueueName,
+  M23_IDEMPOTENCY_KEYS,
+  M23_JOB_SCHEDULES,
+  type M23QueueName,
+  type M23QueueParam,
+  M23_QUEUE_PARAMS,
+  M23_QUEUES,
+  type M23WorkerDeps,
+  buildM23WorkerDeps,
+  registerM23CronWorkers,
+  registerM23Workers,
+  scheduleM23Jobs,
+} from "./jobs/index";
 
 /**
- * P1 marker — the module is reachable and exports its §4.10 + §4.6 contract surfaces. The composition root
- * does not call this in P1; it exists so the Integrate phase has a single named boot entry to grow into
- * (the M27 `registerM27*` family). Returns the contract surfaces for boot-catalog UPSERT convenience.
+ * Boot-contract accessor — returns the §4.10 + §4.6 contract surfaces for boot-catalog UPSERT convenience
+ * (the M27 precedent). The composition root imports `M23_OUTBOX_EVENTS` + the permission catalog directly;
+ * this helper keeps a single named accessor for tests/tooling.
  */
 export function getM23BootContracts() {
   return {

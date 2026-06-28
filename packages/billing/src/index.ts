@@ -57,4 +57,33 @@ export * from "./tob";
 export * from "./route-contracts";
 
 // ── P3 surfaces land here (M23 Phase 3) ───────────────────────────────────────────────────────────────
-// §3.3 the Drizzle repositories (data ports over the 17 M23-owned tables).                           TODO(P3)
+// §3.3 the Drizzle repositories (data ports over the 17 M23-owned tables) + the repo KERNEL conventions
+// (BillingDb handle, enum codecs, keyset cursor helpers, §2.5 If-Match `VersionedUpdateResult`). Namespaced
+// because the cursor codec exports (`encodeCursor`/`decodeCursor`/`paginate`-family) and DTO record types
+// could collide with the route-contract / schema barrels above. Consume as `repositories.ClaimRepository`.
+export * as repositories from "./repositories";
+// §3.3 repository KERNEL re-exported at the package ROOT (the cursor codec + the enum case/value codecs +
+// the §2.5 If-Match shape + the reconstructed `BillingDb` handle) so the apps/backend route/service layers
+// share ONE opaque cursor and ONE enum-case home without reaching through the `repositories` namespace.
+// SELECTIVE (not `export *`) so it never collides with the DTO-record / route-contract / schema barrels
+// above (the namespaced re-export keeps those record types — `ClaimRecord` etc. — behind `repositories.`).
+export {
+  type BillingDb,
+  type CursorKeyset,
+  type CursorPage,
+  type EnumCodec,
+  type VersionedUpdateResult,
+  buildCursorPage,
+  claimStateCodec,
+  decodeCursor,
+  DEFAULT_PAGE_SIZE,
+  eligibilityOutcomeCodec,
+  encodeCursor,
+  keysetBefore,
+  levelOfCareCodec,
+  MAX_PAGE_SIZE,
+  noticeStateCodec,
+  pageSizeOf,
+  versionConflict,
+  versionOk,
+} from "./repositories";

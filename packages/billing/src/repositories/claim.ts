@@ -1,0 +1,162 @@
+// @wardenx/billing · repositories — the EXEMPLAR org-scoped repo: `claim` (the Medicare-claim root, §3.3;
+// the XState-free lifecycle lives in `machines/claim`, D2/D4/D14). ORG-SCOPED; the claim service wraps
+// these in `withOrgContext` and owns the lifecycle guards + outbox emit. This file is the PATTERN the
+// org-scoped fan-out repos mirror, demonstrating the THREE db.ts conventions in one place:
+//   * ENUM CASE BOUNDARY — `claim.state` is UPPERCASE in the DB; this repo maps it through `claimStateCodec`
+//     on EVERY read (`toClaimRecord`) and write (`create` / `transitionToState`), so callers only ever see
+//     the lowercase domain `ClaimState`. The case translation never leaks past this boundary.
+//   * KEYSET CURSOR PAGINATION — `listByOrgPage` over-fetches `size + 1` rows ordered `(created_at DESC,
+//     id DESC)` with `keysetBefore` + `buildCursorPage`.
+//   * OPTIMISTIC CONCURRENCY (§2.5) — `transitionToState` is the REDUCER-DRIVEN, version-checked update:
+//     the service runs `reduce(state, event)` from `machines/claim` to obtain `nextState`, then calls this
+//     with the If-Match `expectedVersion`; a stale version returns `VERSION_CONFLICT` (the service → 412).
+//
+// No PHI / no MBI is ever read or written here (D13 / §3.6 / §8.7).
+import * as schema from "@wardenx/db/schema";
+import { and, desc, eq } from "drizzle-orm";
+import type { ClaimState } from "../contracts";
+import {
+  type BillingDb,
+  buildCursorPage,
+  claimStateCodec,
+  type CursorPage,
+  decodeCursor,
+  keysetBefore,
+  pageSizeOf,
+  type VersionedUpdateResult,
+  versionConflict,
+  versionOk,
+} from "./db";
+
+const C = schema.claim;
+
+/** The domain-cased `claim` row: identical to `schema.Claim` except `state` is the lowercase `ClaimState`. */
+export interface ClaimRecord extends Omit<schema.Claim, "state"> {
+  readonly state: ClaimState;
+}
+
+/** Insert input: the Drizzle insert shape but with `state` as the optional lowercase domain `ClaimState`. */
+export type NewClaimInput = Omit<schema.NewClaim, "state"> & { readonly state?: ClaimState };
+
+/** List filter for {@link ClaimRepository.listByOrgPage} (all optional; combined with AND). */
+export interface ClaimListFilter {
+  readonly providerEntityId?: string;
+  readonly patientId?: string;
+  readonly state?: ClaimState;
+}
+
+/** The columns a lifecycle transition may set alongside `state` (assembly/ack/submission back-refs). */
+export type ClaimTransitionPatch = Partial<
+  Pick<
+    schema.NewClaim,
+    | "payerClaimControlNumber"
+    | "latestValidationRunId"
+    | "latestSubmissionId"
+    | "replacesClaimId"
+    | "replacedByClaimId"
+    | "replacementReason"
+    | "acknowledgmentDocumentId"
+    | "totalChargeCents"
+    | "totalExpectedPaymentCents"
+    | "sequestrationAppliedPct"
+    | "sequestrationPolicyId"
+  >
+>;
+
+/** Map a DB row to the domain-cased record (the single read-boundary case translation). */
+function toClaimRecord(row: schema.Claim): ClaimRecord {
+  return { ...row, state: claimStateCodec.fromDb(row.state) };
+}
+
+/** Data port for `claim` (the exemplar org-scoped read + version-checked write repo). */
+export class ClaimRepository {
+  constructor(private readonly db: BillingDb) {}
+
+  /** Insert a claim (defaults to `draft`). Returns the domain-cased inserted record. */
+  async create(input: NewClaimInput): Promise<ClaimRecord> {
+    const { state, ...rest } = input;
+    const values: schema.NewClaim = { ...rest, ...(state ? { state: claimStateCodec.toDb(state) } : {}) };
+    const [row] = await this.db.insert(C).values(values).returning();
+    if (!row) throw new Error("claim insert returned no row");
+    return toClaimRecord(row);
+  }
+
+  /** Point read by id, or `null` (domain-cased). */
+  async findById(id: string): Promise<ClaimRecord | null> {
+    const [row] = await this.db.select().from(C).where(eq(C.id, id)).limit(1);
+    return row ? toClaimRecord(row) : null;
+  }
+
+  /** The claim for a deterministic `(provider_entity, claim_control_number)` (the D4 unique surface), or `null`. */
+  async findByControlNumber(
+    providerEntityId: string,
+    claimControlNumber: string,
+  ): Promise<ClaimRecord | null> {
+    const [row] = await this.db
+      .select()
+      .from(C)
+      .where(and(eq(C.providerEntityId, providerEntityId), eq(C.claimControlNumber, claimControlNumber)))
+      .limit(1);
+    return row ? toClaimRecord(row) : null;
+  }
+
+  /**
+   * One keyset page of an org's claims (optionally narrowed by provider/patient/state), `(created_at DESC,
+   * id DESC)`. Over-fetches `size + 1` rows so {@link buildCursorPage} can reveal `hasMore` + mint the next
+   * cursor. RLS scopes the statement to `app.org_id` at the service layer.
+   */
+  async listByOrgPage(
+    organizationId: string,
+    filter: ClaimListFilter,
+    cursor: string | undefined,
+    limit: number | undefined,
+  ): Promise<CursorPage<ClaimRecord>> {
+    const size = pageSizeOf(limit);
+    const where = and(
+      eq(C.organizationId, organizationId),
+      filter.providerEntityId ? eq(C.providerEntityId, filter.providerEntityId) : undefined,
+      filter.patientId ? eq(C.patientId, filter.patientId) : undefined,
+      filter.state ? eq(C.state, claimStateCodec.toDb(filter.state)) : undefined,
+      keysetBefore(C.createdAt, C.id, cursor ? decodeCursor(cursor) : undefined),
+    );
+    const rows = await this.db
+      .select()
+      .from(C)
+      .where(where)
+      .orderBy(desc(C.createdAt), desc(C.id))
+      .limit(size + 1);
+    return buildCursorPage(rows.map(toClaimRecord), size, (r) => ({
+      createdAt: r.createdAt.toISOString(),
+      id: r.id,
+    }));
+  }
+
+  /**
+   * REDUCER-DRIVEN, version-checked transition (§2.5). The service computes `nextState` via
+   * `reduce(state, event)` (machines/claim) and passes the current `expectedVersion` (If-Match); this
+   * applies `state = nextState` + `patch` only when the persisted version matches, bumping `version` +
+   * `updated_at`. On a version mismatch returns `VERSION_CONFLICT` carrying the current persisted version
+   * (or `null` when the row vanished) so the service can surface a 412. The state value is mapped to the
+   * DB enum here — the caller speaks only the lowercase domain `ClaimState`.
+   */
+  async transitionToState(
+    id: string,
+    expectedVersion: number,
+    nextState: ClaimState,
+    patch: ClaimTransitionPatch = {},
+  ): Promise<VersionedUpdateResult<ClaimRecord>> {
+    const [row] = await this.db
+      .update(C)
+      .set({
+        ...patch,
+        state: claimStateCodec.toDb(nextState),
+        version: expectedVersion + 1,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(C.id, id), eq(C.version, expectedVersion)))
+      .returning();
+    if (row) return versionOk(toClaimRecord(row));
+    const current = await this.findById(id);
+    return versionConflict(current?.version ?? null);
+  }
+}
