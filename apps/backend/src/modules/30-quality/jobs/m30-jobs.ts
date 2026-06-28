@@ -37,6 +37,7 @@
 //     attempt — fail-closed, never a plaintext leak.
 //   • the risk-register MV REFRESH runs on the PRIMARY pool (CONCURRENTLY keeps R-95 reads live, D3/D13).
 import type { DbClient } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import {
   type ActiveOrgListPort,
   type CahpsExportPorts,
@@ -44,6 +45,7 @@ import {
   CahpsRepository,
   type HopeSfvOnTimeRateInput,
   type HopeSubmissionAcceptanceRateInput,
+  type MeasureRecomputeJob,
   type MeasureRecomputePorts,
   type MeasureRegistration,
   InfectionRepository,
@@ -617,6 +619,13 @@ export type M30CronQueueName = (typeof M30_CRON_QUEUES)[keyof typeof M30_CRON_QU
  * function constructs the worker shells; binding the envelope + supplying the still-missing infra seams is
  * the integrator's remaining step (the typed throws above name each missing seam).
  */
+/**
+ * The actor id a §4.8 worker's `withOrgContext` envelope carries — the empty-string system sentinel the M4
+ * write-audit trigger maps to a NULL actor (it NULLIFs the empty user-id GUC). A background recompute has no
+ * acting user, so its quality_measure_value writes audit with a null actor.
+ */
+const M30_WORKER_SYSTEM_USER_ID = "";
+
 export function registerM30Workers(deps: M30WorkerDeps): Worker[] {
   const ports = buildM30WorkerPorts(deps);
   const { connection } = deps;
@@ -626,12 +635,33 @@ export function registerM30Workers(deps: M30WorkerDeps): Worker[] {
     concurrency: number,
   ): Worker => new Worker(queue, async (job) => processor(job.data as D), { connection, concurrency });
 
+  // #107 item 4a — measure_recompute WRITES quality_measure_value (RLS `WITH CHECK app.org_id`) and its
+  // resolveInput reads the M10 HOPE rollups, so the job MUST run inside a per-job `withOrgContext` envelope:
+  // we open it on the org from the job payload and REBUILD the value-store / queue-drain ports over that tx so
+  // the insert + soft-supersede + debounce-drain all carry `app.org_id` (without it the RLS WITH CHECK denies
+  // the insert). The HOPE seam (`deps.hope`) self-scopes on its own connection (the M10 org-rollup store opens
+  // its own withOrgContext). `userId` is the system sentinel '' — the M4 write-audit trigger NULLIFs it (a
+  // system recompute has no acting user). The other three §4.8 work queues keep the base client for now:
+  // risk_register_refresh runs `REFRESH MATERIALIZED VIEW CONCURRENTLY` (illegal inside a tx), and
+  // cahps_export / outbreak_detection per-job envelopes are a follow-up (#107).
+  const measureRecomputeWorker = new Worker(
+    M30_QUEUES.measureRecompute,
+    async (job) => {
+      const data = job.data as MeasureRecomputeJob;
+      return withOrgContext(
+        deps.db,
+        { organizationId: data.organizationId, userId: M30_WORKER_SYSTEM_USER_ID },
+        (tx) =>
+          measureRecomputeProcessor(
+            buildM30WorkerPorts({ ...deps, db: tx as unknown as DbClient }).measureRecompute,
+          )(data),
+      );
+    },
+    { connection, concurrency: M30_QUEUE_PARAMS.measureRecompute.concurrency },
+  );
+
   return [
-    mk(
-      M30_QUEUES.measureRecompute,
-      measureRecomputeProcessor(ports.measureRecompute),
-      M30_QUEUE_PARAMS.measureRecompute.concurrency,
-    ),
+    measureRecomputeWorker,
     mk(
       M30_QUEUES.cahpsExport,
       cahpsExportProcessor(ports.cahpsExport),
