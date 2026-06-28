@@ -15,6 +15,20 @@
  * deferred backend follow-up in docs/plans/FRONTEND_INTEGRATION_PLAN.md.
  */
 import { type TSchema, Type } from "@sinclair/typebox";
+// M23 Billing — the package-contract request/response schemas the route handlers `parse(...)` / return
+// (claim assemble/replace/void bodies, the empty manual-validate body, and the internal service-to-service
+// seam queries + responses). Re-exported from @wardenx/billing via route-contracts → schemas.
+import {
+  AcceptedSubmissionsQuery,
+  AcceptedSubmissionsResponse,
+  ClaimAssembleRequest,
+  ClaimAssembleResponse,
+  ClaimDayProjectionQuery,
+  ClaimDayProjectionResponse,
+  ClaimReplaceRequest,
+  ClaimVoidRequest,
+  ManualValidateRequest,
+} from "@wardenx/billing";
 import {
   AuditEventsQuerySchema,
   AuditEventsResponseSchema,
@@ -112,6 +126,28 @@ import {
   VersionListQuerySchema as M22VersionListQuerySchema,
   VersionListResponseSchema as M22VersionListResponseSchema,
 } from "../../apps/backend/src/modules/22-documents/routes/documents-typebox";
+// M23 Billing — Medicare. The route-level TypeBox query/body schemas the handlers `parse(...)` against
+// (the same validators, so the contract cannot drift). REQUIRED import path for the status-matrix
+// enrichment detection (`modules/23-billing-medicare/routes`).
+import {
+  CancelNoeBodySchema,
+  CancelNotrBodySchema,
+  CheckEligibilityBodySchema,
+  ClaimListQuerySchema,
+  ClaimPatchDraftBodySchema,
+  CreateRuleConfigBodySchema,
+  ForwardDateSequestrationBodySchema,
+  MacCredentialListQuerySchema,
+  MetricsQuerySchema as BillingMetricsQuerySchema,
+  PatientQuerySchema as BillingPatientQuerySchema,
+  NoeListQuerySchema,
+  NotrListQuerySchema,
+  OverrideValidationResultBodySchema,
+  RequiredProviderEntityQuerySchema,
+  RuleConfigListQuerySchema,
+  UpdateRuleConfigBodySchema,
+  UpsertMacCredentialBodySchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/billing-typebox";
 // M33 Reporting & Dashboards — the read query + drilldown body the Track B screens call (FB read paths).
 import {
   DashboardListQuerySchema,
@@ -1086,6 +1122,183 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
       "Browse the platform-floor form templates with version metadata (§4.1 / §5.1 FORM.TemplateLibrary)",
     query: M22TemplateListQuerySchema,
     response: M22FormTemplateListResponseSchema,
+  },
+  // ── M23 Billing — Medicare (§4.1 route surface) ──────────────────────────────────────────────────────
+  // Request bodies (POST/PATCH) + filter queries (list/read GETs) reuse the SAME TypeBox validators the
+  // handlers `parse(...)` against (billing-typebox + the @wardenx/billing route-contract schemas). Responses
+  // are attached ONLY where a real exported TypeBox response schema matches the handler return — the assemble
+  // route (ClaimAssembleResponse) and the two internal seam reads (Claim-day projection / accepted
+  // submissions). The other handlers return TS view interfaces (ClaimDetailView / *AcceptedView / *View), not
+  // TypeBox, so their responses are omitted (no fabrication). Org/actor/membership binding is server-side, so
+  // no body/query carries an org or membership id.
+  //
+  // ── claims core (claims.routes.ts, §4.1 #1–#13) ──
+  "POST /api/v1/billing/claims/assemble": {
+    summary: "Assemble a server-authoritative DRAFT claim (lines + HIPPS + SIA + initial validation run, §4.1 #1)",
+    body: ClaimAssembleRequest,
+    response: ClaimAssembleResponse,
+  },
+  "GET /api/v1/billing/claims": {
+    summary: "List claims — cursor-paginated; filter by state / patient / ProviderEntity (§4.1 #2)",
+    query: ClaimListQuerySchema,
+  },
+  "GET /api/v1/billing/claims/:id": {
+    summary: "Single-claim detail — lines + HIPPS + SIA + latest run + submissions + acks (§4.1 #3)",
+  },
+  "PATCH /api/v1/billing/claims/:id": {
+    summary: "DRAFT re-assembly edit — replace line set + totals; If-Match version; coder ICD-only scope (§4.1 #4)",
+    body: ClaimPatchDraftBodySchema,
+  },
+  "DELETE /api/v1/billing/claims/:id": {
+    summary: "Delete a DRAFT claim (DRAFT-only; AI-block + idempotency, §4.1 #5)",
+  },
+  "POST /api/v1/billing/claims/:id/validate": {
+    summary: "Trigger a validation_run for a claim (the manual re-run / initial trigger; 202, §4.1 #6)",
+    body: ManualValidateRequest,
+  },
+  "POST /api/v1/billing/claims/:id/submit": {
+    summary: "READY → SUBMITTED — emits m23.claim.submit_requested (PE scope + step-up + If-Match; 202, §4.1 #7)",
+  },
+  "POST /api/v1/billing/claims/:id/replace": {
+    summary: "Build a TOB-817 replacement DRAFT (copies the original's lines; step-up + If-Match; 201, §4.1 #8)",
+    body: ClaimReplaceRequest,
+  },
+  "POST /api/v1/billing/claims/:id/void": {
+    summary: "Build a TOB-818 void DRAFT (no service lines; step-up + If-Match; 201, §4.1 #9)",
+    body: ClaimVoidRequest,
+  },
+  "GET /api/v1/billing/claims/:id/lines": {
+    summary: "The claim_line projection for a claim (§4.1 #10)",
+  },
+  "GET /api/v1/billing/claims/:id/state-history": {
+    summary: "Per-claim transition timeline (cursor-paginated, §4.1 #11)",
+  },
+  "GET /api/v1/billing/claims/:id/submissions": {
+    summary: "All dispatch attempts for a claim (§4.1 #12)",
+  },
+  "GET /api/v1/billing/claims/:id/acknowledgments": {
+    summary: "All 999 / 277CA / 835 acknowledgments for a claim (§4.1 #13)",
+  },
+  // ── validation + override (validation.routes.ts) — paths are /api/v1/claims/... (no /billing prefix) ──
+  "GET /api/v1/claims/:id/validation-runs": {
+    summary: "List a claim's validation runs, most recent first (§4.1 #14)",
+  },
+  "GET /api/v1/claims/:id/validation-runs/:runId": {
+    summary: "Single validation run — per-rule results + override status (§4.1 #15)",
+  },
+  "POST /api/v1/claims/:id/validate": {
+    summary: "Trigger a manual_re_run validation; state → validating (202, §4.1 #6)",
+  },
+  "POST /api/v1/claims/:id/validation-runs/:runId/results/:resultId/override": {
+    summary: "Override a failed validation result — approver-role ABAC + step-up (201, §4.1 #16)",
+    body: OverrideValidationResultBodySchema,
+  },
+  // ── rule-config overlay (rule-config.routes.ts) ──
+  "GET /api/v1/billing/rule-configs": {
+    summary: "List validation-rule overlay rows — platform snapshot + tenant overlays (cursor-paginated, §4.1 #18)",
+    query: RuleConfigListQuerySchema,
+  },
+  "GET /api/v1/billing/rule-configs/:id": {
+    summary: "Read a single validation-rule overlay row (§4.1)",
+  },
+  "POST /api/v1/billing/rule-configs/custom": {
+    summary: "Create a tenant CUSTOM validation rule (regulatory-required forbidden; 201, §4.1 #20)",
+    body: CreateRuleConfigBodySchema,
+  },
+  "PATCH /api/v1/billing/rule-configs/:id": {
+    summary: "Overlay edit — disable / re-severity / re-parameterize a rule (If-Match, §4.1 #19)",
+    body: UpdateRuleConfigBodySchema,
+  },
+  "DELETE /api/v1/billing/rule-configs/:id": {
+    summary: "Revert a rule overlay to the platform default (If-Match, §4.1 #21)",
+  },
+  // ── NOE fast path (noe.routes.ts) ──
+  "GET /api/v1/noe-records": {
+    summary: "List NOE records — timely-filing worklist, cursor-paginated (§4.1 #24)",
+    query: NoeListQuerySchema,
+  },
+  "GET /api/v1/noe-records/:id": {
+    summary: "NOE detail (§4.1 #25)",
+  },
+  "POST /api/v1/noe-records/:id/submit": {
+    summary: "READY → SUBMITTED — emits m23.noe.submit_requested (step-up; 202, §4.1 #26)",
+  },
+  "POST /api/v1/noe-records/:id/cancel": {
+    summary: "Cancel a DRAFT/READY NOE — election-reversed guard fact (§4.1 #27)",
+    body: CancelNoeBodySchema,
+  },
+  // ── NOTR fast path (notr.routes.ts) ──
+  "GET /api/v1/notr-records": {
+    summary: "List NOTR records — timely-filing worklist, cursor-paginated (§4.1 #28)",
+    query: NotrListQuerySchema,
+  },
+  "GET /api/v1/notr-records/:id": {
+    summary: "NOTR detail (§4.1 #29)",
+  },
+  "POST /api/v1/notr-records/:id/submit": {
+    summary: "READY → SUBMITTED — emits m23.notr.submit_requested (step-up; 202, §4.1 #30)",
+  },
+  "POST /api/v1/notr-records/:id/cancel": {
+    summary: "Cancel a DRAFT/READY NOTR — terminating-event-reversed guard fact (§4.1 #31)",
+    body: CancelNotrBodySchema,
+  },
+  // ── eligibility (eligibility.routes.ts) ──
+  "POST /api/v1/billing/eligibility/check": {
+    summary: "Force / refresh-on-stale a 270/271 eligibility round-trip (202; no MBI on the wire, §4.1 #22)",
+    body: CheckEligibilityBodySchema,
+  },
+  "GET /api/v1/billing/eligibility": {
+    summary: "Per-patient eligibility-check history (§4.1 #23)",
+    query: BillingPatientQuerySchema,
+  },
+  "GET /api/v1/billing/eligibility/latest": {
+    summary: "The latest eligibility check for a patient (auto-refresh-on-stale read, §4.1)",
+    query: BillingPatientQuerySchema,
+  },
+  // ── sequestration policy (sequestration-policy.routes.ts) ──
+  "GET /api/v1/billing/sequestration-policies": {
+    summary: "Per-ProviderEntity sequestration-percentage timeline — effective-dated rows (D11, §4.1 #32)",
+    query: RequiredProviderEntityQuerySchema,
+  },
+  "GET /api/v1/billing/sequestration-policies/active": {
+    summary: "The active-on-now sequestration policy for a ProviderEntity (or null, §4.1)",
+    query: RequiredProviderEntityQuerySchema,
+  },
+  "POST /api/v1/billing/sequestration-policies": {
+    summary: "Forward-date a new sequestration policy row (percentage is a decimal string; 201, §4.1 #33)",
+    body: ForwardDateSequestrationBodySchema,
+  },
+  // ── MAC credentials (mac-credentials.routes.ts, §3.6) ──
+  "GET /api/v1/billing/mac-credentials": {
+    summary: "List per-ProviderEntity MAC credentials — secrets masked, cursor-paginated (§4.1 #34)",
+    query: MacCredentialListQuerySchema,
+  },
+  "GET /api/v1/billing/mac-credentials/:providerEntityId": {
+    summary: "The MAC credential for one ProviderEntity, or null (§4.1)",
+  },
+  "POST /api/v1/billing/mac-credentials": {
+    summary: "Upsert a MAC credential — clientSecret write-only/encrypted at the boundary; step-up (§4.1 #35)",
+    body: UpsertMacCredentialBodySchema,
+  },
+  // ── AR dashboard + metrics (metrics.routes.ts) ──
+  "GET /api/v1/billing/ar-dashboard": {
+    summary: "AR-aging dashboard — aging buckets + denial / NOE-NOTR window-breach rates (org-wide or per-PE, §4.1 #37)",
+    query: BillingMetricsQuerySchema,
+  },
+  "GET /api/v1/billing/metrics": {
+    summary: "Per-window claim metric buckets (the M33 reporting consumer; org-wide or per-PE, §4.1 #38)",
+    query: BillingMetricsQuerySchema,
+  },
+  // ── internal service-to-service seams (internal.routes.ts; system-principal only) ──
+  "GET /api/v1/internal/billing/claim-day-projection": {
+    summary: "Per-patient / org day rollups by level-of-care (M26 cap + M27 cost-report consumers, §4.1 #39)",
+    query: ClaimDayProjectionQuery,
+    response: ClaimDayProjectionResponse,
+  },
+  "GET /api/v1/internal/billing/submissions": {
+    summary: "Accepted submissions in a window (M25 remittance 835→claim matching, §4.1 #40)",
+    query: AcceptedSubmissionsQuery,
+    response: AcceptedSubmissionsResponse,
   },
   // M36 Messaging (Track A — Staff Messaging + Notifications)
   "GET /api/v1/messaging/channels": {

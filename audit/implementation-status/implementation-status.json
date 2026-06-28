@@ -1,8 +1,8 @@
 {
   "totals": {
-    "Implemented": 24,
+    "Implemented": 25,
     "Partial": 1,
-    "Placeholder": 15
+    "Placeholder": 14
   },
   "rows": [
     {
@@ -316,15 +316,15 @@
     {
       "id": 23,
       "module": "M23 Billing — Medicare",
-      "status": "Placeholder",
+      "status": "Implemented",
       "spec": true,
-      "schema": false,
-      "migration": false,
-      "routes": false,
-      "enriched": false,
-      "screens": false,
-      "tests": false,
-      "adapter": false,
+      "schema": true,
+      "migration": true,
+      "routes": true,
+      "enriched": true,
+      "screens": true,
+      "tests": true,
+      "adapter": true,
       "liveInfra": false
     },
     {

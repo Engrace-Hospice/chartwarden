@@ -2710,6 +2710,201 @@ export const M33_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M33 contributed permission keys (thirty-three). */
 export type M33ContributedPermissionKey = keyof typeof M33_CONTRIBUTED_PERMISSIONS;
 
+/**
+ * Module 23 (Billing — Medicare) contributed permission keys (M23 §4.6) — the TWENTY-EIGHT keys
+ * M23 owns + registers into M3's catalog. All group under the single `billing` category (§4.6).
+ * Mirror of the M23-owned source of truth (apps/backend/src/modules/23-billing-medicare/permission-keys.ts),
+ * which the Integrate phase asserts equal to `@wardenx/billing`'s eventual `M23_PERMISSIONS` tuple.
+ * Defaults: the `abac` per key is the dominant §4.7 predicate (the route composes it after the M3-base
+ * `inOrg` / `caseload_or_scope`): claim reads/writes gate `claim_in_billing_manager_caseload`; assemble +
+ * NOE/NOTR + sequestration + MAC-credential gate `provider_entity_billing_scope`; validation override gates
+ * `override_role_eligible`; rule-config edit gates `regulatory_required_rule_protected`; the dashboard /
+ * metrics / override-audit / rule-config reads are org-wide rollups (`inOrg`); eligibility is
+ * `caseload_or_scope`; the platform-only `rule_config.platform_admin` is `none` (route-layer platform guard).
+ * Step-up on submit/replace/void/credential-admin (§6) is enforced at the route layer (M2 SESSION_POLICY).
+ */
+export const M23_CONTRIBUTED_PERMISSIONS = {
+  // --- claim surface (§6) ---
+  "billing.claim.assemble": {
+    resource: "billing_claim",
+    action: "assemble",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+  "billing.claim.read": {
+    resource: "billing_claim",
+    action: "read",
+    category: "billing",
+    abac: "claim_in_billing_manager_caseload",
+  },
+  "billing.claim.update_draft": {
+    resource: "billing_claim",
+    action: "update_draft",
+    category: "billing",
+    abac: "claim_in_billing_manager_caseload",
+  },
+  "billing.claim.delete_draft": {
+    resource: "billing_claim",
+    action: "delete_draft",
+    category: "billing",
+    abac: "claim_in_billing_manager_caseload",
+  },
+  "billing.claim.submit": {
+    resource: "billing_claim",
+    action: "submit",
+    category: "billing",
+    abac: "claim_in_billing_manager_caseload",
+  },
+  "billing.claim.replace": {
+    resource: "billing_claim",
+    action: "replace",
+    category: "billing",
+    abac: "claim_in_billing_manager_caseload",
+  },
+  "billing.claim.void": {
+    resource: "billing_claim",
+    action: "void",
+    category: "billing",
+    abac: "claim_in_billing_manager_caseload",
+  },
+  "billing.claim.read_ar_dashboard": {
+    resource: "billing_claim",
+    action: "read_ar_dashboard",
+    category: "billing",
+    abac: "inOrg",
+  },
+  "billing.claim.read_metrics": {
+    resource: "billing_claim",
+    action: "read_metrics",
+    category: "billing",
+    abac: "inOrg",
+  },
+  // --- NOE surface ---
+  "billing.noe.read": {
+    resource: "billing_noe",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+  "billing.noe.submit": {
+    resource: "billing_noe",
+    action: "submit",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+  "billing.noe.cancel": {
+    resource: "billing_noe",
+    action: "cancel",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+  // --- NOTR surface ---
+  "billing.notr.read": {
+    resource: "billing_notr",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+  "billing.notr.submit": {
+    resource: "billing_notr",
+    action: "submit",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+  "billing.notr.cancel": {
+    resource: "billing_notr",
+    action: "cancel",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+  // --- validation surface ---
+  "billing.validation.read_run": {
+    resource: "billing_validation",
+    action: "read_run",
+    category: "billing",
+    abac: "claim_in_billing_manager_caseload",
+  },
+  "billing.validation.run": {
+    resource: "billing_validation",
+    action: "run",
+    category: "billing",
+    abac: "claim_in_billing_manager_caseload",
+  },
+  "billing.validation.override": {
+    resource: "billing_validation",
+    action: "override",
+    category: "billing",
+    abac: "override_role_eligible",
+  },
+  "billing.validation.read_override": {
+    resource: "billing_validation",
+    action: "read_override",
+    category: "billing",
+    abac: "inOrg",
+  },
+  // --- rule-config surface ---
+  "billing.rule_config.read": {
+    resource: "billing_rule_config",
+    action: "read",
+    category: "billing",
+    abac: "inOrg",
+  },
+  "billing.rule_config.edit": {
+    resource: "billing_rule_config",
+    action: "edit",
+    category: "billing",
+    abac: "regulatory_required_rule_protected",
+  },
+  "billing.rule_config.platform_admin": {
+    resource: "billing_rule_config",
+    action: "platform_admin",
+    category: "billing",
+    abac: "none",
+  },
+  // --- eligibility surface ---
+  "billing.eligibility.check": {
+    resource: "billing_eligibility",
+    action: "check",
+    category: "billing",
+    abac: "caseload_or_scope",
+  },
+  "billing.eligibility.read": {
+    resource: "billing_eligibility",
+    action: "read",
+    category: "billing",
+    abac: "caseload_or_scope",
+  },
+  // --- sequestration-policy surface ---
+  "billing.sequestration_policy.read": {
+    resource: "billing_sequestration_policy",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+  "billing.sequestration_policy.edit": {
+    resource: "billing_sequestration_policy",
+    action: "edit",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+  // --- MAC credential surface ---
+  "billing.mac_credential.read": {
+    resource: "billing_mac_credential",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+  "billing.mac_credential.admin": {
+    resource: "billing_mac_credential",
+    action: "admin",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M23 contributed permission keys (twenty-eight). */
+export type M23ContributedPermissionKey = keyof typeof M23_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -2827,6 +3022,11 @@ export function m33ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M33_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M23 contributed keys into `permission`-table mirror rows (M23 §4.6). */
+export function m23ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M23_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -2857,5 +3057,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m22ContributedPermissionMirrorRows(),
     ...m34ContributedPermissionMirrorRows(),
     ...m33ContributedPermissionMirrorRows(),
+    ...m23ContributedPermissionMirrorRows(),
   ];
 }

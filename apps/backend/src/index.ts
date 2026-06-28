@@ -24,6 +24,7 @@ import {
   buildServer,
   createSessionAuthenticate,
   getSeam,
+  registerEraser,
 } from "./bootstrap/index";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
 import { buildPrimaryProviderEntityResolver } from "./bootstrap/provider-entity-resolver";
@@ -117,6 +118,25 @@ import {
   registerM27Workers,
   scheduleM27Jobs,
 } from "./modules/27-cost-report/index";
+// M23 (Billing — Medicare) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route
+// mount over the Drizzle read/write services + the boot-time claim-assembly service, the §3.7 `billing_record`
+// eraser (registerEraser INJECTED — M23 cannot import the M1 bootstrap registry), and the §4.8 BullMQ workers
+// (claim/NOE/NOTR submit[.retry], 999/277CA ack pulls, eligibility refresh, NOE/NOTR window-watch, eligibility
+// stale-watch, MAC-portal health, the revalidate consumer). Every worker infra/seam/x12/portal port stays
+// fail-closed-unbound at boot (RULE 4); the assembly reader seams + the live MAC/X12 binds are follow-ups.
+import {
+  M23_OUTBOX_EVENTS,
+  buildDrizzleM23ReadService,
+  buildDrizzleM23WriteService,
+  buildM23BootAssemblyService,
+  buildM23WorkerDeps,
+  mountM23Routes,
+  registerBillingErasers,
+  registerM23AbacPredicates,
+  registerM23CronWorkers,
+  registerM23Workers,
+  scheduleM23Jobs,
+} from "./modules/23-billing-medicare/index";
 // The §4.4 / M10-real HOPE consumer interface the M30 worker deps bind (composed from the three live M10
 // §D10 readers via `getSeam` in the worker-runner block below).
 import type { QualityHopeConsumer } from "@wardenx/quality";
@@ -299,6 +319,11 @@ export function wireModuleSeams(
   // `cost_report_approver_for_provider`, `cost_report_period_active`). Pass the DB handle so the real
   // Drizzle owner-fact resolver binds under RLS; with no db it defaults to the deny-stub (default-deny).
   registerM27AbacPredicates({ db: deps.db });
+  // M23 — the four §4.7 ABAC resolvers (`provider_entity_billing_scope`, `claim_in_billing_manager_caseload`,
+  // `override_role_eligible`, `regulatory_required_rule_protected`). Pass the DB handle so the Drizzle
+  // owner-fact resolver binds under RLS; with no db it defaults to the deny-stub (default-deny). The M5
+  // CaseloadProvider axis behind `claim_in_billing_manager_caseload` stays fail-closed until that seam binds.
+  registerM23AbacPredicates({ db: deps.db });
   // M33 — register the platform job id on the @wardenx/tenancy allowlist so the §4.8 platform-scoped
   // workers (the on-PRIMARY MV refresh, the lag probe, the tenant eraser) may enter withPlatformContext
   // (the allowlist starts empty → fail-closed). The M34 `wireM34Tenancy` precedent.
@@ -441,6 +466,7 @@ export function wireModuleErasers(): void {
   registerReportingErasers(); // M33 — `reporting_class` (tenant-offboarding operational-row cleanup; subjectId=org; report_drilldown_audit destruction-blocked; D6/§8.4)
   registerQualityErasers(); // M30 — `quality_class` (tenant-offboarding operational-row cleanup; subjectId=org; compliance-class survey evidence destruction-blocked; D6/§8.4)
   registerCostReportErasers(); // M27 — `cost_report_class` (tenant-offboarding operational-config cleanup; subjectId=org; submitted/accepted cost reports are survey-evidence, destruction-gated; §3.7/§8.4)
+  registerBillingErasers({ registerEraser }); // M23 — `billing_record` (per-PATIENT destruction-cert callback; in-flight/surveyor-hold guard; MAC secret crypto-shred is the org-destruction path; §3.7/§8.4). registerEraser is INJECTED (M23 may not import the M1 bootstrap registry); in-memory slice store until the Drizzle BillingEraseStore binds.
   // Phase-1 data-class owners append here as they land.
 }
 
@@ -474,6 +500,7 @@ if ((import.meta as { main?: boolean }).main) {
   // completeness but is intentionally NOT bound (its emit payloads are non-conformant — zero regression).
   // A duplicate `eventName` across contributions fails boot here (OutboxEventCollisionError — fail-closed).
   const bootOutboxCatalog = buildBootOutboxCatalog([
+    M23_OUTBOX_EVENTS,
     M27_OUTBOX_EVENTS,
     M30_OUTBOX_EVENTS,
     M33_OUTBOX_EVENTS,
@@ -484,6 +511,7 @@ if ((import.meta as { main?: boolean }).main) {
   // dispatcher's namespace check requires it). Each forwards the caller's open tx + envelope to the shared
   // publisher. M30/M33/M34 — M34's lifecycle outbox now binds too (#107; its emit is gated to the conformant
   // `m34.tenant.provisioned` event, so no mutation rolls back).
+  const m23OutboxPublisher = bindCallerModule(txOutboxPublisher, "m23");
   const m27OutboxPublisher = bindCallerModule(txOutboxPublisher, "m27");
   const m30OutboxPublisher = bindCallerModule(txOutboxPublisher, "m30");
   const m33OutboxPublisher = bindCallerModule(txOutboxPublisher, "m33");
@@ -602,6 +630,24 @@ if ((import.meta as { main?: boolean }).main) {
             readService: buildDrizzleM27ReadService(dbHandle.db),
             writeService: buildDrizzleM27WriteService(dbHandle.db, {
               outbox: m27OutboxPublisher,
+            }),
+          });
+          // M23 (Billing — Medicare) — mount the §4.1 route plugins over the Drizzle READ + WRITE services +
+          // the boot-time claim-assembly service. Each mutation opens its own withOrgContext (RLS scopes every
+          // statement to app.org_id), runs the pure @wardenx/billing lifecycle reducer, and emits its §4.10
+          // m23.* event through the catalog-validating tx publisher (callerModule `m23`) in the same unit of
+          // work (D2 outbox-only). The assembly service's cross-module reader seams (M5/M6/M8/M18/M38/M40) are
+          // fail-closed deny-stubs at boot (RULE 4) until they register in the M1 SeamRegistry — POST
+          // /claims/assemble returns 503 SEAM_UNBOUND, never a fabricated claim. The §4.8 BullMQ submit/
+          // eligibility producer + the M40 CCN / M1 secret-cipher / M4 override-audit ports stay on their
+          // fail-closed defaults until those binds land (the submit routes enqueue once the producer binds).
+          mountM23Routes(app, {
+            readService: buildDrizzleM23ReadService(dbHandle.db),
+            writeService: buildDrizzleM23WriteService(dbHandle.db, {
+              outbox: m23OutboxPublisher,
+            }),
+            assemblyService: buildM23BootAssemblyService(dbHandle.db, {
+              outbox: m23OutboxPublisher,
             }),
           });
         }
@@ -781,6 +827,31 @@ if ((import.meta as { main?: boolean }).main) {
       app.log.error(err, "M27 cron-schedule registration failed");
     }
     app.log.info({ queues: m27Workers.length }, "M27 §4.8 BullMQ cost-report workers constructed");
+    // ── M23 §4.8 Billing workers (claim/NOE/NOTR submit[.retry], eligibility refresh, validation-run,
+    // revalidate consumer) + the cron consumers (999/277CA ack pulls, NOE/NOTR window-watch, eligibility
+    // stale-watch, MAC-portal health) — same worker-runner shape. buildM23WorkerDeps binds only the
+    // connection + db; every infra/seam/x12/portal port stays fail-closed-unbound at boot (RULE 4 — the typed
+    // thunks in m23-jobs.ts throw only when a JOB RUNS, so boot stays green). The live binds (transactional
+    // outbox, x12-837-client generation, MAC-portal HTTP, HETS eligibility, the M2 active-org / MAC-jurisdiction
+    // enumerators for the cron fan-out, the validation-runner → claim-validation-service, the M36 alert router)
+    // are follow-ups.
+    const m23WorkerDeps = buildM23WorkerDeps({
+      connection: queueConnection,
+      db: dbHandle.db,
+    });
+    const m23Workers = [...registerM23Workers(m23WorkerDeps), ...registerM23CronWorkers(m23WorkerDeps)];
+    app.addHook("onClose", async () => {
+      await Promise.all(m23Workers.map((w) => w.close()));
+    });
+    try {
+      const m23ScheduleQueues = await scheduleM23Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m23ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M23 cron-schedule registration failed");
+    }
+    app.log.info({ queues: m23Workers.length }, "M23 §4.8 BullMQ billing workers constructed");
   }
 
   const port = Number(process.env.PORT ?? 3000);

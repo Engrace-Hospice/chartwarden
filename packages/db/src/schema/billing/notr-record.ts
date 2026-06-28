@@ -1,0 +1,72 @@
+// @wardenx/db — `notr_record` (M23 Billing-Medicare §3.3; non-partitioned; retention class
+// `compliance`). The Notice of Termination/Revocation: one regulatory NOTR per terminating event
+// (revocation / transfer-out / discharge), with the timely-filing window watched by the cron watchdog
+// (`window_target_at`). The NOTR lifecycle (D4) lives in `state` (shares the NOE/NOTR 7-state shape).
+// Exactly one of the three event ids is populated and must match `trigger_kind` (CHECK constraints).
+// ORG-SCOPED: organization_id NOT NULL (canonical app.org_id RLS).
+//
+// CROSS-MODULE FK POLICY (architecture WINS over the spec DDL): cross-module FK constraints are
+// FORBIDDEN. Only `organization_id` (core) gets a real `.references(...)`. `provider_entity_id` (M40),
+// `patient_id`/`admission_id` (M5/M6), the revocation/transfer/discharge event ids (M6), and the
+// latest_*/*_document_id pointers are LOGICAL FKs — plain uuid, validated at runtime (mirrors the M27
+// cost-report precedent). No MBI is ever stored here (D13, §8.7).
+import { date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { organizations } from "../organizations";
+import { m23NotrState, m23NotrTriggerKind } from "./types";
+
+export const notrRecord = pgTable(
+  "notr_record",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    providerEntityId: uuid("provider_entity_id").notNull(), // logical FK → M40
+
+    patientId: uuid("patient_id").notNull(), // M5
+    admissionId: uuid("admission_id").notNull(), // M6
+
+    triggerKind: m23NotrTriggerKind("trigger_kind").notNull(),
+    revocationEventId: uuid("revocation_event_id"), // logical FK → M6
+    transferEventId: uuid("transfer_event_id"), // logical FK → M6
+    dischargeEventId: uuid("discharge_event_id"), // logical FK → M6
+
+    effectiveEndDate: date("effective_end_date").notNull(),
+    windowTargetAt: date("window_target_at").notNull(),
+    windowBreachedAt: date("window_breached_at"),
+
+    state: m23NotrState("state").notNull().default("DRAFT"),
+
+    notrControlNumber: text("notr_control_number").notNull(),
+    payerNotrControlNumber: text("payer_notr_control_number"),
+
+    latestSubmissionId: uuid("latest_submission_id"),
+    latestAcknowledgmentId: uuid("latest_acknowledgment_id"),
+    confirmationDocumentId: uuid("confirmation_document_id"),
+
+    version: integer("version").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    oneEventKind: sql`CHECK (
+    (revocation_event_id IS NOT NULL)::int +
+    (transfer_event_id IS NOT NULL)::int +
+    (discharge_event_id IS NOT NULL)::int = 1
+  )`,
+    triggerMatchesEvent: sql`CHECK (
+    (trigger_kind = 'revocation' AND revocation_event_id IS NOT NULL) OR
+    (trigger_kind = 'transfer_out' AND transfer_event_id IS NOT NULL) OR
+    (trigger_kind = 'discharge' AND discharge_event_id IS NOT NULL)
+  )`,
+    controlNumberUq: uniqueIndex("notr_control_number_uq").on(t.providerEntityId, t.notrControlNumber),
+    uniqueByEvent: uniqueIndex("notr_unique_by_event_uq")
+      .on(t.revocationEventId, t.transferEventId, t.dischargeEventId)
+      .where(sql`state NOT IN ('CANCELLED','ACK_REJECTED')`),
+    windowWatchIdx: index("notr_window_watch_idx").on(t.organizationId, t.state, t.windowTargetAt),
+  }),
+);
+
+export type NotrRecord = typeof notrRecord.$inferSelect;
+export type NewNotrRecord = typeof notrRecord.$inferInsert;

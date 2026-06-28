@@ -105,6 +105,12 @@
     "packages/billing": {
       "name": "@wardenx/billing",
       "version": "0.0.0",
+      "dependencies": {
+        "@sinclair/typebox": "^0.34.0",
+        "@wardenx/db": "workspace:*",
+        "@wardenx/types": "workspace:*",
+        "decimal.js": "^10.6.0",
+      },
     },
     "packages/cahps-vendors": {
       "name": "@wardenx/cahps-vendors",

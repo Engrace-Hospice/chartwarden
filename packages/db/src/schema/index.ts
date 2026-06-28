@@ -511,3 +511,13 @@ export * from "./quality/index";
 // migration 0069; RLS + grants in 0070; the M4 write-audit triggers (raw_payload_cipher /
 // materialized_inputs / worksheet_snapshot denylisted, §3.6) in 0071.
 export * from "./cost-report/index";
+
+// M23 Billing (Medicare): 17 owned tables (§3.3) — claim/claim_line/claim_state_history/
+// claim_submission/claim_acknowledgment/noe_record/notr_record/hipps_calculation/sia_calculation/
+// validation_rule_config/validation_run/validation_result/validation_override/sequestration_policy/
+// wage_index_factor/mac_submitter_credential/eligibility_check. Every table is org-scoped
+// (organization_id NOT NULL) EXCEPT wage_index_factor, which is PLATFORM-SHARED (no organization_id,
+// D12) and lives on the check-tenancy NON_ORG_SCOPED allowlist (SELECT-only USING(true) for app_user,
+// loader-only writes). No PHI/MBI is ever stored or audit-captured (D13, §3.6, §8.7). Tables/enums in
+// migrations 0074–0076; RLS/grants 0077; platform wage-index 0078; M4 write-audit triggers 0079; seed 0080.
+export * from "./billing/index";
