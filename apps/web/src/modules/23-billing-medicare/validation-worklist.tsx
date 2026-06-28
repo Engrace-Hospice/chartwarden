@@ -616,7 +616,7 @@ const iconButtonStyle = {
 const backdropStyle = {
   position: "fixed" as const,
   inset: 0,
-  background: "var(--color-scrim, rgba(0,0,0,0.45))",
+  background: "var(--color-scrim)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",

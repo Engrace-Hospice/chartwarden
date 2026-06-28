@@ -38,6 +38,11 @@ export const t = {
   outline: "var(--color-outline)",
   outlineVariant: "var(--color-outline-variant)",
 
+  // On-emphasis — text/icons on a saturated brand/status fill (white in light, twilight ink in
+  // dark). Scrim — modal/overlay backdrop. Both theme-reactive (§10.3 / §6.6).
+  onEmphasis: "var(--color-on-emphasis)",
+  scrim: "var(--color-scrim)",
+
   // Type — Lantern trio (§3)
   fontDisplay: "var(--font-display)", // Fraunces — names, titles, KPI labels, empty states
   fontSans: "var(--font-sans)", // Inter — all functional text + numerals (tabular-nums)

@@ -185,7 +185,7 @@ export function BreakGlassBanner({
         gap: "0.75rem",
         padding: "0.6rem 1.25rem",
         background: t.alert,
-        color: "#ffffff",
+        color: t.onEmphasis,
         fontFamily: t.fontSans,
         fontSize: "0.875rem",
       }}
@@ -200,9 +200,9 @@ export function BreakGlassBanner({
         onClick={onEndSession}
         style={{
           marginLeft: "auto",
-          border: "1px solid color-mix(in srgb, #ffffff 60%, transparent)",
+          border: `1px solid color-mix(in srgb, ${t.onEmphasis} 60%, transparent)`,
           background: "transparent",
-          color: "#ffffff",
+          color: t.onEmphasis,
           fontWeight: 600,
           borderRadius: "9999px",
           padding: "0.25rem 0.75rem",

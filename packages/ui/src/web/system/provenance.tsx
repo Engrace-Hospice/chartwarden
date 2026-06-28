@@ -121,7 +121,7 @@ export function AiSuggestionCard({
             <button
               type="button"
               onClick={onAccept}
-              style={{ border: "none", background: t.success, color: "#ffffff", fontWeight: 600, borderRadius: "9999px", cursor: "pointer", padding: "0.4rem 1rem" }}
+              style={{ border: "none", background: t.success, color: t.onEmphasis, fontWeight: 600, borderRadius: "9999px", cursor: "pointer", padding: "0.4rem 1rem" }}
             >
               Accept
             </button>

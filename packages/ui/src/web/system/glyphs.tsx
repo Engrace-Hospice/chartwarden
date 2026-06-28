@@ -19,7 +19,9 @@ export type GlyphName =
   | "close"
   | "block"
   | "dot"
-  | "spinner";
+  | "spinner"
+  | "sun"
+  | "moon";
 
 // 24×24 viewBox path data. Stroke-drawn unless listed in FILLED.
 const PATHS: Record<GlyphName, string> = {
@@ -32,12 +34,15 @@ const PATHS: Record<GlyphName, string> = {
   clock: "M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18z M12 7v5l3 2",
   info: "M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18z M12 11v5 M12 8v.5",
   eye: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
-  "eye-off": "M3 3l18 18 M10.6 10.6a3 3 0 0 0 4 4 M9.9 5.2A9.5 9.5 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3 3.7 M6.1 6.1A17 17 0 0 0 2 12s3.5 7 10 7a9.5 9.5 0 0 0 2.1-.2",
+  "eye-off":
+    "M3 3l18 18 M10.6 10.6a3 3 0 0 0 4 4 M9.9 5.2A9.5 9.5 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3 3.7 M6.1 6.1A17 17 0 0 0 2 12s3.5 7 10 7a9.5 9.5 0 0 0 2.1-.2",
   "arrow-right": "M5 12h14 M13 6l6 6-6 6",
   close: "M6 6l12 12 M18 6L6 18",
   block: "M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18z M6 6l12 12",
   dot: "M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
   spinner: "M12 3a9 9 0 1 0 9 9",
+  sun: "M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M12 2v2 M12 20v2 M4 12H2 M22 12h-2 M5.6 5.6L4.2 4.2 M19.8 19.8l-1.4-1.4 M18.4 5.6l1.4-1.4 M4.2 19.8l1.4-1.4",
+  moon: "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z",
 };
 
 const FILLED: ReadonlySet<GlyphName> = new Set(["sparkle", "dot"]);
