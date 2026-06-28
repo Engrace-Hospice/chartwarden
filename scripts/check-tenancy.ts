@@ -150,6 +150,13 @@ const NON_ORG_SCOPED = new Set<string>([
   "report_base_catalog",
   "report_metric_catalog",
   "materialized_view_metadata",
+  // M23 Billing — Medicare (§3.x / D12): wage_index_factor is platform-shared CCN-keyed annual CMS data
+  // with NO organization_id BY DESIGN — one row per (CCN, fiscal year), loaded by the platform-only
+  // wage-index loader on the annual CMS hospice rate update and read by the HIPPS/per-diem calculator at
+  // claim assembly; tenants cannot edit. Read-all within any tenant, writes via the platform loader (the
+  // M38 code_system / M34 onboarding_task_template precedent). The other sixteen M23 tables carry
+  // organization_id and get standard app.org_id RLS (claim + claim_line additionally carry the three-column rule).
+  "wage_index_factor",
 ]);
 // PHI signal: a table referencing a patient is PHI-bearing and MUST be fully org-scoped.
 const PHI_SIGNAL_RE =
