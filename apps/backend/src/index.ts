@@ -72,6 +72,14 @@ import {
   wireM33Tenancy,
 } from "./modules/33-reporting/index";
 import {
+  buildDrizzleM30ReadService,
+  buildDrizzleM30WriteService,
+  buildM30RecomputeEnqueue,
+  mountM30Routes,
+  registerM30AbacPredicates,
+  registerQualityErasers,
+} from "./modules/30-quality/index";
+import {
   type BootstrapModule34Deps,
   type TenantPlatformAbacResolver,
   bootstrapModule34,
@@ -224,6 +232,13 @@ export function wireModuleSeams(
   // the real M2 `SupervisorReader` / M5 `CaseloadProvider` reach + the Drizzle `report_view` facts — with
   // the deny-stub every actor collapses to `self` scope (fail-closed), which is the correct posture.
   registerM33AbacPredicates();
+  // M30 — the eleven §4.7 / §6.7 ABAC predicate resolvers (`incidentVisibility`, `ownsIncident`,
+  // `assignedToIncident`, `abuseAllegationAccess`, `capVerifyAuthority`, `ownsQapiProject`,
+  // `qapiCloseAuthority`, `ownsSraCycle`, `sraCloseAuthority`, `assignedToMortality`, `part2Redisclosure`).
+  // Defaults to the deny-stub resolver until P2C binds the real Drizzle owner-fact loads + the M5 PrivacyFlag /
+  // M39 consent reach — with the deny-stub every owner/role/visibility predicate denies and the Part-2 row
+  // redaction redacts every promoted row (fail-closed, never fails open). Idempotent (the M33 precedent).
+  registerM30AbacPredicates();
   // M33 — register the platform job id on the @wardenx/tenancy allowlist so the §4.8 platform-scoped
   // workers (the on-PRIMARY MV refresh, the lag probe, the tenant eraser) may enter withPlatformContext
   // (the allowlist starts empty → fail-closed). The M34 `wireM34Tenancy` precedent.
@@ -358,6 +373,7 @@ export function wireModuleErasers(): void {
   registerDocumentErasers(); // M22-T10 — `documents` (document/intake-subtree destruction-cert callback; DEK crypto-erase §8.6; legal-hold + Part 2 skip; D9/D12)
   registerSaasTenantPlatformErasers(); // M34 — `saas_tenant_platform_class` (tenant-offboarding control-plane cleanup; subjectId=org; D6/§8.4)
   registerReportingErasers(); // M33 — `reporting_class` (tenant-offboarding operational-row cleanup; subjectId=org; report_drilldown_audit destruction-blocked; D6/§8.4)
+  registerQualityErasers(); // M30 — `quality_class` (tenant-offboarding operational-row cleanup; subjectId=org; compliance-class survey evidence destruction-blocked; D6/§8.4)
   // Phase-1 data-class owners append here as they land.
 }
 
@@ -461,6 +477,20 @@ if ((import.meta as { main?: boolean }).main) {
             app,
             buildDrizzleM33ExportDrilldownService({ db: dbHandle.db }).service,
           );
+          // M30 (HQRP & Quality) — mount the nine §4.1 route plugins (measures / CAHPS / risk-register /
+          // QAPI / SRA / CoP / incidents / mortality / infection) over the DRIZZLE READ + WRITE services.
+          // Every method opens its own withOrgContext on the primary (RLS scopes each statement to
+          // app.org_id); the R-04 / R-96 command routes enqueue the §4.8 recompute / risk-refresh jobs
+          // through the SAME Valkey connection the other producers use (fail-closed without one). The §4.10
+          // m30.* outbox emit + the M40 provider-entity resolver stay unbound (the mutation lands; no event /
+          // a 503 on a provider-scoped insert until those ports bind — fail-closed, never a silent no-op).
+          const m30Recompute = buildM30RecomputeEnqueue(queueConnection);
+          mountM30Routes(app, {
+            readService: buildDrizzleM30ReadService(dbHandle.db),
+            writeService: buildDrizzleM30WriteService(dbHandle.db, {
+              recompute: m30Recompute.enqueue,
+            }),
+          });
         }
       : undefined,
     registerModuleSeams: () =>

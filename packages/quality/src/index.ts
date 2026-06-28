@@ -48,3 +48,22 @@ export * from "./cop_compliance/index";
 export * from "./infection/index";
 // The §7.9 risk-register subtree: the in-process projection that mirrors the `risk_register_view` SQL.
 export * from "./risk_register/index";
+
+// P2b BACKEND SURFACE — the ten Drizzle repositories (data ports over the 18 M30-owned tables). Each
+// takes a `QualityDb` (pooled client or a `withOrgContext` tx handle) and issues plain Drizzle queries;
+// the read/write services own the `withOrgContext` scoping + outbox. Pure data access — no Fastify.
+export * from "./repositories";
+
+// P2b SEAM SURFACE — the §4.4 CONSUMED-seam interfaces + forward-seam deny-stubs (M5–M14/M17/M18/M33
+// present; M15/M16/M23/M27 absent) and the §4.3 PUBLISHED-seam Drizzle-backed implementations
+// (QualityMeasureProvider / IncidentRegisterProvider / QapiProjectProvider / ComplianceStatusProvider /
+// SecurityRiskAssessmentReader). The seam INTERFACES were exported above via `./seams`; these add the
+// concrete impls + the boot-time registration/binding the composition root wires at P2C (no apps-backend edge).
+export * from "./seams/consumed/index";
+export * from "./seams/published/index";
+export * from "./seam-registration";
+
+// The §3.7 M4 tenant-offboarding eraseFn (operational-row cleanup; compliance-class survey evidence is
+// destruction-blocked) + its narrow store port + the in-memory slice store. The backend wrapper
+// (apps/backend/src/modules/30-quality/erasers) adapts this to the M1 `DataEraser` contract.
+export * from "./eraser";
