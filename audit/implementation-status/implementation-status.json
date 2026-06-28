@@ -1,8 +1,8 @@
 {
   "totals": {
     "Implemented": 25,
-    "Partial": 1,
-    "Placeholder": 14
+    "Partial": 2,
+    "Placeholder": 13
   },
   "rows": [
     {
@@ -344,10 +344,10 @@
     {
       "id": 25,
       "module": "M25 Remittance & Denials",
-      "status": "Placeholder",
+      "status": "Partial",
       "spec": true,
-      "schema": false,
-      "migration": false,
+      "schema": true,
+      "migration": true,
       "routes": false,
       "enriched": false,
       "screens": false,
