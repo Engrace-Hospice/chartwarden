@@ -340,8 +340,23 @@ export function buildDrizzleM30WriteService(
       fn,
     );
 
-  const emit = async (eventName: string, payload: Record<string, unknown>): Promise<void> => {
-    if (ports.outbox) await ports.outbox.emit({ eventName, payload });
+  /**
+   * Emit a §4.10 `m30.*` event through the (optional) transactional-outbox port, on the CALLER'S tx so the
+   * row commits in the same unit of work as the mutation. `organizationId`/`aggregateKind`/`aggregateId`
+   * route the persisted `outbox_event` row (the org-scoped table requires both uuids non-null); the
+   * `payload` is Value.Check'd against the registered catalog schema by the dispatcher (refuse-on-failure).
+   */
+  const emit = async (
+    tx: WriteTx,
+    input: {
+      eventName: string;
+      payload: Record<string, unknown>;
+      organizationId: string;
+      aggregateKind: string;
+      aggregateId: string;
+    },
+  ): Promise<void> => {
+    if (ports.outbox) await ports.outbox.publish(tx, input);
   };
 
   // ── partitioned point-loads (the partition key is unknown to the route; scan by id, then org-check) ──
@@ -433,20 +448,27 @@ export function buildDrizzleM30WriteService(
     ];
   }
 
-  /** Emit the catalog `m30.incident.state_changed` for any incident transition. */
+  /** Emit the catalog `m30.incident.state_changed` for any incident transition (on the caller's tx). */
   const emitIncidentStateChange = (
+    tx: WriteTx,
     actor: M30WriteActor,
     row: schema.IncidentReport,
     toState: schema.IncidentReport["lifecycle"],
     at: string,
   ): Promise<void> =>
-    emit("m30.incident.state_changed", {
-      orgId: actor.organizationId,
-      incidentId: row.id,
-      fromState: row.lifecycle,
-      toState,
-      actorUserId: actor.userId,
-      occurredAt: at,
+    emit(tx, {
+      eventName: "m30.incident.state_changed",
+      organizationId: actor.organizationId,
+      aggregateKind: "incident_report",
+      aggregateId: row.id,
+      payload: {
+        orgId: actor.organizationId,
+        incidentId: row.id,
+        fromState: row.lifecycle,
+        toState,
+        actorUserId: actor.userId,
+        occurredAt: at,
+      },
     });
 
   // ── projections for the remaining domains ────────────────────────────────────────────────────────
@@ -755,10 +777,16 @@ export function buildDrizzleM30WriteService(
           responseRate: null,
           vendorResponsePayloadHash: args.payloadHash,
         });
-        await emit("m30.cahps.results_ingested", {
-          orgId: actor.organizationId,
-          period: { start: args.reportingPeriodStart, end: args.reportingPeriodEnd },
-          measuresAffected,
+        await emit(tx, {
+          eventName: "m30.cahps.results_ingested",
+          organizationId: actor.organizationId,
+          aggregateKind: "cahps_result_summary",
+          aggregateId: row.id,
+          payload: {
+            orgId: actor.organizationId,
+            period: { start: args.reportingPeriodStart, end: args.reportingPeriodEnd },
+            measuresAffected,
+          },
         });
         return { resultIds: [row.id], measuresAffected, suppressedMinCellCount: suppressed };
       });
@@ -863,11 +891,17 @@ export function buildDrizzleM30WriteService(
           linkedIndicatorId: args.indicatorId ?? null,
         });
         if (args.indicatorId) {
-          await emit("m30.qapi.project_chartered", {
-            orgId: actor.organizationId,
-            projectId: row.id,
-            indicatorId: args.indicatorId,
-            phase: "planned",
+          await emit(tx, {
+            eventName: "m30.qapi.project_chartered",
+            organizationId: actor.organizationId,
+            aggregateKind: "qapi_project",
+            aggregateId: row.id,
+            payload: {
+              orgId: actor.organizationId,
+              projectId: row.id,
+              indicatorId: args.indicatorId,
+              phase: "planned",
+            },
           });
         }
         return mapProject(row);
@@ -975,12 +1009,18 @@ export function buildDrizzleM30WriteService(
           updatedAt: at,
           version: pip.version + 1,
         });
-        await emit("m30.qapi.pip_closed", {
-          orgId: actor.organizationId,
-          projectId: pip.linkedProjectId ?? "",
-          pipId,
-          outcome: args.outcome,
-          closedAt: at.toISOString(),
+        await emit(tx, {
+          eventName: "m30.qapi.pip_closed",
+          organizationId: actor.organizationId,
+          aggregateKind: "qapi_pip",
+          aggregateId: pipId,
+          payload: {
+            orgId: actor.organizationId,
+            projectId: pip.linkedProjectId ?? null,
+            pipId,
+            outcome: args.outcome,
+            closedAt: at.toISOString(),
+          },
         });
         return mapPip(row, charteredByMembershipId);
       });
@@ -1025,11 +1065,17 @@ export function buildDrizzleM30WriteService(
           openedByMembershipId: actor.membershipId,
           dueAt,
         });
-        await emit("m30.sra.cycle_opened", {
-          orgId: actor.organizationId,
-          cycleId: row.id,
-          fiscalYear: args.cycleYear,
-          scopeTemplateVersion: row.templateVersion,
+        await emit(tx, {
+          eventName: "m30.sra.cycle_opened",
+          organizationId: actor.organizationId,
+          aggregateKind: "sra_cycle",
+          aggregateId: row.id,
+          payload: {
+            orgId: actor.organizationId,
+            cycleId: row.id,
+            fiscalYear: args.cycleYear,
+            scopeTemplateVersion: row.templateVersion,
+          },
         });
         return mapCycle(row);
       });
@@ -1054,12 +1100,18 @@ export function buildDrizzleM30WriteService(
           inherent5x5Score: score,
           residual5x5Score: score,
         });
-        await emit("m30.sra.finding_added", {
-          orgId: actor.organizationId,
-          cycleId,
-          findingId: row.id,
-          controlRef: args.controlRef,
-          riskBand: riskBandOf(score),
+        await emit(tx, {
+          eventName: "m30.sra.finding_added",
+          organizationId: actor.organizationId,
+          aggregateKind: "sra_finding",
+          aggregateId: row.id,
+          payload: {
+            orgId: actor.organizationId,
+            cycleId,
+            findingId: row.id,
+            controlRef: args.controlRef,
+            riskBand: riskBandOf(score),
+          },
         });
         return mapFinding(row, {
           controlRef: args.controlRef,
@@ -1169,11 +1221,17 @@ export function buildDrizzleM30WriteService(
         const open = (await repo.listFindings(cycleId)).filter(
           (f) => f.status !== "mitigated" && f.status !== "accepted_risk",
         ).length;
-        await emit("m30.sra.cycle_closed", {
-          orgId: actor.organizationId,
-          cycleId,
-          closedAt: at.toISOString(),
-          openFindingsAtClose: open,
+        await emit(tx, {
+          eventName: "m30.sra.cycle_closed",
+          organizationId: actor.organizationId,
+          aggregateKind: "sra_cycle",
+          aggregateId: cycleId,
+          payload: {
+            orgId: actor.organizationId,
+            cycleId,
+            closedAt: at.toISOString(),
+            openFindingsAtClose: open,
+          },
         });
         return mapCycle(row);
       });
@@ -1246,15 +1304,21 @@ export function buildDrizzleM30WriteService(
           updatedAt: at,
           version: row.version + 1,
         });
-        await emit("m30.incident.submitted", {
-          orgId: actor.organizationId,
-          incidentId: row.id,
-          kind: row.kind,
-          severity: row.severity,
-          reportedAt: row.reportedAt.toISOString(),
-          hasPatientLink: row.patientId !== null,
+        await emit(tx, {
+          eventName: "m30.incident.submitted",
+          organizationId: actor.organizationId,
+          aggregateKind: "incident_report",
+          aggregateId: row.id,
+          payload: {
+            orgId: actor.organizationId,
+            incidentId: row.id,
+            kind: row.kind,
+            severity: row.severity,
+            reportedAt: row.reportedAt.toISOString(),
+            hasPatientLink: row.patientId !== null,
+          },
         });
-        await emitIncidentStateChange(actor, row, result.to, at.toISOString());
+        await emitIncidentStateChange(tx, actor, row, result.to, at.toISOString());
         return mapIncidentDetail(updated);
       });
     },
@@ -1285,7 +1349,7 @@ export function buildDrizzleM30WriteService(
           updatedAt: at,
           version: row.version + 1,
         });
-        await emitIncidentStateChange(actor, row, result.to, at.toISOString());
+        await emitIncidentStateChange(tx, actor, row, result.to, at.toISOString());
         return mapIncidentDetail(updated);
       });
     },
@@ -1343,7 +1407,7 @@ export function buildDrizzleM30WriteService(
           updatedAt: at,
           version: row.version + 1,
         });
-        await emitIncidentStateChange(actor, row, result.to, at.toISOString());
+        await emitIncidentStateChange(tx, actor, row, result.to, at.toISOString());
         return mapIncidentDetail(updated);
       });
     },
@@ -1379,7 +1443,7 @@ export function buildDrizzleM30WriteService(
           updatedAt: at,
           version: row.version + 1,
         });
-        await emitIncidentStateChange(actor, row, result.to, at.toISOString());
+        await emitIncidentStateChange(tx, actor, row, result.to, at.toISOString());
         return mapIncidentDetail(updated);
       });
     },
@@ -1405,7 +1469,7 @@ export function buildDrizzleM30WriteService(
           updatedAt: at,
           version: row.version + 1,
         });
-        await emitIncidentStateChange(actor, row, result.to, at.toISOString());
+        await emitIncidentStateChange(tx, actor, row, result.to, at.toISOString());
         return mapIncidentDetail(updated);
       });
     },
@@ -1434,7 +1498,7 @@ export function buildDrizzleM30WriteService(
           updatedAt: at,
           version: row.version + 1,
         });
-        await emitIncidentStateChange(actor, row, result.to, at.toISOString());
+        await emitIncidentStateChange(tx, actor, row, result.to, at.toISOString());
         return mapIncidentDetail(updated);
       });
     },
@@ -1502,10 +1566,16 @@ export function buildDrizzleM30WriteService(
           updatedAt: at,
           version: row.version + 1,
         });
-        await emit("m30.mortality.review_completed", {
-          orgId: actor.organizationId,
-          reviewId: row.id,
-          dimensions: { clinical: "recorded", satisfaction: "recorded", compliance: "recorded" },
+        await emit(tx, {
+          eventName: "m30.mortality.review_completed",
+          organizationId: actor.organizationId,
+          aggregateKind: "mortality_review",
+          aggregateId: row.id,
+          payload: {
+            orgId: actor.organizationId,
+            reviewId: row.id,
+            dimensions: { clinical: "recorded", satisfaction: "recorded", compliance: "recorded" },
+          },
         });
         return mapMortality(updated);
       });
@@ -1533,12 +1603,18 @@ export function buildDrizzleM30WriteService(
           version: existing.version + 1,
         });
         if (args.status && args.status !== existing.status) {
-          await emit("m30.cop.status_changed", {
-            orgId: actor.organizationId,
-            citationId,
-            fromStatus: existing.status,
-            toStatus: args.status,
-            lastReviewedAt: iso(existing.lastReviewedAt),
+          await emit(tx, {
+            eventName: "m30.cop.status_changed",
+            organizationId: actor.organizationId,
+            aggregateKind: "cop_compliance_status",
+            aggregateId: citationId,
+            payload: {
+              orgId: actor.organizationId,
+              citationId,
+              fromStatus: existing.status,
+              toStatus: args.status,
+              lastReviewedAt: iso(existing.lastReviewedAt),
+            },
           });
         }
         return mapCop(row);
@@ -1590,12 +1666,18 @@ export function buildDrizzleM30WriteService(
           transmissionContext: "unknown",
           filedByMembershipId: actor.membershipId,
         });
-        await emit("m30.infection.event_recorded", {
-          orgId: actor.organizationId,
-          eventId: row.id,
-          pathogen,
-          bodySite,
-          patientId: args.patientId,
+        await emit(tx, {
+          eventName: "m30.infection.event_recorded",
+          organizationId: actor.organizationId,
+          aggregateKind: "infection_surveillance_event",
+          aggregateId: row.id,
+          payload: {
+            orgId: actor.organizationId,
+            eventId: row.id,
+            pathogen,
+            bodySite,
+            patientId: args.patientId,
+          },
         });
         // §7.8 inline outbreak detection: ≥3 events sharing (provider, pathogen, body_site) in any 14d window.
         let outbreakCaseId: string | null = null;
@@ -1612,14 +1694,20 @@ export function buildDrizzleM30WriteService(
         if (cluster) {
           const outbreak = await repo.createOutbreak(toNewOutbreakCase(cluster));
           outbreakCaseId = outbreak.id;
-          await emit("m30.infection.outbreak_opened", {
-            orgId: actor.organizationId,
-            caseId: outbreak.id,
-            pathogen: outbreak.pathogen,
-            bodySite: outbreak.bodySite,
-            eventCount: outbreak.triggeringEventCount,
-            firstEventAt: outbreak.windowStart.toISOString(),
-            lastEventAt: outbreak.windowEnd.toISOString(),
+          await emit(tx, {
+            eventName: "m30.infection.outbreak_opened",
+            organizationId: actor.organizationId,
+            aggregateKind: "infection_outbreak_case",
+            aggregateId: outbreak.id,
+            payload: {
+              orgId: actor.organizationId,
+              caseId: outbreak.id,
+              pathogen: outbreak.pathogen,
+              bodySite: outbreak.bodySite,
+              eventCount: outbreak.triggeringEventCount,
+              firstEventAt: outbreak.windowStart.toISOString(),
+              lastEventAt: outbreak.windowEnd.toISOString(),
+            },
           });
         }
         return {
@@ -1657,11 +1745,17 @@ export function buildDrizzleM30WriteService(
           closedAt: status === "closed" ? at : existing.closedAt,
         });
         if (args.status === "resolved") {
-          await emit("m30.infection.outbreak_resolved", {
-            orgId: actor.organizationId,
-            caseId,
-            resolutionNote: args.resolutionNote ?? "",
-            resolvedAt: at.toISOString(),
+          await emit(tx, {
+            eventName: "m30.infection.outbreak_resolved",
+            organizationId: actor.organizationId,
+            aggregateKind: "infection_outbreak_case",
+            aggregateId: caseId,
+            payload: {
+              orgId: actor.organizationId,
+              caseId,
+              resolutionNote: args.resolutionNote ?? "",
+              resolvedAt: at.toISOString(),
+            },
           });
         }
         return mapOutbreak(row);

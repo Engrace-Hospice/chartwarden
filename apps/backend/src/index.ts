@@ -26,6 +26,13 @@ import {
   getSeam,
 } from "./bootstrap/index";
 import {
+  type OutboxPublishPort,
+  type OutboxTx,
+  buildBootOutboxCatalog,
+  buildTxOutboxPublisher,
+  wireOutboxCatalog,
+} from "./bootstrap/outbox-persister";
+import {
   mountIdentityRoutes,
   registerIdentityErasers,
   registerIdentitySeams,
@@ -60,6 +67,7 @@ import {
   buildDrizzleM33ExportDrilldownService,
   buildDrizzleM33ReadService,
   buildDrizzleM33WriteService,
+  M33_OUTBOX_EVENTS,
   buildM33ReadEnqueue,
   buildM33WorkerDeps,
   mountM33ExportDrilldownRoutes,
@@ -74,6 +82,7 @@ import {
 import {
   buildDrizzleM30ReadService,
   buildDrizzleM30WriteService,
+  M30_OUTBOX_EVENTS,
   buildM30RecomputeEnqueue,
   buildM30WorkerDeps,
   mountM30Routes,
@@ -90,6 +99,7 @@ import type { QualityHopeConsumer } from "@wardenx/quality";
 import {
   type BootstrapModule34Deps,
   type TenantPlatformAbacResolver,
+  M34_OUTBOX_EVENTS,
   bootstrapModule34,
   buildDrizzlePlatformService,
   buildDrizzleTenantService,
@@ -417,6 +427,23 @@ if ((import.meta as { main?: boolean }).main) {
   const queueConnection: ConnectionOptions | undefined = parseRedisConnection(
     process.env.REDIS_URL,
   );
+  // M1-T10 — assemble the FULL transactional-outbox catalog (M1 folded in by the helper + the passed
+  // M30/M33/M34 contributions) and build the catalog-validating tx publisher. The publisher is threaded
+  // into the M30 + M33 write services below so their §4.10 `m30.*`/`m33.*` emits persist into
+  // `outbox_event` on the mutation's own tx (transactional outbox). M34 is registered in the catalog for
+  // completeness but is intentionally NOT bound (its emit payloads are non-conformant — zero regression).
+  // A duplicate `eventName` across contributions fails boot here (OutboxEventCollisionError — fail-closed).
+  const bootOutboxCatalog = buildBootOutboxCatalog([
+    M30_OUTBOX_EVENTS,
+    M33_OUTBOX_EVENTS,
+    M34_OUTBOX_EVENTS,
+  ]);
+  const txOutboxPublisher = buildTxOutboxPublisher(bootOutboxCatalog);
+  // Per-module adapters that pin `callerModule` (the module-scoped `WriteOutboxPort` omits it; the
+  // dispatcher's namespace check requires it). Each forwards the caller's open tx + envelope to the shared
+  // publisher. M30 and M33 ONLY — M34's port stays unbound.
+  const m30OutboxPublisher = bindCallerModule(txOutboxPublisher, "m30");
+  const m33OutboxPublisher = bindCallerModule(txOutboxPublisher, "m33");
   // AUTH-T02/T03: when a DB client is present, build the Better Auth instance + the authenticate hook
   // (getIdentitySession → SessionContextResolver seam → request.context). The seam is resolved lazily
   // at request time, after bootSeams() has registered it.
@@ -489,7 +516,13 @@ if ((import.meta as { main?: boolean }).main) {
             buildDrizzleM33ReadService({ db: dbHandle.db, enqueue: m33ReadEnqueue.enqueue })
               .service,
           );
-          mountM33WriteRoutes(app, buildDrizzleM33WriteService({ db: dbHandle.db }).service);
+          // M33 — bind the catalog-validating tx outbox publisher (callerModule `m33`) so the §4.10
+          // `m33.report_definition.published` / `report_view.shared_org` / `report_schedule.created`
+          // emits persist into `outbox_event` on the mutation's own withOrgContext tx (was unbound = no-op).
+          mountM33WriteRoutes(
+            app,
+            buildDrizzleM33WriteService({ db: dbHandle.db, outbox: m33OutboxPublisher }).service,
+          );
           mountM33ExportDrilldownRoutes(
             app,
             buildDrizzleM33ExportDrilldownService({ db: dbHandle.db }).service,
@@ -499,13 +532,16 @@ if ((import.meta as { main?: boolean }).main) {
           // Every method opens its own withOrgContext on the primary (RLS scopes each statement to
           // app.org_id); the R-04 / R-96 command routes enqueue the §4.8 recompute / risk-refresh jobs
           // through the SAME Valkey connection the other producers use (fail-closed without one). The §4.10
-          // m30.* outbox emit + the M40 provider-entity resolver stay unbound (the mutation lands; no event /
-          // a 503 on a provider-scoped insert until those ports bind — fail-closed, never a silent no-op).
+          // m30.* outbox emit is NOW bound (catalog-validating tx publisher, callerModule `m30`) so every
+          // `m30.*` event persists into `outbox_event` on the mutation's own withOrgContext tx; the M40
+          // provider-entity resolver stays unbound (a 503 on a provider-scoped insert until it binds —
+          // fail-closed, never a silent no-op).
           const m30Recompute = buildM30RecomputeEnqueue(queueConnection);
           mountM30Routes(app, {
             readService: buildDrizzleM30ReadService(dbHandle.db),
             writeService: buildDrizzleM30WriteService(dbHandle.db, {
               recompute: m30Recompute.enqueue,
+              outbox: m30OutboxPublisher,
             }),
           });
         }
@@ -522,6 +558,16 @@ if ((import.meta as { main?: boolean }).main) {
   if (dbHandle && auth) {
     registerIdentityAuth(app, auth); // AUTH-T02: mount /api/auth/* (needs BETTER_AUTH_SECRET/URL in prod)
     app.addHook("onClose", () => dbHandle.close());
+  }
+
+  // M1-T10 — boot-populate `outbox_event_catalog` from the FULL catalog (idempotent UPSERT on event_name;
+  // platform reference data, NON_ORG_SCOPED). Fail-soft: a failure here logs but never blocks boot (the
+  // dispatcher validates against the in-memory `bootOutboxCatalog`, not this table). Fire-and-forget — there
+  // is nothing to close, so no onClose hook is needed.
+  if (dbHandle) {
+    wireOutboxCatalog(dbHandle.db, bootOutboxCatalog).catch((err) => {
+      app.log.error(err, "outbox_event_catalog population failed");
+    });
   }
 
   // ── worker-runner section (the M4-T11 BullMQ worker-construction precedent) ──────────────────────────
@@ -642,6 +688,32 @@ if ((import.meta as { main?: boolean }).main) {
     app.log.error(err);
     process.exit(1);
   });
+}
+
+/**
+ * Adapt the shared {@link OutboxPublishPort} into a module-scoped emitter that pins `callerModule` (which
+ * the per-module `WriteOutboxPort` intentionally omits — the dispatcher's namespace check needs it). The
+ * returned shape matches M30's + M33's `WriteOutboxPort` structurally, so it threads straight into their
+ * write-service `outbox` slots. M34 is NEVER passed through this (its emit payloads are non-conformant).
+ */
+function bindCallerModule(
+  publisher: OutboxPublishPort,
+  callerModule: string,
+): {
+  publish(
+    tx: OutboxTx,
+    input: {
+      readonly eventName: string;
+      readonly payload: Record<string, unknown>;
+      readonly organizationId: string;
+      readonly aggregateKind: string;
+      readonly aggregateId: string;
+    },
+  ): Promise<void>;
+} {
+  return {
+    publish: (tx, input) => publisher.publish(tx, { ...input, callerModule }),
+  };
 }
 
 /**

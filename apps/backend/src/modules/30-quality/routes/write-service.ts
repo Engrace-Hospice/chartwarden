@@ -15,6 +15,7 @@
 // the SRA cycle machine, the mortality machine) and persists their result. The only pure rule helpers
 // added HERE are the ones not already owned by the package — and even those DELEGATE to the package's
 // canonical guard (the two-person co-sign split, V-11 / V-12).
+import type { DbClient } from "@wardenx/db";
 import {
   assertPipClosureCosign,
   assertSraClosureCosign,
@@ -57,14 +58,38 @@ export type { M30WriteActor, PipClosureCosign, SraClosureCosign };
 // ── injected ports (deny-stub-safe; keep the route + service free of BullMQ/outbox imports) ───────────
 
 /**
+ * The structural org-context transaction handle the §4.10 outbox row is inserted through: the SAME
+ * `withOrgContext` tx the mutation already opened (transactional outbox — the event row commits atomically
+ * with the write). Pinned to `DbClient` to MIRROR the bootstrap `OutboxTx`
+ * (apps/backend/src/bootstrap/outbox-persister.ts) the composition root binds; `WriteTx`
+ * (write-service-drizzle.ts) is also `DbClient`, so the tx the service passes satisfies this exactly.
+ */
+export type WriteOutboxTx = DbClient;
+
+/**
  * The transactional-outbox emit port. M30 is OUTBOX-ONLY across module boundaries (D6); the command
- * routes emit the §4.10 `m30.*` events through this port in the SAME unit of work as the mutation. The
- * port is best-effort here (the runtime dispatcher wiring is P2c — the M33/M34 precedent where the
- * `events-by-m30.ts` catalog is static and the dispatcher binds at boot); when unbound the mutation
- * still lands. Each `eventName` carries the `m30.` prefix the event-catalog gate enforces.
+ * routes emit the §4.10 `m30.*` events through this port in the SAME unit of work as the mutation.
+ *
+ * Mirrors the bootstrap `OutboxPublishPort`'s `publish(tx, input)` shape (the M33/M34 precedent): the
+ * caller hands its open `tx` plus the catalog-routing fields (`organizationId` — the non-null tenant uuid
+ * the `outbox_event` row is keyed on, `aggregateKind`/`aggregateId` — the non-null aggregate uuid) and the
+ * `payload`. `callerModule` is fixed to `m30` by the composition-root adapter that binds this to
+ * `buildTxOutboxPublisher`, so callers pass only the fields below. A non-conformant payload THROWS in the
+ * dispatcher and rolls the mutation's tx back. The port is optional + best-effort here (the runtime
+ * dispatcher binds at boot); when unbound the mutation still lands (zero regression). Each `eventName`
+ * carries the `m30.` prefix the event-catalog gate enforces.
  */
 export interface WriteOutboxPort {
-  emit(event: { eventName: string; payload: Record<string, unknown> }): Promise<void>;
+  publish(
+    tx: WriteOutboxTx,
+    input: {
+      readonly eventName: string;
+      readonly payload: Record<string, unknown>;
+      readonly organizationId: string;
+      readonly aggregateKind: string;
+      readonly aggregateId: string;
+    },
+  ): Promise<void>;
 }
 
 /**

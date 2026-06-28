@@ -38,6 +38,7 @@ import {
   type M33ReadEnqueuePort,
   type M33ReadRouteService,
   type M33WriteRouteService,
+  type WriteOutboxPort,
   createDrizzleM33ExportDrilldownBackend,
   createDrizzleM33ReadBackend,
   createDrizzleM33WriteBackend,
@@ -192,15 +193,20 @@ export function buildDrizzleM33ReadService(deps: {
 /**
  * Build the production WRITE route service (§4.1 #8–#31: definitions / views / shares / schedules) over the
  * org-pooled primary Drizzle client. EVERY method runs inside the tenant's own `withOrgContext` (RLS scopes
- * each statement to `app.org_id`) — fully live, EXCEPT the cron math (fail-closed typed-TODO) and the
- * best-effort `m33.*` outbox emit (omitted until the live dispatcher binds).
+ * each statement to `app.org_id`) — fully live, EXCEPT the cron math (fail-closed typed-TODO). The §4.10
+ * `m33.*` outbox emit is bound when the composition root passes `outbox` (the catalog-validating tx
+ * publisher); omitted in slice/tests, where it stays a best-effort no-op (zero regression).
  */
-export function buildDrizzleM33WriteService(deps: { db: DbClient }): {
+export function buildDrizzleM33WriteService(deps: {
+  db: DbClient;
+  outbox?: WriteOutboxPort;
+}): {
   service: M33WriteRouteService;
 } {
   return createDrizzleM33WriteBackend({
     db: deps.db,
     cron: FAIL_CLOSED_CRON,
+    outbox: deps.outbox,
     now: () => new Date(),
   });
 }
