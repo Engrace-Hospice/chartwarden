@@ -26,10 +26,13 @@ export {
 } from "./permission-keys";
 
 // §4.7 / §6.7 — the eleven ABAC predicate resolvers M30 owns + registers into M3's named-predicate registry.
-// `registerM30AbacPredicates` is invoked at boot by the composition root, idempotently; it defaults to the
-// deny-stub resolver until P2C binds the real Drizzle + M5 PrivacyFlag / M39 consent reach.
+// `registerM30AbacPredicates` is invoked at boot by the composition root, idempotently; the composition root
+// passes `{ db }` so the predicates resolve owner facts via `buildDrizzleM30AbacResolver` under RLS (P2c).
+// With no db handle it defaults to the deny-stub resolver. The M5 PrivacyFlag / M39 consent reach behind
+// `part2Redisclosure` stays fail-closed (not in the M1 SeamContracts).
 export {
   type IncidentAbacFacts,
+  type M30AbacReadContext,
   type MortalityReviewAbacFacts,
   type QapiProjectAbacFacts,
   type ReadingM30AbacDeps,
@@ -37,6 +40,7 @@ export {
   type SraCycleAbacFacts,
   type M30RegisteredAbacPredicate,
   M30_REGISTERED_ABAC_PREDICATES,
+  buildDrizzleM30AbacResolver,
   buildM30AbacPredicates,
   denyStubM30AbacResolver,
   registerM30AbacPredicates,
@@ -70,3 +74,23 @@ export {
 // Integrate-phase composition glue (the M33 wiring.ts precedent): the §4.8 recompute/risk-refresh BullMQ
 // producer the R-04 / R-96 command routes enqueue onto.
 export { M30InfraPortUnbound, buildM30RecomputeEnqueue } from "./wiring";
+
+// §4.8 — the LIVE BullMQ worker/cron boot surface (the M33 `registerM33Workers` / `scheduleM33Jobs`
+// precedent). The composition root constructs the four §4.8 work-queue Workers + the four standalone cron
+// consumers + the four repeatable cron-schedule Queues over the injected Valkey connection, binding each
+// worker's ports (the M30 repos + the PRIMARY-pool MV refresh + the LIVE M10 HOPE consumer reached via
+// `getSeam`) while the still-unlanded platform infra (outbox dispatcher / envelope-DEK / M36 alert router)
+// fails closed at RUN time (RULE 3). Nothing here runs at import.
+export {
+  type M30CronPortBundles,
+  type M30CronQueueName,
+  type M30WorkerDeps,
+  type M30WorkerPortBundles,
+  M30_CRON_QUEUES,
+  buildM30CronPorts,
+  buildM30WorkerDeps,
+  buildM30WorkerPorts,
+  registerM30CronWorkers,
+  registerM30Workers,
+  scheduleM30Jobs,
+} from "./jobs/index";

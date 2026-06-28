@@ -75,10 +75,17 @@ import {
   buildDrizzleM30ReadService,
   buildDrizzleM30WriteService,
   buildM30RecomputeEnqueue,
+  buildM30WorkerDeps,
   mountM30Routes,
   registerM30AbacPredicates,
+  registerM30CronWorkers,
+  registerM30Workers,
   registerQualityErasers,
+  scheduleM30Jobs,
 } from "./modules/30-quality/index";
+// The §4.4 / M10-real HOPE consumer interface the M30 worker deps bind (composed from the three live M10
+// §D10 readers via `getSeam` in the worker-runner block below).
+import type { QualityHopeConsumer } from "@wardenx/quality";
 import {
   type BootstrapModule34Deps,
   type TenantPlatformAbacResolver,
@@ -238,7 +245,10 @@ export function wireModuleSeams(
   // Defaults to the deny-stub resolver until P2C binds the real Drizzle owner-fact loads + the M5 PrivacyFlag /
   // M39 consent reach — with the deny-stub every owner/role/visibility predicate denies and the Part-2 row
   // redaction redacts every promoted row (fail-closed, never fails open). Idempotent (the M33 precedent).
-  registerM30AbacPredicates();
+  // P2c — pass the DB handle so the real Drizzle owner-fact resolver (`buildDrizzleM30AbacResolver`) binds
+  // under RLS; without a db client it stays the deny-stub (slice/tests). The M5 PrivacyFlag / M39 Part-2
+  // reach behind `part2Redisclosure` stays fail-closed (not in the M1 SeamContracts).
+  registerM30AbacPredicates({ db: deps.db });
   // M33 — register the platform job id on the @wardenx/tenancy allowlist so the §4.8 platform-scoped
   // workers (the on-PRIMARY MV refresh, the lag probe, the tenant eraser) may enter withPlatformContext
   // (the allowlist starts empty → fail-closed). The M34 `wireM34Tenancy` precedent.
@@ -560,6 +570,64 @@ if ((import.meta as { main?: boolean }).main) {
       app.log.error(err, "M33 cron-schedule registration failed");
     }
     app.log.info({ queues: m33Workers.length }, "M33 §4.8 BullMQ reporting workers constructed");
+
+    // ── M30 §4.8 HQRP/quality workers + cron schedules (the same worker-runner shape) ───────────────────
+    // Construct the four §4.8 WORK-queue Workers (measure_recompute / cahps_export / outbreak_detection /
+    // risk_register_refresh) + the four STANDALONE cron consumers + their four repeatable cron-schedule
+    // Queues. The worker ports bind their bindable adapters (the M30 repos + the on-PRIMARY MV refresh) and
+    // the ONE live consumed seam — the M10 HOPE consumer, composed below from the three §D10 M10 readers
+    // resolved via `getSeam` (RULE 4). Everything still-unlanded (the transactional-outbox dispatcher, the
+    // envelope-DEK helper for CAHPS PHI, the M36 alert router, the per-family measure-input provider, the
+    // platform active-org / decedent / open-SRA-cycle readers, the per-org enqueue producers, the M1
+    // `processing_log` accessor) stays a LAZY fail-closed thunk inside the package wiring — those job paths
+    // throw `M30WorkerPortUnbound` only when a JOB RUNS; boot stays green (the M34 eager-bind gotcha).
+    //
+    // The §4.4 / M10-real HOPE consumer: M30 needs org-wide rollups (timepoint-completion / submission
+    // posture / open-SFV count) but M10 publishes PER-ENTITY readers (HopeTimepointProvider /
+    // HopeSubmissionProvider / HopeJ2051Provider). The live seams are resolved lazily here (so a missing M10
+    // surface fails fast at run time, never at boot) and held; the org-wide projection over them needs a
+    // patient/admission enumerator M30 has no seam for yet, so each rollup is fail-closed until that lands —
+    // and the recompute worker never reaches `hope` until `registrations` + `resolveInput` are bound anyway.
+    const m30HopeConsumer: QualityHopeConsumer = {
+      async timepointCompletionRollup() {
+        void getSeam("HopeTimepointProvider"); // LIVE M10 seam (RULE 4) — held; org-wide projection deferred
+        throw new Error(
+          "M30 hope.timepointCompletionRollup: M10 HopeTimepointProvider is per-entity; the org-wide rollup needs a patient enumerator seam not yet wired (fail-closed)",
+        );
+      },
+      async submissionPostureRollup() {
+        void getSeam("HopeSubmissionProvider"); // LIVE M10 seam (RULE 4) — held; org-wide projection deferred
+        throw new Error(
+          "M30 hope.submissionPostureRollup: M10 HopeSubmissionProvider is per-PE; the org-wide rollup needs a provider-entity enumerator seam not yet wired (fail-closed)",
+        );
+      },
+      async openSfvObligationCount() {
+        void getSeam("HopeJ2051Provider"); // LIVE M10 seam (RULE 4) — held; org-wide projection deferred
+        throw new Error(
+          "M30 hope.openSfvObligationCount: M10 HopeJ2051Provider is per-patient; the org-wide count needs a patient enumerator seam not yet wired (fail-closed)",
+        );
+      },
+    };
+    const m30WorkerDeps = buildM30WorkerDeps({
+      connection: queueConnection,
+      db: dbHandle.db,
+      hopeProvider: m30HopeConsumer,
+    });
+    const m30Workers = [...registerM30Workers(m30WorkerDeps), ...registerM30CronWorkers(m30WorkerDeps)];
+    app.addHook("onClose", async () => {
+      await Promise.all(m30Workers.map((w) => w.close()));
+    });
+    // Register the four §4.8 repeatable cron schedules + their close hook BEFORE app.listen() (the M34
+    // FST_ERR_INSTANCE_ALREADY_LISTENING gotcha — await here so the hook is added while pre-listen).
+    try {
+      const m30ScheduleQueues = await scheduleM30Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m30ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M30 cron-schedule registration failed");
+    }
+    app.log.info({ queues: m30Workers.length }, "M30 §4.8 BullMQ HQRP/quality workers constructed");
   }
 
   const port = Number(process.env.PORT ?? 3000);

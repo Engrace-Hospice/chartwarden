@@ -67,3 +67,19 @@ export * from "./seam-registration";
 // destruction-blocked) + its narrow store port + the in-memory slice store. The backend wrapper
 // (apps/backend/src/modules/30-quality/erasers) adapts this to the M1 `DataEraser` contract.
 export * from "./eraser";
+
+// P2c ASYNC SURFACE — the §4.10 UPSTREAM-event consumers: the topic→effect subscription map (the single
+// source of truth for the inbound fan-out) + the PURE port-injected handlers (mirror M33's
+// catalog/outbox-subscription-map.ts + refresh/outbox-subscriber.ts). RULE 3(d): pure + a subscription
+// map only — no boot-wired running subscriber; the live inbound dispatcher is a later platform phase.
+export * from "./consumers/index";
+// P2c ALERT SURFACE — the twelve §4.9 M36 alert DEFINITIONS (severity/channel/recipients/cadence/trigger)
+// the M36 alert-rule seed resolves on top of the `M30_ALERT_PAYLOADS` payloads (mirror M33's alert-defs.ts).
+export * from "./alert-defs";
+
+// P2c ASYNC/WORKER LAYER — the §4.8 PURE port-injected processors for M30's four BullMQ queues
+// (measure_recompute / cahps_export / outbreak_detection / risk_register_refresh) + four crons (nightly
+// recompute / cahps monthly sample / risk refresh / sra reminders), plus the queue/DLQ/cron/idempotency-key
+// catalog. Job LOGIC only; the live BullMQ `Worker`/`Queue` construction binds at app boot in the backend
+// `jobs/m30-jobs.ts` adapter (the M33 `@wardenx/reporting/refresh` precedent — nothing here opens Valkey).
+export * from "./workers/index";
