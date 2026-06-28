@@ -24,8 +24,8 @@ export function PageHeader({ title, breadcrumb, actions, children }: PageHeaderP
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: "0.5rem",
-        padding: "1rem 1.5rem",
+        gap: t.space2,
+        padding: `${t.space4} ${t.space5}`,
         borderBottom: ghostBorder,
       }}
     >
@@ -42,7 +42,7 @@ export function PageHeader({ title, breadcrumb, actions, children }: PageHeaderP
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: "1rem",
+          gap: t.space4,
         }}
       >
         {/* headline-lg — Fraunces, the human voice for the screen title (§3.1). */}
@@ -60,7 +60,7 @@ export function PageHeader({ title, breadcrumb, actions, children }: PageHeaderP
           {title}
         </h1>
         {actions ? (
-          <div className="wx-page-actions" style={{ display: "flex", gap: "0.5rem" }}>
+          <div className="wx-page-actions" style={{ display: "flex", gap: t.space2 }}>
             {actions}
           </div>
         ) : null}
@@ -75,7 +75,7 @@ export function KpiStrip({ children }: { children: ReactNode }): JSX.Element {
   return (
     <div
       className="wx-kpi-strip"
-      style={{ display: "flex", gap: "1rem", padding: "1rem 1.5rem", overflowX: "auto" }}
+      style={{ display: "flex", gap: t.space4, padding: `${t.space4} ${t.space5}`, overflowX: "auto" }}
     >
       {children}
     </div>
@@ -121,7 +121,7 @@ export function KpiCard({ label, value, onSelect }: KpiCardProps): JSX.Element {
   // No-Line card: surface-lowest fill + soft shadow + xl radius, no border (§2.5/§4.3).
   const style = {
     minWidth: "10rem",
-    padding: "0.75rem 1rem",
+    padding: `${t.space3} ${t.space4}`,
     background: t.surfaceLowest,
     borderRadius: t.radiusXl,
     boxShadow: t.shadowSoft,

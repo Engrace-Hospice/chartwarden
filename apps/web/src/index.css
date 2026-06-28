@@ -75,6 +75,20 @@
   --radius-xl: 1rem;
   --radius-2xl: 1.5rem;
 
+  /* Spacing scale (4px base, DESIGN.md §4.1). A distinct `--space-*` namespace (NOT Tailwind's
+     `--spacing-*`, so it never clashes with the p-/m-/gap- utilities). Consumed in inline styles via
+     the `t.space*` tokens; theme-invariant. The 5→6 step is intentional (24→28px, the No-Line
+     list-item separation, §6 hard rule §10.x). */
+  --space-1: 0.25rem; /* 4 — tight icon gaps */
+  --space-2: 0.5rem; /* 8 — inline element spacing */
+  --space-3: 0.75rem; /* 12 — dense list/row padding */
+  --space-4: 1rem; /* 16 — standard card padding */
+  --space-5: 1.5rem; /* 24 — card internal sections */
+  --space-6: 1.75rem; /* 28 — list-item separation (no divider) */
+  --space-7: 2rem; /* 32 — section gaps */
+  --space-8: 2.5rem; /* 40 — major section separation */
+  --space-9: 3rem; /* 48 — page vertical rhythm */
+
   /* Elevation */
   --shadow-soft: 0 4px 24px rgba(28, 27, 26, 0.05);
   --shadow-float: 0 12px 48px rgba(28, 27, 26, 0.1);
