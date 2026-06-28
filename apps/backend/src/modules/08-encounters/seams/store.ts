@@ -47,8 +47,10 @@ export interface EncounterReaderStore {
   encounterFacts(
     encounterIds: ReadonlyArray<EncounterId>,
   ): Promise<ReadonlyArray<StoredEncounterFacts>>;
-  /** Signed-encounter digests for a patient since an instant (M14 IDG aggregator, §4.7). */
+  /** Signed-encounter digests for a patient since an instant (M14 IDG aggregator, §4.7). The Drizzle adapter
+   *  self-scopes on `organizationId` (its own pooled connection has no ambient RLS context). */
   signedEncountersForPatientSince(
+    organizationId: string,
     patientId: PatientId,
     since: IsoInstant,
   ): Promise<ReadonlyArray<SignedEncounterDigest>>;
@@ -94,7 +96,8 @@ export function createInMemoryEncounterReaderStore(seed: EncounterReaderSeed = {
         const wanted = new Set(encounterIds);
         return facts.filter((f) => wanted.has(f.encounterId));
       },
-      async signedEncountersForPatientSince(patientId, since) {
+      async signedEncountersForPatientSince(_organizationId, patientId, since) {
+        // The slice is RLS-free; the seeded digests are already org-scoped by the test fixture.
         return digests
           .filter((d) => d.patientId === patientId && d.signedAt >= since)
           .sort((a, b) => (a.signedAt < b.signedAt ? -1 : a.signedAt > b.signedAt ? 1 : 0));

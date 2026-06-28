@@ -306,6 +306,7 @@ export interface BillableEncounterReader {
  */
 export interface SignedEncountersReader {
   signedEncountersForPatientSince(
+    organizationId: string,
     patientId: PatientId,
     since: IsoInstant,
   ): Promise<ReadonlyArray<SignedEncounterDigest>>;

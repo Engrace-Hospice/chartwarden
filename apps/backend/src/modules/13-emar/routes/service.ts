@@ -411,7 +411,7 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
     // D9 — IV-continuous session events carry a nullable encounter; only single_dose auto-links.
     if (mode !== "single_dose" || !reader) return null;
     const since = new Date(Date.parse(administeredAt) - ENCOUNTER_LINK_TOLERANCE_MS).toISOString();
-    const digests = await reader.signedEncountersForPatientSince(patientId, since);
+    const digests = await reader.signedEncountersForPatientSince(orgId, patientId, since);
     const at = Date.parse(administeredAt);
     const within = digests.filter((d) => Math.abs(Date.parse(d.signedAt) - at) <= ENCOUNTER_LINK_TOLERANCE_MS);
     return within.length > 0 ? within[within.length - 1]!.encounterId : null;

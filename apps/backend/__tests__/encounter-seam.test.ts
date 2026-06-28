@@ -125,7 +125,11 @@ describe("SignedEncountersReader (§4.7)", () => {
     ];
     registerEncounterSeams({ store: store({ digests }) });
     const reader = getSeam("SignedEncountersReader");
-    const out = await reader.signedEncountersForPatientSince(PAT, "2026-01-15T00:00:00.000Z");
+    const out = await reader.signedEncountersForPatientSince(
+      "org-1",
+      PAT,
+      "2026-01-15T00:00:00.000Z",
+    );
     expect(out.map((d) => d.encounterId)).toEqual(["enc-new"]);
   });
 

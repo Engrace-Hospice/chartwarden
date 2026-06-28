@@ -95,7 +95,7 @@ function fakeEncounters(
 ): { encounters: SignedEncountersReader; sinceByPatient: Record<string, string> } {
   const sinceByPatient: Record<string, string> = {};
   const encounters: SignedEncountersReader = {
-    async signedEncountersForPatientSince(patientId, since) {
+    async signedEncountersForPatientSince(_organizationId, patientId, since) {
       sinceByPatient[patientId] = since;
       return byPatient[patientId] ?? [];
     },
