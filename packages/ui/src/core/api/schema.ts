@@ -900,6 +900,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/appeals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1Appeals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1AppealsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patchApiV1AppealsByIdAck"];
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/attach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patchApiV1AppealsByIdAttach"];
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1AppealsByIdClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1AppealsByIdDecide"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1AppealsByIdSubmit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1AppealsByIdWithdraw"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/assessments/{id}/cosignatures": {
         parameters: {
             query?: never;
@@ -1072,6 +1200,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** AR-aging dashboard — aging buckets + denial / NOE-NOTR window-breach rates (org-wide or per-PE, §4.1 #37) */
         get: operations["getApiV1BillingArdashboard"];
         put?: never;
         post?: never;
@@ -1088,6 +1217,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List claims — cursor-paginated; filter by state / patient / ProviderEntity (§4.1 #2) */
         get: operations["getApiV1BillingClaims"];
         put?: never;
         post?: never;
@@ -1104,12 +1234,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Single-claim detail — lines + HIPPS + SIA + latest run + submissions + acks (§4.1 #3) */
         get: operations["getApiV1BillingClaimsById"];
         put?: never;
         post?: never;
+        /** Delete a DRAFT claim (DRAFT-only; AI-block + idempotency, §4.1 #5) */
         delete: operations["deleteApiV1BillingClaimsById"];
         options?: never;
         head?: never;
+        /** DRAFT re-assembly edit — replace line set + totals; If-Match version; coder ICD-only scope (§4.1 #4) */
         patch: operations["patchApiV1BillingClaimsById"];
         trace?: never;
     };
@@ -1120,6 +1253,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** All 999 / 277CA / 835 acknowledgments for a claim (§4.1 #13) */
         get: operations["getApiV1BillingClaimsByIdAcknowledgments"];
         put?: never;
         post?: never;
@@ -1136,6 +1270,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The claim_line projection for a claim (§4.1 #10) */
         get: operations["getApiV1BillingClaimsByIdLines"];
         put?: never;
         post?: never;
@@ -1154,6 +1289,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Build a TOB-817 replacement DRAFT (copies the original's lines; step-up + If-Match; 201, §4.1 #8) */
         post: operations["postApiV1BillingClaimsByIdReplace"];
         delete?: never;
         options?: never;
@@ -1168,6 +1304,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Per-claim transition timeline (cursor-paginated, §4.1 #11) */
         get: operations["getApiV1BillingClaimsByIdStatehistory"];
         put?: never;
         post?: never;
@@ -1184,6 +1321,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** All dispatch attempts for a claim (§4.1 #12) */
         get: operations["getApiV1BillingClaimsByIdSubmissions"];
         put?: never;
         post?: never;
@@ -1202,6 +1340,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** READY → SUBMITTED — emits m23.claim.submit_requested (PE scope + step-up + If-Match; 202, §4.1 #7) */
         post: operations["postApiV1BillingClaimsByIdSubmit"];
         delete?: never;
         options?: never;
@@ -1218,6 +1357,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Trigger a validation_run for a claim (the manual re-run / initial trigger; 202, §4.1 #6) */
         post: operations["postApiV1BillingClaimsByIdValidate"];
         delete?: never;
         options?: never;
@@ -1234,6 +1374,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Build a TOB-818 void DRAFT (no service lines; step-up + If-Match; 201, §4.1 #9) */
         post: operations["postApiV1BillingClaimsByIdVoid"];
         delete?: never;
         options?: never;
@@ -1250,6 +1391,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Assemble a server-authoritative DRAFT claim (lines + HIPPS + SIA + initial validation run, §4.1 #1) */
         post: operations["postApiV1BillingClaimsAssemble"];
         delete?: never;
         options?: never;
@@ -1264,6 +1406,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Per-patient eligibility-check history (§4.1 #23) */
         get: operations["getApiV1BillingEligibility"];
         put?: never;
         post?: never;
@@ -1282,6 +1425,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Force / refresh-on-stale a 270/271 eligibility round-trip (202; no MBI on the wire, §4.1 #22) */
         post: operations["postApiV1BillingEligibilityCheck"];
         delete?: never;
         options?: never;
@@ -1296,6 +1440,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The latest eligibility check for a patient (auto-refresh-on-stale read, §4.1) */
         get: operations["getApiV1BillingEligibilityLatest"];
         put?: never;
         post?: never;
@@ -1312,8 +1457,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List per-ProviderEntity MAC credentials — secrets masked, cursor-paginated (§4.1 #34) */
         get: operations["getApiV1BillingMaccredentials"];
         put?: never;
+        /** Upsert a MAC credential — clientSecret write-only/encrypted at the boundary; step-up (§4.1 #35) */
         post: operations["postApiV1BillingMaccredentials"];
         delete?: never;
         options?: never;
@@ -1328,6 +1475,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The MAC credential for one ProviderEntity, or null (§4.1) */
         get: operations["getApiV1BillingMaccredentialsByProviderEntityId"];
         put?: never;
         post?: never;
@@ -1344,6 +1492,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Per-window claim metric buckets (the M33 reporting consumer; org-wide or per-PE, §4.1 #38) */
         get: operations["getApiV1BillingMetrics"];
         put?: never;
         post?: never;
@@ -1360,6 +1509,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List validation-rule overlay rows — platform snapshot + tenant overlays (cursor-paginated, §4.1 #18) */
         get: operations["getApiV1BillingRuleconfigs"];
         put?: never;
         post?: never;
@@ -1376,12 +1526,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read a single validation-rule overlay row (§4.1) */
         get: operations["getApiV1BillingRuleconfigsById"];
         put?: never;
         post?: never;
+        /** Revert a rule overlay to the platform default (If-Match, §4.1 #21) */
         delete: operations["deleteApiV1BillingRuleconfigsById"];
         options?: never;
         head?: never;
+        /** Overlay edit — disable / re-severity / re-parameterize a rule (If-Match, §4.1 #19) */
         patch: operations["patchApiV1BillingRuleconfigsById"];
         trace?: never;
     };
@@ -1394,6 +1547,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Create a tenant CUSTOM validation rule (regulatory-required forbidden; 201, §4.1 #20) */
         post: operations["postApiV1BillingRuleconfigsCustom"];
         delete?: never;
         options?: never;
@@ -1408,8 +1562,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Per-ProviderEntity sequestration-percentage timeline — effective-dated rows (D11, §4.1 #32) */
         get: operations["getApiV1BillingSequestrationpolicies"];
         put?: never;
+        /** Forward-date a new sequestration policy row (percentage is a decimal string; 201, §4.1 #33) */
         post: operations["postApiV1BillingSequestrationpolicies"];
         delete?: never;
         options?: never;
@@ -1424,6 +1580,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The active-on-now sequestration policy for a ProviderEntity (or null, §4.1) */
         get: operations["getApiV1BillingSequestrationpoliciesActive"];
         put?: never;
         post?: never;
@@ -1732,6 +1889,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Trigger a manual_re_run validation; state → validating (202, §4.1 #6) */
         post: operations["postApiV1ClaimsByIdValidate"];
         delete?: never;
         options?: never;
@@ -1746,6 +1904,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List a claim's validation runs, most recent first (§4.1 #14) */
         get: operations["getApiV1ClaimsByIdValidationruns"];
         put?: never;
         post?: never;
@@ -1762,6 +1921,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Single validation run — per-rule results + override status (§4.1 #15) */
         get: operations["getApiV1ClaimsByIdValidationrunsByRunId"];
         put?: never;
         post?: never;
@@ -1780,6 +1940,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Override a failed validation result — approver-role ABAC + step-up (201, §4.1 #16) */
         post: operations["postApiV1ClaimsByIdValidationrunsByRunIdResultsByResultIdOverride"];
         delete?: never;
         options?: never;
@@ -2685,6 +2846,166 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/denials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1Denials"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/denials/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1DenialsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/denials/{id}/appeals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1DenialsByIdAppeals"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/denials/{id}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patchApiV1DenialsByIdAssign"];
+        trace?: never;
+    };
+    "/api/v1/denials/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1DenialsByIdClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/denials/{id}/close-write-off": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1DenialsByIdClosewriteoff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/denials/{id}/escalate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patchApiV1DenialsByIdEscalate"];
+        trace?: never;
+    };
+    "/api/v1/denials/{id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1DenialsByIdReopen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/denials/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patchApiV1DenialsByIdResolve"];
+        trace?: never;
+    };
+    "/api/v1/denials/{id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patchApiV1DenialsByIdStart"];
         trace?: never;
     };
     "/api/v1/discharges/{id}/cosign-for-cause": {
@@ -4838,6 +5159,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Per-patient / org day rollups by level-of-care (M26 cap + M27 cost-report consumers, §4.1 #39) */
         get: operations["getApiV1InternalBillingClaimdayprojection"];
         put?: never;
         post?: never;
@@ -4854,6 +5176,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Accepted submissions in a window (M25 remittance 835→claim matching, §4.1 #40) */
         get: operations["getApiV1InternalBillingSubmissions"];
         put?: never;
         post?: never;
@@ -4871,6 +5194,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getApiV1InternalCareplanRelevantelements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/denials/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1InternalDenialsMetrics"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4919,6 +5258,38 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getApiV1InternalEncountersSignedsince"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/patient-responsibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1InternalPatientresponsibility"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/remittance/reader": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1InternalRemittanceReader"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5586,6 +5957,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List NOE records — timely-filing worklist, cursor-paginated (§4.1 #24) */
         get: operations["getApiV1Noerecords"];
         put?: never;
         post?: never;
@@ -5602,6 +5974,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** NOE detail (§4.1 #25) */
         get: operations["getApiV1NoerecordsById"];
         put?: never;
         post?: never;
@@ -5620,6 +5993,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Cancel a DRAFT/READY NOE — election-reversed guard fact (§4.1 #27) */
         post: operations["postApiV1NoerecordsByIdCancel"];
         delete?: never;
         options?: never;
@@ -5636,6 +6010,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** READY → SUBMITTED — emits m23.noe.submit_requested (step-up; 202, §4.1 #26) */
         post: operations["postApiV1NoerecordsByIdSubmit"];
         delete?: never;
         options?: never;
@@ -5714,6 +6089,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List NOTR records — timely-filing worklist, cursor-paginated (§4.1 #28) */
         get: operations["getApiV1Notrrecords"];
         put?: never;
         post?: never;
@@ -5730,6 +6106,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** NOTR detail (§4.1 #29) */
         get: operations["getApiV1NotrrecordsById"];
         put?: never;
         post?: never;
@@ -5748,6 +6125,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Cancel a DRAFT/READY NOTR — terminating-event-reversed guard fact (§4.1 #31) */
         post: operations["postApiV1NotrrecordsByIdCancel"];
         delete?: never;
         options?: never;
@@ -5764,6 +6142,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** READY → SUBMITTED — emits m23.notr.submit_requested (step-up; 202, §4.1 #30) */
         post: operations["postApiV1NotrrecordsByIdSubmit"];
         delete?: never;
         options?: never;
@@ -8022,6 +8401,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/remittance/adjustments/{id}/override": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1RemittanceAdjustmentsByIdOverride"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/advices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1RemittanceAdvices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/advices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1RemittanceAdvicesById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/advices/{id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1RemittanceAdvicesByIdReplay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1RemittanceLines"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/lines/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1RemittanceLinesById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/lines/{id}/manual-match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1RemittanceLinesByIdManualmatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/remittance/unmatched": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1RemittanceUnmatched"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reporting/admin/audit/drilldowns": {
         parameters: {
             query?: never;
@@ -8862,6 +9369,38 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/taxonomy/carc/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1TaxonomyCarcByCode"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/taxonomy/overlays/{carc}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patchApiV1TaxonomyOverlaysByCarc"];
         trace?: never;
     };
     "/api/v1/tenant-overlays": {
@@ -11228,6 +11767,180 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1Appeals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AppealsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1AppealsByIdAck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1AppealsByIdAttach: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AppealsByIdClose: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AppealsByIdDecide: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AppealsByIdSubmit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AppealsByIdWithdraw: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1AssessmentsByIdCosignatures: {
         parameters: {
             query?: never;
@@ -11526,7 +12239,9 @@ export interface operations {
     };
     getApiV1BillingArdashboard: {
         parameters: {
-            query?: never;
+            query?: {
+                providerEntityId?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -11546,7 +12261,13 @@ export interface operations {
     };
     getApiV1BillingClaims: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+                providerEntityId?: string;
+                patientId?: string;
+                state?: "draft" | "validating" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "ack_partial" | "paid" | "denied" | "replaced" | "voided";
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -11617,7 +12338,33 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    lines: {
+                        lineNumber: number;
+                        revenueCode: string;
+                        qCode: string;
+                        levelOfCare: "routine_home_care" | "continuous_home_care" | "inpatient_respite_care" | "general_inpatient_care";
+                        hcpcsCode?: string;
+                        /** Format: date */
+                        serviceDateFrom: string;
+                        /** Format: date */
+                        serviceDateTo: string;
+                        unitCount: number;
+                        unitRateCents: number;
+                        lineChargeCents: number;
+                        /** Format: uuid */
+                        levelOfCarePeriodId: string;
+                        modifiers?: string[];
+                        icdPointerPositions?: number[];
+                        backingEncounterIds?: string[];
+                    }[];
+                    totalChargeCents?: number;
+                    totalExpectedPaymentCents?: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -11683,7 +12430,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -11771,7 +12525,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -11793,7 +12551,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -11813,14 +12578,48 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: date */
+                    serviceFrom: string;
+                    /** Format: date */
+                    serviceTo: string;
+                    tob: "811" | "812" | "813" | "814";
+                    electionPeriodScope?: {
+                        /** Format: uuid */
+                        electionPeriodIdFrom: string;
+                        /** Format: uuid */
+                        electionPeriodIdTo: string;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        claimId: string;
+                        /** @constant */
+                        state: "DRAFT";
+                        totalChargeCents: number;
+                        hippsCode: string;
+                        hippsRateCents: number;
+                        lineCount: number;
+                        /** Format: uuid */
+                        initialValidationRunId: string;
+                        initialValidationOutcome: "all_pass" | "failures_present" | "overrides_required";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -11828,7 +12627,9 @@ export interface operations {
     };
     getApiV1BillingEligibility: {
         parameters: {
-            query?: never;
+            query: {
+                patientId: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -11853,7 +12654,18 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: date */
+                    asOfServiceDate: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -11868,7 +12680,9 @@ export interface operations {
     };
     getApiV1BillingEligibilityLatest: {
         parameters: {
-            query?: never;
+            query: {
+                patientId: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -11888,7 +12702,10 @@ export interface operations {
     };
     getApiV1BillingMaccredentials: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -11913,7 +12730,22 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    macJurisdiction: "ngs_j6" | "ngs_jk" | "cgs_j15" | "palmetto_jj" | "palmetto_jm" | "noridian_jf" | "noridian_je";
+                    submitterId: string;
+                    tradingPartnerId: string;
+                    clientId: string;
+                    clientSecret: string;
+                    baaRecordRef?: string;
+                    /** Format: date-time */
+                    credentialExpiresAt?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -11950,7 +12782,9 @@ export interface operations {
     };
     getApiV1BillingMetrics: {
         parameters: {
-            query?: never;
+            query?: {
+                providerEntityId?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -11970,7 +12804,12 @@ export interface operations {
     };
     getApiV1BillingRuleconfigs: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+                enabled?: boolean;
+                isCustom?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -12041,7 +12880,22 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled?: boolean;
+                    severity?: "error" | "warn" | "info";
+                    overrideRoleRequired?: "billing_manager" | "compliance_officer" | "medical_director" | "org_admin";
+                    parameters?: {
+                        [key: string]: unknown;
+                    };
+                    predicateDsl?: {
+                        [key: string]: unknown;
+                    };
+                    setReason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -12061,7 +12915,24 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    ruleKey: string;
+                    severity: "error" | "warn" | "info";
+                    enabled?: boolean;
+                    overrideRoleRequired?: "billing_manager" | "compliance_officer" | "medical_director" | "org_admin";
+                    parameters?: {
+                        [key: string]: unknown;
+                    };
+                    predicateDsl?: {
+                        [key: string]: unknown;
+                    };
+                    setReason?: string;
+                    ruleVersion?: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -12076,7 +12947,9 @@ export interface operations {
     };
     getApiV1BillingSequestrationpolicies: {
         parameters: {
-            query?: never;
+            query: {
+                providerEntityId: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -12101,7 +12974,18 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    percentage: string;
+                    /** Format: date */
+                    effectiveFrom: string;
+                    setReason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -12116,7 +13000,9 @@ export interface operations {
     };
     getApiV1BillingSequestrationpoliciesActive: {
         parameters: {
-            query?: never;
+            query: {
+                providerEntityId: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -12695,7 +13581,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    overrideRole: "billing_manager" | "compliance_officer" | "medical_director" | "org_admin";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -14161,6 +15054,224 @@ export interface operations {
                         }[];
                     };
                 };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Denials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1DenialsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1DenialsByIdAppeals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1DenialsByIdAssign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1DenialsByIdClose: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1DenialsByIdClosewriteoff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1DenialsByIdEscalate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1DenialsByIdReopen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1DenialsByIdResolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1DenialsByIdStart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -17688,7 +18799,14 @@ export interface operations {
     };
     getApiV1InternalBillingClaimdayprojection: {
         parameters: {
-            query?: never;
+            query: {
+                organizationId: string;
+                mode: "patient_cap_year" | "org_cap_year" | "org_fiscal_year" | "loc_fiscal_year";
+                patientId?: string;
+                providerEntityId?: string;
+                capYear?: number;
+                fyEnd?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -17700,13 +18818,72 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        routineHomeCareDays: number;
+                        continuousHomeCareDays: number;
+                        inpatientRespiteCareDays: number;
+                        generalInpatientCareDays: number;
+                        totalDays: number;
+                    } | {
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        capYear: number;
+                        totalDays: number;
+                        inpatientDays: number;
+                    } | {
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: date */
+                        fyEnd: string;
+                        totalDays: number;
+                        unduplicatedPatientCount: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
         };
     };
     getApiV1InternalBillingSubmissions: {
+        parameters: {
+            query: {
+                organizationId: string;
+                providerEntityId: string;
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        submissions: {
+                            /** Format: uuid */
+                            submissionId: string;
+                            /** Format: uuid */
+                            claimId: string;
+                            claimControlNumber: string;
+                            /** Format: date-time */
+                            acceptedAt: string;
+                            payerClaimControlNumber: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1InternalCareplanRelevantelements: {
         parameters: {
             query?: never;
             header?: never;
@@ -17726,7 +18903,7 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
-    getApiV1InternalCareplanRelevantelements: {
+    getApiV1InternalDenialsMetrics: {
         parameters: {
             query?: never;
             header?: never;
@@ -17789,6 +18966,46 @@ export interface operations {
         };
     };
     getApiV1InternalEncountersSignedsince: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1InternalPatientresponsibility: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1InternalRemittanceReader: {
         parameters: {
             query?: never;
             header?: never;
@@ -19012,7 +20229,14 @@ export interface operations {
     };
     getApiV1Noerecords: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+                providerEntityId?: string;
+                patientId?: string;
+                admissionId?: string;
+                state?: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -19061,7 +20285,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    electionReversed: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -19202,7 +20432,15 @@ export interface operations {
     };
     getApiV1Notrrecords: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+                providerEntityId?: string;
+                patientId?: string;
+                admissionId?: string;
+                triggerKind?: "revocation" | "transfer_out" | "discharge";
+                state?: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -19251,7 +20489,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    terminatingEventReversed: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -23556,6 +24800,176 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1RemittanceAdjustmentsByIdOverride: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceAdvices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceAdvicesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1RemittanceAdvicesByIdReplay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceLines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceLinesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1RemittanceLinesByIdManualmatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RemittanceUnmatched: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1ReportingAdminAuditDrilldowns: {
         parameters: {
             query?: never;
@@ -24965,6 +26379,50 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TaxonomyCarcByCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1TaxonomyOverlaysByCarc: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                carc: string;
+            };
             cookie?: never;
         };
         requestBody?: never;

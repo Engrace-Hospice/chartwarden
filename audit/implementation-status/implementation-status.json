@@ -350,7 +350,7 @@
       "migration": true,
       "routes": true,
       "enriched": false,
-      "screens": false,
+      "screens": true,
       "tests": true,
       "adapter": true,
       "liveInfra": false
