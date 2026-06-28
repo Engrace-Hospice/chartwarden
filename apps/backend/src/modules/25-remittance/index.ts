@@ -48,3 +48,37 @@ export {
   buildDrizzleM25WriteService,
 } from "./routes/index";
 export { mountM25Routes } from "./routes/mount";
+
+// §4.4 — the upstream outbox consumers (m23.claim.rejected, m18.evv.aggregator_rejected,
+// m22.document.rendered → denial seed / EVV back-link / document back-reference). Pure handlers over an
+// injected store; module-only (NOT wired into the dispatcher subscription yet — the M23 conservative posture).
+export {
+  type DenialSeedStore,
+  type DenialOpenedEmission,
+  M25_OUTBOX_SUBSCRIPTIONS,
+  handleClaimRejected,
+  handleEvvAggregatorRejected,
+  handleDocumentRendered,
+} from "./consumers/handlers";
+
+// §4.8 — the nightly cron handlers (denial-aging rebucket + threshold alerts; appeal-deadline T-30/14/7/1
+// alerts). Pure over injected stores; the BullMQ/cron binding lands at boot (module-only here).
+export {
+  type DenialAgingStore,
+  type AppealDeadlineStore,
+  type AlertEmission,
+  runDenialAging,
+  runAppealDeadlineWatch,
+} from "./jobs/m25-jobs";
+
+// §3.7 / §8.4 — the M4 `remittance` destruction eraser (PR-ledger per-patient erase; the line history rolls
+// off via the M4 partition manager). Registered over the Phase-0 deny-stub via the injected registerEraser
+// hook by the composition root's registerModuleErasers (the M23 import-boundary posture).
+export {
+  type RemittanceEraseStore,
+  type RemittanceEraserDeps,
+  type RegisterEraserHook,
+  REMITTANCE_DATA_CLASS,
+  createRemittanceEraser,
+  registerRemittanceErasers,
+} from "./erasers/remittance-eraser";
