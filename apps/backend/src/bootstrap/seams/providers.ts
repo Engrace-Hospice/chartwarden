@@ -18,6 +18,7 @@ import type {
   CarePlanReader,
   CaseloadProvider,
   CertificationReader,
+  DeathDischargeReader,
   DocumentReader,
   DocumentRenderer,
   DocumentStorageProvider,
@@ -294,6 +295,13 @@ export const admissionStatusReaderDenyStub: AdmissionStatusReader = {
 export const admissionCensusReaderDenyStub: AdmissionCensusReader = {
   listActiveAdmissions() {
     throw new NotImplementedError("AdmissionCensusReader");
+  },
+};
+
+/** M6 — death-discharge census for a period (M30 HVLDL denominator, §4.11). Denies until M6 registers it. */
+export const deathDischargeReaderDenyStub: DeathDischargeReader = {
+  listDeathDischargesInPeriod() {
+    throw new NotImplementedError("DeathDischargeReader");
   },
 };
 

@@ -37,6 +37,13 @@ export type ProviderEntityId = string;
 /** ISO `yyyy-mm-dd` calendar date (timezone-aware math is the org's tz, done service-side). */
 export type LocalDate = string;
 
+/** An ISO-8601 instant (`yyyy-mm-ddThh:mm:ss.sssZ`). Declared MODULE-PRIVATE here (no `export`): the package
+ * already exports the canonical `IsoInstant` from ./care-plan, and admission is a LOWER leaf than care-plan
+ * (care-plan imports admission, not the reverse), so importing it would create an import cycle the no-circular
+ * fitness rule forbids. A local string alias keeps admission a base leaf with the same leaf-safe-alias idiom as
+ * `LocalDate` above — used internally only, so the package's `export *` surface keeps one exported definition. */
+type IsoInstant = string;
+
 /** The four CMS hospice levels of care (mirrors the `level_of_care` enum, §3.2). */
 export type LevelOfCare =
   | "routine_home_care"
@@ -337,4 +344,37 @@ export interface AdmissionCensusReader {
 /** §4.7 — M30 dashboard pulls open compliance windows. */
 export interface ComplianceReader {
   listOpenWindows(scope: AdmissionReaderScope): Promise<ReadonlyArray<ComplianceWindowSummary>>;
+}
+
+// ── HVLDL measure-input read seam (§4.11 / M30 HQRP) ────────────────────────────────────────────────
+// M6 owns the death-discharge fact (`discharge_event.dischargeType='death'`, joined to `admission` for the
+// patient id). M30's HVLDL measure-recompute worker needs the decedent census for a reporting period WITHOUT
+// importing M6's schema, so M6 publishes this leaf-typed reader and M30 resolves it through `getSeam`.
+
+/**
+ * One decedent row for the HVLDL denominator (§4.11). `source`/`cosignStatus` carry the §4.11 external-source
+ * breakdown the calculator records. KNOWN LIMITATION: M6's frozen `discharge_event` models only the death fact
+ * (no source / cosign columns), so the current impl returns `source='internal_clinician_recorded'` with an
+ * undefined `cosignStatus` for every decedent — the external subset stays empty and no Risk-Register flag fires.
+ * The fields live in the contract so the impl can populate them once M6 models HL7-external death intake.
+ */
+export interface DeathDischargeRow {
+  readonly patientId: PatientId;
+  readonly admissionId: AdmissionId;
+  readonly deathAt: IsoInstant;
+  readonly source: "internal_clinician_recorded" | "hl7_external";
+  readonly cosignStatus?: "cosigned" | "pending";
+}
+
+/**
+ * §4.11 — the death-discharge census read M30's HVLDL measure-recompute worker consumes. Resolved within the
+ * worker's tenant context; the M6 Drizzle impl self-scopes each call to `organizationId` (it reads on a
+ * different connection than the M30 worker, so it sets the per-request org GUC itself) with a belt-and-
+ * suspenders org-id predicate. Aggregate-but-patient-linked WITHIN one org — nothing crosses a tenant boundary.
+ */
+export interface DeathDischargeReader {
+  listDeathDischargesInPeriod(
+    organizationId: string,
+    period: { from: string; to: string },
+  ): Promise<ReadonlyArray<DeathDischargeRow>>;
 }

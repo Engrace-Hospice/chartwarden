@@ -250,6 +250,10 @@ export interface SignedEncounterDigest {
   readonly signedByMembershipId: MembershipId;
   readonly lateEntryTier: LateEntryTier;
   readonly status: EncounterStatus;
+  /** The §2.7 EVV bracket the visit finalized with (`evv_present` when both ends are EVV-verified, D9). HVLDL
+   * counts only `evv_present` qualifying-discipline visits; the M8 Drizzle reader populates it from the
+   * `encounter.evv_bracket_state` column. Additive — existing consumers ignore the field. */
+  readonly evvBracketState: EvvBracketState;
 }
 
 /** A signed addendum projection inside an {@link EncounterRenderPayload}. */

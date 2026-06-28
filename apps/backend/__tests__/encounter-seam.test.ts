@@ -105,6 +105,7 @@ describe("SignedEncountersReader (§4.7)", () => {
         signedByMembershipId: NURSE,
         lateEntryTier: "normal" as const,
         status: "signed" as const,
+        evvBracketState: "evv_present" as const,
       },
       {
         ...{
@@ -118,6 +119,7 @@ describe("SignedEncountersReader (§4.7)", () => {
           signedByMembershipId: NURSE,
           lateEntryTier: "normal" as const,
           status: "signed" as const,
+          evvBracketState: "evv_present" as const,
         },
       },
     ];

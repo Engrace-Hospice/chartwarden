@@ -21,6 +21,7 @@ export {
   createLevelOfCareReader,
   createAdmissionStatusReader,
   createAdmissionCensusReader,
+  createDeathDischargeReader,
   toActiveElectionPeriod,
   toCensusEntry,
   toElectionPeriodSummary,
@@ -31,6 +32,7 @@ export {
   getLevelOfCareReader,
   getAdmissionStatusReader,
   getAdmissionCensusReader,
+  getDeathDischargeReader,
 } from "./seams/index";
 
 // M6-T06 — the §4.1 route inventory (46 routes) behind requirePermission on the §4.5 keys M6
