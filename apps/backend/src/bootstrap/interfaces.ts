@@ -29,6 +29,7 @@ export type {
   EvvVerificationProvider,
   FaceToFaceReader,
   HopeJ2051Provider,
+  HopeOrgRollupProvider,
   HopeSubmissionProvider,
   HopeTimepointProvider,
   IdgDecisionProvider,

@@ -81,8 +81,15 @@ describe("measure-recompute worker over the REAL registry (gap closed)", () => {
       // ★ the real registry — not the old empty map.
       registrations: buildMeasureRegistry(),
       hope: {
-        timepointCompletionRollup: async () => ({}),
-        submissionPostureRollup: async () => ({}),
+        timepointCompletionRollup: async () => ({ onTime: 0, late: 0 }),
+        submissionPostureRollup: async () => ({ submissions: 0, acceptedSubmissions: 0 }),
+        sfvTimelinessRollup: async () => ({ sfvDue: 0, sfvOnTime: 0 }),
+        j2051FollowUpRollup: async () => ({
+          painTriggers: 0,
+          painFollowUpsInWindow: 0,
+          nonPainTriggers: 0,
+          nonPainFollowUpsInWindow: 0,
+        }),
         openSfvObligationCount: async () => 0,
       },
       data: { resolveInput: async () => input },

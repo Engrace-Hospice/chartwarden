@@ -36,8 +36,15 @@ const NOW = new Date("2026-04-02T03:15:00Z");
 
 /** A minimal live-HOPE consumer stub (the recompute ports require it; the operational families ignore it). */
 const hopeStub = {
-  timepointCompletionRollup: async () => ({}),
-  submissionPostureRollup: async () => ({}),
+  timepointCompletionRollup: async () => ({ onTime: 0, late: 0 }),
+  submissionPostureRollup: async () => ({ submissions: 0, acceptedSubmissions: 0 }),
+  sfvTimelinessRollup: async () => ({ sfvDue: 0, sfvOnTime: 0 }),
+  j2051FollowUpRollup: async () => ({
+    painTriggers: 0,
+    painFollowUpsInWindow: 0,
+    nonPainTriggers: 0,
+    nonPainFollowUpsInWindow: 0,
+  }),
   openSfvObligationCount: async () => 0,
 } as unknown as MeasureRecomputePorts["hope"];
 

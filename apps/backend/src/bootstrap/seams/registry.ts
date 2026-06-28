@@ -39,6 +39,7 @@ import {
   extractionProvenanceReaderDenyStub,
   faceToFaceReaderDenyStub,
   hopeJ2051ProviderDenyStub,
+  hopeOrgRollupProviderDenyStub,
   hopeSubmissionProviderDenyStub,
   hopeTimepointProviderDenyStub,
   idgDecisionProviderDenyStub,
@@ -370,6 +371,17 @@ export const REQUIRED_SEAMS = [
     ownerModule: 10,
     phi: true,
     denyStub: hopeSubmissionProviderDenyStub,
+  },
+  // M10 (HOPE Engine) ORG-LEVEL rollup seam (§2 / D10). An org-scoped AGGREGATE surface (COUNTS only, never
+  // a patient row, D6) the M30 `m30.measure_recompute` worker consumes to compute the four HOPE-family HQRP
+  // measures (timepoint on-time, submission acceptance, SFV timeliness, J2051 timely-follow-up). The rollup
+  // counts derive from patient-linked HOPE rows under RLS → phi: true; boot-validated and fail-closed until
+  // M10 registers the real Drizzle-aggregate-backed impl over the deny-stub.
+  {
+    key: "HopeOrgRollupProvider",
+    ownerModule: 10,
+    phi: true,
+    denyStub: hopeOrgRollupProviderDenyStub,
   },
   // M11 (Orders) owned seams (§2.8 D14 / §4.3). `OrderSignatureProvider` is the polymorphic clinical-
   // signature WRITE primitive (sign / record-verbal / cosign / discontinue) M12 routes medication-order

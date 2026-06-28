@@ -32,7 +32,12 @@ import type {
   EvvMetricsProvider,
   EvvVerificationProvider,
 } from "./evv";
-import type { HopeJ2051Provider, HopeSubmissionProvider, HopeTimepointProvider } from "./hope";
+import type {
+  HopeJ2051Provider,
+  HopeOrgRollupProvider,
+  HopeSubmissionProvider,
+  HopeTimepointProvider,
+} from "./hope";
 import type { IdgDecisionProvider, IdgPacketProvider, IdgScheduleProvider } from "./idg";
 import type { OrderProvider, OrderSignatureProvider } from "./orders";
 import type { PatientMutator, PatientReader } from "./patient";
@@ -143,6 +148,7 @@ export type SeamName =
   | "HopeTimepointProvider" // M10 — open/all timepoint windows + completion state (IDG, PDF timeline, HQRP, AI)
   | "HopeJ2051Provider" // M10 — J2051 trigger history + open SFV obligations (HQRP Timely-Follow-Up, AI trajectory)
   | "HopeSubmissionProvider" // M10 — per-PE submission batch status (HQRP acceptance posture, submission dashboards)
+  | "HopeOrgRollupProvider" // M10 — ORG-LEVEL aggregate HOPE rollup (M30 measure-recompute; aggregate-only COUNTS, D6)
   // M11 (Orders) owned seams (§2.8 D14 / §4.3) — also leaf-typed (interfaces in ./orders), so they are typed
   // here like M6/M7/M8/M9/M10's seams. M12 (the polymorphic medication-order signature primitive), M14 (IDG
   // "orders since last IDG"), M23 (the claim "every billed line has a covering order" rule), M30 (order-
@@ -449,6 +455,11 @@ export interface SeamContracts {
   HopeTimepointProvider: HopeTimepointProvider;
   HopeJ2051Provider: HopeJ2051Provider;
   HopeSubmissionProvider: HopeSubmissionProvider;
+  // M10's ORG-LEVEL rollup (§2 / D10 / D6) is LEAF-TYPED too — interface in ./hope (this package). Unlike
+  // the three per-entity readers above, this is an org-scoped AGGREGATE surface (COUNTS only, never a
+  // patient row); M10 registers the real Drizzle-aggregate-backed impl over the deny-stub at init, and M30's
+  // measure-recompute worker resolves it through the typed accessor with no schema import edge.
+  HopeOrgRollupProvider: HopeOrgRollupProvider;
   // M11's owned seams (§2.8 D14 / §4.3) are LEAF-TYPED too — interfaces live in ./orders (this package), so
   // the registry is statically typed against the real contract. M11 registers the real Drizzle-backed impls
   // over the deny-stubs (M11-T05); consumers that list `11` in their manifest `dependsOn` (M12/M14/M23/M30/M7)
