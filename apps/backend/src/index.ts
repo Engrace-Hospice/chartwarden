@@ -82,6 +82,7 @@ import {
   registerM30Workers,
   registerQualityErasers,
   scheduleM30Jobs,
+  wireM30Tenancy,
 } from "./modules/30-quality/index";
 // The §4.4 / M10-real HOPE consumer interface the M30 worker deps bind (composed from the three live M10
 // §D10 readers via `getSeam` in the worker-runner block below).
@@ -253,6 +254,12 @@ export function wireModuleSeams(
   // workers (the on-PRIMARY MV refresh, the lag probe, the tenant eraser) may enter withPlatformContext
   // (the allowlist starts empty → fail-closed). The M34 `wireM34Tenancy` precedent.
   wireM33Tenancy();
+  // M30 — register M30's platform job id on the @wardenx/tenancy allowlist so the §4.8 cron fan-outs
+  // (nightly recompute / monthly CAHPS sample / daily risk-register refresh / SRA reminders) may enter
+  // withPlatformContext to enumerate active orgs (the allowlist starts empty → fail-closed). Prerequisite
+  // for the cron fan-out; inert until the M2 active-org enumerator binds (issue #107, item 5). The
+  // wireM33Tenancy / wireM34Tenancy precedent.
+  wireM30Tenancy();
   // M34 — the 8 §4.6 ABAC predicate resolvers (the platform-ops tenant surface gates on
   // `tenant_lifecycle_platform_ops`, role-only; `dsar_export_*` composes the M5 CaseloadProvider seam,
   // registered above). The grant/flag/onboarding-task resolver methods are exercised by the tenant-scoped
