@@ -13,6 +13,7 @@ export * from "./result";
 export * from "./periods";
 export * from "./registry";
 export * from "./hci/index";
+export * from "./registrations";
 export * from "./hvldl/index";
 export * from "./hope_derived/index";
 export * from "./operational/index";

@@ -56,6 +56,7 @@ import {
   RiskRegisterRepository,
   type SraRemindersCronPorts,
   type CahpsAdapterResolvePort,
+  buildMeasureRegistry,
   M30_JOB_SCHEDULES,
   M30_QUEUES,
   M30_QUEUE_PARAMS,
@@ -110,8 +111,10 @@ export interface M30WorkerDeps {
   readonly activeOrgs?: ActiveOrgListPort;
   /**
    * The platform measure registry keyed by measure code (each catalog descriptor bound to its concrete pure
-   * calculator + per-family input shape at the composition root). Defaults to an EMPTY map so an unwired
-   * measure recompute fails closed (`MeasureRegistrationMissing`) loudly rather than silently no-op'ing.
+   * calculator). Defaults to the FULL `buildMeasureRegistry()` (HCI ten indicators + composite, HVLDL, the
+   * two HOPE-derived, the fifteen operational measures) so a recompute resolves its calculator by code; a
+   * measure with no registration still fails closed loudly (`MeasureRegistrationMissing`). Override only to
+   * narrow the active set (e.g. a per-FY subset).
    */
   readonly registrations?: ReadonlyMap<string, MeasureRegistration>;
   /** Injected clock (deterministic in tests; the package processors stamp every instant through this). */
@@ -193,7 +196,13 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
   // the composition root must shape each measure's input) and the two §4.10 outbox emits (RULE 3a).
   const measureRecompute: MeasureRecomputePorts = {
     processingLog,
-    registrations: deps.registrations ?? new Map<string, MeasureRegistration>(),
+    // The platform measure registry, keyed by code — every catalog descriptor bound to its concrete pure
+    // calculator (`buildMeasureRegistry()`; the HCI ten indicators + composite, HVLDL, the two HOPE-derived,
+    // the fifteen operational measures). The composition root may still override via `deps.registrations`;
+    // the default is the FULL registry so a recompute resolves a calculator by code (V-8) rather than the
+    // old empty map that failed every job closed with `MeasureRegistrationMissing`. The per-family
+    // measure-input provider (`data.resolveInput`) stays the integrator's remaining lazy-unbound seam.
+    registrations: deps.registrations ?? buildMeasureRegistry(),
     hope: deps.hope, // LIVE — the one consumed seam (§4.4 / M10-real)
     data: {
       resolveInput: () =>
@@ -583,7 +592,9 @@ export function buildM30WorkerDeps(deps: {
     cahpsAdapters: deps.cahpsAdapters,
     processingLog: deps.processingLog,
     activeOrgs: deps.activeOrgs,
-    registrations: deps.registrations,
+    // Default to the FULL catalog→calculator registry (the integrator may still override). With this the
+    // measure-recompute worker resolves a calculator by measure code instead of failing closed on an empty map.
+    registrations: deps.registrations ?? buildMeasureRegistry(),
     now: () => new Date(),
   };
 }

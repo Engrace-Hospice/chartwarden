@@ -39,7 +39,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M27 Cost Report | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | M28 FHIR Gateway | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — | ❌ |
 | M29 External Interfaces | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — | ❌ |
-| M30 HQRP & Quality | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| M30 HQRP & Quality | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ |
 | M31 Patient/Family Portal & Telehealth | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | M32 AI Platform | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — | ❌ |
 | M33 Reporting & Dashboards | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
