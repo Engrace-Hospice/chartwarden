@@ -101,6 +101,22 @@ import {
   scheduleM30Jobs,
   wireM30Tenancy,
 } from "./modules/30-quality/index";
+// M27 (Cost Report) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route mount
+// over the Drizzle read/write services, the §3.7 `cost_report_class` eraser, and the §4.8 BullMQ workers
+// (the M30 precedent). Worker infra/seam ports stay fail-closed-unbound at boot (RULE 4); the recompute
+// enqueue + the live Xero/Gusto + M6/M8 statistics seam binds are P4 follow-ups (jobs/m27-jobs.ts TODO).
+import {
+  M27_OUTBOX_EVENTS,
+  buildDrizzleM27ReadService,
+  buildDrizzleM27WriteService,
+  buildM27WorkerDeps,
+  mountM27Routes,
+  registerCostReportErasers,
+  registerM27AbacPredicates,
+  registerM27CronWorkers,
+  registerM27Workers,
+  scheduleM27Jobs,
+} from "./modules/27-cost-report/index";
 // The §4.4 / M10-real HOPE consumer interface the M30 worker deps bind (composed from the three live M10
 // §D10 readers via `getSeam` in the worker-runner block below).
 import type { QualityHopeConsumer } from "@wardenx/quality";
@@ -279,6 +295,10 @@ export function wireModuleSeams(
   // under RLS; without a db client it stays the deny-stub (slice/tests). The M5 PrivacyFlag / M39 Part-2
   // reach behind `part2Redisclosure` stays fail-closed (not in the M1 SeamContracts).
   registerM30AbacPredicates({ db: deps.db });
+  // M27 — the three §4.7 ABAC resolvers (`cost_report_editor_for_provider`,
+  // `cost_report_approver_for_provider`, `cost_report_period_active`). Pass the DB handle so the real
+  // Drizzle owner-fact resolver binds under RLS; with no db it defaults to the deny-stub (default-deny).
+  registerM27AbacPredicates({ db: deps.db });
   // M33 — register the platform job id on the @wardenx/tenancy allowlist so the §4.8 platform-scoped
   // workers (the on-PRIMARY MV refresh, the lag probe, the tenant eraser) may enter withPlatformContext
   // (the allowlist starts empty → fail-closed). The M34 `wireM34Tenancy` precedent.
@@ -420,6 +440,7 @@ export function wireModuleErasers(): void {
   registerSaasTenantPlatformErasers(); // M34 — `saas_tenant_platform_class` (tenant-offboarding control-plane cleanup; subjectId=org; D6/§8.4)
   registerReportingErasers(); // M33 — `reporting_class` (tenant-offboarding operational-row cleanup; subjectId=org; report_drilldown_audit destruction-blocked; D6/§8.4)
   registerQualityErasers(); // M30 — `quality_class` (tenant-offboarding operational-row cleanup; subjectId=org; compliance-class survey evidence destruction-blocked; D6/§8.4)
+  registerCostReportErasers(); // M27 — `cost_report_class` (tenant-offboarding operational-config cleanup; subjectId=org; submitted/accepted cost reports are survey-evidence, destruction-gated; §3.7/§8.4)
   // Phase-1 data-class owners append here as they land.
 }
 
@@ -453,6 +474,7 @@ if ((import.meta as { main?: boolean }).main) {
   // completeness but is intentionally NOT bound (its emit payloads are non-conformant — zero regression).
   // A duplicate `eventName` across contributions fails boot here (OutboxEventCollisionError — fail-closed).
   const bootOutboxCatalog = buildBootOutboxCatalog([
+    M27_OUTBOX_EVENTS,
     M30_OUTBOX_EVENTS,
     M33_OUTBOX_EVENTS,
     M34_OUTBOX_EVENTS,
@@ -462,6 +484,7 @@ if ((import.meta as { main?: boolean }).main) {
   // dispatcher's namespace check requires it). Each forwards the caller's open tx + envelope to the shared
   // publisher. M30/M33/M34 — M34's lifecycle outbox now binds too (#107; its emit is gated to the conformant
   // `m34.tenant.provisioned` event, so no mutation rolls back).
+  const m27OutboxPublisher = bindCallerModule(txOutboxPublisher, "m27");
   const m30OutboxPublisher = bindCallerModule(txOutboxPublisher, "m30");
   const m33OutboxPublisher = bindCallerModule(txOutboxPublisher, "m33");
   const m34OutboxPublisher = bindCallerModule(txOutboxPublisher, "m34");
@@ -568,6 +591,17 @@ if ((import.meta as { main?: boolean }).main) {
               // compliance inserts (incident / infection / QAPI program / CAHPS ingest), inside the
               // mutation's own org-context tx. Removes the prior fail-closed 503.
               providerEntity: buildPrimaryProviderEntityResolver(),
+            }),
+          });
+          // M27 (Cost Report) — mount the §4.1 route plugins over the Drizzle READ + WRITE services. Each
+          // mutation opens its own withOrgContext (RLS scopes every statement to app.org_id) and emits its
+          // §4.10 m27.* event through the catalog-validating tx publisher (callerModule `m27`) in the same
+          // unit of work. The §4.8 recompute enqueue is left on its safe no-op default (the refresh/validate/
+          // allocate routes still succeed; the BullMQ producer-adapter binds in P4 — m27-jobs.ts TODO).
+          mountM27Routes(app, {
+            readService: buildDrizzleM27ReadService(dbHandle.db),
+            writeService: buildDrizzleM27WriteService(dbHandle.db, {
+              outbox: m27OutboxPublisher,
             }),
           });
         }
@@ -725,6 +759,28 @@ if ((import.meta as { main?: boolean }).main) {
       app.log.error(err, "M30 cron-schedule registration failed");
     }
     app.log.info({ queues: m30Workers.length }, "M30 §4.8 BullMQ HQRP/quality workers constructed");
+    // ── M27 §4.8 Cost-Report workers + the filing-deadline cron (same worker-runner shape) ──────────────
+    // buildM27WorkerDeps binds only the connection + db; every infra/seam port stays fail-closed-unbound at
+    // boot (RULE 4 — the typed thunks in m27-jobs.ts throw only when a JOB RUNS, so boot stays green). The
+    // live binds (transactional outbox, M1 DEK, Xero/Gusto pull seams, M6/M8 statistics seams, the M2
+    // active-org enumerator for the filing-deadline cron fan-out, the M36 alert router) are P4 follow-ups.
+    const m27WorkerDeps = buildM27WorkerDeps({
+      connection: queueConnection,
+      db: dbHandle.db,
+    });
+    const m27Workers = [...registerM27Workers(m27WorkerDeps), ...registerM27CronWorkers(m27WorkerDeps)];
+    app.addHook("onClose", async () => {
+      await Promise.all(m27Workers.map((w) => w.close()));
+    });
+    try {
+      const m27ScheduleQueues = await scheduleM27Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m27ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M27 cron-schedule registration failed");
+    }
+    app.log.info({ queues: m27Workers.length }, "M27 §4.8 BullMQ cost-report workers constructed");
   }
 
   const port = Number(process.env.PORT ?? 3000);

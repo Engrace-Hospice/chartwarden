@@ -779,7 +779,13 @@ export const MODULES: ModuleDef[] = [
       "packages/gusto-client",
       "apps/backend/src/modules/27-cost-report",
     ],
-    dependsOn: [23, 26, 38],
+    // ADR-0005: genuine compile-time edges only. +M1: the backend repos/services/workers/eraser import
+    // the @wardenx/db barrel + the M1-owned bootstrap registry (registerEraser) — a real compile edge, so
+    // M1 is declared (the M5..M18 "+M1: the bootstrap seam registry" precedent). The broader relationship
+    // inventory (M2/M3/M4 foundation helpers reached via the always-importable packages/auth/tenancy/audit;
+    // M6/M8/M12/M13/M22/M36/M40 seam+outbox consumers; M23/M26 forward-seam deny-stubs) stays no-edge per
+    // D1/D4. M23/M26 are not yet locked → consumed as deny-stubs (D12/D13).
+    dependsOn: [1, 23, 26, 38],
     ownedTables: [
       "bad_debt_record",
       "cost_center_mapping",

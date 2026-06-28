@@ -733,7 +733,7 @@ exports.MODULES = [
       "packages/gusto-client",
       "apps/backend/src/modules/27-cost-report",
     ],
-    dependsOn: [23, 26, 38],
+    dependsOn: [1, 23, 26, 38],
     ownedTables: [
       "bad_debt_record",
       "cost_center_mapping",
