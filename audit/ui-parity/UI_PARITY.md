@@ -4,7 +4,7 @@
 > corpus is consistent; this shows how much of it is BUILT in `apps/web`. Do not hand-edit —
 > the `ui:parity --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 21 module screen-sets registered · 109 screens wired in `apps/web`.
+**Coverage:** 113 documented screen specs · 22 module screen-sets registered · 127 screens wired in `apps/web`.
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -112,6 +112,24 @@
 | 22-documents | `documents.version-history` | `/documents/:documentId/versions` | `documents.read_history` | ✅ |
 | 22-documents | `documents.intake-batch` | `/intake/:batchId` | `intake.read` | ✅ |
 | 22-documents | `documents.template-library` | `/admin/forms/templates` | `documents.read_templates` | ✅ |
+| 23-billing-medicare | `billing.ar-dashboard` | `/billing` | `billing.claim.read_ar_dashboard` | ✅ |
+| 23-billing-medicare | `billing.claims` | `/billing/claims` | `billing.claim.read` | ✅ |
+| 23-billing-medicare | `billing.claim.new` | `/billing/claims/new` | `billing.claim.assemble` | ✅ |
+| 23-billing-medicare | `billing.claim` | `/billing/claims/:claimId` | `billing.claim.read` | ✅ |
+| 23-billing-medicare | `billing.claim.validation` | `/billing/claims/:claimId/validation` | `billing.validation.read_run` | ✅ |
+| 23-billing-medicare | `billing.claim.submissions` | `/billing/claims/:claimId/submissions` | `billing.claim.read` | ✅ |
+| 23-billing-medicare | `billing.claim.acknowledgments` | `/billing/claims/:claimId/acknowledgments` | `billing.claim.read` | ✅ |
+| 23-billing-medicare | `billing.noe` | `/billing/noe` | `billing.noe.read` | ✅ |
+| 23-billing-medicare | `billing.noe.detail` | `/billing/noe/:noeId` | `billing.noe.read` | ✅ |
+| 23-billing-medicare | `billing.notr` | `/billing/notr` | `billing.notr.read` | ✅ |
+| 23-billing-medicare | `billing.notr.detail` | `/billing/notr/:notrId` | `billing.notr.read` | ✅ |
+| 23-billing-medicare | `billing.rule-config` | `/billing/rule-config` | `billing.rule_config.read` | ✅ |
+| 23-billing-medicare | `billing.eligibility` | `/billing/eligibility` | `billing.eligibility.read` | ✅ |
+| 23-billing-medicare | `billing.sequestration` | `/billing/sequestration-policy` | `billing.sequestration_policy.read` | ✅ |
+| 23-billing-medicare | `billing.mac-credentials` | `/billing/mac-credentials` | `billing.mac_credential.read` | ✅ |
+| 23-billing-medicare | `billing.overrides` | `/billing/overrides` | `billing.validation.read_override` | ✅ |
+| 23-billing-medicare | `billing.metrics` | `/billing/metrics` | `billing.claim.read_metrics` | ✅ |
+| 23-billing-medicare | `billing.surveyor-audit` | `/admin/billing-audit` | `billing.claim.read` | ✅ |
 | 33-reporting | `reporting.catalog` | `/reports` | `report.dashboard.list` | ✅ |
 | 33-reporting | `reporting.dashboard` | `/reports/dashboards/:dashboardId` | `report.dashboard.read` | ✅ |
 | 33-reporting | `reporting.role-dashboard` | `/reports/role/:roleKey` | `report.dashboard.read` | ✅ |

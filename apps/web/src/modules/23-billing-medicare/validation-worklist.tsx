@@ -1,0 +1,643 @@
+import {
+  EmptyState,
+  Glyph,
+  GuardChip,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
+// apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the CLAIM VALIDATION WORKLIST (R2,
+// §5.1 #5 + #6 override modal). The §11.A worklist: a role="table" of the selected run's per-rule results,
+// each with a §6.6 severity StatusPill, a PHI-free remediation hint that deep-links into the owning module's
+// editor (Edit in M6 / Cosign in M8 / Refresh Eligibility), and an Override affordance per FAILED rule. The
+// override modal captures a ≥40-char rationale (server CHECK-enforced) + the acting override role, and
+// surfaces the rule's regulatory-required posture prominently via a GuardChip. Backed by the existing routes:
+//   GET  /api/v1/claims/{id}/validation-runs                                   → { claimId, runs[] }
+//   GET  /api/v1/claims/{id}/validation-runs/{runId}                           → run + per-rule results
+//   POST /api/v1/claims/{id}/validation-runs/{runId}/results/{resultId}/override
+//   GET  /api/v1/billing/rule-configs (best-effort)  → regulatory-required overlay per ruleKey
+// The server is the only authz point (ADR-0030): a 503 (seam unbound) degrades the surface; the override is
+// §4.7 override_role_eligible + §D14 step-up + §D13 AI-block gated server-side, so a 401/403 step-up failure
+// or a 422 (reason too short) surfaces inline (role="alert"), never a toast. Lantern: WorkQueueLayout +
+// No-Line role="table" (§6.7), mono ruleKey, CSS-var tokens only; tones via billing-status.ts.
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { JSX, ReactNode } from "react";
+import { useParams } from "react-router-dom";
+import { statusLabel, validationRunTone, validationSeverityTone } from "./billing-status";
+
+type ValidationSeverity = "error" | "warn" | "info";
+type ValidationResultOutcome = "pass" | "fail" | "warn" | "info";
+type OverrideRole = "billing_manager" | "compliance_officer" | "medical_director" | "org_admin";
+
+const OVERRIDE_ROLES: { value: OverrideRole; label: string }[] = [
+  { value: "billing_manager", label: "Billing Manager" },
+  { value: "compliance_officer", label: "Compliance Officer" },
+  { value: "medical_director", label: "Medical Director" },
+  { value: "org_admin", label: "Org Admin" },
+];
+
+const MIN_REASON_LENGTH = 40;
+
+interface Remediation {
+  summary?: string;
+  blameTarget?: string;
+  blameTargetId?: string;
+  fixAction?: string;
+  fixDeepLink?: string;
+}
+
+interface ValidationOverrideView {
+  overrideId: string;
+  reason: string;
+  overrideRoleApplied: OverrideRole;
+  appliedAt: string;
+}
+
+interface ValidationResultView {
+  resultId: string;
+  validationRunId: string;
+  ruleKey: string;
+  ruleVersion: number;
+  severity: ValidationSeverity;
+  outcome: ValidationResultOutcome;
+  remediation: Remediation | null;
+  overridden: boolean;
+  override: ValidationOverrideView | null;
+  recordedAt: string;
+}
+
+interface ValidationRunView {
+  validationRunId: string;
+  claimId: string;
+  trigger: string;
+  outcome: string;
+  rulesExecuted: number;
+  rulesPassed: number;
+  rulesFailed: number;
+  rulesWarn: number;
+  rulesInfo: number;
+  startedAt: string;
+  completedAt: string;
+  durationMs: number;
+}
+
+interface ValidationRunDetailView extends ValidationRunView {
+  results: ValidationResultView[];
+}
+
+interface RunListResponse {
+  claimId: string;
+  runs: ValidationRunView[];
+}
+
+interface RuleConfigView {
+  ruleKey: string;
+  regulatoryRequiredSnapshot: boolean;
+}
+
+// Map the structured remediation fixAction → the human label of its deep-link CTA (§4.5).
+function fixActionLabel(action: string | undefined): string {
+  switch (action) {
+    case "edit_in_m6":
+      return "Edit in Admission";
+    case "cosign_in_m8":
+      return "Cosign encounter";
+    case "refresh_eligibility":
+      return "Refresh eligibility";
+    default:
+      return "Fix";
+  }
+}
+
+export function ValidationWorklist(): JSX.Element {
+  const client = useApiClient();
+  const { claimId } = useParams<{ claimId: string }>();
+  const [runs, setRuns] = useState<ValidationRunView[]>([]);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<ValidationRunDetailView | null>(null);
+  const [regulatory, setRegulatory] = useState<Map<string, boolean>>(new Map());
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [overrideTarget, setOverrideTarget] = useState<ValidationResultView | null>(null);
+
+  // Load the run list (anchor read) + a best-effort regulatory-required overlay from the rule library.
+  const loadRuns = useCallback(async () => {
+    if (!claimId) return;
+    setLoading(true);
+    setError(null);
+    const [runRes, ruleRes] = await Promise.all([
+      client.GET("/api/v1/claims/{id}/validation-runs", {
+        params: { path: { id: claimId } },
+      }),
+      client.GET("/api/v1/billing/rule-configs"),
+    ]);
+    if (runRes.error) {
+      setError("Validation worklist unavailable — the billing read seam is not bound, or you lack scope.");
+      setLoading(false);
+      return;
+    }
+    const list = (runRes.data as unknown as RunListResponse | undefined)?.runs ?? [];
+    setRuns(list as ValidationRunView[]);
+    setActiveRunId((prev) => prev ?? list[0]?.validationRunId ?? null);
+    // Best-effort overlay: a worklist user may lack billing.rule_config.read — then the GuardChip falls back
+    // to a generic "overriding is audited" message rather than the regulatory-required escalation.
+    if (!ruleRes.error) {
+      const items = ((ruleRes.data as unknown as { items?: RuleConfigView[] })?.items ?? []) as RuleConfigView[];
+      setRegulatory(new Map(items.map((r) => [r.ruleKey, r.regulatoryRequiredSnapshot])));
+    }
+    setLoading(false);
+  }, [client, claimId]);
+
+  useEffect(() => {
+    void loadRuns();
+  }, [loadRuns]);
+
+  // Load the active run's per-rule results whenever the selection changes.
+  const loadDetail = useCallback(async () => {
+    if (!claimId || !activeRunId) {
+      setDetail(null);
+      return;
+    }
+    const { data, error: err } = await client.GET("/api/v1/claims/{id}/validation-runs/{runId}", {
+      params: { path: { id: claimId, runId: activeRunId } },
+    });
+    setDetail(err ? null : (data as unknown as ValidationRunDetailView));
+  }, [client, claimId, activeRunId]);
+
+  useEffect(() => {
+    void loadDetail();
+  }, [loadDetail]);
+
+  const sortedResults = useMemo(() => {
+    const order: Record<ValidationResultOutcome, number> = { fail: 0, warn: 1, info: 2, pass: 3 };
+    return [...(detail?.results ?? [])].sort((a, b) => order[a.outcome] - order[b.outcome]);
+  }, [detail]);
+
+  if (!claimId) return <EmptyState title="No claim" description="No claim was specified." />;
+  if (loading) return <LoadingSpinner />;
+  if (error) return <EmptyState title="Unavailable" description={error} />;
+  if (runs.length === 0)
+    return (
+      <EmptyState
+        title="No validation runs"
+        description="This claim has not been validated yet. Assemble or validate the claim to produce a run."
+      />
+    );
+
+  return (
+    <>
+      <WorkQueueLayout
+        header={
+          <PageHeader
+            title="Validation Worklist"
+            breadcrumb={`Billing — Medicare · Claim ${claimId}`}
+          />
+        }
+        filters={<RunSelector runs={runs} activeRunId={activeRunId} onSelect={setActiveRunId} />}
+        table={
+          detail ? (
+            <ResultsTable
+              results={sortedResults}
+              regulatory={regulatory}
+              onOverride={(r) => setOverrideTarget(r)}
+            />
+          ) : (
+            <LoadingSpinner />
+          )
+        }
+        detail={undefined}
+      />
+      {overrideTarget ? (
+        <OverrideModal
+          claimId={claimId}
+          result={overrideTarget}
+          regulatoryRequired={regulatory.get(overrideTarget.ruleKey)}
+          onClose={() => setOverrideTarget(null)}
+          onApplied={() => {
+            setOverrideTarget(null);
+            void loadDetail();
+            void loadRuns();
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
+
+// ── run selector (most-recent-first) ──────────────────────────────────────────────────────────────────
+function RunSelector({
+  runs,
+  activeRunId,
+  onSelect,
+}: {
+  runs: ValidationRunView[];
+  activeRunId: string | null;
+  onSelect: (runId: string) => void;
+}): JSX.Element {
+  return (
+    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+      <span style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>
+        Validation run
+      </span>
+      <select
+        aria-label="Validation run"
+        value={activeRunId ?? ""}
+        onChange={(e) => onSelect(e.target.value)}
+        style={selectStyle}
+      >
+        {runs.map((r) => (
+          <option key={r.validationRunId} value={r.validationRunId}>
+            {statusLabel(r.outcome)} · {r.rulesFailed} failed / {r.rulesWarn} warn ·{" "}
+            {new Date(r.completedAt).toLocaleString()}
+          </option>
+        ))}
+      </select>
+      {(() => {
+        const active = runs.find((r) => r.validationRunId === activeRunId);
+        return active ? (
+          <StatusPill label={statusLabel(active.outcome)} tone={validationRunTone(active.outcome)} />
+        ) : null;
+      })()}
+    </label>
+  );
+}
+
+// ── per-rule results table (§5.4: role="table", keyboard-navigable, override aria-label includes ruleKey) ─
+function ResultsTable({
+  results,
+  regulatory,
+  onOverride,
+}: {
+  results: ValidationResultView[];
+  regulatory: Map<string, boolean>;
+  onOverride: (r: ValidationResultView) => void;
+}): JSX.Element {
+  if (results.length === 0)
+    return <EmptyState title="No results" description="This run produced no per-rule results." />;
+  return (
+    <table role="table" style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+      <thead>
+        <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
+          <th style={thStyle}>Rule</th>
+          <th style={thStyle}>Severity</th>
+          <th style={thStyle}>Outcome</th>
+          <th style={thStyle}>Remediation</th>
+          <th style={{ ...thStyle, textAlign: "right" }}>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {results.map((r, i) => {
+          const failed = r.outcome === "fail";
+          const regReq = regulatory.get(r.ruleKey) === true;
+          return (
+            <tr
+              key={r.resultId}
+              style={{ background: i % 2 === 1 ? "var(--color-surface-low)" : "transparent" }}
+            >
+              <td style={{ ...tdStyle, fontFamily: "var(--font-mono)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                  {r.ruleKey}
+                  {regReq ? (
+                    <span title="Regulatory-required rule" aria-label="Regulatory-required rule">
+                      <Glyph name="shield" size={13} label="regulatory-required" />
+                    </span>
+                  ) : null}
+                </div>
+              </td>
+              <td style={tdStyle}>
+                <StatusPill
+                  label={statusLabel(r.severity)}
+                  tone={validationSeverityTone(r.severity)}
+                />
+              </td>
+              <td style={tdStyle}>
+                {r.overridden ? (
+                  <StatusPill label="Overridden" tone="warning" />
+                ) : (
+                  <StatusPill label={statusLabel(r.outcome)} tone={outcomeTone(r.outcome)} />
+                )}
+              </td>
+              <td style={{ ...tdStyle, maxWidth: "22rem" }}>
+                <RemediationCell remediation={r.remediation} />
+              </td>
+              <td style={{ ...tdStyle, textAlign: "right" }}>
+                {failed && !r.overridden ? (
+                  <button
+                    type="button"
+                    onClick={() => onOverride(r)}
+                    aria-label={`Override rule ${r.ruleKey}`}
+                    style={ghostButtonStyle}
+                  >
+                    Override
+                  </button>
+                ) : r.overridden ? (
+                  <span style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>
+                    {r.override ? statusLabel(r.override.overrideRoleApplied) : "Applied"}
+                  </span>
+                ) : (
+                  <span style={{ color: "var(--color-on-surface-variant)" }}>—</span>
+                )}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+// ── remediation cell — summary + a deep-link CTA into the owning module's editor ───────────────────────
+function RemediationCell({ remediation }: { remediation: Remediation | null }): JSX.Element {
+  if (!remediation?.summary)
+    return <span style={{ color: "var(--color-on-surface-variant)" }}>—</span>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+      <span style={{ color: "var(--color-on-surface)" }}>{remediation.summary}</span>
+      {remediation.fixDeepLink ? (
+        <a
+          href={remediation.fixDeepLink}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.25rem",
+            fontSize: "0.78rem",
+            color: "var(--color-primary)",
+            textDecoration: "none",
+          }}
+        >
+          {fixActionLabel(remediation.fixAction)}
+          <Glyph name="arrow-right" size={12} label="" />
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
+// ── override modal (§5.1 #6) — ≥40-char rationale + override role; GuardChip surfaces regulatory posture ─
+function OverrideModal({
+  claimId,
+  result,
+  regulatoryRequired,
+  onClose,
+  onApplied,
+}: {
+  claimId: string;
+  result: ValidationResultView;
+  regulatoryRequired: boolean | undefined;
+  onClose: () => void;
+  onApplied: () => void;
+}): JSX.Element {
+  const client = useApiClient();
+  const [reason, setReason] = useState("");
+  const [overrideRole, setOverrideRole] = useState<OverrideRole>("billing_manager");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const reasonTooShort = reason.trim().length < MIN_REASON_LENGTH;
+  const remaining = MIN_REASON_LENGTH - reason.trim().length;
+
+  const apply = useCallback(async () => {
+    if (reasonTooShort) return;
+    setBusy(true);
+    setError(null);
+    const { error: err, response } = (await client.POST(
+      "/api/v1/claims/{id}/validation-runs/{runId}/results/{resultId}/override",
+      {
+        params: {
+          path: { id: claimId, runId: result.validationRunId, resultId: result.resultId },
+        },
+        body: { reason: reason.trim(), overrideRole },
+      } as never,
+    )) as { error?: { error?: { code?: string } }; response?: Response };
+    if (err) {
+      setError(overrideErrorMessage(err?.error?.code, response?.status));
+      setBusy(false);
+      return;
+    }
+    setBusy(false);
+    onApplied();
+  }, [client, claimId, result, reason, reasonTooShort, overrideRole, onApplied]);
+
+  const errorId = "override-reason-error";
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="override-title"
+      style={backdropStyle}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div style={modalStyle}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <h2 id="override-title" style={{ ...modalTitleStyle, margin: 0 }}>
+            Override validation rule
+          </h2>
+          <button type="button" onClick={onClose} aria-label="Close" style={iconButtonStyle}>
+            <Glyph name="close" size={16} label="" />
+          </button>
+        </div>
+
+        <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--color-on-surface-variant)" }}>
+          Rule{" "}
+          <span style={{ fontFamily: "var(--font-mono)", color: "var(--color-on-surface)" }}>
+            {result.ruleKey}
+          </span>{" "}
+          (v{result.ruleVersion}) ·{" "}
+          <StatusPill label={statusLabel(result.severity)} tone={validationSeverityTone(result.severity)} />
+        </p>
+
+        {/* Regulatory posture surfaced prominently (§5.1 #6). regulatory-required → error-toned escalation;
+            unknown / non-regulatory → a generic audited-action chip. */}
+        {regulatoryRequired === true ? (
+          <GuardChip
+            tone="error"
+            reason="Regulatory-required rule — overriding is recorded to the M4 audit trail and reported on survey."
+          />
+        ) : (
+          <GuardChip
+            tone="warning"
+            reason="Overriding a failed validation rule is recorded to the M4 audit trail."
+          />
+        )}
+
+        <label style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+          <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface)" }}>Acting role</span>
+          <select
+            aria-label="Override role"
+            value={overrideRole}
+            onChange={(e) => setOverrideRole(e.target.value as OverrideRole)}
+            style={selectStyle}
+          >
+            {OVERRIDE_ROLES.map((r) => (
+              <option key={r.value} value={r.value}>
+                {r.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+          <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface)" }}>
+            Override rationale (≥ {MIN_REASON_LENGTH} characters)
+          </span>
+          <textarea
+            aria-label="Override rationale"
+            aria-describedby={reasonTooShort ? errorId : undefined}
+            aria-invalid={reasonTooShort}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={4}
+            style={textareaStyle}
+          />
+          {reasonTooShort ? (
+            <span id={errorId} style={{ fontSize: "0.75rem", color: "var(--color-error)" }}>
+              {remaining} more character{remaining === 1 ? "" : "s"} required.
+            </span>
+          ) : null}
+        </label>
+
+        {error ? (
+          <p role="alert" style={{ margin: 0, fontSize: "0.82rem", color: "var(--color-error)" }}>
+            {error}
+          </p>
+        ) : null}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+          <button type="button" onClick={onClose} style={ghostButtonStyle}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => void apply()}
+            disabled={reasonTooShort || busy}
+            aria-disabled={reasonTooShort || busy}
+            style={reasonTooShort || busy ? disabledButtonStyle : primaryButtonStyle}
+          >
+            {busy ? "Applying…" : "Apply override"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function outcomeTone(outcome: ValidationResultOutcome): "success" | "error" | "warning" | "neutral" {
+  switch (outcome) {
+    case "pass":
+      return "success";
+    case "fail":
+      return "error";
+    case "warn":
+      return "warning";
+    default:
+      return "neutral";
+  }
+}
+
+// Map the override error envelope (§4.7 / §D14) to a precise, PHI-free inline message.
+function overrideErrorMessage(code: string | undefined, status: number | undefined): string {
+  switch (code) {
+    case "OVERRIDE_ROLE_NOT_ELIGIBLE":
+      return "Your role is not eligible to override this rule.";
+    case "STEP_UP_REQUIRED":
+      return "Re-authentication (step-up) is required before applying an override.";
+    default:
+      if (status === 401 || status === 403)
+        return "Re-authentication (step-up) or a higher role is required to override this rule.";
+      if (status === 422) return "The rationale did not meet the minimum length — add more detail.";
+      if (status === 412) return "This result changed since you opened it — reopen the worklist to retry.";
+      if (status === 503) return "The override seam is unavailable — try again shortly.";
+      return "The override could not be applied.";
+  }
+}
+
+const thStyle = {
+  padding: "0.5rem 0.75rem",
+  fontSize: "0.7rem",
+  fontWeight: 600,
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+};
+const tdStyle = { padding: "0.5rem 0.75rem", color: "var(--color-on-surface)", verticalAlign: "top" as const };
+const selectStyle = {
+  padding: "0.35rem 0.5rem",
+  borderRadius: "var(--radius-md)",
+  border: "none",
+  background: "var(--color-surface-low)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.85rem",
+};
+const textareaStyle = {
+  padding: "0.5rem 0.6rem",
+  borderRadius: "var(--radius-md)",
+  border: "none",
+  background: "var(--color-surface-low)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.9rem",
+  resize: "vertical" as const,
+  fontFamily: "inherit",
+};
+const primaryButtonStyle = {
+  padding: "0.45rem 0.95rem",
+  borderRadius: "var(--radius-md)",
+  border: "none",
+  cursor: "pointer",
+  background: "var(--color-primary)",
+  color: "var(--color-on-primary)",
+  fontSize: "0.82rem",
+  fontWeight: 600,
+};
+const ghostButtonStyle = {
+  padding: "0.45rem 0.95rem",
+  borderRadius: "var(--radius-md)",
+  border: "none",
+  cursor: "pointer",
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.82rem",
+  fontWeight: 600,
+  textDecoration: "none",
+};
+const disabledButtonStyle = { ...ghostButtonStyle, cursor: "not-allowed", opacity: 0.5 };
+const iconButtonStyle = {
+  padding: "0.25rem",
+  borderRadius: "var(--radius-md)",
+  border: "none",
+  cursor: "pointer",
+  background: "transparent",
+  color: "var(--color-on-surface-variant)",
+  display: "flex",
+};
+const backdropStyle = {
+  position: "fixed" as const,
+  inset: 0,
+  background: "var(--color-scrim, rgba(0,0,0,0.45))",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "1rem",
+  zIndex: 1000,
+};
+const modalStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "1rem",
+  width: "min(34rem, 100%)",
+  maxHeight: "90vh",
+  overflowY: "auto" as const,
+  background: "var(--color-surface-lowest)",
+  borderRadius: "var(--radius-xl, 1rem)",
+  boxShadow: "var(--shadow-elevated, var(--shadow-soft))",
+  padding: "1.5rem",
+};
+const modalTitleStyle = {
+  fontFamily: "var(--font-display)",
+  fontSize: "1.1rem",
+  fontWeight: 500,
+  color: "var(--color-on-surface)",
+};

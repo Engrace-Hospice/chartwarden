@@ -29,6 +29,7 @@
     "17-scheduling",
     "18-evv",
     "22-documents",
+    "23-billing-medicare",
     "33-reporting",
     "34-saas",
     "36-messaging",
@@ -644,6 +645,132 @@
       "id": "documents.template-library",
       "path": "/admin/forms/templates",
       "permission": "documents.read_templates"
+    },
+    {
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "billing.ar-dashboard",
+      "path": "/billing",
+      "permission": "billing.claim.read_ar_dashboard"
+    },
+    {
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "billing.claims",
+      "path": "/billing/claims",
+      "permission": "billing.claim.read"
+    },
+    {
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "billing.claim.new",
+      "path": "/billing/claims/new",
+      "permission": "billing.claim.assemble"
+    },
+    {
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "billing.claim",
+      "path": "/billing/claims/:claimId",
+      "permission": "billing.claim.read"
+    },
+    {
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "billing.claim.validation",
+      "path": "/billing/claims/:claimId/validation",
+      "permission": "billing.validation.read_run"
+    },
+    {
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "billing.claim.submissions",
+      "path": "/billing/claims/:claimId/submissions",
+      "permission": "billing.claim.read"
+    },
+    {
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "billing.claim.acknowledgments",
+      "path": "/billing/claims/:claimId/acknowledgments",
+      "permission": "billing.claim.read"
+    },
+    {
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "billing.noe",
+      "path": "/billing/noe",
+      "permission": "billing.noe.read"
+    },
+    {
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "billing.noe.detail",
+      "path": "/billing/noe/:noeId",
+      "permission": "billing.noe.read"
+    },
+    {
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "billing.notr",
+      "path": "/billing/notr",
+      "permission": "billing.notr.read"
+    },
+    {
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "billing.notr.detail",
+      "path": "/billing/notr/:notrId",
+      "permission": "billing.notr.read"
+    },
+    {
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "billing.rule-config",
+      "path": "/billing/rule-config",
+      "permission": "billing.rule_config.read"
+    },
+    {
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "billing.eligibility",
+      "path": "/billing/eligibility",
+      "permission": "billing.eligibility.read"
+    },
+    {
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "billing.sequestration",
+      "path": "/billing/sequestration-policy",
+      "permission": "billing.sequestration_policy.read"
+    },
+    {
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "billing.mac-credentials",
+      "path": "/billing/mac-credentials",
+      "permission": "billing.mac_credential.read"
+    },
+    {
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "billing.overrides",
+      "path": "/billing/overrides",
+      "permission": "billing.validation.read_override"
+    },
+    {
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "billing.metrics",
+      "path": "/billing/metrics",
+      "permission": "billing.claim.read_metrics"
+    },
+    {
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "billing.surveyor-audit",
+      "path": "/admin/billing-audit",
+      "permission": "billing.claim.read"
     },
     {
       "module": "33-reporting",
