@@ -15,6 +15,7 @@
 // per the #107 brief). The in-memory double seeds the intermediate rows directly so the provider's
 // derivation (the single correctness-critical logic) is exercised with no DB.
 import { type DbClient, schema } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import {
   J2051_SEVERITY_ORDER,
   type HopeRollupPeriod,
@@ -121,99 +122,124 @@ function extractEntries(data: unknown): J2051SeverityEntry[] {
 }
 
 /**
- * The production {@link HopeOrgRollupStore} over M10's tables. Closes over the pooled `DbClient` (the
- * composition root supplies it via `registerHopeSeams({ db })`); the worker's `withOrgContext` envelope sets
- * `app.org_id` for RLS, and every query additionally pins `organization_id = $org` (HARD RULE 1).
+ * The `app.user_id` the rollup's `withOrgContext` envelope carries — the empty-string system sentinel the M4
+ * audit trigger NULLIFs (an aggregate read has no acting user). Reads emit no audited row, but withOrgContext
+ * requires a userId.
+ */
+const HOPE_ROLLUP_SYSTEM_USER_ID = "";
+
+/**
+ * The production {@link HopeOrgRollupStore} over M10's tables. Closes over the pooled `DbClient`; each method
+ * opens its OWN per-org `withOrgContext` envelope (#107 item 4a) so `app.org_id` is set for RLS on this
+ * connection — the M30 worker's envelope is on a DIFFERENT (M30) connection and does not reach here. Every
+ * query ALSO pins `organization_id = $org` (HARD RULE 1: the org param is the authoritative scope, RLS is the
+ * second wall). Aggregate-only (D6) — only counts leave the seam.
  */
 export function createDrizzleHopeOrgRollupStore(db: DbClient): HopeOrgRollupStore {
+  /** Run `fn` inside this org's RLS envelope (sets app.org_id on the rollup connection). */
+  const scoped = <T>(organizationId: string, fn: (tx: DbClient) => Promise<T>): Promise<T> =>
+    withOrgContext(db, { organizationId, userId: HOPE_ROLLUP_SYSTEM_USER_ID }, (tx) =>
+      fn(tx as unknown as DbClient),
+    );
+
   return {
-    async completedTimepoints(organizationId, period) {
+    completedTimepoints(organizationId, period) {
       // Completed schedule windows whose COMPLETING assessment was signed within the period (the completion
       // event is the period anchor); on-time vs late is decided in the provider against `lateDeadlineAt`.
-      const rows = await db
-        .select({ lateDeadlineAt: HS.lateDeadlineAt, completingSignedAt: HA.signedAt })
-        .from(HS)
-        .innerJoin(HA, eq(HS.completedByAssessmentId, HA.id))
-        .where(
-          and(
-            eq(HS.organizationId, organizationId),
-            eq(HA.organizationId, organizationId),
-            eq(HS.status, "completed"),
-            gte(HA.signedAt, new Date(period.from)),
-            lt(HA.signedAt, new Date(period.to)),
-          ),
-        );
-      return rows.map((r) => ({
-        lateDeadlineAt: iso(r.lateDeadlineAt) ?? new Date(0).toISOString(),
-        completingSignedAt: iso(r.completingSignedAt),
-      }));
+      return scoped(organizationId, async (tx) => {
+        const rows = await tx
+          .select({ lateDeadlineAt: HS.lateDeadlineAt, completingSignedAt: HA.signedAt })
+          .from(HS)
+          .innerJoin(HA, eq(HS.completedByAssessmentId, HA.id))
+          .where(
+            and(
+              eq(HS.organizationId, organizationId),
+              eq(HA.organizationId, organizationId),
+              eq(HS.status, "completed"),
+              gte(HA.signedAt, new Date(period.from)),
+              lt(HA.signedAt, new Date(period.to)),
+            ),
+          );
+        return rows.map((r) => ({
+          lateDeadlineAt: iso(r.lateDeadlineAt) ?? new Date(0).toISOString(),
+          completingSignedAt: iso(r.completingSignedAt),
+        }));
+      });
     },
 
-    async submissionBatches(organizationId, period) {
+    submissionBatches(organizationId, period) {
       // Transmitted batches with a terminal acceptance posture in the period (period anchored on transmittedAt).
-      const rows = await db
-        .select({ itemCount: SUB.itemCount, acceptedCount: SUB.acceptedCount })
-        .from(SUB)
-        .where(
-          and(
-            eq(SUB.organizationId, organizationId),
-            inArray(SUB.status, ["accepted", "rejected", "partially_accepted"]),
-            gte(SUB.transmittedAt, new Date(period.from)),
-            lt(SUB.transmittedAt, new Date(period.to)),
-          ),
-        );
-      return rows.map((r) => ({ itemCount: r.itemCount, acceptedCount: r.acceptedCount }));
+      return scoped(organizationId, async (tx) => {
+        const rows = await tx
+          .select({ itemCount: SUB.itemCount, acceptedCount: SUB.acceptedCount })
+          .from(SUB)
+          .where(
+            and(
+              eq(SUB.organizationId, organizationId),
+              inArray(SUB.status, ["accepted", "rejected", "partially_accepted"]),
+              gte(SUB.transmittedAt, new Date(period.from)),
+              lt(SUB.transmittedAt, new Date(period.to)),
+            ),
+          );
+        return rows.map((r) => ({ itemCount: r.itemCount, acceptedCount: r.acceptedCount }));
+      });
     },
 
-    async terminalSfvs(organizationId, period) {
+    terminalSfvs(organizationId, period) {
       // SFVs triggered in the period that reached a terminal outcome (completed / missed) — the on-time
       // denominator; `overdue`/`open` are still-running obligations and are excluded here.
-      const rows = await db
-        .select({ dueAt: SFV.dueAt, completedAt: SFV.completedAt })
-        .from(SFV)
-        .where(
-          and(
-            eq(SFV.organizationId, organizationId),
-            inArray(SFV.status, ["completed", "missed"]),
-            gte(SFV.triggeredAt, new Date(period.from)),
-            lt(SFV.triggeredAt, new Date(period.to)),
-          ),
-        );
-      return rows.map((r) => ({
-        dueAt: iso(r.dueAt) ?? new Date(0).toISOString(),
-        completedAt: iso(r.completedAt),
-      }));
+      return scoped(organizationId, async (tx) => {
+        const rows = await tx
+          .select({ dueAt: SFV.dueAt, completedAt: SFV.completedAt })
+          .from(SFV)
+          .where(
+            and(
+              eq(SFV.organizationId, organizationId),
+              inArray(SFV.status, ["completed", "missed"]),
+              gte(SFV.triggeredAt, new Date(period.from)),
+              lt(SFV.triggeredAt, new Date(period.to)),
+            ),
+          );
+        return rows.map((r) => ({
+          dueAt: iso(r.dueAt) ?? new Date(0).toISOString(),
+          completedAt: iso(r.completedAt),
+        }));
+      });
     },
 
-    async j2051Triggers(organizationId, period) {
+    j2051Triggers(organizationId, period) {
       // Trigger-fired assessments signed in the period, LEFT-joined to their single SFV (one SFV per
       // triggering assessment, D4). The pain/non-pain split + in-window check run in the provider over
       // `entries`. Only the J2051 readings + SFV timing leave the DB — no patient identifier.
-      const rows = await db
-        .select({ data: HA.data, sfvDueAt: SFV.dueAt, sfvCompletedAt: SFV.completedAt })
-        .from(HA)
-        .leftJoin(SFV, eq(SFV.triggeringAssessmentId, HA.id))
-        .where(
-          and(
-            eq(HA.organizationId, organizationId),
-            eq(HA.j2051TriggerFired, true),
-            gte(HA.signedAt, new Date(period.from)),
-            lt(HA.signedAt, new Date(period.to)),
-          ),
-        );
-      return rows.map((r) => ({
-        entries: extractEntries(r.data),
-        sfvDueAt: iso(r.sfvDueAt),
-        sfvCompletedAt: iso(r.sfvCompletedAt),
-      }));
+      return scoped(organizationId, async (tx) => {
+        const rows = await tx
+          .select({ data: HA.data, sfvDueAt: SFV.dueAt, sfvCompletedAt: SFV.completedAt })
+          .from(HA)
+          .leftJoin(SFV, eq(SFV.triggeringAssessmentId, HA.id))
+          .where(
+            and(
+              eq(HA.organizationId, organizationId),
+              eq(HA.j2051TriggerFired, true),
+              gte(HA.signedAt, new Date(period.from)),
+              lt(HA.signedAt, new Date(period.to)),
+            ),
+          );
+        return rows.map((r) => ({
+          entries: extractEntries(r.data),
+          sfvDueAt: iso(r.sfvDueAt),
+          sfvCompletedAt: iso(r.sfvCompletedAt),
+        }));
+      });
     },
 
-    async openSfvObligationCount(organizationId) {
-      const [row] = await db
-        .select({ n: count() })
-        .from(SFV)
-        .where(and(eq(SFV.organizationId, organizationId), inArray(SFV.status, ["open", "overdue"])));
-      return row?.n ?? 0;
+    openSfvObligationCount(organizationId) {
+      return scoped(organizationId, async (tx) => {
+        const [row] = await tx
+          .select({ n: count() })
+          .from(SFV)
+          .where(and(eq(SFV.organizationId, organizationId), inArray(SFV.status, ["open", "overdue"])));
+        return row?.n ?? 0;
+      });
     },
   };
 }
