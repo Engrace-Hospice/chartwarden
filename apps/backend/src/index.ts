@@ -26,6 +26,7 @@ import {
   getSeam,
 } from "./bootstrap/index";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
+import { buildPrimaryProviderEntityResolver } from "./bootstrap/provider-entity-resolver";
 import {
   type OutboxPublishPort,
   type OutboxTx,
@@ -544,6 +545,10 @@ if ((import.meta as { main?: boolean }).main) {
             writeService: buildDrizzleM30WriteService(dbHandle.db, {
               recompute: m30Recompute.enqueue,
               outbox: m30OutboxPublisher,
+              // #107 item 3 — resolve provider_entity_id server-side for the NOT-NULL provider-scoped
+              // compliance inserts (incident / infection / QAPI program / CAHPS ingest), inside the
+              // mutation's own org-context tx. Removes the prior fail-closed 503.
+              providerEntity: buildPrimaryProviderEntityResolver(),
             }),
           });
         }
