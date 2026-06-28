@@ -49,6 +49,7 @@ import {
   latestAssessmentProviderDenyStub,
   levelOfCareReaderDenyStub,
   mdmEntityProviderDenyStub,
+  metricsProviderDenyStub,
   medicationAdministrationProviderDenyStub,
   medicationOrderProviderDenyStub,
   messagingProviderDenyStub,
@@ -195,6 +196,15 @@ export const REQUIRED_SEAMS = [
     ownerModule: 40,
     phi: false,
     denyStub: mdmEntityProviderDenyStub,
+  },
+  // M33 (Reporting) — the embedded dashboard-metric read (aggregate-only, org-scoped; D6 — no row-level
+  // PHI). Boot-validated and fail-closed until M33 registers the real provider (which returns a forward-seam
+  // empty value until its materialized views populate).
+  {
+    key: "MetricsProvider",
+    ownerModule: 33,
+    phi: false,
+    denyStub: metricsProviderDenyStub,
   },
   // M40 (MDM) — the focused §7.7 BAA disclosure gate (as-of time-travel + sending-facility
   // resolution), registered separately from the omnibus above. M22/M28/M29 consult it before any

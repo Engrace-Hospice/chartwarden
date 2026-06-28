@@ -219,6 +219,10 @@ export const terminologyProviderDenyStub: unknown = denyingSeamProxy("Terminolog
 /** M36 — event → rules/recipients/fan-out. Denies until M36 registers the real emitter (T06). */
 export const alertEmitterDenyStub: unknown = denyingSeamProxy("AlertEmitter");
 
+/** M33 — the embedded dashboard-metric read seam. Opaque rich-seam (interface in @wardenx/reporting).
+ *  Denies until M33 registers the real provider (which returns forward-seam-empty until its MVs populate). */
+export const metricsProviderDenyStub: unknown = denyingSeamProxy("MetricsProvider");
+
 /** M36 — channel/message surface (DEK-encrypted bodies). Denies until M36 registers the real
  *  provider (its DB-backed impl lands with the routes/realtime tasks, M36-T07/T08). */
 export const messagingProviderDenyStub: unknown = denyingSeamProxy("MessagingProvider");

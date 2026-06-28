@@ -96,6 +96,7 @@ export type SeamName =
   | "MessagingProvider" // M36 — channel/message surface (DEK-encrypted bodies; PHI read surface)
   | "MdmEntityProvider" // M40 — master-data read surface (physician/facility/payer; merge-aware)
   | "BaaStatusProvider" // M40 — focused §7.7 BAA disclosure gate (as-of; M22/M28/M29 import this)
+  | "MetricsProvider" // M33 — embedded dashboard-metric read (aggregate-only, org-scoped; M30/M34/M37 embed)
   // M6 (Admission, Election & Certification) reader seams (§4.7) — leaf-typed read-only DTO surfaces
   // every downstream clinical/billing module consumes instead of importing M6's schema. Interfaces
   // live in ./admission (this leaf), so — unlike the opaque rich-seams above — they are typed here.
@@ -400,6 +401,11 @@ export interface SeamContracts {
   // their manifest `dependsOn` import the real type from @wardenx/mdm and resolve the impl via the
   // module-40 typed accessor; the M1 registry holds/validates the instance fail-closed.
   MdmEntityProvider: unknown;
+  // M33's `MetricsProvider` follows the SAME opaque rich-seam pattern: its interface lives in
+  // @wardenx/reporting (this leaf may not import it — `leaves-stay-leaves`), so the registry holds the
+  // instance as `unknown` and consumers (M30/M34/M37) resolve it via `getSeam` + cast to their own
+  // consumer-defined view. Registered by M33 at boot over the fail-closed deny-stub.
+  MetricsProvider: unknown;
   // M40's `BaaStatusProvider` is the focused §7.7 disclosure gate, registered separately from the
   // omnibus above (different contract: as-of time-travel + sending-facility resolution). Same
   // opaque rich-seam pattern — interface in @wardenx/mdm; M22/M28/M29 import the real type.
