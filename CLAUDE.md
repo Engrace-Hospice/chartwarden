@@ -1,17 +1,20 @@
 # WardenX — Repository Guide
 
 Multi-tenant hospice EHR SaaS. This repo is the **specification corpus + architecture-fitness
-kit + staged implementation monorepo**: Phase 0 gates/scaffold are in place, and **22 of 40 modules
-now have real implementation on `main`** — M2–M14, M17, M18, M22 (clinical), M33 Reporting & M34 SaaS
-Platform (R2), plus M36/M38/M39/M40. **M30 HQRP & Quality is now built on `feat/r2-m30-hqrp`** (18
-frozen `quality/` tables + migrations 0062–0068; `@wardenx/quality` domain core + `@wardenx/cahps-vendors`;
-47 routes in `apps/backend/src/modules/30-quality`; the 29-entry `MEASURE_CATALOG`/measure registry —
-HCI 10 indicators + composite, HVLDL, HOPE-derived TFP, operational; CAHPS/QAPI/SRA/incidents/mortality/
-infection surveillance) — its status matrix is 🟢 and it lands on `main` once integrated. By design M30
-keeps four seams as **fail-closed deferrals** (lazy thunks that throw, never silent): the §4.10 outbox-row
-emits, the M40 provider-entity resolver, the M33 `MetricsProvider`, and the worker cron allowlist; the
-measure registry is bound, but the awkward `hci_composite` per-family `resolveInput` still needs the
-integrator to special-case it. Remaining modules stay explicit placeholders until their plans land.
+kit + staged implementation monorepo**: Phase 0 gates/scaffold are in place, and **23 of 40 modules
+now have real implementation on `main`** — M2–M14, M17, M18, M22 (clinical), **M30 HQRP & Quality**,
+M33 Reporting & M34 SaaS Platform (R2), plus M36/M38/M39/M40. **M30 is merged (PR #106)**: 18 frozen
+`quality/` tables + migrations 0062–0068; the `@wardenx/quality` domain core + `@wardenx/cahps-vendors`;
+47 routes in `apps/backend/src/modules/30-quality`; the `MEASURE_CATALOG`/measure registry (HCI 10
+indicators + composite, HVLDL, HOPE-derived TFP, operational); and CAHPS/QAPI/SRA/incident/mortality/
+infection surveillance — status matrix 🟢. A follow-up wiring batch (**issue #107, PRs #108–#118**) then
+made M30's cross-module seams real: the M1-T10 transactional outbox-row emit (M30+M33 events emit), the
+M40-free provider-entity resolver, the M33 `MetricsProvider` registration, the HOPE-rollup + HVLDL measure
+inputs (computing end-to-end, incl. a new M6 `DeathDischargeReader` + a Drizzle-backed M8
+`SignedEncountersReader`), per-job `withOrgContext` RLS on the recompute/outbreak workers, and the cron
+allowlist + active-org enumerator. The **HCI/operational measure families stay fail-closed** — they depend
+on the **M23 (Billing) / M27 (Cost Report) placeholder modules**, so `hci_composite` cannot compute until
+those land. Remaining modules stay explicit placeholders until their plans land.
 
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104, see
 [`audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md`](./audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md)):
