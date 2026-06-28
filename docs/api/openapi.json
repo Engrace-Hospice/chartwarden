@@ -3448,7 +3448,18 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "parameters": [],
+        "summary": "AR-aging dashboard — aging buckets + denial / NOE-NOTR window-breach rates (org-wide or per-PE, §4.1 #37)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -3468,7 +3479,104 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "parameters": [],
+        "summary": "List claims — cursor-paginated; filter by state / patient / ProviderEntity (§4.1 #2)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "draft",
+                  "type": "string"
+                },
+                {
+                  "const": "validating",
+                  "type": "string"
+                },
+                {
+                  "const": "ready",
+                  "type": "string"
+                },
+                {
+                  "const": "submitted",
+                  "type": "string"
+                },
+                {
+                  "const": "ack_pending",
+                  "type": "string"
+                },
+                {
+                  "const": "ack_accepted",
+                  "type": "string"
+                },
+                {
+                  "const": "ack_rejected",
+                  "type": "string"
+                },
+                {
+                  "const": "ack_partial",
+                  "type": "string"
+                },
+                {
+                  "const": "paid",
+                  "type": "string"
+                },
+                {
+                  "const": "denied",
+                  "type": "string"
+                },
+                {
+                  "const": "replaced",
+                  "type": "string"
+                },
+                {
+                  "const": "voided",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -3488,6 +3596,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Delete a DRAFT claim (DRAFT-only; AI-block + idempotency, §4.1 #5)",
         "parameters": [
           {
             "name": "id",
@@ -3515,6 +3624,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Single-claim detail — lines + HIPPS + SIA + latest run + submissions + acks (§4.1 #3)",
         "parameters": [
           {
             "name": "id",
@@ -3542,6 +3652,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "DRAFT re-assembly edit — replace line set + totals; If-Match version; coder ICD-only scope (§4.1 #4)",
         "parameters": [
           {
             "name": "id",
@@ -3562,6 +3673,133 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "lines"
+                ],
+                "properties": {
+                  "lines": {
+                    "maxItems": 512,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "lineNumber",
+                        "revenueCode",
+                        "qCode",
+                        "levelOfCare",
+                        "serviceDateFrom",
+                        "serviceDateTo",
+                        "unitCount",
+                        "unitRateCents",
+                        "lineChargeCents",
+                        "levelOfCarePeriodId"
+                      ],
+                      "properties": {
+                        "lineNumber": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "revenueCode": {
+                          "minLength": 4,
+                          "maxLength": 4,
+                          "type": "string"
+                        },
+                        "qCode": {
+                          "minLength": 5,
+                          "maxLength": 5,
+                          "type": "string"
+                        },
+                        "levelOfCare": {
+                          "anyOf": [
+                            {
+                              "const": "routine_home_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "continuous_home_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "inpatient_respite_care",
+                              "type": "string"
+                            },
+                            {
+                              "const": "general_inpatient_care",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "hcpcsCode": {
+                          "maxLength": 16,
+                          "type": "string"
+                        },
+                        "serviceDateFrom": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "serviceDateTo": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "unitCount": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "unitRateCents": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "lineChargeCents": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "levelOfCarePeriodId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "modifiers": {
+                          "type": "array",
+                          "items": {
+                            "maxLength": 8,
+                            "type": "string"
+                          }
+                        },
+                        "icdPointerPositions": {
+                          "type": "array",
+                          "items": {
+                            "minimum": 1,
+                            "type": "integer"
+                          }
+                        },
+                        "backingEncounterIds": {
+                          "type": "array",
+                          "items": {
+                            "format": "uuid",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "totalChargeCents": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "totalExpectedPaymentCents": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -3571,6 +3809,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "All 999 / 277CA / 835 acknowledgments for a claim (§4.1 #13)",
         "parameters": [
           {
             "name": "id",
@@ -3600,6 +3839,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "The claim_line projection for a claim (§4.1 #10)",
         "parameters": [
           {
             "name": "id",
@@ -3629,6 +3869,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Build a TOB-817 replacement DRAFT (copies the original's lines; step-up + If-Match; 201, §4.1 #8)",
         "parameters": [
           {
             "name": "id",
@@ -3649,6 +3890,31 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ifVersion",
+                  "reason"
+                ],
+                "properties": {
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "minLength": 20,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -3658,6 +3924,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Per-claim transition timeline (cursor-paginated, §4.1 #11)",
         "parameters": [
           {
             "name": "id",
@@ -3687,6 +3954,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "All dispatch attempts for a claim (§4.1 #12)",
         "parameters": [
           {
             "name": "id",
@@ -3716,6 +3984,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "READY → SUBMITTED — emits m23.claim.submit_requested (PE scope + step-up + If-Match; 202, §4.1 #7)",
         "parameters": [
           {
             "name": "id",
@@ -3745,6 +4014,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Trigger a validation_run for a claim (the manual re-run / initial trigger; 202, §4.1 #6)",
         "parameters": [
           {
             "name": "id",
@@ -3764,6 +4034,17 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
           }
         }
       }
@@ -3774,6 +4055,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Build a TOB-818 void DRAFT (no service lines; step-up + If-Match; 201, §4.1 #9)",
         "parameters": [
           {
             "name": "id",
@@ -3794,6 +4076,31 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ifVersion",
+                  "reason"
+                ],
+                "properties": {
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "minLength": 20,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -3803,16 +4110,149 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Assemble a server-authoritative DRAFT claim (lines + HIPPS + SIA + initial validation run, §4.1 #1)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "claimId",
+                    "state",
+                    "totalChargeCents",
+                    "hippsCode",
+                    "hippsRateCents",
+                    "lineCount",
+                    "initialValidationRunId",
+                    "initialValidationOutcome"
+                  ],
+                  "properties": {
+                    "claimId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "state": {
+                      "const": "DRAFT",
+                      "type": "string"
+                    },
+                    "totalChargeCents": {
+                      "type": "integer"
+                    },
+                    "hippsCode": {
+                      "type": "string"
+                    },
+                    "hippsRateCents": {
+                      "type": "integer"
+                    },
+                    "lineCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "initialValidationRunId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "initialValidationOutcome": {
+                      "anyOf": [
+                        {
+                          "const": "all_pass",
+                          "type": "string"
+                        },
+                        {
+                          "const": "failures_present",
+                          "type": "string"
+                        },
+                        {
+                          "const": "overrides_required",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "patientId",
+                  "serviceFrom",
+                  "serviceTo",
+                  "tob"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "serviceFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "serviceTo": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "tob": {
+                    "anyOf": [
+                      {
+                        "const": "811",
+                        "type": "string"
+                      },
+                      {
+                        "const": "812",
+                        "type": "string"
+                      },
+                      {
+                        "const": "813",
+                        "type": "string"
+                      },
+                      {
+                        "const": "814",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "electionPeriodScope": {
+                    "type": "object",
+                    "required": [
+                      "electionPeriodIdFrom",
+                      "electionPeriodIdTo"
+                    ],
+                    "properties": {
+                      "electionPeriodIdFrom": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "electionPeriodIdTo": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -3823,7 +4263,18 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "parameters": [],
+        "summary": "Per-patient eligibility-check history (§4.1 #23)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -3843,6 +4294,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Force / refresh-on-stale a 270/271 eligibility round-trip (202; no MBI on the wire, §4.1 #22)",
         "parameters": [],
         "responses": {
           "200": {
@@ -3854,6 +4306,35 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "patientId",
+                  "providerEntityId",
+                  "asOfServiceDate"
+                ],
+                "properties": {
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "asOfServiceDate": {
+                    "format": "date",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -3863,7 +4344,18 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "parameters": [],
+        "summary": "The latest eligibility check for a patient (auto-refresh-on-stale read, §4.1)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -3883,7 +4375,29 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "parameters": [],
+        "summary": "List per-ProviderEntity MAC credentials — secrets masked, cursor-paginated (§4.1 #34)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -3901,6 +4415,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Upsert a MAC credential — clientSecret write-only/encrypted at the boundary; step-up (§4.1 #35)",
         "parameters": [],
         "responses": {
           "200": {
@@ -3912,6 +4427,90 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "macJurisdiction",
+                  "submitterId",
+                  "tradingPartnerId",
+                  "clientId",
+                  "clientSecret"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "macJurisdiction": {
+                    "anyOf": [
+                      {
+                        "const": "ngs_j6",
+                        "type": "string"
+                      },
+                      {
+                        "const": "ngs_jk",
+                        "type": "string"
+                      },
+                      {
+                        "const": "cgs_j15",
+                        "type": "string"
+                      },
+                      {
+                        "const": "palmetto_jj",
+                        "type": "string"
+                      },
+                      {
+                        "const": "palmetto_jm",
+                        "type": "string"
+                      },
+                      {
+                        "const": "noridian_jf",
+                        "type": "string"
+                      },
+                      {
+                        "const": "noridian_je",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "submitterId": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "tradingPartnerId": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "clientId": {
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "clientSecret": {
+                    "minLength": 1,
+                    "maxLength": 4096,
+                    "type": "string"
+                  },
+                  "baaRecordRef": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "credentialExpiresAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -3921,6 +4520,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "The MAC credential for one ProviderEntity, or null (§4.1)",
         "parameters": [
           {
             "name": "providerEntityId",
@@ -3950,7 +4550,18 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "parameters": [],
+        "summary": "Per-window claim metric buckets (the M33 reporting consumer; org-wide or per-PE, §4.1 #38)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -3970,7 +4581,45 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "parameters": [],
+        "summary": "List validation-rule overlay rows — platform snapshot + tenant overlays (cursor-paginated, §4.1 #18)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "enabled",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "isCustom",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -3990,6 +4639,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Revert a rule overlay to the platform default (If-Match, §4.1 #21)",
         "parameters": [
           {
             "name": "id",
@@ -4017,6 +4667,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Read a single validation-rule overlay row (§4.1)",
         "parameters": [
           {
             "name": "id",
@@ -4044,6 +4695,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Overlay edit — disable / re-severity / re-parameterize a rule (If-Match, §4.1 #19)",
         "parameters": [
           {
             "name": "id",
@@ -4064,6 +4716,74 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "severity": {
+                    "anyOf": [
+                      {
+                        "const": "error",
+                        "type": "string"
+                      },
+                      {
+                        "const": "warn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "info",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "overrideRoleRequired": {
+                    "anyOf": [
+                      {
+                        "const": "billing_manager",
+                        "type": "string"
+                      },
+                      {
+                        "const": "compliance_officer",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medical_director",
+                        "type": "string"
+                      },
+                      {
+                        "const": "org_admin",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "parameters": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {}
+                    }
+                  },
+                  "predicateDsl": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {}
+                    }
+                  },
+                  "setReason": {
+                    "minLength": 20,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -4073,6 +4793,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Create a tenant CUSTOM validation rule (regulatory-required forbidden; 201, §4.1 #20)",
         "parameters": [],
         "responses": {
           "200": {
@@ -4084,6 +4805,87 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ruleKey",
+                  "severity"
+                ],
+                "properties": {
+                  "ruleKey": {
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "type": "string"
+                  },
+                  "severity": {
+                    "anyOf": [
+                      {
+                        "const": "error",
+                        "type": "string"
+                      },
+                      {
+                        "const": "warn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "info",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "overrideRoleRequired": {
+                    "anyOf": [
+                      {
+                        "const": "billing_manager",
+                        "type": "string"
+                      },
+                      {
+                        "const": "compliance_officer",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medical_director",
+                        "type": "string"
+                      },
+                      {
+                        "const": "org_admin",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "parameters": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {}
+                    }
+                  },
+                  "predicateDsl": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {}
+                    }
+                  },
+                  "setReason": {
+                    "minLength": 20,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "ruleVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -4093,7 +4895,18 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "parameters": [],
+        "summary": "Per-ProviderEntity sequestration-percentage timeline — effective-dated rows (D11, §4.1 #32)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -4111,6 +4924,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Forward-date a new sequestration policy row (percentage is a decimal string; 201, §4.1 #33)",
         "parameters": [],
         "responses": {
           "200": {
@@ -4122,6 +4936,39 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "percentage",
+                  "effectiveFrom"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "percentage": {
+                    "pattern": "^-?\\d+(\\.\\d+)?$",
+                    "type": "string"
+                  },
+                  "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "setReason": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -4131,7 +4978,18 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "parameters": [],
+        "summary": "The active-on-now sequestration policy for a ProviderEntity (or null, §4.1)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -4986,6 +5844,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Trigger a manual_re_run validation; state → validating (202, §4.1 #6)",
         "parameters": [
           {
             "name": "id",
@@ -5015,6 +5874,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "List a claim's validation runs, most recent first (§4.1 #14)",
         "parameters": [
           {
             "name": "id",
@@ -5044,6 +5904,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Single validation run — per-rule results + override status (§4.1 #15)",
         "parameters": [
           {
             "name": "id",
@@ -5081,6 +5942,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Override a failed validation result — approver-role ABAC + step-up (201, §4.1 #16)",
         "parameters": [
           {
             "name": "id",
@@ -5116,6 +5978,47 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason",
+                  "overrideRole"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 40,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "overrideRole": {
+                    "anyOf": [
+                      {
+                        "const": "billing_manager",
+                        "type": "string"
+                      },
+                      {
+                        "const": "compliance_officer",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medical_director",
+                        "type": "string"
+                      },
+                      {
+                        "const": "org_admin",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -13697,10 +14600,174 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "parameters": [],
+        "summary": "Per-patient / org day rollups by level-of-care (M26 cap + M27 cost-report consumers, §4.1 #39)",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "patient_cap_year",
+                  "type": "string"
+                },
+                {
+                  "const": "org_cap_year",
+                  "type": "string"
+                },
+                {
+                  "const": "org_fiscal_year",
+                  "type": "string"
+                },
+                {
+                  "const": "loc_fiscal_year",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "capYear",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "fyEnd",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "routineHomeCareDays",
+                        "continuousHomeCareDays",
+                        "inpatientRespiteCareDays",
+                        "generalInpatientCareDays",
+                        "totalDays"
+                      ],
+                      "properties": {
+                        "routineHomeCareDays": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "continuousHomeCareDays": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "inpatientRespiteCareDays": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "generalInpatientCareDays": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "totalDays": {
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "providerEntityId",
+                        "capYear",
+                        "totalDays",
+                        "inpatientDays"
+                      ],
+                      "properties": {
+                        "providerEntityId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "capYear": {
+                          "type": "integer"
+                        },
+                        "totalDays": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "inpatientDays": {
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "providerEntityId",
+                        "fyEnd",
+                        "totalDays",
+                        "unduplicatedPatientCount"
+                      ],
+                      "properties": {
+                        "providerEntityId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "fyEnd": {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        "totalDays": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "unduplicatedPatientCount": {
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -13717,10 +14784,100 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "parameters": [],
+        "summary": "Accepted submissions in a window (M25 remittance 835→claim matching, §4.1 #40)",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "submissions"
+                  ],
+                  "properties": {
+                    "submissions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "submissionId",
+                          "claimId",
+                          "claimControlNumber",
+                          "acceptedAt",
+                          "payerClaimControlNumber"
+                        ],
+                        "properties": {
+                          "submissionId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "claimId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "claimControlNumber": {
+                            "type": "string"
+                          },
+                          "acceptedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "payerClaimControlNumber": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -16328,7 +17485,93 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "parameters": [],
+        "summary": "List NOE records — timely-filing worklist, cursor-paginated (§4.1 #24)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "admissionId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "draft",
+                  "type": "string"
+                },
+                {
+                  "const": "ready",
+                  "type": "string"
+                },
+                {
+                  "const": "submitted",
+                  "type": "string"
+                },
+                {
+                  "const": "ack_pending",
+                  "type": "string"
+                },
+                {
+                  "const": "ack_accepted",
+                  "type": "string"
+                },
+                {
+                  "const": "ack_rejected",
+                  "type": "string"
+                },
+                {
+                  "const": "cancelled",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -16348,6 +17591,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "NOE detail (§4.1 #25)",
         "parameters": [
           {
             "name": "id",
@@ -16377,6 +17621,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Cancel a DRAFT/READY NOE — election-reversed guard fact (§4.1 #27)",
         "parameters": [
           {
             "name": "id",
@@ -16397,6 +17642,24 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "electionReversed"
+                ],
+                "properties": {
+                  "electionReversed": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -16406,6 +17669,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "READY → SUBMITTED — emits m23.noe.submit_requested (step-up; 202, §4.1 #26)",
         "parameters": [
           {
             "name": "id",
@@ -16551,7 +17815,114 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "parameters": [],
+        "summary": "List NOTR records — timely-filing worklist, cursor-paginated (§4.1 #28)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "admissionId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "triggerKind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "revocation",
+                  "type": "string"
+                },
+                {
+                  "const": "transfer_out",
+                  "type": "string"
+                },
+                {
+                  "const": "discharge",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "draft",
+                  "type": "string"
+                },
+                {
+                  "const": "ready",
+                  "type": "string"
+                },
+                {
+                  "const": "submitted",
+                  "type": "string"
+                },
+                {
+                  "const": "ack_pending",
+                  "type": "string"
+                },
+                {
+                  "const": "ack_accepted",
+                  "type": "string"
+                },
+                {
+                  "const": "ack_rejected",
+                  "type": "string"
+                },
+                {
+                  "const": "cancelled",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -16571,6 +17942,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "NOTR detail (§4.1 #29)",
         "parameters": [
           {
             "name": "id",
@@ -16600,6 +17972,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Cancel a DRAFT/READY NOTR — terminating-event-reversed guard fact (§4.1 #31)",
         "parameters": [
           {
             "name": "id",
@@ -16620,6 +17993,24 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "terminatingEventReversed"
+                ],
+                "properties": {
+                  "terminatingEventReversed": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -16629,6 +18020,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "READY → SUBMITTED — emits m23.notr.submit_requested (step-up; 202, §4.1 #30)",
         "parameters": [
           {
             "name": "id",
