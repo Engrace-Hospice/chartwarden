@@ -3108,6 +3108,45 @@ export const M27_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M27 contributed permission keys (fifteen). */
 export type M27ContributedPermissionKey = keyof typeof M27_CONTRIBUTED_PERMISSIONS;
 
+// M24 — Module 24's twenty-six Billing — Medicaid permission keys registered into M3's catalog (§4.7). The
+// route-level §4.8 ABAC predicates (provider_entity_medicaid_billing_scope / medicaid_claim_in_billing_
+// manager_caseload / medicaid_override_role_eligible / regulatory_required_rule_protected_medicaid /
+// rb_arrangement_visible_in_scope / state_trading_partner_credential_admin) are composed at the route layer;
+// the per-key `abac` here is the DEFAULT only ('none' — RBAC-gated; the route additionally composes the
+// per-ProviderEntity scope). category 'billing' (Medicaid is a revenue-cycle surface); the two platform-only
+// keys carry 'platform' (the M26 cap.platform_constant.* precedent).
+export const M24_CONTRIBUTED_PERMISSIONS = {
+  "medicaid.claim.assemble": { resource: "medicaid_claim", action: "assemble", category: "billing", abac: "none" },
+  "medicaid.claim.read": { resource: "medicaid_claim", action: "read", category: "billing", abac: "none" },
+  "medicaid.claim.update_draft": { resource: "medicaid_claim", action: "update_draft", category: "billing", abac: "none" },
+  "medicaid.claim.delete_draft": { resource: "medicaid_claim", action: "delete_draft", category: "billing", abac: "none" },
+  "medicaid.claim.submit": { resource: "medicaid_claim", action: "submit", category: "billing", abac: "none" },
+  "medicaid.claim.replace": { resource: "medicaid_claim", action: "replace", category: "billing", abac: "none" },
+  "medicaid.claim.void": { resource: "medicaid_claim", action: "void", category: "billing", abac: "none" },
+  "medicaid.claim.read_ar_dashboard": { resource: "medicaid_claim", action: "read_ar_dashboard", category: "billing", abac: "none" },
+  "medicaid.claim.read_metrics": { resource: "medicaid_claim", action: "read_metrics", category: "billing", abac: "none" },
+  "medicaid.validation.read_run": { resource: "medicaid_validation_run", action: "read_run", category: "billing", abac: "none" },
+  "medicaid.validation.run": { resource: "medicaid_validation_run", action: "run", category: "billing", abac: "none" },
+  "medicaid.validation.override": { resource: "medicaid_validation_override", action: "override", category: "billing", abac: "none" },
+  "medicaid.validation.read_override": { resource: "medicaid_validation_override", action: "read_override", category: "billing", abac: "none" },
+  "medicaid.rule_config.read": { resource: "medicaid_validation_rule_config", action: "read", category: "billing", abac: "none" },
+  "medicaid.rule_config.edit": { resource: "medicaid_validation_rule_config", action: "edit", category: "billing", abac: "none" },
+  "medicaid.rule_config.platform_admin": { resource: "medicaid_validation_rule_config", action: "platform_admin", category: "platform", abac: "none" },
+  "medicaid.eligibility.check": { resource: "medicaid_eligibility_check", action: "check", category: "billing", abac: "none" },
+  "medicaid.eligibility.read": { resource: "medicaid_eligibility_check", action: "read", category: "billing", abac: "none" },
+  "medicaid.rb_arrangement.read": { resource: "rb_arrangement", action: "read", category: "billing", abac: "none" },
+  "medicaid.rb_arrangement.create": { resource: "rb_arrangement", action: "create", category: "billing", abac: "none" },
+  "medicaid.rb_arrangement.edit": { resource: "rb_arrangement", action: "edit", category: "billing", abac: "none" },
+  "medicaid.rb_arrangement.activate": { resource: "rb_arrangement", action: "activate", category: "billing", abac: "none" },
+  "medicaid.rb_day.override": { resource: "rb_day", action: "override", category: "billing", abac: "none" },
+  "medicaid.trading_partner.read": { resource: "state_medicaid_trading_partner_credential", action: "read", category: "billing", abac: "none" },
+  "medicaid.trading_partner.admin": { resource: "state_medicaid_trading_partner_credential", action: "admin", category: "billing", abac: "none" },
+  "medicaid.rate_schedule.platform_admin": { resource: "state_rate_schedule", action: "platform_admin", category: "platform", abac: "none" },
+} satisfies Record<string, PermissionDef>;
+
+/** Union of the M24 contributed permission keys (twenty-six). */
+export type M24ContributedPermissionKey = keyof typeof M24_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -3245,6 +3284,11 @@ export function m27ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M27_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M24 contributed keys into `permission`-table mirror rows (M24 §4.7). */
+export function m24ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M24_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -3279,5 +3323,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m25ContributedPermissionMirrorRows(),
     ...m26ContributedPermissionMirrorRows(),
     ...m27ContributedPermissionMirrorRows(),
+    ...m24ContributedPermissionMirrorRows(),
   ];
 }

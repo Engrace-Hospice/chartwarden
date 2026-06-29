@@ -717,7 +717,7 @@ export const MODULES: ModuleDef[] = [
     id: 24,
     name: "Billing — Medicaid",
     codePaths: ["packages/medicaid-adapters", "apps/backend/src/modules/24-billing-medicaid"],
-    dependsOn: [23, 40],
+    dependsOn: [1, 23, 40],
     ownedTables: [
       "medicaid_claim",
       "medicaid_claim_line",

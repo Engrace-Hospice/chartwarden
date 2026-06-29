@@ -593,6 +593,26 @@
         }
       }
     },
+    "/api/v1/admin/platform-medicaid-rules": {
+      "post": {
+        "operationId": "postApiV1AdminPlatformmedicaidrules",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/admin/refill-inbox-policy": {
       "get": {
         "operationId": "getApiV1AdminRefillinboxpolicy",
@@ -851,6 +871,26 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/state-rate-schedule-load": {
+      "post": {
+        "operationId": "postApiV1AdminStateratescheduleload",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [],
         "responses": {
           "200": {
             "description": "OK"
@@ -19085,6 +19125,640 @@
         }
       }
     },
+    "/api/v1/medicaid-ar-dashboard": {
+      "get": {
+        "operationId": "getApiV1Medicaidardashboard",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-ar-dashboard/metrics": {
+      "get": {
+        "operationId": "getApiV1MedicaidardashboardMetrics",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-claims": {
+      "get": {
+        "operationId": "getApiV1Medicaidclaims",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Medicaidclaims",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-claims/{id}": {
+      "delete": {
+        "operationId": "deleteApiV1MedicaidclaimsById",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "get": {
+        "operationId": "getApiV1MedicaidclaimsById",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1MedicaidclaimsById",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-claims/{id}/abandon": {
+      "post": {
+        "operationId": "postApiV1MedicaidclaimsByIdAbandon",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-claims/{id}/acknowledgments": {
+      "get": {
+        "operationId": "getApiV1MedicaidclaimsByIdAcknowledgments",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-claims/{id}/lines": {
+      "get": {
+        "operationId": "getApiV1MedicaidclaimsByIdLines",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-claims/{id}/replace": {
+      "post": {
+        "operationId": "postApiV1MedicaidclaimsByIdReplace",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-claims/{id}/submissions": {
+      "get": {
+        "operationId": "getApiV1MedicaidclaimsByIdSubmissions",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-claims/{id}/submit": {
+      "post": {
+        "operationId": "postApiV1MedicaidclaimsByIdSubmit",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-claims/{id}/validate": {
+      "post": {
+        "operationId": "postApiV1MedicaidclaimsByIdValidate",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-claims/{id}/validation-runs": {
+      "get": {
+        "operationId": "getApiV1MedicaidclaimsByIdValidationruns",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-claims/{id}/void": {
+      "post": {
+        "operationId": "postApiV1MedicaidclaimsByIdVoid",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-eligibility-checks": {
+      "get": {
+        "operationId": "getApiV1Medicaideligibilitychecks",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Medicaideligibilitychecks",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-rule-config": {
+      "get": {
+        "operationId": "getApiV1Medicaidruleconfig",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-rule-config/{ruleKey}": {
+      "delete": {
+        "operationId": "deleteApiV1MedicaidruleconfigByRuleKey",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [
+          {
+            "name": "ruleKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1MedicaidruleconfigByRuleKey",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [
+          {
+            "name": "ruleKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-rule-config/custom": {
+      "post": {
+        "operationId": "postApiV1MedicaidruleconfigCustom",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-validation-overrides": {
+      "get": {
+        "operationId": "getApiV1Medicaidvalidationoverrides",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-validation-results/{id}/override": {
+      "post": {
+        "operationId": "postApiV1MedicaidvalidationresultsByIdOverride",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/medicaid-validation-runs/{id}": {
+      "get": {
+        "operationId": "getApiV1MedicaidvalidationrunsById",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/medication-history-records/{id}/reconcile": {
       "post": {
         "operationId": "postApiV1MedicationhistoryrecordsByIdReconcile",
@@ -29318,6 +29992,207 @@
         }
       }
     },
+    "/api/v1/rb-arrangements": {
+      "get": {
+        "operationId": "getApiV1Rbarrangements",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Rbarrangements",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/rb-arrangements/{id}": {
+      "get": {
+        "operationId": "getApiV1RbarrangementsById",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1RbarrangementsById",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/rb-arrangements/{id}/activate": {
+      "post": {
+        "operationId": "postApiV1RbarrangementsByIdActivate",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/rb-arrangements/{id}/terminate": {
+      "post": {
+        "operationId": "postApiV1RbarrangementsByIdTerminate",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/rb-days": {
+      "get": {
+        "operationId": "getApiV1Rbdays",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/rb-days/{id}": {
+      "patch": {
+        "operationId": "patchApiV1RbdaysById",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/reconciliation/worksheets": {
       "get": {
         "operationId": "getApiV1ReconciliationWorksheets",
@@ -32589,6 +33464,73 @@
         "operationId": "postApiV1StandingordersByIdSpawn",
         "tags": [
           "11-orders"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/state-medicaid-trading-partner-credentials": {
+      "get": {
+        "operationId": "getApiV1Statemedicaidtradingpartnercredentials",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Statemedicaidtradingpartnercredentials",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/state-medicaid-trading-partner-credentials/{id}/test": {
+      "post": {
+        "operationId": "postApiV1StatemedicaidtradingpartnercredentialsByIdTest",
+        "tags": [
+          "24-billing-medicaid"
         ],
         "parameters": [
           {
