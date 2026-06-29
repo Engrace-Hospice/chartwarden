@@ -545,3 +545,15 @@ export * from "./remittance/index";
 // migration 0085; non-partitioned tenant tables 0086; the three LIST(cap_period_id)-partitioned tables
 // 0087; tenant RLS/grants 0088; platform-constant RLS (isolated) 0089; M4 write-audit 0090; seed 0091.
 export * from "./cap/index";
+
+// M24 Billing — Medicaid: 14 owned tables (§3.3) — medicaid_claim (PE-partitioned root) + medicaid_claim_line
+// (PE-partitioned) + medicaid_claim_line_encounter (join) + medicaid_claim_state_history (org-partitioned log)
+// + medicaid_submission/medicaid_acknowledgment (per-attempt + 999/277CA acks) + medicaid_validation_run/
+// _result (org-partitioned) /_override/_rule_config + medicaid_eligibility_check (30-day cache) + rb_arrangement
+// (R&B contract; no-overlap EXCLUDE) + rb_day (org-partitioned billing day) + state_medicaid_trading_partner_
+// credential (per-PE per-state per-channel creds). All 14 org-scoped (organization_id NOT NULL → canonical
+// app.org_id RLS, single org-only policy per ADR-0010 D3; PE narrowing is M3 ABAC). Enums are m24_-prefixed;
+// per-CCN tenancy spine (ARCH-011). Recipient ID never stored/audited (D12/§3.6). Money is INTEGER cents.
+// Enums migration 0092; non-partitioned tables 0093; PE-partitioned 0094; org-partitioned 0095; RLS/grants
+// 0096; M4 write-audit + service-date-within-claim trigger 0097.
+export * from "./medicaid-billing/index";
