@@ -114,6 +114,7 @@ import {
   type DrugCostSeam as M27DrugCostSeam,
   buildDrizzleM27ReadService,
   buildDrizzleM27WriteService,
+  buildM27AllocationInputs,
   buildM27ValidationContext,
   buildM27WorkerDeps,
   m27CapSeamResolver,
@@ -937,6 +938,11 @@ if ((import.meta as { main?: boolean }).main) {
         settlement: () => getSeam("ClaimSettlementProvider") as M27ClaimSettlementSeam,
         drugCost: () => getSeam("DrugCostBillingReader") as M27DrugCostSeam,
       }),
+      // The §3.1 / D8 allocation-input shaper — reads M27's materialized Worksheet A/C/D/E-1 + statistics
+      // census + the live M26 cap and assembles the four typed inputs the cost-allocation-recompute chain
+      // (step-down → ancillary → program → settlement) consumes. Cap-gated settlement lines SKIP when M26
+      // is unbound (D13); the unmodeled step-down weights degrade to a tie-out-safe direct-only pass.
+      allocationInputs: buildM27AllocationInputs({ capResolver: m27CapSeamResolver }),
     });
     const m27Workers = [...registerM27Workers(m27WorkerDeps), ...registerM27CronWorkers(m27WorkerDeps)];
     app.addHook("onClose", async () => {
