@@ -4,13 +4,13 @@
 > architecture is coherent, NOT that a module is built. This matrix shows per-module build progress.
 > Do not hand-edit — the `status:matrix --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Totals:** 🟢 27 Implemented · 🟡 1 Partial · ⚪ 12 Placeholder (of 40 modules)
+**Totals:** 🟢 28 Implemented · 🟡 0 Partial · ⚪ 12 Placeholder (of 40 modules)
 
 Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned tables in a `CREATE TABLE`) · Routes (non-placeholder backend `routes/`) · Enriched (OpenAPI bodies, *heuristic*) · Screens (registered web `screens.ts`) · Tests (package `__tests__` or slug-matched backend test, *heuristic*) · Adapter (vendor/client package built; — = none owned, *heuristic*) · Live (owned table named in a `*.live.test.ts`, *heuristic*). Headline status keys off the placeholder marker + schema + routes only.
 
 | Module | Status | Spec | Schema | Migration | Routes | Enriched | Screens | Tests | Adapter | Live |
 |---|---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
-| M01 Foundation | 🟡 Partial | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | — | ✅ |
+| M01 Foundation | 🟢 Implemented | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | — | ✅ |
 | M02 Identity & Org | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 | M03 Authorization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | — | ✅ |
 | M04 Audit & Compliance Log | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ❌ |

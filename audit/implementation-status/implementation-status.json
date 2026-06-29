@@ -1,14 +1,14 @@
 {
   "totals": {
-    "Implemented": 27,
-    "Partial": 1,
+    "Implemented": 28,
+    "Partial": 0,
     "Placeholder": 12
   },
   "rows": [
     {
       "id": 1,
       "module": "M01 Foundation",
-      "status": "Partial",
+      "status": "Implemented",
       "spec": true,
       "schema": true,
       "migration": true,

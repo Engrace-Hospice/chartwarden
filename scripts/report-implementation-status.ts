@@ -175,6 +175,26 @@ const rows: Row[] = mods.map((m) => {
     : true;
   const routes = !!beDir && !bePlaceholder && existsSync(join(ROOT, `${beDir}/routes`));
 
+  // A platform/foundation module (e.g. M01) owns no feature backend dir
+  // (`apps/backend/src/modules/*`); its backend surface is bootstrap + packages, so a feature
+  // `routes/` dir is not an applicable artifact. Recognise its real (non-placeholder) platform
+  // code so it isn't pinned to "Partial" forever for lacking routes it was never meant to expose.
+  const foundationBackend =
+    !beDir &&
+    (m.codePaths ?? []).some((p) => {
+      if (!p.startsWith("apps/backend/src/") && !p.startsWith("packages/")) return false;
+      if (!existsSync(join(ROOT, p))) return false;
+      const idx = `${p}/index.ts`;
+      const srcIdx = `${p}/src/index.ts`;
+      if (existsSync(join(ROOT, idx))) return !isPlaceholderFile(idx);
+      if (existsSync(join(ROOT, srcIdx))) return !isPlaceholderFile(srcIdx);
+      return true; // real source dir with no single entry-file convention
+    });
+
+  // "Backend built" generalises the headline driver across module kinds: a feature module needs
+  // a real, non-placeholder `routes/`; a foundation module needs real platform code.
+  const backendBuilt = foundationBackend || (!bePlaceholder && routes);
+
   const wDir = webDir(m);
   const screensRel = wDir ? `${wDir}/screens.ts` : undefined;
   const screens =
@@ -208,11 +228,12 @@ const rows: Row[] = mods.map((m) => {
   const liveInfra = tables.some((t) => new RegExp(`\\b${t}\\b`).test(liveTestBodies));
 
   // Headline status keys off the authoritative placeholder marker + the core backend artifacts
-  // (schema + routes). Tests/enriched/screens/live are informational columns, not status drivers,
-  // because their detection is heuristic and would otherwise misclassify built modules.
+  // (schema + a built backend surface — feature `routes/`, or real platform code for a foundation
+  // module). Tests/enriched/screens/live are informational columns, not status drivers, because
+  // their detection is heuristic and would otherwise misclassify built modules.
   const anySignal = schema || routes || screens || tests;
   let status: Row["status"];
-  if (!bePlaceholder && schema && routes) status = "Implemented";
+  if (backendBuilt && schema) status = "Implemented";
   else if (bePlaceholder && !anySignal) status = "Placeholder";
   else status = "Partial";
 
