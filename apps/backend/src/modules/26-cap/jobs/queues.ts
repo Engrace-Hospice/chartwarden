@@ -10,12 +10,12 @@ export interface M26BackoffOptions {
 
 /** The six §4.8 cron/work queues (distinct wire names). */
 export const M26_CRON_QUEUES = {
-  nightlyProjection: "cap:nightly-projection",
-  thresholdEvaluator: "cap:threshold-evaluator",
-  capYearClose: "cap:cap-year-close",
-  psrReconcile: "cap:psr-reconcile",
-  platformConstantRefresh: "cap:platform-constant-refresh",
-  psrVarianceWatchdog: "cap:psr-variance-watchdog",
+  nightlyProjection: "cap-nightly-projection",
+  thresholdEvaluator: "cap-threshold-evaluator",
+  capYearClose: "cap-cap-year-close",
+  psrReconcile: "cap-psr-reconcile",
+  platformConstantRefresh: "cap-platform-constant-refresh",
+  psrVarianceWatchdog: "cap-psr-variance-watchdog",
 } as const;
 
 export type M26CronQueueName = (typeof M26_CRON_QUEUES)[keyof typeof M26_CRON_QUEUES];
@@ -41,12 +41,12 @@ const FIXED = (delay: number): M26BackoffOptions => ({ type: "fixed", delay });
 
 /** The §4.8 per-queue param catalog (attempts / backoff / concurrency / DLQ). */
 export const M26_QUEUE_PARAMS = {
-  nightlyProjection: { concurrency: 4, attempts: 3, backoff: EXP(300_000), dlq: "cap:nightly-projection.dlq" },
-  thresholdEvaluator: { concurrency: 8, attempts: 5, backoff: EXP(60_000), dlq: "cap:threshold-evaluator.dlq" },
-  capYearClose: { concurrency: 2, attempts: 3, backoff: EXP(600_000), dlq: "cap:cap-year-close.dlq" },
-  psrReconcile: { concurrency: 1, attempts: 2, backoff: FIXED(300_000), dlq: "cap:psr-reconcile.dlq" },
-  platformConstantRefresh: { concurrency: 1, attempts: 5, backoff: EXP(300_000), dlq: "cap:platform-constant-refresh.dlq" },
-  psrVarianceWatchdog: { concurrency: 4, attempts: 3, backoff: EXP(300_000), dlq: "cap:psr-variance-watchdog.dlq" },
+  nightlyProjection: { concurrency: 4, attempts: 3, backoff: EXP(300_000), dlq: "cap-nightly-projection.dlq" },
+  thresholdEvaluator: { concurrency: 8, attempts: 5, backoff: EXP(60_000), dlq: "cap-threshold-evaluator.dlq" },
+  capYearClose: { concurrency: 2, attempts: 3, backoff: EXP(600_000), dlq: "cap-cap-year-close.dlq" },
+  psrReconcile: { concurrency: 1, attempts: 2, backoff: FIXED(300_000), dlq: "cap-psr-reconcile.dlq" },
+  platformConstantRefresh: { concurrency: 1, attempts: 5, backoff: EXP(300_000), dlq: "cap-platform-constant-refresh.dlq" },
+  psrVarianceWatchdog: { concurrency: 4, attempts: 3, backoff: EXP(300_000), dlq: "cap-psr-variance-watchdog.dlq" },
 } as const satisfies Record<string, M26QueueParam>;
 
 /** The day bucket (UTC `yyyy-mm-dd`) cron dedupe keys quantize on (one tick per day). */

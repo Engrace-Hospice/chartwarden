@@ -4,7 +4,7 @@
  * Creates one demo organization, three users (via the running backend's Better Auth sign-up so
  * passwords hash exactly as prod), active memberships, and three roles wired to the real M3
  * permission catalog (`allPermissionMirrorRows()`):
- *   • administrator — every permission (admin+clinical+compliance+platform)
+ *   • administrator — every permission (the full catalog)
  *   • clinician     — clinical permissions
  *   • auditor       — compliance permissions
  * Generated passwords are written to `CREDENTIALS.local.md` (gitignored).
@@ -36,7 +36,10 @@ interface SeedUser {
   roleKey: string;
   roleName: string;
   roleCategory: string; // role_category enum
-  permCats: Cat[]; // which catalog categories this role grants
+  permCats: Cat[]; // which catalog categories this role grants (ignored when grantAll)
+  /** The administrator is "every permission" — grant the entire catalog regardless of category, so newly
+   *  added modules (billing/revenue-cycle, reporting, …) are covered without editing this list. */
+  grantAll?: boolean;
 }
 
 const USERS: SeedUser[] = [
@@ -46,7 +49,8 @@ const USERS: SeedUser[] = [
     roleKey: "administrator",
     roleName: "Administrator",
     roleCategory: "admin_executive",
-    permCats: ["admin", "clinical", "compliance", "platform"],
+    permCats: [],
+    grantAll: true,
   },
   {
     email: "casey@wardenx.local",
@@ -171,8 +175,10 @@ async function main(): Promise<void> {
     );
     const roleId = r.rows[0].id;
 
-    // role_permission rows for the role's categories
-    const keys = allRows.filter((row) => u.permCats.includes(row.category as Cat)).map((x) => x.key);
+    // role_permission rows: the administrator grants the whole catalog; others by category.
+    const keys = u.grantAll
+      ? allRows.map((x) => x.key)
+      : allRows.filter((row) => u.permCats.includes(row.category as Cat)).map((x) => x.key);
     for (const key of keys) {
       await db.query(
         `INSERT INTO role_permission (organization_id, role_id, permission_key) VALUES ($1,$2,$3)`,
