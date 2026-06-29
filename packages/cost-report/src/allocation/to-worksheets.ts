@@ -11,6 +11,7 @@
 // single-program today) and the Worksheet-S settlement-summary tie stays false until that worksheet is computed.
 import type { AncillaryApportionResult, CostReportProgram } from "./ancillary-apportionment";
 import type { LevelOfCare, ProgramApportionResult } from "./program-apportionment";
+import type { AllocationColumnConfig } from "./assemble-inputs";
 import type { SettlementInput, SettlementResult } from "./settlement";
 import type { StepDownAllocateResult } from "./step-down";
 import type { WorksheetBData } from "../worksheets/b";
@@ -27,15 +28,20 @@ export interface DerivedWorksheetPayloads {
 }
 
 /** `StepDownAllocateResult` → Worksheet B. The persisted `costCenters` are the DIRECT centers (each overhead
- *  center steps to zero and is folded into them); `allocationColumns` records each step's allocated pool. */
-export function stepDownToWorksheetB(result: StepDownAllocateResult): WorksheetBData {
+ *  center steps to zero and is folded into them). The `allocationColumns` PRESERVE the user's step-down config
+ *  (overhead center, basis label, statistical weights) verbatim and only refresh each column's derived
+ *  `poolAmountCents` from the matching step's allocated amount (0 when that overhead center had no cost). */
+export function stepDownToWorksheetB(
+  result: StepDownAllocateResult,
+  columns: readonly AllocationColumnConfig[],
+): WorksheetBData {
+  const poolByAllocator = new Map(result.steps.map((s) => [s.allocatingCenterCode, s.amountAllocatedCents]));
   return {
-    allocationColumns: result.steps.map((s) => ({
-      generalServiceCostCenterCode: s.allocatingCenterCode,
-      // The statistical-basis LABEL is not carried on the step result (the weight model is not yet wired);
-      // recorded empty until the per-receiving-center basis lands. TODO(CMS-fixture).
-      allocationBasis: "",
-      poolAmountCents: s.amountAllocatedCents,
+    allocationColumns: columns.map((col) => ({
+      generalServiceCostCenterCode: col.generalServiceCostCenterCode,
+      allocationBasis: col.allocationBasis,
+      statisticalWeights: col.statisticalWeights.map((w) => ({ ...w })),
+      poolAmountCents: poolByAllocator.get(col.generalServiceCostCenterCode) ?? 0,
     })),
     costCenters: result.centers
       .filter((c) => !c.isOverhead)
@@ -151,15 +157,17 @@ export function settlementToWorksheetE1(result: SettlementResult, input: Settlem
   };
 }
 
-/** Map a full chain run (B → C → D → E-1) to its four derived-worksheet payloads. */
+/** Map a full chain run (B → C → D → E-1) to its four derived-worksheet payloads. `stepDownColumns` is the
+ *  user's Worksheet-B allocation config (preserved verbatim on the persisted B). */
 export function allocationResultsToWorksheets(input: {
   readonly stepDown: StepDownAllocateResult;
   readonly ancillary: AncillaryApportionResult;
   readonly program: ProgramApportionResult;
   readonly settlement: SettlementResult;
   readonly settlementInput: SettlementInput;
+  readonly stepDownColumns: readonly AllocationColumnConfig[];
 }): DerivedWorksheetPayloads {
-  const B = stepDownToWorksheetB(input.stepDown);
+  const B = stepDownToWorksheetB(input.stepDown, input.stepDownColumns);
   return {
     B,
     C: ancillaryToWorksheetC(input.ancillary),

@@ -3,8 +3,11 @@
 // service cost centers across the direct (revenue-producing) cost centers by statistical bases, producing
 // a fully-allocated cost per center. The step-down math lives in the deterministic `decimal.js`
 // allocation functions (D8) — `allocateProportional` guarantees the allocated parts sum EXACTLY to the
-// pool with zero penny drift. This schema is the persisted RESULT of that math. All money is INTEGER
-// CENTS; no PHI (D18).
+// pool with zero penny drift. The `allocationColumns` are the step-down CONFIG (which centers are overhead,
+// the basis label, and the per-receiving-center statistical weights) the user sets BEFORE allocating — the
+// recompute reads them to drive the step-down and PRESERVES them (refreshing only the derived `poolAmountCents`);
+// the rest of this schema (`costCenters` + totals) is the persisted RESULT. All money is INTEGER CENTS; no
+// PHI (D18).
 //
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
 import { Type, type Static } from "@sinclair/typebox";
@@ -14,7 +17,13 @@ const AllocationStatColumn = Type.Object({
   generalServiceCostCenterCode: Type.String(),
   /** Statistical basis driving this column (square footage, FTEs, accumulated cost, etc.). */
   allocationBasis: Type.String(),
-  poolAmountCents: Type.Integer({ description: "total overhead pool being allocated this pass" }),
+  /** INPUT: the statistic per RECEIVING center that weights this overhead pool's step-down (e.g. each center's
+   *  square footage / FTE count). Empty → the pool spreads equally across the open centers (allocator default). */
+  statisticalWeights: Type.Array(
+    Type.Object({ receivingCenterCode: Type.String(), statisticValue: Type.Number() }),
+    { default: [] },
+  ),
+  poolAmountCents: Type.Integer({ description: "DERIVED: total overhead pool allocated this pass" }),
 });
 
 /** A direct cost center's fully-allocated result after the full step-down. */
