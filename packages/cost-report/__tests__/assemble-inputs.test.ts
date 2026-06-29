@@ -125,11 +125,45 @@ describe("assembleAllocationInputs — program apportionment (statistic census)"
     expect(cells.every((c) => ["medicare", "medicaid"].includes(c.program))).toBe(true);
     expect(cells.some((c) => c.patientDays === 99)).toBe(false); // unknown_loc dropped
     expect(cells.some((c) => c.patientDays === 7)).toBe(false); // bogus_program dropped
-    // Per-LOC allowable cost is not modeled upstream → empty → zero apportioned cost, cells still carried.
+    // No Worksheet A here → no allocatable cost → empty split → zero apportioned cost, cells still carried.
     expect(inputs.program.levelOfCareCosts).toEqual([]);
     const d = apportionToPrograms(inputs.program);
     expect(d.cells).toHaveLength(4);
     expect(d.programTotals.every((t) => t.apportionedCostCents === 0)).toBe(true);
+  });
+
+  it("splits the Worksheet-A total across LOCs by the census day mix so D ties B exactly", () => {
+    const inputs = assembleAllocationInputs(
+      raw({
+        worksheets: [{ worksheetCode: "A", data: { costCenters: [{ code: "D1", name: "Nursing", totalCostsCents: 1_000_000 }] } }],
+        monthlyBreakdown: {
+          "2026-01": {
+            rhc: { medicare: { patientDays: 60 } }, // 60 of 100 days → 60% of the cost
+            gip: { medicare: { patientDays: 40 } }, // 40 of 100 days → 40%
+          },
+        },
+      }),
+    );
+    expect(inputs.program.levelOfCareCosts).toEqual([
+      { levelOfCare: "rhc", allowableCostCents: 600_000 },
+      { levelOfCare: "chc", allowableCostCents: 0 },
+      { levelOfCare: "irc", allowableCostCents: 0 },
+      { levelOfCare: "gip", allowableCostCents: 400_000 },
+    ]);
+    // The per-LOC costs sum to the full Worksheet-A total → Worksheet D ties B to the cent.
+    const stepDownTotal = inputs.stepDown.costCenters.reduce((s, c) => s + c.directCostCents, 0);
+    const d = apportionToPrograms(inputs.program);
+    const grand = d.programTotals.reduce((s, t) => s + t.apportionedCostCents, 0);
+    expect(grand).toBe(stepDownTotal);
+    expect(grand).toBe(1_000_000);
+  });
+
+  it("a Worksheet-A total with NO census stays unapportioned (no day basis → D does not tie B)", () => {
+    const inputs = assembleAllocationInputs(
+      raw({ worksheets: [{ worksheetCode: "A", data: { costCenters: [{ code: "D1", name: "N", totalCostsCents: 1_000_000 }] } }] }),
+    );
+    expect(inputs.program.levelOfCareCosts).toEqual([]);
+    expect(apportionToPrograms(inputs.program).programTotals.every((t) => t.apportionedCostCents === 0)).toBe(true);
   });
 
   it("absent statistics → no cells", () => {

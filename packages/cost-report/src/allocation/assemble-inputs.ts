@@ -12,11 +12,14 @@
 //     allocation RESULT, not the per-receiving-center weights), so with no weights every Worksheet-A center is
 //     emitted as DIRECT (isOverhead:false) and `statisticalBases` is empty → the step-down preserves each
 //     center's direct cost exactly and ties out. Overhead step-down lights up when the weight model lands.
-//   • Per-level-of-care allowable COST is not yet split by LOC upstream, so `levelOfCareCosts` is empty → the
-//     program apportionment carries the (real, materialized) patient-day cells at zero apportioned cost.
+//   • Per-level-of-care allowable COST is split deterministically by the census PATIENT-DAY mix: the fully-
+//     allocated total (= the Worksheet-A grand total, which the step-down conserves into B) is apportioned
+//     across the four levels of care by their patient days via the penny-true allocator, so the downstream
+//     program apportionment carries the whole B total and Worksheet D ties to B exactly. With no census
+//     (no day basis) the split is empty (no fabricated basis) — D then legitimately does not tie B.
 //   • The cap settlement lines appear ONLY when the M26 cap context is bound (else `capPositionPending`).
 // Money is INTEGER CENTS. No PHI — aggregate cost/day mix only (D18).
-import type { Cents } from "../domain/money";
+import { type Cents, allocateProportional } from "../domain/money";
 import type { CapContext } from "../validation/types";
 import {
   type AncillaryApportionInput,
@@ -25,6 +28,7 @@ import {
 } from "./ancillary-apportionment";
 import {
   type LevelOfCare,
+  type LevelOfCareCostInput,
   type PatientDayCell,
   type ProgramApportionInput,
   LEVELS_OF_CARE,
@@ -74,10 +78,15 @@ export function assembleAllocationInputs(input: RawAllocationInputs): Allocation
   const ws = (code: string): Record<string, unknown> =>
     (byCode.get(code) as Record<string, unknown> | undefined) ?? {};
 
+  const stepDown = assembleStepDown(ws("A"));
+  // The fully-allocated total the step-down conserves into Worksheet B (= Σ direct costs from A). This is the
+  // pool the program apportionment splits across levels of care, so Worksheet D's grand total ties to B.
+  const allocatableTotalCents = stepDown.costCenters.reduce((s, c) => s + c.directCostCents, 0);
+
   return {
-    stepDown: assembleStepDown(ws("A")),
+    stepDown,
     ancillary: assembleAncillary(ws("C")),
-    program: assembleProgram(input.monthlyBreakdown),
+    program: assembleProgram(input.monthlyBreakdown, allocatableTotalCents),
     settlement: assembleSettlement(ws("E-1"), ws("D"), input.cap.capContext, input.fiscalYearInt),
   };
 }
@@ -111,11 +120,16 @@ function assembleAncillary(c: Record<string, unknown>): AncillaryApportionInput 
   };
 }
 
-/** `statistic_data.monthly_breakdown` → the Worksheet D patient-day cells. Per-LOC allowable cost is not yet
- *  split upstream, so `levelOfCareCosts` is empty (the cells carry at zero apportioned cost). Unknown LOC /
- *  program keys are dropped (never coerced). */
-function assembleProgram(monthlyBreakdown: unknown | null): ProgramApportionInput {
+/** `statistic_data.monthly_breakdown` → the Worksheet D patient-day cells + the per-LOC allowable-cost split.
+ *  The fully-allocated total (`allocatableTotalCents`, = the conserved Worksheet-B total) is apportioned across
+ *  the levels of care by their patient-day mix via the penny-true allocator, so the per-LOC costs sum EXACTLY
+ *  to B and the downstream program apportionment carries the whole total → Worksheet D ties to B. An LOC earns
+ *  cost only in proportion to its days (a zero-day LOC gets zero, so its cost never strands a cell-less level),
+ *  and with no census at all (no day basis) the split is empty — no fabricated basis. Unknown LOC / program
+ *  keys are dropped (never coerced). */
+function assembleProgram(monthlyBreakdown: unknown | null, allocatableTotalCents: number): ProgramApportionInput {
   const patientDays: PatientDayCell[] = [];
+  const daysByLevel = new Map<LevelOfCare, number>();
   const months = (monthlyBreakdown ?? {}) as Record<
     string,
     Record<string, Record<string, { patientDays?: unknown }>>
@@ -127,16 +141,23 @@ function assembleProgram(monthlyBreakdown: unknown | null): ProgramApportionInpu
       for (const [progKey, cell] of Object.entries(programs ?? {})) {
         const program = progKey.toLowerCase();
         if (!PROGRAM_SET.has(program)) continue;
-        patientDays.push({
-          levelOfCare: loc as LevelOfCare,
-          program: program as CostReportProgram,
-          month,
-          patientDays: num((cell as { patientDays?: unknown })?.patientDays),
-        });
+        const days = num((cell as { patientDays?: unknown })?.patientDays);
+        patientDays.push({ levelOfCare: loc as LevelOfCare, program: program as CostReportProgram, month, patientDays: days });
+        daysByLevel.set(loc as LevelOfCare, (daysByLevel.get(loc as LevelOfCare) ?? 0) + days);
       }
     }
   }
-  return { levelOfCareCosts: [], patientDays };
+
+  // Split the fully-allocated total across LOCs by their day mix (penny-true → sums to the total exactly).
+  // Skip when there is no cost or no day basis (an incomplete report → D legitimately does not tie B).
+  const totalDays = LEVELS_OF_CARE.reduce((s, l) => s + (daysByLevel.get(l) ?? 0), 0);
+  let levelOfCareCosts: LevelOfCareCostInput[] = [];
+  if (allocatableTotalCents > 0 && totalDays > 0) {
+    const weights = LEVELS_OF_CARE.map((l) => daysByLevel.get(l) ?? 0);
+    const parts = allocateProportional(allocatableTotalCents, weights);
+    levelOfCareCosts = LEVELS_OF_CARE.map((levelOfCare, i) => ({ levelOfCare, allowableCostCents: parts[i]! }));
+  }
+  return { levelOfCareCosts, patientDays };
 }
 
 /** Worksheets E-1 / D + the M26 cap context → the settlement input. Allowable cost / interim payments are read
