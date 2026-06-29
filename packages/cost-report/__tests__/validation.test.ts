@@ -98,9 +98,9 @@ function passingContext(): ValidationContext {
   };
 }
 
-describe("DEFAULT_VALIDATION_RULES — the 28-rule platform floor", () => {
-  it("has exactly 28 rules", () => {
-    expect(DEFAULT_VALIDATION_RULES).toHaveLength(28);
+describe("DEFAULT_VALIDATION_RULES — the 29-rule platform floor", () => {
+  it("has exactly 29 rules", () => {
+    expect(DEFAULT_VALIDATION_RULES).toHaveLength(29);
   });
 
   it("spans all 16 §2.1 rule categories", () => {

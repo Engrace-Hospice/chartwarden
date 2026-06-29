@@ -98,6 +98,11 @@ export { SiaCalculationRepository } from "./sia-calculation";
 export { SequestrationPolicyRepository } from "./sequestration-policy";
 export { WageIndexFactorRepository } from "./wage-index-factor";
 export {
+  CostReportAggregateRepository,
+  type BilledDaysAggregate,
+  type BilledDaysByLevel,
+} from "./cost-report-aggregates";
+export {
   MacSubmitterCredentialRepository,
   type MacSubmitterCredentialSafeRecord,
   type MacCredentialSecretMaterial,

@@ -66,8 +66,42 @@ export interface RawValidationInputs {
   readonly complianceWindow: RawComplianceWindow | null;
   readonly deadlineOverrideGranted: boolean;
   readonly cap: { capContext: CapContext | null; capProviderBound: boolean };
+  /** The live M23/M25/M12 cost-report binds. Optional → all-unbound default (the M23-gated rules SKIP, the
+   *  unchanged deny-stub contract) so callers that pre-date the binds keep working. */
+  readonly billing?: RawBillingBinds;
   readonly now: Date;
 }
+
+/** The resolved cross-module billing facts feeding the statistics/settlement/drug rules (§4.4). */
+export interface RawBillingBinds {
+  /** M23 PatientDaysProvider — billed-and-accepted census patient-days; null when unbound. */
+  readonly billedCensusPatientDays: number | null;
+  readonly patientDaysProviderBound: boolean;
+  /** M25 ClaimSettlementProvider — actual interim Medicare payments (835 CLP04) cents; null when unbound. */
+  readonly interimPaymentsActualCents: number | null;
+  readonly claimSettlementProviderBound: boolean;
+  /** M12 DrugCostBillingReader — drug-cost basis cents for the FY; null while M12 cost is unmaterialized. */
+  readonly billedDrugChargesCents: number | null;
+  readonly drugCostBillingReaderBound: boolean;
+}
+
+const UNBOUND_BILLING: RawBillingBinds = {
+  billedCensusPatientDays: null,
+  patientDaysProviderBound: false,
+  interimPaymentsActualCents: null,
+  claimSettlementProviderBound: false,
+  billedDrugChargesCents: null,
+  drugCostBillingReaderBound: false,
+};
+
+/** Worksheet-A cost-center codes representing pharmacy/drugs (the GL drug cost the billed basis cross-checks).
+ *  TODO(CMS-fixture): confirm the exact cms_cost_center_v1984_14 drug/pharmacy code(s) against a published
+ *  Worksheet A; this set is the documented best-known mapping. */
+const PHARMACY_COST_CENTER_CODES = new Set(["drugs", "pharmacy", "0250"]);
+
+/** E-1 settlement vs M25 actual interim-payment tolerance (cents). TODO(CMS-fixture): the acceptable delta
+ *  (posting-lag, takebacks, sequestration timing) is operational, not a CMS constant — a small band for now. */
+const SETTLEMENT_TOLERANCE_CENTS = 100;
 
 const MS_PER_DAY = 86_400_000;
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
@@ -103,7 +137,29 @@ export function assembleValidationContext(input: RawValidationInputs): Validatio
   const d = ws("D");
   const a6 = ws("A-6");
   const g1 = ws("G-1");
+  const e1 = ws("E-1");
   const sWs = ws("S");
+
+  const billing = input.billing ?? UNBOUND_BILLING;
+
+  // Worksheet-A pharmacy/drug cost center (GL) the billed drug-cost basis cross-checks against (null = absent).
+  const aCostCenters = Array.isArray(a.costCenters) ? (a.costCenters as Record<string, unknown>[]) : [];
+  const pharmacyCenter = aCostCenters.find(
+    (cc) => typeof cc.code === "string" && PHARMACY_COST_CENTER_CODES.has((cc.code as string).toLowerCase()),
+  );
+  const worksheetAPharmacyCents = pharmacyCenter ? num(pharmacyCenter.totalCostCents) : null;
+
+  // E-1 settlement tie: internal (E-1↔S summary) AND the claimed Medicare interim payments match M25's posted
+  // 835 total within tolerance. Only meaningful when the M25 settlement seam is bound (else the rule SKIPS).
+  const e1Medicare = (e1.medicare as Record<string, unknown> | undefined) ?? {};
+  const e1InterimClaimedCents = num(e1Medicare.interimPaymentsReceivedCents);
+  const settlementInternalTie = bool(e1.tiesToWorksheetSSettlementSummary);
+  const settlementExternalTie =
+    billing.interimPaymentsActualCents !== null &&
+    Math.abs(e1InterimClaimedCents - billing.interimPaymentsActualCents) <= SETTLEMENT_TOLERANCE_CENTS;
+  const tiesToWorksheetD = billing.claimSettlementProviderBound
+    ? settlementInternalTie && settlementExternalTie
+    : false;
 
   const census = rollupCensus(input.statistic?.monthlyBreakdown);
   const dDays = ["medicare", "medicaid", "other"].reduce(
@@ -138,8 +194,8 @@ export function assembleValidationContext(input: RawValidationInputs): Validatio
     },
     statistics: {
       serviceCensusPatientDays: census.totalPatientDays,
-      // M23 PatientDaysProvider unbound → null (the reconcile rule SKIPS; never fabricated).
-      billedCensusPatientDays: null,
+      // M23 PatientDaysProvider: the live billed-and-accepted census when bound; null → the reconcile rule SKIPS.
+      billedCensusPatientDays: billing.patientDaysProviderBound ? billing.billedCensusPatientDays : null,
       totalPatientDays: census.totalPatientDays,
       s3GrandTotalPatientDays: census.totalPatientDays,
       hasNegativeCensusValue: census.hasNegative,
@@ -163,8 +219,14 @@ export function assembleValidationContext(input: RawValidationInputs): Validatio
     },
     settlement: {
       computed: has("E-1"),
-      // M23 ClaimSettlementProvider unbound → false (the E-1↔D tie rule SKIPS).
-      tiesToWorksheetD: false,
+      // M25 ClaimSettlementProvider: E-1 internal tie AND claimed interim payments match the posted 835 total
+      // within tolerance when bound; false (the E-1↔D tie rule SKIPS) until the seam binds.
+      tiesToWorksheetD,
+    },
+    drugCost: {
+      // M12 DrugCostBillingReader: the billed drug-cost basis when bound; null → the reconcile rule SKIPS.
+      billedCents: billing.drugCostBillingReaderBound ? billing.billedDrugChargesCents : null,
+      worksheetAPharmacyCents,
     },
     cap: input.cap.capContext,
     badDebt: {
@@ -184,9 +246,9 @@ export function assembleValidationContext(input: RawValidationInputs): Validatio
     },
     seams: {
       capProviderBound: input.cap.capProviderBound,
-      patientDaysProviderBound: false,
-      claimSettlementProviderBound: false,
-      drugCostBillingReaderBound: false,
+      patientDaysProviderBound: billing.patientDaysProviderBound,
+      claimSettlementProviderBound: billing.claimSettlementProviderBound,
+      drugCostBillingReaderBound: billing.drugCostBillingReaderBound,
     },
   };
 }

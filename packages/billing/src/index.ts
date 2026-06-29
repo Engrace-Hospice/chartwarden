@@ -68,6 +68,8 @@ export * as repositories from "./repositories";
 // SELECTIVE (not `export *`) so it never collides with the DTO-record / route-contract / schema barrels
 // above (the namespaced re-export keeps those record types — `ClaimRecord` etc. — behind `repositories.`).
 export {
+  type BilledDaysAggregate,
+  type BilledDaysByLevel,
   type BillingDb,
   type CursorKeyset,
   type CursorPage,

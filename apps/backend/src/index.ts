@@ -109,6 +109,9 @@ import {
 import {
   M27_OUTBOX_EVENTS,
   type ProviderEntityResolver as M27ProviderEntityResolver,
+  type PatientDaysSeam as M27PatientDaysSeam,
+  type ClaimSettlementSeam as M27ClaimSettlementSeam,
+  type DrugCostSeam as M27DrugCostSeam,
   buildDrizzleM27ReadService,
   buildDrizzleM27WriteService,
   buildM27ValidationContext,
@@ -137,6 +140,7 @@ import {
   mountM25Routes,
   registerM25AbacPredicates,
   registerM25CronWorkers,
+  registerM25PublishedSeams,
   registerRemittanceErasers,
   scheduleM25Jobs,
   wireM25Tenancy,
@@ -172,6 +176,7 @@ import {
   registerBillingErasers,
   registerM23AbacPredicates,
   registerM23CronWorkers,
+  registerM23PublishedSeams,
   registerM23Workers,
   scheduleM23Jobs,
 } from "./modules/23-billing-medicare/index";
@@ -292,6 +297,14 @@ export function wireModuleSeams(
   // M26 — register the PUBLISHED CapAccrualReader seam so M27's cost-report Worksheet-E cap calc resolves the
   // live cap-period aggregate via getSeam (D13). The M1 fail-closed deny-stub stands when no db is present.
   registerM26PublishedSeams(deps.db);
+  // M23 — register the PUBLISHED PatientDaysProvider seam so M27's cost-report Worksheet-D census reconciliation
+  // resolves the live billed-and-accepted patient-day aggregate via getSeam (M23's first M1 publish). The M1
+  // fail-closed deny-stub stands when no db is present.
+  registerM23PublishedSeams(deps.db);
+  // M25 — register the PUBLISHED ClaimSettlementProvider seam so M27's cost-report E-1 settlement tie resolves
+  // the live actual interim-payment aggregate (835 CLP04) via getSeam. The M1 fail-closed deny-stub stands when
+  // no db is present.
+  registerM25PublishedSeams(deps.db);
   // M11 — the two §2.8 D14 / §4.3 owned seams (OrderSignatureProvider — the polymorphic clinical-signature
   // WRITE primitive M12 routes medication-order signatures through, D4 — + OrderProvider — the read-side
   // counterpart M14/M23/M30/M7 consume). Slice/tests keep the in-memory store; the Drizzle-backed store lands
@@ -918,6 +931,11 @@ if ((import.meta as { main?: boolean }).main) {
       validationContext: buildM27ValidationContext({
         capResolver: m27CapSeamResolver,
         providerEntity: () => getSeam("MdmEntityProvider") as M27ProviderEntityResolver,
+        // M23 billed-census + M25 actual interim payments + M12 drug-cost basis (opaque rich-seams; cast to
+        // M27's consumer views). Each degrades to its deny-stub (rule SKIPS) until the producer binds live.
+        patientDays: () => getSeam("PatientDaysProvider") as M27PatientDaysSeam,
+        settlement: () => getSeam("ClaimSettlementProvider") as M27ClaimSettlementSeam,
+        drugCost: () => getSeam("DrugCostBillingReader") as M27DrugCostSeam,
       }),
     });
     const m27Workers = [...registerM27Workers(m27WorkerDeps), ...registerM27CronWorkers(m27WorkerDeps)];

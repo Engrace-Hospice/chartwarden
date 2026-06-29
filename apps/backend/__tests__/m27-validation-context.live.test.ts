@@ -31,6 +31,14 @@ const PROVIDER_ENTITY = "33333333-3333-3333-3333-333333333333";
 // An unbound cap (the M26/M23 deny-stub posture) → aggregateForCostReport returns null → cap rules skip.
 const unboundCap: CapAggregateSeam = { async aggregateForCostReport() { return null; } };
 
+// The M23/M25/M12 producers in their deny-stub posture: every method throws → M27 degrades each bind to
+// null/false (the dependent rule SKIPS), exactly as the M1 deny-stub proxy behaves before a producer binds.
+const denyProducers = {
+  patientDays: () => ({ async billedDaysForFiscalYear() { throw new Error("SEAM_NOT_BOUND"); } }),
+  settlement: () => ({ async interimPaymentsForFiscalYear() { throw new Error("SEAM_NOT_BOUND"); } }),
+  drugCost: () => ({ async drugCostForFiscalYear() { throw new Error("SEAM_NOT_BOUND"); } }),
+} as const;
+
 describe.skipIf(!DB_URL)("M27 ValidationContextBuilder — LIVE Postgres (§11.B)", () => {
   let admin: Client;
   let handle: { db: DbClient; close: () => Promise<void> };
@@ -99,6 +107,7 @@ describe.skipIf(!DB_URL)("M27 ValidationContextBuilder — LIVE Postgres (§11.B
     const builder = buildM27ValidationContext({
       capResolver: () => unboundCap,
       providerEntity: () => ({ async resolveProviderEntity() { return { macJurisdiction: "ngs_j6" }; } }),
+      ...denyProducers,
       now: () => new Date("2026-12-01T00:00:00Z"),
     });
     const ctx = await withOrgContext(handle.db, { organizationId: ORG, userId: USER }, (tx) =>
@@ -120,17 +129,40 @@ describe.skipIf(!DB_URL)("M27 ValidationContextBuilder — LIVE Postgres (§11.B
     expect(ctx.seams.capProviderBound).toBe(false);
     expect(ctx.statistics.billedCensusPatientDays).toBeNull();
     expect(ctx.seams.patientDaysProviderBound).toBe(false);
+    expect(ctx.seams.claimSettlementProviderBound).toBe(false);
+    expect(ctx.seams.drugCostBillingReaderBound).toBe(false);
   });
 
   it("fail-soft MAC: a provider-entity lookup error → `all` (only platform-default rules apply)", async () => {
     const builder = buildM27ValidationContext({
       capResolver: () => unboundCap,
       providerEntity: () => ({ async resolveProviderEntity() { throw new Error("M40 down"); } }),
+      ...denyProducers,
       now: () => new Date("2026-12-01T00:00:00Z"),
     });
     const ctx = await withOrgContext(handle.db, { organizationId: ORG, userId: USER }, (tx) =>
       builder.build({ organizationId: ORG, costReportId: reportId, tx }),
     );
     expect(ctx.macJurisdiction).toBe("all");
+  });
+
+  it("binds M23 billed census + M25 interim payments → the gated flags flip and the rules go live", async () => {
+    const builder = buildM27ValidationContext({
+      capResolver: () => unboundCap,
+      providerEntity: () => ({ async resolveProviderEntity() { return { macJurisdiction: "ngs_j6" }; } }),
+      // M23 + M25 bound (stub producers returning fixed aggregates); M12 drug cost stays unbound (deny).
+      patientDays: () => ({ async billedDaysForFiscalYear() { return { totalPatientDays: 365 }; } }),
+      settlement: () => ({ async interimPaymentsForFiscalYear() { return { interimPaymentsCents: 4_000_000 }; } }),
+      drugCost: denyProducers.drugCost,
+      now: () => new Date("2026-12-01T00:00:00Z"),
+    });
+    const ctx = await withOrgContext(handle.db, { organizationId: ORG, userId: USER }, (tx) =>
+      builder.build({ organizationId: ORG, costReportId: reportId, tx }),
+    );
+    expect(ctx.statistics.billedCensusPatientDays).toBe(365);
+    expect(ctx.seams.patientDaysProviderBound).toBe(true);
+    expect(ctx.seams.claimSettlementProviderBound).toBe(true);
+    // M12 cost unmaterialized → still degraded (the drug-reconcile rule keeps SKIPPING).
+    expect(ctx.seams.drugCostBillingReaderBound).toBe(false);
   });
 });

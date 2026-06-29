@@ -210,7 +210,12 @@ export type SeamName =
   | "VolunteerComplianceProvider" // M15 — per-membership volunteer-compliance status (gate predicate 6, VOLUNTEER_GATE_UNMET)
   | "SupervisoryCadenceReader" // M15 — next-due RN supervisory visit per admission (day-view advisory + propose-from-frequency)
   | "CapAccrualReader" // M26 — cap-period aggregate for the M27 cost-report Worksheet-E cap calc (aggregate $/days, no PHI)
-  | "CapProjectionProvider"; // M26 — agency/patient/inpatient cap projection for the M23 §11.A pre-submission cap rules
+  | "CapProjectionProvider" // M26 — agency/patient/inpatient cap projection for the M23 §11.A pre-submission cap rules
+  // M23/M25 → M27 cost-report validation binds. M23 is the FIRST module to publish into the typed M1
+  // registry (it was outbox-only before); M25 follows. All three are aggregate, FY-scoped, PHI-free (D18):
+  | "PatientDaysProvider" // M23 — billed-and-accepted census patient-days for a FY (M27 stats.patient_days_reconcile)
+  | "DrugCostBillingReader" // M12 — drug-cost basis for a FY, M27 Worksheet-A pharmacy cross-check (drug_cost.billed_reconciles). RESERVATION: degrades until M12 materializes med-order cost (no cost column today)
+  | "ClaimSettlementProvider"; // M25 — actual interim Medicare payments (835 CLP04) for a FY (M27 settlement.e1_ties_to_d)
 
 /**
  * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
@@ -418,6 +423,13 @@ export interface SeamContracts {
   // via getSeam + an adapter for the §11.A `aggregate_cap_projection` / `ipu_cap_projection` rules. Registered
   // by M26 at boot over the fail-closed deny-stub.
   CapProjectionProvider: unknown;
+  // M23/M25 → M27 cost-report binds. OPAQUE rich-seam pattern: the consumer-facing aggregate views live in
+  // M27's own consumer code (the producer interfaces in @wardenx/billing / @wardenx/remittance are not imported
+  // by this leaf), so the registry holds each instance as `unknown` and M27's ValidationContextBuilder resolves
+  // via `getSeam` + cast to its minimal view. Registered by M23/M25 at boot over the fail-closed deny-stub.
+  PatientDaysProvider: unknown;
+  DrugCostBillingReader: unknown;
+  ClaimSettlementProvider: unknown;
   // M40's `BaaStatusProvider` is the focused §7.7 disclosure gate, registered separately from the
   // omnibus above (different contract: as-of time-travel + sending-facility resolution). Same
   // opaque rich-seam pattern — interface in @wardenx/mdm; M22/M28/M29 import the real type.

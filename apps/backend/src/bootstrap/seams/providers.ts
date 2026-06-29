@@ -232,6 +232,20 @@ export const capAccrualReaderDenyStub: unknown = denyingSeamProxy("CapAccrualRea
  *  adapter catches this deny-stub throw and DEGRADES to `status:"unavailable"` (warn, not block, per D8). */
 export const capProjectionProviderDenyStub: unknown = denyingSeamProxy("CapProjectionProvider");
 
+/** M23 — billed-and-accepted census patient-days for a FY. Opaque rich-seam; M27's ValidationContextBuilder
+ *  catches this deny-stub throw and leaves `billedCensusPatientDays` null (the reconcile rule SKIPS). */
+export const patientDaysProviderDenyStub: unknown = denyingSeamProxy("PatientDaysProvider");
+
+/** M12 — drug-cost basis for a FY (M27 Worksheet-A pharmacy cross-check). RESERVATION deny-stub: hospice
+ *  billing is per-diem (no M23 drug line) and `medication_orders` has no cost column yet, so this stays
+ *  fail-closed until M12 materializes med-order cost; M27 degrades to `drugCostBillingReaderBound:false`
+ *  (the drug-reconcile rule SKIPS). */
+export const drugCostBillingReaderDenyStub: unknown = denyingSeamProxy("DrugCostBillingReader");
+
+/** M25 — actual interim Medicare payments (835 CLP04) for a FY. Opaque rich-seam; M27 degrades to
+ *  `claimSettlementProviderBound:false` (the E-1↔D tie rule SKIPS) when this denies. */
+export const claimSettlementProviderDenyStub: unknown = denyingSeamProxy("ClaimSettlementProvider");
+
 /** M36 — channel/message surface (DEK-encrypted bodies). Denies until M36 registers the real
  *  provider (its DB-backed impl lands with the routes/realtime tasks, M36-T07/T08). */
 export const messagingProviderDenyStub: unknown = denyingSeamProxy("MessagingProvider");
