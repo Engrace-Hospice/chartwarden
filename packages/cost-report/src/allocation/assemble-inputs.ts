@@ -34,12 +34,21 @@ import {
   LEVELS_OF_CARE,
 } from "./program-apportionment";
 import type { SettlementInput } from "./settlement";
-import type { StepDownAllocateInput, StepDownCostCenter } from "./step-down";
+import type { StatisticalBasis, StepDownAllocateInput, StepDownCostCenter } from "./step-down";
 
 /** One already-read `cost_report_worksheet` row: its code + untyped `data` jsonb. */
 export interface RawAllocationWorksheet {
   readonly worksheetCode: string;
   readonly data: unknown;
+}
+
+/** The Worksheet-B step-down CONFIG read from the persisted `allocationColumns` input (which overhead centers
+ *  allocate, the basis label, and the per-receiving-center statistical weights). Carried forward on
+ *  {@link AllocationInputs} so the recompute PRESERVES it when it writes the derived Worksheet B back. */
+export interface AllocationColumnConfig {
+  readonly generalServiceCostCenterCode: string;
+  readonly allocationBasis: string;
+  readonly statisticalWeights: readonly { readonly receivingCenterCode: string; readonly statisticValue: number }[];
 }
 
 /** The raw, already-read DB facts the four allocation inputs are shaped from. */
@@ -53,12 +62,14 @@ export interface RawAllocationInputs {
   readonly cap: { readonly capContext: CapContext | null };
 }
 
-/** The four typed allocation inputs the recompute chain runs over. */
+/** The four typed allocation inputs the recompute chain runs over, plus the step-down column config carried
+ *  forward so the write-back preserves the user's Worksheet-B `allocationColumns`. */
 export interface AllocationInputs {
   readonly stepDown: StepDownAllocateInput;
   readonly ancillary: AncillaryApportionInput;
   readonly program: ProgramApportionInput;
   readonly settlement: SettlementInput;
+  readonly stepDownColumns: readonly AllocationColumnConfig[];
 }
 
 /** 42 CFR §418.302(f): inpatient days (GIP + IRC) are limited to 20% of total Medicare days. TODO(CMS-fixture):
@@ -78,7 +89,7 @@ export function assembleAllocationInputs(input: RawAllocationInputs): Allocation
   const ws = (code: string): Record<string, unknown> =>
     (byCode.get(code) as Record<string, unknown> | undefined) ?? {};
 
-  const stepDown = assembleStepDown(ws("A"));
+  const { stepDown, stepDownColumns } = assembleStepDown(ws("A"), ws("B"));
   // The fully-allocated total the step-down conserves into Worksheet B (= Σ direct costs from A). This is the
   // pool the program apportionment splits across levels of care, so Worksheet D's grand total ties to B.
   const allocatableTotalCents = stepDown.costCenters.reduce((s, c) => s + c.directCostCents, 0);
@@ -88,21 +99,45 @@ export function assembleAllocationInputs(input: RawAllocationInputs): Allocation
     ancillary: assembleAncillary(ws("C")),
     program: assembleProgram(input.monthlyBreakdown, allocatableTotalCents),
     settlement: assembleSettlement(ws("E-1"), ws("D"), input.cap.capContext, input.fiscalYearInt),
+    stepDownColumns,
   };
 }
 
-/** Worksheet A → step-down cost centers. Every center is DIRECT and the statistical bases are empty until the
- *  per-receiving-center weight model lands (Worksheet B persists the result, not the weights) → the step-down
- *  preserves each center's direct cost exactly and ties out. */
-function assembleStepDown(a: Record<string, unknown>): StepDownAllocateInput {
+/** Worksheets A + B → step-down input. Worksheet A supplies the cost centers + their direct costs (in
+ *  allocation order); Worksheet B's `allocationColumns` config supplies WHICH centers are overhead and the
+ *  per-receiving-center statistical weights that drive each overhead pool's step-down. With no B config every
+ *  center is DIRECT and the bases are empty → the step-down preserves each center's direct cost exactly (a
+ *  no-op pass that still ties out). The parsed columns are returned so the write-back can preserve them. */
+function assembleStepDown(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): { stepDown: StepDownAllocateInput; stepDownColumns: AllocationColumnConfig[] } {
+  const rawColumns = Array.isArray(b.allocationColumns) ? (b.allocationColumns as Record<string, unknown>[]) : [];
+  const stepDownColumns: AllocationColumnConfig[] = rawColumns
+    .filter((col) => str(col.generalServiceCostCenterCode).length > 0)
+    .map((col) => ({
+      generalServiceCostCenterCode: str(col.generalServiceCostCenterCode),
+      allocationBasis: str(col.allocationBasis),
+      statisticalWeights: (Array.isArray(col.statisticalWeights) ? (col.statisticalWeights as Record<string, unknown>[]) : [])
+        .map((w) => ({ receivingCenterCode: str(w.receivingCenterCode), statisticValue: num(w.statisticValue) }))
+        .filter((w) => w.receivingCenterCode.length > 0),
+    }));
+
+  const overheadCodes = new Set(stepDownColumns.map((c) => c.generalServiceCostCenterCode));
   const aCenters = Array.isArray(a.costCenters) ? (a.costCenters as Record<string, unknown>[]) : [];
   const costCenters: StepDownCostCenter[] = aCenters.map((cc) => ({
     code: str(cc.code),
     name: str(cc.name),
     directCostCents: num(cc.totalCostsCents),
-    isOverhead: false,
+    isOverhead: overheadCodes.has(str(cc.code)),
   }));
-  return { costCenters, statisticalBases: [] };
+
+  const statisticalBases: StatisticalBasis[] = stepDownColumns.map((col) => ({
+    allocatingCenterCode: col.generalServiceCostCenterCode,
+    weights: col.statisticalWeights.map((w) => ({ receivingCenterCode: w.receivingCenterCode, statisticValue: w.statisticValue })),
+  }));
+
+  return { stepDown: { costCenters, statisticalBases }, stepDownColumns };
 }
 
 /** Worksheet C → ancillary RCC inputs. C models Medicare charges only today, so each center's `programCharges`

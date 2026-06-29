@@ -44,16 +44,16 @@ describe("stepDownToWorksheetB", () => {
       ],
       statisticalBases: [],
     });
-    const b = stepDownToWorksheetB(result);
+    const b = stepDownToWorksheetB(result, []);
     expect(Value.Check(WorksheetB, b)).toBe(true);
     expect(b.totalFullyAllocatedCostCents).toBe(500_000);
     expect(b.tiesToWorksheetAGrandTotal).toBe(true);
     expect(b.stepDownPreservesTotalExactly).toBe(true);
     expect(b.costCenters.map((c) => c.code)).toEqual(["D1", "D2"]);
-    expect(b.allocationColumns).toEqual([]); // no overhead steps with empty bases
+    expect(b.allocationColumns).toEqual([]); // no config → no columns
   });
 
-  it("records each overhead step as an allocation column and persists only direct centers", () => {
+  it("preserves the step-down config columns verbatim and refreshes only poolAmountCents", () => {
     const result = stepDownAllocate({
       costCenters: [
         { code: "OH1", name: "A&G", directCostCents: 100_000, isOverhead: true },
@@ -64,14 +64,36 @@ describe("stepDownToWorksheetB", () => {
         { allocatingCenterCode: "OH1", weights: [{ receivingCenterCode: "D1", statisticValue: 1 }, { receivingCenterCode: "D2", statisticValue: 1 }] },
       ],
     });
-    const b = stepDownToWorksheetB(result);
+    const columns = [
+      {
+        generalServiceCostCenterCode: "OH1",
+        allocationBasis: "accumulated_cost",
+        statisticalWeights: [
+          { receivingCenterCode: "D1", statisticValue: 1 },
+          { receivingCenterCode: "D2", statisticValue: 1 },
+        ],
+      },
+    ];
+    const b = stepDownToWorksheetB(result, columns);
+    expect(Value.Check(WorksheetB, b)).toBe(true);
+    // The user's basis label + weights are preserved; only the derived pool amount is refreshed from the step.
     expect(b.allocationColumns).toEqual([
-      { generalServiceCostCenterCode: "OH1", allocationBasis: "", poolAmountCents: 100_000 },
+      {
+        generalServiceCostCenterCode: "OH1",
+        allocationBasis: "accumulated_cost",
+        statisticalWeights: [
+          { receivingCenterCode: "D1", statisticValue: 1 },
+          { receivingCenterCode: "D2", statisticValue: 1 },
+        ],
+        poolAmountCents: 100_000,
+      },
     ]);
     expect(b.costCenters.map((c) => c.code)).toEqual(["D1", "D2"]); // overhead folded out
     expect(b.totalFullyAllocatedCostCents).toBe(600_000);
+    // OH1's 100_000 split 1:1 → 50_000 each.
     const d1 = b.costCenters.find((c) => c.code === "D1")!;
-    expect(d1.directCostCents + d1.allocatedOverheadCents).toBe(d1.fullyAllocatedCostCents);
+    expect(d1.allocatedOverheadCents).toBe(50_000);
+    expect(d1.fullyAllocatedCostCents).toBe(250_000);
   });
 });
 
@@ -161,6 +183,7 @@ describe("allocationResultsToWorksheets — full chain from assembled inputs", (
       program: apportionToPrograms(inputs.program),
       settlement: computeSettlement(inputs.settlement),
       settlementInput: inputs.settlement,
+      stepDownColumns: inputs.stepDownColumns,
     });
     expect(Value.Check(WorksheetB, payloads.B)).toBe(true);
     expect(Value.Check(WorksheetC, payloads.C)).toBe(true);

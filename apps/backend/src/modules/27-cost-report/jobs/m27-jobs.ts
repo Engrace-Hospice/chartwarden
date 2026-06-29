@@ -30,6 +30,7 @@
 // sentinel the M4 write-audit trigger maps to a NULL actor (a background job has no acting user).
 import { type DbClient, schema } from "@wardenx/db";
 import {
+  type AllocationInputs,
   type AncillaryApportionInput,
   type AncillaryApportionResult,
   ComplianceWindowRepository,
@@ -255,12 +256,7 @@ export interface AllocationInputBuilder {
     readonly organizationId: string;
     readonly costReportId: string;
     readonly tx: DbClient;
-  }): Promise<{
-    readonly stepDown: StepDownAllocateInput;
-    readonly ancillary: AncillaryApportionInput;
-    readonly program: ProgramApportionInput;
-    readonly settlement: SettlementInput;
-  }>;
+  }): Promise<AllocationInputs>;
 }
 
 /** The platform active-org enumerator the filing-deadline cron fans its per-org window scan across (M2). */
@@ -687,6 +683,7 @@ async function runCostAllocationRecompute(
     program,
     settlement,
     settlementInput: inputs.settlement,
+    stepDownColumns: inputs.stepDownColumns,
   });
 
   // The full `allocate` recomputes every derived worksheet; a `computeWorksheet` narrows to the one requested

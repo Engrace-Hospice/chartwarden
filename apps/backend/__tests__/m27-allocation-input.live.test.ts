@@ -189,6 +189,7 @@ describe.skipIf(!DB_URL)("M27 AllocationInputBuilder — LIVE Postgres (§3.1 / 
         program: apportionToPrograms(inputs.program),
         settlement: computeSettlement(inputs.settlement),
         settlementInput: inputs.settlement,
+        stepDownColumns: inputs.stepDownColumns,
       });
       const repo = new CostReportWorksheetRepository(tx);
       for (const code of ["B", "C", "D", "E-1"] as const) {
@@ -222,5 +223,90 @@ describe.skipIf(!DB_URL)("M27 AllocationInputBuilder — LIVE Postgres (§3.1 / 
     const d = byCode.get("D")!.data as { grandTotalApportionedCostCents: number; tiesToWorksheetBTotal: boolean };
     expect(d.grandTotalApportionedCostCents).toBe(500_000);
     expect(d.tiesToWorksheetBTotal).toBe(true);
+  });
+
+  it("step-down weights: reads the Worksheet-B config, allocates overhead, and preserves the config", async () => {
+    // A fresh report with an OVERHEAD center (A&G) in Worksheet A + a Worksheet-B allocation-column config
+    // carrying the per-receiving-center statistical weights (3:1) that drive the step-down.
+    // A DIFFERENT fiscal year than the seeded report (the per-(provider, FYE) uniqueness is D1).
+    const reportId2 = (
+      await admin.query(
+        `INSERT INTO cost_report (organization_id, provider_entity_id, fiscal_year_start_date,
+           fiscal_year_end_date, state, bad_debt_claimed, wage_source)
+         VALUES ($1,$2,'2026-10-01','2027-09-30','draft',false,'manual') RETURNING id`,
+        [ORG, PROVIDER_ENTITY],
+      )
+    ).rows[0].id as string;
+    await admin.query(
+      `INSERT INTO cost_report_worksheet (organization_id, cost_report_id, worksheet_code, data) VALUES ($1,$2,'A',$3)`,
+      [
+        ORG,
+        reportId2,
+        JSON.stringify({
+          costCenters: [
+            { code: "OH1", name: "A&G", totalCostsCents: 100_000 },
+            { code: "D1", name: "Nursing", totalCostsCents: 200_000 },
+            { code: "D2", name: "Pharmacy", totalCostsCents: 300_000 },
+          ],
+        }),
+      ],
+    );
+    await admin.query(
+      `INSERT INTO cost_report_worksheet (organization_id, cost_report_id, worksheet_code, data) VALUES ($1,$2,'B',$3)`,
+      [
+        ORG,
+        reportId2,
+        JSON.stringify({
+          allocationColumns: [
+            {
+              generalServiceCostCenterCode: "OH1",
+              allocationBasis: "square_footage",
+              statisticalWeights: [
+                { receivingCenterCode: "D1", statisticValue: 3 },
+                { receivingCenterCode: "D2", statisticValue: 1 },
+              ],
+              poolAmountCents: 0,
+            },
+          ],
+        }),
+      ],
+    );
+
+    const builder = buildM27AllocationInputs({ capResolver: () => boundCap });
+    await withOrgContext(handle.db, { organizationId: ORG, userId: "" }, async (tx) => {
+      const inputs = await builder.build({ organizationId: ORG, costReportId: reportId2, tx });
+      const payloads = allocationResultsToWorksheets({
+        stepDown: stepDownAllocate(inputs.stepDown),
+        ancillary: apportionAncillary(inputs.ancillary),
+        program: apportionToPrograms(inputs.program),
+        settlement: computeSettlement(inputs.settlement),
+        settlementInput: inputs.settlement,
+        stepDownColumns: inputs.stepDownColumns,
+      });
+      const repo = new CostReportWorksheetRepository(tx);
+      const existingB = await repo.findByReportAndCode(reportId2, "B");
+      const res = await repo.updateWithVersion(existingB!.id, existingB!.version, { data: payloads.B });
+      expect(res.ok).toBe(true);
+    });
+
+    const rows = await withOrgContext(handle.db, { organizationId: ORG, userId: USER }, (tx) =>
+      new CostReportWorksheetRepository(tx).listByReport(ORG, reportId2),
+    );
+    const b = rows.find((r) => r.worksheetCode === "B")!.data as {
+      costCenters: { code: string; fullyAllocatedCostCents: number }[];
+      totalFullyAllocatedCostCents: number;
+      allocationColumns: { generalServiceCostCenterCode: string; allocationBasis: string; statisticalWeights: unknown[]; poolAmountCents: number }[];
+    };
+    // OH1's 100_000 split 3:1 → D1 200_000+75_000, D2 300_000+25_000; overhead folded out, ties to A (600_000).
+    const byCc = new Map(b.costCenters.map((c) => [c.code, c]));
+    expect(byCc.get("D1")!.fullyAllocatedCostCents).toBe(275_000);
+    expect(byCc.get("D2")!.fullyAllocatedCostCents).toBe(325_000);
+    expect(byCc.has("OH1")).toBe(false);
+    expect(b.totalFullyAllocatedCostCents).toBe(600_000);
+    // The user's config is preserved (basis label + weights), with the derived pool refreshed to 100_000.
+    expect(b.allocationColumns).toHaveLength(1);
+    expect(b.allocationColumns[0]!.allocationBasis).toBe("square_footage");
+    expect(b.allocationColumns[0]!.statisticalWeights).toHaveLength(2);
+    expect(b.allocationColumns[0]!.poolAmountCents).toBe(100_000);
   });
 });

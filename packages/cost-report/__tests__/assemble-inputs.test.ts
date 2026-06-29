@@ -62,7 +62,57 @@ describe("assembleAllocationInputs — step-down (Worksheet A)", () => {
   it("absent Worksheet A → empty centers, trivial tie-out", () => {
     const inputs = assembleAllocationInputs(raw());
     expect(inputs.stepDown.costCenters).toEqual([]);
+    expect(inputs.stepDownColumns).toEqual([]);
     expect(stepDownAllocate(inputs.stepDown).tiesOut).toBe(true);
+  });
+
+  it("derives overhead centers + statistical bases from the Worksheet-B allocation config", () => {
+    const inputs = assembleAllocationInputs(
+      raw({
+        worksheets: [
+          {
+            worksheetCode: "A",
+            data: {
+              costCenters: [
+                { code: "OH1", name: "A&G", totalCostsCents: 100_000 },
+                { code: "D1", name: "Nursing", totalCostsCents: 200_000 },
+                { code: "D2", name: "Pharmacy", totalCostsCents: 300_000 },
+              ],
+            },
+          },
+          {
+            worksheetCode: "B",
+            data: {
+              allocationColumns: [
+                {
+                  generalServiceCostCenterCode: "OH1",
+                  allocationBasis: "square_footage",
+                  statisticalWeights: [
+                    { receivingCenterCode: "D1", statisticValue: 3 },
+                    { receivingCenterCode: "D2", statisticValue: 1 },
+                  ],
+                  poolAmountCents: 0, // derived — ignored on input
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    );
+    // OH1 is flagged overhead; D1/D2 stay direct.
+    expect(inputs.stepDown.costCenters.find((c) => c.code === "OH1")!.isOverhead).toBe(true);
+    expect(inputs.stepDown.costCenters.filter((c) => !c.isOverhead).map((c) => c.code)).toEqual(["D1", "D2"]);
+    expect(inputs.stepDown.statisticalBases).toEqual([
+      { allocatingCenterCode: "OH1", weights: [{ receivingCenterCode: "D1", statisticValue: 3 }, { receivingCenterCode: "D2", statisticValue: 1 }] },
+    ]);
+    // The step-down spreads OH1's 100_000 by the 3:1 basis → D1 +75_000, D2 +25_000, and ties out.
+    const b = stepDownAllocate(inputs.stepDown);
+    expect(b.tiesOut).toBe(true);
+    const byCode = new Map(b.centers.map((c) => [c.code, c]));
+    expect(byCode.get("OH1")!.totalCostCents).toBe(0);
+    expect(byCode.get("D1")!.totalCostCents).toBe(275_000);
+    expect(byCode.get("D2")!.totalCostCents).toBe(325_000);
+    expect(b.totalAllocatedToDirectCents).toBe(600_000); // == Σ all A costs (conserved → ties B)
   });
 });
 
