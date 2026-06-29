@@ -55,6 +55,7 @@ import {
   ValidationRepository,
   ValidationRuleRepository,
   type WorksheetCode,
+  allocationResultsToWorksheets,
   apportionAncillary,
   apportionToPrograms,
   applyTransition,
@@ -654,9 +655,11 @@ async function runStatisticsRefresh(tx: DbClient, deps: M27WorkerDeps, job: Stat
 /**
  * `cost-allocation-recompute` (§3.1 / D8 / §4.8): shape the materialized Worksheet A/S-3/mapping state into
  * the four allocation inputs (the fail-closed {@link AllocationInputBuilder} seam), run the deterministic
- * step-down (B) → ancillary RCC (C) → program apportionment (D) → settlement (E-1) chain, and emit
- * `m27.allocation.recomputed`. The pure fns are genuinely referenced + called; only the jsonb→input shaping
- * is the integrator's remaining lazy seam (the M30 `resolveInput` precedent).
+ * step-down (B) → ancillary RCC (C) → program apportionment (D) → settlement (E-1) chain, PERSIST the derived
+ * worksheet rows (the `cost_report_worksheet` upsert, stamping `computed_at`), and emit
+ * `m27.allocation.recomputed`. A full `allocate` writes all four derived worksheets; a `computeWorksheet`
+ * narrows to the one requested. The whole run is one org-scoped tx — the writes + the outbox emit commit
+ * together (D8 / RULE 3a).
  */
 async function runCostAllocationRecompute(
   tx: DbClient,
@@ -664,6 +667,7 @@ async function runCostAllocationRecompute(
   job: CostAllocationRecomputeJob,
 ): Promise<void> {
   const outbox = outboxOf(deps);
+  const now = (deps.now ?? (() => new Date()))();
   const inputs = await allocationInputsOf(deps).build({
     organizationId: job.organizationId,
     costReportId: job.costReportId,
@@ -674,13 +678,28 @@ async function runCostAllocationRecompute(
   const ancillary: AncillaryApportionResult = apportionAncillary(inputs.ancillary);
   const program: ProgramApportionResult = apportionToPrograms(inputs.program);
   const settlement: SettlementResult = computeSettlement(inputs.settlement);
-  void ancillary;
-  void program;
 
-  // The full `allocate` recomputes every derived worksheet; a `computeWorksheet` narrows to one.
+  // Map the four chain RESULTS back to the typed derived-worksheet `data` jsonb (the inverse of the input
+  // shaper). The persisted payloads are pure functions of the results — no recomputation, no clock.
+  const payloads = allocationResultsToWorksheets({
+    stepDown,
+    ancillary,
+    program,
+    settlement,
+    settlementInput: inputs.settlement,
+  });
+
+  // The full `allocate` recomputes every derived worksheet; a `computeWorksheet` narrows to the one requested
+  // (only the four DERIVED worksheets are produced — a non-derived `worksheetCode` recomputes nothing).
+  const DERIVED = ["B", "C", "D", "E-1"] as const;
   const worksheetsRecomputed: WorksheetCode[] = job.worksheetCode
-    ? [job.worksheetCode]
-    : ["B", "C", "D", "E-1"];
+    ? DERIVED.filter((c) => c === job.worksheetCode)
+    : [...DERIVED];
+
+  const worksheets = new CostReportWorksheetRepository(tx);
+  for (const code of worksheetsRecomputed as (typeof DERIVED)[number][]) {
+    await upsertDerivedWorksheet(worksheets, job.organizationId, job.costReportId, code, payloads[code], now);
+  }
 
   await outbox.publish(tx, {
     eventName: "m27.allocation.recomputed",
@@ -693,6 +712,34 @@ async function runCostAllocationRecompute(
       totalAllocatedCents: stepDown.totalAllocatedToDirectCents + settlement.netReimbursableCostCents,
     },
   });
+}
+
+/**
+ * Upsert a DERIVED worksheet's recomputed `data` (B/C/D/E-1), stamping `computed_at`. Lazy-creates the row on
+ * the first recompute; otherwise replaces `data` wholesale under §2.5 optimistic concurrency. A version
+ * conflict (a concurrent recompute landed first) is retried ONCE against the fresh version; a second conflict
+ * throws so BullMQ retries the whole job.
+ */
+async function upsertDerivedWorksheet(
+  worksheets: CostReportWorksheetRepository,
+  organizationId: string,
+  costReportId: string,
+  worksheetCode: WorksheetCode,
+  payload: unknown,
+  computedAt: Date,
+): Promise<void> {
+  const data = payload as schema.NewCostReportWorksheet["data"];
+  const existing = await worksheets.findByReportAndCode(costReportId, worksheetCode);
+  if (!existing) {
+    await worksheets.create({ organizationId, costReportId, worksheetCode, data, computedAt });
+    return;
+  }
+  const first = await worksheets.updateWithVersion(existing.id, existing.version, { data, computedAt });
+  if (first.ok) return;
+  const fresh = await worksheets.findByReportAndCode(costReportId, worksheetCode);
+  if (!fresh) throw new Error(`derived worksheet ${worksheetCode} vanished mid-recompute`);
+  const retry = await worksheets.updateWithVersion(fresh.id, fresh.version, { data, computedAt });
+  if (!retry.ok) throw new Error(`derived worksheet ${worksheetCode} recompute lost a concurrency race`);
 }
 
 /**
