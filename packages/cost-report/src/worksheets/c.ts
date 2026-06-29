@@ -1,3 +1,6 @@
+// ⚠️ CMS-DIVERGENCE (audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md): on the REAL Form CMS-1984-14, Worksheet C
+// is "Calculation of Per Diem Cost" (§4330) — hospice has NO ancillary ratio-of-cost-to-charges. This RCC
+// model is not on the hospice form; pending the worksheet-model realignment recorded in the ledger.
 // @wardenx/cost-report — Worksheet C (Ancillary Service Cost / Ratio of Cost to Charges) TypeBox schema
 // (CMS-1984-14, §4.2 / §1.1). C is a DERIVED worksheet: for each ancillary cost center it computes the
 // ratio of cost to charges (RCC = fully-allocated cost ÷ total charges) and applies it to program charges

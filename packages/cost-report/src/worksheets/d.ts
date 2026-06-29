@@ -1,3 +1,6 @@
+// ⚠️ CMS-DIVERGENCE (audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md): Form CMS-1984-14 has NO Worksheet D. The
+// per-(program × level-of-care) apportionment modeled here is actually the real Worksheet C ("Calculation of
+// Per Diem Cost", §4330), sourcing days from Worksheet S-1 (unduplicated days). Pending realignment (ledger).
 // @wardenx/cost-report — Worksheet D (Apportionment of Cost to Programs) TypeBox schema (CMS-1984-14, §4.2
 // / §1.1). D is a DERIVED worksheet: it apportions the fully-allocated hospice cost (Worksheet B) across
 // the payer programs (Medicare / Medicaid / other) and across the four levels of care (RHC / CHC / IRC /

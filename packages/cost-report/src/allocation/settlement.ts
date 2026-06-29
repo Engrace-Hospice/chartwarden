@@ -108,12 +108,12 @@ export interface SettlementResult {
  * cap math is skipped, never fabricated). Sequestration is the rate (micros) applied to the
  * post-SIA Medicare payment and rounded to the cent half-up by the money kernel.
  *
- * CMS-CERT (see audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md): sequestration is correctly a per-FY INPUT,
- * not a constant — 2% under the Budget Control Act of 2011, but SUSPENDED 2020-05-01→2022-03-31 (CARES Act),
- * 1% 2022-04-01→06-30, 2% thereafter; a report spanning that window must pass its period's rate. The exact
- * sequestration BASE line + rounding granularity, and the inpatient-cap payment-REDUCTION formula when
- * `inpatientLimitCents` is absent, are PENDING confirmation against CMS Pub 15-2 Ch.43 (Form CMS-1984-14,
- * transmittal R8P243/R5P247) — the math ties out internally to the cent against its own inputs today.
+ * CMS-CERT (line-by-line pass DONE — audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md): Form CMS-1984-14 has NO
+ * settlement worksheet — hospice is paid prospectively per-diem and the cap/sequestration settlement is the
+ * MAC cap-determination process (PS&R + annual cap notice), i.e. M26 cap management, not a cost-report
+ * worksheet. Sequestration is a per-FY INPUT taken from the PS&R (2% BCA-2011; suspended 2020-05-01→2022-03-31;
+ * 1% 2022-04-01→06-30; 2% after), never recomputed here. This module models that process; it has no E-1 on
+ * the form. Math ties out internally to the cent against its own inputs; structurally pending realignment.
  */
 export function computeSettlement(input: SettlementInput): SettlementResult {
   const siaAddOnCents = input.siaAddOnCents ?? 0;
