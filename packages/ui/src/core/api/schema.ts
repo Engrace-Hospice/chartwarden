@@ -1709,8 +1709,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List cap periods for the calling tenant — status + methodology (§4.1) */
         get: operations["getApiV1CapPeriods"];
         put?: never;
+        /** Open a new cap period (snapshots the platform constant; emits m26.cap.year_opened; §4.1) */
         post: operations["postApiV1CapPeriods"];
         delete?: never;
         options?: never;
@@ -1725,6 +1727,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Single cap period including methodology lock + status (§4.1) */
         get: operations["getApiV1CapPeriodsByPeriodId"];
         put?: never;
         post?: never;
@@ -1747,6 +1750,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Close a cap period — active → in_settlement (cap_period_open ABAC; M26-F06; §4.1) */
         patch: operations["patchApiV1CapPeriodsByPeriodIdClose"];
         trace?: never;
     };
@@ -1759,6 +1763,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Lock the streamlined/proportional methodology — one-time, step-up required (D2/D12; §4.1) */
         post: operations["postApiV1CapPeriodsByPeriodIdMethodology"];
         delete?: never;
         options?: never;
@@ -1775,6 +1780,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Upload a PS&R CSV — sha256-deduped, queued for reconciliation (202; §4.1) */
         post: operations["postApiV1CapPeriodsByPeriodIdPsrimports"];
         delete?: never;
         options?: never;
@@ -1795,6 +1801,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Reopen a settled period — step-up required (cap_period_settled ABAC; D12; §4.1) */
         patch: operations["patchApiV1CapPeriodsByPeriodIdReopen"];
         trace?: never;
     };
@@ -1805,6 +1812,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Latest projection snapshots (agency + inpatient) for a period (§4.1) */
         get: operations["getApiV1CapProjections"];
         put?: never;
         post?: never;
@@ -1823,6 +1831,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Force an immediate projection recompute (cap_period_open ABAC; §4.1) */
         post: operations["postApiV1CapProjectionsByPeriodIdRecompute"];
         delete?: never;
         options?: never;
@@ -1837,6 +1846,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Agency-aggregate projection snapshot — utilization + band (§4.1) */
         get: operations["getApiV1CapProjectionsAgencyByPeriodId"];
         put?: never;
         post?: never;
@@ -1853,6 +1863,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Inpatient (20%) cap utilization — GIP+IRC day count + band (§4.1) */
         get: operations["getApiV1CapProjectionsInpatientByPeriodId"];
         put?: never;
         post?: never;
@@ -1869,6 +1880,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Per-patient projection snapshot — contribution + band (§4.1) */
         get: operations["getApiV1CapProjectionsPatientByPeriodIdByPatientId"];
         put?: never;
         post?: never;
@@ -1923,6 +1935,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Resolve a variance line with a categorical reason + note (§4.1) */
         patch: operations["patchApiV1CapPsrimportsByImportIdReconciliationByLineIdResolve"];
         trace?: never;
     };
@@ -1933,6 +1946,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Settlement worksheet — final paid/cap/overage + owed direction (§4.1) */
         get: operations["getApiV1CapSettlementsByPeriodId"];
         put?: never;
         post?: never;
@@ -1955,6 +1969,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Finalize settlement — step-up; in_settlement → settled (D12; M26-F06; §4.1) */
         patch: operations["patchApiV1CapSettlementsByPeriodIdFinalize"];
         trace?: never;
     };
@@ -1967,6 +1982,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Propose a settlement worksheet from current accruals (cap_period_in_settlement ABAC; §4.1) */
         post: operations["postApiV1CapSettlementsByPeriodIdPropose"];
         delete?: never;
         options?: never;
@@ -2003,6 +2019,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Acknowledge a threshold event — records actor + timestamp (does not clear the breach; §4.1) */
         patch: operations["patchApiV1CapThresholdeventsByEventIdAcknowledge"];
         trace?: never;
     };
@@ -7311,6 +7328,7 @@ export interface paths {
         };
         get: operations["getApiV1PlatformCapConstants"];
         put?: never;
+        /** Publish a CMS per-cap-year cap amount — platform-admin (cap_platform_admin ABAC; D3; §4.1) */
         post: operations["postApiV1PlatformCapConstants"];
         delete?: never;
         options?: never;
@@ -7331,6 +7349,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Amend a published cap amount before first tenant use — platform-admin (D3; §4.1) */
         patch: operations["patchApiV1PlatformCapConstantsByCapYear"];
         trace?: never;
     };
@@ -13606,7 +13625,26 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        capYear: string;
+                        ccn: string;
+                        /** Format: date */
+                        startDate: string;
+                        /** Format: date */
+                        endDate: string;
+                        status: "open" | "active" | "in_settlement" | "settled" | "reopened";
+                        methodology?: ("streamlined" | "proportional") | null;
+                        methodologyLockedAt?: string | null;
+                        graceWindowDays: number;
+                        aggregateCapAmountCents: number;
+                        inpatientCapPct: number;
+                        /** Format: date-time */
+                        openedAt: string;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -13619,14 +13657,42 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    capYear: string;
+                    methodology?: "streamlined" | "proportional";
+                    /** @default 30 */
+                    graceWindowDays?: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        capYear: string;
+                        ccn: string;
+                        /** Format: date */
+                        startDate: string;
+                        /** Format: date */
+                        endDate: string;
+                        status: "open" | "active" | "in_settlement" | "settled" | "reopened";
+                        methodology?: ("streamlined" | "proportional") | null;
+                        methodologyLockedAt?: string | null;
+                        graceWindowDays: number;
+                        aggregateCapAmountCents: number;
+                        inpatientCapPct: number;
+                        /** Format: date-time */
+                        openedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -13648,7 +13714,26 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        capYear: string;
+                        ccn: string;
+                        /** Format: date */
+                        startDate: string;
+                        /** Format: date */
+                        endDate: string;
+                        status: "open" | "active" | "in_settlement" | "settled" | "reopened";
+                        methodology?: ("streamlined" | "proportional") | null;
+                        methodologyLockedAt?: string | null;
+                        graceWindowDays: number;
+                        aggregateCapAmountCents: number;
+                        inpatientCapPct: number;
+                        /** Format: date-time */
+                        openedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -13663,14 +13748,39 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        capYear: string;
+                        ccn: string;
+                        /** Format: date */
+                        startDate: string;
+                        /** Format: date */
+                        endDate: string;
+                        status: "open" | "active" | "in_settlement" | "settled" | "reopened";
+                        methodology?: ("streamlined" | "proportional") | null;
+                        methodologyLockedAt?: string | null;
+                        graceWindowDays: number;
+                        aggregateCapAmountCents: number;
+                        inpatientCapPct: number;
+                        /** Format: date-time */
+                        openedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -13685,14 +13795,42 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    methodology: "streamlined" | "proportional";
+                    reason: string;
+                    /** Format: uuid */
+                    stepUpAssertionId: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        capYear: string;
+                        ccn: string;
+                        /** Format: date */
+                        startDate: string;
+                        /** Format: date */
+                        endDate: string;
+                        status: "open" | "active" | "in_settlement" | "settled" | "reopened";
+                        methodology?: ("streamlined" | "proportional") | null;
+                        methodologyLockedAt?: string | null;
+                        graceWindowDays: number;
+                        aggregateCapAmountCents: number;
+                        inpatientCapPct: number;
+                        /** Format: date-time */
+                        openedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -13707,7 +13845,18 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    macRegion: "ngs" | "cgs" | "palmetto" | "wps" | "noridian" | "first_coast" | "novitas";
+                    /** Format: date */
+                    psrPeriodFrom: string;
+                    /** Format: date */
+                    psrPeriodTo: string;
+                    fileBase64: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -13729,14 +13878,41 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    /** Format: uuid */
+                    stepUpAssertionId: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        capYear: string;
+                        ccn: string;
+                        /** Format: date */
+                        startDate: string;
+                        /** Format: date */
+                        endDate: string;
+                        status: "open" | "active" | "in_settlement" | "settled" | "reopened";
+                        methodology?: ("streamlined" | "proportional") | null;
+                        methodologyLockedAt?: string | null;
+                        graceWindowDays: number;
+                        aggregateCapAmountCents: number;
+                        inpatientCapPct: number;
+                        /** Format: date-time */
+                        openedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -13756,7 +13932,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        capPeriodId: string;
+                        scope: "agency_aggregate" | "patient_aggregate" | "inpatient";
+                        patientId?: string | null;
+                        methodology: "streamlined" | "proportional";
+                        paidYtdCents: number;
+                        outstandingBilledCents: number;
+                        projectedYearEndCents: number;
+                        capAmountCents: number | null;
+                        pctOfCap: number;
+                        alertBand: string;
+                        beneficiaryCount?: number | null;
+                        /** Format: date-time */
+                        computedAt: string;
+                        computedBy: "nightly_batch" | "remittance_trigger" | "manual_recompute";
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -13778,7 +13974,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        capPeriodId: string;
+                        scope: "agency_aggregate" | "patient_aggregate" | "inpatient";
+                        patientId?: string | null;
+                        methodology: "streamlined" | "proportional";
+                        paidYtdCents: number;
+                        outstandingBilledCents: number;
+                        projectedYearEndCents: number;
+                        capAmountCents: number | null;
+                        pctOfCap: number;
+                        alertBand: string;
+                        beneficiaryCount?: number | null;
+                        /** Format: date-time */
+                        computedAt: string;
+                        computedBy: "nightly_batch" | "remittance_trigger" | "manual_recompute";
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -13800,7 +14016,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        capPeriodId: string;
+                        scope: "agency_aggregate" | "patient_aggregate" | "inpatient";
+                        patientId?: string | null;
+                        methodology: "streamlined" | "proportional";
+                        paidYtdCents: number;
+                        outstandingBilledCents: number;
+                        projectedYearEndCents: number;
+                        capAmountCents: number | null;
+                        pctOfCap: number;
+                        alertBand: string;
+                        beneficiaryCount?: number | null;
+                        /** Format: date-time */
+                        computedAt: string;
+                        computedBy: "nightly_batch" | "remittance_trigger" | "manual_recompute";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -13822,7 +14058,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        capPeriodId: string;
+                        inpatientDayCount: number;
+                        totalDayCount: number;
+                        utilizationPct: number;
+                        band: string;
+                        /** Format: date-time */
+                        computedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -13845,7 +14092,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        capPeriodId: string;
+                        scope: "agency_aggregate" | "patient_aggregate" | "inpatient";
+                        patientId?: string | null;
+                        methodology: "streamlined" | "proportional";
+                        paidYtdCents: number;
+                        outstandingBilledCents: number;
+                        projectedYearEndCents: number;
+                        capAmountCents: number | null;
+                        pctOfCap: number;
+                        alertBand: string;
+                        beneficiaryCount?: number | null;
+                        /** Format: date-time */
+                        computedAt: string;
+                        computedBy: "nightly_batch" | "remittance_trigger" | "manual_recompute";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -13905,7 +14172,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    varianceReason: "timing" | "psr_correction" | "our_correction" | "mbi_mismatch" | "data_quality" | "unknown";
+                    resolutionNotes: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -13934,7 +14208,26 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        capPeriodId: string;
+                        status: "proposed" | "reviewed" | "final";
+                        paidTotalCents: number;
+                        beneficiaryCount: number;
+                        aggregateCapAmountCents: number;
+                        aggregateOverageCents: number;
+                        direction: "overpayment_owed_to_cms" | "underpayment_owed_to_provider" | "balanced";
+                        inpatientTotalDays: number;
+                        inpatientOverageDays: number;
+                        inpatientOverageCents: number;
+                        /** Format: date-time */
+                        proposedAt: string;
+                        finalizedAt?: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -13949,14 +14242,41 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    attestation: string;
+                    /** Format: uuid */
+                    stepUpAssertionId: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        capPeriodId: string;
+                        status: "proposed" | "reviewed" | "final";
+                        paidTotalCents: number;
+                        beneficiaryCount: number;
+                        aggregateCapAmountCents: number;
+                        aggregateOverageCents: number;
+                        direction: "overpayment_owed_to_cms" | "underpayment_owed_to_provider" | "balanced";
+                        inpatientTotalDays: number;
+                        inpatientOverageDays: number;
+                        inpatientOverageCents: number;
+                        /** Format: date-time */
+                        proposedAt: string;
+                        finalizedAt?: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -13978,7 +14298,26 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        capPeriodId: string;
+                        status: "proposed" | "reviewed" | "final";
+                        paidTotalCents: number;
+                        beneficiaryCount: number;
+                        aggregateCapAmountCents: number;
+                        aggregateOverageCents: number;
+                        direction: "overpayment_owed_to_cms" | "underpayment_owed_to_provider" | "balanced";
+                        inpatientTotalDays: number;
+                        inpatientOverageDays: number;
+                        inpatientOverageCents: number;
+                        /** Format: date-time */
+                        proposedAt: string;
+                        finalizedAt?: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -14013,7 +14352,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    notes?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -23310,7 +23655,17 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    capYear: string;
+                    aggregateCapAmountCents: number;
+                    /** @default 0.2 */
+                    inpatientCapPct?: number;
+                    sourceUrl?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -23332,7 +23687,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    aggregateCapAmountCents: number;
+                    sourceUrl?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
