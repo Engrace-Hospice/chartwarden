@@ -41,3 +41,9 @@ export {
   scheduleM27Jobs,
   unboundWorkerPort,
 } from "./m27-jobs";
+// The LIVE ValidationContextBuilder (the §11.B context shaper) + its provider-entity resolver port.
+export {
+  type M27ValidationContextDeps,
+  type ProviderEntityResolver,
+  buildM27ValidationContext,
+} from "./validation-context-builder";

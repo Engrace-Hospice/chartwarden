@@ -13,3 +13,5 @@ export * from "./rule-engine";
 export * from "./rule-suggestion";
 // The NGS-J6 (Phase-1) additive MAC rule set (D16); other MACs ship as sibling files.
 export * from "./mac-profiles/ngs-j6";
+// The pure ValidationContext assembler + MAC-jurisdiction normalizer (the §11.B context shaper's pure core).
+export * from "./assemble-context";

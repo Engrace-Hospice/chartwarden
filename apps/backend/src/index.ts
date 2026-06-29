@@ -108,9 +108,12 @@ import {
 // enqueue + the live Xero/Gusto + M6/M8 statistics seam binds are P4 follow-ups (jobs/m27-jobs.ts TODO).
 import {
   M27_OUTBOX_EVENTS,
+  type ProviderEntityResolver as M27ProviderEntityResolver,
   buildDrizzleM27ReadService,
   buildDrizzleM27WriteService,
+  buildM27ValidationContext,
   buildM27WorkerDeps,
+  m27CapSeamResolver,
   mountM27Routes,
   registerCostReportErasers,
   registerM27AbacPredicates,
@@ -909,6 +912,13 @@ if ((import.meta as { main?: boolean }).main) {
       // bound so the cost-report cap rules evaluate against the live aggregate (per-org availability still
       // comes from the cap-context resolver, which fail-closes when an org has no cap period). D13.
       capProviderBound: true,
+      // The §11.B ValidationContext shaper — reads M27's materialized state + the live M26 cap / M40 MAC
+      // jurisdiction and assembles the typed context every validation rule evaluates against (the M30
+      // buildM30WorkerDeps({ deathDischargeReader: getSeam(...) }) precedent). M23-gated rules SKIP (unbound).
+      validationContext: buildM27ValidationContext({
+        capResolver: m27CapSeamResolver,
+        providerEntity: () => getSeam("MdmEntityProvider") as M27ProviderEntityResolver,
+      }),
     });
     const m27Workers = [...registerM27Workers(m27WorkerDeps), ...registerM27CronWorkers(m27WorkerDeps)];
     app.addHook("onClose", async () => {
