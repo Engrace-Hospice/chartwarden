@@ -23,6 +23,9 @@ import {
   billableEncounterReaderDenyStub,
   capAccrualReaderDenyStub,
   capProjectionProviderDenyStub,
+  patientDaysProviderDenyStub,
+  drugCostBillingReaderDenyStub,
+  claimSettlementProviderDenyStub,
   carePlanReaderDenyStub,
   caseloadDenyStub,
   certificationReaderDenyStub,
@@ -226,6 +229,32 @@ export const REQUIRED_SEAMS = [
     ownerModule: 26,
     phi: false,
     denyStub: capProjectionProviderDenyStub,
+  },
+  // M23 (Billing-Medicare) → M27 cost-report binds. The FIRST M23→M1 publishes (M23 was outbox-only before).
+  // Aggregate, FY-scoped, PHI-free (D18 — billed day counts / drug charges, no patient row). Boot-validated and
+  // fail-closed until M23 registers the real providers (db-present boot); M27 reads via getSeam + casts.
+  {
+    key: "PatientDaysProvider",
+    ownerModule: 23,
+    phi: false,
+    denyStub: patientDaysProviderDenyStub,
+  },
+  // DrugCostBillingReader — the M27 Worksheet-A pharmacy cross-check. Owner M12 (the drug-cost-basis module;
+  // M23 is per-diem with no drug line). RESERVATION: M12's med-order cost is not yet materialized (no cost
+  // column), so this stays on the deny-stub and M27's drug-reconcile rule SKIPS until M12 publishes real cost.
+  {
+    key: "DrugCostBillingReader",
+    ownerModule: 12,
+    phi: false,
+    denyStub: drugCostBillingReaderDenyStub,
+  },
+  // M25 (Remittance & Denials) → M27 — the actual interim Medicare payments (835 CLP04) the E-1 settlement
+  // tie reconciles against. Aggregate $ for a FY, no row-level PHI. Fail-closed until M25 registers the provider.
+  {
+    key: "ClaimSettlementProvider",
+    ownerModule: 25,
+    phi: false,
+    denyStub: claimSettlementProviderDenyStub,
   },
   // M40 (MDM) — the focused §7.7 BAA disclosure gate (as-of time-travel + sending-facility
   // resolution), registered separately from the omnibus above. M22/M28/M29 consult it before any

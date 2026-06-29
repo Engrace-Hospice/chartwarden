@@ -11,10 +11,12 @@
 //     providers are supplied by the caller once the §3 services + adapters are wired (P3).
 //  2. CONSUME — the §4.4 consumed-seam names. M26's `CapAccrualReader` is now LIVE (D13): M26 registers
 //     `aggregateForCostReport` into the M1 registry and M27 reads it via the cap-context resolver
-//     (apps/backend/.../routes/cap-context.ts), fail-closed when M26 is db-unbound. M23
-//     (`PatientDaysProvider`, `ClaimSettlementProvider`, `DrugCostBillingReader`) remain FORWARD-SEAM
-//     DENY-STUBS (D12): registered but fail-closed (`SEAM_NOT_BOUND`); their rules short-circuit `skip`
-//     until M23 binds. (`CapPeriodReader` was a forward-declared guess M26 never published — dropped.)
+//     (apps/backend/.../routes/cap-context.ts), fail-closed when M26 is db-unbound. The statistics/settlement
+//     binds are now LIVE too: `PatientDaysProvider` (M23 billed-and-accepted census) + `ClaimSettlementProvider`
+//     (M25 actual interim payments, 835 CLP04) register into the M1 registry at boot and M27 reads them via the
+//     ValidationContextBuilder (degrading to the deny-stub → rule `skip` when db-unbound). `DrugCostBillingReader`
+//     (M12 drug-cost basis) stays a FORWARD-SEAM RESERVATION: registered but fail-closed until M12 materializes
+//     med-order cost (no cost column today). (`CapPeriodReader` was a forward-declared guess M26 never published.)
 import {
   M27_PUBLISHED_SEAM_NAMES,
   type CostReportFilingStatusReader,
@@ -75,9 +77,11 @@ export const M27_REQUIRED_SEAMS = [
   // M12 / M13 — drug-cost basis
   "MedicationOrderProvider",
   "MedicationAdministrationProvider",
-  // M23 — billed days + settlement (DENY-STUB until M23 lock, D12)
+  // M23 — billed-and-accepted census patient-days (LIVE: M23 registers PatientDaysProvider into M1)
   "PatientDaysProvider",
+  // M25 — actual interim Medicare payments / 835 CLP04 (LIVE: M25 registers ClaimSettlementProvider into M1)
   "ClaimSettlementProvider",
+  // M12 — drug-cost basis (RESERVATION deny-stub until M12 materializes med-order cost)
   "DrugCostBillingReader",
   // M26 — cap-period aggregate for the cost-report Worksheet-E cap calc (LIVE: M26 registers
   // `CapAccrualReader.aggregateForCostReport` into the M1 registry; M27 reads it via the cap-context resolver,
@@ -88,13 +92,11 @@ export const M27_REQUIRED_SEAMS = [
   "AlertDispatcher",
 ] as const;
 
-/** The forward-seam (deny-stub) consumed names — skipped validation rules surface these as `skip`. M26's
- *  `CapAccrualReader` is NO LONGER here (it is a live producer); only the M23 seams remain forward-declared. */
-export const M27_FORWARD_SEAM_NAMES = [
-  "PatientDaysProvider",
-  "ClaimSettlementProvider",
-  "DrugCostBillingReader",
-] as const;
+/** The forward-seam (deny-stub) consumed names — skipped validation rules surface these as `skip` while the
+ *  producer is db-unbound. M26's `CapAccrualReader` + M23's `PatientDaysProvider` + M25's `ClaimSettlementProvider`
+ *  are NO LONGER here (they are live producers, registered into the M1 registry at boot); only `DrugCostBillingReader`
+ *  (M12) remains forward-declared — a reservation until M12 materializes med-order cost. */
+export const M27_FORWARD_SEAM_NAMES = ["DrugCostBillingReader"] as const;
 
 /** Thrown by every forward-seam deny-stub method until the producing module (M23/M26) locks. */
 export const SEAM_NOT_BOUND = "SEAM_NOT_BOUND" as const;

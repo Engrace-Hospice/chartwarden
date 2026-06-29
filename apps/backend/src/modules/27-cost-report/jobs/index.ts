@@ -45,5 +45,8 @@ export {
 export {
   type M27ValidationContextDeps,
   type ProviderEntityResolver,
+  type PatientDaysSeam,
+  type ClaimSettlementSeam,
+  type DrugCostSeam,
   buildM27ValidationContext,
 } from "./validation-context-builder";

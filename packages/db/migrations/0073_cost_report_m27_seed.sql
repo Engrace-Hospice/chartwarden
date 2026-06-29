@@ -1,5 +1,5 @@
 -- M27 Cost Report §3.2 (phase 7 — seed data) / §1.1 — the platform-default validation-rule library.
--- Seeds the 28 platform-default `cost_report_validation_rule` rows (§1.1, architecture §11.B,
+-- Seeds the 29 platform-default `cost_report_validation_rule` rows (§1.1, architecture §11.B,
 -- M27-F01/F02) PLUS the 4 additive NGS-J6 MAC-profile rows (D16, §7.8) as PLATFORM DEFAULTS:
 -- organization_id = NULL, rule_set_version = 1. These are the org-NULL platform floor every tenant reads
 -- (0071 platform-read policy) and layers tenant tightenings onto (D21); the `regulatory_required` rows
@@ -95,11 +95,13 @@ FROM (
       'When bad debt is claimed, every entry has documented reasonable collection efforts.'),
     ('bad_debt.kind_classified', 'bad_debt', 'warn', false, 'all',
       'When bad debt is claimed, every entry is classified as deductible or coinsurance.'),
-    -- ── cross_worksheet (2) ─────────────────────────────────────────────────────────────────────────
+    -- ── cross_worksheet (3) ─────────────────────────────────────────────────────────────────────────
     ('cross.a_grandtotal_ties_b', 'cross_worksheet', 'block', false, 'all',
       'Worksheet A grand-total cost equals the Worksheet B total allocated cost (to the cent).'),
     ('cross.s3_days_tie_d', 'cross_worksheet', 'warn', false, 'all',
       'Worksheet S-3 grand-total patient-days equal the patient-days carried into Worksheet D.'),
+    ('drug_cost.billed_reconciles', 'cross_worksheet', 'warn', false, 'all',
+      'The billed drug-cost basis (M12) reconciles to the Worksheet-A pharmacy cost center within the expected delta.'),
     -- ── mac_specific (1) — generic platform default; NGS-J6 additive rules below ─────────────────────
     ('mac.supporting_docs_present', 'mac_specific', 'info', false, 'all',
       'The MAC-required supporting documentation set (S-2 attachments) is present.'),

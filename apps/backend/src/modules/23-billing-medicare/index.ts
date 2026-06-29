@@ -109,6 +109,15 @@ export {
   scheduleM23Jobs,
 } from "./jobs/index";
 
+// §4.4 — the M23→M27 cost-report published seam (PatientDaysProvider): the billed-and-accepted patient-day
+// census the cost-report Worksheet-D reconciliation reads. The composition root registers it into the M1
+// SeamRegistry in `wireModuleSeams` (the M26 `registerM26PublishedSeams` precedent — M23's first M1 publish).
+export {
+  type PatientDaysProvider,
+  buildM23PatientDaysProvider,
+  registerM23PublishedSeams,
+} from "./cost-report-seams";
+
 // §D13 — the AI-block surfaces: the boot validator over M32's prompt-template registry (empty-safe, NOT
 // boot-wired — no precedent module wires one; exported + tested directly), the owned-table matcher, the
 // only-admitted read-only `validation_ai_advisory` reader seam + its deny-stub, and the AI-governance audit

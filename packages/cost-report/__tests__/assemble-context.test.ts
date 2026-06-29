@@ -112,12 +112,78 @@ describe("assembled context drives runValidation seam-gating", () => {
   it("M23-gated + cap rules SKIP when unbound; cap rules EVALUATE once cap binds", () => {
     const unbound = assembleValidationContext(rawInputs());
     expect(outcomeOf(unbound, "stats.patient_days_reconcile")).toBe("skip"); // M23 PatientDaysProvider unbound
-    expect(outcomeOf(unbound, "settlement.e1_ties_to_d")).toBe("skip"); // M23 ClaimSettlementProvider unbound
+    expect(outcomeOf(unbound, "settlement.e1_ties_to_d")).toBe("skip"); // M25 ClaimSettlementProvider unbound
+    expect(outcomeOf(unbound, "drug_cost.billed_reconciles")).toBe("skip"); // M12 DrugCostBillingReader unbound
     expect(outcomeOf(unbound, "cap.aggregate_beneficiary_cap")).toBe("skip"); // M26 cap null
 
     const bound = assembleValidationContext(
       rawInputs({ cap: { capContext: { aggregateCapCents: 6_893_068, aggregatePaymentsCents: 5_000_000, inpatientDays: 7, totalMedicareDays: 100 }, capProviderBound: true } }),
     );
     expect(outcomeOf(bound, "cap.aggregate_beneficiary_cap")).not.toBe("skip"); // M26 bound → the rule runs
+  });
+});
+
+describe("the live M23/M25/M12 cost-report binds drive their rules live", () => {
+  const outcomeOf = (ctx: ReturnType<typeof assembleValidationContext>, code: string) =>
+    runValidation(DEFAULT_VALIDATION_RULES, ctx).results.find((r) => r.ruleCode === code)?.result.outcome;
+
+  // A report whose worksheets + billing binds all tie out cleanly.
+  function boundInputs(over: Partial<RawValidationInputs> = {}): RawValidationInputs {
+    return rawInputs({
+      worksheets: [
+        { worksheetCode: "S", data: { providerCcn: "123456" } },
+        { worksheetCode: "A", data: { grandTotalCostsCents: 5_000_000, costCenters: [{ code: "drugs", totalCostCents: 250_000 }] } },
+        { worksheetCode: "E-1", data: { medicare: { interimPaymentsReceivedCents: 4_000_000 }, tiesToWorksheetSSettlementSummary: true } },
+      ],
+      billing: {
+        billedCensusPatientDays: 365,
+        patientDaysProviderBound: true,
+        interimPaymentsActualCents: 4_000_000,
+        claimSettlementProviderBound: true,
+        billedDrugChargesCents: 250_000,
+        drugCostBillingReaderBound: true,
+      },
+      ...over,
+    });
+  }
+
+  it("M23 billed census + flag flip — the reconcile rule evaluates against the live billed days", () => {
+    const ctx = assembleValidationContext(boundInputs());
+    expect(ctx.statistics.billedCensusPatientDays).toBe(365);
+    expect(ctx.seams.patientDaysProviderBound).toBe(true);
+    // service census (365 from the default statistic) == billed (365) → the reconcile passes (not skip).
+    expect(outcomeOf(ctx, "stats.patient_days_reconcile")).toBe("pass");
+  });
+
+  it("M25 settlement tie — E-1 internal tie AND claimed interim payments match the posted 835 total", () => {
+    const ctx = assembleValidationContext(boundInputs());
+    expect(ctx.settlement.tiesToWorksheetD).toBe(true);
+    expect(outcomeOf(ctx, "settlement.e1_ties_to_d")).toBe("pass");
+    // A posted-835 total that disagrees with E-1's claimed interim payments breaks the tie → the rule FAILS.
+    const mismatch = assembleValidationContext(
+      boundInputs({
+        billing: { billedCensusPatientDays: 365, patientDaysProviderBound: true, interimPaymentsActualCents: 9_999_999, claimSettlementProviderBound: true, billedDrugChargesCents: 250_000, drugCostBillingReaderBound: true },
+      }),
+    );
+    expect(mismatch.settlement.tiesToWorksheetD).toBe(false);
+    expect(outcomeOf(mismatch, "settlement.e1_ties_to_d")).toBe("fail");
+  });
+
+  it("M12 drug cross-check — reconciles to the Worksheet-A pharmacy center; SKIPS if the center is absent", () => {
+    const ctx = assembleValidationContext(boundInputs());
+    expect(ctx.drugCost.billedCents).toBe(250_000);
+    expect(ctx.drugCost.worksheetAPharmacyCents).toBe(250_000);
+    expect(outcomeOf(ctx, "drug_cost.billed_reconciles")).toBe("pass");
+    // Bound seam but no pharmacy cost center on Worksheet A → the cross-check is not applicable (skip).
+    const noPharmacy = assembleValidationContext(
+      boundInputs({
+        worksheets: [
+          { worksheetCode: "A", data: { grandTotalCostsCents: 5_000_000, costCenters: [] } },
+          { worksheetCode: "E-1", data: { medicare: { interimPaymentsReceivedCents: 4_000_000 }, tiesToWorksheetSSettlementSummary: true } },
+        ],
+      }),
+    );
+    expect(noPharmacy.drugCost.worksheetAPharmacyCents).toBeNull();
+    expect(outcomeOf(noPharmacy, "drug_cost.billed_reconciles")).toBe("skip");
   });
 });

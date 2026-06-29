@@ -140,10 +140,20 @@ export interface WorksheetTotalsContext {
   readonly balanceSheetBalances: boolean;
 }
 
-/** Worksheet E-1 settlement facts. `tiesToWorksheetD` needs the M23 ClaimSettlementProvider. */
+/** Worksheet E-1 settlement facts. `tiesToWorksheetD` needs the M25 ClaimSettlementProvider (actual interim
+ *  payments) — it is true only when E-1 internally ties AND its claimed interim payments match M25's posted
+ *  835 total within tolerance. `false` (and the tie rule SKIPS) until the seam binds. */
 export interface SettlementContext {
   readonly computed: boolean;
   readonly tiesToWorksheetD: boolean;
+}
+
+/** Drug-cost cross-check facts. `billedCents` is the M12 drug-cost basis for the FY (the DrugCostBillingReader
+ *  seam); `worksheetAPharmacyCents` is the GL pharmacy cost-center on Worksheet A. The reconcile rule compares
+ *  them — it SKIPS while M12's cost is unbound (`billedCents` null) or the pharmacy center is absent. */
+export interface DrugCostContext {
+  readonly billedCents: number | null;
+  readonly worksheetAPharmacyCents: number | null;
 }
 
 /**
@@ -218,6 +228,7 @@ export interface ValidationContext {
   readonly statistics: StatisticsContext;
   readonly worksheets: WorksheetTotalsContext;
   readonly settlement: SettlementContext;
+  readonly drugCost: DrugCostContext;
   /** `null` under the D13 cap-seam deny-stub. */
   readonly cap: CapContext | null;
   readonly badDebt: BadDebtContext;

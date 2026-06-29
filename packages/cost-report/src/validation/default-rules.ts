@@ -497,7 +497,7 @@ const badDebtKindClassified: RuleDef = {
   },
 };
 
-// ── cross_worksheet (2) ─────────────────────────────────────────────────────────────────────────────────
+// ── cross_worksheet (3) ─────────────────────────────────────────────────────────────────────────────────
 
 const crossAGrandTotalTiesB: RuleDef = {
   ruleCode: "cross.a_grandtotal_ties_b",
@@ -547,6 +547,48 @@ const crossS3DaysTieD: RuleDef = {
             dProgramDaysCarried: ctx.worksheets.dProgramDaysCarried,
           },
         ),
+};
+
+const drugCostBilledReconciles: RuleDef = {
+  ruleCode: "drug_cost.billed_reconciles",
+  category: "cross_worksheet",
+  description:
+    "The billed drug-cost basis (M12) reconciles to the Worksheet-A pharmacy cost center within the expected delta.",
+  severity: "warn",
+  regulatoryRequired: false,
+  macJurisdictionScope: "all",
+  // TODO(CMS-fixture): the acceptable drug-cost delta (per-diem-bundled drug usage vs the GL pharmacy ledger,
+  // wastage, comfort-kit returns) is operational, not a CMS constant; this flags a material difference as a
+  // worklist item. SKIPS until M12 materializes med-order cost (no cost column today → seam stays deny-stub)
+  // or the Worksheet-A pharmacy center is absent.
+  evaluate: (ctx) => {
+    if (!ctx.seams.drugCostBillingReaderBound || ctx.drugCost.billedCents === null) {
+      return skipResult(
+        "M12 drug-cost basis (DrugCostBillingReader) not bound — Worksheet-A pharmacy cross-check deferred.",
+        "seam_not_bound",
+      );
+    }
+    if (ctx.drugCost.worksheetAPharmacyCents === null) {
+      return skipResult(
+        "Worksheet-A pharmacy cost center is not present — drug-cost cross-check not applicable.",
+        "not_applicable",
+      );
+    }
+    const billed = ctx.drugCost.billedCents;
+    const ledger = ctx.drugCost.worksheetAPharmacyCents;
+    // A material delta is anything beyond ~1% of the GL pharmacy cost (TODO(CMS-fixture) tolerance band).
+    const tolerance = Math.max(100, Math.round(Math.abs(ledger) * 0.01));
+    return Math.abs(billed - ledger) <= tolerance
+      ? passResult("Billed drug-cost basis reconciles to the Worksheet-A pharmacy cost center.", {
+          billedDrugCostCents: billed,
+          worksheetAPharmacyCents: ledger,
+        })
+      : warnResult(
+          "Billed drug-cost basis differs materially from the Worksheet-A pharmacy cost center.",
+          "Reconcile the M12 drug-cost basis against the GL pharmacy ledger (wastage, comfort-kit returns, accruals).",
+          { billedDrugCostCents: billed, worksheetAPharmacyCents: ledger, deltaCents: billed - ledger },
+        );
+  },
 };
 
 // ── mac_specific (1) — the generic platform default; NGS-J6 additive rules live in mac-profiles/ngs-j6.ts ─
@@ -655,7 +697,7 @@ const deadlineWindowOpen: RuleDef = {
 };
 
 /**
- * The 28 platform-default validation rules (M27-F01/F02), enumerated in §2.1-category order. This is the
+ * The 29 platform-default validation rules (M27-F01/F02), enumerated in §2.1-category order. This is the
  * org-NULL platform floor a tenant layers tightenings onto (D21); the engine applies the MAC-scoped
  * subset plus any additive MAC profile (e.g. `NGS_J6_RULES`).
  */
@@ -696,6 +738,7 @@ export const DEFAULT_VALIDATION_RULES: readonly RuleDef[] = [
   // cross_worksheet
   crossAGrandTotalTiesB,
   crossS3DaysTieD,
+  drugCostBilledReconciles,
   // mac_specific
   macSupportingDocsPresent,
   // supporting_docs
