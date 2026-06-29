@@ -167,8 +167,10 @@ describe("allocationResultsToWorksheets — full chain from assembled inputs", (
     expect(Value.Check(WorksheetD, payloads.D)).toBe(true);
     expect(Value.Check(WorksheetE1, payloads["E-1"])).toBe(true);
     expect(payloads.B.totalFullyAllocatedCostCents).toBe(500_000);
-    // levelOfCareCosts is empty (not modeled) → D apportions zero cost → does not tie B's 500_000.
-    expect(payloads.D.tiesToWorksheetBTotal).toBe(false);
+    // The per-LOC split apportions B's full 500_000 by the census day mix → D ties B exactly.
+    expect(payloads.D.tiesToWorksheetBTotal).toBe(true);
+    expect(payloads.D.grandTotalApportionedCostCents).toBe(500_000);
+    expect(payloads.D.medicare.rhcCostCents).toBe(500_000); // all days are rhc/medicare
     expect(payloads["E-1"].medicare.capOverpaymentCents).toBe(750_000);
   });
 });

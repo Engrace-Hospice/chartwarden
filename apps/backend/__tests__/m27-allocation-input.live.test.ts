@@ -218,5 +218,9 @@ describe.skipIf(!DB_URL)("M27 AllocationInputBuilder — LIVE Postgres (§3.1 / 
     expect(b.totalFullyAllocatedCostCents).toBe(500_000);
     const e1 = byCode.get("E-1")!.data as { medicare: { capOverpaymentCents: number } };
     expect(e1.medicare.capOverpaymentCents).toBe(750_000);
+    // The per-LOC day-mix split apportions B's full 500_000 across the census → Worksheet D ties B.
+    const d = byCode.get("D")!.data as { grandTotalApportionedCostCents: number; tiesToWorksheetBTotal: boolean };
+    expect(d.grandTotalApportionedCostCents).toBe(500_000);
+    expect(d.tiesToWorksheetBTotal).toBe(true);
   });
 });
