@@ -337,8 +337,8 @@
       "routes": false,
       "enriched": false,
       "screens": false,
-      "tests": false,
-      "adapter": false,
+      "tests": true,
+      "adapter": true,
       "liveInfra": false
     },
     {
