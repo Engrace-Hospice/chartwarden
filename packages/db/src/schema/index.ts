@@ -533,3 +533,15 @@ export * from "./billing/index";
 // (§3.6). Enums are m25_-prefixed. Enums + non-partitioned tables migration 0081; partitioned lines 0082;
 // RLS/grants 0083; M4 write-audit + appeal closed-row immutability triggers 0084.
 export * from "./remittance/index";
+
+// M26 Cap Management: 12 owned tables (§3.3) — cap_period_platform_constant (PLATFORM-shared, no org
+// column, NON_ORG_SCOPED allowlist, read-all USING(true)) + cap_period/cap_period_methodology_lock (the
+// per-tenant cap-year lifecycle) + cap_beneficiary_accrual(+_line) / cap_inpatient_accrual(+_day_line)
+// (the accrual ledger; the two line tables PARTITION BY LIST(cap_period_id)) + cap_projection_snapshot
+// (append-only, LIST(cap_period_id)-partitioned) + cap_threshold_event (the band-transition queue) +
+// cap_psr_import/cap_psr_reconciliation (PS&R) + cap_settlement (one-per-period year-close worksheet).
+// All 11 tenant tables are org-scoped (organization_id NOT NULL → canonical app.org_id RLS). Money is
+// BIGINT cents; no MBI/PHI is audit-captured (D13). Enums are m26_-prefixed. Enums + platform constant
+// migration 0085; non-partitioned tenant tables 0086; the three LIST(cap_period_id)-partitioned tables
+// 0087; tenant RLS/grants 0088; platform-constant RLS (isolated) 0089; M4 write-audit 0090; seed 0091.
+export * from "./cap/index";

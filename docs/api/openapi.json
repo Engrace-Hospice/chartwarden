@@ -5322,6 +5322,2472 @@
         }
       }
     },
+    "/api/v1/cap/accruals/inpatient/{periodId}": {
+      "get": {
+        "operationId": "getApiV1CapAccrualsInpatientByPeriodId",
+        "tags": [
+          "26-cap"
+        ],
+        "parameters": [
+          {
+            "name": "periodId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/cap/accruals/patient/{periodId}/{patientId}": {
+      "get": {
+        "operationId": "getApiV1CapAccrualsPatientByPeriodIdByPatientId",
+        "tags": [
+          "26-cap"
+        ],
+        "parameters": [
+          {
+            "name": "periodId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/cap/accruals/patient/{periodId}/{patientId}/lines": {
+      "get": {
+        "operationId": "getApiV1CapAccrualsPatientByPeriodIdByPatientIdLines",
+        "tags": [
+          "26-cap"
+        ],
+        "parameters": [
+          {
+            "name": "periodId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/cap/dashboard": {
+      "get": {
+        "operationId": "getApiV1CapDashboard",
+        "tags": [
+          "26-cap"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/cap/periods": {
+      "get": {
+        "operationId": "getApiV1CapPeriods",
+        "tags": [
+          "26-cap"
+        ],
+        "summary": "List cap periods for the calling tenant — status + methodology (§4.1)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "capYear",
+                      "ccn",
+                      "startDate",
+                      "endDate",
+                      "status",
+                      "graceWindowDays",
+                      "aggregateCapAmountCents",
+                      "inpatientCapPct",
+                      "openedAt"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "capYear": {
+                        "pattern": "^FY\\d{4}$",
+                        "type": "string"
+                      },
+                      "ccn": {
+                        "type": "string"
+                      },
+                      "startDate": {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      "endDate": {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      "status": {
+                        "anyOf": [
+                          {
+                            "const": "open",
+                            "type": "string"
+                          },
+                          {
+                            "const": "active",
+                            "type": "string"
+                          },
+                          {
+                            "const": "in_settlement",
+                            "type": "string"
+                          },
+                          {
+                            "const": "settled",
+                            "type": "string"
+                          },
+                          {
+                            "const": "reopened",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "methodology": {
+                        "anyOf": [
+                          {
+                            "anyOf": [
+                              {
+                                "const": "streamlined",
+                                "type": "string"
+                              },
+                              {
+                                "const": "proportional",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "methodologyLockedAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "graceWindowDays": {
+                        "minimum": 0,
+                        "maximum": 90,
+                        "type": "integer"
+                      },
+                      "aggregateCapAmountCents": {
+                        "type": "integer"
+                      },
+                      "inpatientCapPct": {
+                        "type": "number"
+                      },
+                      "openedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1CapPeriods",
+        "tags": [
+          "26-cap"
+        ],
+        "summary": "Open a new cap period (snapshots the platform constant; emits m26.cap.year_opened; §4.1)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "capYear",
+                    "ccn",
+                    "startDate",
+                    "endDate",
+                    "status",
+                    "graceWindowDays",
+                    "aggregateCapAmountCents",
+                    "inpatientCapPct",
+                    "openedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "capYear": {
+                      "pattern": "^FY\\d{4}$",
+                      "type": "string"
+                    },
+                    "ccn": {
+                      "type": "string"
+                    },
+                    "startDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "endDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "open",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_settlement",
+                          "type": "string"
+                        },
+                        {
+                          "const": "settled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "reopened",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "methodology": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "streamlined",
+                              "type": "string"
+                            },
+                            {
+                              "const": "proportional",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "methodologyLockedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "graceWindowDays": {
+                      "minimum": 0,
+                      "maximum": 90,
+                      "type": "integer"
+                    },
+                    "aggregateCapAmountCents": {
+                      "type": "integer"
+                    },
+                    "inpatientCapPct": {
+                      "type": "number"
+                    },
+                    "openedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "capYear"
+                ],
+                "properties": {
+                  "capYear": {
+                    "pattern": "^FY\\d{4}$",
+                    "type": "string"
+                  },
+                  "methodology": {
+                    "anyOf": [
+                      {
+                        "const": "streamlined",
+                        "type": "string"
+                      },
+                      {
+                        "const": "proportional",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "graceWindowDays": {
+                    "minimum": 0,
+                    "maximum": 90,
+                    "default": 30,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cap/periods/{periodId}": {
+      "get": {
+        "operationId": "getApiV1CapPeriodsByPeriodId",
+        "tags": [
+          "26-cap"
+        ],
+        "summary": "Single cap period including methodology lock + status (§4.1)",
+        "parameters": [
+          {
+            "name": "periodId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "capYear",
+                    "ccn",
+                    "startDate",
+                    "endDate",
+                    "status",
+                    "graceWindowDays",
+                    "aggregateCapAmountCents",
+                    "inpatientCapPct",
+                    "openedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "capYear": {
+                      "pattern": "^FY\\d{4}$",
+                      "type": "string"
+                    },
+                    "ccn": {
+                      "type": "string"
+                    },
+                    "startDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "endDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "open",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_settlement",
+                          "type": "string"
+                        },
+                        {
+                          "const": "settled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "reopened",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "methodology": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "streamlined",
+                              "type": "string"
+                            },
+                            {
+                              "const": "proportional",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "methodologyLockedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "graceWindowDays": {
+                      "minimum": 0,
+                      "maximum": 90,
+                      "type": "integer"
+                    },
+                    "aggregateCapAmountCents": {
+                      "type": "integer"
+                    },
+                    "inpatientCapPct": {
+                      "type": "number"
+                    },
+                    "openedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/cap/periods/{periodId}/close": {
+      "patch": {
+        "operationId": "patchApiV1CapPeriodsByPeriodIdClose",
+        "tags": [
+          "26-cap"
+        ],
+        "summary": "Close a cap period — active → in_settlement (cap_period_open ABAC; M26-F06; §4.1)",
+        "parameters": [
+          {
+            "name": "periodId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "capYear",
+                    "ccn",
+                    "startDate",
+                    "endDate",
+                    "status",
+                    "graceWindowDays",
+                    "aggregateCapAmountCents",
+                    "inpatientCapPct",
+                    "openedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "capYear": {
+                      "pattern": "^FY\\d{4}$",
+                      "type": "string"
+                    },
+                    "ccn": {
+                      "type": "string"
+                    },
+                    "startDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "endDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "open",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_settlement",
+                          "type": "string"
+                        },
+                        {
+                          "const": "settled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "reopened",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "methodology": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "streamlined",
+                              "type": "string"
+                            },
+                            {
+                              "const": "proportional",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "methodologyLockedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "graceWindowDays": {
+                      "minimum": 0,
+                      "maximum": 90,
+                      "type": "integer"
+                    },
+                    "aggregateCapAmountCents": {
+                      "type": "integer"
+                    },
+                    "inpatientCapPct": {
+                      "type": "number"
+                    },
+                    "openedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cap/periods/{periodId}/methodology": {
+      "post": {
+        "operationId": "postApiV1CapPeriodsByPeriodIdMethodology",
+        "tags": [
+          "26-cap"
+        ],
+        "summary": "Lock the streamlined/proportional methodology — one-time, step-up required (D2/D12; §4.1)",
+        "parameters": [
+          {
+            "name": "periodId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "capYear",
+                    "ccn",
+                    "startDate",
+                    "endDate",
+                    "status",
+                    "graceWindowDays",
+                    "aggregateCapAmountCents",
+                    "inpatientCapPct",
+                    "openedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "capYear": {
+                      "pattern": "^FY\\d{4}$",
+                      "type": "string"
+                    },
+                    "ccn": {
+                      "type": "string"
+                    },
+                    "startDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "endDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "open",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_settlement",
+                          "type": "string"
+                        },
+                        {
+                          "const": "settled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "reopened",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "methodology": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "streamlined",
+                              "type": "string"
+                            },
+                            {
+                              "const": "proportional",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "methodologyLockedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "graceWindowDays": {
+                      "minimum": 0,
+                      "maximum": 90,
+                      "type": "integer"
+                    },
+                    "aggregateCapAmountCents": {
+                      "type": "integer"
+                    },
+                    "inpatientCapPct": {
+                      "type": "number"
+                    },
+                    "openedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "methodology",
+                  "reason",
+                  "stepUpAssertionId"
+                ],
+                "properties": {
+                  "methodology": {
+                    "anyOf": [
+                      {
+                        "const": "streamlined",
+                        "type": "string"
+                      },
+                      {
+                        "const": "proportional",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "stepUpAssertionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cap/periods/{periodId}/psr-imports": {
+      "post": {
+        "operationId": "postApiV1CapPeriodsByPeriodIdPsrimports",
+        "tags": [
+          "26-cap"
+        ],
+        "summary": "Upload a PS&R CSV — sha256-deduped, queued for reconciliation (202; §4.1)",
+        "parameters": [
+          {
+            "name": "periodId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "macRegion",
+                  "psrPeriodFrom",
+                  "psrPeriodTo",
+                  "fileBase64"
+                ],
+                "properties": {
+                  "macRegion": {
+                    "anyOf": [
+                      {
+                        "const": "ngs",
+                        "type": "string"
+                      },
+                      {
+                        "const": "cgs",
+                        "type": "string"
+                      },
+                      {
+                        "const": "palmetto",
+                        "type": "string"
+                      },
+                      {
+                        "const": "wps",
+                        "type": "string"
+                      },
+                      {
+                        "const": "noridian",
+                        "type": "string"
+                      },
+                      {
+                        "const": "first_coast",
+                        "type": "string"
+                      },
+                      {
+                        "const": "novitas",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "psrPeriodFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "psrPeriodTo": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "fileBase64": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cap/periods/{periodId}/reopen": {
+      "patch": {
+        "operationId": "patchApiV1CapPeriodsByPeriodIdReopen",
+        "tags": [
+          "26-cap"
+        ],
+        "summary": "Reopen a settled period — step-up required (cap_period_settled ABAC; D12; §4.1)",
+        "parameters": [
+          {
+            "name": "periodId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "capYear",
+                    "ccn",
+                    "startDate",
+                    "endDate",
+                    "status",
+                    "graceWindowDays",
+                    "aggregateCapAmountCents",
+                    "inpatientCapPct",
+                    "openedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "capYear": {
+                      "pattern": "^FY\\d{4}$",
+                      "type": "string"
+                    },
+                    "ccn": {
+                      "type": "string"
+                    },
+                    "startDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "endDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "open",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_settlement",
+                          "type": "string"
+                        },
+                        {
+                          "const": "settled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "reopened",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "methodology": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "streamlined",
+                              "type": "string"
+                            },
+                            {
+                              "const": "proportional",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "methodologyLockedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "graceWindowDays": {
+                      "minimum": 0,
+                      "maximum": 90,
+                      "type": "integer"
+                    },
+                    "aggregateCapAmountCents": {
+                      "type": "integer"
+                    },
+                    "inpatientCapPct": {
+                      "type": "number"
+                    },
+                    "openedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason",
+                  "stepUpAssertionId"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "stepUpAssertionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cap/projections": {
+      "get": {
+        "operationId": "getApiV1CapProjections",
+        "tags": [
+          "26-cap"
+        ],
+        "summary": "Latest projection snapshots (agency + inpatient) for a period (§4.1)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "capPeriodId",
+                      "scope",
+                      "methodology",
+                      "paidYtdCents",
+                      "outstandingBilledCents",
+                      "projectedYearEndCents",
+                      "capAmountCents",
+                      "pctOfCap",
+                      "alertBand",
+                      "computedAt",
+                      "computedBy"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "capPeriodId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "scope": {
+                        "anyOf": [
+                          {
+                            "const": "agency_aggregate",
+                            "type": "string"
+                          },
+                          {
+                            "const": "patient_aggregate",
+                            "type": "string"
+                          },
+                          {
+                            "const": "inpatient",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "patientId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "methodology": {
+                        "anyOf": [
+                          {
+                            "const": "streamlined",
+                            "type": "string"
+                          },
+                          {
+                            "const": "proportional",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "paidYtdCents": {
+                        "type": "integer"
+                      },
+                      "outstandingBilledCents": {
+                        "type": "integer"
+                      },
+                      "projectedYearEndCents": {
+                        "type": "integer"
+                      },
+                      "capAmountCents": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "pctOfCap": {
+                        "type": "number"
+                      },
+                      "alertBand": {
+                        "type": "string"
+                      },
+                      "beneficiaryCount": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "computedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "computedBy": {
+                        "anyOf": [
+                          {
+                            "const": "nightly_batch",
+                            "type": "string"
+                          },
+                          {
+                            "const": "remittance_trigger",
+                            "type": "string"
+                          },
+                          {
+                            "const": "manual_recompute",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/cap/projections/{periodId}/recompute": {
+      "post": {
+        "operationId": "postApiV1CapProjectionsByPeriodIdRecompute",
+        "tags": [
+          "26-cap"
+        ],
+        "summary": "Force an immediate projection recompute (cap_period_open ABAC; §4.1)",
+        "parameters": [
+          {
+            "name": "periodId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "capPeriodId",
+                      "scope",
+                      "methodology",
+                      "paidYtdCents",
+                      "outstandingBilledCents",
+                      "projectedYearEndCents",
+                      "capAmountCents",
+                      "pctOfCap",
+                      "alertBand",
+                      "computedAt",
+                      "computedBy"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "capPeriodId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "scope": {
+                        "anyOf": [
+                          {
+                            "const": "agency_aggregate",
+                            "type": "string"
+                          },
+                          {
+                            "const": "patient_aggregate",
+                            "type": "string"
+                          },
+                          {
+                            "const": "inpatient",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "patientId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "methodology": {
+                        "anyOf": [
+                          {
+                            "const": "streamlined",
+                            "type": "string"
+                          },
+                          {
+                            "const": "proportional",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "paidYtdCents": {
+                        "type": "integer"
+                      },
+                      "outstandingBilledCents": {
+                        "type": "integer"
+                      },
+                      "projectedYearEndCents": {
+                        "type": "integer"
+                      },
+                      "capAmountCents": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "pctOfCap": {
+                        "type": "number"
+                      },
+                      "alertBand": {
+                        "type": "string"
+                      },
+                      "beneficiaryCount": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "computedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "computedBy": {
+                        "anyOf": [
+                          {
+                            "const": "nightly_batch",
+                            "type": "string"
+                          },
+                          {
+                            "const": "remittance_trigger",
+                            "type": "string"
+                          },
+                          {
+                            "const": "manual_recompute",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/cap/projections/agency/{periodId}": {
+      "get": {
+        "operationId": "getApiV1CapProjectionsAgencyByPeriodId",
+        "tags": [
+          "26-cap"
+        ],
+        "summary": "Agency-aggregate projection snapshot — utilization + band (§4.1)",
+        "parameters": [
+          {
+            "name": "periodId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "capPeriodId",
+                    "scope",
+                    "methodology",
+                    "paidYtdCents",
+                    "outstandingBilledCents",
+                    "projectedYearEndCents",
+                    "capAmountCents",
+                    "pctOfCap",
+                    "alertBand",
+                    "computedAt",
+                    "computedBy"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "capPeriodId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "scope": {
+                      "anyOf": [
+                        {
+                          "const": "agency_aggregate",
+                          "type": "string"
+                        },
+                        {
+                          "const": "patient_aggregate",
+                          "type": "string"
+                        },
+                        {
+                          "const": "inpatient",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "methodology": {
+                      "anyOf": [
+                        {
+                          "const": "streamlined",
+                          "type": "string"
+                        },
+                        {
+                          "const": "proportional",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "paidYtdCents": {
+                      "type": "integer"
+                    },
+                    "outstandingBilledCents": {
+                      "type": "integer"
+                    },
+                    "projectedYearEndCents": {
+                      "type": "integer"
+                    },
+                    "capAmountCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "pctOfCap": {
+                      "type": "number"
+                    },
+                    "alertBand": {
+                      "type": "string"
+                    },
+                    "beneficiaryCount": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "computedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "computedBy": {
+                      "anyOf": [
+                        {
+                          "const": "nightly_batch",
+                          "type": "string"
+                        },
+                        {
+                          "const": "remittance_trigger",
+                          "type": "string"
+                        },
+                        {
+                          "const": "manual_recompute",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/cap/projections/inpatient/{periodId}": {
+      "get": {
+        "operationId": "getApiV1CapProjectionsInpatientByPeriodId",
+        "tags": [
+          "26-cap"
+        ],
+        "summary": "Inpatient (20%) cap utilization — GIP+IRC day count + band (§4.1)",
+        "parameters": [
+          {
+            "name": "periodId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "capPeriodId",
+                    "inpatientDayCount",
+                    "totalDayCount",
+                    "utilizationPct",
+                    "band",
+                    "computedAt"
+                  ],
+                  "properties": {
+                    "capPeriodId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "inpatientDayCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "totalDayCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "utilizationPct": {
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    "band": {
+                      "type": "string"
+                    },
+                    "computedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/cap/projections/patient/{periodId}/{patientId}": {
+      "get": {
+        "operationId": "getApiV1CapProjectionsPatientByPeriodIdByPatientId",
+        "tags": [
+          "26-cap"
+        ],
+        "summary": "Per-patient projection snapshot — contribution + band (§4.1)",
+        "parameters": [
+          {
+            "name": "periodId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "capPeriodId",
+                    "scope",
+                    "methodology",
+                    "paidYtdCents",
+                    "outstandingBilledCents",
+                    "projectedYearEndCents",
+                    "capAmountCents",
+                    "pctOfCap",
+                    "alertBand",
+                    "computedAt",
+                    "computedBy"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "capPeriodId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "scope": {
+                      "anyOf": [
+                        {
+                          "const": "agency_aggregate",
+                          "type": "string"
+                        },
+                        {
+                          "const": "patient_aggregate",
+                          "type": "string"
+                        },
+                        {
+                          "const": "inpatient",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "methodology": {
+                      "anyOf": [
+                        {
+                          "const": "streamlined",
+                          "type": "string"
+                        },
+                        {
+                          "const": "proportional",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "paidYtdCents": {
+                      "type": "integer"
+                    },
+                    "outstandingBilledCents": {
+                      "type": "integer"
+                    },
+                    "projectedYearEndCents": {
+                      "type": "integer"
+                    },
+                    "capAmountCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "pctOfCap": {
+                      "type": "number"
+                    },
+                    "alertBand": {
+                      "type": "string"
+                    },
+                    "beneficiaryCount": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "computedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "computedBy": {
+                      "anyOf": [
+                        {
+                          "const": "nightly_batch",
+                          "type": "string"
+                        },
+                        {
+                          "const": "remittance_trigger",
+                          "type": "string"
+                        },
+                        {
+                          "const": "manual_recompute",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/cap/psr-imports/{importId}": {
+      "get": {
+        "operationId": "getApiV1CapPsrimportsByImportId",
+        "tags": [
+          "26-cap"
+        ],
+        "parameters": [
+          {
+            "name": "importId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/cap/psr-imports/{importId}/reconciliation": {
+      "get": {
+        "operationId": "getApiV1CapPsrimportsByImportIdReconciliation",
+        "tags": [
+          "26-cap"
+        ],
+        "parameters": [
+          {
+            "name": "importId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/cap/psr-imports/{importId}/reconciliation/{lineId}/resolve": {
+      "patch": {
+        "operationId": "patchApiV1CapPsrimportsByImportIdReconciliationByLineIdResolve",
+        "tags": [
+          "26-cap"
+        ],
+        "summary": "Resolve a variance line with a categorical reason + note (§4.1)",
+        "parameters": [
+          {
+            "name": "importId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "varianceReason",
+                  "resolutionNotes"
+                ],
+                "properties": {
+                  "varianceReason": {
+                    "anyOf": [
+                      {
+                        "const": "timing",
+                        "type": "string"
+                      },
+                      {
+                        "const": "psr_correction",
+                        "type": "string"
+                      },
+                      {
+                        "const": "our_correction",
+                        "type": "string"
+                      },
+                      {
+                        "const": "mbi_mismatch",
+                        "type": "string"
+                      },
+                      {
+                        "const": "data_quality",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unknown",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "resolutionNotes": {
+                    "minLength": 20,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cap/settlements/{periodId}": {
+      "get": {
+        "operationId": "getApiV1CapSettlementsByPeriodId",
+        "tags": [
+          "26-cap"
+        ],
+        "summary": "Settlement worksheet — final paid/cap/overage + owed direction (§4.1)",
+        "parameters": [
+          {
+            "name": "periodId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "capPeriodId",
+                    "status",
+                    "paidTotalCents",
+                    "beneficiaryCount",
+                    "aggregateCapAmountCents",
+                    "aggregateOverageCents",
+                    "direction",
+                    "inpatientTotalDays",
+                    "inpatientOverageDays",
+                    "inpatientOverageCents",
+                    "proposedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "capPeriodId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "proposed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "reviewed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "final",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "paidTotalCents": {
+                      "type": "integer"
+                    },
+                    "beneficiaryCount": {
+                      "type": "integer"
+                    },
+                    "aggregateCapAmountCents": {
+                      "type": "integer"
+                    },
+                    "aggregateOverageCents": {
+                      "type": "integer"
+                    },
+                    "direction": {
+                      "anyOf": [
+                        {
+                          "const": "overpayment_owed_to_cms",
+                          "type": "string"
+                        },
+                        {
+                          "const": "underpayment_owed_to_provider",
+                          "type": "string"
+                        },
+                        {
+                          "const": "balanced",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "inpatientTotalDays": {
+                      "type": "integer"
+                    },
+                    "inpatientOverageDays": {
+                      "type": "integer"
+                    },
+                    "inpatientOverageCents": {
+                      "type": "integer"
+                    },
+                    "proposedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "finalizedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/cap/settlements/{periodId}/finalize": {
+      "patch": {
+        "operationId": "patchApiV1CapSettlementsByPeriodIdFinalize",
+        "tags": [
+          "26-cap"
+        ],
+        "summary": "Finalize settlement — step-up; in_settlement → settled (D12; M26-F06; §4.1)",
+        "parameters": [
+          {
+            "name": "periodId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "capPeriodId",
+                    "status",
+                    "paidTotalCents",
+                    "beneficiaryCount",
+                    "aggregateCapAmountCents",
+                    "aggregateOverageCents",
+                    "direction",
+                    "inpatientTotalDays",
+                    "inpatientOverageDays",
+                    "inpatientOverageCents",
+                    "proposedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "capPeriodId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "proposed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "reviewed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "final",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "paidTotalCents": {
+                      "type": "integer"
+                    },
+                    "beneficiaryCount": {
+                      "type": "integer"
+                    },
+                    "aggregateCapAmountCents": {
+                      "type": "integer"
+                    },
+                    "aggregateOverageCents": {
+                      "type": "integer"
+                    },
+                    "direction": {
+                      "anyOf": [
+                        {
+                          "const": "overpayment_owed_to_cms",
+                          "type": "string"
+                        },
+                        {
+                          "const": "underpayment_owed_to_provider",
+                          "type": "string"
+                        },
+                        {
+                          "const": "balanced",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "inpatientTotalDays": {
+                      "type": "integer"
+                    },
+                    "inpatientOverageDays": {
+                      "type": "integer"
+                    },
+                    "inpatientOverageCents": {
+                      "type": "integer"
+                    },
+                    "proposedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "finalizedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "attestation",
+                  "stepUpAssertionId"
+                ],
+                "properties": {
+                  "attestation": {
+                    "minLength": 20,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "stepUpAssertionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cap/settlements/{periodId}/propose": {
+      "post": {
+        "operationId": "postApiV1CapSettlementsByPeriodIdPropose",
+        "tags": [
+          "26-cap"
+        ],
+        "summary": "Propose a settlement worksheet from current accruals (cap_period_in_settlement ABAC; §4.1)",
+        "parameters": [
+          {
+            "name": "periodId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "capPeriodId",
+                    "status",
+                    "paidTotalCents",
+                    "beneficiaryCount",
+                    "aggregateCapAmountCents",
+                    "aggregateOverageCents",
+                    "direction",
+                    "inpatientTotalDays",
+                    "inpatientOverageDays",
+                    "inpatientOverageCents",
+                    "proposedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "capPeriodId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "proposed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "reviewed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "final",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "paidTotalCents": {
+                      "type": "integer"
+                    },
+                    "beneficiaryCount": {
+                      "type": "integer"
+                    },
+                    "aggregateCapAmountCents": {
+                      "type": "integer"
+                    },
+                    "aggregateOverageCents": {
+                      "type": "integer"
+                    },
+                    "direction": {
+                      "anyOf": [
+                        {
+                          "const": "overpayment_owed_to_cms",
+                          "type": "string"
+                        },
+                        {
+                          "const": "underpayment_owed_to_provider",
+                          "type": "string"
+                        },
+                        {
+                          "const": "balanced",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "inpatientTotalDays": {
+                      "type": "integer"
+                    },
+                    "inpatientOverageDays": {
+                      "type": "integer"
+                    },
+                    "inpatientOverageCents": {
+                      "type": "integer"
+                    },
+                    "proposedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "finalizedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/cap/threshold-events": {
+      "get": {
+        "operationId": "getApiV1CapThresholdevents",
+        "tags": [
+          "26-cap"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/cap/threshold-events/{eventId}/acknowledge": {
+      "patch": {
+        "operationId": "patchApiV1CapThresholdeventsByEventIdAcknowledge",
+        "tags": [
+          "26-cap"
+        ],
+        "summary": "Acknowledge a threshold event — records actor + timestamp (does not clear the breach; §4.1)",
+        "parameters": [
+          {
+            "name": "eventId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "notes": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/care-plans/{planId}/goals": {
       "post": {
         "operationId": "postApiV1CareplansByPlanIdGoals",
@@ -23880,6 +26346,128 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/cap/constants": {
+      "get": {
+        "operationId": "getApiV1PlatformCapConstants",
+        "tags": [
+          "26-cap"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1PlatformCapConstants",
+        "tags": [
+          "26-cap"
+        ],
+        "summary": "Publish a CMS per-cap-year cap amount — platform-admin (cap_platform_admin ABAC; D3; §4.1)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "capYear",
+                  "aggregateCapAmountCents"
+                ],
+                "properties": {
+                  "capYear": {
+                    "pattern": "^FY\\d{4}$",
+                    "type": "string"
+                  },
+                  "aggregateCapAmountCents": {
+                    "type": "integer"
+                  },
+                  "inpatientCapPct": {
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.2,
+                    "type": "number"
+                  },
+                  "sourceUrl": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/cap/constants/{capYear}": {
+      "patch": {
+        "operationId": "patchApiV1PlatformCapConstantsByCapYear",
+        "tags": [
+          "26-cap"
+        ],
+        "summary": "Amend a published cap amount before first tenant use — platform-admin (D3; §4.1)",
+        "parameters": [
+          {
+            "name": "capYear",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "aggregateCapAmountCents"
+                ],
+                "properties": {
+                  "aggregateCapAmountCents": {
+                    "type": "integer"
+                  },
+                  "sourceUrl": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }

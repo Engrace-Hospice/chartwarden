@@ -157,6 +157,13 @@ const NON_ORG_SCOPED = new Set<string>([
   // M38 code_system / M34 onboarding_task_template precedent). The other sixteen M23 tables carry
   // organization_id and get standard app.org_id RLS (claim + claim_line additionally carry the three-column rule).
   "wage_index_factor",
+  // M26 Cap Management (§3.3 / D3): cap_period_platform_constant is PLATFORM-shared CMS-published cap data
+  // with NO organization_id BY DESIGN — one row per cap year ('FY2026'), published by the platform admin on
+  // the annual CMS Hospice Wage Index Final Rule and snapshotted (immutable copy) into each tenant's
+  // cap_period at open. Read-all within any tenant (USING(true)), writes only via the
+  // cap.platform_constant.manage permission (the wage_index_factor / cost_report_validation_rule precedent).
+  // The other eleven M26 tables carry organization_id and get standard app.org_id RLS.
+  "cap_period_platform_constant",
 ]);
 // PHI signal: a table referencing a patient is PHI-bearing and MUST be fully org-scoped.
 const PHI_SIGNAL_RE =

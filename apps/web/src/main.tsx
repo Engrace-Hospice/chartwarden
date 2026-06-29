@@ -31,6 +31,7 @@ import { evvScreens } from "./modules/18-evv";
 import { documentScreens } from "./modules/22-documents";
 import { billingScreens } from "./modules/23-billing-medicare";
 import { remittanceScreens } from "./modules/25-remittance";
+import { capScreens } from "./modules/26-cap";
 import { reportingScreens } from "./modules/33-reporting";
 import { saasScreens } from "./modules/34-saas";
 import { messagingScreens } from "./modules/36-messaging";
@@ -65,6 +66,7 @@ registry.register(evvScreens); // M18 Electronic Visit Verification (Track B, M1
 registry.register(documentScreens); // M22 Document Management (Track B, M22-T10)
 registry.register(billingScreens); // M23 Billing — Medicare (R2, ADR-0030, §10 PR-J)
 registry.register(remittanceScreens); // M25 Remittance & Denials (R2, ADR-0030, §5)
+registry.register(capScreens); // M26 Cap Management (R2, ADR-0030, §5)
 registry.register(reportingScreens); // M33 Reporting & Analytics (R2, ADR-0030)
 registry.register(saasScreens); // M34 SaaS Tenant Platform (R2, ADR-0030)
 registry.register(messagingScreens); // M36 Messaging (Track A)

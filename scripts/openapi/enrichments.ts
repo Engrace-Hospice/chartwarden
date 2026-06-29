@@ -148,6 +148,26 @@ import {
   UpdateRuleConfigBodySchema,
   UpsertMacCredentialBodySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/billing-typebox";
+// M26 Cap Management — the §4.2 request/response schemas the route handlers bind (the @wardenx/cap-management
+// contracts re-exported via modules/26-cap/routes/m26-typebox so the enrichment matches the module path).
+import {
+  AcknowledgeEventRequest as CapAcknowledgeEventRequest,
+  AmendConstantRequest as CapAmendConstantRequest,
+  CapPeriodDto,
+  CapPeriodListResponse,
+  CloseCapPeriodRequest as CapCloseCapPeriodRequest,
+  FinalizeSettlementRequest as CapFinalizeSettlementRequest,
+  InpatientProjectionDto as CapInpatientProjectionDto,
+  LockMethodologyRequest as CapLockMethodologyRequest,
+  OpenCapPeriodRequest as CapOpenCapPeriodRequest,
+  ProjectionListResponse as CapProjectionListResponse,
+  ProjectionSnapshotDto as CapProjectionSnapshotDto,
+  PsrImportRequest as CapPsrImportRequest,
+  PublishConstantRequest as CapPublishConstantRequest,
+  ReopenCapPeriodRequest as CapReopenCapPeriodRequest,
+  ResolveVarianceRequest as CapResolveVarianceRequest,
+  SettlementDto as CapSettlementDto,
+} from "../../apps/backend/src/modules/26-cap/routes/m26-typebox";
 // M33 Reporting & Dashboards — the read query + drilldown body the Track B screens call (FB read paths).
 import {
   DashboardListQuerySchema,
@@ -1702,5 +1722,91 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary:
       "Issue a tenant-scoped support-access consent grant (§6/D10 step-up enforced server-side)",
     body: SupportConsentGrantRequest,
+  },
+
+  // ── M26 Cap Management (§4.1) — cap-period lifecycle, projections, threshold queue, PS&R, settlement,
+  // platform constants. Bodies/responses are the §4.2 contract schemas the handlers bind; org/actor binding
+  // is server-side, so no body carries an org/user id. Reads returning view interfaces (dashboard/accrual/
+  // psr) are omitted (no fabrication) — params auto-derive from the path.
+  "GET /api/v1/cap/periods": {
+    summary: "List cap periods for the calling tenant — status + methodology (§4.1)",
+    response: CapPeriodListResponse,
+  },
+  "POST /api/v1/cap/periods": {
+    summary: "Open a new cap period (snapshots the platform constant; emits m26.cap.year_opened; §4.1)",
+    body: CapOpenCapPeriodRequest,
+    response: CapPeriodDto,
+  },
+  "GET /api/v1/cap/periods/:periodId": {
+    summary: "Single cap period including methodology lock + status (§4.1)",
+    response: CapPeriodDto,
+  },
+  "PATCH /api/v1/cap/periods/:periodId/close": {
+    summary: "Close a cap period — active → in_settlement (cap_period_open ABAC; M26-F06; §4.1)",
+    body: CapCloseCapPeriodRequest,
+    response: CapPeriodDto,
+  },
+  "PATCH /api/v1/cap/periods/:periodId/reopen": {
+    summary: "Reopen a settled period — step-up required (cap_period_settled ABAC; D12; §4.1)",
+    body: CapReopenCapPeriodRequest,
+    response: CapPeriodDto,
+  },
+  "POST /api/v1/cap/periods/:periodId/methodology": {
+    summary: "Lock the streamlined/proportional methodology — one-time, step-up required (D2/D12; §4.1)",
+    body: CapLockMethodologyRequest,
+    response: CapPeriodDto,
+  },
+  "GET /api/v1/cap/projections": {
+    summary: "Latest projection snapshots (agency + inpatient) for a period (§4.1)",
+    response: CapProjectionListResponse,
+  },
+  "GET /api/v1/cap/projections/agency/:periodId": {
+    summary: "Agency-aggregate projection snapshot — utilization + band (§4.1)",
+    response: CapProjectionSnapshotDto,
+  },
+  "GET /api/v1/cap/projections/patient/:periodId/:patientId": {
+    summary: "Per-patient projection snapshot — contribution + band (§4.1)",
+    response: CapProjectionSnapshotDto,
+  },
+  "GET /api/v1/cap/projections/inpatient/:periodId": {
+    summary: "Inpatient (20%) cap utilization — GIP+IRC day count + band (§4.1)",
+    response: CapInpatientProjectionDto,
+  },
+  "POST /api/v1/cap/projections/:periodId/recompute": {
+    summary: "Force an immediate projection recompute (cap_period_open ABAC; §4.1)",
+    response: CapProjectionListResponse,
+  },
+  "PATCH /api/v1/cap/threshold-events/:eventId/acknowledge": {
+    summary: "Acknowledge a threshold event — records actor + timestamp (does not clear the breach; §4.1)",
+    body: CapAcknowledgeEventRequest,
+  },
+  "POST /api/v1/cap/periods/:periodId/psr-imports": {
+    summary: "Upload a PS&R CSV — sha256-deduped, queued for reconciliation (202; §4.1)",
+    body: CapPsrImportRequest,
+  },
+  "PATCH /api/v1/cap/psr-imports/:importId/reconciliation/:lineId/resolve": {
+    summary: "Resolve a variance line with a categorical reason + note (§4.1)",
+    body: CapResolveVarianceRequest,
+  },
+  "GET /api/v1/cap/settlements/:periodId": {
+    summary: "Settlement worksheet — final paid/cap/overage + owed direction (§4.1)",
+    response: CapSettlementDto,
+  },
+  "POST /api/v1/cap/settlements/:periodId/propose": {
+    summary: "Propose a settlement worksheet from current accruals (cap_period_in_settlement ABAC; §4.1)",
+    response: CapSettlementDto,
+  },
+  "PATCH /api/v1/cap/settlements/:periodId/finalize": {
+    summary: "Finalize settlement — step-up; in_settlement → settled (D12; M26-F06; §4.1)",
+    body: CapFinalizeSettlementRequest,
+    response: CapSettlementDto,
+  },
+  "POST /api/v1/platform/cap/constants": {
+    summary: "Publish a CMS per-cap-year cap amount — platform-admin (cap_platform_admin ABAC; D3; §4.1)",
+    body: CapPublishConstantRequest,
+  },
+  "PATCH /api/v1/platform/cap/constants/:capYear": {
+    summary: "Amend a published cap amount before first tenant use — platform-admin (D3; §4.1)",
+    body: CapAmendConstantRequest,
   },
 };

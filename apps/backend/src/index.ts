@@ -138,6 +138,20 @@ import {
   scheduleM25Jobs,
   wireM25Tenancy,
 } from "./modules/25-remittance/index";
+// M26 (Cap Management) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers (cap_period_open /
+// _in_settlement / _settled / _methodology_unlocked / cap_platform_admin), and the §4.1 route mount over the
+// Drizzle read/write services. The write service's transactional outbox publisher binds at boot; the §4.3
+// published-seam impls + the §4.8 BullMQ workers + the §3.7 eraser land in P4 (the M27 deferred posture).
+import {
+  M26_OUTBOX_EVENTS,
+  buildDrizzleM26ReadService,
+  buildDrizzleM26WriteService,
+  mountM26Routes,
+  registerM26AbacPredicates,
+  registerCapErasers,
+  registerM26CronWorkers,
+  scheduleM26Jobs,
+} from "./modules/26-cap/index";
 // M23 (Billing — Medicare) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route
 // mount over the Drizzle read/write services + the boot-time claim-assembly service, the §3.7 `billing_record`
 // eraser (registerEraser INJECTED — M23 cannot import the M1 bootstrap registry), and the §4.8 BullMQ workers
@@ -348,6 +362,10 @@ export function wireModuleSeams(
   // `appeal_within_deadline` the hard T-0 block on submit). Pass the DB handle so the Drizzle fact resolver
   // binds under RLS; with no db it defaults to the deny-stub (default-deny).
   registerM25AbacPredicates({ db: deps.db });
+  // M26 — the five §4.7 ABAC resolvers (cap_period_open / _in_settlement / _settled /
+  // _methodology_unlocked / cap_platform_admin). Pass the DB handle so the Drizzle period/settlement fact
+  // resolver binds under RLS; with no db it defaults to the deny-stub (default-deny).
+  registerM26AbacPredicates({ db: deps.db });
   // M33 — register the platform job id on the @wardenx/tenancy allowlist so the §4.8 platform-scoped
   // workers (the on-PRIMARY MV refresh, the lag probe, the tenant eraser) may enter withPlatformContext
   // (the allowlist starts empty → fail-closed). The M34 `wireM34Tenancy` precedent.
@@ -493,6 +511,7 @@ export function wireModuleErasers(): void {
   registerCostReportErasers(); // M27 — `cost_report_class` (tenant-offboarding operational-config cleanup; subjectId=org; submitted/accepted cost reports are survey-evidence, destruction-gated; §3.7/§8.4)
   registerBillingErasers({ registerEraser }); // M23 — `billing_record` (per-PATIENT destruction-cert callback; in-flight/surveyor-hold guard; MAC secret crypto-shred is the org-destruction path; §3.7/§8.4). registerEraser is INJECTED (M23 may not import the M1 bootstrap registry); in-memory slice store until the Drizzle BillingEraseStore binds.
   registerRemittanceErasers({ registerEraser }); // M25 — `remittance` (per-PATIENT PR-ledger destruction-cert callback; the line/adjustment/remark history rolls off via the M4 partition manager, not per-patient; §3.7/§8.4). registerEraser INJECTED; in-memory slice store until the Drizzle PR-ledger destruction store binds (the M23 posture).
+  registerCapErasers({ registerEraser }); // M26 — `cap` (per-PATIENT redact-to-sentinel destruction-cert callback; D14 — aggregates survive right-to-erasure so CMS-side cap reconciliation stays reproducible; §3.7/§8.4). registerEraser INJECTED; in-memory slice store until the privileged Drizzle redaction store binds (the M25 posture).
   // Phase-1 data-class owners append here as they land.
 }
 
@@ -528,6 +547,7 @@ if ((import.meta as { main?: boolean }).main) {
   const bootOutboxCatalog = buildBootOutboxCatalog([
     M23_OUTBOX_EVENTS,
     M25_OUTBOX_EVENTS,
+    M26_OUTBOX_EVENTS,
     M27_OUTBOX_EVENTS,
     M30_OUTBOX_EVENTS,
     M33_OUTBOX_EVENTS,
@@ -540,6 +560,7 @@ if ((import.meta as { main?: boolean }).main) {
   // `m34.tenant.provisioned` event, so no mutation rolls back).
   const m23OutboxPublisher = bindCallerModule(txOutboxPublisher, "m23");
   const m25OutboxPublisher = bindCallerModule(txOutboxPublisher, "m25");
+  const m26OutboxPublisher = bindCallerModule(txOutboxPublisher, "m26");
   const m27OutboxPublisher = bindCallerModule(txOutboxPublisher, "m27");
   const m30OutboxPublisher = bindCallerModule(txOutboxPublisher, "m30");
   const m33OutboxPublisher = bindCallerModule(txOutboxPublisher, "m33");
@@ -710,6 +731,12 @@ if ((import.meta as { main?: boolean }).main) {
           mountM25Routes(app, {
             readService: buildDrizzleM25ReadService(dbHandle.db, m25Terminology),
             writeService: buildDrizzleM25WriteService(dbHandle.db, m25OutboxPublisher),
+          });
+          // M26 (Cap Management) — mount the §4.1 route plugins over the Drizzle READ + WRITE services; the
+          // §4.10 `m26.cap.*` transactional outbox publisher binds here (events persist on the mutation's tx).
+          mountM26Routes(app, {
+            readService: buildDrizzleM26ReadService(dbHandle.db),
+            writeService: buildDrizzleM26WriteService(dbHandle.db, m26OutboxPublisher),
           });
         }
       : undefined,
@@ -958,6 +985,24 @@ if ((import.meta as { main?: boolean }).main) {
       app.log.error(err, "M25 cron-schedule registration failed");
     }
     app.log.info({ queues: m25Workers.length }, "M25 §4.8 BullMQ remittance crons constructed");
+
+    // ── M26 §4.8 Cap-Management crons (nightly projection recompute · cap-year auto-close · stale-PS&R
+    // watchdog). Constructed over the same Valkey connection + db; the M2 active-org enumerator + the M36
+    // alert router stay on their fail-closed/no-op defaults until bound (a cron tick fails closed, never at
+    // import — the M25 deferred-bind posture). Idempotent recompute/close via the §2.6 unique constraints.
+    const m26Workers = registerM26CronWorkers({ connection: queueConnection, db: dbHandle.db });
+    app.addHook("onClose", async () => {
+      await Promise.all(m26Workers.map((w) => w.close()));
+    });
+    try {
+      const m26ScheduleQueues = await scheduleM26Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m26ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M26 cron-schedule registration failed");
+    }
+    app.log.info({ queues: m26Workers.length }, "M26 §4.8 BullMQ cap crons constructed");
   }
 
   const port = Number(process.env.PORT ?? 3000);

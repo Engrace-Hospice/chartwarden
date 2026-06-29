@@ -1,8 +1,8 @@
 {
   "totals": {
-    "Implemented": 26,
+    "Implemented": 27,
     "Partial": 1,
-    "Placeholder": 13
+    "Placeholder": 12
   },
   "rows": [
     {
@@ -358,16 +358,16 @@
     {
       "id": 26,
       "module": "M26 Cap Management",
-      "status": "Placeholder",
+      "status": "Implemented",
       "spec": true,
-      "schema": false,
-      "migration": false,
-      "routes": false,
-      "enriched": false,
-      "screens": false,
-      "tests": false,
+      "schema": true,
+      "migration": true,
+      "routes": true,
+      "enriched": true,
+      "screens": true,
+      "tests": true,
       "adapter": null,
-      "liveInfra": false
+      "liveInfra": true
     },
     {
       "id": 27,

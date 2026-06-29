@@ -31,6 +31,7 @@
     "22-documents",
     "23-billing-medicare",
     "25-remittance",
+    "26-cap",
     "33-reporting",
     "34-saas",
     "36-messaging",
@@ -800,6 +801,48 @@
       "id": "remittance.taxonomy",
       "path": "/remittance/taxonomy",
       "permission": "taxonomy.read"
+    },
+    {
+      "module": "26-cap",
+      "moduleId": 26,
+      "id": "cap.dashboard",
+      "path": "/cap",
+      "permission": "cap.projection.read"
+    },
+    {
+      "module": "26-cap",
+      "moduleId": 26,
+      "id": "cap.periods",
+      "path": "/cap/periods",
+      "permission": "cap.period.read"
+    },
+    {
+      "module": "26-cap",
+      "moduleId": 26,
+      "id": "cap.events",
+      "path": "/cap/events",
+      "permission": "cap.event.read"
+    },
+    {
+      "module": "26-cap",
+      "moduleId": 26,
+      "id": "cap.settlement",
+      "path": "/cap/settlements",
+      "permission": "cap.settlement.read"
+    },
+    {
+      "module": "26-cap",
+      "moduleId": 26,
+      "id": "cap.psr",
+      "path": "/cap/psr",
+      "permission": "cap.psr.read"
+    },
+    {
+      "module": "26-cap",
+      "moduleId": 26,
+      "id": "cap.platform_constants",
+      "path": "/platform/cap/constants",
+      "permission": "cap.platform_constant.read"
     },
     {
       "module": "33-reporting",

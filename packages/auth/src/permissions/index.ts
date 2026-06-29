@@ -168,3 +168,10 @@ export {
   M25_CONTRIBUTED_PERMISSIONS,
   m25ContributedPermissionMirrorRows,
 } from "./contributed";
+
+// M26 — Module 26's fourteen Cap Management permission keys registered into M3's catalog (§4.6 handshake).
+export {
+  type M26ContributedPermissionKey,
+  M26_CONTRIBUTED_PERMISSIONS,
+  m26ContributedPermissionMirrorRows,
+} from "./contributed";
