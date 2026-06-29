@@ -1,9 +1,13 @@
 # WardenX — Repository Guide
 
 Multi-tenant hospice EHR SaaS. This repo is the **specification corpus + architecture-fitness
-kit + staged implementation monorepo**: Phase 0 gates/scaffold are in place, and **23 of 40 modules
-now have real implementation on `main`** — M2–M14, M17, M18, M22 (clinical), **M30 HQRP & Quality**,
-M33 Reporting & M34 SaaS Platform (R2), plus M36/M38/M39/M40. **M30 is merged (PR #106)**: 18 frozen
+kit + staged implementation monorepo**: Phase 0 gates/scaffold are in place, and **27 of 40 modules
+now have real implementation on `main`** — the clinical core (M2–M14, M17, M18, M22), the **full revenue
+cycle (M23 Billing-Medicare · M25 Remittance & Denials · M26 Cap Management · M27 Cost Report; merged PRs
+#120/#121/#124–#126)**, **M30 HQRP & Quality**, M33 Reporting & M34 SaaS Platform, plus the platform services
+M36/M38/M39/M40 (M01 Foundation is the partitioned schema/gate layer with no feature routes → 🟡). The
+generated **implementation-status matrix** (`bun run status:matrix` → `audit/implementation-status/IMPLEMENTATION_STATUS.md`)
+is the per-module truth — currently **🟢 27 · 🟡 1 · ⚪ 12**. **M30 is merged (PR #106)**: 18 frozen
 `quality/` tables + migrations 0062–0068; the `@wardenx/quality` domain core + `@wardenx/cahps-vendors`;
 47 routes in `apps/backend/src/modules/30-quality`; the `MEASURE_CATALOG`/measure registry (HCI 10
 indicators + composite, HVLDL, HOPE-derived TFP, operational); and CAHPS/QAPI/SRA/incident/mortality/
@@ -12,9 +16,11 @@ made M30's cross-module seams real: the M1-T10 transactional outbox-row emit (M3
 M40-free provider-entity resolver, the M33 `MetricsProvider` registration, the HOPE-rollup + HVLDL measure
 inputs (computing end-to-end, incl. a new M6 `DeathDischargeReader` + a Drizzle-backed M8
 `SignedEncountersReader`), per-job `withOrgContext` RLS on the recompute/outbreak workers, and the cron
-allowlist + active-org enumerator. The **HCI/operational measure families stay fail-closed** — they depend
-on the **M23 (Billing) / M27 (Cost Report) placeholder modules**, so `hci_composite` cannot compute until
-those land. Remaining modules stay explicit placeholders until their plans land.
+allowlist + active-org enumerator. M23 and M27 are now **merged** (no longer placeholders), so the
+**HCI/operational measure families' remaining blocker is the cross-module seam BIND** — M27 consuming the
+M23/M26 forward-seams (`CapAccrualReader`/`CapSettlementProvider` for the CMS-1984-14 cap calc) and M30's HCI
+consuming M27; those reach live as deny-stubs today, so `hci_composite` stays fail-closed until they flip
+live. Remaining modules stay explicit placeholders until their plans land.
 
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104, see
 [`audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md`](./audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md)):
