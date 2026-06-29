@@ -458,12 +458,15 @@ contract), so `openapi.json`/the client are unchanged.
 
 ## Blocked on later waves (out of Track A scope until their module lands)
 
-The remaining ~50 screens (clinical suite, revenue, portal, platform/ops) are owned by modules not yet
-built (M7–M35, M37). They are **Track B**: each ships with its module's wave (include the
-`apps/web/src/modules/NN-*` codePath from T01; the terminal screen task builds it). Examples:
+These screens (clinical suite, revenue, portal, platform/ops) are owned by modules across the remaining
+waves (M7–M37). They are **Track B**: each ships with its module's wave (include the
+`apps/web/src/modules/NN-*` codePath from T01; the terminal screen task builds it). The `done` items below
+shipped in-wave; the generated **ui-parity matrix** (`audit/ui-parity/UI_PARITY.md`) is the authoritative
+per-screen status. Examples:
 Care Plan (M7+M15), Orders (M11; done¹⁸), eMAR administration (M13; done²⁰; M12 prescribing is done¹⁹),
-IDG (M14; done²¹), Scheduling (M17; done²²), EVV (M18; done²³), Claims (M23+M24), Cap (M26), Cost Report (M27),
-FHIR (M28), HQRP (M30), Portal/Telehealth (M31), Copilot (M32), Reporting (M33), Onboarding (M34),
+IDG (M14; done²¹), Scheduling (M17; done²²), EVV (M18; done²³), Claims (M23; done — M24 deferred),
+Remittance & Denials (M25; done), Cap (M26; done), Cost Report (M27), FHIR (M28), HQRP (M30),
+Portal/Telehealth (M31), Copilot (M32), Reporting (M33; done), Onboarding (M34; done),
 Subscription (M35), IPU Bed Board (M37). See each spec's `Module:` line for the authoritative owner.
 
 ---
