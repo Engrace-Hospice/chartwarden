@@ -72,8 +72,9 @@ export interface AllocationInputs {
   readonly stepDownColumns: readonly AllocationColumnConfig[];
 }
 
-/** 42 CFR §418.302(f): inpatient days (GIP + IRC) are limited to 20% of total Medicare days. TODO(CMS-fixture):
- *  confirm the per-FY percentage and the day-set (GIP only vs GIP+IRC) against a CMS-published Worksheet E-1. */
+/** Inpatient day cap = 20% of total Medicare days (42 CFR §418.302(f) / §418.108 — CERTIFIED, stable). The
+ *  numerator day-set (GIP only vs GIP+respite) is the one open item — code sums GIP+IRC; pending the §418.302(f)
+ *  verbatim text. See audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md. */
 const INPATIENT_DAY_CAP_PERCENT = 20;
 
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);

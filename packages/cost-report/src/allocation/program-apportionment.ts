@@ -78,9 +78,10 @@ function compareCells(a: PatientDayCell, b: PatientDayCell): number {
  * zero patient days apportions zero to its (zero) cells and reports a "0" per-diem (no division). The
  * per-program totals roll the cells up in `COST_REPORT_PROGRAMS` order.
  *
- * TODO(CMS-fixture): the precise Worksheet D column geometry (and any CMS-prescribed rounding of the
- * per-diem before re-multiplication) is pinned by a CMS-published example report — verify the per-cell
- * tie-out and per-diem presentation against an FY2024/FY2025 example before treating it as conformant.
+ * CMS-CERT (see audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md): the precise Worksheet D column geometry
+ * (program × level-of-care) and any CMS-prescribed rounding of the per-diem before re-multiplication are
+ * PENDING confirmation against CMS Pub 15-2 Ch.43 (Form CMS-1984-14) — CMS publishes no penny-level worked
+ * example, so this is verified internally (per-cell tie-out) but not yet line-certified against the form.
  */
 export function apportionToPrograms(input: ProgramApportionInput): ProgramApportionResult {
   const cells: ApportionedCostCell[] = [];
