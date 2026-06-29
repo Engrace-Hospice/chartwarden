@@ -15,9 +15,11 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
+  allocationResultsToWorksheets,
   apportionAncillary,
   apportionToPrograms,
   computeSettlement,
+  CostReportWorksheetRepository,
   stepDownAllocate,
 } from "@wardenx/cost-report";
 import { createDbClient, type DbClient } from "@wardenx/db";
@@ -171,5 +173,50 @@ describe.skipIf(!DB_URL)("M27 AllocationInputBuilder — LIVE Postgres (§3.1 / 
     expect(s.capPositionPending).toBe(false);
     expect(s.aggregateCap!.overageCents).toBe(750_000);
     expect(s.balanceDueToProviderCents).toBe(4_000_000 - 750_000 - 3_500_000); // -250_000 owed back
+  });
+
+  it("write-back: the recompute persists the four derived worksheets (B/C/D/E-1) with computed_at", async () => {
+    const builder = buildM27AllocationInputs({ capResolver: () => boundCap });
+    const computedAt = new Date("2026-12-01T00:00:00Z");
+
+    // Replicate the worker's write-back path through the public API (build → pure chain → mapper → repo upsert).
+    // The worker carries the empty-string SYSTEM user (the M4 write-audit trigger NULLIFs it → NULL actor).
+    await withOrgContext(handle.db, { organizationId: ORG, userId: "" }, async (tx) => {
+      const inputs = await builder.build({ organizationId: ORG, costReportId: reportId, tx });
+      const payloads = allocationResultsToWorksheets({
+        stepDown: stepDownAllocate(inputs.stepDown),
+        ancillary: apportionAncillary(inputs.ancillary),
+        program: apportionToPrograms(inputs.program),
+        settlement: computeSettlement(inputs.settlement),
+        settlementInput: inputs.settlement,
+      });
+      const repo = new CostReportWorksheetRepository(tx);
+      for (const code of ["B", "C", "D", "E-1"] as const) {
+        // Upsert exactly as the worker does: lazy-create B/D, replace the seeded C/E-1 input rows in place.
+        const existing = await repo.findByReportAndCode(reportId, code);
+        if (existing) {
+          const res = await repo.updateWithVersion(existing.id, existing.version, { data: payloads[code], computedAt });
+          expect(res.ok).toBe(true);
+        } else {
+          await repo.create({ organizationId: ORG, costReportId: reportId, worksheetCode: code, data: payloads[code], computedAt });
+        }
+      }
+    });
+
+    // Read the persisted derived worksheets back over RLS.
+    const rows = await withOrgContext(handle.db, { organizationId: ORG, userId: USER }, (tx) =>
+      new CostReportWorksheetRepository(tx).listByReport(ORG, reportId),
+    );
+    const byCode = new Map(rows.map((r) => [r.worksheetCode, r]));
+    for (const code of ["B", "C", "D", "E-1"] as const) {
+      const row = byCode.get(code);
+      expect(row, `worksheet ${code} persisted`).toBeDefined();
+      expect(row!.computedAt).not.toBeNull();
+    }
+    // B totals + E-1 cap overage landed in the jsonb verbatim.
+    const b = byCode.get("B")!.data as { totalFullyAllocatedCostCents: number };
+    expect(b.totalFullyAllocatedCostCents).toBe(500_000);
+    const e1 = byCode.get("E-1")!.data as { medicare: { capOverpaymentCents: number } };
+    expect(e1.medicare.capOverpaymentCents).toBe(750_000);
   });
 });
