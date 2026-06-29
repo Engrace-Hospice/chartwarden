@@ -1,6 +1,7 @@
 // @wardenx/cost-report — the pure ValidationContext assembler (§11.B) unit tests. No DB / no registry:
 // proves the worksheet-jsonb → context field extraction, the cap/MAC composition, the deadline math, and the
 // seam-gating (M23 fields unavailable → the dependent rules SKIP; cap bound vs null flips the cap rules).
+// Aligned to Form CMS-1984-14: Worksheets B-1 (statistical basis), C (per-diem), F (balance sheet) — no D/E-1.
 import { describe, expect, it } from "vitest";
 import {
   type RawValidationInputs,
@@ -19,11 +20,10 @@ function rawInputs(over: Partial<RawValidationInputs> = {}): RawValidationInputs
     worksheets: [
       { worksheetCode: "S", data: { providerCcn: "123456" } },
       { worksheetCode: "A", data: { grandTotalCostsCents: 5_000_000 } },
-      { worksheetCode: "B", data: { totalFullyAllocatedCostCents: 5_000_000, tiesToWorksheetAGrandTotal: true, allocationColumns: [{ allocationBasis: "sqft" }] } },
-      { worksheetCode: "C", data: { hasZeroChargeBasisFlag: false } },
-      { worksheetCode: "D", data: { apportionmentPreservesTotalExactly: true, medicare: { totalDays: 200 }, medicaid: { totalDays: 100 }, other: { totalDays: 65 } } },
-      { worksheetCode: "E-1", data: {} },
-      { worksheetCode: "G-1", data: { tiesToWorksheetFNetAssets: true } },
+      { worksheetCode: "B", data: { totalFullyAllocatedCostCents: 5_000_000, tiesToWorksheetAGrandTotal: true } },
+      { worksheetCode: "B-1", data: { columns: [{ generalServiceCostCenterCode: "AG", allocationBasis: "sqft" }] } },
+      { worksheetCode: "C", data: { tiesToWorksheetBTotal: true } },
+      { worksheetCode: "F", data: {} },
       { worksheetCode: "S-2", data: {} },
     ],
     statistic: { monthlyBreakdown: { "2026-01": { rhc: { medicare: { patientDays: 200 } }, gip: { medicare: { patientDays: 165 } } } } },
@@ -62,13 +62,10 @@ describe("assembleValidationContext", () => {
     expect(ctx.worksheets.aGrandTotalCostsCents).toBe(5_000_000);
     expect(ctx.worksheets.bTotalAllocatedCents).toBe(5_000_000);
     expect(ctx.worksheets.bTiesToWorksheetA).toBe(true);
-    expect(ctx.worksheets.statisticalBasisPresent).toBe(true);
-    expect(ctx.worksheets.ancillaryRccWithinBounds).toBe(true);
-    expect(ctx.worksheets.programDaysTie).toBe(true);
-    expect(ctx.worksheets.dProgramDaysCarried).toBe(365);
-    expect(ctx.worksheets.balanceSheetBalances).toBe(true);
-    expect(ctx.worksheets.presentCodes).toContain("E-1");
-    expect(ctx.settlement.computed).toBe(true);
+    expect(ctx.worksheets.statisticalBasisPresent).toBe(true); // Worksheet B-1 columns present
+    expect(ctx.worksheets.cTiesToWorksheetB).toBe(true); // Worksheet C per-diem ties B
+    expect(ctx.worksheets.balanceSheetBalances).toBe(true); // Worksheet F present
+    expect(ctx.worksheets.presentCodes).toContain("C");
   });
 
   it("computes the filing deadline from the window + now", () => {
@@ -93,9 +90,7 @@ describe("assembleValidationContext", () => {
     expect(unbound.cap).toBeNull();
     expect(unbound.seams.capProviderBound).toBe(false);
     expect(unbound.statistics.billedCensusPatientDays).toBeNull();
-    expect(unbound.settlement.tiesToWorksheetD).toBe(false);
     expect(unbound.seams.patientDaysProviderBound).toBe(false);
-    expect(unbound.seams.claimSettlementProviderBound).toBe(false);
 
     const bound = assembleValidationContext(
       rawInputs({ cap: { capContext: { aggregateCapCents: 6_893_068, aggregatePaymentsCents: 5_000_000, inpatientDays: 7, totalMedicareDays: 100 }, capProviderBound: true } }),
@@ -112,7 +107,6 @@ describe("assembled context drives runValidation seam-gating", () => {
   it("M23-gated + cap rules SKIP when unbound; cap rules EVALUATE once cap binds", () => {
     const unbound = assembleValidationContext(rawInputs());
     expect(outcomeOf(unbound, "stats.patient_days_reconcile")).toBe("skip"); // M23 PatientDaysProvider unbound
-    expect(outcomeOf(unbound, "settlement.e1_ties_to_d")).toBe("skip"); // M25 ClaimSettlementProvider unbound
     expect(outcomeOf(unbound, "drug_cost.billed_reconciles")).toBe("skip"); // M12 DrugCostBillingReader unbound
     expect(outcomeOf(unbound, "cap.aggregate_beneficiary_cap")).toBe("skip"); // M26 cap null
 
@@ -123,7 +117,7 @@ describe("assembled context drives runValidation seam-gating", () => {
   });
 });
 
-describe("the live M23/M25/M12 cost-report binds drive their rules live", () => {
+describe("the live M23/M12 cost-report binds drive their rules live", () => {
   const outcomeOf = (ctx: ReturnType<typeof assembleValidationContext>, code: string) =>
     runValidation(DEFAULT_VALIDATION_RULES, ctx).results.find((r) => r.ruleCode === code)?.result.outcome;
 
@@ -133,7 +127,6 @@ describe("the live M23/M25/M12 cost-report binds drive their rules live", () => 
       worksheets: [
         { worksheetCode: "S", data: { providerCcn: "123456" } },
         { worksheetCode: "A", data: { grandTotalCostsCents: 5_000_000, costCenters: [{ code: "drugs", totalCostCents: 250_000 }] } },
-        { worksheetCode: "E-1", data: { medicare: { interimPaymentsReceivedCents: 4_000_000 }, tiesToWorksheetSSettlementSummary: true } },
       ],
       billing: {
         billedCensusPatientDays: 365,
@@ -155,20 +148,6 @@ describe("the live M23/M25/M12 cost-report binds drive their rules live", () => 
     expect(outcomeOf(ctx, "stats.patient_days_reconcile")).toBe("pass");
   });
 
-  it("M25 settlement tie — E-1 internal tie AND claimed interim payments match the posted 835 total", () => {
-    const ctx = assembleValidationContext(boundInputs());
-    expect(ctx.settlement.tiesToWorksheetD).toBe(true);
-    expect(outcomeOf(ctx, "settlement.e1_ties_to_d")).toBe("pass");
-    // A posted-835 total that disagrees with E-1's claimed interim payments breaks the tie → the rule FAILS.
-    const mismatch = assembleValidationContext(
-      boundInputs({
-        billing: { billedCensusPatientDays: 365, patientDaysProviderBound: true, interimPaymentsActualCents: 9_999_999, claimSettlementProviderBound: true, billedDrugChargesCents: 250_000, drugCostBillingReaderBound: true },
-      }),
-    );
-    expect(mismatch.settlement.tiesToWorksheetD).toBe(false);
-    expect(outcomeOf(mismatch, "settlement.e1_ties_to_d")).toBe("fail");
-  });
-
   it("M12 drug cross-check — reconciles to the Worksheet-A pharmacy center; SKIPS if the center is absent", () => {
     const ctx = assembleValidationContext(boundInputs());
     expect(ctx.drugCost.billedCents).toBe(250_000);
@@ -176,12 +155,7 @@ describe("the live M23/M25/M12 cost-report binds drive their rules live", () => 
     expect(outcomeOf(ctx, "drug_cost.billed_reconciles")).toBe("pass");
     // Bound seam but no pharmacy cost center on Worksheet A → the cross-check is not applicable (skip).
     const noPharmacy = assembleValidationContext(
-      boundInputs({
-        worksheets: [
-          { worksheetCode: "A", data: { grandTotalCostsCents: 5_000_000, costCenters: [] } },
-          { worksheetCode: "E-1", data: { medicare: { interimPaymentsReceivedCents: 4_000_000 }, tiesToWorksheetSSettlementSummary: true } },
-        ],
-      }),
+      boundInputs({ worksheets: [{ worksheetCode: "A", data: { grandTotalCostsCents: 5_000_000, costCenters: [] } }] }),
     );
     expect(noPharmacy.drugCost.worksheetAPharmacyCents).toBeNull();
     expect(outcomeOf(noPharmacy, "drug_cost.billed_reconciles")).toBe("skip");

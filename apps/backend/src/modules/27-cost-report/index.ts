@@ -89,7 +89,6 @@ export {
   type PatientDaysSeam,
   type ClaimSettlementSeam,
   type DrugCostSeam,
-  type M27AllocationInputDeps,
   buildM27WorkerDeps,
   buildM27ValidationContext,
   buildM27AllocationInputs,

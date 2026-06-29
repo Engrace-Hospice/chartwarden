@@ -50,5 +50,5 @@ export {
   type DrugCostSeam,
   buildM27ValidationContext,
 } from "./validation-context-builder";
-// The LIVE AllocationInputBuilder (the §3.1 / D8 cost-allocation-recompute input shaper).
-export { type M27AllocationInputDeps, buildM27AllocationInputs } from "./allocation-input-builder";
+// The LIVE AllocationInputBuilder (the §4320/§4330 cost-allocation-recompute input shaper).
+export { buildM27AllocationInputs } from "./allocation-input-builder";

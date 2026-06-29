@@ -19,24 +19,20 @@ import { WORKSHEET_CODES, type WorksheetCode } from "../contracts";
 import { WorksheetS } from "./s";
 import { WorksheetS1 } from "./s-1";
 import { WorksheetS2 } from "./s-2";
-import { WorksheetS3 } from "./s-3";
-import { WorksheetS4 } from "./s-4";
 import { WorksheetA } from "./a";
 import { WorksheetA1 } from "./a-1";
+import { WorksheetA2 } from "./a-2";
+import { WorksheetA3 } from "./a-3";
+import { WorksheetA4 } from "./a-4";
 import { WorksheetA6 } from "./a-6";
-import { WorksheetA7 } from "./a-7";
 import { WorksheetA8 } from "./a-8";
+import { WorksheetA81 } from "./a-8-1";
 import { WorksheetB } from "./b";
 import { WorksheetB1 } from "./b-1";
 import { WorksheetC } from "./c";
-import { WorksheetD } from "./d";
-import { WorksheetE1 } from "./e-1";
 import { WorksheetF } from "./f";
-import { WorksheetG } from "./g";
-import { WorksheetG1 } from "./g-1";
-import { WorksheetG2 } from "./g-2";
-import { WorksheetG3 } from "./g-3";
-import { WorksheetH } from "./h";
+import { WorksheetF1 } from "./f-1";
+import { WorksheetF2 } from "./f-2";
 
 /**
  * The worksheet-code → schema registry — the single source of truth the resolver delegates to. Keyed by
@@ -48,24 +44,20 @@ export const WORKSHEET_SCHEMAS: Record<WorksheetCode, TSchema> = {
   S: WorksheetS,
   "S-1": WorksheetS1,
   "S-2": WorksheetS2,
-  "S-3": WorksheetS3,
-  "S-4": WorksheetS4,
   A: WorksheetA,
   "A-1": WorksheetA1,
+  "A-2": WorksheetA2,
+  "A-3": WorksheetA3,
+  "A-4": WorksheetA4,
   "A-6": WorksheetA6,
-  "A-7": WorksheetA7,
   "A-8": WorksheetA8,
+  "A-8-1": WorksheetA81,
   B: WorksheetB,
   "B-1": WorksheetB1,
   C: WorksheetC,
-  D: WorksheetD,
-  "E-1": WorksheetE1,
   F: WorksheetF,
-  G: WorksheetG,
-  "G-1": WorksheetG1,
-  "G-2": WorksheetG2,
-  "G-3": WorksheetG3,
-  H: WorksheetH,
+  "F-1": WorksheetF1,
+  "F-2": WorksheetF2,
 };
 
 /**

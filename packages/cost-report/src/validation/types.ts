@@ -128,24 +128,12 @@ export interface WorksheetTotalsContext {
   readonly reclassificationsNetCents: Cents;
   /** Count of Worksheet A-8 adjustments lacking a documented basis. */
   readonly adjustmentsUnsupportedCount: number;
-  /** Whether the cost-allocation statistical basis (sq-ft, FTE, etc.) is present for the step-down. */
+  /** Whether the Worksheet B-1 cost-allocation statistical basis (sq-ft, FTE, accumulated cost, …) is present. */
   readonly statisticalBasisPresent: boolean;
-  /** Worksheet C ancillary ratio-of-cost-to-charges within plausible bounds. */
-  readonly ancillaryRccWithinBounds: boolean;
-  /** Worksheet D program-day apportionment internally ties. */
-  readonly programDaysTie: boolean;
-  /** Patient-days carried into Worksheet D (cross-checked vs S-3 grand total). */
-  readonly dProgramDaysCarried: number;
-  /** Worksheet G balance sheet balances (assets = liabilities + equity). */
+  /** Worksheet C per-diem cost ties to Worksheet B (Σ level-of-care cost equals the B total). */
+  readonly cTiesToWorksheetB: boolean;
+  /** Worksheet F balance sheet present + balances (assets = liabilities + fund balance). */
   readonly balanceSheetBalances: boolean;
-}
-
-/** Worksheet E-1 settlement facts. `tiesToWorksheetD` needs the M25 ClaimSettlementProvider (actual interim
- *  payments) — it is true only when E-1 internally ties AND its claimed interim payments match M25's posted
- *  835 total within tolerance. `false` (and the tie rule SKIPS) until the seam binds. */
-export interface SettlementContext {
-  readonly computed: boolean;
-  readonly tiesToWorksheetD: boolean;
 }
 
 /** Drug-cost cross-check facts. `billedCents` is the M12 drug-cost basis for the FY (the DrugCostBillingReader
@@ -227,7 +215,6 @@ export interface ValidationContext {
   readonly mapping: CostCenterMappingContext;
   readonly statistics: StatisticsContext;
   readonly worksheets: WorksheetTotalsContext;
-  readonly settlement: SettlementContext;
   readonly drugCost: DrugCostContext;
   /** `null` under the D13 cap-seam deny-stub. */
   readonly cap: CapContext | null;

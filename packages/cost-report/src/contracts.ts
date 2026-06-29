@@ -26,56 +26,55 @@ export type CostReportState =
   | "reopened"
   | "closed";
 
+// The ACTUAL Form CMS-1984-14 worksheet set, certified against Pub 15-2 Ch.43 + the form (see
+// audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md). The hospice cost report is short: trial balance (A + the
+// A-series reclass/adjust by level of care) → step-down cost allocation (Worksheet B, on the Worksheet B-1
+// statistical basis) → per-diem cost by level of care (Worksheet C) → the financial statements (F/F-1/F-2).
+// There is NO Worksheet D, E-1, G, or H, no ancillary RCC, and no settlement worksheet — hospice is paid
+// prospectively per-diem and the cap settlement is the MAC cap-determination process (M26), not a worksheet.
 export type WorksheetCode =
   | "S"
   | "S-1"
   | "S-2"
-  | "S-3"
-  | "S-4"
   | "A"
   | "A-1"
+  | "A-2"
+  | "A-3"
+  | "A-4"
   | "A-6"
-  | "A-7"
   | "A-8"
+  | "A-8-1"
   | "B"
   | "B-1"
   | "C"
-  | "D"
-  | "E-1"
   | "F"
-  | "G"
-  | "G-1"
-  | "G-2"
-  | "G-3"
-  | "H";
+  | "F-1"
+  | "F-2";
 
-/** The 21 CMS-1984-14 worksheet codes, ordered as they appear in the workbench navigation tree (§5.1). */
+/** The CMS-1984-14 worksheet codes, in form order (the workbench navigation tree, §5.1). */
 export const WORKSHEET_CODES: readonly WorksheetCode[] = [
   "S",
   "S-1",
   "S-2",
-  "S-3",
-  "S-4",
   "A",
   "A-1",
+  "A-2",
+  "A-3",
+  "A-4",
   "A-6",
-  "A-7",
   "A-8",
+  "A-8-1",
   "B",
   "B-1",
   "C",
-  "D",
-  "E-1",
   "F",
-  "G",
-  "G-1",
-  "G-2",
-  "G-3",
-  "H",
+  "F-1",
+  "F-2",
 ] as const;
 
-/** Derived worksheets (computed from upstream via the allocation/apportionment pure functions, D8). */
-export const DERIVED_WORKSHEET_CODES: readonly WorksheetCode[] = ["B", "C", "D", "E-1"] as const;
+/** Derived worksheets the cost-allocation recompute writes: Worksheet B (step-down) and Worksheet C
+ *  (per-diem cost). B-1 holds the statistical basis (user input); the recompute reads it. (D8.) */
+export const DERIVED_WORKSHEET_CODES: readonly WorksheetCode[] = ["B", "C"] as const;
 
 export type ValidationOutcome = "pass" | "fail" | "warn" | "skip";
 export type RuleSeverity = "block" | "warn" | "info";

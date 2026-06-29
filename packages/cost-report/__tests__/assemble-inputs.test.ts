@@ -1,293 +1,104 @@
-// @wardenx/cost-report — PURE allocation-input assembler unit suite (§3.1 / D8). Asserts the DB→input shaping
-// of `assembleAllocationInputs`: Worksheet A → step-down direct centers (tie-out-safe), Worksheet C → ancillary
-// RCC inputs, statistic census → Worksheet D day cells (unknown LOC/program dropped), and E-1/D + the M26 cap →
-// the settlement input (cap lines present ONLY when M26 is bound). Plus the defensive contract: an empty report
-// shapes into inputs the deterministic chain runs over WITHOUT a throw and ties out.
+// @wardenx/cost-report — PURE allocation-input assembler unit suite (Form CMS-1984-14 §4320/§4330). Asserts
+// the worksheet → input shaping of `assembleAllocationInputs`: Worksheet A general-service centers + A-1…A-4
+// LOC direct costs + the Worksheet B-1 statistical basis → the step-down input; the census → per-LOC days.
 import { describe, expect, it } from "vitest";
 import {
   type RawAllocationInputs,
-  apportionAncillary,
-  apportionToPrograms,
   assembleAllocationInputs,
-  computeSettlement,
+  buildPerDiemInput,
+  calculatePerDiem,
   stepDownAllocate,
-} from "../src/allocation";
-import type { CapContext } from "../src/validation/types";
-
-const CAP: CapContext = {
-  aggregateCapCents: 5_000_000,
-  aggregatePaymentsCents: 5_750_000,
-  inpatientDays: 120,
-  totalMedicareDays: 1_000,
-};
+} from "@wardenx/cost-report";
 
 function raw(over: Partial<RawAllocationInputs> = {}): RawAllocationInputs {
-  return {
-    fiscalYearInt: 2026,
-    worksheets: [],
-    monthlyBreakdown: null,
-    cap: { capContext: null },
-    ...over,
-  };
+  return { worksheets: [], monthlyBreakdown: null, ...over };
 }
 
-describe("assembleAllocationInputs — step-down (Worksheet A)", () => {
-  it("maps A cost centers to DIRECT step-down centers with empty bases that tie out", () => {
+describe("assembleAllocationInputs — step-down (A + A-1…A-4 + B-1)", () => {
+  it("treats Worksheet-A centers as overhead and A-1…A-4 as the four LOC direct centers", () => {
     const inputs = assembleAllocationInputs(
       raw({
         worksheets: [
+          { worksheetCode: "A", data: { costCenters: [{ code: "AG", name: "A&G", totalCostsCents: 100_000 }] } },
+          { worksheetCode: "A-1", data: { netDirectCostCents: 50_000 } }, // CHC
+          { worksheetCode: "A-2", data: { netDirectCostCents: 300_000 } }, // RHC
+          { worksheetCode: "A-3", data: { netDirectCostCents: 20_000 } }, // IRC
+          { worksheetCode: "A-4", data: { netDirectCostCents: 30_000 } }, // GIP
           {
-            worksheetCode: "A",
+            worksheetCode: "B-1",
             data: {
-              costCenters: [
-                { code: "D1", name: "Nursing", totalCostsCents: 200_000 },
-                { code: "D2", name: "Pharmacy", totalCostsCents: 300_000 },
+              columns: [
+                {
+                  generalServiceCostCenterCode: "AG",
+                  allocationBasis: "accumulated_cost",
+                  statisticalPortions: [
+                    { receivingCenterCode: "RHC", statisticValue: 3 },
+                    { receivingCenterCode: "CHC", statisticValue: 1 },
+                  ],
+                },
               ],
             },
           },
         ],
       }),
     );
-    expect(inputs.stepDown.costCenters).toEqual([
-      { code: "D1", name: "Nursing", directCostCents: 200_000, isOverhead: false },
-      { code: "D2", name: "Pharmacy", directCostCents: 300_000, isOverhead: false },
-    ]);
-    expect(inputs.stepDown.statisticalBases).toEqual([]);
-    // Direct-only pass conserves the pool exactly (nothing fabricated, no money lost).
-    const b = stepDownAllocate(inputs.stepDown);
-    expect(b.tiesOut).toBe(true);
-    expect(b.totalAllocatedToDirectCents).toBe(500_000);
+    const codes = inputs.stepDown.costCenters.map((c) => c.code);
+    expect(codes).toEqual(["AG", "CHC", "RHC", "IRC", "GIP"]);
+    expect(inputs.stepDown.costCenters.find((c) => c.code === "AG")!.isOverhead).toBe(true);
+    expect(inputs.stepDown.costCenters.filter((c) => !c.isOverhead).map((c) => c.code)).toEqual(["CHC", "RHC", "IRC", "GIP"]);
+    expect(inputs.stepDown.statisticalBases[0]!.allocatingCenterCode).toBe("AG");
+    expect(inputs.stepDownColumns[0]!.allocationBasis).toBe("accumulated_cost");
+
+    // The step-down conserves the pool: Σ LOC fully-allocated = Σ all direct cost (overhead folds into LOC).
+    const r = stepDownAllocate(inputs.stepDown);
+    expect(r.tiesOut).toBe(true);
+    expect(r.totalAllocatedToDirectCents).toBe(100_000 + 50_000 + 300_000 + 20_000 + 30_000);
   });
 
-  it("absent Worksheet A → empty centers, trivial tie-out", () => {
+  it("absent worksheets → empty overhead + zero-cost LOC centers, trivial tie-out", () => {
     const inputs = assembleAllocationInputs(raw());
-    expect(inputs.stepDown.costCenters).toEqual([]);
-    expect(inputs.stepDownColumns).toEqual([]);
+    expect(inputs.stepDown.costCenters.map((c) => c.code)).toEqual(["CHC", "RHC", "IRC", "GIP"]);
     expect(stepDownAllocate(inputs.stepDown).tiesOut).toBe(true);
   });
-
-  it("derives overhead centers + statistical bases from the Worksheet-B allocation config", () => {
-    const inputs = assembleAllocationInputs(
-      raw({
-        worksheets: [
-          {
-            worksheetCode: "A",
-            data: {
-              costCenters: [
-                { code: "OH1", name: "A&G", totalCostsCents: 100_000 },
-                { code: "D1", name: "Nursing", totalCostsCents: 200_000 },
-                { code: "D2", name: "Pharmacy", totalCostsCents: 300_000 },
-              ],
-            },
-          },
-          {
-            worksheetCode: "B",
-            data: {
-              allocationColumns: [
-                {
-                  generalServiceCostCenterCode: "OH1",
-                  allocationBasis: "square_footage",
-                  statisticalWeights: [
-                    { receivingCenterCode: "D1", statisticValue: 3 },
-                    { receivingCenterCode: "D2", statisticValue: 1 },
-                  ],
-                  poolAmountCents: 0, // derived — ignored on input
-                },
-              ],
-            },
-          },
-        ],
-      }),
-    );
-    // OH1 is flagged overhead; D1/D2 stay direct.
-    expect(inputs.stepDown.costCenters.find((c) => c.code === "OH1")!.isOverhead).toBe(true);
-    expect(inputs.stepDown.costCenters.filter((c) => !c.isOverhead).map((c) => c.code)).toEqual(["D1", "D2"]);
-    expect(inputs.stepDown.statisticalBases).toEqual([
-      { allocatingCenterCode: "OH1", weights: [{ receivingCenterCode: "D1", statisticValue: 3 }, { receivingCenterCode: "D2", statisticValue: 1 }] },
-    ]);
-    // The step-down spreads OH1's 100_000 by the 3:1 basis → D1 +75_000, D2 +25_000, and ties out.
-    const b = stepDownAllocate(inputs.stepDown);
-    expect(b.tiesOut).toBe(true);
-    const byCode = new Map(b.centers.map((c) => [c.code, c]));
-    expect(byCode.get("OH1")!.totalCostCents).toBe(0);
-    expect(byCode.get("D1")!.totalCostCents).toBe(275_000);
-    expect(byCode.get("D2")!.totalCostCents).toBe(325_000);
-    expect(b.totalAllocatedToDirectCents).toBe(600_000); // == Σ all A costs (conserved → ties B)
-  });
 });
 
-describe("assembleAllocationInputs — ancillary (Worksheet C)", () => {
-  it("maps C ancillary centers to RCC inputs carrying the Medicare charge line", () => {
-    const inputs = assembleAllocationInputs(
-      raw({
-        worksheets: [
-          {
-            worksheetCode: "C",
-            data: {
-              ancillaryCostCenters: [
-                {
-                  code: "ANC1",
-                  name: "Physical Therapy",
-                  fullyAllocatedCostCents: 80_000,
-                  totalChargesCents: 100_000,
-                  medicareChargesCents: 60_000,
-                },
-              ],
-            },
-          },
-        ],
-      }),
-    );
-    expect(inputs.ancillary.costCenters).toEqual([
-      {
-        code: "ANC1",
-        name: "Physical Therapy",
-        totalCostCents: 80_000,
-        totalChargesCents: 100_000,
-        programCharges: [{ program: "medicare", chargesCents: 60_000 }],
-      },
-    ]);
-    // The pure RCC apportions Medicare cost = (cost/charges) × medicare charges.
-    const c = apportionAncillary(inputs.ancillary);
-    expect(c.centers[0]!.programLines[0]!.apportionedCostCents).toBe(48_000); // 0.8 × 60_000
-  });
-});
-
-describe("assembleAllocationInputs — program apportionment (statistic census)", () => {
-  it("flattens monthly breakdown into Worksheet D cells, dropping unknown LOC/program keys", () => {
+describe("assembleAllocationInputs — per-LOC days (Worksheet C)", () => {
+  it("aggregates the census into total / Medicare / Medicaid days per level, dropping unknown LOCs", () => {
     const inputs = assembleAllocationInputs(
       raw({
         monthlyBreakdown: {
           "2026-01": {
-            rhc: { medicare: { patientDays: 30 }, medicaid: { patientDays: 5 } },
+            rhc: { medicare: { patientDays: 30 }, medicaid: { patientDays: 5 }, other: { patientDays: 2 } },
             gip: { medicare: { patientDays: 4 } },
             unknown_loc: { medicare: { patientDays: 99 } },
           },
-          "2026-02": {
-            rhc: { medicare: { patientDays: 28 }, bogus_program: { patientDays: 7 } },
-          },
+          "2026-02": { rhc: { medicare: { patientDays: 28 } } },
         },
       }),
     );
-    const cells = inputs.program.patientDays;
-    expect(cells).toHaveLength(4);
-    expect(cells.every((c) => ["rhc", "gip"].includes(c.levelOfCare))).toBe(true);
-    expect(cells.every((c) => ["medicare", "medicaid"].includes(c.program))).toBe(true);
-    expect(cells.some((c) => c.patientDays === 99)).toBe(false); // unknown_loc dropped
-    expect(cells.some((c) => c.patientDays === 7)).toBe(false); // bogus_program dropped
-    // No Worksheet A here → no allocatable cost → empty split → zero apportioned cost, cells still carried.
-    expect(inputs.program.levelOfCareCosts).toEqual([]);
-    const d = apportionToPrograms(inputs.program);
-    expect(d.cells).toHaveLength(4);
-    expect(d.programTotals.every((t) => t.apportionedCostCents === 0)).toBe(true);
+    expect(inputs.locDays.rhc).toEqual({ totalDays: 30 + 5 + 2 + 28, medicareDays: 58, medicaidDays: 5 });
+    expect(inputs.locDays.gip).toEqual({ totalDays: 4, medicareDays: 4, medicaidDays: 0 });
+    expect(inputs.locDays.chc).toEqual({ totalDays: 0, medicareDays: 0, medicaidDays: 0 });
   });
+});
 
-  it("splits the Worksheet-A total across LOCs by the census day mix so D ties B exactly", () => {
+describe("assembleAllocationInputs — end-to-end A → B → C ties", () => {
+  it("the per-diem Worksheet C total ties the step-down Worksheet B total exactly", () => {
     const inputs = assembleAllocationInputs(
       raw({
-        worksheets: [{ worksheetCode: "A", data: { costCenters: [{ code: "D1", name: "Nursing", totalCostsCents: 1_000_000 }] } }],
-        monthlyBreakdown: {
-          "2026-01": {
-            rhc: { medicare: { patientDays: 60 } }, // 60 of 100 days → 60% of the cost
-            gip: { medicare: { patientDays: 40 } }, // 40 of 100 days → 40%
-          },
-        },
+        worksheets: [
+          { worksheetCode: "A-2", data: { netDirectCostCents: 600_000 } }, // RHC direct
+        ],
+        monthlyBreakdown: { "2026-01": { rhc: { medicare: { patientDays: 60 }, medicaid: { patientDays: 40 } } } },
       }),
     );
-    expect(inputs.program.levelOfCareCosts).toEqual([
-      { levelOfCare: "rhc", allowableCostCents: 600_000 },
-      { levelOfCare: "chc", allowableCostCents: 0 },
-      { levelOfCare: "irc", allowableCostCents: 0 },
-      { levelOfCare: "gip", allowableCostCents: 400_000 },
-    ]);
-    // The per-LOC costs sum to the full Worksheet-A total → Worksheet D ties B to the cent.
-    const stepDownTotal = inputs.stepDown.costCenters.reduce((s, c) => s + c.directCostCents, 0);
-    const d = apportionToPrograms(inputs.program);
-    const grand = d.programTotals.reduce((s, t) => s + t.apportionedCostCents, 0);
-    expect(grand).toBe(stepDownTotal);
-    expect(grand).toBe(1_000_000);
-  });
-
-  it("a Worksheet-A total with NO census stays unapportioned (no day basis → D does not tie B)", () => {
-    const inputs = assembleAllocationInputs(
-      raw({ worksheets: [{ worksheetCode: "A", data: { costCenters: [{ code: "D1", name: "N", totalCostsCents: 1_000_000 }] } }] }),
-    );
-    expect(inputs.program.levelOfCareCosts).toEqual([]);
-    expect(apportionToPrograms(inputs.program).programTotals.every((t) => t.apportionedCostCents === 0)).toBe(true);
-  });
-
-  it("absent statistics → no cells", () => {
-    expect(assembleAllocationInputs(raw()).program.patientDays).toEqual([]);
-  });
-});
-
-describe("assembleAllocationInputs — settlement (E-1/D + M26 cap)", () => {
-  const e1 = {
-    worksheetCode: "E-1",
-    data: { medicare: { allowablePaymentCents: 4_000_000, interimPaymentsReceivedCents: 3_500_000 } },
-  };
-
-  it("reads allowable cost + interim payments from the E-1 Medicare line", () => {
-    const s = assembleAllocationInputs(raw({ worksheets: [e1] })).settlement;
-    expect(s.medicareAllowableCostCents).toBe(4_000_000);
-    expect(s.interimPaymentsCents).toBe(3_500_000);
-  });
-
-  it("falls back to Worksheet D Medicare total when E-1 allowable is absent", () => {
-    const s = assembleAllocationInputs(
-      raw({ worksheets: [{ worksheetCode: "D", data: { medicare: { totalCostCents: 1_234_500 } } }] }),
-    ).settlement;
-    expect(s.medicareAllowableCostCents).toBe(1_234_500);
-    expect(s.interimPaymentsCents).toBe(0);
-  });
-
-  it("omits both cap inputs when M26 is unbound (capPositionPending, cap math skipped)", () => {
-    const s = assembleAllocationInputs(raw({ worksheets: [e1], cap: { capContext: null } })).settlement;
-    expect(s.aggregateCap).toBeUndefined();
-    expect(s.inpatientCap).toBeUndefined();
-    expect(computeSettlement(s).capPositionPending).toBe(true);
-  });
-
-  it("supplies the aggregate + inpatient cap inputs from the live M26 cap context", () => {
-    const s = assembleAllocationInputs(raw({ fiscalYearInt: 2026, worksheets: [e1], cap: { capContext: CAP } })).settlement;
-    expect(s.aggregateCap).toEqual({
-      capYear: 2026,
-      medicareBeneficiaryCount: 0,
-      aggregateCapAmountCents: 5_000_000,
-      totalMedicarePaymentsCents: 5_750_000,
-    });
-    expect(s.inpatientCap).toEqual({
-      capYear: 2026,
-      totalMedicareDays: 1_000,
-      inpatientDays: 120,
-      inpatientCapPercent: 20,
-      inpatientPaymentsCents: 0,
-    });
-    const result = computeSettlement(s);
-    expect(result.capPositionPending).toBe(false);
-    // Aggregate-cap overage = payments − cap = 5_750_000 − 5_000_000.
-    expect(result.aggregateCap!.overageCents).toBe(750_000);
-    // Inpatient day cap = floor(1000 × 20%) = 200; 120 ≤ 200 → not exceeded.
-    expect(result.inpatientCap!.capDays).toBe(200);
-    expect(result.inpatientCap!.exceeded).toBe(false);
-  });
-});
-
-describe("assembleAllocationInputs — defensive end-to-end", () => {
-  it("an empty report shapes into a chain that runs without throwing and ties out", () => {
-    const inputs = assembleAllocationInputs(raw());
-    expect(() => {
-      const b = stepDownAllocate(inputs.stepDown);
-      apportionAncillary(inputs.ancillary);
-      apportionToPrograms(inputs.program);
-      const settlement = computeSettlement(inputs.settlement);
-      expect(b.tiesOut).toBe(true);
-      expect(settlement.balanceDueToProviderCents).toBe(0);
-    }).not.toThrow();
-  });
-
-  it("is deterministic: identical raw inputs produce a deeply-equal shaping", () => {
-    const r = raw({ worksheets: [{ worksheetCode: "A", data: { costCenters: [{ code: "D1", name: "N", totalCostsCents: 10 }] } }] });
-    expect(assembleAllocationInputs(r)).toEqual(assembleAllocationInputs(r));
+    const step = stepDownAllocate(inputs.stepDown);
+    const perDiem = calculatePerDiem(buildPerDiemInput(step, inputs.locDays));
+    expect(step.totalAllocatedToDirectCents).toBe(600_000);
+    expect(perDiem.totalCostCents).toBe(600_000); // C ties B
+    // 600_000 / 100 days = 6000 per diem → Medicare 60d = 360_000, Medicaid 40d = 240_000.
+    const rhc = perDiem.levels.find((l) => l.levelOfCare === "rhc")!;
+    expect(rhc.medicareCostCents).toBe(360_000);
+    expect(rhc.medicaidCostCents).toBe(240_000);
   });
 });

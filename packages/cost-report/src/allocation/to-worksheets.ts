@@ -1,36 +1,26 @@
-// @wardenx/cost-report — the PURE allocation-RESULT → derived-worksheet mapper (§3.1 `allocation/`, D8). The
-// inverse of `assemble-inputs`: it turns the four deterministic chain RESULTS (`StepDownAllocateResult` →
-// Worksheet B, `AncillaryApportionResult` → C, `ProgramApportionResult` → D, `SettlementResult` → E-1) back
-// into the TypeBox-typed `data` jsonb the `cost_report_worksheet` rows persist, so a `cost-allocation-recompute`
-// run materializes the derived worksheets. Total, deterministic functions over already-computed results — no
-// DB, no clock, no recomputation. Money is INTEGER CENTS; no PHI (D18).
-//
-// The cross-worksheet TIE flags are stamped from the facts available to a single recompute: B ties to A (the
-// step-down conserves the Worksheet-A pool, `tiesOut`); D ties to B only when the (currently-unmodeled) per-LOC
-// allowable cost has been apportioned to equal B's total; E-1 carries the Medicare settlement (the report is
-// single-program today) and the Worksheet-S settlement-summary tie stays false until that worksheet is computed.
-import type { AncillaryApportionResult, CostReportProgram } from "./ancillary-apportionment";
-import type { LevelOfCare, ProgramApportionResult } from "./program-apportionment";
-import type { AllocationColumnConfig } from "./assemble-inputs";
-import type { SettlementInput, SettlementResult } from "./settlement";
+// @wardenx/cost-report — the PURE allocation-RESULT → derived-worksheet mapper (Form CMS-1984-14, D8). The
+// inverse of `assemble-inputs`: it turns the chain RESULTS (`StepDownAllocateResult` → Worksheet B,
+// `PerDiemResult` → Worksheet C) into the TypeBox-typed `data` jsonb the `cost_report_worksheet` rows persist,
+// so a `cost-allocation-recompute` materializes the derived worksheets. Total, deterministic functions over
+// already-computed results — no DB, no clock, no recomputation. Money is INTEGER CENTS; no PHI (D18).
+import type { AllocationColumnConfig, LocDays } from "./assemble-inputs";
+import { type LevelOfCare, type PerDiemInput, type PerDiemResult } from "./per-diem";
 import type { StepDownAllocateResult } from "./step-down";
 import type { WorksheetBData } from "../worksheets/b";
 import type { WorksheetCData } from "../worksheets/c";
-import type { WorksheetDData } from "../worksheets/d";
-import type { WorksheetE1Data } from "../worksheets/e-1";
 
-/** The derived-worksheet `data` payloads a full recompute materializes, keyed by worksheet code. */
+/** The derived-worksheet `data` payloads a recompute materializes, keyed by worksheet code. */
 export interface DerivedWorksheetPayloads {
   readonly B: WorksheetBData;
   readonly C: WorksheetCData;
-  readonly D: WorksheetDData;
-  readonly "E-1": WorksheetE1Data;
 }
 
-/** `StepDownAllocateResult` → Worksheet B. The persisted `costCenters` are the DIRECT centers (each overhead
- *  center steps to zero and is folded into them). The `allocationColumns` PRESERVE the user's step-down config
- *  (overhead center, basis label, statistical weights) verbatim and only refresh each column's derived
- *  `poolAmountCents` from the matching step's allocated amount (0 when that overhead center had no cost). */
+/** The uppercase step-down cost-center code for each level of care (mirrors `assemble-inputs`). */
+const LOC_CENTER_CODE: Record<LevelOfCare, string> = { chc: "CHC", rhc: "RHC", irc: "IRC", gip: "GIP" };
+
+/** `StepDownAllocateResult` → Worksheet B. The persisted `costCenters` are the four DIRECT level-of-care
+ *  centers (each overhead center steps to zero and folds into them). `allocationColumns` records each overhead
+ *  step's allocated pool (the basis itself lives on Worksheet B-1). */
 export function stepDownToWorksheetB(
   result: StepDownAllocateResult,
   columns: readonly AllocationColumnConfig[],
@@ -40,7 +30,6 @@ export function stepDownToWorksheetB(
     allocationColumns: columns.map((col) => ({
       generalServiceCostCenterCode: col.generalServiceCostCenterCode,
       allocationBasis: col.allocationBasis,
-      statisticalWeights: col.statisticalWeights.map((w) => ({ ...w })),
       poolAmountCents: poolByAllocator.get(col.generalServiceCostCenterCode) ?? 0,
     })),
     costCenters: result.centers
@@ -58,120 +47,54 @@ export function stepDownToWorksheetB(
   };
 }
 
-/** `AncillaryApportionResult` → Worksheet C. The Medicare program line drives the persisted RCC columns (the
- *  report apportions ancillary cost to Medicare today); a zero-charge basis is flagged, never silently zeroed. */
-export function ancillaryToWorksheetC(result: AncillaryApportionResult): WorksheetCData {
-  const medicareOf = (lines: AncillaryApportionResult["centers"][number]["programLines"]) =>
-    lines.find((l) => l.program === ("medicare" as CostReportProgram));
-
-  const ancillaryCostCenters = result.centers.map((c) => {
-    const medicare = medicareOf(c.programLines);
-    return {
-      code: c.code,
-      name: c.name,
-      fullyAllocatedCostCents: c.totalCostCents,
-      totalChargesCents: c.totalChargesCents,
-      ratioOfCostToCharges: Number(c.costToChargeRatio),
-      medicareChargesCents: medicare?.chargesCents ?? 0,
-      medicareCostCents: medicare?.apportionedCostCents ?? 0,
-    };
-  });
-
+/** Build the Worksheet C per-diem input from the step-down result (the four LOC centers' fully-allocated cost)
+ *  + the per-LOC unduplicated days. The LOC cost is `totalCostCents` from B col. 18 (§4330). */
+export function buildPerDiemInput(result: StepDownAllocateResult, locDays: LocDays): PerDiemInput {
+  const costByCode = new Map(result.centers.map((c) => [c.code, c.totalCostCents]));
   return {
-    ancillaryCostCenters,
-    totalMedicareAncillaryCostCents: ancillaryCostCenters.reduce((s, c) => s + c.medicareCostCents, 0),
-    // A center with charges-of-zero but a non-zero cost cannot drive an RCC — surfaced for the worklist (D8).
-    hasZeroChargeBasisFlag: result.centers.some((c) => c.totalChargesCents === 0 && c.totalCostCents > 0),
+    levels: (Object.keys(LOC_CENTER_CODE) as LevelOfCare[]).map((loc) => ({
+      levelOfCare: loc,
+      totalCostCents: costByCode.get(LOC_CENTER_CODE[loc]) ?? 0,
+      totalDays: locDays[loc].totalDays,
+      medicareDays: locDays[loc].medicareDays,
+      medicaidDays: locDays[loc].medicaidDays,
+    })),
   };
 }
 
-/** `ProgramApportionResult` → Worksheet D. The (program × level-of-care) cells roll up into the per-program
- *  level-of-care columns; the apportionment ties to B only when the per-LOC allowable cost equals B's total. */
-export function programToWorksheetD(
-  result: ProgramApportionResult,
-  bTotalFullyAllocatedCostCents: number,
-): WorksheetDData {
-  const programColumn = (program: CostReportProgram): WorksheetDData["medicare"] => {
-    const cells = result.cells.filter((c) => c.program === program);
-    const loc = (l: LevelOfCare) =>
-      cells.filter((c) => c.levelOfCare === l).reduce((s, c) => s + c.apportionedCostCents, 0);
-    const rhcCostCents = loc("rhc");
-    const chcCostCents = loc("chc");
-    const ircCostCents = loc("irc");
-    const gipCostCents = loc("gip");
+/** `PerDiemResult` → Worksheet C. Maps each level's per-diem block; ties to B when Σ LOC cost equals B total. */
+export function perDiemToWorksheetC(result: PerDiemResult, bTotalFullyAllocatedCostCents: number): WorksheetCData {
+  const lvl = (loc: LevelOfCare) => {
+    const r = result.levels.find((l) => l.levelOfCare === loc);
     return {
-      rhcCostCents,
-      chcCostCents,
-      ircCostCents,
-      gipCostCents,
-      totalCostCents: rhcCostCents + chcCostCents + ircCostCents + gipCostCents,
-      totalDays: cells.reduce((s, c) => s + c.patientDays, 0),
+      totalCostCents: r?.totalCostCents ?? 0,
+      totalDays: r?.totalDays ?? 0,
+      averageCostPerDiem: r?.averageCostPerDiem ?? "0",
+      medicareDays: r?.medicareDays ?? 0,
+      medicareCostCents: r?.medicareCostCents ?? 0,
+      medicaidDays: r?.medicaidDays ?? 0,
+      medicaidCostCents: r?.medicaidCostCents ?? 0,
     };
   };
-
-  const medicare = programColumn("medicare");
-  const medicaid = programColumn("medicaid");
-  const other = programColumn("other");
-  const grandTotalApportionedCostCents =
-    medicare.totalCostCents + medicaid.totalCostCents + other.totalCostCents;
-
   return {
-    medicare,
-    medicaid,
-    other,
-    grandTotalApportionedCostCents,
-    tiesToWorksheetBTotal: grandTotalApportionedCostCents === bTotalFullyAllocatedCostCents,
-    // The largest-remainder apportionment conserves its input exactly (`allocateProportional`, D8).
-    apportionmentPreservesTotalExactly: true,
+    continuousHomeCare: lvl("chc"),
+    routineHomeCare: lvl("rhc"),
+    inpatientRespiteCare: lvl("irc"),
+    generalInpatientCare: lvl("gip"),
+    totalHospiceCostCents: result.totalCostCents,
+    totalHospiceDays: result.totalDays,
+    totalAverageCostPerDiem: result.totalAverageCostPerDiem,
+    tiesToWorksheetBTotal: result.totalCostCents === bTotalFullyAllocatedCostCents,
   };
 }
 
-/** `SettlementResult` (+ its input) → Worksheet E-1. The settlement is single-program (Medicare) today, so the
- *  Medicaid column is zero and the net balance is the Medicare balance; the Worksheet-S settlement-summary tie
- *  stays false until that summary worksheet is computed. */
-export function settlementToWorksheetE1(result: SettlementResult, input: SettlementInput): WorksheetE1Data {
-  const zeroProgram: WorksheetE1Data["medicaid"] = {
-    allowablePaymentCents: 0,
-    capOverpaymentCents: 0,
-    sequestrationAdjustmentCents: 0,
-    reimbursableBadDebtCents: 0,
-    interimPaymentsReceivedCents: 0,
-    balanceDueProviderCents: 0,
-  };
-
-  const medicare: WorksheetE1Data["medicare"] = {
-    allowablePaymentCents: input.medicareAllowableCostCents,
-    capOverpaymentCents: result.aggregateCap?.overageCents ?? 0,
-    sequestrationAdjustmentCents: result.sequestrationReductionCents,
-    // Reimbursable bad debt is added at the bad-debt worksheet seam, not the settlement input → 0 here.
-    reimbursableBadDebtCents: 0,
-    interimPaymentsReceivedCents: input.interimPaymentsCents,
-    balanceDueProviderCents: result.balanceDueToProviderCents,
-  };
-
-  return {
-    medicare,
-    medicaid: zeroProgram,
-    totalBalanceDueProviderCents: result.balanceDueToProviderCents,
-    tiesToWorksheetSSettlementSummary: false,
-  };
-}
-
-/** Map a full chain run (B → C → D → E-1) to its four derived-worksheet payloads. `stepDownColumns` is the
- *  user's Worksheet-B allocation config (preserved verbatim on the persisted B). */
+/** Map a full chain run (B → C) to its derived-worksheet payloads. `stepDownColumns` is the user's Worksheet
+ *  B-1 config echoed onto Worksheet B's allocation columns. */
 export function allocationResultsToWorksheets(input: {
   readonly stepDown: StepDownAllocateResult;
-  readonly ancillary: AncillaryApportionResult;
-  readonly program: ProgramApportionResult;
-  readonly settlement: SettlementResult;
-  readonly settlementInput: SettlementInput;
+  readonly perDiem: PerDiemResult;
   readonly stepDownColumns: readonly AllocationColumnConfig[];
 }): DerivedWorksheetPayloads {
   const B = stepDownToWorksheetB(input.stepDown, input.stepDownColumns);
-  return {
-    B,
-    C: ancillaryToWorksheetC(input.ancillary),
-    D: programToWorksheetD(input.program, B.totalFullyAllocatedCostCents),
-    "E-1": settlementToWorksheetE1(input.settlement, input.settlementInput),
-  };
+  return { B, C: perDiemToWorksheetC(input.perDiem, B.totalFullyAllocatedCostCents) };
 }

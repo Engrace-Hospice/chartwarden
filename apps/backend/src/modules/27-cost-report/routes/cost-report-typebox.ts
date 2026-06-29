@@ -47,10 +47,10 @@ const COST_REPORT_STATE = [
   "closed",
 ] as const;
 const WORKSHEET_CODE = [
-  "S", "S-1", "S-2", "S-3", "S-4",
-  "A", "A-1", "A-6", "A-7", "A-8",
-  "B", "B-1", "C", "D", "E-1",
-  "F", "G", "G-1", "G-2", "G-3", "H",
+  "S", "S-1", "S-2",
+  "A", "A-1", "A-2", "A-3", "A-4", "A-6", "A-8", "A-8-1",
+  "B", "B-1", "C",
+  "F", "F-1", "F-2",
 ] as const;
 const WAGE_SOURCE = ["gusto", "manual"] as const;
 const BAD_DEBT_KIND = ["deductible", "coinsurance"] as const;
