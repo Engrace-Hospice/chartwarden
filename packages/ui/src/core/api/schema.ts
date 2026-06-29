@@ -2553,6 +2553,7 @@ export interface paths {
         };
         get: operations["getApiV1Costreportvalidationrules"];
         put?: never;
+        /** Create a tenant validation rule layered on the platform floor (cost_report.manage_rules; D21; §11.B) */
         post: operations["postApiV1Costreportvalidationrules"];
         delete?: never;
         options?: never;
@@ -2599,8 +2600,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List cost reports by (ProviderEntity, fiscal year) + lifecycle state (cost_report.read; §4.1) */
         get: operations["getApiV1Costreports"];
         put?: never;
+        /** Create a cost report for a ProviderEntity + fiscal-year-end (cost_report.create; D1; §4.1) */
         post: operations["postApiV1Costreports"];
         delete?: never;
         options?: never;
@@ -2621,6 +2624,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Edit cost-report metadata — bad-debt-claimed / wage source; version-checked (cost_report.edit; §4.1) */
         patch: operations["patchApiV1CostreportsById"];
         trace?: never;
     };
@@ -2649,6 +2653,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Approve a cost report for submission — step-up (cost_report.approve_for_submit; D14; §4.1) */
         post: operations["postApiV1CostreportsByIdApproveforsubmit"];
         delete?: never;
         options?: never;
@@ -2665,6 +2670,7 @@ export interface paths {
         };
         get: operations["getApiV1CostreportsByIdBaddebt"];
         put?: never;
+        /** Add a Medicare bad-debt entry — deductible/coinsurance (cost_report.edit_bad_debt; D7; §4.1) */
         post: operations["postApiV1CostreportsByIdBaddebt"];
         delete?: never;
         options?: never;
@@ -2825,6 +2831,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record the MCReF acknowledgment / rejection for a submission (cost_report.record_acknowledgment; §4.1) */
         post: operations["postApiV1CostreportsByIdEcrsubmissionsBySidAcknowledgments"];
         delete?: never;
         options?: never;
@@ -2921,6 +2928,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Reopen a submitted cost report — elevated approval + documented reason (cost_report.reopen_submitted; D19; §4.1) */
         post: operations["postApiV1CostreportsByIdReopen"];
         delete?: never;
         options?: never;
@@ -3017,6 +3025,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Submit — step-up + attestation; builds the content-hashed snapshot (cost_report.submit; D10/D14; §4.1) */
         post: operations["postApiV1CostreportsByIdSubmit"];
         delete?: never;
         options?: never;
@@ -3097,6 +3106,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Override a validation result — elevated approval + reason + audit (cost_report.override_validation; §11.B) */
         post: operations["postApiV1CostreportsByIdValidationsByVidOverrides"];
         delete?: never;
         options?: never;
@@ -3112,6 +3122,7 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getApiV1CostreportsByIdWorksheetsByCode"];
+        /** Write a worksheet's TypeBox-validated data jsonb (cost_report.edit; §4.2) */
         put: operations["putApiV1CostreportsByIdWorksheetsByCode"];
         post?: never;
         delete?: never;
@@ -14851,8 +14862,9 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
+                    validationResultId: string;
                     reason: string;
-                    overrideRole: "billing_manager" | "compliance_officer" | "medical_director" | "org_admin";
                 };
             };
         };
@@ -15198,7 +15210,18 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    ruleCode: string;
+                    category: string;
+                    description: string;
+                    severity: "block" | "warn" | "info";
+                    macJurisdictionScope?: string;
+                    predicateSpec: unknown;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15257,7 +15280,13 @@ export interface operations {
     };
     getApiV1Costreports: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+                providerEntityId?: string;
+                fiscalYear?: number;
+                state?: "draft" | "populating" | "validating" | "ready_for_review" | "approved_for_submit" | "submitted" | "accepted" | "rejected" | "reopened" | "closed";
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -15282,7 +15311,19 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: date */
+                    fiscalYearStartDate: string;
+                    /** Format: date */
+                    fiscalYearEndDate: string;
+                    wageSource?: "gusto" | "manual";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15326,7 +15367,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    expectedVersion: number;
+                    badDebtClaimed?: boolean;
+                    wageSource?: "gusto" | "manual";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15370,7 +15419,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    validationId?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15414,7 +15470,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    periodLabel: string;
+                    debtKind: "deductible" | "coinsurance";
+                    amountCents: number;
+                    collectionEffortsDocumented?: boolean;
+                    supportingDocumentIds?: string[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15660,7 +15726,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    mcrefAcknowledgmentNumber?: string;
+                    mcrefRejectionCode?: string;
+                    mcrefRejectionDetail?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15836,7 +15910,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    reasonCategory: "mac_revision_request" | "internal_audit_finding" | "cap_recalculation_received" | "clerical_correction" | "other_with_explanation";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15969,7 +16050,18 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    attestedByMembershipId: string;
+                    /** Format: date-time */
+                    attestedAt: string;
+                    /** Format: uuid */
+                    approvedByMembershipId?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -16081,7 +16173,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    validationResultId: string;
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -16127,7 +16227,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    expectedVersion: number;
+                    data: unknown;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {

@@ -168,6 +168,21 @@ import {
   ResolveVarianceRequest as CapResolveVarianceRequest,
   SettlementDto as CapSettlementDto,
 } from "../../apps/backend/src/modules/26-cap/routes/m26-typebox";
+// M27 Cost Report — the §4.1 request bodies + list query the cost-report routes bind (the realigned
+// Form CMS-1984-14 surface; modules/27-cost-report/routes path flips the OpenAPI-enriched flag).
+import {
+  AddBadDebtBodySchema,
+  ApproveForSubmitBodySchema,
+  CostReportListQuerySchema,
+  CreateCostReportBodySchema,
+  CreateValidationRuleBodySchema,
+  OverrideValidationResultBodySchema,
+  PatchCostReportBodySchema,
+  PutWorksheetBodySchema,
+  RecordAcknowledgmentBodySchema,
+  ReopenBodySchema,
+  SubmitBodySchema,
+} from "../../apps/backend/src/modules/27-cost-report/routes/cost-report-typebox";
 // M33 Reporting & Dashboards — the read query + drilldown body the Track B screens call (FB read paths).
 import {
   DashboardListQuerySchema,
@@ -1808,5 +1823,51 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "PATCH /api/v1/platform/cap/constants/:capYear": {
     summary: "Amend a published cap amount before first tenant use — platform-admin (D3; §4.1)",
     body: CapAmendConstantRequest,
+  },
+
+  // ── M27 Cost Report (Form CMS-1984-14; §4.1) ───────────────────────────────────────────────────────────
+  "GET /api/v1/cost-reports": {
+    summary: "List cost reports by (ProviderEntity, fiscal year) + lifecycle state (cost_report.read; §4.1)",
+    query: CostReportListQuerySchema,
+  },
+  "POST /api/v1/cost-reports": {
+    summary: "Create a cost report for a ProviderEntity + fiscal-year-end (cost_report.create; D1; §4.1)",
+    body: CreateCostReportBodySchema,
+  },
+  "PATCH /api/v1/cost-reports/:id": {
+    summary: "Edit cost-report metadata — bad-debt-claimed / wage source; version-checked (cost_report.edit; §4.1)",
+    body: PatchCostReportBodySchema,
+  },
+  "PUT /api/v1/cost-reports/:id/worksheets/:code": {
+    summary: "Write a worksheet's TypeBox-validated data jsonb (cost_report.edit; §4.2)",
+    body: PutWorksheetBodySchema,
+  },
+  "POST /api/v1/cost-reports/:id/bad-debt": {
+    summary: "Add a Medicare bad-debt entry — deductible/coinsurance (cost_report.edit_bad_debt; D7; §4.1)",
+    body: AddBadDebtBodySchema,
+  },
+  "POST /api/v1/cost-reports/:id/validations/:vid/overrides": {
+    summary: "Override a validation result — elevated approval + reason + audit (cost_report.override_validation; §11.B)",
+    body: OverrideValidationResultBodySchema,
+  },
+  "POST /api/v1/cost-reports/:id/approve-for-submit": {
+    summary: "Approve a cost report for submission — step-up (cost_report.approve_for_submit; D14; §4.1)",
+    body: ApproveForSubmitBodySchema,
+  },
+  "POST /api/v1/cost-reports/:id/submit": {
+    summary: "Submit — step-up + attestation; builds the content-hashed snapshot (cost_report.submit; D10/D14; §4.1)",
+    body: SubmitBodySchema,
+  },
+  "POST /api/v1/cost-reports/:id/reopen": {
+    summary: "Reopen a submitted cost report — elevated approval + documented reason (cost_report.reopen_submitted; D19; §4.1)",
+    body: ReopenBodySchema,
+  },
+  "POST /api/v1/cost-reports/:id/ecr-submissions/:sid/acknowledgments": {
+    summary: "Record the MCReF acknowledgment / rejection for a submission (cost_report.record_acknowledgment; §4.1)",
+    body: RecordAcknowledgmentBodySchema,
+  },
+  "POST /api/v1/cost-report-validation-rules": {
+    summary: "Create a tenant validation rule layered on the platform floor (cost_report.manage_rules; D21; §11.B)",
+    body: CreateValidationRuleBodySchema,
   },
 };

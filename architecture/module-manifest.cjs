@@ -737,6 +737,7 @@ exports.MODULES = [
       "packages/xero-client",
       "packages/gusto-client",
       "apps/backend/src/modules/27-cost-report",
+      "apps/web/src/modules/27-cost-report",
     ],
     dependsOn: [1, 23, 26, 38],
     ownedTables: [
