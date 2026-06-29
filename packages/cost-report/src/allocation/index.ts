@@ -4,9 +4,11 @@
 // (`ancillary-apportionment`), the Worksheet D program apportionment by patient days
 // (`program-apportionment`), and the Worksheet E-1 settlement (`settlement`). Every export is a type or a
 // deterministic total function over an already-fetched input; all money is INTEGER CENTS at the boundary
-// and the only fractional arithmetic is inside the money kernel. PURE DOMAIN — no Fastify, no Drizzle/DB,
-// no BullMQ, no `@wardenx/db`, no `getSeam`; no PHI (D18).
+// and the only fractional arithmetic is inside the money kernel. Plus the PURE DB→input assembler
+// (`assemble-inputs`) that shapes the read worksheet/statistics/cap state into the four inputs above.
+// PURE DOMAIN — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`; no PHI (D18).
 export * from "./step-down";
 export * from "./ancillary-apportionment";
 export * from "./program-apportionment";
 export * from "./settlement";
+export * from "./assemble-inputs";
