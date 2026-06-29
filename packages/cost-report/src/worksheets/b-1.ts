@@ -1,3 +1,7 @@
+// ⚠️ CMS-DIVERGENCE (audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md): on the REAL Form CMS-1984-14, Worksheet
+// B-1 is "Cost Allocation – Statistical Basis" (§4320) — the per-center step-down statistics + the 6-decimal
+// unit-cost multiplier (A&G on accumulated cost), NOT cap calculations. The cap math belongs in M26 cap
+// management (the MAC cap-determination process is not a CMS-1984-14 worksheet). Pending realignment (ledger).
 // @wardenx/cost-report — Worksheet B-1 (Cap Calculations) TypeBox schema (CMS-1984-14, §1.1). B-1 holds
 // the two Medicare hospice cap calculations: (1) the AGGREGATE cap per beneficiary — total Medicare
 // payments compared to (cap amount × number of beneficiaries) for the CAP YEAR (Nov 1 – Oct 31, which is

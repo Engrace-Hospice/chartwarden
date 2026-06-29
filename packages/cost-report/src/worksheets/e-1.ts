@@ -1,3 +1,7 @@
+// ⚠️ CMS-DIVERGENCE (audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md): Form CMS-1984-14 has NO settlement
+// worksheet. Hospice is paid prospectively per-diem; the cap/sequestration settlement is the MAC
+// cap-determination process (PS&R + annual cap notice), which is M26 cap management — not a CMS-1984-14
+// worksheet. This E-1 model has no counterpart on the form. Pending realignment (ledger).
 // @wardenx/cost-report — Worksheet E-1 (Calculation of Reimbursement Settlement) TypeBox schema
 // (CMS-1984-14, §4.2 / §1.1). E-1 is the SETTLEMENT worksheet — the bottom line of the whole report: it
 // compares the program-apportioned allowable cost / cap-limited payment (from D + B-1) against the interim
