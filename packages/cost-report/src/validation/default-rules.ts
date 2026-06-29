@@ -258,101 +258,40 @@ const allocBTiesToA: RuleDef = {
         ),
 };
 
-// ── ancillary_apportionment (1) ─────────────────────────────────────────────────────────────────────────
+// ── apportionment_programs (1) — Worksheet C per-diem cost (§4330; replaces the hospital-style ancillary
+//    RCC + program-apportionment + settlement worksheets, which do not exist on Form CMS-1984-14) ──────────
 
-const ancillaryCRccWithinBounds: RuleDef = {
-  ruleCode: "ancillary.c_rcc_within_bounds",
-  category: "ancillary_apportionment",
-  description: "Worksheet C ancillary ratio-of-cost-to-charges (RCC) values fall within plausible bounds.",
-  severity: "warn",
-  regulatoryRequired: false,
-  macJurisdictionScope: "all",
-  // TODO(CMS-fixture): the plausible RCC bound range is derived from CMS-published example reports we do
-  // not yet hold; this defers to the precomputed `ancillaryRccWithinBounds` flag rather than asserting a
-  // fabricated numeric band.
-  evaluate: (ctx) =>
-    ctx.worksheets.ancillaryRccWithinBounds
-      ? passResult("Worksheet C RCC values are within bounds.")
-      : warnResult(
-          "A Worksheet C RCC value is outside the plausible range.",
-          "Verify the ancillary cost and charge inputs feeding the RCC.",
-        ),
-};
-
-// ── apportionment_programs (1) ──────────────────────────────────────────────────────────────────────────
-
-const apportionDProgramDaysTie: RuleDef = {
-  ruleCode: "apportion.d_program_days_tie",
+const perDiemCTiesToB: RuleDef = {
+  ruleCode: "perdiem.c_ties_to_b",
   category: "apportionment_programs",
-  description: "Worksheet D program-day apportionment internally ties (program days sum to total apportioned days).",
+  description: "Worksheet C per-diem cost ties to Worksheet B (Σ level-of-care cost equals the B total).",
   severity: "block",
   regulatoryRequired: false,
   macJurisdictionScope: "all",
   evaluate: (ctx) =>
-    ctx.worksheets.programDaysTie
-      ? passResult("Worksheet D program-day apportionment ties.")
+    ctx.worksheets.cTiesToWorksheetB
+      ? passResult("Worksheet C per-diem cost ties to Worksheet B.")
       : failResult(
-          "Worksheet D program-day apportionment does not tie.",
-          "Re-run the program apportionment; the per-program days must sum to the apportioned total.",
+          "Worksheet C per-diem cost does not tie to Worksheet B.",
+          "Re-run the allocation; the four level-of-care costs (Wkst C) must sum to the Worksheet B total.",
         ),
 };
 
-// ── settlement (2) ──────────────────────────────────────────────────────────────────────────────────────
+// ── balance_sheet (1) — Worksheet F (§4350) is the hospice balance sheet (there is no Worksheet G) ───────
 
-const settlementE1Computed: RuleDef = {
-  ruleCode: "settlement.e1_computed",
-  category: "settlement",
-  description: "Worksheet E-1 (settlement) exists and has been computed.",
-  severity: "block",
-  regulatoryRequired: false,
-  macJurisdictionScope: "all",
-  evaluate: (ctx) =>
-    ctx.worksheets.presentCodes.includes("E-1") && ctx.settlement.computed
-      ? passResult("Worksheet E-1 is computed.")
-      : failResult(
-          "Worksheet E-1 settlement has not been computed.",
-          "Complete the upstream worksheets (A→B→C→D) so E-1 can derive the settlement.",
-        ),
-};
-
-const settlementE1TiesToD: RuleDef = {
-  ruleCode: "settlement.e1_ties_to_d",
-  category: "settlement",
-  description: "Worksheet E-1 settlement ties to the Worksheet D program apportionment and the M23 claim settlement.",
-  severity: "block",
-  regulatoryRequired: false,
-  macJurisdictionScope: "all",
-  evaluate: (ctx) => {
-    if (!ctx.seams.claimSettlementProviderBound) {
-      return skipResult(
-        "M23 ClaimSettlementProvider not bound — E-1↔settlement tie deferred.",
-        "seam_not_bound",
-      );
-    }
-    return ctx.settlement.tiesToWorksheetD
-      ? passResult("Worksheet E-1 ties to Worksheet D / claim settlement.")
-      : failResult(
-          "Worksheet E-1 settlement does not tie to Worksheet D / the claim settlement.",
-          "Reconcile the E-1 settlement lines against the D apportionment and M23 settlement figures.",
-        );
-  },
-};
-
-// ── balance_sheet (1) ───────────────────────────────────────────────────────────────────────────────────
-
-const balanceSheetGBalances: RuleDef = {
-  ruleCode: "balance_sheet.g_balances",
+const balanceSheetFPresent: RuleDef = {
+  ruleCode: "balance_sheet.f_balances",
   category: "balance_sheet",
-  description: "Worksheet G balance sheet balances (assets = liabilities + fund balance).",
+  description: "Worksheet F balance sheet is present and balances (assets = liabilities + fund balance).",
   severity: "warn",
   regulatoryRequired: false,
   macJurisdictionScope: "all",
   evaluate: (ctx) =>
     ctx.worksheets.balanceSheetBalances
-      ? passResult("Worksheet G balance sheet balances.")
+      ? passResult("Worksheet F balance sheet balances.")
       : warnResult(
-          "Worksheet G balance sheet does not balance.",
-          "Assets must equal liabilities plus fund balance; correct the G inputs.",
+          "Worksheet F balance sheet is absent or does not balance.",
+          "Assets must equal liabilities plus fund balance; complete/correct the Worksheet F inputs.",
         ),
 };
 
@@ -524,31 +463,6 @@ const crossAGrandTotalTiesB: RuleDef = {
         ),
 };
 
-const crossS3DaysTieD: RuleDef = {
-  ruleCode: "cross.s3_days_tie_d",
-  category: "cross_worksheet",
-  description: "Worksheet S-3 grand-total patient-days equal the patient-days carried into Worksheet D.",
-  severity: "warn",
-  regulatoryRequired: false,
-  macJurisdictionScope: "all",
-  // TODO(CMS-fixture): whether S-3 and D days must match EXACTLY or only within a documented program-mix
-  // delta depends on the CMS-1984-14 instructions; this flags any difference as a worklist item.
-  evaluate: (ctx) =>
-    ctx.statistics.s3GrandTotalPatientDays === ctx.worksheets.dProgramDaysCarried
-      ? passResult("S-3 grand-total days tie to Worksheet D.", {
-          s3GrandTotalPatientDays: ctx.statistics.s3GrandTotalPatientDays,
-          dProgramDaysCarried: ctx.worksheets.dProgramDaysCarried,
-        })
-      : warnResult(
-          "S-3 grand-total patient-days differ from the days carried into Worksheet D.",
-          "Reconcile the S-3 census against the D apportionment day counts.",
-          {
-            s3GrandTotalPatientDays: ctx.statistics.s3GrandTotalPatientDays,
-            dProgramDaysCarried: ctx.worksheets.dProgramDaysCarried,
-          },
-        ),
-};
-
 const drugCostBilledReconciles: RuleDef = {
   ruleCode: "drug_cost.billed_reconciles",
   category: "cross_worksheet",
@@ -697,7 +611,7 @@ const deadlineWindowOpen: RuleDef = {
 };
 
 /**
- * The 29 platform-default validation rules (M27-F01/F02), enumerated in §2.1-category order. This is the
+ * The 25 platform-default validation rules (M27-F01/F02), enumerated in §2.1-category order. This is the
  * org-NULL platform floor a tenant layers tightenings onto (D21); the engine applies the MAC-scoped
  * subset plus any additive MAC profile (e.g. `NGS_J6_RULES`).
  */
@@ -719,15 +633,10 @@ export const DEFAULT_VALIDATION_RULES: readonly RuleDef[] = [
   // cost_allocation
   allocStatisticalBasisPresent,
   allocBTiesToA,
-  // ancillary_apportionment
-  ancillaryCRccWithinBounds,
-  // apportionment_programs
-  apportionDProgramDaysTie,
-  // settlement
-  settlementE1Computed,
-  settlementE1TiesToD,
-  // balance_sheet
-  balanceSheetGBalances,
+  // apportionment_programs (Worksheet C per-diem)
+  perDiemCTiesToB,
+  // balance_sheet (Worksheet F)
+  balanceSheetFPresent,
   // cap
   capAggregateBeneficiaryCap,
   capAggregatePaymentsWithinCap,
@@ -737,7 +646,6 @@ export const DEFAULT_VALIDATION_RULES: readonly RuleDef[] = [
   badDebtKindClassified,
   // cross_worksheet
   crossAGrandTotalTiesB,
-  crossS3DaysTieD,
   drugCostBilledReconciles,
   // mac_specific
   macSupportingDocsPresent,

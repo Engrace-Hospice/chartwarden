@@ -31,8 +31,6 @@
 import { type DbClient, schema } from "@wardenx/db";
 import {
   type AllocationInputs,
-  type AncillaryApportionInput,
-  type AncillaryApportionResult,
   ComplianceWindowRepository,
   type CostReportState,
   type CostReportTransitionEvent,
@@ -44,25 +42,20 @@ import {
   EcrSubmissionRepository,
   ImportsRepository,
   NGS_J6_RULES,
-  type ProgramApportionInput,
-  type ProgramApportionResult,
+  type PerDiemResult,
   type RuleDef,
   StatisticDataRepository,
-  type StepDownAllocateInput,
   type StepDownAllocateResult,
-  type SettlementInput,
-  type SettlementResult,
   type ValidationContext,
   ValidationRepository,
   ValidationRuleRepository,
   type WorksheetCode,
   allocationResultsToWorksheets,
-  apportionAncillary,
-  apportionToPrograms,
   applyTransition,
   buildEcrArtifacts,
+  buildPerDiemInput,
+  calculatePerDiem,
   canTransition,
-  computeSettlement,
   contentHashSha256,
   runValidation,
   stepDownAllocate,
@@ -649,13 +642,13 @@ async function runStatisticsRefresh(tx: DbClient, deps: M27WorkerDeps, job: Stat
 }
 
 /**
- * `cost-allocation-recompute` (§3.1 / D8 / §4.8): shape the materialized Worksheet A/S-3/mapping state into
- * the four allocation inputs (the fail-closed {@link AllocationInputBuilder} seam), run the deterministic
- * step-down (B) → ancillary RCC (C) → program apportionment (D) → settlement (E-1) chain, PERSIST the derived
- * worksheet rows (the `cost_report_worksheet` upsert, stamping `computed_at`), and emit
- * `m27.allocation.recomputed`. A full `allocate` writes all four derived worksheets; a `computeWorksheet`
- * narrows to the one requested. The whole run is one org-scoped tx — the writes + the outbox emit commit
- * together (D8 / RULE 3a).
+ * `cost-allocation-recompute` (Form CMS-1984-14 §4320/§4330, D8 / §4.8): shape the materialized worksheet
+ * state into the chain inputs (the fail-closed {@link AllocationInputBuilder} seam), run the deterministic
+ * hospice chain — Worksheet B step-down (on the Worksheet B-1 statistical basis) → Worksheet C per-diem cost
+ * by level of care — PERSIST the derived worksheet rows (`cost_report_worksheet` upsert, stamping
+ * `computed_at`), and emit `m27.allocation.recomputed`. A full `allocate` writes B + C; a `computeWorksheet`
+ * narrows to the one requested. The whole run is one org-scoped tx — writes + outbox emit commit together
+ * (D8 / RULE 3a).
  */
 async function runCostAllocationRecompute(
   tx: DbClient,
@@ -670,25 +663,16 @@ async function runCostAllocationRecompute(
     tx,
   });
 
+  // A → B step-down (overhead onto the four LOC centers), then B col.18 → C per-diem cost by level of care.
   const stepDown: StepDownAllocateResult = stepDownAllocate(inputs.stepDown);
-  const ancillary: AncillaryApportionResult = apportionAncillary(inputs.ancillary);
-  const program: ProgramApportionResult = apportionToPrograms(inputs.program);
-  const settlement: SettlementResult = computeSettlement(inputs.settlement);
+  const perDiem: PerDiemResult = calculatePerDiem(buildPerDiemInput(stepDown, inputs.locDays));
 
-  // Map the four chain RESULTS back to the typed derived-worksheet `data` jsonb (the inverse of the input
-  // shaper). The persisted payloads are pure functions of the results — no recomputation, no clock.
-  const payloads = allocationResultsToWorksheets({
-    stepDown,
-    ancillary,
-    program,
-    settlement,
-    settlementInput: inputs.settlement,
-    stepDownColumns: inputs.stepDownColumns,
-  });
+  // Map the chain RESULTS back to the typed derived-worksheet `data` jsonb (the inverse of the input shaper).
+  const payloads = allocationResultsToWorksheets({ stepDown, perDiem, stepDownColumns: inputs.stepDownColumns });
 
-  // The full `allocate` recomputes every derived worksheet; a `computeWorksheet` narrows to the one requested
-  // (only the four DERIVED worksheets are produced — a non-derived `worksheetCode` recomputes nothing).
-  const DERIVED = ["B", "C", "D", "E-1"] as const;
+  // The full `allocate` recomputes B + C; a `computeWorksheet` narrows to the one requested (only the DERIVED
+  // worksheets are produced — a non-derived `worksheetCode` recomputes nothing).
+  const DERIVED = ["B", "C"] as const;
   const worksheetsRecomputed: WorksheetCode[] = job.worksheetCode
     ? DERIVED.filter((c) => c === job.worksheetCode)
     : [...DERIVED];
@@ -706,13 +690,13 @@ async function runCostAllocationRecompute(
     payload: {
       costReportId: job.costReportId,
       worksheetsRecomputed,
-      totalAllocatedCents: stepDown.totalAllocatedToDirectCents + settlement.netReimbursableCostCents,
+      totalAllocatedCents: stepDown.totalAllocatedToDirectCents,
     },
   });
 }
 
 /**
- * Upsert a DERIVED worksheet's recomputed `data` (B/C/D/E-1), stamping `computed_at`. Lazy-creates the row on
+ * Upsert a DERIVED worksheet's recomputed `data` (B/C), stamping `computed_at`. Lazy-creates the row on
  * the first recompute; otherwise replaces `data` wholesale under §2.5 optimistic concurrency. A version
  * conflict (a concurrent recompute landed first) is retried ONCE against the fresh version; a second conflict
  * throws so BullMQ retries the whole job.

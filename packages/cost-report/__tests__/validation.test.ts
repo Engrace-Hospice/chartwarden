@@ -25,9 +25,7 @@ const ALL_CATEGORIES: readonly RuleCategory[] = [
   "reclassifications",
   "adjustments",
   "cost_allocation",
-  "ancillary_apportionment",
   "apportionment_programs",
-  "settlement",
   "balance_sheet",
   "cap",
   "bad_debt",
@@ -67,19 +65,16 @@ function passingContext(): ValidationContext {
       hasNegativeCensusValue: false,
     },
     worksheets: {
-      presentCodes: ["A", "B", "C", "D", "E-1"],
+      presentCodes: ["A", "B", "B-1", "C", "F"],
       aGrandTotalCostsCents: 5_000_000,
       bTotalAllocatedCents: 5_000_000,
       bTiesToWorksheetA: true,
       reclassificationsNetCents: 0,
       adjustmentsUnsupportedCount: 0,
       statisticalBasisPresent: true,
-      ancillaryRccWithinBounds: true,
-      programDaysTie: true,
-      dProgramDaysCarried: 365,
+      cTiesToWorksheetB: true,
       balanceSheetBalances: true,
     },
-    settlement: { computed: true, tiesToWorksheetD: true },
     cap: null,
     badDebt: { entries: [] },
     supportingDocs: { s2AttachmentsPresent: true },
@@ -98,14 +93,14 @@ function passingContext(): ValidationContext {
   };
 }
 
-describe("DEFAULT_VALIDATION_RULES — the 29-rule platform floor", () => {
-  it("has exactly 29 rules", () => {
-    expect(DEFAULT_VALIDATION_RULES).toHaveLength(29);
+describe("DEFAULT_VALIDATION_RULES — the 25-rule platform floor", () => {
+  it("has exactly 25 rules", () => {
+    expect(DEFAULT_VALIDATION_RULES).toHaveLength(25);
   });
 
-  it("spans all 16 §2.1 rule categories", () => {
+  it("spans all 14 §2.1 rule categories (hospice form has no ancillary RCC or settlement worksheet)", () => {
     const present = new Set(DEFAULT_VALIDATION_RULES.map((r) => r.category));
-    expect(present.size).toBe(16);
+    expect(present.size).toBe(14);
     expect([...present].sort()).toEqual([...ALL_CATEGORIES].sort());
   });
 

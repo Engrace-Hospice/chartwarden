@@ -1,10 +1,11 @@
 # M27 Cost Report — CMS Line-Geometry Certification
 
 **Date:** 2026-06-28 · **Scope:** Form CMS-1984-14 (freestanding hospice cost report) worksheet math in
-`packages/cost-report/`. **Pass:** line-by-line against the authoritative primary sources (now in-repo).
-**Verdict:** ❌ **MATERIAL STRUCTURAL DIVERGENCE** — the M27 worksheet taxonomy does not match Form
-CMS-1984-14. Statutory constants are confirmed; the worksheet **model** needs realignment (see
-[Findings](#findings) + [Recommended realignment](#recommended-realignment)).
+`packages/cost-report/`. **Pass:** line-by-line against the authoritative primary sources (in-repo).
+**Verdict:** ✅ **REALIGNED** — the line-by-line pass found a material structural divergence (the M27 model
+implemented a hospital/HHA-shaped chain), and the worksheet **model has now been realigned** to Form
+CMS-1984-14. The worksheet inventory, the A → B/B-1 → C computation chain, the validation rule library, the
+DB enum, and the seed catalog all now match the form. See [Realignment — done](#realignment--done).
 
 ## Sources (obtained — `docs/reference/cms/`)
 
@@ -93,23 +94,27 @@ M26's domain, not a Form CMS-1984-14 worksheet).
 - Aggregate-cap dollar schedule (FY24 $33,494.01 · FY25 $34,465.34 · FY26 $35,361.44 · FY27 $36,210.11) —
   M26's domain; not hardcoded in M27.
 
-## Recommended realignment (decision required — NOT done here)
+## Realignment — done
 
-Realigning the M27 worksheet model to Form CMS-1984-14 is a **spec-level redesign** (the M27 spec defines the
-21-worksheet taxonomy; per the repo Authority rule, the real form wins on conflict, but this is a deliberate
-architecture decision the team should own — it is not safe to silently rip out worksheets D/E-1). Proposed scope:
+The M27 worksheet model was realigned to Form CMS-1984-14 (gate-green: build + arch:fitness + 4059 tests; the
+A→B→C live chain proven over RLS). What landed:
 
-1. **Retire** Worksheets D, E-1, G/G-1/2/3, H, S-3, S-4, A-7 from the M27 model; **add** A-1/A-2/A-3/A-4
-   (direct patient-care cost by LOC), A-8-1, F-1, F-2.
-2. **Re-home** the statistical basis from `WorksheetB.allocationColumns` onto a proper **Worksheet B-1**;
-   apply the **6-decimal** unit-cost-multiplier rounding; allocate **A&G on accumulated cost**.
-3. **Replace** the ancillary-RCC `C` + program-apportionment `D` with the real **Worksheet C per-diem cost**
-   (B col 18 → per-LOC cost ÷ S-1 unduplicated days × program days), sourcing days from **Worksheet S-1**.
-4. **Move** the cap/sequestration "E-1 settlement" logic to M26 cap management (it is the cap-determination
-   process, not a cost-report worksheet).
-5. Rebuild `B-1` (currently "Cap Calculations") as the statistical-basis worksheet; relocate cap calc to M26.
-6. Add a **penny-level fixture** from a MAC-published worked example once the model matches the form.
+1. ✅ **Worksheet inventory** (`contracts.ts` + the DB enum `m27_worksheet_code` + the registry): retired
+   Worksheets D, E-1, G/G-1/2/3, H, S-3, S-4, A-7; added A-2/A-3/A-4 (direct patient-care by LOC), A-8-1,
+   F-1, F-2. Now exactly the 17 real codes.
+2. ✅ **Worksheet B-1** rebuilt as **Cost Allocation – Statistical Basis** (per-center statistic + 6-decimal
+   unit-cost-multiplier note + A&G-on-accumulated-cost); the step-down weights re-homed off Worksheet B onto B-1.
+3. ✅ **Worksheet C** rebuilt as **Calculation of Per Diem Cost** (`allocation/per-diem.ts`): per-LOC cost
+   (B col. 18) ÷ days = per diem, × program days; the ancillary-RCC + program-apportionment + settlement
+   modules were deleted.
+4. ✅ **Recompute chain** (`assemble-inputs` → `step-down` → `per-diem` → `to-worksheets` + the worker): A
+   (+ A-1…A-4) → B step-down on the B-1 basis → C per-diem; writes Worksheets B + C; C ties B to the cent.
+5. ✅ **Validation rule library**: dropped the ancillary-RCC / program-D / settlement-E1 / balance-sheet-G /
+   S3↔D rules; added `perdiem.c_ties_to_b` (Worksheet C ties B) + `balance_sheet.f_balances` (Worksheet F).
+   25 platform-default rules across 14 categories; seed migration 0073 + the parity test updated to match.
+6. **Deferred** — cap/settlement stays M26's domain (already true; the realignment removed the fictitious E-1
+   from M27 rather than relocating logic). A penny-level fixture from a MAC-published worked example is still
+   a good follow-up; CMS publishes no such example, so it needs a MAC source.
 
-Until (1)–(6) land, the M27 allocation math is **internally tied-out and statutorily aligned**, but its
-worksheet structure is **NOT certified** against Form CMS-1984-14 — it implements a hospital/HHA-shaped chain
-the hospice form does not contain. The in-code `CMS-CERT` markers point here.
+The in-code `CMS-CERT` markers now point here as the certified record; the prior `⚠️ CMS-DIVERGENCE` banners
+were removed with the worksheets they flagged.

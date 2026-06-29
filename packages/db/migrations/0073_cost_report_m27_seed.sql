@@ -1,5 +1,5 @@
 -- M27 Cost Report §3.2 (phase 7 — seed data) / §1.1 — the platform-default validation-rule library.
--- Seeds the 29 platform-default `cost_report_validation_rule` rows (§1.1, architecture §11.B,
+-- Seeds the 25 platform-default `cost_report_validation_rule` rows (§1.1, architecture §11.B,
 -- M27-F01/F02) PLUS the 4 additive NGS-J6 MAC-profile rows (D16, §7.8) as PLATFORM DEFAULTS:
 -- organization_id = NULL, rule_set_version = 1. These are the org-NULL platform floor every tenant reads
 -- (0071 platform-read policy) and layers tenant tightenings onto (D21); the `regulatory_required` rows
@@ -69,20 +69,12 @@ FROM (
       'The cost-allocation statistical basis (sq-ft, FTE, accumulated cost, etc.) is present for the step-down.'),
     ('alloc.b_ties_to_a', 'cost_allocation', 'block', false, 'all',
       'Worksheet B total allocated cost ties back to Worksheet A total cost (step-down conserves cost).'),
-    -- ── ancillary_apportionment (1) ─────────────────────────────────────────────────────────────────
-    ('ancillary.c_rcc_within_bounds', 'ancillary_apportionment', 'warn', false, 'all',
-      'Worksheet C ancillary ratio-of-cost-to-charges (RCC) values fall within plausible bounds.'),
-    -- ── apportionment_programs (1) ──────────────────────────────────────────────────────────────────
-    ('apportion.d_program_days_tie', 'apportionment_programs', 'block', false, 'all',
-      'Worksheet D program-day apportionment internally ties (program days sum to total apportioned days).'),
-    -- ── settlement (2) ──────────────────────────────────────────────────────────────────────────────
-    ('settlement.e1_computed', 'settlement', 'block', false, 'all',
-      'Worksheet E-1 (settlement) exists and has been computed.'),
-    ('settlement.e1_ties_to_d', 'settlement', 'block', false, 'all',
-      'Worksheet E-1 settlement ties to the Worksheet D program apportionment and the M23 claim settlement.'),
-    -- ── balance_sheet (1) ───────────────────────────────────────────────────────────────────────────
-    ('balance_sheet.g_balances', 'balance_sheet', 'warn', false, 'all',
-      'Worksheet G balance sheet balances (assets = liabilities + fund balance).'),
+    -- ── apportionment_programs (1) — Worksheet C per-diem (§4330) ────────────────────────────────────
+    ('perdiem.c_ties_to_b', 'apportionment_programs', 'block', false, 'all',
+      'Worksheet C per-diem cost ties to Worksheet B (Σ level-of-care cost equals the B total).'),
+    -- ── balance_sheet (1) — Worksheet F (§4350) ─────────────────────────────────────────────────────
+    ('balance_sheet.f_balances', 'balance_sheet', 'warn', false, 'all',
+      'Worksheet F balance sheet is present and balances (assets = liabilities + fund balance).'),
     -- ── cap (3) — SKIP under the D13 cap-seam deny-stub until M26 binds ──────────────────────────────
     ('cap.aggregate_beneficiary_cap', 'cap', 'block', true, 'all',
       'The aggregate per-beneficiary cap is computed from M26 cap accruals.'),
@@ -98,8 +90,6 @@ FROM (
     -- ── cross_worksheet (3) ─────────────────────────────────────────────────────────────────────────
     ('cross.a_grandtotal_ties_b', 'cross_worksheet', 'block', false, 'all',
       'Worksheet A grand-total cost equals the Worksheet B total allocated cost (to the cent).'),
-    ('cross.s3_days_tie_d', 'cross_worksheet', 'warn', false, 'all',
-      'Worksheet S-3 grand-total patient-days equal the patient-days carried into Worksheet D.'),
     ('drug_cost.billed_reconciles', 'cross_worksheet', 'warn', false, 'all',
       'The billed drug-cost basis (M12) reconciles to the Worksheet-A pharmacy cost center within the expected delta.'),
     -- ── mac_specific (1) — generic platform default; NGS-J6 additive rules below ─────────────────────

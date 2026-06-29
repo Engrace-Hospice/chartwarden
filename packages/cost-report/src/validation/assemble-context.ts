@@ -99,9 +99,6 @@ const UNBOUND_BILLING: RawBillingBinds = {
  *  Worksheet A; this set is the documented best-known mapping. */
 const PHARMACY_COST_CENTER_CODES = new Set(["drugs", "pharmacy", "0250"]);
 
-/** E-1 settlement vs M25 actual interim-payment tolerance (cents). TODO(CMS-fixture): the acceptable delta
- *  (posting-lag, takebacks, sequestration timing) is operational, not a CMS constant — a small band for now. */
-const SETTLEMENT_TOLERANCE_CENTS = 100;
 
 const MS_PER_DAY = 86_400_000;
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
@@ -134,10 +131,7 @@ export function assembleValidationContext(input: RawValidationInputs): Validatio
   const a = ws("A");
   const b = ws("B");
   const c = ws("C");
-  const d = ws("D");
   const a6 = ws("A-6");
-  const g1 = ws("G-1");
-  const e1 = ws("E-1");
   const sWs = ws("S");
 
   const billing = input.billing ?? UNBOUND_BILLING;
@@ -149,23 +143,7 @@ export function assembleValidationContext(input: RawValidationInputs): Validatio
   );
   const worksheetAPharmacyCents = pharmacyCenter ? num(pharmacyCenter.totalCostCents) : null;
 
-  // E-1 settlement tie: internal (E-1↔S summary) AND the claimed Medicare interim payments match M25's posted
-  // 835 total within tolerance. Only meaningful when the M25 settlement seam is bound (else the rule SKIPS).
-  const e1Medicare = (e1.medicare as Record<string, unknown> | undefined) ?? {};
-  const e1InterimClaimedCents = num(e1Medicare.interimPaymentsReceivedCents);
-  const settlementInternalTie = bool(e1.tiesToWorksheetSSettlementSummary);
-  const settlementExternalTie =
-    billing.interimPaymentsActualCents !== null &&
-    Math.abs(e1InterimClaimedCents - billing.interimPaymentsActualCents) <= SETTLEMENT_TOLERANCE_CENTS;
-  const tiesToWorksheetD = billing.claimSettlementProviderBound
-    ? settlementInternalTie && settlementExternalTie
-    : false;
-
   const census = rollupCensus(input.statistic?.monthlyBreakdown);
-  const dDays = ["medicare", "medicaid", "other"].reduce(
-    (sum, program) => sum + num((d[program] as { totalDays?: unknown } | undefined)?.totalDays),
-    0,
-  );
 
   const deadlineMs = input.complianceWindow
     ? new Date(`${input.complianceWindow.currentEffectiveDeadlineDate}T00:00:00Z`).getTime()
@@ -209,19 +187,13 @@ export function assembleValidationContext(input: RawValidationInputs): Validatio
       // No per-entry "basis documented" flag on A-8 today → 0 (no unsupported adjustments; a refinement lands
       // when the A-8 basis field is modeled). An absent A-8 trivially has no unsupported adjustments.
       adjustmentsUnsupportedCount: 0,
-      statisticalBasisPresent: Array.isArray(b.allocationColumns) && (b.allocationColumns as unknown[]).length > 0,
-      // Within bounds unless Worksheet C flags a zero-charge RCC basis; an absent C has no ancillary centers.
-      ancillaryRccWithinBounds: has("C") ? !bool(c.hasZeroChargeBasisFlag) : true,
-      programDaysTie: bool(d.apportionmentPreservesTotalExactly),
-      dProgramDaysCarried: dDays,
-      // Balance-sheet integrity proxy: the G-1 fund-balance rollforward ties to Worksheet F net assets.
-      balanceSheetBalances: has("G-1") ? bool(g1.tiesToWorksheetFNetAssets) : false,
-    },
-    settlement: {
-      computed: has("E-1"),
-      // M25 ClaimSettlementProvider: E-1 internal tie AND claimed interim payments match the posted 835 total
-      // within tolerance when bound; false (the E-1↔D tie rule SKIPS) until the seam binds.
-      tiesToWorksheetD,
+      // Worksheet B-1 statistical basis present (the §4320 step-down basis the recompute reads).
+      statisticalBasisPresent: has("B-1") && Array.isArray((ws("B-1") as Record<string, unknown>).columns) &&
+        ((ws("B-1") as Record<string, unknown>).columns as unknown[]).length > 0,
+      // Worksheet C per-diem cost ties to Worksheet B (§4330 A→B→C tie).
+      cTiesToWorksheetB: has("C") ? bool(c.tiesToWorksheetBTotal) : false,
+      // Worksheet F (§4350) is the hospice balance sheet — present (computed) when the row exists.
+      balanceSheetBalances: has("F"),
     },
     drugCost: {
       // M12 DrugCostBillingReader: the billed drug-cost basis when bound; null → the reconcile rule SKIPS.

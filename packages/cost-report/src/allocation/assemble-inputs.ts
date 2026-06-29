@@ -1,39 +1,15 @@
-// @wardenx/cost-report — the PURE allocation-input assembler (§3.1 `allocation/`, D8). Composes M27's
-// already-read DB state (the materialized per-worksheet `data` jsonb of A / B / C / D / E-1, the
-// `statistic_data` monthly census, and the resolved M26 cap context) into the FOUR typed inputs the
-// deterministic propagation chain consumes — `StepDownAllocateInput` (Worksheet B), `AncillaryApportionInput`
-// (C), `ProgramApportionInput` (D), and `SettlementInput` (E-1). No DB, no clock, no `getSeam`: the live
-// builder reads + resolves, this function only shapes.
-//
-// Reads the jsonb DEFENSIVELY — every field optional, every absence a CONSERVATIVE default — so an incomplete
-// report shapes into a TRIVIALLY-tie-out input (a no-op step-down, zero-cost apportionment) rather than a
-// throw, and NOTHING is fabricated:
-//   • Step-down statistical-basis WEIGHTS are not yet modeled in the persisted state (Worksheet B records the
-//     allocation RESULT, not the per-receiving-center weights), so with no weights every Worksheet-A center is
-//     emitted as DIRECT (isOverhead:false) and `statisticalBases` is empty → the step-down preserves each
-//     center's direct cost exactly and ties out. Overhead step-down lights up when the weight model lands.
-//   • Per-level-of-care allowable COST is split deterministically by the census PATIENT-DAY mix: the fully-
-//     allocated total (= the Worksheet-A grand total, which the step-down conserves into B) is apportioned
-//     across the four levels of care by their patient days via the penny-true allocator, so the downstream
-//     program apportionment carries the whole B total and Worksheet D ties to B exactly. With no census
-//     (no day basis) the split is empty (no fabricated basis) — D then legitimately does not tie B.
-//   • The cap settlement lines appear ONLY when the M26 cap context is bound (else `capPositionPending`).
-// Money is INTEGER CENTS. No PHI — aggregate cost/day mix only (D18).
-import { type Cents, allocateProportional } from "../domain/money";
-import type { CapContext } from "../validation/types";
-import {
-  type AncillaryApportionInput,
-  type CostReportProgram,
-  COST_REPORT_PROGRAMS,
-} from "./ancillary-apportionment";
-import {
-  type LevelOfCare,
-  type LevelOfCareCostInput,
-  type PatientDayCell,
-  type ProgramApportionInput,
-  LEVELS_OF_CARE,
-} from "./program-apportionment";
-import type { SettlementInput } from "./settlement";
+// @wardenx/cost-report — the PURE allocation-input assembler (Form CMS-1984-14, §4320/§4330, D8). Composes
+// M27's already-read worksheet state into the inputs the deterministic hospice chain consumes:
+//   • the Worksheet B step-down (`StepDownAllocateInput`): the general-service cost centers from Worksheet A
+//     (overhead, in allocation order) plus the four direct level-of-care centers from Worksheets A-1…A-4
+//     (CHC/RHC/IRC/GIP net direct cost), with the per-receiving-center statistical weights read from the
+//     Worksheet B-1 statistical basis (§4320). All overhead steps down into the four LOC centers, so the
+//     fully-allocated total ties to Worksheet A and flows entirely into the LOC centers (→ Worksheet C ties B).
+//   • the per-LOC day counts (`LocDays`) for Worksheet C: total / Medicare / Medicaid unduplicated days per
+//     level of care (§4330 sources these from Worksheet S-1; here aggregated from the materialized census).
+// No DB, no clock, no `getSeam`. Reads jsonb DEFENSIVELY (every absence → a conservative, tie-out-safe
+// default; nothing fabricated). Money is INTEGER CENTS; no PHI — aggregate cost/day only (D18).
+import { type LevelOfCare, LEVELS_OF_CARE } from "./per-diem";
 import type { StatisticalBasis, StepDownAllocateInput, StepDownCostCenter } from "./step-down";
 
 /** One already-read `cost_report_worksheet` row: its code + untyped `data` jsonb. */
@@ -42,95 +18,93 @@ export interface RawAllocationWorksheet {
   readonly data: unknown;
 }
 
-/** The Worksheet-B step-down CONFIG read from the persisted `allocationColumns` input (which overhead centers
- *  allocate, the basis label, and the per-receiving-center statistical weights). Carried forward on
- *  {@link AllocationInputs} so the recompute PRESERVES it when it writes the derived Worksheet B back. */
+/** The Worksheet-B-1 step-down CONFIG read from the persisted statistical-basis columns (which overhead
+ *  centers allocate, the basis label, and the per-receiving-center statistical weights). Carried forward on
+ *  {@link AllocationInputs} so the recompute PRESERVES it when it writes Worksheet B back. */
 export interface AllocationColumnConfig {
   readonly generalServiceCostCenterCode: string;
   readonly allocationBasis: string;
   readonly statisticalWeights: readonly { readonly receivingCenterCode: string; readonly statisticValue: number }[];
 }
 
-/** The raw, already-read DB facts the four allocation inputs are shaped from. */
+/** Total / Medicare / Medicaid unduplicated days per level of care (feeds Worksheet C, §4330). */
+export type LocDays = Record<LevelOfCare, { totalDays: number; medicareDays: number; medicaidDays: number }>;
+
+/** The raw, already-read worksheet state the allocation inputs are shaped from. */
 export interface RawAllocationInputs {
-  /** The federal cap year (= the FYE year) the settlement cap lines are pinned to. */
-  readonly fiscalYearInt: number;
   readonly worksheets: readonly RawAllocationWorksheet[];
   /** `statistic_data.monthly_breakdown` — { [month]: { [loc]: { [program]: { patientDays } } } }; null = unrefreshed. */
   readonly monthlyBreakdown: unknown | null;
-  /** The M26 cap context (resolved via the cap seam); null when M26 is unbound → cap lines SKIP. */
-  readonly cap: { readonly capContext: CapContext | null };
 }
 
-/** The four typed allocation inputs the recompute chain runs over, plus the step-down column config carried
- *  forward so the write-back preserves the user's Worksheet-B `allocationColumns`. */
+/** The allocation inputs the recompute chain runs over, plus the B-1 column config carried forward so the
+ *  write-back preserves the user's statistical basis. */
 export interface AllocationInputs {
   readonly stepDown: StepDownAllocateInput;
-  readonly ancillary: AncillaryApportionInput;
-  readonly program: ProgramApportionInput;
-  readonly settlement: SettlementInput;
+  readonly locDays: LocDays;
   readonly stepDownColumns: readonly AllocationColumnConfig[];
 }
 
-/** Inpatient day cap = 20% of total Medicare days (42 CFR §418.302(f) / §418.108 — CERTIFIED, stable). The
- *  numerator day-set (GIP only vs GIP+respite) is the one open item — code sums GIP+IRC; pending the §418.302(f)
- *  verbatim text. See audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md. */
-const INPATIENT_DAY_CAP_PERCENT = 20;
+/** The four LOC direct-care centers, sourced from Worksheets A-1…A-4 (§4320 col. 0: A-1→CHC line 50, A-2→RHC
+ *  51, A-3→IRC 52, A-4→GIP 53). The cost-center code on the step-down is the uppercase LOC token. */
+const LOC_FROM_WORKSHEET: ReadonlyArray<{ code: string; ws: string; loc: LevelOfCare; name: string }> = [
+  { code: "CHC", ws: "A-1", loc: "chc", name: "Continuous Home Care" },
+  { code: "RHC", ws: "A-2", loc: "rhc", name: "Routine Home Care" },
+  { code: "IRC", ws: "A-3", loc: "irc", name: "Inpatient Respite Care" },
+  { code: "GIP", ws: "A-4", loc: "gip", name: "General Inpatient Care" },
+];
 
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
-
 const LEVEL_SET = new Set<string>(LEVELS_OF_CARE);
-const PROGRAM_SET = new Set<string>(COST_REPORT_PROGRAMS);
 
-/** Shape the four allocation inputs from the read DB state. Defensive: every absence → a conservative,
- *  tie-out-safe default; nothing fabricated. */
+/** Shape the allocation inputs from the read worksheet state. Defensive: every absence → a tie-out-safe
+ *  default; nothing fabricated. */
 export function assembleAllocationInputs(input: RawAllocationInputs): AllocationInputs {
   const byCode = new Map(input.worksheets.map((w) => [w.worksheetCode, w.data]));
   const ws = (code: string): Record<string, unknown> =>
     (byCode.get(code) as Record<string, unknown> | undefined) ?? {};
 
-  const { stepDown, stepDownColumns } = assembleStepDown(ws("A"), ws("B"));
-  // The fully-allocated total the step-down conserves into Worksheet B (= Σ direct costs from A). This is the
-  // pool the program apportionment splits across levels of care, so Worksheet D's grand total ties to B.
-  const allocatableTotalCents = stepDown.costCenters.reduce((s, c) => s + c.directCostCents, 0);
-
-  return {
-    stepDown,
-    ancillary: assembleAncillary(ws("C")),
-    program: assembleProgram(input.monthlyBreakdown, allocatableTotalCents),
-    settlement: assembleSettlement(ws("E-1"), ws("D"), input.cap.capContext, input.fiscalYearInt),
-    stepDownColumns,
-  };
+  const { stepDown, stepDownColumns } = assembleStepDown(ws("A"), ws("B-1"), byCode);
+  return { stepDown, stepDownColumns, locDays: assembleLocDays(input.monthlyBreakdown) };
 }
 
-/** Worksheets A + B → step-down input. Worksheet A supplies the cost centers + their direct costs (in
- *  allocation order); Worksheet B's `allocationColumns` config supplies WHICH centers are overhead and the
- *  per-receiving-center statistical weights that drive each overhead pool's step-down. With no B config every
- *  center is DIRECT and the bases are empty → the step-down preserves each center's direct cost exactly (a
- *  no-op pass that still ties out). The parsed columns are returned so the write-back can preserve them. */
+/** Worksheets A + A-1…A-4 + B-1 → step-down input. Worksheet A supplies the general-service (overhead) cost
+ *  centers (in allocation order); A-1…A-4 supply the four direct LOC centers; B-1 supplies the per-receiving
+ *  statistical weights. ALL Worksheet-A centers are overhead (general service) that step down into the four
+ *  LOC centers, so the fully-allocated total flows entirely into the LOC centers and Worksheet C ties B. With
+ *  no B-1 config the pools spread by the allocator default; the parsed columns are returned for the write-back. */
 function assembleStepDown(
   a: Record<string, unknown>,
-  b: Record<string, unknown>,
+  b1: Record<string, unknown>,
+  byCode: ReadonlyMap<string, unknown>,
 ): { stepDown: StepDownAllocateInput; stepDownColumns: AllocationColumnConfig[] } {
-  const rawColumns = Array.isArray(b.allocationColumns) ? (b.allocationColumns as Record<string, unknown>[]) : [];
+  const rawColumns = Array.isArray(b1.columns) ? (b1.columns as Record<string, unknown>[]) : [];
   const stepDownColumns: AllocationColumnConfig[] = rawColumns
     .filter((col) => str(col.generalServiceCostCenterCode).length > 0)
     .map((col) => ({
       generalServiceCostCenterCode: str(col.generalServiceCostCenterCode),
       allocationBasis: str(col.allocationBasis),
-      statisticalWeights: (Array.isArray(col.statisticalWeights) ? (col.statisticalWeights as Record<string, unknown>[]) : [])
+      statisticalWeights: (Array.isArray(col.statisticalPortions) ? (col.statisticalPortions as Record<string, unknown>[]) : [])
         .map((w) => ({ receivingCenterCode: str(w.receivingCenterCode), statisticValue: num(w.statisticValue) }))
         .filter((w) => w.receivingCenterCode.length > 0),
     }));
 
-  const overheadCodes = new Set(stepDownColumns.map((c) => c.generalServiceCostCenterCode));
+  // General-service (overhead) centers from Worksheet A — every A cost center steps down to the LOC centers.
   const aCenters = Array.isArray(a.costCenters) ? (a.costCenters as Record<string, unknown>[]) : [];
-  const costCenters: StepDownCostCenter[] = aCenters.map((cc) => ({
+  const overhead: StepDownCostCenter[] = aCenters.map((cc) => ({
     code: str(cc.code),
     name: str(cc.name),
     directCostCents: num(cc.totalCostsCents),
-    isOverhead: overheadCodes.has(str(cc.code)),
+    isOverhead: true,
+  }));
+
+  // The four direct LOC centers from Worksheets A-1…A-4 (net direct cost, col. 7 line 100).
+  const locCenters: StepDownCostCenter[] = LOC_FROM_WORKSHEET.map((m) => ({
+    code: m.code,
+    name: m.name,
+    directCostCents: num((byCode.get(m.ws) as Record<string, unknown> | undefined)?.netDirectCostCents),
+    isOverhead: false,
   }));
 
   const statisticalBases: StatisticalBasis[] = stepDownColumns.map((col) => ({
@@ -138,100 +112,31 @@ function assembleStepDown(
     weights: col.statisticalWeights.map((w) => ({ receivingCenterCode: w.receivingCenterCode, statisticValue: w.statisticValue })),
   }));
 
-  return { stepDown: { costCenters, statisticalBases }, stepDownColumns };
+  return { stepDown: { costCenters: [...overhead, ...locCenters], statisticalBases }, stepDownColumns };
 }
 
-/** Worksheet C → ancillary RCC inputs. C models Medicare charges only today, so each center's `programCharges`
- *  carries the Medicare line; an absent C yields no centers. */
-function assembleAncillary(c: Record<string, unknown>): AncillaryApportionInput {
-  const cCenters = Array.isArray(c.ancillaryCostCenters) ? (c.ancillaryCostCenters as Record<string, unknown>[]) : [];
-  return {
-    costCenters: cCenters.map((cc) => ({
-      code: str(cc.code),
-      name: str(cc.name),
-      totalCostCents: num(cc.fullyAllocatedCostCents),
-      totalChargesCents: num(cc.totalChargesCents),
-      programCharges: [{ program: "medicare" as CostReportProgram, chargesCents: num(cc.medicareChargesCents) }],
-    })),
+/** `statistic_data.monthly_breakdown` → per-LOC total/Medicare/Medicaid day counts for Worksheet C. Unknown
+ *  LOC keys are dropped; total days count ALL programs at the level, the program lines only Medicare/Medicaid. */
+function assembleLocDays(monthlyBreakdown: unknown | null): LocDays {
+  const days: LocDays = {
+    chc: { totalDays: 0, medicareDays: 0, medicaidDays: 0 },
+    rhc: { totalDays: 0, medicareDays: 0, medicaidDays: 0 },
+    irc: { totalDays: 0, medicareDays: 0, medicaidDays: 0 },
+    gip: { totalDays: 0, medicareDays: 0, medicaidDays: 0 },
   };
-}
-
-/** `statistic_data.monthly_breakdown` → the Worksheet D patient-day cells + the per-LOC allowable-cost split.
- *  The fully-allocated total (`allocatableTotalCents`, = the conserved Worksheet-B total) is apportioned across
- *  the levels of care by their patient-day mix via the penny-true allocator, so the per-LOC costs sum EXACTLY
- *  to B and the downstream program apportionment carries the whole total → Worksheet D ties to B. An LOC earns
- *  cost only in proportion to its days (a zero-day LOC gets zero, so its cost never strands a cell-less level),
- *  and with no census at all (no day basis) the split is empty — no fabricated basis. Unknown LOC / program
- *  keys are dropped (never coerced). */
-function assembleProgram(monthlyBreakdown: unknown | null, allocatableTotalCents: number): ProgramApportionInput {
-  const patientDays: PatientDayCell[] = [];
-  const daysByLevel = new Map<LevelOfCare, number>();
-  const months = (monthlyBreakdown ?? {}) as Record<
-    string,
-    Record<string, Record<string, { patientDays?: unknown }>>
-  >;
-  for (const [month, locs] of Object.entries(months ?? {})) {
+  const months = (monthlyBreakdown ?? {}) as Record<string, Record<string, Record<string, { patientDays?: unknown }>>>;
+  for (const locs of Object.values(months ?? {})) {
     for (const [locKey, programs] of Object.entries(locs ?? {})) {
       const loc = locKey.toLowerCase();
       if (!LEVEL_SET.has(loc)) continue;
-      for (const [progKey, cell] of Object.entries(programs ?? {})) {
-        const program = progKey.toLowerCase();
-        if (!PROGRAM_SET.has(program)) continue;
-        const days = num((cell as { patientDays?: unknown })?.patientDays);
-        patientDays.push({ levelOfCare: loc as LevelOfCare, program: program as CostReportProgram, month, patientDays: days });
-        daysByLevel.set(loc as LevelOfCare, (daysByLevel.get(loc as LevelOfCare) ?? 0) + days);
+      const cell = days[loc as LevelOfCare];
+      for (const [progKey, c] of Object.entries(programs ?? {})) {
+        const d = num((c as { patientDays?: unknown })?.patientDays);
+        cell.totalDays += d;
+        if (progKey.toLowerCase() === "medicare") cell.medicareDays += d;
+        else if (progKey.toLowerCase() === "medicaid") cell.medicaidDays += d;
       }
     }
   }
-
-  // Split the fully-allocated total across LOCs by their day mix (penny-true → sums to the total exactly).
-  // Skip when there is no cost or no day basis (an incomplete report → D legitimately does not tie B).
-  const totalDays = LEVELS_OF_CARE.reduce((s, l) => s + (daysByLevel.get(l) ?? 0), 0);
-  let levelOfCareCosts: LevelOfCareCostInput[] = [];
-  if (allocatableTotalCents > 0 && totalDays > 0) {
-    const weights = LEVELS_OF_CARE.map((l) => daysByLevel.get(l) ?? 0);
-    const parts = allocateProportional(allocatableTotalCents, weights);
-    levelOfCareCosts = LEVELS_OF_CARE.map((levelOfCare, i) => ({ levelOfCare, allowableCostCents: parts[i]! }));
-  }
-  return { levelOfCareCosts, patientDays };
-}
-
-/** Worksheets E-1 / D + the M26 cap context → the settlement input. Allowable cost / interim payments are read
- *  from the persisted E-1 Medicare line (falling back to D's Medicare total). The aggregate + inpatient cap
- *  inputs are supplied ONLY when M26 is bound (else both are omitted → `capPositionPending`, cap math skipped).
- *  SIA and the per-FY sequestration rate are not yet modeled → omitted (zero). */
-function assembleSettlement(
-  e1: Record<string, unknown>,
-  d: Record<string, unknown>,
-  cap: CapContext | null,
-  fiscalYearInt: number,
-): SettlementInput {
-  const e1Medicare = (e1.medicare as Record<string, unknown> | undefined) ?? {};
-  const dMedicare = (d.medicare as Record<string, unknown> | undefined) ?? {};
-
-  const allowableFromE1 = num(e1Medicare.allowablePaymentCents);
-  const medicareAllowableCostCents: Cents = allowableFromE1 !== 0 ? allowableFromE1 : num(dMedicare.totalCostCents);
-  const interimPaymentsCents: Cents = num(e1Medicare.interimPaymentsReceivedCents);
-
-  const base: SettlementInput = { medicareAllowableCostCents, interimPaymentsCents };
-  if (!cap) return base;
-
-  return {
-    ...base,
-    aggregateCap: {
-      capYear: fiscalYearInt,
-      // medicareBeneficiaryCount is unused by the settlement math (the cap $ is supplied directly by M26).
-      medicareBeneficiaryCount: 0,
-      aggregateCapAmountCents: cap.aggregateCapCents,
-      totalMedicarePaymentsCents: cap.aggregatePaymentsCents,
-    },
-    inpatientCap: {
-      capYear: fiscalYearInt,
-      totalMedicareDays: cap.totalMedicareDays,
-      inpatientDays: cap.inpatientDays,
-      inpatientCapPercent: INPATIENT_DAY_CAP_PERCENT,
-      // The inpatient-payment ceiling/reduction is not yet sourced → 0 (the day-cap POSITION is still reported).
-      inpatientPaymentsCents: 0,
-    },
-  };
+  return days;
 }

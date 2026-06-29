@@ -89,7 +89,7 @@ describe("records model — parse(write(x)) === x round-trip closure", () => {
       },
       {
         recordKind: "data",
-        worksheetCode: "S-3",
+        worksheetCode: "S-2",
         lineNumber: 1,
         columnNumber: 1,
         value: { kind: "count", count: 365 },
@@ -121,7 +121,7 @@ describe("records model — parse(write(x)) === x round-trip closure", () => {
   it("preserves penny-exact negative cents across the dollars round-trip", () => {
     const rec: EcrRecord = {
       recordKind: "data",
-      worksheetCode: "E-1",
+      worksheetCode: "C",
       lineNumber: 7,
       columnNumber: 1,
       value: { kind: "money", cents: -98765 },

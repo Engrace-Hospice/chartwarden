@@ -13,7 +13,7 @@
 -- convention. No PHI (D18) — aggregate financial/statistical only.
 CREATE TYPE "public"."m27_cost_report_state" AS ENUM('draft', 'populating', 'validating', 'ready_for_review', 'approved_for_submit', 'submitted', 'accepted', 'rejected', 'reopened', 'closed');--> statement-breakpoint
 CREATE TYPE "public"."m27_wage_source" AS ENUM('gusto', 'manual');--> statement-breakpoint
-CREATE TYPE "public"."m27_worksheet_code" AS ENUM('S', 'S-1', 'S-2', 'S-3', 'S-4', 'A', 'A-1', 'A-6', 'A-7', 'A-8', 'B', 'B-1', 'C', 'D', 'E-1', 'F', 'G', 'G-1', 'G-2', 'G-3', 'H');--> statement-breakpoint
+CREATE TYPE "public"."m27_worksheet_code" AS ENUM('S', 'S-1', 'S-2', 'A', 'A-1', 'A-2', 'A-3', 'A-4', 'A-6', 'A-8', 'A-8-1', 'B', 'B-1', 'C', 'F', 'F-1', 'F-2');--> statement-breakpoint
 CREATE TYPE "public"."m27_snapshot_reason" AS ENUM('submit', 'reopen', 'mac_revision_request', 'admin_audit');--> statement-breakpoint
 CREATE TYPE "public"."m27_validation_status" AS ENUM('in_progress', 'complete', 'failed_to_run');--> statement-breakpoint
 CREATE TYPE "public"."m27_rule_category" AS ENUM('demographics_ownership', 'statistical_data', 'trial_balance', 'reclassifications', 'adjustments', 'cost_allocation', 'ancillary_apportionment', 'apportionment_programs', 'settlement', 'balance_sheet', 'cap', 'bad_debt', 'cross_worksheet', 'mac_specific', 'supporting_docs', 'filing_deadline');--> statement-breakpoint
@@ -269,7 +269,7 @@ CREATE TABLE IF NOT EXISTS "cost_report_compliance_window" (
 CREATE INDEX IF NOT EXISTS "idx_cost_report_org_state" ON "cost_report" ("organization_id","state");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_cost_report_provider_fye_date" ON "cost_report" ("provider_entity_id","fiscal_year_end_date");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_worksheet_org_report" ON "cost_report_worksheet" ("organization_id","cost_report_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "idx_worksheet_derived" ON "cost_report_worksheet" ("cost_report_id") WHERE worksheet_code IN ('B','C','D','E-1');--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_worksheet_derived" ON "cost_report_worksheet" ("cost_report_id") WHERE worksheet_code IN ('B','C');--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_snapshot_org_report" ON "cost_report_snapshot" ("organization_id","cost_report_id","created_at");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_snapshot_content_hash" ON "cost_report_snapshot" ("content_hash_sha256");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_snapshot_report_created_desc" ON "cost_report_snapshot" ("cost_report_id","created_at" DESC);--> statement-breakpoint

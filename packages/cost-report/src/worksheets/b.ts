@@ -1,28 +1,21 @@
-// @wardenx/cost-report — Worksheet B (Cost Allocation — Step-Down) TypeBox schema (CMS-1984-14, §4.2 /
-// §1.1). B is a DERIVED worksheet (DERIVED_WORKSHEET_CODES): the step-down allocates overhead/general-
-// service cost centers across the direct (revenue-producing) cost centers by statistical bases, producing
-// a fully-allocated cost per center. The step-down math lives in the deterministic `decimal.js`
-// allocation functions (D8) — `allocateProportional` guarantees the allocated parts sum EXACTLY to the
-// pool with zero penny drift. The `allocationColumns` are the step-down CONFIG (which centers are overhead,
-// the basis label, and the per-receiving-center statistical weights) the user sets BEFORE allocating — the
-// recompute reads them to drive the step-down and PRESERVES them (refreshing only the derived `poolAmountCents`);
-// the rest of this schema (`costCenters` + totals) is the persisted RESULT. All money is INTEGER CENTS; no
-// PHI (D18).
+// @wardenx/cost-report — Worksheet B (Cost Allocation — Step-Down) TypeBox schema (Form CMS-1984-14, Pub 15-2
+// §4320). B is a DERIVED worksheet: the step-down allocates the general-service (overhead) cost centers across
+// the four direct level-of-care centers (CHC/RHC/IRC/GIP, lines 50–53) using the statistical basis recorded on
+// Worksheet B-1, producing a fully-allocated cost per center. The math is the deterministic `decimal.js`
+// largest-remainder allocator (D8) — the allocated parts sum EXACTLY to the pool (col. 18 line 101 = col. 0
+// line 101). This schema is the persisted RESULT; the per-receiving statistical weights live on Worksheet B-1
+// (§4320), not here. B col. 18 (lines 50–53) transfers to Worksheet C. All money is INTEGER CENTS; no PHI (D18).
 //
+// CMS-CERT: certified against the form + Ch.43 §4320 (audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md).
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
 import { Type, type Static } from "@sinclair/typebox";
 
-/** One allocation pass: a general-service cost center spread across receiving centers by a statistical basis. */
+/** One step-down pass: a general-service cost center and the total pool it allocated (the result; the basis
+ *  that drove it is recorded on Worksheet B-1). */
 const AllocationStatColumn = Type.Object({
   generalServiceCostCenterCode: Type.String(),
-  /** Statistical basis driving this column (square footage, FTEs, accumulated cost, etc.). */
+  /** The statistical basis label used (mirrors the Worksheet B-1 column), for presentation. */
   allocationBasis: Type.String(),
-  /** INPUT: the statistic per RECEIVING center that weights this overhead pool's step-down (e.g. each center's
-   *  square footage / FTE count). Empty → the pool spreads equally across the open centers (allocator default). */
-  statisticalWeights: Type.Array(
-    Type.Object({ receivingCenterCode: Type.String(), statisticValue: Type.Number() }),
-    { default: [] },
-  ),
   poolAmountCents: Type.Integer({ description: "DERIVED: total overhead pool allocated this pass" }),
 });
 

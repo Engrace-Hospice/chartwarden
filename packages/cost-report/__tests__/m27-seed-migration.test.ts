@@ -68,10 +68,10 @@ const parsedRows = parseSeedRows(seedSql);
 const byCode = new Map(parsedRows.map((r) => [r.ruleCode, r]));
 
 describe("M27 seed migration 0073 — code-catalog parity", () => {
-  it("parses exactly 33 seed rows (29 platform defaults + 4 NGS-J6)", () => {
-    expect(DEFAULT_VALIDATION_RULES.length).toBe(29);
+  it("parses exactly 29 seed rows (25 platform defaults + 4 NGS-J6)", () => {
+    expect(DEFAULT_VALIDATION_RULES.length).toBe(25);
     expect(NGS_J6_RULES.length).toBe(4);
-    expect(parsedRows.length).toBe(33);
+    expect(parsedRows.length).toBe(29);
   });
 
   it("seeds no duplicate rule codes", () => {
@@ -128,7 +128,7 @@ describe("M27 seed migration 0073 — code-catalog parity", () => {
     }
     // every other seeded rule is platform-wide ('all').
     const nonNgs = parsedRows.filter((r) => r.macJurisdictionScope !== "NGS-J6");
-    expect(nonNgs).toHaveLength(29);
+    expect(nonNgs).toHaveLength(25);
     expect(nonNgs.every((r) => r.macJurisdictionScope === "all")).toBe(true);
   });
 });

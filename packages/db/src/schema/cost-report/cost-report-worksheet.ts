@@ -7,28 +7,25 @@ import { organizations } from "../organizations";
 import { costReport } from "./cost-report";
 import type { WorksheetData } from "./types";
 
+// The actual Form CMS-1984-14 worksheet set (certified — see audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md).
 export const m27WorksheetCode = pgEnum("m27_worksheet_code", [
   "S",
   "S-1",
   "S-2",
-  "S-3",
-  "S-4",
   "A",
   "A-1",
+  "A-2",
+  "A-3",
+  "A-4",
   "A-6",
-  "A-7",
   "A-8",
+  "A-8-1",
   "B",
   "B-1",
   "C",
-  "D",
-  "E-1",
   "F",
-  "G",
-  "G-1",
-  "G-2",
-  "G-3",
-  "H",
+  "F-1",
+  "F-2",
 ]);
 
 export const costReportWorksheet = pgTable(

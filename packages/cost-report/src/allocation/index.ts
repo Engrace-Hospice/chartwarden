@@ -1,15 +1,11 @@
-// @wardenx/cost-report — M27 deterministic cost-allocation barrel (§3.1 `src/allocation/`, D8). Re-exports
-// the four pure, penny-true propagation hops of the CMS-1984-14 chain (A → B → C → D → E-1): the
-// Worksheet B step-down (`step-down`), the Worksheet C ancillary ratio-of-cost-to-charges
-// (`ancillary-apportionment`), the Worksheet D program apportionment by patient days
-// (`program-apportionment`), and the Worksheet E-1 settlement (`settlement`). Every export is a type or a
-// deterministic total function over an already-fetched input; all money is INTEGER CENTS at the boundary
-// and the only fractional arithmetic is inside the money kernel. Plus the PURE DB→input assembler
-// (`assemble-inputs`) that shapes the read worksheet/statistics/cap state into the four inputs above.
-// PURE DOMAIN — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`; no PHI (D18).
+// @wardenx/cost-report — M27 deterministic cost-allocation barrel (Form CMS-1984-14, D8). The hospice cost
+// chain is short: Worksheet A (+ A-1…A-4 direct LOC costs) → Worksheet B step-down on the Worksheet B-1
+// statistical basis (`step-down`) → Worksheet C per-diem cost by level of care (`per-diem`). `assemble-inputs`
+// shapes the read worksheet/statistics state into the chain inputs; `to-worksheets` maps the results back to
+// the derived-worksheet `data` jsonb. There is NO ancillary RCC, program-apportionment, or settlement
+// worksheet on the hospice form (see audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md). Every export is a type or a
+// deterministic total function; money is INTEGER CENTS. PURE DOMAIN — no Fastify/Drizzle/BullMQ/getSeam; no PHI.
 export * from "./step-down";
-export * from "./ancillary-apportionment";
-export * from "./program-apportionment";
-export * from "./settlement";
+export * from "./per-diem";
 export * from "./assemble-inputs";
 export * from "./to-worksheets";
