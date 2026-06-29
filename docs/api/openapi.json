@@ -8676,34 +8676,18 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "reason",
-                  "overrideRole"
+                  "validationResultId",
+                  "reason"
                 ],
                 "properties": {
-                  "reason": {
-                    "minLength": 40,
-                    "maxLength": 2000,
+                  "validationResultId": {
+                    "format": "uuid",
                     "type": "string"
                   },
-                  "overrideRole": {
-                    "anyOf": [
-                      {
-                        "const": "billing_manager",
-                        "type": "string"
-                      },
-                      {
-                        "const": "compliance_officer",
-                        "type": "string"
-                      },
-                      {
-                        "const": "medical_director",
-                        "type": "string"
-                      },
-                      {
-                        "const": "org_admin",
-                        "type": "string"
-                      }
-                    ]
+                  "reason": {
+                    "minLength": 30,
+                    "maxLength": 1000,
+                    "type": "string"
                   }
                 }
               }
@@ -9199,6 +9183,7 @@
         "tags": [
           "27-cost-report"
         ],
+        "summary": "Create a tenant validation rule layered on the platform floor (cost_report.manage_rules; D21; §11.B)",
         "parameters": [],
         "responses": {
           "200": {
@@ -9209,6 +9194,62 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ruleCode",
+                  "category",
+                  "description",
+                  "severity",
+                  "predicateSpec"
+                ],
+                "properties": {
+                  "ruleCode": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "category": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "description": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "severity": {
+                    "anyOf": [
+                      {
+                        "const": "block",
+                        "type": "string"
+                      },
+                      {
+                        "const": "warn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "info",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "macJurisdictionScope": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "predicateSpec": {}
+                }
+              }
+            }
           }
         }
       }
@@ -9277,7 +9318,96 @@
         "tags": [
           "27-cost-report"
         ],
-        "parameters": [],
+        "summary": "List cost reports by (ProviderEntity, fiscal year) + lifecycle state (cost_report.read; §4.1)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "fiscalYear",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 2000,
+              "maximum": 2100,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "draft",
+                  "type": "string"
+                },
+                {
+                  "const": "populating",
+                  "type": "string"
+                },
+                {
+                  "const": "validating",
+                  "type": "string"
+                },
+                {
+                  "const": "ready_for_review",
+                  "type": "string"
+                },
+                {
+                  "const": "approved_for_submit",
+                  "type": "string"
+                },
+                {
+                  "const": "submitted",
+                  "type": "string"
+                },
+                {
+                  "const": "accepted",
+                  "type": "string"
+                },
+                {
+                  "const": "rejected",
+                  "type": "string"
+                },
+                {
+                  "const": "reopened",
+                  "type": "string"
+                },
+                {
+                  "const": "closed",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -9295,6 +9425,7 @@
         "tags": [
           "27-cost-report"
         ],
+        "summary": "Create a cost report for a ProviderEntity + fiscal-year-end (cost_report.create; D1; §4.1)",
         "parameters": [],
         "responses": {
           "200": {
@@ -9305,6 +9436,47 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "fiscalYearStartDate",
+                  "fiscalYearEndDate"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "fiscalYearStartDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "fiscalYearEndDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "wageSource": {
+                    "anyOf": [
+                      {
+                        "const": "gusto",
+                        "type": "string"
+                      },
+                      {
+                        "const": "manual",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -9342,6 +9514,7 @@
         "tags": [
           "27-cost-report"
         ],
+        "summary": "Edit cost-report metadata — bad-debt-claimed / wage source; version-checked (cost_report.edit; §4.1)",
         "parameters": [
           {
             "name": "id",
@@ -9361,6 +9534,40 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "expectedVersion"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "badDebtClaimed": {
+                    "type": "boolean"
+                  },
+                  "wageSource": {
+                    "anyOf": [
+                      {
+                        "const": "gusto",
+                        "type": "string"
+                      },
+                      {
+                        "const": "manual",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -9400,6 +9607,7 @@
         "tags": [
           "27-cost-report"
         ],
+        "summary": "Approve a cost report for submission — step-up (cost_report.approve_for_submit; D14; §4.1)",
         "parameters": [
           {
             "name": "id",
@@ -9419,6 +9627,22 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "validationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -9456,6 +9680,7 @@
         "tags": [
           "27-cost-report"
         ],
+        "summary": "Add a Medicare bad-debt entry — deductible/coinsurance (cost_report.edit_bad_debt; D7; §4.1)",
         "parameters": [
           {
             "name": "id",
@@ -9475,6 +9700,55 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "periodLabel",
+                  "debtKind",
+                  "amountCents"
+                ],
+                "properties": {
+                  "periodLabel": {
+                    "minLength": 1,
+                    "maxLength": 50,
+                    "type": "string"
+                  },
+                  "debtKind": {
+                    "anyOf": [
+                      {
+                        "const": "deductible",
+                        "type": "string"
+                      },
+                      {
+                        "const": "coinsurance",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "amountCents": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "collectionEffortsDocumented": {
+                    "type": "boolean"
+                  },
+                  "supportingDocumentIds": {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -9797,6 +10071,7 @@
         "tags": [
           "27-cost-report"
         ],
+        "summary": "Record the MCReF acknowledgment / rejection for a submission (cost_report.record_acknowledgment; §4.1)",
         "parameters": [
           {
             "name": "id",
@@ -9824,6 +10099,32 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mcrefAcknowledgmentNumber": {
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "type": "string"
+                  },
+                  "mcrefRejectionCode": {
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "type": "string"
+                  },
+                  "mcrefRejectionDetail": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -10033,6 +10334,7 @@
         "tags": [
           "27-cost-report"
         ],
+        "summary": "Reopen a submitted cost report — elevated approval + documented reason (cost_report.reopen_submitted; D19; §4.1)",
         "parameters": [
           {
             "name": "id",
@@ -10052,6 +10354,51 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason",
+                  "reasonCategory"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 20,
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "reasonCategory": {
+                    "anyOf": [
+                      {
+                        "const": "mac_revision_request",
+                        "type": "string"
+                      },
+                      {
+                        "const": "internal_audit_finding",
+                        "type": "string"
+                      },
+                      {
+                        "const": "cap_recalculation_received",
+                        "type": "string"
+                      },
+                      {
+                        "const": "clerical_correction",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other_with_explanation",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -10215,6 +10562,7 @@
         "tags": [
           "27-cost-report"
         ],
+        "summary": "Submit — step-up + attestation; builds the content-hashed snapshot (cost_report.submit; D10/D14; §4.1)",
         "parameters": [
           {
             "name": "id",
@@ -10234,6 +10582,34 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "attestedByMembershipId",
+                  "attestedAt"
+                ],
+                "properties": {
+                  "attestedByMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "attestedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "approvedByMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -10368,6 +10744,7 @@
         "tags": [
           "27-cost-report"
         ],
+        "summary": "Override a validation result — elevated approval + reason + audit (cost_report.override_validation; §11.B)",
         "parameters": [
           {
             "name": "id",
@@ -10395,6 +10772,31 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "validationResultId",
+                  "reason"
+                ],
+                "properties": {
+                  "validationResultId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 30,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -10440,6 +10842,7 @@
         "tags": [
           "27-cost-report"
         ],
+        "summary": "Write a worksheet's TypeBox-validated data jsonb (cost_report.edit; §4.2)",
         "parameters": [
           {
             "name": "id",
@@ -10467,6 +10870,27 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "data"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "data": {}
+                }
+              }
+            }
           }
         }
       }

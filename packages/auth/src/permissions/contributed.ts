@@ -3082,6 +3082,32 @@ export const M26_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M26 contributed permission keys (fourteen). */
 export type M26ContributedPermissionKey = keyof typeof M26_CONTRIBUTED_PERMISSIONS;
 
+// M27 — Module 27's fifteen Cost Report permission keys registered into M3's catalog (§4.6). The route-level
+// §4.7 ABAC predicates (cost_report_editor_for_provider / cost_report_approver_for_provider /
+// cost_report_period_active, + provider_entity_scope reused from M40) are composed at the route layer; the
+// per-key `abac` here is the DEFAULT only ('none' — RBAC-gated; the route additionally composes the
+// per-ProviderEntity scope). category 'billing' (the cost report is a revenue-cycle surface).
+export const M27_CONTRIBUTED_PERMISSIONS = {
+  "cost_report.create": { resource: "cost_report", action: "create", category: "billing", abac: "none" },
+  "cost_report.read": { resource: "cost_report", action: "read", category: "billing", abac: "none" },
+  "cost_report.read_snapshot_detail": { resource: "cost_report", action: "read_snapshot_detail", category: "billing", abac: "none" },
+  "cost_report.read_rules": { resource: "cost_report", action: "read_rules", category: "billing", abac: "none" },
+  "cost_report.edit": { resource: "cost_report", action: "edit", category: "billing", abac: "none" },
+  "cost_report.edit_mappings": { resource: "cost_report", action: "edit_mappings", category: "billing", abac: "none" },
+  "cost_report.edit_bad_debt": { resource: "cost_report", action: "edit_bad_debt", category: "billing", abac: "none" },
+  "cost_report.edit_any_provider": { resource: "cost_report", action: "edit_any_provider", category: "billing", abac: "none" },
+  "cost_report.override_validation": { resource: "cost_report", action: "override_validation", category: "billing", abac: "none" },
+  "cost_report.approve_for_submit": { resource: "cost_report", action: "approve_for_submit", category: "billing", abac: "none" },
+  "cost_report.submit": { resource: "cost_report", action: "submit", category: "billing", abac: "none" },
+  "cost_report.submit_past_deadline": { resource: "cost_report", action: "submit_past_deadline", category: "billing", abac: "none" },
+  "cost_report.record_acknowledgment": { resource: "cost_report", action: "record_acknowledgment", category: "billing", abac: "none" },
+  "cost_report.reopen_submitted": { resource: "cost_report", action: "reopen_submitted", category: "billing", abac: "none" },
+  "cost_report.manage_rules": { resource: "cost_report", action: "manage_rules", category: "billing", abac: "none" },
+} satisfies Record<string, PermissionDef>;
+
+/** Union of the M27 contributed permission keys (fifteen). */
+export type M27ContributedPermissionKey = keyof typeof M27_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -3214,6 +3240,11 @@ export function m26ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M26_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M27 contributed keys into `permission`-table mirror rows (M27 §4.6). */
+export function m27ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M27_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -3247,5 +3278,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m23ContributedPermissionMirrorRows(),
     ...m25ContributedPermissionMirrorRows(),
     ...m26ContributedPermissionMirrorRows(),
+    ...m27ContributedPermissionMirrorRows(),
   ];
 }

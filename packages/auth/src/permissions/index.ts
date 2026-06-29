@@ -175,3 +175,10 @@ export {
   M26_CONTRIBUTED_PERMISSIONS,
   m26ContributedPermissionMirrorRows,
 } from "./contributed";
+
+// M27 — Module 27's fifteen Cost Report permission keys registered into M3's catalog (§4.6 handshake).
+export {
+  type M27ContributedPermissionKey,
+  M27_CONTRIBUTED_PERMISSIONS,
+  m27ContributedPermissionMirrorRows,
+} from "./contributed";

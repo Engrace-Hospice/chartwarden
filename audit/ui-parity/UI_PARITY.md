@@ -4,7 +4,7 @@
 > corpus is consistent; this shows how much of it is BUILT in `apps/web`. Do not hand-edit —
 > the `ui:parity --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 24 module screen-sets registered · 137 screens wired in `apps/web`.
+**Coverage:** 113 documented screen specs · 25 module screen-sets registered · 143 screens wired in `apps/web`.
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -140,6 +140,12 @@
 | 26-cap | `cap.settlement` | `/cap/settlements` | `cap.settlement.read` | ✅ |
 | 26-cap | `cap.psr` | `/cap/psr` | `cap.psr.read` | ✅ |
 | 26-cap | `cap.platform_constants` | `/platform/cap/constants` | `cap.platform_constant.read` | ✅ |
+| 27-cost-report | `cost_report.list` | `/cost-reports` | `cost_report.read` | ✅ |
+| 27-cost-report | `cost_report.workspace` | `/cost-reports/workspace` | `cost_report.read` | ✅ |
+| 27-cost-report | `cost_report.validation` | `/cost-reports/validation` | `cost_report.read` | ✅ |
+| 27-cost-report | `cost_report.rules` | `/cost-reports/rules` | `cost_report.read_rules` | ✅ |
+| 27-cost-report | `cost_report.bad_debt` | `/cost-reports/bad-debt` | `cost_report.read` | ✅ |
+| 27-cost-report | `cost_report.snapshots` | `/cost-reports/snapshots` | `cost_report.read_snapshot_detail` | ✅ |
 | 33-reporting | `reporting.catalog` | `/reports` | `report.dashboard.list` | ✅ |
 | 33-reporting | `reporting.dashboard` | `/reports/dashboards/:dashboardId` | `report.dashboard.read` | ✅ |
 | 33-reporting | `reporting.role-dashboard` | `/reports/role/:roleKey` | `report.dashboard.read` | ✅ |

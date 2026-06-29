@@ -790,6 +790,7 @@ export const MODULES: ModuleDef[] = [
       "packages/xero-client",
       "packages/gusto-client",
       "apps/backend/src/modules/27-cost-report",
+      "apps/web/src/modules/27-cost-report",
     ],
     // ADR-0005: genuine compile-time edges only. +M1: the backend repos/services/workers/eraser import
     // the @wardenx/db barrel + the M1-owned bootstrap registry (registerEraser) — a real compile edge, so
