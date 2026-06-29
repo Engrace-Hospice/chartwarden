@@ -130,6 +130,23 @@ function buildSeams(overrides: Partial<ClaimAssemblySeams> = {}): ClaimAssemblyS
     terminology: {
       resolveForClaim: async () => ({ valueSetMembership: {}, icd10Billable: {} }),
     },
+    capProjection: {
+      // Default: M26 unavailable → cap rules warn-skip (preserves the pre-bind assertions). Scenario tests
+      // override with an `ok` projection to exercise the live cap rules.
+      projectionForOrg: async () => ({
+        status: "unavailable",
+        aggregateProjectedCents: null,
+        aggregateCapCents: null,
+        pctOfCap: null,
+        ipuWithinCap: null,
+      }),
+      projectionForPatient: async () => ({
+        status: "unavailable",
+        projectedCapCents: null,
+        capLimitCents: null,
+        withinCap: null,
+      }),
+    },
     referenceData: {
       hippsRateTable: async () => RATE_TABLE,
       chcHourlyRateCents: async () => 6_000,

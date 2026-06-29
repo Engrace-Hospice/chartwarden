@@ -22,6 +22,7 @@ import {
   baaStatusProviderDenyStub,
   billableEncounterReaderDenyStub,
   capAccrualReaderDenyStub,
+  capProjectionProviderDenyStub,
   carePlanReaderDenyStub,
   caseloadDenyStub,
   certificationReaderDenyStub,
@@ -216,6 +217,15 @@ export const REQUIRED_SEAMS = [
     ownerModule: 26,
     phi: false,
     denyStub: capAccrualReaderDenyStub,
+  },
+  // M26 (Cap Management) — the agency/patient/inpatient cap projection the M23 §11.A pre-submission cap rules
+  // consume (D8; cap utilization %/band, no clinical PHI). Boot-validated and fail-closed until M26 registers
+  // the real provider; the M23 adapter degrades a deny-stub throw to status:"unavailable" (warn, never block).
+  {
+    key: "CapProjectionProvider",
+    ownerModule: 26,
+    phi: false,
+    denyStub: capProjectionProviderDenyStub,
   },
   // M40 (MDM) — the focused §7.7 BAA disclosure gate (as-of time-travel + sending-facility
   // resolution), registered separately from the omnibus above. M22/M28/M29 consult it before any

@@ -689,7 +689,10 @@ export const MODULES: ModuleDef[] = [
       "apps/backend/src/modules/23-billing-medicare",
       "apps/web/src/modules/23-billing-medicare",
     ],
-    dependsOn: [6, 8, 22, 38, 40],
+    // +M1: the cap-projection adapter imports getSeam from apps/backend/src/bootstrap (the M1 SeamRegistry)
+    // to resolve M26's CapProjectionProvider for the §11.A cap rules — a real compile edge (the M27 [1,…]
+    // precedent). The §4.4 seam/outbox consumers otherwise stay no-edge per ADR-0005.
+    dependsOn: [1, 6, 8, 22, 38, 40],
     ownedTables: [
       "claim",
       "claim_acknowledgment",

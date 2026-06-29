@@ -41,6 +41,15 @@ export interface CapProjectionProvider {
     scope: "agency_aggregate" | "patient_aggregate",
     patientId?: string,
   ): Promise<ProjectionAtDateView | null>;
+  /**
+   * The inpatient (20%) cap projection for the cap period that contains a service date (M23 §11.A
+   * `ipu_cap_projection` rule). Date-keyed so the consumer (M23, which has the claim's service date but not a
+   * capPeriodId) resolves it directly. Returns null when no cap period contains the date.
+   */
+  getInpatientProjectionForServiceDate(
+    orgId: string,
+    serviceDate: string,
+  ): Promise<InpatientProjectionView | null>;
 }
 
 // ── InpatientCapProvider (M30, M33) ────────────────────────────────────────────────────────────────
