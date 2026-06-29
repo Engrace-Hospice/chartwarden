@@ -712,7 +712,7 @@ exports.MODULES = [
   {
     id: 26,
     name: "Cap Management",
-    codePaths: ["packages/cap-management", "apps/backend/src/modules/26-cap"],
+    codePaths: ["packages/cap-management", "apps/backend/src/modules/26-cap", "apps/web/src/modules/26-cap"],
     dependsOn: [1, 23, 36],
     ownedTables: [
       "cap_beneficiary_accrual",

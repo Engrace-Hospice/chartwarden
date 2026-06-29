@@ -758,7 +758,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: 26,
     name: "Cap Management",
-    codePaths: ["packages/cap-management", "apps/backend/src/modules/26-cap"],
+    codePaths: ["packages/cap-management", "apps/backend/src/modules/26-cap", "apps/web/src/modules/26-cap"],
     // ADR-0005: genuine compile-time edges only. +M1: the backend repos/services/abac resolver/seam impls
     // import the @wardenx/db barrel (packages/db/src/index.ts) — a real compile edge, so M1 is declared (the
     // M25 [1,23,36] / M27 [1,23,26,38] precedent). The broader read-direction inventory (M2-6/M25/M38/M40
