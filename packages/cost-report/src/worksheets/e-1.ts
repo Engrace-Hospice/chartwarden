@@ -31,10 +31,11 @@ export const WorksheetE1 = Type.Object(
     /** Net of both programs (signed cents) — the single number that ties to Worksheet S settlement summary. */
     totalBalanceDueProviderCents: Type.Integer({ default: 0 }),
     tiesToWorksheetSSettlementSummary: Type.Boolean({ default: false }),
-    // TODO(CMS-fixture): the exact E-1 line ordering, the protested-amounts line, and the sequestration
-    // rate applied per fiscal year require a CMS-published CMS-1984-14 E-1 image + the FY sequestration
-    // schedule to confirm penny conformance; the computation above is internally tied-out (every line is
-    // derived from D/B-1 inputs already in the snapshot) until that reference data is supplied.
+    // CMS-CERT (see audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md): the settlement FLOW is corroborated
+    // (allowable cost → SIA → sequestration → bad-debt added → interim subtracted → balance due), but the
+    // exact E-1 line numbers/labels, the protested-amounts line, and the sequestration BASE line are PENDING
+    // confirmation against CMS Pub 15-2 Ch.43 (Form CMS-1984-14, transmittal R8P243/R5P247). The computation
+    // is internally tied-out (every line derives from D/B-1 inputs already in the snapshot) until then.
   },
   { additionalProperties: false },
 );
