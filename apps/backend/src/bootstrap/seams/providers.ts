@@ -224,6 +224,10 @@ export const alertEmitterDenyStub: unknown = denyingSeamProxy("AlertEmitter");
  *  Denies until M33 registers the real provider (which returns forward-seam-empty until its MVs populate). */
 export const metricsProviderDenyStub: unknown = denyingSeamProxy("MetricsProvider");
 
+/** M26 — the cap-period aggregate read for the M27 cost-report cap calc. Opaque rich-seam (interface in
+ *  @wardenx/cap-management). Denies until M26 registers the real provider (db-present boot). */
+export const capAccrualReaderDenyStub: unknown = denyingSeamProxy("CapAccrualReader");
+
 /** M36 — channel/message surface (DEK-encrypted bodies). Denies until M36 registers the real
  *  provider (its DB-backed impl lands with the routes/realtime tasks, M36-T07/T08). */
 export const messagingProviderDenyStub: unknown = denyingSeamProxy("MessagingProvider");

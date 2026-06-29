@@ -208,7 +208,8 @@ export type SeamName =
   // contract. Both fail-closed deny-stub until M15 ships (M17-F06/ADR-0009); the volunteer gate denies LOUDLY
   // exactly when a `volunteer_visit` is scheduled before M15 lands. No `dependsOn` edge (registry is M1-owned).
   | "VolunteerComplianceProvider" // M15 — per-membership volunteer-compliance status (gate predicate 6, VOLUNTEER_GATE_UNMET)
-  | "SupervisoryCadenceReader"; // M15 — next-due RN supervisory visit per admission (day-view advisory + propose-from-frequency)
+  | "SupervisoryCadenceReader" // M15 — next-due RN supervisory visit per admission (day-view advisory + propose-from-frequency)
+  | "CapAccrualReader"; // M26 — cap-period aggregate for the M27 cost-report Worksheet-E cap calc (aggregate $/days, no PHI)
 
 /**
  * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
@@ -408,6 +409,10 @@ export interface SeamContracts {
   // instance as `unknown` and consumers (M30/M34/M37) resolve it via `getSeam` + cast to their own
   // consumer-defined view. Registered by M33 at boot over the fail-closed deny-stub.
   MetricsProvider: unknown;
+  // M26's `CapAccrualReader` follows the OPAQUE rich-seam pattern (like MetricsProvider): the rich interface
+  // lives in @wardenx/cap-management, so the registry holds the instance as `unknown` and M27 resolves it via
+  // `getSeam` + cast to its own consumer view. Registered by M26 at boot over the fail-closed deny-stub.
+  CapAccrualReader: unknown;
   // M40's `BaaStatusProvider` is the focused §7.7 disclosure gate, registered separately from the
   // omnibus above (different contract: as-of time-travel + sending-facility resolution). Same
   // opaque rich-seam pattern — interface in @wardenx/mdm; M22/M28/M29 import the real type.

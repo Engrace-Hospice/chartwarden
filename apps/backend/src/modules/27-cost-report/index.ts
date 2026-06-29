@@ -89,3 +89,14 @@ export {
   registerM27Workers,
   scheduleM27Jobs,
 } from "./jobs/index";
+
+// D13 — the M26 cost-report cap bind: the fail-closed cap-context resolver (the cap portion of the eventual
+// ValidationContextBuilder) + the live-seam-bound production resolver. `resolveCapContext` reads M26's
+// `CapAccrualReader` aggregate via getSeam and maps it to the §4.x `CapContext`; fail-closed when M26 unbound.
+export {
+  type CapAggregateSeam,
+  type CapSeamResolver,
+  type ResolvedCapContext,
+  resolveCapContext,
+} from "./routes/cap-context";
+export { m27CapSeamResolver } from "./routes/cap-context-wiring";

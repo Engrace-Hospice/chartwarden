@@ -6,6 +6,7 @@
 // reachable cross-module via its §4.10 outbox events, the M27 posture).
 import {
   asPercent,
+  computeCostReportCapAggregate,
   type AgencyProjectionView,
   type CapAccrualReader,
   type CapAlertSubscriberProvider,
@@ -107,6 +108,47 @@ export function buildM26SeamImpls(db: DbClient, read: M26ReadService): M26SeamIm
   };
 
   const accrual: CapAccrualReader = {
+    async aggregateForCostReport(orgId, capYear) {
+      return withOrgContext(db, systemActor(orgId), async (tx) => {
+        const P = schema.capPeriod;
+        const BA = schema.capBeneficiaryAccrual;
+        const IA = schema.capInpatientAccrual;
+        const ST = schema.capSettlement;
+        // RLS scopes to orgId; one cap period per (org, capYear) in Phase 1 (multi-CCN sums in a follow-up).
+        const periods = await tx.select().from(P).where(eq(P.capYear, capYear)).limit(1);
+        const period = periods[0];
+        if (!period) return null;
+        const accrAgg = await tx
+          .select({
+            paid: sql<string>`coalesce(sum(${BA.paidCents}), 0)::bigint`,
+            n: sql<number>`count(*)::int`,
+          })
+          .from(BA)
+          .where(eq(BA.capPeriodId, period.id));
+        const ia = await tx.select().from(IA).where(eq(IA.capPeriodId, period.id)).limit(1);
+        const st = await tx.select().from(ST).where(eq(ST.capPeriodId, period.id)).limit(1);
+        const settled = st[0]?.status === "final" ? st[0] : null;
+        const result = computeCostReportCapAggregate({
+          capYear,
+          perBeneficiaryCapCents: period.aggregateCapAmountCents,
+          beneficiaryCount: Number(accrAgg[0]?.n ?? 0),
+          paidTotalCents: Number(accrAgg[0]?.paid ?? 0),
+          gipDays: ia[0]?.gipDays ?? 0,
+          ircDays: ia[0]?.ircDays ?? 0,
+          totalPatientDays: ia[0]?.totalPatientDays ?? 0,
+          settledAggregateCapCents: settled ? settled.aggregateCapAmountCents : null,
+          settledPaidTotalCents: settled ? settled.paidTotalCents : null,
+        });
+        return {
+          capYear: result.capYear,
+          beneficiaryCount: result.beneficiaryCount,
+          aggregateCapCents: cents(result.aggregateCapCents),
+          aggregatePaymentsCents: cents(result.aggregatePaymentsCents),
+          inpatientDays: result.inpatientDays,
+          totalMedicareDays: result.totalMedicareDays,
+        };
+      });
+    },
     async getPatientAccrual(orgId, capPeriodId, patientId) {
       const a = await read.getPatientAccrual(systemActor(orgId), capPeriodId, patientId);
       if (!a) return null;

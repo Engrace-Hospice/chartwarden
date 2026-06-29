@@ -148,6 +148,7 @@ import {
   buildDrizzleM26WriteService,
   mountM26Routes,
   registerM26AbacPredicates,
+  registerM26PublishedSeams,
   registerCapErasers,
   registerM26CronWorkers,
   scheduleM26Jobs,
@@ -285,6 +286,9 @@ export function wireModuleSeams(
   // metrics via getSeam. Returns forward-seam-empty (value:null) until M33's MVs materialize; the M1
   // fail-closed deny-stub stands when no db is present.
   registerReportingMetricsSeam(deps.db);
+  // M26 — register the PUBLISHED CapAccrualReader seam so M27's cost-report Worksheet-E cap calc resolves the
+  // live cap-period aggregate via getSeam (D13). The M1 fail-closed deny-stub stands when no db is present.
+  registerM26PublishedSeams(deps.db);
   // M11 — the two §2.8 D14 / §4.3 owned seams (OrderSignatureProvider — the polymorphic clinical-signature
   // WRITE primitive M12 routes medication-order signatures through, D4 — + OrderProvider — the read-side
   // counterpart M14/M23/M30/M7 consume). Slice/tests keep the in-memory store; the Drizzle-backed store lands
@@ -901,6 +905,10 @@ if ((import.meta as { main?: boolean }).main) {
     const m27WorkerDeps = buildM27WorkerDeps({
       connection: queueConnection,
       db: dbHandle.db,
+      // M26's CapAccrualReader is registered live above (registerM26PublishedSeams) — flag the cap provider
+      // bound so the cost-report cap rules evaluate against the live aggregate (per-org availability still
+      // comes from the cap-context resolver, which fail-closes when an org has no cap period). D13.
+      capProviderBound: true,
     });
     const m27Workers = [...registerM27Workers(m27WorkerDeps), ...registerM27CronWorkers(m27WorkerDeps)];
     app.addHook("onClose", async () => {

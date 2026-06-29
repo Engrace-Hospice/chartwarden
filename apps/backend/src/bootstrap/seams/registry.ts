@@ -21,6 +21,7 @@ import {
   auditorSessionMinterDenyStub,
   baaStatusProviderDenyStub,
   billableEncounterReaderDenyStub,
+  capAccrualReaderDenyStub,
   carePlanReaderDenyStub,
   caseloadDenyStub,
   certificationReaderDenyStub,
@@ -206,6 +207,15 @@ export const REQUIRED_SEAMS = [
     ownerModule: 33,
     phi: false,
     denyStub: metricsProviderDenyStub,
+  },
+  // M26 (Cap Management) — the cap-period aggregate the M27 cost-report Worksheet-E cap calc + cap
+  // validation rules consume (D13; aggregate $/days, no row-level PHI). Boot-validated and fail-closed
+  // until M26 registers the real provider (db-present boot); M27 reads it via getSeam + casts to its own view.
+  {
+    key: "CapAccrualReader",
+    ownerModule: 26,
+    phi: false,
+    denyStub: capAccrualReaderDenyStub,
   },
   // M40 (MDM) — the focused §7.7 BAA disclosure gate (as-of time-travel + sending-facility
   // resolution), registered separately from the omnibus above. M22/M28/M29 consult it before any
