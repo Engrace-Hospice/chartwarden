@@ -228,6 +228,10 @@ export const metricsProviderDenyStub: unknown = denyingSeamProxy("MetricsProvide
  *  @wardenx/cap-management). Denies until M26 registers the real provider (db-present boot). */
 export const capAccrualReaderDenyStub: unknown = denyingSeamProxy("CapAccrualReader");
 
+/** M26 — the agency/patient/inpatient cap projection for the M23 §11.A cap rules. Opaque rich-seam. The M23
+ *  adapter catches this deny-stub throw and DEGRADES to `status:"unavailable"` (warn, not block, per D8). */
+export const capProjectionProviderDenyStub: unknown = denyingSeamProxy("CapProjectionProvider");
+
 /** M36 — channel/message surface (DEK-encrypted bodies). Denies until M36 registers the real
  *  provider (its DB-backed impl lands with the routes/realtime tasks, M36-T07/T08). */
 export const messagingProviderDenyStub: unknown = denyingSeamProxy("MessagingProvider");

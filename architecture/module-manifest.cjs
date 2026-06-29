@@ -643,7 +643,7 @@ exports.MODULES = [
       "apps/backend/src/modules/23-billing-medicare",
       "apps/web/src/modules/23-billing-medicare",
     ],
-    dependsOn: [6, 8, 22, 38, 40],
+    dependsOn: [1, 6, 8, 22, 38, 40],
     ownedTables: [
       "claim",
       "claim_acknowledgment",

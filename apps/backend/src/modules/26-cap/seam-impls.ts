@@ -81,6 +81,14 @@ export function buildM26SeamImpls(db: DbClient, read: M26ReadService): M26SeamIm
       if (!base) return null;
       return { ...base, isFrozenSnapshot: period.status === "settled" } satisfies ProjectionAtDateView;
     },
+    async getInpatientProjectionForServiceDate(orgId, serviceDate) {
+      const actor = systemActor(orgId);
+      const capYear = capYearForDate(serviceDate);
+      const periods = await read.listPeriods(actor);
+      const period = periods.find((p) => p.capYear === capYear);
+      if (!period) return null;
+      return inpatient.getInpatientProjection(orgId, period.id);
+    },
   };
 
   const inpatient: InpatientCapProvider = {

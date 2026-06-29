@@ -136,6 +136,7 @@ const CAP_ORG_UNAVAILABLE: CapOrgProjectionResult = {
   aggregateProjectedCents: null,
   aggregateCapCents: null,
   pctOfCap: null,
+  ipuWithinCap: null,
 };
 
 /**

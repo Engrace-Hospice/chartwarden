@@ -26,6 +26,7 @@
 //   * NO PHI / NO MBI ever crosses a seam or lands on a row (D13 / §3.6 / §8.7).
 import { createHash, randomUUID } from "node:crypto";
 import {
+  type CapProjectionProvider,
   type Cents,
   type ClaimAssembleRequest,
   type ClaimAssembleResponse,
@@ -238,6 +239,7 @@ export interface ClaimAssemblySeams {
   readonly evvCompliance: EvvComplianceReader; // M18
   readonly mdm: MdmEntityProvider; // M40
   readonly terminology: TerminologyProvider; // M38
+  readonly capProjection: CapProjectionProvider; // M26 — §11.A pre-submission cap rules (degrades, D8)
   readonly referenceData: BillingReferenceDataReader; // platform reference data (M23/M1-owned)
   /** The §11.A rule registry — built + FROZEN at composition (platform-default + MAC + tenant overlays). */
   readonly ruleRegistry: BillingRuleRegistry;
@@ -415,6 +417,24 @@ export function buildClaimAssemblyService(db: BillingDb, seams: ClaimAssemblySea
       const evvBrackets = await seams.evvCompliance.bracketsForEncounters(orgId, billableIds);
       const mdmResolution = await seams.mdm.resolveClinicalParticipants(orgId, patientId, serviceFrom);
       const terminology = await seams.terminology.resolveForClaim(orgId, serviceFrom);
+      // M26 §11.A cap projection (D8). Cap year is the federal FY (Oct–Sep): a service date in Oct–Dec
+      // belongs to the NEXT FY. The provider degrades to status:"unavailable" when M26 is unbound or has no
+      // projection — the cap rules then warn-skip; a bound projection makes them live (warn-or-block, D8).
+      const capServiceYear = Number(serviceFrom.slice(0, 4));
+      const capServiceMonth = Number(serviceFrom.slice(5, 7));
+      const capYear = capServiceMonth >= 10 ? capServiceYear + 1 : capServiceYear;
+      const [capOrg, capPatient] = await Promise.all([
+        seams.capProjection.projectionForOrg(orgId, providerEntityId, capYear),
+        seams.capProjection.projectionForPatient(orgId, patientId, capYear),
+      ]);
+      const capProjectionBound = capOrg.status === "ok" && capPatient.status === "ok";
+      const capProjectionCtx = capProjectionBound
+        ? {
+            patientWithinCap: capPatient.withinCap ?? true,
+            orgPctOfCap: capOrg.pctOfCap ?? 0,
+            ipuWithinCap: capOrg.ipuWithinCap ?? true,
+          }
+        : null;
 
       // SIA only when deceased; gather the last-7-days-of-life signed visits.
       let signedEncounters: readonly SignedEncounterSnapshot[] = [];
@@ -671,7 +691,7 @@ export function buildClaimAssemblyService(db: BillingDb, seams: ClaimAssemblySea
             siaQualifyingVisitCount > 0
               ? { present: true, qualifyingVisitCount: siaQualifyingVisitCount, amountCents: siaCents, doubleCounted: false }
               : null,
-          capProjection: null, // M26 cap-seam deny-stub (D8) — the cap rules skip
+          capProjection: capProjectionCtx, // M26 §11.A live projection (or null → cap rules warn-skip, D8)
           eligibility: null, // resolved by the HETS refresh worker, not at assembly — the rule skips
           noe: null,
           sequestration: {
@@ -686,7 +706,7 @@ export function buildClaimAssemblyService(db: BillingDb, seams: ClaimAssemblySea
             cbsaCode: wageIndex.cbsaCode,
           },
           seams: {
-            capProjectionBound: false,
+            capProjectionBound,
             mdmResolverBound: true,
             terminologyBound: true,
             eligibilityBound: false,

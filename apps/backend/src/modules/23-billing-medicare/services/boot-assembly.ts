@@ -23,6 +23,7 @@ import {
   type ClaimAssemblyService,
   buildClaimAssemblyService,
 } from "./claim-assembly";
+import { buildM23CapProjectionAdapter } from "./cap-projection-adapter";
 
 type BillingDb = repositories.BillingDb;
 
@@ -67,6 +68,11 @@ export function buildM23BootAssemblyService(
       resolveClinicalParticipants: () => unbound("MdmEntityProvider"),
     },
     terminology: { resolveForClaim: () => unbound("TerminologyProvider") },
+    // M26 §11.A cap projection — LIVE: resolves M26's `CapProjectionProvider` via getSeam at call time and
+    // degrades to status:"unavailable" when M26 is db-unbound (D8). Unlike the other boot seams it does NOT
+    // throw — the cap rules warn-skip while degraded, never block. The full assembly's remaining reader seams
+    // (patientPayer/admission/…) stay unbound until M23's own live-seam binds land.
+    capProjection: buildM23CapProjectionAdapter(),
     referenceData: {
       hippsRateTable: () => unbound("BillingReferenceDataReader"),
       chcHourlyRateCents: () => unbound("BillingReferenceDataReader"),

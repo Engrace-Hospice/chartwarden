@@ -186,6 +186,9 @@ export interface CapOrgProjectionResult {
   readonly aggregateProjectedCents: number | null;
   readonly aggregateCapCents: number | null;
   readonly pctOfCap: number | null;
+  /** Inpatient (GIP+IRC) projection within the 20% cap for the period — drives `ipu_cap_projection`.
+   *  Absent inpatient days = within cap (true); null only when the org projection itself is unavailable. */
+  readonly ipuWithinCap: boolean | null;
 }
 
 export interface CapProjectionProvider {
