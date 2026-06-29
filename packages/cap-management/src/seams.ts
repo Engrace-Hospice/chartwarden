@@ -81,6 +81,21 @@ export interface AccrualLinePage {
   }>;
   nextCursor: string | null;
 }
+/**
+ * The cap-period AGGREGATE M27's CMS-1984-14 Worksheet-E cap calc + cap validation rules consume (D13).
+ * Money is cents-as-string (the seam money convention — consumers parse to integer cents, never a float).
+ * This is the read the M26 spec named `CapAccrualReader.aggregateForPeriod`, keyed by cap YEAR so the
+ * consumer (M27, which knows only its fiscal year) never needs a capPeriodId.
+ */
+export interface CostReportCapAggregate {
+  capYear: string;
+  beneficiaryCount: number;
+  aggregateCapCents: string; // per-beneficiary cap × beneficiary count (or the settled aggregate cap)
+  aggregatePaymentsCents: string; // total Medicare payments (paid YTD, or the settled final)
+  inpatientDays: number; // GIP + IRC
+  totalMedicareDays: number; // all-LOC days (the inpatient-cap denominator)
+}
+
 export interface CapAccrualReader {
   getPatientAccrual(
     orgId: string,
@@ -93,6 +108,12 @@ export interface CapAccrualReader {
     patientId: string,
     cursor?: string,
   ): Promise<AccrualLinePage>;
+  /**
+   * The cap-period aggregate for a cap year (M27 cost-report Worksheet-E inputs). Resolves the org's
+   * cap_period for `capYear`, sums the accrual/inpatient ledgers, and uses the settled figures once a
+   * settlement is final. Returns null when no cap period exists for that year.
+   */
+  aggregateForCostReport(orgId: string, capYear: string): Promise<CostReportCapAggregate | null>;
 }
 
 // ── CapSettlementProvider (M27 cost report) ────────────────────────────────────────────────────────

@@ -40,9 +40,10 @@ export {
 } from "./routes/index";
 export { mountM26Routes } from "./routes/mount";
 
-// §4.3 — the six published-seam implementations (registered into the M1 SeamRegistry when M26's keys
-// become M1 SeamContracts members; until then M26 is reachable cross-module via its §4.10 outbox events).
+// §4.3 — the six published-seam implementations + the M1 SeamRegistry registration. `CapAccrualReader` is
+// registered live (the M27 cost-report cap bind); the others stay outbox-reachable until their consumers wire.
 export { type M26SeamImpls, buildM26SeamImpls } from "./seam-impls";
+export { registerM26PublishedSeams } from "./wiring";
 
 // §3.7 / D14 — the M4 destruction-registry `cap` eraser (per-patient redact-to-sentinel retaining aggregates;
 // + the tenant-offboarding destruction entry). Registered over the Phase-0 deny-stub by the composition root.

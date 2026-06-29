@@ -30,6 +30,7 @@ export * from "./domain/inpatient";
 export * from "./domain/settlement";
 export * from "./domain/lifecycle";
 export * from "./domain/psr";
+export * from "./domain/cost-report-aggregate";
 
 // ── contracts + catalogs ───────────────────────────────────────────────────────────────────────────
 export * as contracts from "./contracts";

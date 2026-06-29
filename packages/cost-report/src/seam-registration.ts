@@ -9,11 +9,12 @@
 // Two halves:
 //  1. PUBLISH — `registerM27PublishedSeams` registers M27's seven seams. The live Drizzle/adapter-backed
 //     providers are supplied by the caller once the §3 services + adapters are wired (P3).
-//  2. CONSUME — the §4.4 consumed-seam names. M23 (`PatientDaysProvider`, `ClaimSettlementProvider`,
-//     `DrugCostBillingReader`) and M26 (`CapAccrualReader`, `CapPeriodReader`) are FORWARD-SEAM
-//     DENY-STUBS today (D12/D13): registered but fail-closed (`SEAM_NOT_BOUND`); validation rules
-//     dependent on them short-circuit `skip`. When M23/M26 lock, their boot rebinds the live providers
-//     and M27's read paths pick them up with no M27 code change.
+//  2. CONSUME — the §4.4 consumed-seam names. M26's `CapAccrualReader` is now LIVE (D13): M26 registers
+//     `aggregateForCostReport` into the M1 registry and M27 reads it via the cap-context resolver
+//     (apps/backend/.../routes/cap-context.ts), fail-closed when M26 is db-unbound. M23
+//     (`PatientDaysProvider`, `ClaimSettlementProvider`, `DrugCostBillingReader`) remain FORWARD-SEAM
+//     DENY-STUBS (D12): registered but fail-closed (`SEAM_NOT_BOUND`); their rules short-circuit `skip`
+//     until M23 binds. (`CapPeriodReader` was a forward-declared guess M26 never published — dropped.)
 import {
   M27_PUBLISHED_SEAM_NAMES,
   type CostReportFilingStatusReader,
@@ -78,20 +79,21 @@ export const M27_REQUIRED_SEAMS = [
   "PatientDaysProvider",
   "ClaimSettlementProvider",
   "DrugCostBillingReader",
-  // M26 — cap accruals + cap-year boundaries (DENY-STUB until M26 lock, D13)
+  // M26 — cap-period aggregate for the cost-report Worksheet-E cap calc (LIVE: M26 registers
+  // `CapAccrualReader.aggregateForCostReport` into the M1 registry; M27 reads it via the cap-context resolver,
+  // D13). `CapPeriodReader` was a forward-declared guess and is DROPPED — period resolution folds into the
+  // aggregate read (keyed by cap year).
   "CapAccrualReader",
-  "CapPeriodReader",
   // M36 — alert delivery
   "AlertDispatcher",
 ] as const;
 
-/** The forward-seam (deny-stub) consumed names — skipped validation rules surface these as `skip`. */
+/** The forward-seam (deny-stub) consumed names — skipped validation rules surface these as `skip`. M26's
+ *  `CapAccrualReader` is NO LONGER here (it is a live producer); only the M23 seams remain forward-declared. */
 export const M27_FORWARD_SEAM_NAMES = [
   "PatientDaysProvider",
   "ClaimSettlementProvider",
   "DrugCostBillingReader",
-  "CapAccrualReader",
-  "CapPeriodReader",
 ] as const;
 
 /** Thrown by every forward-seam deny-stub method until the producing module (M23/M26) locks. */
