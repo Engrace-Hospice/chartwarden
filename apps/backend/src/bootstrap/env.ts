@@ -36,6 +36,19 @@ const REQUIREMENTS: readonly Requirement[] = [
   },
   { key: "TRUSTED_ORIGINS" },
   {
+    // M24 §8.7 — the master KEK for state trading-partner secrets (client secret / SFTP key). Required in
+    // production: without it a credential write fails closed, so Medicaid submission could never be
+    // configured — better to refuse to boot than to serve a billing surface that cannot store its secrets.
+    key: "M24_CREDENTIAL_ENCRYPTION_KEY",
+    rule: (v) => {
+      try {
+        return Buffer.from(v, "base64").length === 32 ? null : "must decode to 32 base64 bytes";
+      } catch {
+        return "must be valid base64";
+      }
+    },
+  },
+  {
     key: "TWO_FACTOR_ENCRYPTION_KEY",
     rule: (v) => {
       try {

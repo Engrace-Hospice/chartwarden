@@ -50,6 +50,7 @@ export type {
   OrgScope,
   PatientMutator,
   IntakeMetricsProvider,
+  PatientCoverageReader,
   PatientReader,
   PortalDocumentReader,
   PortalVisitReader,

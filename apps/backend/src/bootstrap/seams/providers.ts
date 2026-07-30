@@ -47,6 +47,7 @@ import type {
   MileagePayrollReader,
   OrderProvider,
   OrderSignatureProvider,
+  PatientCoverageReader,
   PatientMutator,
   PatientReader,
   PortalDocumentReader,
@@ -100,6 +101,20 @@ export const patientReaderDenyStub: PatientReader = {
   },
   findById() {
     throw new NotImplementedError("PatientReader");
+  },
+};
+
+/**
+ * M5 §3.4 — the coverage read M23/M24 resolve a claim's payer from. Fail-closed: an unregistered
+ * reader denies loudly, so claim assembly reports "coverage unresolved" rather than billing a claim
+ * against a payer nobody confirmed.
+ */
+export const patientCoverageReaderDenyStub: PatientCoverageReader = {
+  coveragesForPatient() {
+    throw new NotImplementedError("PatientCoverageReader");
+  },
+  activeCoverageOfKind() {
+    throw new NotImplementedError("PatientCoverageReader");
   },
 };
 

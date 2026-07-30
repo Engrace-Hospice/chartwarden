@@ -44,6 +44,7 @@ export {
   getCaseloadProvider,
   getPatientReader,
   getPatientMutator,
+  getPatientCoverageReader,
   registerPatientSeams,
 } from "./seams/index";
 

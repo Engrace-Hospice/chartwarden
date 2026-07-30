@@ -6,6 +6,7 @@
 import { DEFAULT_MEDICAID_RULES } from "@wardenx/medicaid-adapters";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
+import { isUsableCipher } from "../credential-crypto";
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { type CursorPage, decodeCursor, toPage } from "./concurrency";
 import type {
@@ -509,8 +510,10 @@ export function buildDrizzleM24ReadService(db: DbClient): M24ReadService {
             lastSandboxTestAt: isoN(r.lastSandboxTestAt),
             lastSandboxTestResult: r.lastSandboxTestResult ?? null,
             version: r.version,
-            hasClientSecret: r.clientSecretCipher !== null,
-            hasSftpKey: r.sftpKeyCipher !== null,
+            // Presence goes through isUsableCipher, NOT a null check: a legacy "ENC:deferred" row holds
+            // no openable secret, and reporting it as configured is what made the admin screen lie.
+            hasClientSecret: isUsableCipher(r.clientSecretCipher),
+            hasSftpKey: isUsableCipher(r.sftpKeyCipher),
           }),
         );
       });

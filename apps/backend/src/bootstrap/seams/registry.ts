@@ -63,6 +63,7 @@ import {
   orderProviderDenyStub,
   orderSignatureProviderDenyStub,
   patientMutatorDenyStub,
+  patientCoverageReaderDenyStub,
   patientReaderDenyStub,
   portalDocumentReaderDenyStub,
   portalVisitReaderDenyStub,
@@ -100,6 +101,9 @@ const registry = new Map<SeamName, unknown>();
 export const REQUIRED_SEAMS = [
   { key: "CaseloadProvider", ownerModule: 5, phi: true, denyStub: caseloadDenyStub },
   { key: "PatientReader", ownerModule: 5, phi: true, denyStub: patientReaderDenyStub },
+  // M5 (§3.4) — the coverage list M23/M24 resolve a claim's billed payer from. PHI: carries the
+  // member/subscriber id, so it is boot-validated and fail-closed like the other M5 reads.
+  { key: "PatientCoverageReader", ownerModule: 5, phi: true, denyStub: patientCoverageReaderDenyStub },
   // M5 (§4.9) — applies an M29-proposal/amendment field diff (D12 strip). PHI write surface;
   // boot-validated and fail-closed until M5 registers the real mutator (M5-T08).
   { key: "PatientMutator", ownerModule: 5, phi: true, denyStub: patientMutatorDenyStub },
