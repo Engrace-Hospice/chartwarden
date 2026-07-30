@@ -161,6 +161,22 @@ import {
   registerM26CronWorkers,
   scheduleM26Jobs,
 } from "./modules/26-cap/index";
+// M24 (Billing — Medicaid) boot surface — the §4.11 outbox catalog, the §4.8 ABAC resolvers
+// (provider_entity_medicaid_billing_scope / medicaid_claim_in_billing_manager_caseload /
+// medicaid_override_role_eligible / regulatory_required_rule_protected_medicaid / rb_arrangement_visible_in_scope
+// / state_trading_partner_credential_admin), the §4.1 route mount over the Drizzle read/write services, and the
+// §3.7 `medicaid_billing_record` eraser. The write service's `m24.*` transactional outbox publisher binds at
+// boot; the §4.3 published-seam registration + the §4.9 per-state-adapter workers + the consumed-reader binds
+// are deferred follow-ups (the M26 posture — the adapter wire I/O lands later).
+import {
+  M24_OUTBOX_EVENTS,
+  buildDrizzleM24ReadService,
+  buildDrizzleM24WriteService,
+  mountM24Routes,
+  registerM24AbacPredicates,
+  registerM24PublishedSeams,
+  registerMedicaidErasers,
+} from "./modules/24-billing-medicaid/index";
 // M23 (Billing — Medicare) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route
 // mount over the Drizzle read/write services + the boot-time claim-assembly service, the §3.7 `billing_record`
 // eraser (registerEraser INJECTED — M23 cannot import the M1 bootstrap registry), and the §4.8 BullMQ workers
@@ -298,6 +314,9 @@ export function wireModuleSeams(
   // M26 — register the PUBLISHED CapAccrualReader seam so M27's cost-report Worksheet-E cap calc resolves the
   // live cap-period aggregate via getSeam (D13). The M1 fail-closed deny-stub stands when no db is present.
   registerM26PublishedSeams(deps.db);
+  // M24 — build the eight §4.3 published reader-seam impls (registration deferred — no live getSeam consumer
+  // yet; M24 stays reachable cross-module via its §4.11 outbox events, the M26 unconsumed-seam posture).
+  registerM24PublishedSeams(deps.db);
   // M23 — register the PUBLISHED PatientDaysProvider seam so M27's cost-report Worksheet-D census reconciliation
   // resolves the live billed-and-accepted patient-day aggregate via getSeam (M23's first M1 publish). The M1
   // fail-closed deny-stub stands when no db is present.
@@ -387,6 +406,12 @@ export function wireModuleSeams(
   // _methodology_unlocked / cap_platform_admin). Pass the DB handle so the Drizzle period/settlement fact
   // resolver binds under RLS; with no db it defaults to the deny-stub (default-deny).
   registerM26AbacPredicates({ db: deps.db });
+  // M24 — the six §4.8 ABAC resolvers (provider_entity_medicaid_billing_scope /
+  // medicaid_claim_in_billing_manager_caseload / medicaid_override_role_eligible /
+  // regulatory_required_rule_protected_medicaid / rb_arrangement_visible_in_scope /
+  // state_trading_partner_credential_admin). Pass the DB handle so the Drizzle fact resolver binds under RLS;
+  // with no db it defaults to the deny-stub (default-deny).
+  registerM24AbacPredicates({ db: deps.db });
   // M33 — register the platform job id on the @wardenx/tenancy allowlist so the §4.8 platform-scoped
   // workers (the on-PRIMARY MV refresh, the lag probe, the tenant eraser) may enter withPlatformContext
   // (the allowlist starts empty → fail-closed). The M34 `wireM34Tenancy` precedent.
@@ -532,6 +557,7 @@ export function wireModuleErasers(): void {
   registerCostReportErasers(); // M27 — `cost_report_class` (tenant-offboarding operational-config cleanup; subjectId=org; submitted/accepted cost reports are survey-evidence, destruction-gated; §3.7/§8.4)
   registerBillingErasers({ registerEraser }); // M23 — `billing_record` (per-PATIENT destruction-cert callback; in-flight/surveyor-hold guard; MAC secret crypto-shred is the org-destruction path; §3.7/§8.4). registerEraser is INJECTED (M23 may not import the M1 bootstrap registry); in-memory slice store until the Drizzle BillingEraseStore binds.
   registerRemittanceErasers({ registerEraser }); // M25 — `remittance` (per-PATIENT PR-ledger destruction-cert callback; the line/adjustment/remark history rolls off via the M4 partition manager, not per-patient; §3.7/§8.4). registerEraser INJECTED; in-memory slice store until the Drizzle PR-ledger destruction store binds (the M23 posture).
+  registerMedicaidErasers({ registerEraser }); // M24 — `medicaid_billing_record` (per-PATIENT redact-to-shred destruction-cert callback; PHI free-text + KMS ciphers on the patient's rb/eligibility rows are shredded, the FK chain survives; the join-only submission/override + the trading-partner secret crypto-shred follow the claim chain / org-destruction path; §3.7/§8.4). registerEraser INJECTED; in-memory slice store until the privileged Drizzle redaction store binds (the M26 posture). Distinct from M23's `billing_record` (single-keyed registry — M24 must not clobber M23).
   registerCapErasers({ registerEraser }); // M26 — `cap` (per-PATIENT redact-to-sentinel destruction-cert callback; D14 — aggregates survive right-to-erasure so CMS-side cap reconciliation stays reproducible; §3.7/§8.4). registerEraser INJECTED; in-memory slice store until the privileged Drizzle redaction store binds (the M25 posture).
   // Phase-1 data-class owners append here as they land.
 }
@@ -567,6 +593,7 @@ if ((import.meta as { main?: boolean }).main) {
   // A duplicate `eventName` across contributions fails boot here (OutboxEventCollisionError — fail-closed).
   const bootOutboxCatalog = buildBootOutboxCatalog([
     M23_OUTBOX_EVENTS,
+    M24_OUTBOX_EVENTS,
     M25_OUTBOX_EVENTS,
     M26_OUTBOX_EVENTS,
     M27_OUTBOX_EVENTS,
@@ -580,6 +607,7 @@ if ((import.meta as { main?: boolean }).main) {
   // publisher. M30/M33/M34 — M34's lifecycle outbox now binds too (#107; its emit is gated to the conformant
   // `m34.tenant.provisioned` event, so no mutation rolls back).
   const m23OutboxPublisher = bindCallerModule(txOutboxPublisher, "m23");
+  const m24OutboxPublisher = bindCallerModule(txOutboxPublisher, "m24");
   const m25OutboxPublisher = bindCallerModule(txOutboxPublisher, "m25");
   const m26OutboxPublisher = bindCallerModule(txOutboxPublisher, "m26");
   const m27OutboxPublisher = bindCallerModule(txOutboxPublisher, "m27");
@@ -758,6 +786,12 @@ if ((import.meta as { main?: boolean }).main) {
           mountM26Routes(app, {
             readService: buildDrizzleM26ReadService(dbHandle.db),
             writeService: buildDrizzleM26WriteService(dbHandle.db, m26OutboxPublisher),
+          });
+          // M24 (Billing — Medicaid) — mount the §4.1 route plugins over the Drizzle READ + WRITE services;
+          // the §4.11 `m24.*` transactional outbox publisher binds here (events persist on the mutation's tx).
+          mountM24Routes(app, {
+            readService: buildDrizzleM24ReadService(dbHandle.db),
+            writeService: buildDrizzleM24WriteService(dbHandle.db, m24OutboxPublisher),
           });
         }
       : undefined,

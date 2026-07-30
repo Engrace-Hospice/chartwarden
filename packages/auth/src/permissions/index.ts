@@ -182,3 +182,10 @@ export {
   M27_CONTRIBUTED_PERMISSIONS,
   m27ContributedPermissionMirrorRows,
 } from "./contributed";
+
+// M24 — Module 24's twenty-six Billing — Medicaid permission keys registered into M3's catalog (§4.7 handshake).
+export {
+  type M24ContributedPermissionKey,
+  M24_CONTRIBUTED_PERMISSIONS,
+  m24ContributedPermissionMirrorRows,
+} from "./contributed";

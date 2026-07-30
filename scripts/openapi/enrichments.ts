@@ -148,6 +148,54 @@ import {
   UpdateRuleConfigBodySchema,
   UpsertMacCredentialBodySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/billing-typebox";
+// M24 Billing — Medicaid — the §4.2 request bodies / list queries / response DTOs for the state-Medicaid
+// claim, R&B, rule-overlay, eligibility, and trading-partner surfaces (modules/24-billing-medicaid/routes).
+import {
+  AcknowledgmentListResponse as M24AcknowledgmentListResponse,
+  ApplyOverrideBody as M24ApplyOverrideBody,
+  ApplyOverrideResponse as M24ApplyOverrideResponse,
+  ArDashboardDto as M24ArDashboardDto,
+  ArMetricsDto as M24ArMetricsDto,
+  AssembleClaimBody as M24AssembleClaimBody,
+  ClaimDto as M24ClaimDto,
+  ClaimLineListResponse as M24ClaimLineListResponse,
+  ClaimListQuery as M24ClaimListQuery,
+  ClaimListResponse as M24ClaimListResponse,
+  CreateCustomRuleBody as M24CreateCustomRuleBody,
+  CreateCustomRuleResponse as M24CreateCustomRuleResponse,
+  CreateRbArrangementBody as M24CreateRbArrangementBody,
+  EditRbArrangementBody as M24EditRbArrangementBody,
+  EditRuleConfigBody as M24EditRuleConfigBody,
+  EligibilityCheckListResponse as M24EligibilityCheckListResponse,
+  EligibilityListQuery as M24EligibilityListQuery,
+  LoadRateScheduleBody as M24LoadRateScheduleBody,
+  LoadRateScheduleResponse as M24LoadRateScheduleResponse,
+  OverrideRbDayBody as M24OverrideRbDayBody,
+  ProviderEntityQuery as M24ProviderEntityQuery,
+  RbArrangementDto as M24RbArrangementDto,
+  RbArrangementListQuery as M24RbArrangementListQuery,
+  RbArrangementListResponse as M24RbArrangementListResponse,
+  RbDayListQuery as M24RbDayListQuery,
+  RbDayListResponse as M24RbDayListResponse,
+  RefreshEligibilityBody as M24RefreshEligibilityBody,
+  RefreshEligibilityResponse as M24RefreshEligibilityResponse,
+  RegisterPlatformRuleBody as M24RegisterPlatformRuleBody,
+  ReplaceClaimBody as M24ReplaceClaimBody,
+  RuleConfigListResponse as M24RuleConfigListResponse,
+  SubmissionListResponse as M24SubmissionListResponse,
+  SubmitClaimBody as M24SubmitClaimBody,
+  TerminateRbArrangementBody as M24TerminateRbArrangementBody,
+  TestCredentialResponse as M24TestCredentialResponse,
+  TradingPartnerCredentialListResponse as M24TradingPartnerCredentialListResponse,
+  UpdateDraftClaimBody as M24UpdateDraftClaimBody,
+  UpsertCredentialBody as M24UpsertCredentialBody,
+  UpsertCredentialResponse as M24UpsertCredentialResponse,
+  ValidateClaimResponse as M24ValidateClaimResponse,
+  ValidationOverrideListResponse as M24ValidationOverrideListResponse,
+  ValidationRunDto as M24ValidationRunDto,
+  ValidationRunListResponse as M24ValidationRunListResponse,
+  VoidClaimBody as M24VoidClaimBody,
+} from "../../apps/backend/src/modules/24-billing-medicaid/routes/m24-typebox";
 // M26 Cap Management — the §4.2 request/response schemas the route handlers bind (the @wardenx/cap-management
 // contracts re-exported via modules/26-cap/routes/m26-typebox so the enrichment matches the module path).
 import {
@@ -1737,6 +1785,185 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary:
       "Issue a tenant-scoped support-access consent grant (§6/D10 step-up enforced server-side)",
     body: SupportConsentGrantRequest,
+  },
+
+  // ── M24 Billing — Medicaid (§4.1) — claim lifecycle + validation/override, per-tenant rule overlay,
+  // eligibility, NF Room & Board arrangements/days, state trading-partner credentials, platform admin.
+  // Money is integer cents (D8); org/actor binding is server-side, so no body carries an org/membership id;
+  // secrets are write-only and the Recipient ID is never returned (only the masked last-4; D12 / §3.6).
+  "GET /api/v1/medicaid-claims": {
+    summary: "Medicaid claim workbench — cursor-paginated, filterable by state/kind/MCO/patient (§4.1)",
+    query: M24ClaimListQuery,
+    response: M24ClaimListResponse,
+  },
+  "POST /api/v1/medicaid-claims": {
+    summary:
+      "Assemble a Medicaid claim draft over a patient + service range (Idempotency-Key required; §2.1)",
+    body: M24AssembleClaimBody,
+    response: M24ClaimDto,
+  },
+  "GET /api/v1/medicaid-claims/:id": {
+    summary: "Single Medicaid claim — state, TOB, control number, COB + R&B linkage (§4.1)",
+    response: M24ClaimDto,
+  },
+  "PATCH /api/v1/medicaid-claims/:id": {
+    summary: "Edit a DRAFT claim's MCO routing target — If-Match version required (§2.5)",
+    body: M24UpdateDraftClaimBody,
+    response: M24ClaimDto,
+  },
+  "DELETE /api/v1/medicaid-claims/:id": {
+    summary: "Delete a DRAFT claim — If-Match version required (§2.5)",
+  },
+  "POST /api/v1/medicaid-claims/:id/validate": {
+    summary: "Run the §11 rule registry against the claim — returns the new validation run id (§4.1)",
+    response: M24ValidateClaimResponse,
+  },
+  "POST /api/v1/medicaid-claims/:id/submit": {
+    summary:
+      "Submit to the state MMIS / MCO channel — step-up + Idempotency-Key; adapter resolves the channel (D12; §4.4)",
+    body: M24SubmitClaimBody,
+    response: M24ClaimDto,
+  },
+  "POST /api/v1/medicaid-claims/:id/replace": {
+    summary: "Build the TOB-817 replacement draft — step-up; reason ≥40 chars (D12; §2.3)",
+    body: M24ReplaceClaimBody,
+    response: M24ClaimDto,
+  },
+  "POST /api/v1/medicaid-claims/:id/void": {
+    summary: "Build the TOB-818 void draft — step-up; reason ≥40 chars (D12; §2.3)",
+    body: M24VoidClaimBody,
+    response: M24ClaimDto,
+  },
+  "POST /api/v1/medicaid-claims/:id/abandon": {
+    summary: "Abandon a pre-submission claim — terminal, If-Match version required (§2.2)",
+    response: M24ClaimDto,
+  },
+  "GET /api/v1/medicaid-claims/:id/lines": {
+    summary: "Claim service lines — rev/Q code, LOC, units, rate + the R&B day linkage (§3.2)",
+    response: M24ClaimLineListResponse,
+  },
+  "GET /api/v1/medicaid-claims/:id/submissions": {
+    summary: "Every submission attempt with adapter vendor/version, result + retry history (§5.1)",
+    response: M24SubmissionListResponse,
+  },
+  "GET /api/v1/medicaid-claims/:id/acknowledgments": {
+    summary: "Every acknowledgment received — 999 / 277CA / state-specific outcome + error codes (§5.1)",
+    response: M24AcknowledgmentListResponse,
+  },
+  "GET /api/v1/medicaid-claims/:id/validation-runs": {
+    summary: "Validation-run history for a claim, most recent first (§11)",
+    response: M24ValidationRunListResponse,
+  },
+  "GET /api/v1/medicaid-validation-runs/:id": {
+    summary: "A single validation run including its per-rule results + remediation hints (§11)",
+    response: M24ValidationRunDto,
+  },
+  "POST /api/v1/medicaid-validation-results/:id/override": {
+    summary:
+      "Override a failed rule — role-eligibility + step-up + AI-actor reject; reason ≥40 chars (D12/D14; §4.7)",
+    body: M24ApplyOverrideBody,
+    response: M24ApplyOverrideResponse,
+  },
+  "GET /api/v1/medicaid-validation-overrides": {
+    summary: "Org-wide override history — actor, role, reason, ruleKey, claim reference (§5.1)",
+    response: M24ValidationOverrideListResponse,
+  },
+  "GET /api/v1/medicaid-ar-dashboard": {
+    summary: "Medicaid AR aging — open claims bucketed by age and by service state (§5.1)",
+    query: M24ProviderEntityQuery,
+    response: M24ArDashboardDto,
+  },
+  "GET /api/v1/medicaid-ar-dashboard/metrics": {
+    summary: "Medicaid billing metrics — denial rate, open count, MCO breakdown, aging (M33-fed; §5.1)",
+    query: M24ProviderEntityQuery,
+    response: M24ArMetricsDto,
+  },
+  "GET /api/v1/medicaid-rule-config": {
+    summary: "Per-tenant validation-rule overlay over the platform floor (regulatory rules lock; §11)",
+    response: M24RuleConfigListResponse,
+  },
+  "PATCH /api/v1/medicaid-rule-config/:ruleKey": {
+    summary: "Edit a rule overlay — enable/disable + parameters; regulatory-required rules reject (§11)",
+    body: M24EditRuleConfigBody,
+  },
+  "POST /api/v1/medicaid-rule-config/custom": {
+    summary: "Create a tenant custom rule over the §11 predicate DSL (§11)",
+    body: M24CreateCustomRuleBody,
+    response: M24CreateCustomRuleResponse,
+  },
+  "DELETE /api/v1/medicaid-rule-config/:ruleKey": {
+    summary: "Delete a tenant custom rule — If-Match version required (§11)",
+  },
+  "GET /api/v1/medicaid-eligibility-checks": {
+    summary:
+      "Per-patient eligibility history with the MCO assignment timeline — masked Recipient ID only (D12; §3.6)",
+    query: M24EligibilityListQuery,
+    response: M24EligibilityCheckListResponse,
+  },
+  "POST /api/v1/medicaid-eligibility-checks": {
+    summary: "Refresh a patient's state/MCO eligibility as of a service date (adapter-gated; §4.4)",
+    body: M24RefreshEligibilityBody,
+    response: M24RefreshEligibilityResponse,
+  },
+  "GET /api/v1/rb-arrangements": {
+    summary: "NF Room & Board pass-through arrangements — facility, effective dates, per-diems (§2.4)",
+    query: M24RbArrangementListQuery,
+    response: M24RbArrangementListResponse,
+  },
+  "POST /api/v1/rb-arrangements": {
+    summary: "Create an NF Room & Board arrangement (DRAFT; no-overlap enforced per patient; §2.4)",
+    body: M24CreateRbArrangementBody,
+    response: M24RbArrangementDto,
+  },
+  "GET /api/v1/rb-arrangements/:id": {
+    summary: "A single R&B arrangement including its day-by-day status table (§5.1)",
+    response: M24RbArrangementDto,
+  },
+  "PATCH /api/v1/rb-arrangements/:id": {
+    summary: "Edit a DRAFT arrangement's per-diems / end date — If-Match version required (§2.5)",
+    body: M24EditRbArrangementBody,
+    response: M24RbArrangementDto,
+  },
+  "POST /api/v1/rb-arrangements/:id/activate": {
+    summary: "Activate a DRAFT arrangement — begins day generation (§2.4)",
+    response: M24RbArrangementDto,
+  },
+  "POST /api/v1/rb-arrangements/:id/terminate": {
+    summary: "Terminate an ACTIVE arrangement — reason ≥40 chars (§2.4)",
+    body: M24TerminateRbArrangementBody,
+    response: M24RbArrangementDto,
+  },
+  "GET /api/v1/rb-days": {
+    summary: "R&B days — per-day LOC, per-diem snapshot, billable/excluded status (§2.4)",
+    query: M24RbDayListQuery,
+    response: M24RbDayListResponse,
+  },
+  "PATCH /api/v1/rb-days/:id": {
+    summary: "Flip a single R&B day's status with a reason — If-Match version required (§5.1)",
+    body: M24OverrideRbDayBody,
+  },
+  "GET /api/v1/state-medicaid-trading-partner-credentials": {
+    summary: "Per-PE per-state trading-partner credentials — secrets never returned (§3.6)",
+    query: M24ProviderEntityQuery,
+    response: M24TradingPartnerCredentialListResponse,
+  },
+  "POST /api/v1/state-medicaid-trading-partner-credentials": {
+    summary: "Create or update a state trading-partner credential — secrets are write-only (§3.6)",
+    body: M24UpsertCredentialBody,
+    response: M24UpsertCredentialResponse,
+  },
+  "POST /api/v1/state-medicaid-trading-partner-credentials/:id/test": {
+    summary: "Run the adapter's sandbox connectivity test and record the outcome (§4.4)",
+    response: M24TestCredentialResponse,
+  },
+  "POST /api/v1/admin/platform-medicaid-rules": {
+    summary: "Register a platform-floor Medicaid validation rule — platform admin only (§11)",
+    body: M24RegisterPlatformRuleBody,
+  },
+  "POST /api/v1/admin/state-rate-schedule-load": {
+    summary: "Queue a state rate-schedule load for an effective year — platform admin only (§4.4)",
+    body: M24LoadRateScheduleBody,
+    response: M24LoadRateScheduleResponse,
   },
 
   // ── M26 Cap Management (§4.1) — cap-period lifecycle, projections, threshold queue, PS&R, settlement,

@@ -30,6 +30,7 @@
     "18-evv",
     "22-documents",
     "23-billing-medicare",
+    "24-billing-medicaid",
     "25-remittance",
     "26-cap",
     "27-cost-report",
@@ -774,6 +775,118 @@
       "id": "billing.surveyor-audit",
       "path": "/admin/billing-audit",
       "permission": "billing.claim.read"
+    },
+    {
+      "module": "24-billing-medicaid",
+      "moduleId": 24,
+      "id": "medicaid.ar-dashboard",
+      "path": "/medicaid/billing/ar-dashboard",
+      "permission": "medicaid.claim.read_ar_dashboard"
+    },
+    {
+      "module": "24-billing-medicaid",
+      "moduleId": 24,
+      "id": "medicaid.claims",
+      "path": "/medicaid/billing/claims",
+      "permission": "medicaid.claim.read"
+    },
+    {
+      "module": "24-billing-medicaid",
+      "moduleId": 24,
+      "id": "medicaid.claim.new",
+      "path": "/medicaid/billing/claims/new",
+      "permission": "medicaid.claim.assemble"
+    },
+    {
+      "module": "24-billing-medicaid",
+      "moduleId": 24,
+      "id": "medicaid.claim",
+      "path": "/medicaid/billing/claims/:claimId",
+      "permission": "medicaid.claim.read"
+    },
+    {
+      "module": "24-billing-medicaid",
+      "moduleId": 24,
+      "id": "medicaid.claim.validation",
+      "path": "/medicaid/billing/claims/:claimId/validation",
+      "permission": "medicaid.validation.read_run"
+    },
+    {
+      "module": "24-billing-medicaid",
+      "moduleId": 24,
+      "id": "medicaid.claim.submissions",
+      "path": "/medicaid/billing/claims/:claimId/submissions",
+      "permission": "medicaid.claim.read"
+    },
+    {
+      "module": "24-billing-medicaid",
+      "moduleId": 24,
+      "id": "medicaid.claim.acknowledgments",
+      "path": "/medicaid/billing/claims/:claimId/acknowledgments",
+      "permission": "medicaid.claim.read"
+    },
+    {
+      "module": "24-billing-medicaid",
+      "moduleId": 24,
+      "id": "medicaid.validation-worklist",
+      "path": "/medicaid/billing/validation-worklist",
+      "permission": "medicaid.validation.read_run"
+    },
+    {
+      "module": "24-billing-medicaid",
+      "moduleId": 24,
+      "id": "medicaid.rb-arrangements",
+      "path": "/medicaid/billing/rb-arrangements",
+      "permission": "medicaid.rb_arrangement.read"
+    },
+    {
+      "module": "24-billing-medicaid",
+      "moduleId": 24,
+      "id": "medicaid.rb-arrangement",
+      "path": "/medicaid/billing/rb-arrangements/:arrangementId",
+      "permission": "medicaid.rb_arrangement.read"
+    },
+    {
+      "module": "24-billing-medicaid",
+      "moduleId": 24,
+      "id": "medicaid.rule-config",
+      "path": "/medicaid/billing/rule-config",
+      "permission": "medicaid.rule_config.read"
+    },
+    {
+      "module": "24-billing-medicaid",
+      "moduleId": 24,
+      "id": "medicaid.eligibility",
+      "path": "/medicaid/billing/eligibility",
+      "permission": "medicaid.eligibility.read"
+    },
+    {
+      "module": "24-billing-medicaid",
+      "moduleId": 24,
+      "id": "medicaid.trading-partners",
+      "path": "/medicaid/billing/trading-partner-credentials",
+      "permission": "medicaid.trading_partner.read"
+    },
+    {
+      "module": "24-billing-medicaid",
+      "moduleId": 24,
+      "id": "medicaid.overrides",
+      "path": "/medicaid/billing/override-audit",
+      "permission": "medicaid.validation.read_override"
+    },
+    {
+      "module": "24-billing-medicaid",
+      "moduleId": 24,
+      "id": "medicaid.metrics",
+      "path": "/medicaid/billing/metrics",
+      "permission": "medicaid.claim.read_metrics"
+    },
+    {
+      "module": "24-billing-medicaid",
+      "moduleId": 24,
+      "id": "medicaid.surveyor-read",
+      "path": "/admin/medicaid-billing-audit/:claimId",
+      "permission": "medicaid.claim.read"
     },
     {
       "module": "25-remittance",

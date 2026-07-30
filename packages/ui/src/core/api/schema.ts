@@ -264,6 +264,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/platform-medicaid-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register a platform-floor Medicaid validation rule — platform admin only (§11) */
+        post: operations["postApiV1AdminPlatformmedicaidrules"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/refill-inbox-policy": {
         parameters: {
             query?: never;
@@ -345,6 +362,23 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["patchApiV1AdminScalesPoliciesByScaleType"];
+        trace?: never;
+    };
+    "/api/v1/admin/state-rate-schedule-load": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue a state rate-schedule load for an effective year — platform admin only (§4.4) */
+        post: operations["postApiV1AdminStateratescheduleload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/admin/system/status": {
@@ -5873,6 +5907,351 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/medicaid-ar-dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Medicaid AR aging — open claims bucketed by age and by service state (§5.1) */
+        get: operations["getApiV1Medicaidardashboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-ar-dashboard/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Medicaid billing metrics — denial rate, open count, MCO breakdown, aging (M33-fed; §5.1) */
+        get: operations["getApiV1MedicaidardashboardMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-claims": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Medicaid claim workbench — cursor-paginated, filterable by state/kind/MCO/patient (§4.1) */
+        get: operations["getApiV1Medicaidclaims"];
+        put?: never;
+        /** Assemble a Medicaid claim draft over a patient + service range (Idempotency-Key required; §2.1) */
+        post: operations["postApiV1Medicaidclaims"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-claims/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Single Medicaid claim — state, TOB, control number, COB + R&B linkage (§4.1) */
+        get: operations["getApiV1MedicaidclaimsById"];
+        put?: never;
+        post?: never;
+        /** Delete a DRAFT claim — If-Match version required (§2.5) */
+        delete: operations["deleteApiV1MedicaidclaimsById"];
+        options?: never;
+        head?: never;
+        /** Edit a DRAFT claim's MCO routing target — If-Match version required (§2.5) */
+        patch: operations["patchApiV1MedicaidclaimsById"];
+        trace?: never;
+    };
+    "/api/v1/medicaid-claims/{id}/abandon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Abandon a pre-submission claim — terminal, If-Match version required (§2.2) */
+        post: operations["postApiV1MedicaidclaimsByIdAbandon"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-claims/{id}/acknowledgments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every acknowledgment received — 999 / 277CA / state-specific outcome + error codes (§5.1) */
+        get: operations["getApiV1MedicaidclaimsByIdAcknowledgments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-claims/{id}/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Claim service lines — rev/Q code, LOC, units, rate + the R&B day linkage (§3.2) */
+        get: operations["getApiV1MedicaidclaimsByIdLines"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-claims/{id}/replace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Build the TOB-817 replacement draft — step-up; reason ≥40 chars (D12; §2.3) */
+        post: operations["postApiV1MedicaidclaimsByIdReplace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-claims/{id}/submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every submission attempt with adapter vendor/version, result + retry history (§5.1) */
+        get: operations["getApiV1MedicaidclaimsByIdSubmissions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-claims/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit to the state MMIS / MCO channel — step-up + Idempotency-Key; adapter resolves the channel (D12; §4.4) */
+        post: operations["postApiV1MedicaidclaimsByIdSubmit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-claims/{id}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run the §11 rule registry against the claim — returns the new validation run id (§4.1) */
+        post: operations["postApiV1MedicaidclaimsByIdValidate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-claims/{id}/validation-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Validation-run history for a claim, most recent first (§11) */
+        get: operations["getApiV1MedicaidclaimsByIdValidationruns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-claims/{id}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Build the TOB-818 void draft — step-up; reason ≥40 chars (D12; §2.3) */
+        post: operations["postApiV1MedicaidclaimsByIdVoid"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-eligibility-checks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Per-patient eligibility history with the MCO assignment timeline — masked Recipient ID only (D12; §3.6) */
+        get: operations["getApiV1Medicaideligibilitychecks"];
+        put?: never;
+        /** Refresh a patient's state/MCO eligibility as of a service date (adapter-gated; §4.4) */
+        post: operations["postApiV1Medicaideligibilitychecks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-rule-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Per-tenant validation-rule overlay over the platform floor (regulatory rules lock; §11) */
+        get: operations["getApiV1Medicaidruleconfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-rule-config/{ruleKey}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a tenant custom rule — If-Match version required (§11) */
+        delete: operations["deleteApiV1MedicaidruleconfigByRuleKey"];
+        options?: never;
+        head?: never;
+        /** Edit a rule overlay — enable/disable + parameters; regulatory-required rules reject (§11) */
+        patch: operations["patchApiV1MedicaidruleconfigByRuleKey"];
+        trace?: never;
+    };
+    "/api/v1/medicaid-rule-config/custom": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a tenant custom rule over the §11 predicate DSL (§11) */
+        post: operations["postApiV1MedicaidruleconfigCustom"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-validation-overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Org-wide override history — actor, role, reason, ruleKey, claim reference (§5.1) */
+        get: operations["getApiV1Medicaidvalidationoverrides"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-validation-results/{id}/override": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Override a failed rule — role-eligibility + step-up + AI-actor reject; reason ≥40 chars (D12/D14; §4.7) */
+        post: operations["postApiV1MedicaidvalidationresultsByIdOverride"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medicaid-validation-runs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A single validation run including its per-rule results + remediation hints (§11) */
+        get: operations["getApiV1MedicaidvalidationrunsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/medication-history-records/{id}/reconcile": {
         parameters: {
             query?: never;
@@ -8537,6 +8916,110 @@ export interface paths {
         patch: operations["patchApiV1QualitySraRemediationByRemediationId"];
         trace?: never;
     };
+    "/api/v1/rb-arrangements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** NF Room & Board pass-through arrangements — facility, effective dates, per-diems (§2.4) */
+        get: operations["getApiV1Rbarrangements"];
+        put?: never;
+        /** Create an NF Room & Board arrangement (DRAFT; no-overlap enforced per patient; §2.4) */
+        post: operations["postApiV1Rbarrangements"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rb-arrangements/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A single R&B arrangement including its day-by-day status table (§5.1) */
+        get: operations["getApiV1RbarrangementsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a DRAFT arrangement's per-diems / end date — If-Match version required (§2.5) */
+        patch: operations["patchApiV1RbarrangementsById"];
+        trace?: never;
+    };
+    "/api/v1/rb-arrangements/{id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate a DRAFT arrangement — begins day generation (§2.4) */
+        post: operations["postApiV1RbarrangementsByIdActivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rb-arrangements/{id}/terminate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Terminate an ACTIVE arrangement — reason ≥40 chars (§2.4) */
+        post: operations["postApiV1RbarrangementsByIdTerminate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rb-days": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** R&B days — per-day LOC, per-diem snapshot, billable/excluded status (§2.4) */
+        get: operations["getApiV1Rbdays"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rb-days/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Flip a single R&B day's status with a reason — If-Match version required (§5.1) */
+        patch: operations["patchApiV1RbdaysById"];
+        trace?: never;
+    };
     "/api/v1/reconciliation/worksheets": {
         parameters: {
             query?: never;
@@ -9763,6 +10246,41 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["postApiV1StandingordersByIdSpawn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/state-medicaid-trading-partner-credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Per-PE per-state trading-partner credentials — secrets never returned (§3.6) */
+        get: operations["getApiV1Statemedicaidtradingpartnercredentials"];
+        put?: never;
+        /** Create or update a state trading-partner credential — secrets are write-only (§3.6) */
+        post: operations["postApiV1Statemedicaidtradingpartnercredentials"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/state-medicaid-trading-partner-credentials/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run the adapter's sandbox connectivity test and record the outcome (§4.4) */
+        post: operations["postApiV1StatemedicaidtradingpartnercredentialsByIdTest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11051,6 +11569,35 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1AdminPlatformmedicaidrules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ruleKey: string;
+                    title: string;
+                    category: string;
+                    severity: "error" | "warn" | "info";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1AdminRefillinboxpolicy: {
         parameters: {
             query?: never;
@@ -11216,6 +11763,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminStateratescheduleload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    serviceState: string;
+                    effectiveYear: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        queued: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -20711,6 +21289,1097 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1Medicaidardashboard: {
+        parameters: {
+            query?: {
+                providerEntityId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        totalOpen: number;
+                        buckets: {
+                            bucket: string;
+                            count: number;
+                            /** @description Integer cents (D8) */
+                            chargesCents: number;
+                        }[];
+                        byState: {
+                            state: string;
+                            count: number;
+                            /** @description Integer cents (D8) */
+                            chargesCents: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MedicaidardashboardMetrics: {
+        parameters: {
+            query?: {
+                providerEntityId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description 0..1 fraction of terminal claims denied */
+                        denialRate: number;
+                        openCount: number;
+                        byMco: {
+                            mcoId: string | null;
+                            count: number;
+                        }[];
+                        aging: {
+                            bucket: string;
+                            count: number;
+                            /** @description Integer cents (D8) */
+                            chargesCents: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Medicaidclaims: {
+        parameters: {
+            query?: {
+                state?: "DRAFT" | "VALIDATING" | "FAILED_VALIDATION" | "READY" | "AWAITING_MEDICARE_PRIMARY" | "FAILED_MEDICARE_PRIMARY" | "SUBMITTED" | "POLLING" | "ACK_PENDING" | "ACK_TIMEOUT" | "ACK_ACCEPTED" | "ACK_REJECTED" | "ACK_PARTIAL" | "PAID" | "DENIED" | "REPLACED" | "VOIDED" | "ABANDONED";
+                kind?: "combined_hospice_rb" | "hospice_only" | "rb_only";
+                mcoId?: string;
+                serviceState?: string;
+                patientId?: string;
+                providerEntityId?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            /** Format: uuid */
+                            admissionId: string;
+                            serviceState: string;
+                            kind: "combined_hospice_rb" | "hospice_only" | "rb_only";
+                            tob: "811" | "812" | "813" | "814" | "817" | "818";
+                            /** Format: date */
+                            serviceFrom: string;
+                            /** Format: date */
+                            serviceTo: string;
+                            mcoId: string | null;
+                            medicareClaimId: string | null;
+                            rbArrangementId: string | null;
+                            medicaidClaimControlNumber: string;
+                            state: "DRAFT" | "VALIDATING" | "FAILED_VALIDATION" | "READY" | "AWAITING_MEDICARE_PRIMARY" | "FAILED_MEDICARE_PRIMARY" | "SUBMITTED" | "POLLING" | "ACK_PENDING" | "ACK_TIMEOUT" | "ACK_ACCEPTED" | "ACK_REJECTED" | "ACK_PARTIAL" | "PAID" | "DENIED" | "REPLACED" | "VOIDED" | "ABANDONED";
+                            version: number;
+                            validationRunIdLatest: string | null;
+                            eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Medicaidclaims: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    admissionId: string;
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: date */
+                    serviceFrom: string;
+                    /** Format: date */
+                    serviceTo: string;
+                    kind: "combined_hospice_rb" | "hospice_only" | "rb_only";
+                    /** Format: uuid */
+                    rbArrangementId?: string;
+                    /** Format: uuid */
+                    medicareClaimId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        serviceState: string;
+                        kind: "combined_hospice_rb" | "hospice_only" | "rb_only";
+                        tob: "811" | "812" | "813" | "814" | "817" | "818";
+                        /** Format: date */
+                        serviceFrom: string;
+                        /** Format: date */
+                        serviceTo: string;
+                        mcoId: string | null;
+                        medicareClaimId: string | null;
+                        rbArrangementId: string | null;
+                        medicaidClaimControlNumber: string;
+                        state: "DRAFT" | "VALIDATING" | "FAILED_VALIDATION" | "READY" | "AWAITING_MEDICARE_PRIMARY" | "FAILED_MEDICARE_PRIMARY" | "SUBMITTED" | "POLLING" | "ACK_PENDING" | "ACK_TIMEOUT" | "ACK_ACCEPTED" | "ACK_REJECTED" | "ACK_PARTIAL" | "PAID" | "DENIED" | "REPLACED" | "VOIDED" | "ABANDONED";
+                        version: number;
+                        validationRunIdLatest: string | null;
+                        eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MedicaidclaimsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        serviceState: string;
+                        kind: "combined_hospice_rb" | "hospice_only" | "rb_only";
+                        tob: "811" | "812" | "813" | "814" | "817" | "818";
+                        /** Format: date */
+                        serviceFrom: string;
+                        /** Format: date */
+                        serviceTo: string;
+                        mcoId: string | null;
+                        medicareClaimId: string | null;
+                        rbArrangementId: string | null;
+                        medicaidClaimControlNumber: string;
+                        state: "DRAFT" | "VALIDATING" | "FAILED_VALIDATION" | "READY" | "AWAITING_MEDICARE_PRIMARY" | "FAILED_MEDICARE_PRIMARY" | "SUBMITTED" | "POLLING" | "ACK_PENDING" | "ACK_TIMEOUT" | "ACK_ACCEPTED" | "ACK_REJECTED" | "ACK_PARTIAL" | "PAID" | "DENIED" | "REPLACED" | "VOIDED" | "ABANDONED";
+                        version: number;
+                        validationRunIdLatest: string | null;
+                        eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MedicaidclaimsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1MedicaidclaimsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    mcoId?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        serviceState: string;
+                        kind: "combined_hospice_rb" | "hospice_only" | "rb_only";
+                        tob: "811" | "812" | "813" | "814" | "817" | "818";
+                        /** Format: date */
+                        serviceFrom: string;
+                        /** Format: date */
+                        serviceTo: string;
+                        mcoId: string | null;
+                        medicareClaimId: string | null;
+                        rbArrangementId: string | null;
+                        medicaidClaimControlNumber: string;
+                        state: "DRAFT" | "VALIDATING" | "FAILED_VALIDATION" | "READY" | "AWAITING_MEDICARE_PRIMARY" | "FAILED_MEDICARE_PRIMARY" | "SUBMITTED" | "POLLING" | "ACK_PENDING" | "ACK_TIMEOUT" | "ACK_ACCEPTED" | "ACK_REJECTED" | "ACK_PARTIAL" | "PAID" | "DENIED" | "REPLACED" | "VOIDED" | "ABANDONED";
+                        version: number;
+                        validationRunIdLatest: string | null;
+                        eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MedicaidclaimsByIdAbandon: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        serviceState: string;
+                        kind: "combined_hospice_rb" | "hospice_only" | "rb_only";
+                        tob: "811" | "812" | "813" | "814" | "817" | "818";
+                        /** Format: date */
+                        serviceFrom: string;
+                        /** Format: date */
+                        serviceTo: string;
+                        mcoId: string | null;
+                        medicareClaimId: string | null;
+                        rbArrangementId: string | null;
+                        medicaidClaimControlNumber: string;
+                        state: "DRAFT" | "VALIDATING" | "FAILED_VALIDATION" | "READY" | "AWAITING_MEDICARE_PRIMARY" | "FAILED_MEDICARE_PRIMARY" | "SUBMITTED" | "POLLING" | "ACK_PENDING" | "ACK_TIMEOUT" | "ACK_ACCEPTED" | "ACK_REJECTED" | "ACK_PARTIAL" | "PAID" | "DENIED" | "REPLACED" | "VOIDED" | "ABANDONED";
+                        version: number;
+                        validationRunIdLatest: string | null;
+                        eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MedicaidclaimsByIdAcknowledgments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        medicaidClaimId: string;
+                        /** Format: uuid */
+                        medicaidSubmissionId: string;
+                        kind: "sync_999" | "sync_277ca" | "async_state_specific";
+                        outcome: "accepted" | "rejected" | "partial";
+                        payerClaimControlNumber: string | null;
+                        acceptedLineNumbers: number[];
+                        rejectedLineNumbers: number[];
+                        errorCodes: string[];
+                        /** Format: date-time */
+                        receivedAt: string;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MedicaidclaimsByIdLines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        medicaidClaimId: string;
+                        lineNumber: number;
+                        /** Format: date */
+                        serviceDate: string;
+                        revenueCode: string;
+                        qCode: string;
+                        levelOfCare: "RHC" | "CHC" | "IRC" | "GIP" | "NF_RB";
+                        units: number;
+                        /** @description Integer cents (D8) */
+                        rateAtAssemblyCents: number;
+                        /** @description Integer cents (D8) */
+                        chargesCents: number;
+                        cobPaidCents: number | null;
+                        isRb: boolean;
+                        rbDayId: string | null;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MedicaidclaimsByIdReplace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        serviceState: string;
+                        kind: "combined_hospice_rb" | "hospice_only" | "rb_only";
+                        tob: "811" | "812" | "813" | "814" | "817" | "818";
+                        /** Format: date */
+                        serviceFrom: string;
+                        /** Format: date */
+                        serviceTo: string;
+                        mcoId: string | null;
+                        medicareClaimId: string | null;
+                        rbArrangementId: string | null;
+                        medicaidClaimControlNumber: string;
+                        state: "DRAFT" | "VALIDATING" | "FAILED_VALIDATION" | "READY" | "AWAITING_MEDICARE_PRIMARY" | "FAILED_MEDICARE_PRIMARY" | "SUBMITTED" | "POLLING" | "ACK_PENDING" | "ACK_TIMEOUT" | "ACK_ACCEPTED" | "ACK_REJECTED" | "ACK_PARTIAL" | "PAID" | "DENIED" | "REPLACED" | "VOIDED" | "ABANDONED";
+                        version: number;
+                        validationRunIdLatest: string | null;
+                        eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MedicaidclaimsByIdSubmissions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        medicaidClaimId: string;
+                        serviceState: string;
+                        channel: "direct_mmis" | "cco_clearinghouse" | "sftp" | "portal" | "state_proprietary";
+                        medicaidClaimControlNumber: string;
+                        attemptIndex: number;
+                        adapterVendor: string;
+                        adapterVersion: string;
+                        result: "pending" | "accepted_sync" | "pending_async" | "rejected_sync" | "transport_failure" | "timeout" | "cancelled";
+                        errorCode: string | null;
+                        nextPollAt: string | null;
+                        submittedAt: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MedicaidclaimsByIdSubmit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    channelHint?: "direct_mmis" | "cco_clearinghouse" | "sftp" | "portal" | "state_proprietary";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        serviceState: string;
+                        kind: "combined_hospice_rb" | "hospice_only" | "rb_only";
+                        tob: "811" | "812" | "813" | "814" | "817" | "818";
+                        /** Format: date */
+                        serviceFrom: string;
+                        /** Format: date */
+                        serviceTo: string;
+                        mcoId: string | null;
+                        medicareClaimId: string | null;
+                        rbArrangementId: string | null;
+                        medicaidClaimControlNumber: string;
+                        state: "DRAFT" | "VALIDATING" | "FAILED_VALIDATION" | "READY" | "AWAITING_MEDICARE_PRIMARY" | "FAILED_MEDICARE_PRIMARY" | "SUBMITTED" | "POLLING" | "ACK_PENDING" | "ACK_TIMEOUT" | "ACK_ACCEPTED" | "ACK_REJECTED" | "ACK_PARTIAL" | "PAID" | "DENIED" | "REPLACED" | "VOIDED" | "ABANDONED";
+                        version: number;
+                        validationRunIdLatest: string | null;
+                        eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MedicaidclaimsByIdValidate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        validationRunId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MedicaidclaimsByIdValidationruns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        medicaidClaimId: string;
+                        ruleRegistryVersion: string;
+                        triggeredBy: string;
+                        claimStateAtTrigger: "DRAFT" | "VALIDATING" | "FAILED_VALIDATION" | "READY" | "AWAITING_MEDICARE_PRIMARY" | "FAILED_MEDICARE_PRIMARY" | "SUBMITTED" | "POLLING" | "ACK_PENDING" | "ACK_TIMEOUT" | "ACK_ACCEPTED" | "ACK_REJECTED" | "ACK_PARTIAL" | "PAID" | "DENIED" | "REPLACED" | "VOIDED" | "ABANDONED";
+                        /** Format: date-time */
+                        at: string;
+                        completedAt: string | null;
+                        totalResults: number;
+                        failedResults: number;
+                        warnedResults: number;
+                        results?: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            medicaidValidationRunId: string;
+                            ruleKey: string;
+                            ruleVersion: number;
+                            outcome: "pass" | "fail" | "warn" | "info" | "skip_not_applicable";
+                            remediationSummary: string | null;
+                            remediationFixAction: string | null;
+                            /** Format: date-time */
+                            at: string;
+                        }[];
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MedicaidclaimsByIdVoid: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        serviceState: string;
+                        kind: "combined_hospice_rb" | "hospice_only" | "rb_only";
+                        tob: "811" | "812" | "813" | "814" | "817" | "818";
+                        /** Format: date */
+                        serviceFrom: string;
+                        /** Format: date */
+                        serviceTo: string;
+                        mcoId: string | null;
+                        medicareClaimId: string | null;
+                        rbArrangementId: string | null;
+                        medicaidClaimControlNumber: string;
+                        state: "DRAFT" | "VALIDATING" | "FAILED_VALIDATION" | "READY" | "AWAITING_MEDICARE_PRIMARY" | "FAILED_MEDICARE_PRIMARY" | "SUBMITTED" | "POLLING" | "ACK_PENDING" | "ACK_TIMEOUT" | "ACK_ACCEPTED" | "ACK_REJECTED" | "ACK_PARTIAL" | "PAID" | "DENIED" | "REPLACED" | "VOIDED" | "ABANDONED";
+                        version: number;
+                        validationRunIdLatest: string | null;
+                        eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Medicaideligibilitychecks: {
+        parameters: {
+            query?: {
+                patientId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        patientPayerId: string;
+                        serviceState: string;
+                        /** Format: date */
+                        asOfServiceDate: string;
+                        outcome: "active" | "inactive" | "unknown" | "mco_assignment" | "error";
+                        mcoId: string | null;
+                        recipientIdMaskedAtCheck: string | null;
+                        /** Format: date-time */
+                        checkedAt: string;
+                        /** Format: date-time */
+                        staleAt: string;
+                        errorMessage: string | null;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Medicaideligibilitychecks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    patientPayerId: string;
+                    /** Format: date */
+                    asOfServiceDate: string;
+                    /** Format: uuid */
+                    providerEntityId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        checkId: string;
+                        outcome: "active" | "inactive" | "unknown" | "mco_assignment" | "error";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Medicaidruleconfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ruleKey: string;
+                        enabled: boolean;
+                        isCustom: boolean;
+                        customSeverity: string | null;
+                        customOverrideRole: string | null;
+                        regulatoryRequired: boolean;
+                        parametersOverlay: unknown;
+                        version: number | null;
+                        platformDefault?: {
+                            title: string;
+                            category: string;
+                            severity: string;
+                            regulatoryRequired: boolean;
+                            applicableStates: string[];
+                        };
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MedicaidruleconfigByRuleKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ruleKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1MedicaidruleconfigByRuleKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ruleKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled?: boolean;
+                    parametersOverlay?: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MedicaidruleconfigCustom: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ruleKey: string;
+                    customPredicateDsl: unknown;
+                    customSeverity: "error" | "warn" | "info";
+                    customOverrideRole?: "billing_manager" | "compliance_officer" | "medical_director" | "org_admin";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ruleKey: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Medicaidvalidationoverrides: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        medicaidValidationResultId: string;
+                        /** Format: uuid */
+                        medicaidClaimId: string;
+                        ruleKey: string;
+                        overrideRoleApplied: "billing_manager" | "compliance_officer" | "medical_director" | "org_admin";
+                        reason: string;
+                        /** Format: uuid */
+                        actorMembershipId: string;
+                        /** Format: date-time */
+                        at: string;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MedicaidvalidationresultsByIdOverride: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    overrideRoleClaimed: "billing_manager" | "compliance_officer" | "medical_director" | "org_admin";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        overrideId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MedicaidvalidationrunsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        medicaidClaimId: string;
+                        ruleRegistryVersion: string;
+                        triggeredBy: string;
+                        claimStateAtTrigger: "DRAFT" | "VALIDATING" | "FAILED_VALIDATION" | "READY" | "AWAITING_MEDICARE_PRIMARY" | "FAILED_MEDICARE_PRIMARY" | "SUBMITTED" | "POLLING" | "ACK_PENDING" | "ACK_TIMEOUT" | "ACK_ACCEPTED" | "ACK_REJECTED" | "ACK_PARTIAL" | "PAID" | "DENIED" | "REPLACED" | "VOIDED" | "ABANDONED";
+                        /** Format: date-time */
+                        at: string;
+                        completedAt: string | null;
+                        totalResults: number;
+                        failedResults: number;
+                        warnedResults: number;
+                        results?: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            medicaidValidationRunId: string;
+                            ruleKey: string;
+                            ruleVersion: number;
+                            outcome: "pass" | "fail" | "warn" | "info" | "skip_not_applicable";
+                            remediationSummary: string | null;
+                            remediationFixAction: string | null;
+                            /** Format: date-time */
+                            at: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1MedicationhistoryrecordsByIdReconcile: {
         parameters: {
             query?: never;
@@ -25722,6 +27391,520 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1Rbarrangements: {
+        parameters: {
+            query?: {
+                patientId?: string;
+                nfFacilityMdmId?: string;
+                serviceState?: string;
+                state?: "DRAFT" | "ACTIVE" | "EXPIRED" | "TERMINATED" | "SUPERSEDED";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        nfFacilityMdmId: string;
+                        nfFacilityNameSnapshot: string;
+                        /** Format: date */
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        /** @description Integer cents (D8) */
+                        nfPerDiemRoutineCents: number;
+                        /** @description Integer cents (D8) */
+                        nfPerDiemRespCents: number;
+                        /** @description Integer cents (D8) */
+                        nfPerDiemGipCents: number;
+                        passThroughPct: number;
+                        retentionPct: number;
+                        state: "DRAFT" | "ACTIVE" | "EXPIRED" | "TERMINATED" | "SUPERSEDED";
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        days?: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            rbArrangementId: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            /** Format: date */
+                            serviceDate: string;
+                            locOfDay: "RHC" | "CHC" | "IRC" | "GIP" | "NF_RB";
+                            /** @description Integer cents (D8) */
+                            perDiemCentsSnapshot: number;
+                            status: "pending" | "billable" | "excluded" | "voided" | "billed";
+                            exclusionReason: string | null;
+                            medicaidClaimLineId: string | null;
+                            version: number;
+                        }[];
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Rbarrangements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: uuid */
+                    nfFacilityMdmId: string;
+                    /** Format: date */
+                    effectiveFrom: string;
+                    /** Format: date */
+                    effectiveTo?: string;
+                    /** @description Integer cents (D8) */
+                    nfPerDiemRoutineCents: number;
+                    /** @description Integer cents (D8) */
+                    nfPerDiemRespCents: number;
+                    /** @description Integer cents (D8) */
+                    nfPerDiemGipCents: number;
+                    passThroughPct: number;
+                    retentionPct: number;
+                    /** Format: uuid */
+                    contractDocumentId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        nfFacilityMdmId: string;
+                        nfFacilityNameSnapshot: string;
+                        /** Format: date */
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        /** @description Integer cents (D8) */
+                        nfPerDiemRoutineCents: number;
+                        /** @description Integer cents (D8) */
+                        nfPerDiemRespCents: number;
+                        /** @description Integer cents (D8) */
+                        nfPerDiemGipCents: number;
+                        passThroughPct: number;
+                        retentionPct: number;
+                        state: "DRAFT" | "ACTIVE" | "EXPIRED" | "TERMINATED" | "SUPERSEDED";
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        days?: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            rbArrangementId: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            /** Format: date */
+                            serviceDate: string;
+                            locOfDay: "RHC" | "CHC" | "IRC" | "GIP" | "NF_RB";
+                            /** @description Integer cents (D8) */
+                            perDiemCentsSnapshot: number;
+                            status: "pending" | "billable" | "excluded" | "voided" | "billed";
+                            exclusionReason: string | null;
+                            medicaidClaimLineId: string | null;
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1RbarrangementsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        nfFacilityMdmId: string;
+                        nfFacilityNameSnapshot: string;
+                        /** Format: date */
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        /** @description Integer cents (D8) */
+                        nfPerDiemRoutineCents: number;
+                        /** @description Integer cents (D8) */
+                        nfPerDiemRespCents: number;
+                        /** @description Integer cents (D8) */
+                        nfPerDiemGipCents: number;
+                        passThroughPct: number;
+                        retentionPct: number;
+                        state: "DRAFT" | "ACTIVE" | "EXPIRED" | "TERMINATED" | "SUPERSEDED";
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        days?: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            rbArrangementId: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            /** Format: date */
+                            serviceDate: string;
+                            locOfDay: "RHC" | "CHC" | "IRC" | "GIP" | "NF_RB";
+                            /** @description Integer cents (D8) */
+                            perDiemCentsSnapshot: number;
+                            status: "pending" | "billable" | "excluded" | "voided" | "billed";
+                            exclusionReason: string | null;
+                            medicaidClaimLineId: string | null;
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1RbarrangementsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date */
+                    effectiveTo?: string;
+                    /** @description Integer cents (D8) */
+                    nfPerDiemRoutineCents?: number;
+                    /** @description Integer cents (D8) */
+                    nfPerDiemRespCents?: number;
+                    /** @description Integer cents (D8) */
+                    nfPerDiemGipCents?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        nfFacilityMdmId: string;
+                        nfFacilityNameSnapshot: string;
+                        /** Format: date */
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        /** @description Integer cents (D8) */
+                        nfPerDiemRoutineCents: number;
+                        /** @description Integer cents (D8) */
+                        nfPerDiemRespCents: number;
+                        /** @description Integer cents (D8) */
+                        nfPerDiemGipCents: number;
+                        passThroughPct: number;
+                        retentionPct: number;
+                        state: "DRAFT" | "ACTIVE" | "EXPIRED" | "TERMINATED" | "SUPERSEDED";
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        days?: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            rbArrangementId: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            /** Format: date */
+                            serviceDate: string;
+                            locOfDay: "RHC" | "CHC" | "IRC" | "GIP" | "NF_RB";
+                            /** @description Integer cents (D8) */
+                            perDiemCentsSnapshot: number;
+                            status: "pending" | "billable" | "excluded" | "voided" | "billed";
+                            exclusionReason: string | null;
+                            medicaidClaimLineId: string | null;
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1RbarrangementsByIdActivate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        nfFacilityMdmId: string;
+                        nfFacilityNameSnapshot: string;
+                        /** Format: date */
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        /** @description Integer cents (D8) */
+                        nfPerDiemRoutineCents: number;
+                        /** @description Integer cents (D8) */
+                        nfPerDiemRespCents: number;
+                        /** @description Integer cents (D8) */
+                        nfPerDiemGipCents: number;
+                        passThroughPct: number;
+                        retentionPct: number;
+                        state: "DRAFT" | "ACTIVE" | "EXPIRED" | "TERMINATED" | "SUPERSEDED";
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        days?: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            rbArrangementId: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            /** Format: date */
+                            serviceDate: string;
+                            locOfDay: "RHC" | "CHC" | "IRC" | "GIP" | "NF_RB";
+                            /** @description Integer cents (D8) */
+                            perDiemCentsSnapshot: number;
+                            status: "pending" | "billable" | "excluded" | "voided" | "billed";
+                            exclusionReason: string | null;
+                            medicaidClaimLineId: string | null;
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1RbarrangementsByIdTerminate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        nfFacilityMdmId: string;
+                        nfFacilityNameSnapshot: string;
+                        /** Format: date */
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        /** @description Integer cents (D8) */
+                        nfPerDiemRoutineCents: number;
+                        /** @description Integer cents (D8) */
+                        nfPerDiemRespCents: number;
+                        /** @description Integer cents (D8) */
+                        nfPerDiemGipCents: number;
+                        passThroughPct: number;
+                        retentionPct: number;
+                        state: "DRAFT" | "ACTIVE" | "EXPIRED" | "TERMINATED" | "SUPERSEDED";
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        days?: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            rbArrangementId: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            /** Format: date */
+                            serviceDate: string;
+                            locOfDay: "RHC" | "CHC" | "IRC" | "GIP" | "NF_RB";
+                            /** @description Integer cents (D8) */
+                            perDiemCentsSnapshot: number;
+                            status: "pending" | "billable" | "excluded" | "voided" | "billed";
+                            exclusionReason: string | null;
+                            medicaidClaimLineId: string | null;
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Rbdays: {
+        parameters: {
+            query?: {
+                patientId?: string;
+                rbArrangementId?: string;
+                status?: "pending" | "billable" | "excluded" | "voided" | "billed";
+                from?: string;
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        rbArrangementId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: date */
+                        serviceDate: string;
+                        locOfDay: "RHC" | "CHC" | "IRC" | "GIP" | "NF_RB";
+                        /** @description Integer cents (D8) */
+                        perDiemCentsSnapshot: number;
+                        status: "pending" | "billable" | "excluded" | "voided" | "billed";
+                        exclusionReason: string | null;
+                        medicaidClaimLineId: string | null;
+                        version: number;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1RbdaysById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    status: "pending" | "billable" | "excluded" | "voided";
+                    exclusionReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1ReconciliationWorksheets: {
         parameters: {
             query: {
@@ -27802,6 +29985,124 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Statemedicaidtradingpartnercredentials: {
+        parameters: {
+            query?: {
+                providerEntityId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        serviceState: string;
+                        channel: "direct_mmis" | "cco_clearinghouse" | "sftp" | "portal" | "state_proprietary";
+                        mcoId: string | null;
+                        tradingPartnerId: string;
+                        clientId: string | null;
+                        sftpHost: string | null;
+                        portalUrl: string | null;
+                        /** Format: date */
+                        activeFrom: string;
+                        activeTo: string | null;
+                        lastSandboxTestAt: string | null;
+                        lastSandboxTestResult: string | null;
+                        version: number;
+                        hasClientSecret: boolean;
+                        hasSftpKey: boolean;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Statemedicaidtradingpartnercredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    serviceState: string;
+                    channel: "direct_mmis" | "cco_clearinghouse" | "sftp" | "portal" | "state_proprietary";
+                    /** Format: uuid */
+                    mcoId?: string;
+                    tradingPartnerId: string;
+                    clientId?: string;
+                    clientSecret?: string;
+                    sftpHost?: string;
+                    sftpUser?: string;
+                    sftpKey?: string;
+                    portalUrl?: string;
+                    /** Format: date */
+                    activeFrom: string;
+                    /** Format: date */
+                    activeTo?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1StatemedicaidtradingpartnercredentialsByIdTest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                        errorMessage?: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

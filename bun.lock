@@ -243,6 +243,9 @@
     "packages/medicaid-adapters": {
       "name": "@wardenx/medicaid-adapters",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/billing": "workspace:*",
+      },
     },
     "packages/messaging": {
       "name": "@wardenx/messaging",
