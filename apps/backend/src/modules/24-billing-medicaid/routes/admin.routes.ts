@@ -7,6 +7,7 @@ import type { FastifyInstance } from "fastify";
 import { rejectAiActor, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
 import { P, STEP_UP } from "./guards";
+import { LoadRateScheduleBody, RegisterPlatformRuleBody, parse } from "./m24-typebox";
 import type { M24WriteService } from "./write-service";
 
 export interface AdminRouteDeps {
@@ -24,7 +25,7 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
     "/api/v1/admin/platform-medicaid-rules",
     { preHandler: [P("medicaid.rule_config.platform_admin"), STEP_UP("medicaid.rule_config.platform_admin"), AI, IDEMPOTENT] },
     async (request, reply) => {
-      await writeService.registerPlatformRule(writeActorOf(request), request.body as never);
+      await writeService.registerPlatformRule(writeActorOf(request), parse(RegisterPlatformRuleBody, request.body));
       return reply.code(202).send({ accepted: true });
     },
   );
@@ -33,6 +34,7 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   app.post(
     "/api/v1/admin/state-rate-schedule-load",
     { preHandler: [P("medicaid.rate_schedule.platform_admin"), STEP_UP("medicaid.rate_schedule.platform_admin"), AI, IDEMPOTENT] },
-    async (request, reply) => reply.code(202).send(await writeService.loadRateSchedule(writeActorOf(request), request.body as never)),
+    async (request, reply) =>
+      reply.code(202).send(await writeService.loadRateSchedule(writeActorOf(request), parse(LoadRateScheduleBody, request.body))),
   );
 }

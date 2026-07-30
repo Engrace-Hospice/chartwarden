@@ -14,8 +14,10 @@
 // side (request.context) — no body or query carries an org id or an acting membership id. A Recipient ID is
 // never returned (only the masked last-4 fact; D12 / §3.6) and credential secrets are write-only (the read
 // DTO carries presence flags only).
-import { Type } from "@sinclair/typebox";
+import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
+import { ValidationError } from "@wardenx/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -26,6 +28,39 @@ if (!FormatRegistry.Has("date-time")) {
 }
 if (!FormatRegistry.Has("date")) {
   FormatRegistry.Set("date", (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v));
+}
+
+function check<T extends TSchema>(schema: T, value: unknown): Static<T> {
+  if (!Value.Check(schema, value)) {
+    const first = [...Value.Errors(schema, value)][0];
+    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
+    throw new ValidationError("request validation failed", [
+      { field, code: "INVALID", message: first?.message ?? "invalid request" },
+    ]);
+  }
+  return value as Static<T>;
+}
+
+/**
+ * Validate a request BODY against its §4.2 schema at the route boundary. A failure raises M1's
+ * VALIDATION_FAILED envelope with the offending field path (the M27 `cost-report-typebox` precedent), so a
+ * malformed request is rejected BEFORE it reaches a service rather than surfacing as a downstream type error.
+ *
+ * Deliberately does NOT run `Value.Convert`: a JSON body already carries real types, and coercing it would
+ * silently repair genuinely wrong input — `nfPerDiemRoutineCents: 210.5` would truncate to 210, turning a
+ * client bug into a money bug. A body that sends the wrong type is rejected, not rounded. Queries are the
+ * only place coercion is legitimate (everything arrives as a string) — use `parseQuery` there.
+ */
+export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
+  return check(schema, raw ?? {});
+}
+
+/**
+ * Validate a request QUERY against its §4.2 schema, converting the declared scalars first — `?limit=25`
+ * arrives as the string "25" and must land as a number. Same VALIDATION_FAILED envelope on failure.
+ */
+export function parseQuery<T extends TSchema>(schema: T, raw: unknown): Static<T> {
+  return check(schema, Value.Convert(schema, raw ?? {}));
 }
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
@@ -302,6 +337,12 @@ export const EligibilityListQuery = Type.Object(
   { additionalProperties: false },
 );
 
+/** GET /api/v1/medicaid-validation-worklist — caps the failing-result scan (the response says if it hit). */
+export const ValidationWorklistQuery = Type.Object(
+  { limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 2000 })) },
+  { additionalProperties: false },
+);
+
 /** GET /api/v1/state-medicaid-trading-partner-credentials + the AR reads — optional PE narrowing. */
 export const ProviderEntityQuery = Type.Object(
   { providerEntityId: Type.Optional(uuid()) },
@@ -411,6 +452,33 @@ export const ValidationRunDto = Type.Object({
   results: Type.Optional(Type.Array(ValidationResultDto)),
 });
 export const ValidationRunListResponse = Type.Array(ValidationRunDto);
+
+/** §5.1 #5 — the org-wide worklist: blocked claims grouped by the failing rule that is holding them. */
+export const ValidationWorklistDto = Type.Object({
+  groups: Type.Array(
+    Type.Object({
+      ruleKey: Type.String(),
+      remediationSummary: nullableStr(),
+      remediationFixAction: nullableStr(),
+      claims: Type.Array(
+        Type.Object({
+          claimId: uuid(),
+          medicaidClaimControlNumber: Type.String(),
+          patientId: uuid(),
+          serviceState: StateCode,
+          state: lit(CLAIM_STATE),
+          updatedAt: isoInstant(),
+        }),
+      ),
+    }),
+  ),
+  /** Every claim in a blocked state — the honest denominator, including ones under no group. */
+  blockedClaimCount: Type.Integer(),
+  /** Blocked claims attributable to no rule (no run yet, or every failure already overridden). */
+  unattributedClaimCount: Type.Integer(),
+  /** True when the scan hit `limit` — the groups are a partial view, and the caller must say so. */
+  truncated: Type.Boolean(),
+});
 
 export const ValidationOverrideDto = Type.Object({
   id: uuid(),
