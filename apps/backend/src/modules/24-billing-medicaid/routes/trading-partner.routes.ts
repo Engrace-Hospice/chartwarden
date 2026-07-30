@@ -7,6 +7,7 @@ import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
 import { ABAC_BODY_PE, P, STEP_UP } from "./guards";
+import { ProviderEntityQuery, UpsertCredentialBody, parse, parseQuery } from "./m24-typebox";
 import type { M24ReadService } from "./read-service";
 import type { M24WriteService } from "./write-service";
 
@@ -17,10 +18,6 @@ export interface TradingPartnerRouteDeps {
 
 const AI = rejectAiActor();
 const IDEMPOTENT = requireIdempotencyKey();
-const qStr = (q: unknown, key: string): string | undefined => {
-  const v = (q as Record<string, unknown> | undefined)?.[key];
-  return typeof v === "string" && v.length > 0 ? v : undefined;
-};
 const pParam = (request: { params: unknown }, key: string): string =>
   (request.params as Record<string, string>)[key] ?? "";
 
@@ -29,14 +26,17 @@ export function registerTradingPartnerRoutes(app: FastifyInstance, deps: Trading
 
   // 32 — list credentials per PE (secrets masked)
   app.get("/api/v1/state-medicaid-trading-partner-credentials", { preHandler: [P("medicaid.trading_partner.read")] }, async (request, reply) =>
-    reply.send(await readService.listTradingPartnerCredentials(actorOf(request), qStr(request.query, "providerEntityId"))),
+    reply.send(
+      await readService.listTradingPartnerCredentials(actorOf(request), parseQuery(ProviderEntityQuery, request.query).providerEntityId),
+    ),
   );
 
   // 33 — upsert credentials (step-up)
   app.post(
     "/api/v1/state-medicaid-trading-partner-credentials",
     { preHandler: [P("medicaid.trading_partner.admin"), ABAC_BODY_PE("medicaid.trading_partner.admin", "state_trading_partner_credential_admin"), STEP_UP("medicaid.trading_partner.admin"), AI, IDEMPOTENT] },
-    async (request, reply) => reply.code(201).send(await writeService.upsertCredential(writeActorOf(request), request.body as never)),
+    async (request, reply) =>
+      reply.code(201).send(await writeService.upsertCredential(writeActorOf(request), parse(UpsertCredentialBody, request.body))),
   );
 
   // 34 — round-trip a sandbox test (adapter deferred)

@@ -8,6 +8,16 @@ import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
 import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import { ABAC_ARRANGEMENT, ABAC_BODY_PE, P, STEP_UP } from "./guards";
+import {
+  CreateRbArrangementBody,
+  EditRbArrangementBody,
+  OverrideRbDayBody,
+  RbArrangementListQuery,
+  RbDayListQuery,
+  TerminateRbArrangementBody,
+  parse,
+  parseQuery,
+} from "./m24-typebox";
 import type { M24ReadService } from "./read-service";
 import type { M24WriteService } from "./write-service";
 
@@ -18,10 +28,6 @@ export interface RbRouteDeps {
 
 const AI = rejectAiActor();
 const IDEMPOTENT = requireIdempotencyKey();
-const qStr = (q: unknown, key: string): string | undefined => {
-  const v = (q as Record<string, unknown> | undefined)?.[key];
-  return typeof v === "string" && v.length > 0 ? v : undefined;
-};
 const pParam = (request: { params: unknown }, key: string): string =>
   (request.params as Record<string, string>)[key] ?? "";
 
@@ -32,20 +38,14 @@ export function registerRbRoutes(app: FastifyInstance, deps: RbRouteDeps): void 
   app.post(
     "/api/v1/rb-arrangements",
     { preHandler: [P("medicaid.rb_arrangement.create"), ABAC_BODY_PE("medicaid.rb_arrangement.create", "rb_arrangement_visible_in_scope"), AI, IDEMPOTENT] },
-    async (request, reply) => reply.code(201).send(await writeService.createRbArrangement(writeActorOf(request), request.body as never)),
+    async (request, reply) =>
+      reply.code(201).send(await writeService.createRbArrangement(writeActorOf(request), parse(CreateRbArrangementBody, request.body))),
   );
 
   // 25 — list arrangements
   app.get("/api/v1/rb-arrangements", { preHandler: [P("medicaid.rb_arrangement.read")] }, async (request, reply) => {
-    const q = request.query;
-    return reply.send(
-      await readService.listRbArrangements(actorOf(request), {
-        patientId: qStr(q, "patientId"),
-        nfFacilityMdmId: qStr(q, "nfFacilityMdmId"),
-        serviceState: qStr(q, "serviceState"),
-        state: qStr(q, "state"),
-      }),
-    );
+    const q = parseQuery(RbArrangementListQuery, request.query);
+    return reply.send(await readService.listRbArrangements(actorOf(request), q));
   });
 
   // 26 — read one with day history
@@ -64,12 +64,7 @@ export function registerRbRoutes(app: FastifyInstance, deps: RbRouteDeps): void 
     "/api/v1/rb-arrangements/:id",
     { preHandler: [P("medicaid.rb_arrangement.edit"), ABAC_ARRANGEMENT("medicaid.rb_arrangement.edit", "rb_arrangement_visible_in_scope"), AI, IDEMPOTENT] },
     async (request, reply) => {
-      const body = (request.body ?? {}) as {
-        effectiveTo?: string;
-        nfPerDiemRoutineCents?: number;
-        nfPerDiemRespCents?: number;
-        nfPerDiemGipCents?: number;
-      };
+      const body = parse(EditRbArrangementBody, request.body);
       return reply.send(await writeService.editRbArrangement(writeActorOf(request), pParam(request, "id"), { expectedVersion: ifMatchVersion(request), ...body }));
     },
   );
@@ -86,23 +81,15 @@ export function registerRbRoutes(app: FastifyInstance, deps: RbRouteDeps): void 
     "/api/v1/rb-arrangements/:id/terminate",
     { preHandler: [P("medicaid.rb_arrangement.activate"), ABAC_ARRANGEMENT("medicaid.rb_arrangement.activate", "rb_arrangement_visible_in_scope"), STEP_UP("medicaid.rb_arrangement.activate"), AI, IDEMPOTENT] },
     async (request, reply) => {
-      const body = (request.body ?? {}) as { reason: string };
+      const body = parse(TerminateRbArrangementBody, request.body);
       return reply.send(await writeService.terminateRbArrangement(writeActorOf(request), pParam(request, "id"), { expectedVersion: ifMatchVersion(request), reason: body.reason }));
     },
   );
 
   // 30 — list rb_days
   app.get("/api/v1/rb-days", { preHandler: [P("medicaid.rb_arrangement.read")] }, async (request, reply) => {
-    const q = request.query;
-    return reply.send(
-      await readService.listRbDays(actorOf(request), {
-        patientId: qStr(q, "patientId"),
-        rbArrangementId: qStr(q, "rbArrangementId"),
-        status: qStr(q, "status"),
-        from: qStr(q, "from"),
-        to: qStr(q, "to"),
-      }),
-    );
+    const q = parseQuery(RbDayListQuery, request.query);
+    return reply.send(await readService.listRbDays(actorOf(request), q));
   });
 
   // 31 — override day status with reason
@@ -110,7 +97,7 @@ export function registerRbRoutes(app: FastifyInstance, deps: RbRouteDeps): void 
     "/api/v1/rb-days/:id",
     { preHandler: [P("medicaid.rb_day.override"), AI, IDEMPOTENT] },
     async (request, reply) => {
-      const body = request.body as { status: "pending" | "billable" | "excluded" | "voided"; exclusionReason?: string };
+      const body = parse(OverrideRbDayBody, request.body);
       await writeService.overrideRbDay(writeActorOf(request), pParam(request, "id"), { expectedVersion: ifMatchVersion(request), ...body });
       return reply.code(204).send();
     },

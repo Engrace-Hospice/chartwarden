@@ -23847,6 +23847,212 @@
         }
       }
     },
+    "/api/v1/medicaid-validation-worklist": {
+      "get": {
+        "operationId": "getApiV1Medicaidvalidationworklist",
+        "tags": [
+          "24-billing-medicaid"
+        ],
+        "summary": "Org-wide blocked-claim worklist grouped by the failing rule holding each claim (§5.1) — the response reports the blocked-claim denominator and whether the scan was truncated",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 2000,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "groups",
+                    "blockedClaimCount",
+                    "unattributedClaimCount",
+                    "truncated"
+                  ],
+                  "properties": {
+                    "groups": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "ruleKey",
+                          "remediationSummary",
+                          "remediationFixAction",
+                          "claims"
+                        ],
+                        "properties": {
+                          "ruleKey": {
+                            "type": "string"
+                          },
+                          "remediationSummary": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "remediationFixAction": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "claims": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "claimId",
+                                "medicaidClaimControlNumber",
+                                "patientId",
+                                "serviceState",
+                                "state",
+                                "updatedAt"
+                              ],
+                              "properties": {
+                                "claimId": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "medicaidClaimControlNumber": {
+                                  "type": "string"
+                                },
+                                "patientId": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "serviceState": {
+                                  "minLength": 2,
+                                  "maxLength": 2,
+                                  "pattern": "^[A-Z]{2}$",
+                                  "type": "string"
+                                },
+                                "state": {
+                                  "anyOf": [
+                                    {
+                                      "const": "DRAFT",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "VALIDATING",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "FAILED_VALIDATION",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "READY",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "AWAITING_MEDICARE_PRIMARY",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "FAILED_MEDICARE_PRIMARY",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "SUBMITTED",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "POLLING",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ACK_PENDING",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ACK_TIMEOUT",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ACK_ACCEPTED",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ACK_REJECTED",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ACK_PARTIAL",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "PAID",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "DENIED",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "REPLACED",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "VOIDED",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ABANDONED",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "updatedAt": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "blockedClaimCount": {
+                      "type": "integer"
+                    },
+                    "unattributedClaimCount": {
+                      "type": "integer"
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/medication-history-records/{id}/reconcile": {
       "post": {
         "operationId": "postApiV1MedicationhistoryrecordsByIdReconcile",

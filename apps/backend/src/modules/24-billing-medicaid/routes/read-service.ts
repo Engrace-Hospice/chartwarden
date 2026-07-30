@@ -108,6 +108,41 @@ export interface ValidationOverrideView {
   at: string;
 }
 
+/** One blocked claim, as it appears under the rule that is holding it (§5.1 #5). */
+export interface ValidationWorklistClaimView {
+  claimId: string;
+  medicaidClaimControlNumber: string;
+  patientId: string;
+  serviceState: string;
+  state: string;
+  updatedAt: string;
+}
+
+/** The failing rule + every blocked claim it is holding. */
+export interface ValidationWorklistGroupView {
+  ruleKey: string;
+  /** The remediation text from the most recent result for this rule (rules carry one summary). */
+  remediationSummary: string | null;
+  remediationFixAction: string | null;
+  claims: ValidationWorklistClaimView[];
+}
+
+/**
+ * The ORG-WIDE validation worklist (§5.1 #5): every claim in a blocked state, grouped by the rule that is
+ * holding it. Computed in one query over each claim's LATEST validation run (claim.validation_run_id_latest),
+ * counting only `fail` results that have NOT been overridden. `blockedClaimCount` is the honest denominator —
+ * it counts blocked claims INCLUDING those with no readable failing rule, so a caller can tell the difference
+ * between "nothing is blocked" and "blocked, but the rule detail did not resolve".
+ */
+export interface ValidationWorklistView {
+  groups: ValidationWorklistGroupView[];
+  blockedClaimCount: number;
+  /** Blocked claims that appear under no rule group (no run yet, or every failure overridden). */
+  unattributedClaimCount: number;
+  /** True when the failing-result scan hit `limit` — the groups are then a partial view, never a silent one. */
+  truncated: boolean;
+}
+
 export interface RuleConfigView {
   ruleKey: string;
   enabled: boolean;
@@ -249,6 +284,8 @@ export interface M24ReadService {
   getValidationRun(actor: M24ReadActor, runId: string): Promise<ValidationRunView | null>;
   listValidationRuns(actor: M24ReadActor, claimId: string): Promise<ValidationRunView[]>;
   listOverrides(actor: M24ReadActor): Promise<ValidationOverrideView[]>;
+  /** §5.1 #5 — the org-wide blocked-claim worklist grouped by failing rule. `limit` caps the result scan. */
+  validationWorklist(actor: M24ReadActor, limit: number): Promise<ValidationWorklistView>;
   listRuleConfig(actor: M24ReadActor): Promise<RuleConfigView[]>;
   listEligibilityChecks(actor: M24ReadActor, filters: EligibilityFilters): Promise<EligibilityCheckView[]>;
   listRbArrangements(actor: M24ReadActor, filters: RbArrangementFilters): Promise<RbArrangementView[]>;

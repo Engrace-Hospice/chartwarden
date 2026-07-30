@@ -6,6 +6,7 @@ import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
 import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import { ABAC_RULE, P } from "./guards";
+import { CreateCustomRuleBody, EditRuleConfigBody, parse } from "./m24-typebox";
 import type { M24ReadService } from "./read-service";
 import type { M24WriteService } from "./write-service";
 
@@ -32,7 +33,7 @@ export function registerRuleConfigRoutes(app: FastifyInstance, deps: RuleConfigR
     "/api/v1/medicaid-rule-config/:ruleKey",
     { preHandler: [P("medicaid.rule_config.edit"), ABAC_RULE("medicaid.rule_config.edit", "regulatory_required_rule_protected_medicaid"), AI, IDEMPOTENT] },
     async (request, reply) => {
-      const body = (request.body ?? {}) as { enabled?: boolean; parametersOverlay?: unknown };
+      const body = parse(EditRuleConfigBody, request.body);
       await writeService.editRuleConfig(writeActorOf(request), pParam(request, "ruleKey"), {
         expectedVersion: ifMatchVersion(request),
         enabled: body.enabled,
@@ -47,7 +48,7 @@ export function registerRuleConfigRoutes(app: FastifyInstance, deps: RuleConfigR
     "/api/v1/medicaid-rule-config/custom",
     { preHandler: [P("medicaid.rule_config.edit"), AI, IDEMPOTENT] },
     async (request, reply) => {
-      const body = request.body as { ruleKey: string; customPredicateDsl: unknown; customSeverity: string; customOverrideRole?: string };
+      const body = parse(CreateCustomRuleBody, request.body);
       return reply.code(201).send(await writeService.createCustomRule(writeActorOf(request), body));
     },
   );

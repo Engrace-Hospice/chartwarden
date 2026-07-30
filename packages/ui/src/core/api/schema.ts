@@ -6252,6 +6252,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/medicaid-validation-worklist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Org-wide blocked-claim worklist grouped by the failing rule holding each claim (§5.1) — the response reports the blocked-claim denominator and whether the scan was truncated */
+        get: operations["getApiV1Medicaidvalidationworklist"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/medication-history-records/{id}/reconcile": {
         parameters: {
             query?: never;
@@ -22373,6 +22390,50 @@ export interface operations {
                             /** Format: date-time */
                             at: string;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Medicaidvalidationworklist: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        groups: {
+                            ruleKey: string;
+                            remediationSummary: string | null;
+                            remediationFixAction: string | null;
+                            claims: {
+                                /** Format: uuid */
+                                claimId: string;
+                                medicaidClaimControlNumber: string;
+                                /** Format: uuid */
+                                patientId: string;
+                                serviceState: string;
+                                state: "DRAFT" | "VALIDATING" | "FAILED_VALIDATION" | "READY" | "AWAITING_MEDICARE_PRIMARY" | "FAILED_MEDICARE_PRIMARY" | "SUBMITTED" | "POLLING" | "ACK_PENDING" | "ACK_TIMEOUT" | "ACK_ACCEPTED" | "ACK_REJECTED" | "ACK_PARTIAL" | "PAID" | "DENIED" | "REPLACED" | "VOIDED" | "ABANDONED";
+                                /** Format: date-time */
+                                updatedAt: string;
+                            }[];
+                        }[];
+                        blockedClaimCount: number;
+                        unattributedClaimCount: number;
+                        truncated: boolean;
                     };
                 };
             };

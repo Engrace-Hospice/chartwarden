@@ -28,6 +28,7 @@ import type {
   ValidationOverrideView,
   ValidationResultView,
   ValidationRunView,
+  ValidationWorklistGroupView,
 } from "./read-service";
 
 const iso = (d: Date | string | null): string =>
@@ -281,6 +282,84 @@ export function buildDrizzleM24ReadService(db: DbClient): M24ReadService {
             at: iso(r.at),
           }),
         );
+      });
+    },
+
+    // §5.1 #5 — the org-wide worklist. ONE query joins each blocked claim to its LATEST run's failing
+    // results (claim.validation_run_id_latest is the anchor, so no window function is needed) and drops
+    // results that already carry an override. A second cheap count gives the honest denominator, so the
+    // caller can distinguish "nothing blocked" from "blocked but no readable rule". RLS scopes every
+    // statement to the acting org via withOrgContext.
+    async validationWorklist(actor, limit) {
+      return withOrgContext(db, actor, async (tx) => {
+        const blocked = await tx
+          .select({ n: sql<number>`count(*)::int` })
+          .from(C)
+          .where(sql`${C.state} in ('FAILED_VALIDATION', 'ACK_PARTIAL')`);
+        const blockedClaimCount = blocked[0]?.n ?? 0;
+
+        const rows = await tx
+          .select({
+            ruleKey: VRES.ruleKey,
+            remediationSummary: VRES.remediationSummary,
+            remediationFixAction: VRES.remediationFixAction,
+            at: VRES.at,
+            claimId: C.id,
+            controlNumber: C.medicaidClaimControlNumber,
+            patientId: C.patientId,
+            serviceState: C.serviceState,
+            state: C.state,
+            updatedAt: C.updatedAt,
+          })
+          .from(VRES)
+          .innerJoin(VR, eq(VRES.medicaidValidationRunId, VR.id))
+          .innerJoin(C, eq(C.validationRunIdLatest, VR.id))
+          .leftJoin(VOV, eq(VOV.medicaidValidationResultId, VRES.id))
+          .where(
+            and(
+              eq(VRES.outcome, "fail"),
+              sql`${VOV.id} is null`,
+              sql`${C.state} in ('FAILED_VALIDATION', 'ACK_PARTIAL')`,
+            ),
+          )
+          .orderBy(VRES.ruleKey, desc(VRES.at))
+          .limit(limit + 1);
+
+        const truncated = rows.length > limit;
+        const scanned = truncated ? rows.slice(0, limit) : rows;
+
+        const byRule = new Map<string, ValidationWorklistGroupView>();
+        const attributed = new Set<string>();
+        for (const r of scanned) {
+          attributed.add(r.claimId);
+          const group = byRule.get(r.ruleKey);
+          const claim = {
+            claimId: r.claimId,
+            medicaidClaimControlNumber: r.controlNumber,
+            patientId: r.patientId,
+            serviceState: r.serviceState,
+            state: r.state,
+            updatedAt: iso(r.updatedAt),
+          };
+          if (!group) {
+            // Rows arrive newest-first within a rule, so the first row carries the freshest remediation.
+            byRule.set(r.ruleKey, {
+              ruleKey: r.ruleKey,
+              remediationSummary: r.remediationSummary,
+              remediationFixAction: r.remediationFixAction,
+              claims: [claim],
+            });
+          } else if (!group.claims.some((c) => c.claimId === r.claimId)) {
+            group.claims.push(claim);
+          }
+        }
+
+        return {
+          groups: [...byRule.values()].sort((a, b) => b.claims.length - a.claims.length),
+          blockedClaimCount,
+          unattributedClaimCount: Math.max(0, blockedClaimCount - attributed.size),
+          truncated,
+        };
       });
     },
 

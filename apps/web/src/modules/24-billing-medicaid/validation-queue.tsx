@@ -8,13 +8,14 @@ import {
 } from "@wardenx/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the ORG-WIDE VALIDATION WORKLIST (R2, §5.1 #5). The
 // compliance/biller view of every claim sitting in FAILED_VALIDATION or ACK_PARTIAL, grouped by the rule
-// key that is holding it, with a remediation deep-link per group and a per-claim drill-in.
+// key that is holding it, with a remediation hint per group and a per-claim drill-in.
 //
-// There is no org-wide validation-results read on the §4.1 surface, so this screen composes the existing
-// reads: the two claim-state queries, then the latest validation run per claim. That fan-out is BOUNDED to
-// the first CLAIM_SCAN_CAP claims and the cap is stated in the UI — a silently truncated queue would read
-// as "nothing else is failing", which is exactly the wrong signal on a compliance surface. Claims whose run
-// could not be read are counted separately rather than dropped. Lantern: WorkQueueLayout + No-Line table.
+// Backed by the dedicated GET /api/v1/medicaid-validation-worklist read: ONE server-side join over each
+// blocked claim's latest validation run, excluding results that already carry an override. The server
+// returns the blocked-claim denominator alongside the groups, so the surface can distinguish "nothing is
+// blocked" from "blocked, but attributable to no readable rule" — and reports `truncated` when its scan hit
+// the cap. Nothing here is silently dropped: on a compliance surface a quiet truncation reads as
+// "nothing else is failing". Lantern: WorkQueueLayout + No-Line table (§6.7); CSS-var tokens only.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { humanize, shortId } from "./medicaid-status";
@@ -31,101 +32,76 @@ import {
   thNum,
 } from "./medicaid-ui";
 
-/** The blocked states this worklist covers (§5.1 #5). */
-const BLOCKED_STATES = ["FAILED_VALIDATION", "ACK_PARTIAL"] as const;
-/** How many blocked claims we resolve rule detail for per load (stated in the UI — never silent). */
-const CLAIM_SCAN_CAP = 40;
-
-interface ClaimRow {
-  id: string;
+interface WorklistClaim {
+  claimId: string;
+  medicaidClaimControlNumber: string;
   patientId: string;
   serviceState: string;
-  medicaidClaimControlNumber: string;
   state: string;
-  validationRunIdLatest: string | null;
   updatedAt: string;
 }
 
-interface ValidationResult {
-  id: string;
-  ruleKey: string;
-  outcome: string;
-  remediationSummary: string | null;
-}
-
-interface ValidationRun {
-  id: string;
-  results?: ValidationResult[];
-}
-
-interface RuleGroup {
+interface WorklistGroup {
   ruleKey: string;
   remediationSummary: string | null;
-  claims: ClaimRow[];
+  remediationFixAction: string | null;
+  claims: WorklistClaim[];
+}
+
+interface Worklist {
+  groups: WorklistGroup[];
+  blockedClaimCount: number;
+  unattributedClaimCount: number;
+  truncated: boolean;
+}
+
+/** The in-app destination for a remediation action (PHI-free; the target module owns the fix). */
+function fixActionHref(action: string | null): string | null {
+  switch (action) {
+    case "refresh_eligibility":
+      return "/medicaid/billing/eligibility";
+    case "review_rb_days":
+      return "/medicaid/billing/rb-arrangements";
+    case "resolve_in_m18":
+      return "/evv/exceptions";
+    default:
+      return null;
+  }
+}
+
+function fixActionLabel(action: string | null): string {
+  switch (action) {
+    case "edit_in_m6":
+      return "Edit in Admission";
+    case "cosign_in_m8":
+      return "Cosign encounter";
+    case "resolve_in_m18":
+      return "Resolve EVV visit";
+    case "refresh_eligibility":
+      return "Refresh eligibility";
+    case "review_rb_days":
+      return "Review R&B days";
+    default:
+      return "Open";
+  }
 }
 
 export function MedicaidValidationQueue(): JSX.Element {
   const client = useApiClient();
-  const [groups, setGroups] = useState<RuleGroup[]>([]);
-  const [blockedCount, setBlockedCount] = useState(0);
-  const [scanned, setScanned] = useState(0);
-  const [unresolved, setUnresolved] = useState(0);
+  const [worklist, setWorklist] = useState<Worklist | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-
-    // 1 — every claim in a blocked state (one query per state; the list read is cursor-paginated).
-    const pages = await Promise.all(
-      BLOCKED_STATES.map((s) =>
-        client.GET("/api/v1/medicaid-claims", { params: { query: { state: s } } } as never),
-      ),
-    );
-    if (pages.every((p) => p.error)) {
-      setError("The blocked-claim queue is unavailable — you may lack billing visibility.");
+    const res = await client.GET("/api/v1/medicaid-validation-worklist", {});
+    if (res.error) {
+      setError("The blocked-claim worklist is unavailable — you may lack billing visibility.");
       setLoading(false);
       return;
     }
-    const blocked = pages.flatMap((p) =>
-      p.error ? [] : ((p.data as unknown as { items?: ClaimRow[] } | undefined)?.items ?? []),
-    );
-    setBlockedCount(blocked.length);
-
-    // 2 — resolve the latest run per claim, bounded. Claims with no run yet are not "unresolved" errors.
-    const scanTargets = blocked.slice(0, CLAIM_SCAN_CAP);
-    setScanned(scanTargets.length);
-    const runs = await Promise.all(
-      scanTargets.map(async (claim) => {
-        if (!claim.validationRunIdLatest) return { claim, run: null, failed: false };
-        const res = await client.GET("/api/v1/medicaid-validation-runs/{id}", {
-          params: { path: { id: claim.validationRunIdLatest } },
-        });
-        if (res.error) return { claim, run: null, failed: true };
-        return { claim, run: res.data as unknown as ValidationRun, failed: false };
-      }),
-    );
-    setUnresolved(runs.filter((r) => r.failed).length);
-
-    // 3 — group the failing results by rule key, most-blocking first.
-    const byRule = new Map<string, RuleGroup>();
-    for (const { claim, run } of runs) {
-      for (const result of run?.results ?? []) {
-        if (result.outcome !== "fail") continue;
-        const existing = byRule.get(result.ruleKey);
-        if (existing) {
-          if (!existing.claims.some((c) => c.id === claim.id)) existing.claims.push(claim);
-        } else {
-          byRule.set(result.ruleKey, {
-            ruleKey: result.ruleKey,
-            remediationSummary: result.remediationSummary,
-            claims: [claim],
-          });
-        }
-      }
-    }
-    setGroups([...byRule.values()].sort((a, b) => b.claims.length - a.claims.length));
+    setWorklist(res.data as unknown as Worklist);
     setLoading(false);
   }, [client]);
 
@@ -134,9 +110,9 @@ export function MedicaidValidationQueue(): JSX.Element {
   }, [load]);
 
   if (loading) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description={error} />;
+  if (error || !worklist) return <EmptyState title="Unavailable" description={error ?? "No worklist."} />;
 
-  const truncated = blockedCount > scanned;
+  const { groups, blockedClaimCount, unattributedClaimCount, truncated } = worklist;
 
   return (
     <WorkQueueLayout
@@ -154,14 +130,23 @@ export function MedicaidValidationQueue(): JSX.Element {
       filters={
         <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
           <span style={mutedStyle}>
-            {blockedCount} blocked claim{blockedCount === 1 ? "" : "s"} (failed validation or partially
-            acknowledged) · rule detail resolved for {scanned}
-            {truncated ? ` of ${blockedCount} — refine in the workbench to review the rest` : ""}
+            {blockedClaimCount} blocked claim{blockedClaimCount === 1 ? "" : "s"} (failed validation or
+            partially acknowledged) · {groups.length} rule{groups.length === 1 ? "" : "s"} holding them
           </span>
-          {unresolved > 0 ? (
+          {unattributedClaimCount > 0 ? (
             <span style={mutedStyle}>
-              {unresolved} claim{unresolved === 1 ? "'s" : "s'"} validation run could not be read and{" "}
-              {unresolved === 1 ? "is" : "are"} not represented below.
+              {unattributedClaimCount} blocked claim{unattributedClaimCount === 1 ? " is" : "s are"} not
+              listed below — no validation run yet, or every failing rule already overridden. Open{" "}
+              <a href="/medicaid/billing/claims?state=FAILED_VALIDATION" style={linkStyle}>
+                the workbench
+              </a>{" "}
+              to review {unattributedClaimCount === 1 ? "it" : "them"}.
+            </span>
+          ) : null}
+          {truncated ? (
+            <span role="status" style={mutedStyle}>
+              This is a partial view — the worklist scan hit its cap, so more blocked claims exist than are
+              grouped here.
             </span>
           ) : null}
         </div>
@@ -169,11 +154,11 @@ export function MedicaidValidationQueue(): JSX.Element {
       table={
         groups.length === 0 ? (
           <EmptyState
-            title={blockedCount === 0 ? "Nothing blocked" : "No rule detail"}
+            title={blockedClaimCount === 0 ? "Nothing blocked" : "No rule detail"}
             description={
-              blockedCount === 0
+              blockedClaimCount === 0
                 ? "No Medicaid claim is failing validation or partially acknowledged."
-                : "Blocked claims exist but none carry a readable failing rule — open them individually from the workbench."
+                : "Blocked claims exist but none carry an outstanding failing rule — open them individually from the workbench."
             }
           />
         ) : (
@@ -187,39 +172,56 @@ export function MedicaidValidationQueue(): JSX.Element {
               </tr>
             </thead>
             <tbody>
-              {groups.map((g) => (
-                <tr key={g.ruleKey} style={rowLine}>
-                  <td style={tdMono}>{g.ruleKey}</td>
-                  <td style={tdNum}>{g.claims.length}</td>
-                  <td style={{ ...td, maxWidth: "24rem" }}>
-                    {g.remediationSummary ?? <span style={mutedStyle}>—</span>}
-                  </td>
-                  <td style={td}>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
-                      {g.claims.map((c) => (
-                        <a
-                          key={c.id}
-                          href={`/medicaid/billing/claims/${c.id}/validation`}
-                          style={linkMonoStyle}
-                          title={`${humanize(c.state)} · patient ${shortId(c.patientId)}`}
-                        >
-                          {c.medicaidClaimControlNumber}
-                        </a>
-                      ))}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {groups.map((g) => {
+                const href = fixActionHref(g.remediationFixAction);
+                return (
+                  <tr key={g.ruleKey} style={rowLine}>
+                    <td style={tdMono}>{g.ruleKey}</td>
+                    <td style={tdNum}>{g.claims.length}</td>
+                    <td style={{ ...td, maxWidth: "24rem" }}>
+                      {g.remediationSummary ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                          <span>{g.remediationSummary}</span>
+                          {href ? (
+                            <a href={href} style={linkStyle}>
+                              {fixActionLabel(g.remediationFixAction)} →
+                            </a>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <span style={mutedStyle}>—</span>
+                      )}
+                    </td>
+                    <td style={td}>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+                        {g.claims.map((c) => (
+                          <a
+                            key={c.claimId}
+                            href={`/medicaid/billing/claims/${c.claimId}/validation`}
+                            style={linkMonoStyle}
+                            title={`${humanize(c.state)} · ${c.serviceState} · patient ${shortId(c.patientId)}`}
+                          >
+                            {c.medicaidClaimControlNumber}
+                          </a>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )
       }
       detail={
         <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-          <StatusPill label={`${groups.length} rule${groups.length === 1 ? "" : "s"} blocking`} tone="warning" />
+          <StatusPill
+            label={`${groups.length} rule${groups.length === 1 ? "" : "s"} blocking`}
+            tone={groups.length === 0 ? "success" : "warning"}
+          />
           <span style={mutedStyle}>
             Select a control number to open that claim's validation worklist, where a failed rule can be
-            overridden with a rationale.
+            overridden with a rationale. Overridden failures drop off this queue.
           </span>
         </div>
       }

@@ -194,6 +194,8 @@ import {
   ValidationOverrideListResponse as M24ValidationOverrideListResponse,
   ValidationRunDto as M24ValidationRunDto,
   ValidationRunListResponse as M24ValidationRunListResponse,
+  ValidationWorklistDto as M24ValidationWorklistDto,
+  ValidationWorklistQuery as M24ValidationWorklistQuery,
   VoidClaimBody as M24VoidClaimBody,
 } from "../../apps/backend/src/modules/24-billing-medicaid/routes/m24-typebox";
 // M26 Cap Management — the §4.2 request/response schemas the route handlers bind (the @wardenx/cap-management
@@ -1863,6 +1865,12 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
       "Override a failed rule — role-eligibility + step-up + AI-actor reject; reason ≥40 chars (D12/D14; §4.7)",
     body: M24ApplyOverrideBody,
     response: M24ApplyOverrideResponse,
+  },
+  "GET /api/v1/medicaid-validation-worklist": {
+    summary:
+      "Org-wide blocked-claim worklist grouped by the failing rule holding each claim (§5.1) — the response reports the blocked-claim denominator and whether the scan was truncated",
+    query: M24ValidationWorklistQuery,
+    response: M24ValidationWorklistDto,
   },
   "GET /api/v1/medicaid-validation-overrides": {
     summary: "Org-wide override history — actor, role, reason, ruleKey, claim reference (§5.1)",

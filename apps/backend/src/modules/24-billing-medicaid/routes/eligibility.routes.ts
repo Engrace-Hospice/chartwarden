@@ -6,6 +6,7 @@ import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
 import { ABAC_BODY_PE, P } from "./guards";
+import { EligibilityListQuery, RefreshEligibilityBody, parse, parseQuery } from "./m24-typebox";
 import type { M24ReadService } from "./read-service";
 import type { M24WriteService } from "./write-service";
 
@@ -16,10 +17,6 @@ export interface EligibilityRouteDeps {
 
 const AI = rejectAiActor();
 const IDEMPOTENT = requireIdempotencyKey();
-const qStr = (q: unknown, key: string): string | undefined => {
-  const v = (q as Record<string, unknown> | undefined)?.[key];
-  return typeof v === "string" && v.length > 0 ? v : undefined;
-};
 
 export function registerEligibilityRoutes(app: FastifyInstance, deps: EligibilityRouteDeps): void {
   const { readService, writeService } = deps;
@@ -29,13 +26,13 @@ export function registerEligibilityRoutes(app: FastifyInstance, deps: Eligibilit
     "/api/v1/medicaid-eligibility-checks",
     { preHandler: [P("medicaid.eligibility.check"), ABAC_BODY_PE("medicaid.eligibility.check", "provider_entity_medicaid_billing_scope"), AI, IDEMPOTENT] },
     async (request, reply) => {
-      const body = request.body as { patientId: string; patientPayerId: string; asOfServiceDate: string; providerEntityId?: string };
+      const body = parse(RefreshEligibilityBody, request.body);
       return reply.code(202).send(await writeService.refreshEligibility(writeActorOf(request), body));
     },
   );
 
   // 23 — per-patient eligibility history
   app.get("/api/v1/medicaid-eligibility-checks", { preHandler: [P("medicaid.eligibility.read")] }, async (request, reply) =>
-    reply.send(await readService.listEligibilityChecks(actorOf(request), { patientId: qStr(request.query, "patientId") })),
+    reply.send(await readService.listEligibilityChecks(actorOf(request), parseQuery(EligibilityListQuery, request.query))),
   );
 }
