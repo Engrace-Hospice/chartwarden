@@ -4,7 +4,7 @@
 > corpus is consistent; this shows how much of it is BUILT in `apps/web`. Do not hand-edit —
 > the `ui:parity --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 25 module screen-sets registered · 143 screens wired in `apps/web`.
+**Coverage:** 113 documented screen specs · 26 module screen-sets registered · 159 screens wired in `apps/web`.
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -130,6 +130,22 @@
 | 23-billing-medicare | `billing.overrides` | `/billing/overrides` | `billing.validation.read_override` | ✅ |
 | 23-billing-medicare | `billing.metrics` | `/billing/metrics` | `billing.claim.read_metrics` | ✅ |
 | 23-billing-medicare | `billing.surveyor-audit` | `/admin/billing-audit` | `billing.claim.read` | ✅ |
+| 24-billing-medicaid | `medicaid.ar-dashboard` | `/medicaid/billing/ar-dashboard` | `medicaid.claim.read_ar_dashboard` | ✅ |
+| 24-billing-medicaid | `medicaid.claims` | `/medicaid/billing/claims` | `medicaid.claim.read` | ✅ |
+| 24-billing-medicaid | `medicaid.claim.new` | `/medicaid/billing/claims/new` | `medicaid.claim.assemble` | ✅ |
+| 24-billing-medicaid | `medicaid.claim` | `/medicaid/billing/claims/:claimId` | `medicaid.claim.read` | ✅ |
+| 24-billing-medicaid | `medicaid.claim.validation` | `/medicaid/billing/claims/:claimId/validation` | `medicaid.validation.read_run` | ✅ |
+| 24-billing-medicaid | `medicaid.claim.submissions` | `/medicaid/billing/claims/:claimId/submissions` | `medicaid.claim.read` | ✅ |
+| 24-billing-medicaid | `medicaid.claim.acknowledgments` | `/medicaid/billing/claims/:claimId/acknowledgments` | `medicaid.claim.read` | ✅ |
+| 24-billing-medicaid | `medicaid.validation-worklist` | `/medicaid/billing/validation-worklist` | `medicaid.validation.read_run` | ✅ |
+| 24-billing-medicaid | `medicaid.rb-arrangements` | `/medicaid/billing/rb-arrangements` | `medicaid.rb_arrangement.read` | ✅ |
+| 24-billing-medicaid | `medicaid.rb-arrangement` | `/medicaid/billing/rb-arrangements/:arrangementId` | `medicaid.rb_arrangement.read` | ✅ |
+| 24-billing-medicaid | `medicaid.rule-config` | `/medicaid/billing/rule-config` | `medicaid.rule_config.read` | ✅ |
+| 24-billing-medicaid | `medicaid.eligibility` | `/medicaid/billing/eligibility` | `medicaid.eligibility.read` | ✅ |
+| 24-billing-medicaid | `medicaid.trading-partners` | `/medicaid/billing/trading-partner-credentials` | `medicaid.trading_partner.read` | ✅ |
+| 24-billing-medicaid | `medicaid.overrides` | `/medicaid/billing/override-audit` | `medicaid.validation.read_override` | ✅ |
+| 24-billing-medicaid | `medicaid.metrics` | `/medicaid/billing/metrics` | `medicaid.claim.read_metrics` | ✅ |
+| 24-billing-medicaid | `medicaid.surveyor-read` | `/admin/medicaid-billing-audit/:claimId` | `medicaid.claim.read` | ✅ |
 | 25-remittance | `remittance.worklist` | `/remittance` | `remittance.read` | ✅ |
 | 25-remittance | `remittance.denials` | `/remittance/denials` | `denial.worklist.read` | ✅ |
 | 25-remittance | `remittance.appeals` | `/remittance/appeals` | `appeal.read` | ✅ |
