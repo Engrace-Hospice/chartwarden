@@ -15,6 +15,8 @@ const GOOD: EnvLike = {
   TRUSTED_ORIGINS: "https://app.wardenx.example",
   // 32 bytes base64-encoded
   TWO_FACTOR_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
+  // M24 §8.7 — the master KEK for state trading-partner secrets (also 32 bytes base64).
+  M24_CREDENTIAL_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString("base64"),
 };
 
 describe("collectEnvProblems", () => {
@@ -36,6 +38,7 @@ describe("collectEnvProblems", () => {
         "BETTER_AUTH_URL",
         "TRUSTED_ORIGINS",
         "TWO_FACTOR_ENCRYPTION_KEY",
+        "M24_CREDENTIAL_ENCRYPTION_KEY",
       ]),
     );
   });
@@ -59,6 +62,18 @@ describe("collectEnvProblems", () => {
     });
     expect(problems).toEqual([
       { key: "TWO_FACTOR_ENCRYPTION_KEY", problem: "must decode to 32 base64 bytes" },
+    ]);
+  });
+
+  it("flags an M24 credential KEK that does not decode to 32 bytes", () => {
+    // A short KEK would still derive a DEK, so the failure has to be caught here rather than at the
+    // first trading-partner write — a weak key silently protecting billing secrets is the bad outcome.
+    const problems = collectEnvProblems({
+      ...GOOD,
+      M24_CREDENTIAL_ENCRYPTION_KEY: Buffer.alloc(16, 1).toString("base64"),
+    });
+    expect(problems).toEqual([
+      { key: "M24_CREDENTIAL_ENCRYPTION_KEY", problem: "must decode to 32 base64 bytes" },
     ]);
   });
 });

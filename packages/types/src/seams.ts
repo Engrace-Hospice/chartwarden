@@ -41,7 +41,7 @@ import type {
 } from "./hope";
 import type { IdgDecisionProvider, IdgPacketProvider, IdgScheduleProvider } from "./idg";
 import type { OrderProvider, OrderSignatureProvider } from "./orders";
-import type { PatientMutator, PatientReader } from "./patient";
+import type { PatientCoverageReader, PatientMutator, PatientReader } from "./patient";
 // @wardenx/types — Boot-registered SEAM contracts (Phase 0 skeleton).
 //
 // Per ADR-0005 D1, cross-module consumption via a boot-registered seam needs NO
@@ -72,6 +72,7 @@ export interface OrgScope {
 export type SeamName =
   | "CaseloadProvider" // M5/M17 — which patients an actor may see
   | "PatientReader" // M5 — patient identity/demographics reads (§4.8; M29 cascade)
+  | "PatientCoverageReader" // M5 — §3.4 coverage list; M23/M24 resolve which payer a claim bills
   | "PatientMutator" // M5 — apply an M29-proposal/amendment field diff (§4.9; D12 strip)
   | "DocumentRenderer" // M22 — render a typed payload to a stored document (W2 handshake)
   | "DocumentStorageProvider" // M22 — per-tenant object storage (presign + version-aware destroy; §4.3/D1)
@@ -361,6 +362,7 @@ export interface TenantOrgCreationProvider {
 export interface SeamContracts {
   CaseloadProvider: CaseloadProvider;
   PatientReader: PatientReader;
+  PatientCoverageReader: PatientCoverageReader;
   PatientMutator: PatientMutator;
   DocumentRenderer: DocumentRenderer;
   // M22's `DocumentStorageProvider` (§4.3 / §11 D1) is LEAF-TYPED — its interface lives in ./documents

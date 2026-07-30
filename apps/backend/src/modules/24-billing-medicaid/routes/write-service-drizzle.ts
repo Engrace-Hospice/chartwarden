@@ -26,6 +26,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, eq } from "drizzle-orm";
+import type { CredentialCipherPort } from "../credential-crypto";
 import type { M24WriteActor } from "./actor";
 import type { ClaimView, RbArrangementView } from "./read-service";
 import type {
@@ -70,9 +71,44 @@ const iso = (d: Date | string | null): string =>
 const day = (d: Date | string | null): string => iso(d).slice(0, 10);
 const dayN = (d: Date | string | null): string | null => (d === null ? null : day(d));
 
+/**
+ * Refuse to store a secret when no cipher port is bound, rather than dropping it. The pre-crypto placeholder
+ * accepted the secret and wrote a sentinel — the caller believed it was saved. Failing loudly is the only
+ * honest option when the KEK is absent.
+ */
+const UNBOUND_CIPHER: CredentialCipherPort = {
+  seal() {
+    throw new DegradedError(
+      "CREDENTIAL_CRYPTO_UNBOUND",
+      "credential secrets cannot be stored — M24_CREDENTIAL_ENCRYPTION_KEY is not configured",
+    );
+  },
+  open() {
+    throw new DegradedError(
+      "CREDENTIAL_CRYPTO_UNBOUND",
+      "credential secrets cannot be read — M24_CREDENTIAL_ENCRYPTION_KEY is not configured",
+    );
+  },
+};
+
+/**
+ * How the write path resolves a patient's Medicaid coverage. Bound at the composition root to M5's §3.4
+ * `PatientCoverageReader` seam (via getSeam); left undefined in a slice/test, where the paths that need it
+ * degrade with a precise message instead of a blanket "readers unbound".
+ */
+export interface CoverageResolverPort {
+  activeMedicaidCoverage(input: {
+    organizationId: string;
+    patientId: string;
+    onDate: string;
+  }): Promise<{ id: string; payerId: string; subscriberId: string } | null>;
+}
+
 export function buildDrizzleM24WriteService(
   db: DbClient,
   outbox: WriteOutboxPort = NOOP_OUTBOX,
+  cipher: CredentialCipherPort = UNBOUND_CIPHER,
+  coverage?: CoverageResolverPort,
 ): M24WriteService {
   const C = schema.medicaidClaim;
   const SUB = schema.medicaidSubmission;
@@ -160,13 +196,54 @@ export function buildDrizzleM24WriteService(
   }
 
   return {
-    // ── route 1 — assemble (DEFERRED: M5 patient/payer + M6 admission + M40 state-plan/rate-schedule
-    // readers are unbound; the claim row's NOT NULL patient_payer_id / state_plan_code_id / service_state
-    // come from those seams. Degrades to a typed 503 rather than crashing — the route exists + is mounted). ──
-    async assembleClaim(_actor: M24WriteActor, _input: AssembleClaimInput): Promise<ClaimView> {
+    // ── route 1 — assemble. The claim row needs three externally-owned values: `patient_payer_id` (M5),
+    // `service_state` (the state whose Medicaid program is billed) and `state_plan_code_id` (M40). The
+    // first two now RESOLVE — M5's §3.4 PatientCoverageReader gives the coverage, and the service state is
+    // read from the provider entity's own active trading-partner credential (an M24-owned row: you cannot
+    // bill a state you hold no credential for, which makes it the authoritative source, not a guess).
+    //
+    // The THIRD has no owner anywhere in the repo: no module declares a state-plan-code or state-rate-
+    // schedule table (M40 has no such entity kind, M38 no such code system), so `state_plan_code_id` —
+    // NOT NULL on `medicaid_claim` — cannot be populated with a real value by anyone today. Assembly
+    // therefore still stops, but it now stops with the ONE missing input named, after proving the rest
+    // resolves, instead of a blanket "the M5/M6/M40 readers are unbound".
+    async assembleClaim(actor: M24WriteActor, input: AssembleClaimInput): Promise<ClaimView> {
+      if (!coverage) {
+        throw new DegradedError(
+          "MEDICAID_COVERAGE_READER_UNBOUND",
+          "claim assembly requires M5's PatientCoverageReader seam (not bound in this environment)",
+        );
+      }
+      const resolved = await coverage.activeMedicaidCoverage({
+        organizationId: actor.organizationId,
+        patientId: input.patientId,
+        onDate: input.serviceFrom,
+      });
+      if (!resolved) {
+        throw new ConflictError(
+          "MEDICAID_COVERAGE_NOT_IN_FORCE",
+          "this patient holds no Medicaid coverage in force on the claim's first service date",
+        );
+      }
+      const serviceState = await withOrgContext(db, actor, async (tx) => {
+        const creds = await tx
+          .select({ serviceState: TP.serviceState, activeTo: TP.activeTo })
+          .from(TP)
+          .where(and(eq(TP.organizationId, actor.organizationId), eq(TP.providerEntityId, input.providerEntityId)));
+        const from = new Date(input.serviceFrom);
+        return creds.find((c) => c.activeTo === null || c.activeTo >= from)?.serviceState ?? null;
+      });
+      if (!serviceState) {
+        throw new ConflictError(
+          "MEDICAID_NO_ACTIVE_TRADING_PARTNER",
+          "this provider entity has no active state trading-partner credential — configure one before assembling a Medicaid claim",
+        );
+      }
+      // Everything M24 and M5 own has resolved (coverage `resolved.id`, `serviceState`). The remaining
+      // blocker is upstream reference data, so name it precisely rather than implying M24 is unwired.
       throw new DegradedError(
-        "MEDICAID_ASSEMBLY_READERS_UNBOUND",
-        "claim assembly requires the M5/M6/M40 reader seams (deferred bind, §4.4)",
+        "MEDICAID_STATE_PLAN_CODE_CATALOG_MISSING",
+        `medicaid_claim.state_plan_code_id has no source: no module owns a state-plan-code catalog for ${serviceState} (M40 declares no such entity kind). Patient coverage and service state resolved; assembly is blocked only on that catalog.`,
       );
     },
 
@@ -525,11 +602,81 @@ export function buildDrizzleM24WriteService(
 
     // ── route 22 — refresh eligibility (DEFERRED: the M5 MedicaidIdUnlockReader + the per-state 270/271
     // adapter are unbound; the row's service_state comes from M5. Degrades to a typed 503; the route exists). ──
-    async refreshEligibility(_actor, _input: RefreshEligibilityInput) {
-      throw new DegradedError(
-        "MEDICAID_ELIGIBILITY_ADAPTER_UNBOUND",
-        "eligibility refresh requires the M5 MedicaidIdUnlockReader + the per-state adapter (deferred, §4.4/§8.7)",
-      );
+    // The per-state 270/271 adapter is still unbound (no live MMIS to ask), but that is no reason to
+    // refuse to record a check. M5's §3.4 coverage read supplies the payer + the masked recipient-id tail,
+    // so the row is written with outcome `unknown` — an honest "we could not confirm", which the §11
+    // freshness rule then treats as a finding. Previously this 503'd and no row existed at all, so the
+    // eligibility history and MCO timeline could never populate.
+    async refreshEligibility(actor, input: RefreshEligibilityInput) {
+      if (!coverage) {
+        throw new DegradedError(
+          "MEDICAID_COVERAGE_READER_UNBOUND",
+          "eligibility refresh requires M5's PatientCoverageReader seam (not bound in this environment)",
+        );
+      }
+      const resolved = await coverage.activeMedicaidCoverage({
+        organizationId: actor.organizationId,
+        patientId: input.patientId,
+        onDate: input.asOfServiceDate,
+      });
+      if (!resolved) {
+        throw new ConflictError(
+          "MEDICAID_COVERAGE_NOT_IN_FORCE",
+          "this patient holds no Medicaid coverage in force on the requested service date",
+        );
+      }
+      const serviceState = await withOrgContext(db, actor, async (tx) => {
+        const creds = await tx
+          .select({ serviceState: TP.serviceState })
+          .from(TP)
+          .where(eq(TP.organizationId, actor.organizationId))
+          .limit(1);
+        return creds[0]?.serviceState ?? null;
+      });
+      if (!serviceState) {
+        throw new ConflictError(
+          "MEDICAID_NO_ACTIVE_TRADING_PARTNER",
+          "no state trading-partner credential is configured — the service state cannot be determined",
+        );
+      }
+      // Only the last 4 of the member id is ever persisted (D12 / §3.6) — the full recipient id is read
+      // from the seam, used to derive the tail, and dropped on this line.
+      const maskedTail = resolved.subscriberId.slice(-4);
+      const checkedAt = new Date();
+      const staleAt = new Date(checkedAt.getTime() + 30 * 24 * 60 * 60 * 1000);
+      const checkId = randomUUID();
+      await withOrgContext(db, actor, async (tx) => {
+        await tx.insert(schema.medicaidEligibilityCheck).values({
+          id: checkId,
+          organizationId: actor.organizationId,
+          patientId: input.patientId,
+          patientPayerId: resolved.id,
+          serviceState,
+          asOfServiceDate: new Date(input.asOfServiceDate),
+          outcome: "unknown",
+          recipientIdMaskedAtCheck: maskedTail,
+          checkedAt,
+          staleAt,
+          errorMessage:
+            "no state eligibility adapter is wired for this service state — coverage was resolved from the record, not confirmed with the state",
+        });
+        // The payload must match the REGISTERED §4.11 payloadSchema exactly — the catalog-validating
+        // publisher throws on a mismatch and rolls this insert back with it.
+        await outbox.publish(tx, {
+          eventName: "m24.medicaid_eligibility.checked",
+          payload: {
+            organizationId: actor.organizationId,
+            checkId,
+            patientId: input.patientId,
+            asOfServiceDate: new Date(input.asOfServiceDate).toISOString(),
+            outcome: "unknown",
+            mcoId: null,
+            checkedAt: checkedAt.toISOString(),
+            staleAt: staleAt.toISOString(),
+          },
+        });
+      });
+      return { checkId, outcome: "unknown" };
     },
 
     async createRbArrangement(actor, input: CreateRbArrangementInput) {
@@ -684,10 +831,18 @@ export function buildDrizzleM24WriteService(
             ),
           )
           .limit(1);
-        // KMS DEK envelope is DEFERRED — secrets are NEVER stored in plaintext; presence is recorded as a
-        // sentinel cipher until the per-tenant DEK binds (§8.7). The route returns only masked presence flags.
-        const clientSecretCipher = input.clientSecret != null ? "ENC:deferred" : existing[0]?.clientSecretCipher ?? null;
-        const sftpKeyCipher = input.sftpKey != null ? "ENC:deferred" : existing[0]?.sftpKeyCipher ?? null;
+        // §8.7 envelope encryption under the per-tenant HKDF DEK. A submitted secret is SEALED (never
+        // stored plaintext, never returned by any read); an omitted secret leaves the existing cipher
+        // untouched, so a PATCH-shaped upsert cannot silently blank a credential. With no KEK bound the
+        // seal THROWS — storing a sentinel and reporting success is what the placeholder did wrong.
+        const clientSecretCipher =
+          input.clientSecret != null
+            ? cipher.seal(actor.organizationId, input.clientSecret)
+            : existing[0]?.clientSecretCipher ?? null;
+        const sftpKeyCipher =
+          input.sftpKey != null
+            ? cipher.seal(actor.organizationId, input.sftpKey)
+            : existing[0]?.sftpKeyCipher ?? null;
         let id: string;
         let version: number;
         if (existing[0]) {

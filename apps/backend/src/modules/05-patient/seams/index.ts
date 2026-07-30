@@ -1,9 +1,11 @@
-import type { PatientMutator, PatientReader } from "@wardenx/types";
+import type { DbClient } from "@wardenx/db";
+import type { PatientCoverageReader, PatientMutator, PatientReader } from "@wardenx/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 // apps/backend/src/modules/05-patient/seams — M5's published cross-module seams (M5-T07/T08).
 // M5 closes THREE M3/Wave-A boot-gate deny-stubs, all required by validateSeams(): CaseloadProvider
 // (§4.1, T07 — also wires the `caseload_membership` ABAC predicate), PatientReader (§4.8, T08), and
 // PatientMutator (§4.9, T08). `registerPatientSeams` registers them all from the composition root.
+import { buildPatientCoverageReader } from "../coverage-reader";
 import { type CaseloadSeamDeps, registerCaseloadSeam } from "./caseload-provider";
 import {
   type PatientMutatorStore,
@@ -46,6 +48,8 @@ export interface PatientSeamDeps {
   readerStore?: PatientReaderStore;
   /** PatientMutator data port (Drizzle in prod; in-memory slice). */
   mutatorStore?: PatientMutatorStore;
+  /** Drizzle client — presence registers the §3.4 PatientCoverageReader over the real coverage rows. */
+  db?: DbClient;
 }
 
 /**
@@ -55,6 +59,10 @@ export interface PatientSeamDeps {
  */
 export function registerPatientSeams(deps: PatientSeamDeps = {}): void {
   registerCaseloadSeam(deps.caseload);
+  // §3.4 — the coverage read M23/M24 resolve a claim's billed payer from. Registered ONLY when a db is
+  // present: without one there is no coverage data to project, and the deny-stub's loud failure is the
+  // honest answer (an empty coverage list would read as "this patient has no insurance").
+  if (deps.db) registerSeam("PatientCoverageReader", buildPatientCoverageReader(deps.db));
   registerSeam(
     "PatientReader",
     createPatientReader(deps.readerStore ?? createInMemoryPatientReaderStore().store),
@@ -68,6 +76,11 @@ export function registerPatientSeams(deps: PatientSeamDeps = {}): void {
 /** Typed resolver for M5's PatientReader seam (sound: registered real impl, validateSeams guarantees it). */
 export function getPatientReader(): PatientReader {
   return getSeam("PatientReader");
+}
+
+/** Typed resolver for M5's §3.4 PatientCoverageReader seam (the billing payer-resolution read). */
+export function getPatientCoverageReader(): PatientCoverageReader {
+  return getSeam("PatientCoverageReader");
 }
 
 /** Typed resolver for M5's PatientMutator seam. */

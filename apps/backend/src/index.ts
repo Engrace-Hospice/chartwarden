@@ -52,6 +52,7 @@ import {
 import {
   mountPatientRoutes,
   registerPatientErasers,
+  getPatientCoverageReader,
   registerPatientSeams,
 } from "./modules/05-patient/index";
 import { registerAdmissionErasers, registerAdmissionSeams } from "./modules/06-admission/index";
@@ -170,6 +171,7 @@ import {
 // are deferred follow-ups (the M26 posture — the adapter wire I/O lands later).
 import {
   M24_OUTBOX_EVENTS,
+  buildCredentialCipherPort,
   buildDrizzleM24ReadService,
   buildDrizzleM24WriteService,
   mountM24Routes,
@@ -279,7 +281,10 @@ export function wireModuleSeams(
   registerMdmSeams(
     deps.db ? { store: createDbMdmStore(deps.db), baaStore: createDbBaaStore(deps.db) } : {},
   );
-  registerPatientSeams(); // M5 — CaseloadProvider (§4.1, + caseload_membership predicate); PatientReader/Mutator land T08
+  // M5 — CaseloadProvider (§4.1, + caseload_membership predicate); PatientReader/Mutator land T08. The
+  // §3.4 PatientCoverageReader registers over the real `patient_payer` rows when a db is present — the
+  // read M23/M24 resolve a claim's billed payer from (without it, billing degrades fail-closed).
+  registerPatientSeams(deps.db ? { db: deps.db } : {});
   // M6 — the six §4.7 admission reader seams (election/CTI/F2F/LOC/status/census). Slice/tests keep the
   // in-memory store; the Drizzle-backed store lands with M6's routes/repos (M6-T06+). PLUS the §4.11
   // DeathDischargeReader the M30 measure-recompute worker consumes for the HVLDL denominator — registered over
@@ -611,6 +616,28 @@ if ((import.meta as { main?: boolean }).main) {
   const m25OutboxPublisher = bindCallerModule(txOutboxPublisher, "m25");
   const m26OutboxPublisher = bindCallerModule(txOutboxPublisher, "m26");
   const m27OutboxPublisher = bindCallerModule(txOutboxPublisher, "m27");
+  // M24 §8.7 — the trading-partner secret cipher port. Built once at boot so a missing/short KEK surfaces
+  // here, not on the first tenant write; left undefined when no key is configured, which makes credential
+  // WRITES fail closed while every other M24 route keeps working (production requires the key via env.ts).
+  const m24CredentialCipher = process.env.M24_CREDENTIAL_ENCRYPTION_KEY
+    ? buildCredentialCipherPort()
+    : undefined;
+  // M24 → M5 §3.4 — the coverage read claim assembly + eligibility resolve a billed payer from. Resolved
+  // through getSeam at CALL time (not boot), so registration order does not matter and an unregistered
+  // reader denies loudly at the deny-stub rather than silently reporting "no coverage".
+  const m24CoverageResolver = {
+    async activeMedicaidCoverage(q: { organizationId: string; patientId: string; onDate: string }) {
+      const found = await getPatientCoverageReader().activeCoverageOfKind({
+        organizationId: q.organizationId,
+        patientId: q.patientId,
+        coverageKind: "medicaid",
+        onDate: q.onDate,
+      });
+      return found
+        ? { id: found.id, payerId: found.payerId, subscriberId: found.subscriberId }
+        : null;
+    },
+  };
   const m30OutboxPublisher = bindCallerModule(txOutboxPublisher, "m30");
   const m33OutboxPublisher = bindCallerModule(txOutboxPublisher, "m33");
   const m34OutboxPublisher = bindCallerModule(txOutboxPublisher, "m34");
@@ -791,7 +818,16 @@ if ((import.meta as { main?: boolean }).main) {
           // the §4.11 `m24.*` transactional outbox publisher binds here (events persist on the mutation's tx).
           mountM24Routes(app, {
             readService: buildDrizzleM24ReadService(dbHandle.db),
-            writeService: buildDrizzleM24WriteService(dbHandle.db, m24OutboxPublisher),
+            // The §8.7 credential cipher port binds here. Absent M24_CREDENTIAL_ENCRYPTION_KEY the port is
+            // left unbound and a credential WRITE fails closed (503 CREDENTIAL_CRYPTO_UNBOUND) — every other
+            // M24 route is unaffected. Boot never fails on a missing key outside production, where env.ts
+            // requires it; and a secret is never accepted-then-dropped, which is what the sentinel did.
+            writeService: buildDrizzleM24WriteService(
+              dbHandle.db,
+              m24OutboxPublisher,
+              m24CredentialCipher,
+              m24CoverageResolver,
+            ),
           });
         }
       : undefined,

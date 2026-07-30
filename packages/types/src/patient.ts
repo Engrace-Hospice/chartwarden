@@ -259,3 +259,54 @@ export interface PatientMutatorResult {
 export interface PatientMutator {
   apply(input: PatientMutatorInput): Promise<PatientMutatorResult>;
 }
+
+// ── §3.4 PatientCoverageReader seam (the billing payer-resolution read) ──────────────────────────
+
+/**
+ * One active/known insurance coverage on a patient (`patient_payer`, M5 §3.4), projected for the
+ * modules that must resolve WHICH coverage a claim bills. `payerId` is an M40 canonical payer id —
+ * the display name resolves through `MdmEntityProvider`, never from here. `rank` 1 = primary.
+ *
+ * PHI-minimal by construction: the coverage identity and the member id the payer needs, nothing
+ * clinical. `subscriberId` is the member id (an MBI for `medicare_ffs`, the recipient id for a
+ * Medicaid coverage), so a consumer that only needs to CHOOSE a coverage should read `id` and leave
+ * `subscriberId` alone — M24's claim rows store the masked tail only (D12 / §3.6).
+ */
+export interface PatientCoverage {
+  readonly id: string;
+  readonly patientId: string;
+  readonly payerId: string;
+  readonly rank: number;
+  /** `medicaid` / `medicare_ffs` / `commercial` / … (the M5 `patient_payer_coverage_kind` enum). */
+  readonly coverageKind: string;
+  readonly subscriberId: string;
+  readonly groupNumber: string | null;
+  /** True while the coverage is open (`effective_to IS NULL`). */
+  readonly current: boolean;
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string | null;
+}
+
+/**
+ * The §3.4 PatientCoverageReader seam — the coverage list the BILLING modules resolve a claim's payer
+ * from. M23 (Medicare) and M24 (Medicaid) both need "which coverage does this claim bill, and was it
+ * in force on the service date"; before this seam each had it as an open deferral and degraded claim
+ * assembly to a 503, because M5's coverage data was reachable only through its HTTP route.
+ *
+ * `coveragesForPatient` returns every coverage (caller filters); `activeCoverageOfKind` is the
+ * assembly hot path — the highest-ranked coverage of a kind in force ON a service date, or null.
+ * M5 registers the real impl over the M1 deny-stub at boot.
+ */
+export interface PatientCoverageReader {
+  coveragesForPatient(input: {
+    organizationId: string;
+    patientId: string;
+  }): Promise<readonly PatientCoverage[]>;
+  activeCoverageOfKind(input: {
+    organizationId: string;
+    patientId: string;
+    coverageKind: string;
+    /** ISO yyyy-mm-dd — the coverage must be in force on this date. */
+    onDate: string;
+  }): Promise<PatientCoverage | null>;
+}
