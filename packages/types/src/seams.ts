@@ -8,7 +8,23 @@ import type {
   LevelOfCareReader,
 } from "./admission";
 import type { LatestAssessmentProvider, ScaleSeriesProvider } from "./assessment";
+import type {
+  BereavedPortalScopeProvider,
+  BereavementAssignmentReader,
+  BereavementComplianceProvider,
+  BereavementOutreachProvider,
+  BereavementPlanProvider,
+  BereavementRiskFactorsProvider,
+  BereavementRiskTierProvider,
+} from "./bereavement";
 import type { CarePlanReader } from "./care-plan";
+import type {
+  DisciplineComplianceProvider,
+  DisciplinePlanReader,
+  MswRiskFactorReader,
+  SupervisoryCadencePlanReader,
+  VolunteerGateExpiryReader,
+} from "./discipline-plans";
 import type {
   DocumentReader,
   DocumentStorageProvider,
@@ -59,6 +75,11 @@ import type {
   VisitReader,
   VolunteerComplianceProvider,
 } from "./scheduling";
+import type {
+  ComfortKitDispatchProvider,
+  SupplyCostProvider,
+  SupplyFulfillmentProvider,
+} from "./supplies";
 
 /** Opaque tenant scope every seam call carries (resolved by withOrgContext). */
 export interface OrgScope {
@@ -204,12 +225,45 @@ export type SeamName =
   | "VisitAssignmentReader" // M17 — assignment read seam (caseload contribution / on-call roster / live in_visit)
   | "PortalVisitReader" // M17 — portal upcoming-visit read seam (lay-language, scrubbed)
   | "VisitMetricsProvider" // M17 — productivity + quality measures read seam (on-time / no-show / reschedule / route / stability)
-  // M15 (Discipline Care Plans, Phase 2) owned seams M17 CONSUMES (§4.4) — leaf-typed in ./scheduling (M15 has no
-  // types file yet) so M17's D8 pre-schedule gate (predicate 6) + day-view advisory compile against the real
-  // contract. Both fail-closed deny-stub until M15 ships (M17-F06/ADR-0009); the volunteer gate denies LOUDLY
-  // exactly when a `volunteer_visit` is scheduled before M15 lands. No `dependsOn` edge (registry is M1-owned).
+  // M15 (Discipline Care Plans) owned seams M17 CONSUMES (§4.4) — leaf-typed in ./scheduling because M17 shipped
+  // FIRST and its D8 pre-schedule gate (predicate 6) + day-view advisory compile against those LOCKED shapes
+  // (per-membership / per-ADMISSION). M15-T05 registers the real impls over the M17-F06/ADR-0009 deny-stubs;
+  // the stubs remain the fail-closed default for a boot that does not wire M15. No `dependsOn` edge (registry
+  // is M1-owned).
   | "VolunteerComplianceProvider" // M15 — per-membership volunteer-compliance status (gate predicate 6, VOLUNTEER_GATE_UNMET)
   | "SupervisoryCadenceReader" // M15 — next-due RN supervisory visit per admission (day-view advisory + propose-from-frequency)
+  // The rest of M15's §4.3 published surface (M15-T05) — leaf-typed in ./discipline-plans. `DisciplinePlanReader`
+  // is the plan read path M14's IDG packet builder + M22 (plan PDFs) + M28/M31/M33 consume; `MswRiskFactorReader`
+  // exposes the psychosocial factors M16's bereavement rubric SCORES (M15 never scores, §1.2);
+  // `VolunteerGateExpiryReader` + `SupervisoryCadencePlanReader` carry the §4.3 surface the two LOCKED M17
+  // contracts above do not cover (the expiry sweep, the per-PLAN cadence + overdue worklist);
+  // `DisciplineComplianceProvider` is the M30 HQRP / M33 dashboard rollup. All read-only — M15 owns the plan,
+  // supervisory and volunteer lifecycles internally and never mutates through a seam.
+  | "DisciplinePlanReader" // M15 — discipline-plan read seam (active plans / full plan / IDG one-pager)
+  | "MswRiskFactorReader" // M15 — MSW psychosocial risk factors per admission (M16 bereavement rubric input)
+  | "VolunteerGateExpiryReader" // M15 — the 418.78 gate-expiry sweep (coordinator worklist + M36 alerts)
+  | "SupervisoryCadencePlanReader" // M15 — per-plan 418.76(h) cadence state + the overdue worklist
+  | "DisciplineComplianceProvider" // M15 — supervisory / initial-assessment / volunteer-gate rates + the 418.78(e) ratio
+  // M16 (Bereavement) owned seams (§4.6 / D13) — leaf-typed in ./bereavement (this package). SIX reads plus
+  // ONE write: `BereavementRiskFactorsProvider.registerAugmentation` is M32's Layer-2 write-back, and it
+  // APPENDS to the immutable `bereavement_risk_score` ledger (D8) — the narrative can never move the
+  // deterministic `rule_tier` a cadence decision was made on (AI Governance §7.4). M16-T05 registers the real
+  // impls; the deny-stubs stay the fail-closed default for a boot that does not wire M16.
+  | "BereavementPlanProvider" // M16 — plan header / roster / closeout rollup (M28 FHIR, M30, M31, M33, M36 channel)
+  | "BereavementOutreachProvider" // M16 — touchpoint reads + the CoP 418.64(d) counts (M30 rate, M33 dashboard)
+  | "BereavementRiskFactorsProvider" // M16 — D3/D17 factor snapshot + deterministic score + the M32 Layer-2 append
+  | "BereavementAssignmentReader" // M16 — plan assignment + counselor caseload (M36 recipient resolver, M3 ABAC)
+  | "BereavedPortalScopeProvider" // M16 — the M31 bereaved-family session scope (§1.2 / D10 narrow)
+  | "BereavementComplianceProvider" // M16 — CoP / screening-completeness / closure COUNTS (M30 HQRP, M33)
+  | "BereavementRiskTierProvider" // M16 — risk-tier distribution (M30 chart, M33 dashboard)
+  // M21 (Supplies, DME & Comfort Kits) owned seams (§4.8 / D14) — leaf-typed in ./supplies (this package).
+  // TWO reads plus ONE write-shaped notify: `ComfortKitDispatchProvider.notifyAdministrationDrawdown` is
+  // M13's bedside-count report, and it does NOT decide a discrepancy — it cascades INTO M21's §2.6
+  // reconciliation, which owns the D8 verdict. M21-T05 registers the real impls; the deny-stubs stay the
+  // fail-closed default for a boot that does not wire M21.
+  | "SupplyFulfillmentProvider" // M21 — direct request creation + request status / terminality (M11 cascade, M22, M28, M30, M33)
+  | "ComfortKitDispatchProvider" // M21 — bedside kit inventory + lot detail + the D17 IPU-room stock kit (M13, M30, M33, M37)
+  | "SupplyCostProvider" // M21 — per-patient / per-org supply spend in CENTS (M23 cap analysis, M27 cost report)
   | "CapAccrualReader" // M26 — cap-period aggregate for the M27 cost-report Worksheet-E cap calc (aggregate $/days, no PHI)
   | "CapProjectionProvider" // M26 — agency/patient/inpatient cap projection for the M23 §11.A pre-submission cap rules
   // M23/M25 → M27 cost-report validation binds. M23 is the FIRST module to publish into the typed M1
@@ -559,11 +613,41 @@ export interface SeamContracts {
   VisitAssignmentReader: VisitAssignmentReader;
   PortalVisitReader: PortalVisitReader;
   VisitMetricsProvider: VisitMetricsProvider;
-  // M15's consumed-by-M17 seams (§4.4) are LEAF-TYPED too — interfaces live in ./scheduling (M15 has no types
-  // file yet, Phase 2). The registry holds the deny-stub until M15 registers the real impls (M17-F06/ADR-0009);
-  // M17 resolves them through the module-17 consumed-seam accessors with no schema import edge.
+  // M15's consumed-by-M17 seams (§4.4) are LEAF-TYPED too — interfaces live in ./scheduling because M17 shipped
+  // first and locked those shapes (M17-F06/ADR-0009). M15 registers the real impls over the deny-stubs
+  // (M15-T05); M17 resolves them through the module-17 consumed-seam accessors with no schema import edge.
   VolunteerComplianceProvider: VolunteerComplianceProvider;
   SupervisoryCadenceReader: SupervisoryCadenceReader;
+  // The rest of M15's §4.3 owned seams — interfaces live in ./discipline-plans (this package), so the registry
+  // is statically typed against the real contract. M15 registers the real impls over the deny-stubs (M15-T05);
+  // consumers that list `15` in their manifest `dependsOn` (M14/M16/M22/M28/M30/M31/M33) resolve them through
+  // the typed accessors with no schema import edge. All five are READ-only, and the SUD / family-violence
+  // gated assessment bodies never cross (the §4.3 DTOs carry the flags, never the free-text, §2.3).
+  DisciplinePlanReader: DisciplinePlanReader;
+  MswRiskFactorReader: MswRiskFactorReader;
+  VolunteerGateExpiryReader: VolunteerGateExpiryReader;
+  SupervisoryCadencePlanReader: SupervisoryCadencePlanReader;
+  DisciplineComplianceProvider: DisciplineComplianceProvider;
+  // M16's owned seams (§4.6 / D13) — interfaces live in ./bereavement (this package), so the registry is
+  // statically typed against the real contract. M16 registers the real impls over the deny-stubs (M16-T05);
+  // consumers resolve them through the typed accessors with no schema import edge. The bereaved contact's
+  // envelope-encrypted channels (email / phone / address cipher) never cross: the §4.6 DTOs carry
+  // reachability and identity, never the values (§3.3.2).
+  BereavementPlanProvider: BereavementPlanProvider;
+  BereavementOutreachProvider: BereavementOutreachProvider;
+  BereavementRiskFactorsProvider: BereavementRiskFactorsProvider;
+  BereavementAssignmentReader: BereavementAssignmentReader;
+  BereavedPortalScopeProvider: BereavedPortalScopeProvider;
+  BereavementComplianceProvider: BereavementComplianceProvider;
+  BereavementRiskTierProvider: BereavementRiskTierProvider;
+  // M21's owned seams (§4.8 / D14) — interfaces live in ./supplies (this package). No free-text column
+  // crosses: `delivery_instructions`, `special_handling_notes`, `disposal_notes` and `discrepancy_notes`
+  // are D13-denylisted narrative and stay inside M21. What DOES cross is controlled-substance accounting
+  // (lot, expiration, dispatched/returned quantity) — that is the DEA 21 CFR §1304 record M13 must be able
+  // to draw down against, not clinical content.
+  SupplyFulfillmentProvider: SupplyFulfillmentProvider;
+  ComfortKitDispatchProvider: ComfortKitDispatchProvider;
+  SupplyCostProvider: SupplyCostProvider;
 }
 
 /**
@@ -709,6 +793,52 @@ export type DataClass =
   // specific references inside `idg_minutes` snapshots are hash-redacted by the M4 trigger pattern, not deleted
   // here. `subjectId` is the patient being destroyed; disjoint from every other module's clinical subtree.
   | "idg_record"
+  // M15 (Discipline Care Plans) per-patient discipline record: the plan subtree M15 owns — the
+  // `discipline_goal`, `discipline_intervention`, `discipline_assessment` (both the signed rows and their
+  // append-only amendments), `discipline_care_plan_signature`, `discipline_care_plan_version` and
+  // `aide_supervisory_visit` rows hung off a patient's `discipline_care_plan` roots, plus the patient's
+  // `volunteer_assignment` rows. Erased by M15's registered eraser (M15-T06) under an M4 destruction
+  // certificate (§8.5): the version `state_snapshot` and the assessment `data` jsonb — the two PHI-bearing
+  // payload columns — are scrubbed before the rows go, and the four `discipline_care_plan` roots are left
+  // as tombstones for FK referential integrity (the M5/M6/M7/M8 root-tombstone pattern). The
+  // WORKFORCE-scoped `volunteer_compliance_gate` / `volunteer_hour_ledger` / `volunteer_hour_entry` rows are
+  // NEVER touched — they are a volunteer's own credential + hours record, not the patient's (§8.5).
+  // `subjectId` is the patient being destroyed; disjoint from M7's `care_plan_record` (the shared IPOC).
+  | "discipline_plan_record"
+  // M16 (Bereavement) per-patient bereavement record: the survivor-facing subtree M16 owns for one
+  // DECEDENT — the `bereaved_contact` roster, the `bereavement_outreach` touchpoints, the monthly-
+  // partitioned `bereavement_contact_log` rows, the immutable `bereavement_risk_score` ledger, the
+  // `bereavement_opt_out` and `bereavement_anniversary_reminder` rows, and the `bereavement_plan_closure`
+  // record, all hung off the patient's single `bereavement_plan` root. Erased by M16's registered eraser
+  // (M16-T06) under an M4 destruction certificate (§8.5): the PHI-bearing columns are SHREDDED first — the
+  // three `bereaved_contact` channel ciphers, `bereavement_contact_log.contact_notes_cipher`, the risk
+  // ledger's `risk_factors_jsonb` + `augmented_narrative_redacted`, and the four redacted narrative columns
+  // — and only then are the rows removed, so the PHI is gone even if a later delete step fails. The
+  // `bereavement_plan` root is left as a TOMBSTONE for FK referential integrity (the M5/M6/M7/M8/M15
+  // root-tombstone pattern) and the `bereavement_plan_closure` row SURVIVES with its narrative shredded,
+  // because the §7.15 survey reconstruction has to be able to say a program existed and why it ended even
+  // after the survivors' details are destroyed. The ORG-scoped
+  // `tenant_bereavement_external_source_gate_override` is tenant configuration, not patient data, and is
+  // NEVER touched. `subjectId` is the DECEDENT whose death opened the program — disjoint from M7's
+  // `care_plan_record` and M15's `discipline_plan_record`.
+  | "bereavement_record"
+  // M21 (Supplies, DME & Comfort Kits) per-patient supply record: the request + kit-custody subtree M21
+  // owns — `supply_request` (partitioned), `comfort_kit_dispatch` (partitioned) and its
+  // `comfort_kit_dispatched_content` lines, `comfort_kit_return` and its `comfort_kit_returned_content`
+  // lines. Erased by M21's registered eraser (M21-T05) under an M4 destruction certificate.
+  //
+  // THE CONTROLLED-SUBSTANCE LEDGER IS DIFFERENT FROM EVERY OTHER CLASS ABOVE, and the difference is
+  // statutory: DEA 21 CFR §1304.04 requires the perpetual inventory record of a scheduled drug to be
+  // retained for at least two years, and a patient's right to erasure does not reach a DEA registrant's
+  // controlled-substance ledger. So the eraser SHREDS the patient-identifying columns and the D13 free
+  // text but PRESERVES the lot-level accounting rows themselves, de-identified — quantity, schedule, lot,
+  // dispatcher, witness. Deleting them would erase the agency's own compliance evidence in the name of
+  // protecting the patient whose kit it documented (§8.2 tags those audit rows `regulatory_dea`).
+  //
+  // The org-scoped CONFIG — `supply_item`, `tenant_supply_item_extension`, `comfort_kit_template(_medication)`,
+  // `vendor_routing_rule`, `par_stock` — is never touched: a catalog, a recipe, a routing ladder and a shelf
+  // count are not patient data. `subjectId` is the patient.
+  | "supply_record"
   // M17 (Scheduling & Route Optimization) per-patient schedule record: the patient-scoped scheduling rows
   // M17 owns — the partitioned `visit` rows (and their cascaded `visit_state_history` transitions),
   // `recurring_visit` policies, `visit_proposal` rows, and the `route_segment` legs joinable via a visit

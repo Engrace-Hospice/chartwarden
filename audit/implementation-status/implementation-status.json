@@ -1,8 +1,8 @@
 {
   "totals": {
-    "Implemented": 29,
+    "Implemented": 32,
     "Partial": 0,
-    "Placeholder": 11
+    "Placeholder": 8
   },
   "rows": [
     {
@@ -204,30 +204,30 @@
     {
       "id": 15,
       "module": "M15 Discipline Care Plans",
-      "status": "Placeholder",
+      "status": "Implemented",
       "spec": true,
-      "schema": false,
-      "migration": false,
-      "routes": false,
-      "enriched": false,
-      "screens": false,
-      "tests": false,
+      "schema": true,
+      "migration": true,
+      "routes": true,
+      "enriched": true,
+      "screens": true,
+      "tests": true,
       "adapter": null,
-      "liveInfra": false
+      "liveInfra": true
     },
     {
       "id": 16,
       "module": "M16 Bereavement",
-      "status": "Placeholder",
+      "status": "Implemented",
       "spec": true,
-      "schema": false,
-      "migration": false,
-      "routes": false,
-      "enriched": false,
-      "screens": false,
-      "tests": false,
+      "schema": true,
+      "migration": true,
+      "routes": true,
+      "enriched": true,
+      "screens": true,
+      "tests": true,
       "adapter": null,
-      "liveInfra": false
+      "liveInfra": true
     },
     {
       "id": 17,
@@ -288,16 +288,16 @@
     {
       "id": 21,
       "module": "M21 Supplies, DME & Comfort Kits",
-      "status": "Placeholder",
+      "status": "Implemented",
       "spec": true,
-      "schema": false,
-      "migration": false,
-      "routes": false,
-      "enriched": false,
-      "screens": false,
-      "tests": false,
+      "schema": true,
+      "migration": true,
+      "routes": true,
+      "enriched": true,
+      "screens": true,
+      "tests": true,
       "adapter": null,
-      "liveInfra": false
+      "liveInfra": true
     },
     {
       "id": 22,

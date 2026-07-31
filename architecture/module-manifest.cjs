@@ -478,8 +478,12 @@ exports.MODULES = [
   {
     id: 15,
     name: "Discipline Care Plans",
-    codePaths: ["apps/backend/src/modules/15-discipline-care-plans"],
-    dependsOn: [7, 8],
+    codePaths: [
+      "packages/discipline-plans",
+      "apps/backend/src/modules/15-discipline-care-plans",
+      "apps/web/src/modules/15-discipline-care-plans",
+    ], // +packages/discipline-plans: §3.1 M15-owned feature pkg (cadence/signer/volunteer-ratio policy → per-kind TypeBox + lifecycle), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M15-T07
+    dependsOn: [1, 7, 8], // +M1: the bootstrap seam registry (getSeam) M15 resolves the §4.3 CONSUMED seams through — M7 CarePlanReader + M8 SignedEncountersReader (M15-T03); M15's own published seams register there in M15-T05 (M6..M14 seam-task precedent)
     ownedTables: [
       "aide_supervisory_visit",
       "discipline_assessment",
@@ -497,8 +501,14 @@ exports.MODULES = [
   {
     id: 16,
     name: "Bereavement",
-    codePaths: ["apps/backend/src/modules/16-bereavement"],
-    dependsOn: [5, 6, 36],
+    codePaths: [
+      "packages/bereavement",
+      "apps/backend/src/modules/16-bereavement",
+      "apps/web/src/modules/16-bereavement",
+    ], // +packages/bereavement: §3.1 M16-owned feature pkg (D4 cadence floor / D3+D17 risk rubric / D15 outreach-kind + D18 external-source gate policy → lifecycle), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M16-T07
+    // +M1: M16-T03's §4.3.1 intake CONSUMES M6's DeathDischargeReader/AdmissionStatusReader + M5's
+    // PatientReader through the M1 boot seam registry (`apps/backend/src/bootstrap`), which is M1 code.
+    dependsOn: [1, 5, 6, 36],
     ownedTables: [
       "bereaved_contact",
       "bereavement_anniversary_reminder",
@@ -591,8 +601,15 @@ exports.MODULES = [
   {
     id: 21,
     name: "Supplies, DME & Comfort Kits",
-    codePaths: ["apps/backend/src/modules/21-supplies"],
-    dependsOn: [11, 40],
+    codePaths: [
+      "packages/supplies",
+      "apps/backend/src/modules/21-supplies",
+      "apps/web/src/modules/21-supplies",
+    ], // +packages/supplies: §2 M21-owned feature pkg (D1 per-kind TypeBox / D2 lifecycle graph / D3 kit floor / D4 routing ladder / D8 reconciliation math), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M21-T06
+    // +M1: M21-T04's §4.5.1 inbound consumers resolve M11's `OrderProvider` and M6's
+    // `AdmissionStatusReader`/`DeathDischargeReader` through the M1 boot seam registry
+    // (`apps/backend/src/bootstrap`), which is M1 code; M21's own §4.8 seams register there in M21-T05.
+    dependsOn: [1, 11, 40],
     ownedTables: [
       "supply_item",
       "tenant_supply_item_extension",

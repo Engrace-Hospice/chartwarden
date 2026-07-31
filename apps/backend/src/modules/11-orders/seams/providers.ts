@@ -131,6 +131,9 @@ function isOnTime(v: VerbalTimeliness): boolean {
  */
 export function createOrderProvider(store: OrderSeamStore): OrderProvider {
   return {
+    getOrder(input) {
+      return store.getOrder(input.orderId);
+    },
     async findActiveOrder(input) {
       const all = await store.ordersForPatient(input.patientId);
       const covers = (o: OrderRecordDto): boolean =>

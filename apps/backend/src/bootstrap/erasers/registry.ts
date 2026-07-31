@@ -105,6 +105,34 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // idg_minutes_amendment rows SURVIVE (a meeting is not a single patient's record; minutes are hash-redacted by
   // the M4 trigger, not deleted here). The `subjectId` is the patient.
   "idg_record",
+  // M15-T06: a patient's discipline record (discipline_goal / discipline_intervention /
+  // discipline_assessment / discipline_care_plan_signature / discipline_care_plan_version /
+  // aide_supervisory_visit / volunteer_assignment). M15 registers the REAL eraser via the composition-root
+  // hook over this deny-stub — under an M4 destruction certificate (§8.5) it scrubs the two PHI-bearing
+  // jsonb payloads (`state_snapshot`, assessment `data`) first, deletes the subtree, and tombstones the
+  // `discipline_care_plan` roots for FK integrity. The WORKFORCE-scoped volunteer_compliance_gate /
+  // volunteer_hour_ledger / volunteer_hour_entry rows are a volunteer's own record, not the patient's, and
+  // stay untouched. The `subjectId` is the patient.
+  "discipline_plan_record",
+  // M16-T06: a DECEDENT's bereavement record (bereaved_contact / bereavement_outreach /
+  // bereavement_contact_log / bereavement_risk_score / bereavement_opt_out /
+  // bereavement_anniversary_reminder). M16 registers the REAL eraser via the composition-root hook over
+  // this deny-stub — under an M4 destruction certificate (§8.5) it SHREDS the PHI-bearing columns first
+  // (the three `bereaved_contact` channel ciphers, `contact_notes_cipher`, the risk `risk_factors_jsonb` +
+  // `augmented_narrative_redacted`, and the four redacted narrative columns), then deletes the subtree and
+  // tombstones the `bereavement_plan` root for FK integrity. The `bereavement_plan_closure` row SURVIVES
+  // with its narrative shredded (§7.15 survey reconstruction), and the ORG-scoped
+  // `tenant_bereavement_external_source_gate_override` is tenant config that stays untouched. The
+  // `subjectId` is the decedent whose death opened the program.
+  "bereavement_record",
+  // M21-T05: a PATIENT's supply record (supply_request / comfort_kit_dispatch(+_content) /
+  // comfort_kit_return(+_content)). M21 registers the REAL eraser via the composition-root hook over this
+  // deny-stub. Unlike every other class here it does NOT delete the controlled-substance rows: DEA 21 CFR
+  // §1304.04 requires the perpetual inventory record to survive, so the eraser SHREDS the patient-linking
+  // columns and the D13 free text and PRESERVES the de-identified lot accounting. See the `supply_record`
+  // comment in packages/types/src/seams.ts for the full argument. Org-scoped catalog / template / routing /
+  // par-stock config is untouched. The `subjectId` is the patient.
+  "supply_record",
   // M17-T02 (this task) registers the data-class contract; the Phase-0 deny-stub (wireErasers) stands until
   // M17-T08 registers the REAL eraser via the composition-root hook. Under an M4 destruction certificate the
   // real eraser row-deletes the patient's partitioned `visit` rows (+ cascaded `visit_state_history`),

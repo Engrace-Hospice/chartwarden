@@ -102,6 +102,13 @@
         "hash-wasm": "^4.12.0",
       },
     },
+    "packages/bereavement": {
+      "name": "@wardenx/bereavement",
+      "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
+    },
     "packages/billing": {
       "name": "@wardenx/billing",
       "version": "0.0.0",
@@ -154,6 +161,13 @@
       },
       "devDependencies": {
         "@types/pg": "^8.11.10",
+      },
+    },
+    "packages/discipline-plans": {
+      "name": "@wardenx/discipline-plans",
+      "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
       },
     },
     "packages/domain": {
@@ -309,6 +323,15 @@
     "packages/subscription-billing": {
       "name": "@wardenx/subscription-billing",
       "version": "0.0.0",
+    },
+    "packages/supplies": {
+      "name": "@wardenx/supplies",
+      "version": "0.0.0",
+      "dependencies": {
+        "@sinclair/typebox": "^0.34.0",
+        "@wardenx/types": "workspace:*",
+        "decimal.js": "^10.6.0",
+      },
     },
     "packages/telehealth-client": {
       "name": "@wardenx/telehealth-client",
@@ -851,6 +874,8 @@
 
     "@wardenx/backend": ["@wardenx/backend@workspace:apps/backend"],
 
+    "@wardenx/bereavement": ["@wardenx/bereavement@workspace:packages/bereavement"],
+
     "@wardenx/billing": ["@wardenx/billing@workspace:packages/billing"],
 
     "@wardenx/cahps-vendors": ["@wardenx/cahps-vendors@workspace:packages/cahps-vendors"],
@@ -862,6 +887,8 @@
     "@wardenx/cost-report": ["@wardenx/cost-report@workspace:packages/cost-report"],
 
     "@wardenx/db": ["@wardenx/db@workspace:packages/db"],
+
+    "@wardenx/discipline-plans": ["@wardenx/discipline-plans@workspace:packages/discipline-plans"],
 
     "@wardenx/domain": ["@wardenx/domain@workspace:packages/domain"],
 
@@ -914,6 +941,8 @@
     "@wardenx/shared": ["@wardenx/shared@workspace:packages/shared"],
 
     "@wardenx/subscription-billing": ["@wardenx/subscription-billing@workspace:packages/subscription-billing"],
+
+    "@wardenx/supplies": ["@wardenx/supplies@workspace:packages/supplies"],
 
     "@wardenx/telehealth-client": ["@wardenx/telehealth-client@workspace:packages/telehealth-client"],
 

@@ -8,6 +8,7 @@ import { audit } from "@wardenx/audit";
 import {
   createDbActorEnrichmentReader,
   createDbAdminMembershipReader,
+  createDbEffectivePermissionStore,
   createDbSessionContextStore,
   createIdentityAuth,
   getIdentitySession,
@@ -71,8 +72,46 @@ import { registerOrderErasers, registerOrderSeams } from "./modules/11-orders/in
 import { registerDoseSpotErasers, registerDoseSpotSeams } from "./modules/12-dosespot/index";
 import { registerEmarErasers, registerEmarSeams } from "./modules/13-emar/index";
 import { registerIdgErasers, registerIdgSeams } from "./modules/14-idg/index";
+import {
+  M15_OUTBOX_EVENTS,
+  buildDrizzleDisciplinePlanAbacResolver,
+  buildDrizzleM15ReadService,
+  buildDrizzleM15WriteService,
+  createDrizzleDisciplinePlanEraseStore,
+  denyStubDisciplinePlanAbacResolver,
+  mountM15Routes,
+  registerDisciplinePlanAbacPredicates,
+  registerDisciplinePlanErasers,
+  registerDisciplinePlanSeams,
+} from "./modules/15-discipline-care-plans/index";
+import {
+  M16_OUTBOX_EVENTS,
+  buildDrizzleBereavementAbacResolver,
+  buildDrizzleM16ReadService,
+  buildDrizzleM16WriteService,
+  createDrizzleBereavementEraseStore,
+  denyStubBereavementAbacResolver,
+  mountM16Routes,
+  registerBereavementAbacPredicates,
+  registerBereavementErasers,
+  registerBereavementSeams,
+} from "./modules/16-bereavement/index";
 import { registerSchedulingSeams } from "./modules/17-scheduling/index";
 import { registerEvvSeams } from "./modules/18-evv/index";
+import {
+  M21_OUTBOX_EVENTS,
+  buildDrizzleM21ReadService,
+  buildDrizzleM21WriteService,
+  buildDrizzleSuppliesAbacResolver,
+  buildDrizzleSuppliesSeamStore,
+  decideDispatcherEligible,
+  denyStubSuppliesAbacResolver,
+  mountM21Routes,
+  registerSuppliesAbacPredicates,
+  bindSupplyRequestCreator,
+  registerSuppliesSeams,
+  registerSupplyEraser,
+} from "./modules/21-supplies/index";
 import { registerDocumentErasers, registerDocumentSeams } from "./modules/22-documents/index";
 import {
   buildDrizzleM33ExportDrilldownService,
@@ -370,6 +409,97 @@ export function wireModuleSeams(
   // 15-day-cadence read path M28 (FHIR) + M30 (cadence-adherence) + M33 consume). Slice/tests keep the
   // in-memory store; the Drizzle-backed store lands with M14's routes/repos (M14-T05+).
   registerIdgSeams();
+  // M15 — the seven §4.3 owned READ seams. Two of them are the LOCKED contracts M17 shipped first and has been
+  // consuming as fail-closed deny-stubs since Wave F (M17-F06/ADR-0009): registering `VolunteerComplianceProvider`
+  // CLOSES the D8 pre-schedule gate predicate 6 (a `volunteer_visit` now resolves the REAL 42 CFR §418.78 gate
+  // instead of denying loudly), and `SupervisoryCadenceReader` CLOSES the day-view / propose-from-frequency
+  // supervisory advisory. The other five are M15's own §4.3 surface: `DisciplinePlanReader` (M14 IDG one-pager /
+  // M22 plan PDF / M28 / M31 / M33), `MswRiskFactorReader` (the psychosocial factors M16's bereavement rubric
+  // scores — M15 exposes, never scores, §1.2), `VolunteerGateExpiryReader` (the 418.78 expiry sweep),
+  // `SupervisoryCadencePlanReader` (the per-plan cadence + overdue worklist) and `DisciplineComplianceProvider`
+  // (the M30/M33 rollups + the 418.78(e) ratio). Slice/tests keep the in-memory store; the Drizzle-backed store
+  // lands with M15's routes/repos (M15-T06+), so today's reads answer empty/null — never a fabricated pass:
+  // the volunteer gate still denies fail-CLOSED on an unreadable store and the ratio still badges `unavailable`.
+  registerDisciplinePlanSeams();
+  // M15-T06 — the four §4.5 ABAC predicates M15 OWNS (aide_supervisor_eligible /
+  // volunteer_compliance_active / family_violence_disclosure_allowed / volunteer_coordinator_role) into
+  // M3's named-predicate registry. Their subject facts load through the Drizzle resolver when a DB client
+  // is present; WITHOUT one the deny-stub resolver stands, so every predicate denies rather than silently
+  // passing (§8.7 fail-CLOSED — an unreadable subject is never an authorized one).
+  registerDisciplinePlanAbacPredicates({
+    resolver: deps.db
+      ? buildDrizzleDisciplinePlanAbacResolver(deps.db)
+      : denyStubDisciplinePlanAbacResolver,
+  });
+  // M16 — the seven §4.6 / D13 owned seams: `BereavementPlanProvider` (the plan header + roster + closeout
+  // rollup M28 (FHIR `CarePlan`) / M30 (HQRP) / M31 (portal) / M33 (dashboards) / M36 (bereavement-channel
+  // membership + `archives_at`) consume), `BereavementOutreachProvider` (touchpoints + the CoP 418.64(d)
+  // counts), `BereavementRiskFactorsProvider` (the D3/D17 snapshot M32 narrates from, the deterministic score,
+  // and the Layer-2 write-back — the ONE write, an APPEND to the immutable §3.3.3 ledger),
+  // `BereavementAssignmentReader`, `BereavedPortalScopeProvider` (M31's bereaved-family session scope),
+  // `BereavementComplianceProvider` and `BereavementRiskTierProvider` (the M30/M33 rollups, as COUNTS).
+  // Slice/tests keep the in-memory store; the Drizzle-backed store lands with M16's routes/repos (M16-T06+),
+  // so today's reads answer empty/null — never a fabricated pass: `isInBereavementWindow` still denies
+  // fail-CLOSED on an unreadable plan, which is what M36 and M3's `bereavement_window` predicate read.
+  registerBereavementSeams();
+  // M16-T06 — the four §4.8 ABAC predicates M16 OWNS (bereavement_window / discipline_can_provide_bereavement
+  // / org_scope_bereavement_oversight / portal_self_service) into M3's named-predicate registry. §4.8 calls
+  // the last two "reused / M3 §4.2 family", but nothing on the platform registers either name, and an
+  // UNREGISTERED predicate denies exactly like a typo does — so M16 owns them. Their subject facts load
+  // through the Drizzle resolver when a DB client is present; WITHOUT one the deny-stub resolver stands, so
+  // every predicate denies rather than silently passing (§8.7 fail-CLOSED). `roleGrants` is M3's own
+  // effective-permission store, which is the platform's ONE discipline-derivation input (`RoleGrant.roleKey`)
+  // — M16 reads it through that port rather than importing M3's `role` / `membership_role` schema.
+  registerBereavementAbacPredicates({
+    resolver: deps.db
+      ? buildDrizzleBereavementAbacResolver(deps.db, {
+          roleGrants: createDbEffectivePermissionStore(deps.db),
+        })
+      : denyStubBereavementAbacResolver,
+    // §4.8's volunteer clause resolves through M15's published `VolunteerComplianceProvider` — the ONE
+    // 42 CFR §418.78 gate implementation on the platform. Resolved lazily per call, fail-CLOSED on throw.
+    volunteerGatesSatisfied: async ({ organizationId, volunteerMembershipId }) => {
+      try {
+        const status = await getSeam("VolunteerComplianceProvider").effectiveStatusFor(
+          organizationId as never,
+          volunteerMembershipId as never,
+        );
+        return status.isActive === true;
+      } catch {
+        return false;
+      }
+    },
+  });
+  // M21 — the three §4.8 / D14 owned seams: `SupplyFulfillmentProvider` (direct request creation plus the
+  // status / terminality read M11's §7.7 cancellation cascade branches on), `ComfortKitDispatchProvider`
+  // (M13's bedside controlled-substance inventory, the D17 / M37 IPU-room stock kit, and the DEA §1304
+  // perpetual-log APPEND M13's drawdown writes) and `SupplyCostProvider` (M23 cap-spend / M27 cost report,
+  // in integer CENTS, as totals and counts — never a rate). All three share the Drizzle store, which reads
+  // under the CONSUMER's ambient request context (`withOrgContextFromRequest`), so a seam call is RLS-scoped
+  // to the caller's org without M21 comparing anything. Without a DB client the in-memory slice stands, and
+  // a slice `listActiveDispatchesForPatient` answers `[]` — which a consumer must read as "this slice has no
+  // kits", never as "the ward has none".
+  //
+  // `creator` binds the M21 WRITE service so `createDirectSupplyRequest` goes through the SAME path as a
+  // route and an M11 cascade (D4 routing freeze + per-kind validation + the §4.5.2 emit). It is wired below,
+  // where the Drizzle services are constructed; unbound, the create method raises rather than writing a
+  // routing-less row.
+  registerSuppliesSeams(deps.db ? { store: buildDrizzleSuppliesSeamStore(deps.db) } : {});
+  // M21-T05 — the two §4.4 ABAC predicates M21 OWNS (controlled_substance_dispatcher_eligible /
+  // comfort_kit_return_reconciler_eligible) into M3's named-predicate registry. Both guard a
+  // controlled-substance movement, so unlike M15's and M16's per-seam split the fail direction here is
+  // UNIFORM: an unreadable resolver, an unknown target, an absent row and a thrown error all DENY. There is
+  // no fact about a CII solution whose unavailability should be read as permission to move it. Their subject
+  // facts load through the Drizzle resolver when a DB client is present; without one the deny-stub resolver
+  // stands. `roleGrants` is M3's own effective-permission store — the platform's ONE authority-derivation
+  // input — read through that port rather than by importing M3's `role` / `membership_role` schema.
+  registerSuppliesAbacPredicates({
+    resolver: deps.db
+      ? buildDrizzleSuppliesAbacResolver(deps.db, {
+          roleGrants: createDbEffectivePermissionStore(deps.db),
+        })
+      : denyStubSuppliesAbacResolver,
+  });
   // M17 — the four §4.3 owned READ seams (VisitReader — the visit read path M8 (encounter-authoring context,
   // which CLOSES M8's visit-seeding inert consumer M8 D9) / M18 (EVV geofence target) / M14 (IDG since-meeting)
   // consume — + VisitAssignmentReader — the assignment read path M5 (the §4.5 D11 caseload-contribution
@@ -556,7 +686,7 @@ const SLICE_M34_ABAC_RESOLVER: TenantPlatformAbacResolver = {
  * eraser stands over its stub. A right-to-erasure request then hits a working eraser, not a
  * silent no-op (M2-T10).
  */
-export function wireModuleErasers(): void {
+export function wireModuleErasers(deps: { db?: DbClient } = {}): void {
   registerIdentityErasers(); // M2 — `identity` data class (two_factor/passkey + invitations)
   registerAuditErasers(); // M4-T08 — `audit_event` data class (legal-hold + Part 2 lifetime aware)
   registerTerminologyErasers(); // M38-T10 — `terminology_tenant_extensions` (D8 tenant offboarding)
@@ -572,6 +702,22 @@ export function wireModuleErasers(): void {
   registerOrderErasers(); // M11-T08 — `order_record` (orders-subtree destruction-cert callback; partition-drop; §7.7; D12; D7/D8)
   registerDoseSpotErasers(); // M12-T09 — `medication_order_record` (prescribing-subtree destruction-cert callback; partition-drop; §7.7; D15; D7/D8)
   registerEmarErasers(); // M13-T10 — `emar_record` (eMAR-subtree destruction-cert callback; partition-drop; §7.7; D7/D8)
+  // M15-T06 — `discipline_plan_record` (per-PATIENT destruction-cert callback; scrubs the version
+  // `state_snapshot` + assessment `data` jsonb FIRST, deletes the discipline subtree, tombstones the plan
+  // roots for FK integrity; the workforce-scoped volunteer gate/ledger/hour rows survive, §8.5). The
+  // Drizzle store binds when a DB client is present; without one the slice's in-memory store stands.
+  registerDisciplinePlanErasers(
+    deps.db ? { store: createDrizzleDisciplinePlanEraseStore(deps.db) } : {},
+  );
+  // M16-T06 — `bereavement_record` (per-DECEDENT destruction-cert callback; shreds the contact channel
+  // ciphers + the contact-log notes + the risk `risk_factors_jsonb` FIRST, deletes the survivor subtree,
+  // tombstones the plan root for FK integrity. The `bereavement_plan_closure` row SURVIVES with its
+  // narrative shredded — §7.15 survey reconstruction — and the org-scoped external-source gate override is
+  // tenant config that is never touched, §8.5). The Drizzle store binds when a DB client is present;
+  // without one the slice's in-memory store stands.
+  registerBereavementErasers(
+    deps.db ? { store: createDrizzleBereavementEraseStore(deps.db) } : {},
+  );
   registerIdgErasers(); // M14-T07 — `idg_record` (patient-scoped packet/decision/action-item/agenda destruction-cert callback; meetings/minutes survive; §8.4)
   registerDocumentErasers(); // M22-T10 — `documents` (document/intake-subtree destruction-cert callback; DEK crypto-erase §8.6; legal-hold + Part 2 skip; D9/D12)
   registerSaasTenantPlatformErasers(); // M34 — `saas_tenant_platform_class` (tenant-offboarding control-plane cleanup; subjectId=org; D6/§8.4)
@@ -582,6 +728,14 @@ export function wireModuleErasers(): void {
   registerRemittanceErasers({ registerEraser }); // M25 — `remittance` (per-PATIENT PR-ledger destruction-cert callback; the line/adjustment/remark history rolls off via the M4 partition manager, not per-patient; §3.7/§8.4). registerEraser INJECTED; in-memory slice store until the Drizzle PR-ledger destruction store binds (the M23 posture).
   registerMedicaidErasers({ registerEraser }); // M24 — `medicaid_billing_record` (per-PATIENT redact-to-shred destruction-cert callback; PHI free-text + KMS ciphers on the patient's rb/eligibility rows are shredded, the FK chain survives; the join-only submission/override + the trading-partner secret crypto-shred follow the claim chain / org-destruction path; §3.7/§8.4). registerEraser INJECTED; in-memory slice store until the privileged Drizzle redaction store binds (the M26 posture). Distinct from M23's `billing_record` (single-keyed registry — M24 must not clobber M23).
   registerCapErasers({ registerEraser }); // M26 — `cap` (per-PATIENT redact-to-sentinel destruction-cert callback; D14 — aggregates survive right-to-erasure so CMS-side cap reconciliation stays reproducible; §3.7/§8.4). registerEraser INJECTED; in-memory slice store until the privileged Drizzle redaction store binds (the M25 posture).
+  // M21-T05 — `supply_record` (per-PATIENT destruction-cert callback). UNLIKE every eraser above it does
+  // not delete the controlled-substance rows: DEA 21 CFR §1304.04 requires the perpetual inventory record
+  // to survive, so the `supply_request` rows are shredded-then-deleted while the `comfort_kit_dispatch` /
+  // `comfort_kit_return` headers are DE-IDENTIFIED IN PLACE and their `*_content` lot lines (which carry
+  // no patient column at all) are left untouched. Org-scoped catalog / template / routing / par-stock
+  // config is never touched. Registers only with a DB client — the shred is a privileged write, and a
+  // slice boot must keep the deny-stub rather than report a destruction it did not perform.
+  if (deps.db) registerSupplyEraser(deps.db);
   // Phase-1 data-class owners append here as they land.
 }
 
@@ -615,6 +769,12 @@ if ((import.meta as { main?: boolean }).main) {
   // completeness but is intentionally NOT bound (its emit payloads are non-conformant — zero regression).
   // A duplicate `eventName` across contributions fails boot here (OutboxEventCollisionError — fail-closed).
   const bootOutboxCatalog = buildBootOutboxCatalog([
+    M15_OUTBOX_EVENTS,
+    M16_OUTBOX_EVENTS,
+    // M21-T04 — the §4.5.2 `m21.*` catalog. Registered for the dispatcher's payload validation; the
+    // per-module publisher binds with the §4.6 workers + the M21-T05 service layer (the M34 precedent —
+    // catalogued now, bound when there is a mutation to bind it to).
+    M21_OUTBOX_EVENTS,
     M23_OUTBOX_EVENTS,
     M24_OUTBOX_EVENTS,
     M25_OUTBOX_EVENTS,
@@ -629,6 +789,9 @@ if ((import.meta as { main?: boolean }).main) {
   // dispatcher's namespace check requires it). Each forwards the caller's open tx + envelope to the shared
   // publisher. M30/M33/M34 — M34's lifecycle outbox now binds too (#107; its emit is gated to the conformant
   // `m34.tenant.provisioned` event, so no mutation rolls back).
+  const m15OutboxPublisher = bindCallerModule(txOutboxPublisher, "m15");
+  const m16OutboxPublisher = bindCallerModule(txOutboxPublisher, "m16");
+  const m21OutboxPublisher = bindCallerModule(txOutboxPublisher, "m21");
   const m23OutboxPublisher = bindCallerModule(txOutboxPublisher, "m23");
   const m24OutboxPublisher = bindCallerModule(txOutboxPublisher, "m24");
   const m25OutboxPublisher = bindCallerModule(txOutboxPublisher, "m25");
@@ -847,6 +1010,96 @@ if ((import.meta as { main?: boolean }).main) {
               m24CoverageResolver,
             ),
           });
+          // M15 (Discipline Care Plans) — mount the §4.1 route plugins over the Drizzle READ + WRITE
+          // services. Every read opens its own withOrgContext (RLS scopes each statement to app.org_id)
+          // and resolves the §7.8/§7.9 SUD + family-violence gates through M39's ConsentEvaluator seam
+          // BEFORE it queries, so a caller who is not cleared never has the row in the result set. Every
+          // mutation runs the pure §2.2/§2.3 machines and emits its §2.4 `m15.*` event through the
+          // catalog-validating tx publisher (callerModule `m15`) on the mutation's own transaction — which
+          // is how the D12 M22 plan-PDF render handshake (`m15.plan.version_signed`) reaches M22. The M27
+          // patient-care-HOURS denominator for the 418.78(e) ratio stays unbound (M15-F04): the ratio
+          // answers the honest `unavailable` badge, never a fabricated 0%.
+          mountM15Routes(app, {
+            readService: buildDrizzleM15ReadService(dbHandle.db),
+            writeService: buildDrizzleM15WriteService(dbHandle.db, {
+              outbox: m15OutboxPublisher,
+            }),
+          });
+          // M16 (Bereavement) — mount the §4.1 route plugins over the Drizzle READ + WRITE services. Every
+          // read opens its own withOrgContext (RLS scopes each statement to app.org_id) and resolves the
+          // §7.13 42 CFR Part 2 gate through M39's ConsentEvaluator seam; every mutation runs the pure
+          // §2.2–§2.4 machines and emits its §4.4 `m16.*` event through the catalog-validating tx publisher
+          // (callerModule `m16`) on the mutation's own transaction — which is how the D14 M22
+          // sympathy-letter render handshake (`m16.bereavement.outreach_artifact_requested`) reaches M22.
+          // The write service takes the READ service so every plan-shaped mutation answers with the SAME
+          // projection route 2 serves (one DTO, one disclosure gate, no drift).
+          const m16ReadService = buildDrizzleM16ReadService(dbHandle.db);
+          mountM16Routes(app, {
+            readService: m16ReadService,
+            writeService: buildDrizzleM16WriteService(dbHandle.db, m16ReadService, {
+              outbox: m16OutboxPublisher,
+            }),
+          });
+          // M21 (Supplies, DME & Comfort Kits) — mount the §4.1 route plugins over the Drizzle READ +
+          // WRITE services. Every read opens its own withOrgContext (RLS scopes each statement to
+          // app.org_id); every mutation runs the pure §2.2–§2.7 machines and emits its §4.5.2 `m21.*` event
+          // through the catalog-validating tx publisher (callerModule `m21`) on the mutation's own
+          // transaction — which is how the outbox-only M22 handoffs reach M22 (the bill of lading at
+          // dispatch, the DEA-1304-format receipt at reconciliation) and how M13 learns a kit reached the
+          // bedside.
+          //
+          // TWO fail-CLOSED probes bind here and both refuse rather than assume:
+          //   • `dispatcherEligible` re-checks the §4.4 authority INSIDE the dispatch transaction, over the
+          //     SAME Drizzle resolver the ABAC predicate uses — so a grant revoked between preHandler and
+          //     commit still stops the kit, and there is one implementation of the rule rather than two.
+          //   • `vendorActive` is the M40 `DmeVendor` check §2.2's assignVendor guard reads. It resolves
+          //     `MdmEntityProvider` lazily through the M1 seam registry and answers `false` on an unbound
+          //     or throwing seam: sending a hospital bed to a vendor whose contract lapsed is a bill the
+          //     agency cannot collect and a delivery the patient may never get.
+          const m21ReadService = buildDrizzleM21ReadService(dbHandle.db);
+          const m21AbacResolver = buildDrizzleSuppliesAbacResolver(dbHandle.db, {
+            roleGrants: createDbEffectivePermissionStore(dbHandle.db),
+          });
+          const m21WriteService = buildDrizzleM21WriteService(dbHandle.db, m21ReadService, {
+              outbox: m21OutboxPublisher,
+              dispatcherEligible: async ({ organizationId, membershipId, locationId }) => {
+                const roleKeys = await m21AbacResolver.roleKeysOf(organizationId, membershipId);
+                const locationIds = await m21AbacResolver.locationIdsOf(
+                  organizationId,
+                  membershipId,
+                );
+                return decideDispatcherEligible(
+                  {
+                    organizationId,
+                    targetId: "",
+                    locationId,
+                    involvesControlledSubstance: true,
+                  },
+                  { organizationId, membershipId, roleKeys, locationIds },
+                );
+              },
+              vendorActive: async ({ organizationId, vendorId }) => {
+                try {
+                  const provider = getSeam("MdmEntityProvider") as {
+                    isActiveEntity?: (
+                      orgId: string,
+                      kind: string,
+                      entityId: string,
+                    ) => Promise<boolean>;
+                  };
+                  if (typeof provider.isActiveEntity !== "function") return false;
+                  return await provider.isActiveEntity(organizationId, "dme_vendor", vendorId);
+                } catch {
+                  return false;
+                }
+              },
+            });
+          mountM21Routes(app, { readService: m21ReadService, writeService: m21WriteService });
+          // §4.8 — bind the WRITE service as the seam's creation path, so a coordinator's direct entry
+          // through `SupplyFulfillmentProvider.createDirectSupplyRequest` takes the SAME route as an HTTP
+          // create and an M11 cascade (D4 routing freeze + per-kind validation + the §4.5.2 emit). Until
+          // this runs the seam's create method refuses loudly rather than writing a routing-less row.
+          bindSupplyRequestCreator(m21WriteService);
         }
       : undefined,
     registerModuleSeams: () =>
@@ -856,7 +1109,7 @@ if ((import.meta as { main?: boolean }).main) {
           : undefined,
         db: dbHandle?.db,
       }),
-    registerModuleErasers: wireModuleErasers,
+    registerModuleErasers: () => wireModuleErasers({ db: dbHandle?.db }),
   });
   if (dbHandle && auth) {
     registerIdentityAuth(app, auth); // AUTH-T02: mount /api/auth/* (needs BETTER_AUTH_SECRET/URL in prod)

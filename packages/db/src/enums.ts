@@ -2110,3 +2110,458 @@ export const tenantExportJobPurpose = pgEnum("tenant_export_job_purpose", [
   "compliance_audit",
   "surveyor_request",
 ]);
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// Module 15 — Discipline Care Plans (§3.2 · M15-T01). The four CoP-driven discipline plan kinds
+// (418.76 Aide POC · 418.64 MSW + Spiritual · 418.78 Volunteer) with the D2 hybrid version/signature
+// lifecycle, the D6 discipline-assessment vocabulary, the 418.76(h)(2) supervisory attestation mode, and
+// the 418.78(b)/(e) volunteer gate + hour-ledger vocabularies. The eleven Drizzle tables land in M15-T02
+// (`packages/db/src/schema/discipline-plans/`); the leaf mirrors live in `@wardenx/types`
+// (`discipline-plans.ts`) so M14/M16/M17/M22/M27/M28/M30/M33 read them with no `dependsOn` edge.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** `discipline_plan_kind` — the D1 shared-row discriminator; selects which per-kind TypeBox validates
+ *  `discipline_care_plan.data` and which §3.5 `RequiredSignerSet` the version's quorum is built from. */
+export const disciplinePlanKind = pgEnum("discipline_plan_kind", [
+  "aide_poc",
+  "msw_plan",
+  "spiritual_plan",
+  "volunteer_plan",
+]);
+
+/** `discipline_plan_status` — the §2.2.1 plan-root lifecycle. `draft` at bootstrap (`m6.admission.activated`
+ *  for the first three kinds; first volunteer assignment for `volunteer_plan`), `active` on the first signed
+ *  version, `draft_revising` while an IDG-opened next version is in flight, `discharged` terminal. */
+export const disciplinePlanStatus = pgEnum("discipline_plan_status", [
+  "draft",
+  "active",
+  "draft_revising",
+  "discharged",
+]);
+
+/** `discipline_plan_version_status` — the §2.2.2 / D2 hybrid-versioning lifecycle (M7 D1 verbatim). The
+ *  `state_snapshot` is SEALED at the `in_review` transition; an edit-after-snapshot or any signer rejection
+ *  returns the version to `draft` and clears prior signatures. */
+export const disciplinePlanVersionStatus = pgEnum("discipline_plan_version_status", [
+  "draft",
+  "in_review",
+  "signed",
+  "superseded",
+]);
+
+/** `discipline_plan_version_kind` — mirrors M7's version taxonomy. The `discharge` version is auto-built
+ *  and auto-signed by the system actor on `m6.admission.discharged` to seal the terminal state. */
+export const disciplinePlanVersionKind = pgEnum("discipline_plan_version_kind", [
+  "initial",
+  "idg_review",
+  "interim_revision",
+  "discharge",
+]);
+
+/** `discipline_goal_source` — D5 / M7 D6 verbatim attribution. A `agent_stated` goal requires a non-null
+ *  `acting_consent_id` naming an active M39 `dpoa_healthcare` consent; `original_text` is immutable for
+ *  every non-`clinical` source. */
+export const disciplineGoalSource = pgEnum("discipline_goal_source", [
+  "clinical",
+  "patient_stated",
+  "family_stated",
+  "agent_stated",
+]);
+
+/** `discipline_goal_status` — the §2.2.3 goal lifecycle. */
+export const disciplineGoalStatus = pgEnum("discipline_goal_status", [
+  "not_started",
+  "in_progress",
+  "met",
+  "not_met",
+  "revised",
+  "discontinued",
+]);
+
+/** `discipline_intervention_status` — the §2.2.3 intervention lifecycle; `discontinued` requires a reason. */
+export const disciplineInterventionStatus = pgEnum("discipline_intervention_status", [
+  "active",
+  "discontinued",
+  "completed",
+]);
+
+/** `discipline_assessment_kind` — the D6 per-discipline assessment taxonomy. Explicitly DISTINCT from M9's
+ *  scored clinical scales (PPS/FAST/PAINAD/ESAS-r); these are domain-narrative structured forms. */
+export const disciplineAssessmentKind = pgEnum("discipline_assessment_kind", [
+  "msw_psychosocial",
+  "chaplain_spiritual",
+  "aide_environmental",
+  "volunteer_relationship",
+]);
+
+/** `discipline_assessment_status` — append-only correction-of-record mirroring M9 D9 (§2.2.3). */
+export const disciplineAssessmentStatus = pgEnum("discipline_assessment_status", [
+  "draft",
+  "signed",
+  "amended",
+]);
+
+/** `aide_supervisory_attestation_mode` — 42 CFR §418.76(h)(2): the RN supervisory contact is either made
+ *  with the aide present or as an observation of the aide's work at the patient's home. */
+export const aideSupervisoryAttestationMode = pgEnum("aide_supervisory_attestation_mode", [
+  "aide_present",
+  "observation_of_work",
+]);
+
+/** `volunteer_gate_kind` — the 42 CFR §418.78(b)(1)/(d) per-volunteer compliance postures M17's
+ *  pre-schedule gate reads through `VolunteerComplianceProvider` (D7). */
+export const volunteerGateKind = pgEnum("volunteer_gate_kind", [
+  "background_check",
+  "tb_screening",
+  "confidentiality_agreement",
+  "initial_training",
+  "annual_ce",
+  "assignment_specific_training",
+  "vaccination_status",
+]);
+
+/** `volunteer_gate_status` — §2.2.6. `expiring_soon` is derived nightly 30 days ahead of `valid_until`; it
+ *  drives the 30/14/7/1-day M36 alerts but does NOT block scheduling. `expired`/`revoked`/`not_yet_satisfied`
+ *  all fail the gate (fail-CLOSED per M15-F11). */
+export const volunteerGateStatus = pgEnum("volunteer_gate_status", [
+  "satisfied",
+  "expiring_soon",
+  "expired",
+  "revoked",
+  "not_yet_satisfied",
+]);
+
+/** `volunteer_hour_entry_source` — the §2.2.7 ledger numerator sources for the 42 CFR §418.78(e) ratio.
+ *  M15-F04: administrative volunteer time gets its OWN typed source (`volunteer_admin_hours`) rather than
+ *  being smuggled through `manual_adjustment`; `manual_adjustment` survives as the audited correction path
+ *  behind the `volunteer_compliance.adjust_hours` permission (§4.4) and carries `adjustment_reason`. */
+export const volunteerHourEntrySource = pgEnum("volunteer_hour_entry_source", [
+  "encounter",
+  "volunteer_admin_hours",
+  "manual_adjustment",
+]);
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// Module 16 — Bereavement (§3.2 · M16-T01). The CoP 418.64(d) post-death program vocabulary: the D2
+// eight-state plan machine, the D1 per-bereaved-person contact machine, the D4 death-date-anchored
+// outreach cadence (kind × status × anniversary mark), the D3/D17 deterministic risk rubric's tier /
+// score-kind / completeness / confidence bands, and the D7/D9 closure + opt-out taxonomies. The nine
+// Drizzle tables land in M16-T02 (`packages/db/src/schema/bereavement/`); the leaf mirrors live in
+// `@wardenx/types` (`bereavement.ts`) so M22/M28/M30/M31/M32/M33/M36 read them with no `dependsOn` edge.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** `bereavement_plan_status` — the §2.2 / D2 plan-root lifecycle. `eligible` on the `m6.bereavement.eligible`
+ *  intake (both source branches per D16), `initiating` once a counselor is assigned, `active` once the roster
+ *  + 13-month schedule seed. The three terminal closes are distinct on purpose (survey reconstruction reads
+ *  WHY a program ended); `closed_legal_hold_extended` is the M4-driven retention extension that returns to
+ *  its original close state on release. */
+export const bereavementPlanStatus = pgEnum("bereavement_plan_status", [
+  "eligible",
+  "initiating",
+  "active",
+  "paused",
+  "closed_completed",
+  "closed_declined",
+  "closed_early",
+  "closed_legal_hold_extended",
+]);
+
+/** `bereaved_contact_status` — the §2.3 per-person lifecycle (D1: the CoP obligation is to EACH survivor,
+ *  so consent / opt-out / schedule / risk are per-contact). `ineligible_post_review` is the complicated-grief
+ *  route-to-external terminal-for-now state, reversible on clinical re-evaluation. */
+export const bereavedContactStatus = pgEnum("bereaved_contact_status", [
+  "proposed",
+  "active",
+  "opted_out",
+  "deceased",
+  "unreachable",
+  "ineligible_post_review",
+]);
+
+/** `bereaved_contact_relationship` — relationship-to-decedent. M38 owns the authoritative value set (§2.5);
+ *  this enum mirrors it for index/integrity locally. */
+export const bereavedContactRelationship = pgEnum("bereaved_contact_relationship", [
+  "spouse",
+  "domestic_partner",
+  "parent",
+  "child",
+  "sibling",
+  "grandparent",
+  "grandchild",
+  "aunt_uncle",
+  "cousin",
+  "in_law",
+  "friend",
+  "neighbor",
+  "clergy",
+  "colleague",
+  "caregiver_non_family",
+  "other",
+]);
+
+/** `bereavement_outreach_kind` — the touchpoint modality. D15 boundary: `in_person_visit` is an M8
+ *  encounter (the contact log carries `source_encounter_id`); every other kind is a direct M16 write with a
+ *  NULL `source_encounter_id`. */
+export const bereavementOutreachKind = pgEnum("bereavement_outreach_kind", [
+  "phone_call",
+  "in_person_visit",
+  "sympathy_card",
+  "sympathy_letter",
+  "anniversary_letter",
+  "email",
+  "portal_message",
+  "group_support_invitation",
+  "external_referral",
+]);
+
+/** `bereavement_outreach_status` — the §2.4 scheduled-touchpoint lifecycle. `missed` is the hourly worker's
+ *  verdict once `late_grace_until` passes; a `lateAttempt` inside the grace re-opens it to `in_progress`
+ *  (audit-flagged, NOT a compliance failure). */
+export const bereavementOutreachStatus = pgEnum("bereavement_outreach_status", [
+  "scheduled",
+  "in_progress",
+  "completed",
+  "declined",
+  "no_response",
+  "missed",
+  "cancelled",
+]);
+
+/** `bereavement_contact_log_outcome` — what actually happened on a touchpoint. Three consecutive
+ *  `no_response` rows drive the §2.3 `markUnreachable` proposal; `requested_no_further_contact` is the
+ *  counselor-captured opt-out signal (the opt-out row itself is separate). */
+export const bereavementContactLogOutcome = pgEnum("bereavement_contact_log_outcome", [
+  "engaged",
+  "brief_acknowledgement",
+  "declined",
+  "no_response",
+  "voicemail_left",
+  "wrong_number",
+  "returned_undeliverable",
+  "requested_followup",
+  "requested_no_further_contact",
+  "crisis_referral",
+]);
+
+/** `bereavement_risk_tier` — the D3 deterministic tier that drives the D4 cadence. The rubric itself only
+ *  reaches `high`; `complicated` is a PROMOTION written by a positive complicated-grief screen (D8 / §7.7),
+ *  never a weighted-sum outcome. */
+export const bereavementRiskTier = pgEnum("bereavement_risk_tier", [
+  "low",
+  "moderate",
+  "high",
+  "complicated",
+]);
+
+/** `bereavement_risk_score_kind` — D3 hybrid model. The `rule_deterministic` row is the source of truth and
+ *  must exist before any `llm_augmented` row for the same `(plan, contact, assessed_at)` (§2.5); the LLM
+ *  narrative can never change the tier (AI Governance §7.4). */
+export const bereavementRiskScoreKind = pgEnum("bereavement_risk_score_kind", [
+  "rule_deterministic",
+  "llm_augmented",
+]);
+
+/** `bereavement_plan_closure_reason` — why the program ended. The five early-close reasons carry the D7
+ *  clinical-supervisor cosign requirement (CHECK-enforced in M16-T02); the two opt-out reasons and the
+ *  13-month completion do not. */
+export const bereavementPlanClosureReason = pgEnum("bereavement_plan_closure_reason", [
+  "thirteen_month_completion",
+  "all_contacts_declined",
+  "patient_opt_out_pre_death",
+  "patient_opt_out_post_creation",
+  "tenant_offboarding",
+  "all_bereaved_deceased",
+  "geographic_relocation",
+  "family_legal_action",
+  "other_early",
+]);
+
+/** `bereavement_opt_out_kind` — D9 per-contact opt-out granularity. Only `full` closes the contact;
+ *  `channel_specific` restricts modalities and `pause_temporarily` suspends without closing. */
+export const bereavementOptOutKind = pgEnum("bereavement_opt_out_kind", [
+  "full",
+  "channel_specific",
+  "pause_temporarily",
+]);
+
+/** `bereavement_plan_pause_kind` — the §2.2 pause taxonomy. A pause cancels future-scheduled outreach;
+ *  `resumePlan` regenerates the schedule forward from now to the 13-month ceiling. */
+export const bereavementPlanPauseKind = pgEnum("bereavement_plan_pause_kind", [
+  "operational",
+  "family_request",
+  "counselor_unavailable_temp",
+]);
+
+/** `bereavement_anniversary_mark` — the D4 milestone an outreach/reminder row belongs to.
+ *  `nine_month_high_risk_only` exists only on the elevated-risk (moderate and above) cadence. */
+export const bereavementAnniversaryMark = pgEnum("bereavement_anniversary_mark", [
+  "one_month",
+  "three_month",
+  "six_month",
+  "nine_month_high_risk_only",
+  "anniversary",
+]);
+
+/** `bereavement_data_completeness` — D17. How many of the 8 rubric factors were KNOWABLE. M30's HQRP
+ *  risk-screening measure filters `minimal` out of its denominator so tenants with many external-source
+ *  (transfer-from-hospital) deaths are not penalized for data they could not have had. */
+export const bereavementDataCompleteness = pgEnum("bereavement_data_completeness", [
+  "complete",
+  "partial",
+  "minimal",
+]);
+
+/** `bereavement_confidence_band` — D17. The band derived from the knowable-factor count, surfaced next to
+ *  the score so a counselor can tell a high-confidence low score from a low-confidence one. */
+export const bereavementConfidenceBand = pgEnum("bereavement_confidence_band", [
+  "HIGH",
+  "MEDIUM",
+  "LOW",
+]);
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// Module 21 — Supplies, DME & Comfort Kits (§3.1.1 · M21-T01). The D1 single-`supply_request`-row
+// discriminator + its D2 ten-state fulfillment machine, the D4 vendor-routing precedence vocabulary, and
+// the controlled-substance chain of custody the DEA 21 CFR §1304 perpetual log projects from: the D6
+// dispatch mode / source / schedule, the D17 deployment site, and the D8 return + disposal machine. The
+// eleven Drizzle tables land in M21-T02 (`packages/db/src/schema/supplies/`); the leaf mirrors live in
+// `@wardenx/types` (`supplies.ts`) so M11/M13/M22/M27/M30/M33/M36/M37 read them with no `dependsOn` edge.
+//
+// NAMING: M21's SQL enum names carry the spec's `m21_` prefix (§3.1.1 is the normative schema per §3.0 /
+// ADR-0023). Unlike every earlier module's unprefixed names this is deliberate — `delivery_method`,
+// `return_state`, `dispatch_source` and `disposal_method` are words M18/M24/M37 will each want, and a
+// pgEnum name is CLUSTER-global. The TS binding stays descriptive-unprefixed, as elsewhere in this file.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** `m21_supply_request_kind` — the D1 shared-row discriminator; selects which per-kind TypeBox validates
+ *  `supply_request.data` (`@wardenx/supplies/kinds/*`) and which §2.2 transitions the row may take. M11
+ *  signs one order `kind='comfort_kit'`; M21 splits it into `comfort_kit_deploy` (first placement) vs
+ *  `comfort_kit_replenish` (M13 drawdown crossed threshold) because only the latter has no M11 order. */
+export const supplyRequestKind = pgEnum("m21_supply_request_kind", [
+  "dme",
+  "supply",
+  "comfort_kit_deploy",
+  "comfort_kit_replenish",
+]);
+
+/** `m21_supply_request_status` — the §2.2 / D2 fulfillment lifecycle. Seven forward states plus the two
+ *  cancellation states and the kit-only `returned` branch. `cancellation_pending` exists because a
+ *  post-`ordered` cancellation is a REQUEST to the vendor, not a fact: the row keeps its real state until
+ *  the vendor confirms (a DME already on the truck cannot be un-shipped by our writing `cancelled`). */
+export const supplyRequestStatus = pgEnum("m21_supply_request_status", [
+  "requested",
+  "vendor_assigned",
+  "ordered",
+  "in_transit",
+  "delivered",
+  "received_confirmed",
+  "completed",
+  "cancelled",
+  "cancellation_pending",
+  "returned",
+]);
+
+/** `m21_deployment_site` — D17. The one discriminator unifying home / ALF / SNF-as-residence / IPU-room
+ *  kits behind a single dispatch surface; `ipu_room` is the only value that carries `ipu_room_id` (the
+ *  M37 forward seam) and the only one with no patient delivery address. */
+export const comfortKitDeploymentSite = pgEnum("m21_deployment_site", [
+  "home",
+  "alf",
+  "snf_residence",
+  "ipu_room",
+]);
+
+/** `m21_pharmacy_dispatch_mode` — D6. WHO physically fills the kit. `supply_hub_dispatch` is the only
+ *  mode with a null vendor (the agency's own DEA-registered hub); the two partner modes carry an M40
+ *  Pharmacy reference and differ in whether the prescription routed through M12 DoseSpot first. */
+export const pharmacyDispatchMode = pgEnum("m21_pharmacy_dispatch_mode", [
+  "supply_hub_dispatch",
+  "partner_pharmacy_dispatch",
+  "dosespot_to_partner_pharmacy",
+]);
+
+/** `m21_fulfillment_mode` — D4. What a resolved `vendor_routing_rule` assigns. `vendor` is the only value
+ *  requiring a non-null `assigned_vendor_id` (SQL CHECK); the other three are internal or pharmacy paths
+ *  where a null vendor is CORRECT rather than an unresolved routing failure. */
+export const supplyFulfillmentMode = pgEnum("m21_fulfillment_mode", [
+  "vendor",
+  "internal_supply_hub",
+  "partner_pharmacy",
+  "dosespot_to_partner_pharmacy",
+]);
+
+/** `m21_controlled_substance_schedule` — the DEA schedule of a kit medication (21 CFR §1308). Only CII–CV
+ *  appear: a CI substance has no accepted medical use and can never be on a comfort-kit line. Presence of
+ *  a value is what arms the lot / expiration NOT NULL CHECK and the D8 5% discrepancy rule. */
+export const controlledSubstanceSchedule = pgEnum("m21_controlled_substance_schedule", [
+  "CII",
+  "CIII",
+  "CIV",
+  "CV",
+]);
+
+/** `m21_disposal_method` — D6 / CoP 418.106(f)(3) / DEA 21 CFR §1317. How the kit's remaining controlled
+ *  substance stopped existing. `dispose_at_home_by_witnessed_destruction` is the only value requiring a
+ *  witness membership distinct from the retriever AND the reconciler (SQL CHECK) — it is the value with
+ *  no downstream custodian to corroborate the count. */
+export const comfortKitDisposalMethod = pgEnum("m21_disposal_method", [
+  "take_back_by_supply_team",
+  "dispose_at_home_by_witnessed_destruction",
+  "transferred_to_disposing_pharmacy",
+]);
+
+/** `m21_return_state` — the §2.6 / D8 chain-of-custody machine on `comfort_kit_return`. `overdue` (30d) and
+ *  `unreturnable` (90d) are STATES, not flags, because a kit that never comes back is a survey-reportable
+ *  disposition needing an attested reason — not a retrieval still in progress. */
+export const comfortKitReturnState = pgEnum("m21_return_state", [
+  "requested",
+  "assigned",
+  "retrieving",
+  "retrieved",
+  "reconciled",
+  "overdue",
+  "unreturnable",
+]);
+
+/** `m21_routing_scope_kind` — D4. The precedence ladder a `vendor_routing_rule` sits on, most specific
+ *  first: `sku` > `location` > `tenant` > `platform`. `platform` is the only scope with a null `org_id`
+ *  (SQL CHECK) and the only one tenants may read but never write. */
+export const vendorRoutingScopeKind = pgEnum("m21_routing_scope_kind", [
+  "sku",
+  "location",
+  "tenant",
+  "platform",
+]);
+
+/** `m21_delivery_method` — D7. How the item physically reached the patient, captured with the courier
+ *  attestation at the `delivered` transition. Recorded on every kind because the DME liability question
+ *  ("who put the hospital bed in the room?") is asked long after the row goes terminal. */
+export const supplyDeliveryMethod = pgEnum("m21_delivery_method", [
+  "agency_courier",
+  "vendor_direct_ship",
+  "pharmacy_partner_courier",
+  "patient_pickup",
+  "in_facility_internal",
+]);
+
+/** `m21_dispatch_source` — D6. Which DEA registration the kit left from. Distinct from
+ *  `m21_pharmacy_dispatch_mode`: the mode is the ROUTING decision, the source is the physical origin the
+ *  1304 perpetual log debits. */
+export const comfortKitDispatchSource = pgEnum("m21_dispatch_source", [
+  "supply_hub",
+  "pharmacy_partner",
+  "dosespot_pharmacy",
+]);
+
+/** `m21_comfort_kit_dispatch_status` — M21-F04. The dispatch row's own lifecycle, which does NOT track the
+ *  parent `supply_request.status`: the request goes terminal (`completed`) at deployment, while the
+ *  dispatch stays live for the whole return + reconciliation tail. `reconciled_with_discrepancy` is a
+ *  separate terminal from `reconciled` so the survey query is an equality, not a join to the content rows. */
+export const comfortKitDispatchStatus = pgEnum("m21_comfort_kit_dispatch_status", [
+  "dispatched",
+  "deployed_at_patient",
+  "partially_returned",
+  "fully_returned",
+  "reconciled",
+  "reconciled_with_discrepancy",
+]);

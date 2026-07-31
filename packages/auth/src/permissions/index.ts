@@ -192,3 +192,24 @@ export {
   M24_CONTRIBUTED_PERMISSIONS,
   m24ContributedPermissionMirrorRows,
 } from "./contributed";
+
+// M15 — Module 15's twenty Discipline Care Plans permission keys registered into M3's catalog (§4.4 handshake).
+export {
+  type M15ContributedPermissionKey,
+  M15_CONTRIBUTED_PERMISSIONS,
+  m15ContributedPermissionMirrorRows,
+} from "./contributed";
+
+// M16 — Module 16's twenty-nine Bereavement permission keys registered into M3's catalog (§4.7 handshake).
+export {
+  type M16ContributedPermissionKey,
+  M16_CONTRIBUTED_PERMISSIONS,
+  m16ContributedPermissionMirrorRows,
+} from "./contributed";
+
+// M21 — Module 21's twenty-eight Supplies / DME / Comfort-Kit permission keys (§4.3 handshake).
+export {
+  type M21ContributedPermissionKey,
+  M21_CONTRIBUTED_PERMISSIONS,
+  m21ContributedPermissionMirrorRows,
+} from "./contributed";

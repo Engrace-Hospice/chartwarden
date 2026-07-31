@@ -557,3 +557,54 @@ export * from "./cap/index";
 // Enums migration 0092; non-partitioned tables 0093; PE-partitioned 0094; org-partitioned 0095; RLS/grants
 // 0096; M4 write-audit + service-date-within-claim trigger 0097.
 export * from "./medicaid-billing/index";
+
+// M15 Discipline Care Plans: 11 owned tables (§3.3) — discipline_care_plan (the one-per-(admission, kind)
+// ROOT for the four CoP discipline plans) + discipline_care_plan_version/_signature (the §2.2.2 M7-verbatim
+// version chain, snapshot sealed at in_review, §3.5 D11 required-signer quorum) + discipline_goal/
+// discipline_intervention/discipline_assessment (the authored content; goals hang off M7 problems by
+// LOGICAL uuid) + aide_supervisory_visit (the 418.76(h) 14-day RN attestation ledger) + volunteer_assignment
+// + volunteer_compliance_gate (the 418.78(b)/(d) per-volunteer postures M17's deny-stub is waiting on) +
+// volunteer_hour_ledger/_entry (the 418.78(e) 5% ratio NUMERATOR; the denominator is M27's cost basis, read
+// through a seam, never stored). All 11 org-scoped (organization_id NOT NULL → canonical app.org_id RLS);
+// the eight patient-bearing tables also carry provider_entity_id + location_id NOT NULL (M15-F05) so the
+// §4.3 compliance seams roll up per PE/location without joining through M5/M6. NOTHING is partitioned
+// (M15-F06 / ADR-0022 D1.1 — the partial unique indexes win over a partition key at trivial volumes).
+// Tables + enums migration 0098; RLS/grants + M4 write-audit (incl. the nested `data`/`state_snapshot`
+// jsonb re-scrub) 0099.
+export * from "./discipline-plans/index";
+
+// M16 Bereavement: 9 owned tables (§3.3) — the D1 tripartite shape (bereavement_plan, the one-per-
+// death-discharged-admission ROOT carrying the single 13-month CoP 418.64(d) clock → bereaved_contact, one
+// row per SURVIVOR because the obligation runs to each person → bereavement_contact_log, the leaf where one
+// outreach fans out to many addressees) plus bereavement_risk_score (the append-only, UPDATE-refusing D3/D17
+// rubric ledger), bereavement_outreach (the D4 death-anchored schedule), bereavement_anniversary_reminder
+// (the lookahead worker's idempotency ledger), bereavement_plan_closure (D7's why-it-ended record with the
+// early-close cosign + 40-char CHECKs) and bereavement_opt_out (D9 level two). The ninth,
+// tenant_bereavement_external_source_gate_override, is org-level CONFIG — D18's tighten-only surface, whose
+// shape (no "disable" column) IS the enforcement that tenants may not loosen the medical-director cosign.
+// All 9 org-scoped (organization_id NOT NULL → canonical app.org_id RLS); the eight patient-bearing tables
+// also carry provider_entity_id NOT NULL + location_id for the §4.6 compliance rollups. ONLY
+// bereavement_contact_log is partitioned (D12 / §3.6, monthly RANGE by contact_at). Enums + unpartitioned
+// tables migration 0100; the partitioned contact log 0101; RLS/grants + M4 write-audit (incl. the nested
+// risk_factors_jsonb re-scrub) + risk-score immutability 0102.
+export * from "./bereavement/index";
+
+// M21 Supplies, DME & Comfort Kits: 11 owned tables (§3.1) in three layers — CATALOG (supply_item, the
+// platform-shared HCPCS SKU catalog with no organization_id at all + tenant_supply_item_extension for the
+// tenant's own non-billable items; comfort_kit_template + _medication, D3's four-medication platform floor
+// on the same floor-plus-overlay shape; vendor_routing_rule, D4's deterministic routing ladder with no
+// fallback chain; par_stock, D5's per-Location shelf posture with derived — never stored — severity),
+// REQUEST (supply_request, D1's ONE shared row across dme | supply | comfort_kit_deploy |
+// comfort_kit_replenish with the per-kind payload in a TypeBox-validated `data` jsonb), and KIT CUSTODY
+// (comfort_kit_dispatch → comfort_kit_dispatched_content, the DEA 21 CFR §1304 outbound perpetual log with
+// controlled-only lot/expiration → comfort_kit_return, the §2.6 chain-of-custody machine with the
+// witness-distinctness CHECK → comfort_kit_returned_content, where the single discrepancy formula
+// `dispatched − returned − disposed_at_home` closes the count and flags controlled lines at 5%). Nine
+// tables are org-scoped on canonical app.org_id RLS; comfort_kit_template/_medication and
+// vendor_routing_rule carry organization_id NULLABLE paired with a platform discriminator + CHECK pair so a
+// tenant reads the floor and can never write it; supply_item is genuinely org-less (NON_ORG_SCOPED,
+// dual-grant RLS, M1 baseline audit trigger — the M22 form_template posture). Exactly two tables are
+// partitioned, on different keys: supply_request monthly by created_at (migration 0104) and
+// comfort_kit_dispatch monthly by dispatched_at (0105). Enums + the nine unpartitioned tables 0103;
+// RLS/grants + M4 write-audit + the discrepancy and expiration-floor triggers 0106.
+export * from "./supplies/index";

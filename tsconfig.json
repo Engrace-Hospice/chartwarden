@@ -30,6 +30,9 @@
       "path": "./packages/auth"
     },
     {
+      "path": "./packages/bereavement"
+    },
+    {
       "path": "./packages/billing"
     },
     {
@@ -46,6 +49,9 @@
     },
     {
       "path": "./packages/db"
+    },
+    {
+      "path": "./packages/discipline-plans"
     },
     {
       "path": "./packages/domain"
@@ -121,6 +127,9 @@
     },
     {
       "path": "./packages/subscription-billing"
+    },
+    {
+      "path": "./packages/supplies"
     },
     {
       "path": "./packages/telehealth-client"

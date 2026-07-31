@@ -14,11 +14,21 @@ import type {
   AdmissionCensusReader,
   AdmissionStatusReader,
   AuditorSessionMinter,
+  BereavedPortalScopeProvider,
+  BereavementAssignmentReader,
+  BereavementComplianceProvider,
+  BereavementOutreachProvider,
+  BereavementPlanProvider,
+  BereavementRiskFactorsProvider,
+  BereavementRiskTierProvider,
   BillableEncounterReader,
   CarePlanReader,
   CaseloadProvider,
   CertificationReader,
   DeathDischargeReader,
+  ComfortKitDispatchProvider,
+  DisciplineComplianceProvider,
+  DisciplinePlanReader,
   DocumentReader,
   DocumentRenderer,
   DocumentStorageProvider,
@@ -45,6 +55,7 @@ import type {
   MedicationAdministrationProvider,
   MedicationOrderProvider,
   MileagePayrollReader,
+  MswRiskFactorReader,
   OrderProvider,
   OrderSignatureProvider,
   PatientCoverageReader,
@@ -59,12 +70,16 @@ import type {
   SeamName,
   SessionContextResolver,
   SignedEncountersReader,
+  SupplyCostProvider,
+  SupplyFulfillmentProvider,
+  SupervisoryCadencePlanReader,
   SupervisoryCadenceReader,
   TenantOrgCreationProvider,
   VisitAssignmentReader,
   VisitMetricsProvider,
   VisitReader,
   VolunteerComplianceProvider,
+  VolunteerGateExpiryReader,
 } from "../interfaces";
 
 export class NotImplementedError extends Error {
@@ -598,6 +613,9 @@ export const orderSignatureProviderDenyStub: OrderSignatureProvider = {
 /** M11 — the order read seam (active / by-patient / since / verbal-timeliness / discontinuation). Denies
  * until M11 registers it (M14/M23/M30/M7 resolve the real impl). */
 export const orderProviderDenyStub: OrderProvider = {
+  getOrder() {
+    throw new NotImplementedError("OrderProvider");
+  },
   findActiveOrder() {
     throw new NotImplementedError("OrderProvider");
   },
@@ -833,10 +851,11 @@ export const visitMetricsProviderDenyStub: VisitMetricsProvider = {
   },
 };
 
-// M15 (Discipline Care Plans, Phase 2) seams M17 CONSUMES (§4.4). LEAF-TYPED (interfaces in @wardenx/types),
-// so each gets a concrete typed deny-stub. Per M17-F06/ADR-0009 M17 (Phase 1) no longer hard-requires M15 to
-// boot — these stand fail-closed until M15 ships. The volunteer gate denies LOUDLY exactly when a
-// `volunteer_visit` is scheduled before M15 lands (a non-volunteer visit never invokes predicate 6, M17-T06).
+// M15 (Discipline Care Plans) seams M17 CONSUMES (§4.4). LEAF-TYPED (interfaces in @wardenx/types), so each
+// gets a concrete typed deny-stub. Per M17-F06/ADR-0009 M17 (Phase 1) never hard-required M15 to boot — these
+// stand fail-closed for any boot that does not wire M15 (registerDisciplinePlanSeams, M15-T05). The volunteer
+// gate denies LOUDLY exactly when a `volunteer_visit` is scheduled without M15 wired (a non-volunteer visit
+// never invokes predicate 6, M17-T06).
 
 /** M15 — effective volunteer-compliance status (the D8 gate predicate-6 input). Denies until M15 registers it. */
 export const volunteerComplianceProviderDenyStub: VolunteerComplianceProvider = {
@@ -849,6 +868,197 @@ export const volunteerComplianceProviderDenyStub: VolunteerComplianceProvider = 
 export const supervisoryCadenceReaderDenyStub: SupervisoryCadenceReader = {
   nextSupervisoryDueAt() {
     throw new NotImplementedError("SupervisoryCadenceReader");
+  },
+};
+
+// The rest of M15's §4.3 PUBLISHED surface (M15-T05). All read-only; each denies until
+// registerDisciplinePlanSeams() stands the real impl over it.
+
+/** M15 — the discipline-plan read path M14's IDG packet builder + M22/M28/M31/M33 consume (§4.3). */
+export const disciplinePlanReaderDenyStub: DisciplinePlanReader = {
+  activePlansForPatient() {
+    throw new NotImplementedError("DisciplinePlanReader");
+  },
+  planById() {
+    throw new NotImplementedError("DisciplinePlanReader");
+  },
+  planSummaryForIdg() {
+    throw new NotImplementedError("DisciplinePlanReader");
+  },
+};
+
+/** M15 — the MSW psychosocial risk factors M16's bereavement rubric scores (§4.3; M15 never scores, §1.2). */
+export const mswRiskFactorReaderDenyStub: MswRiskFactorReader = {
+  riskFactorsForAdmission() {
+    throw new NotImplementedError("MswRiskFactorReader");
+  },
+};
+
+/** M15 — the 42 CFR §418.78 gate-expiry sweep (coordinator worklist + the §4.7 M36 alerts). */
+export const volunteerGateExpiryReaderDenyStub: VolunteerGateExpiryReader = {
+  listExpiringGates() {
+    throw new NotImplementedError("VolunteerGateExpiryReader");
+  },
+};
+
+/** M15 — the per-PLAN 418.76(h) cadence state + overdue worklist (M14 dashboard, M30 supervisory measure). */
+export const supervisoryCadencePlanReaderDenyStub: SupervisoryCadencePlanReader = {
+  nextSupervisoryDueFor() {
+    throw new NotImplementedError("SupervisoryCadencePlanReader");
+  },
+  listOverdueSupervisory() {
+    throw new NotImplementedError("SupervisoryCadencePlanReader");
+  },
+};
+
+/** M15 — the M30 HQRP / M33 dashboard compliance rollups + the 418.78(e) ratio (§4.3). */
+export const disciplineComplianceProviderDenyStub: DisciplineComplianceProvider = {
+  supervisoryOnTimeRate() {
+    throw new NotImplementedError("DisciplineComplianceProvider");
+  },
+  mswInitialOnTimeRate() {
+    throw new NotImplementedError("DisciplineComplianceProvider");
+  },
+  chaplainInitialOnTimeRate() {
+    throw new NotImplementedError("DisciplineComplianceProvider");
+  },
+  volunteerGateComplianceRate() {
+    throw new NotImplementedError("DisciplineComplianceProvider");
+  },
+  volunteerHourCostRatio() {
+    throw new NotImplementedError("DisciplineComplianceProvider");
+  },
+};
+
+// M16 (Bereavement) §4.6 / D13 PUBLISHED seams (M16-T05). LEAF-TYPED (interfaces in @wardenx/types), so each
+// gets a concrete typed deny-stub that denies until `registerBereavementSeams()` stands the real impl over it.
+// A deny here is the right answer for every consumer: M36 must not open a bereavement channel it cannot prove
+// a window for, M31 must not mint a bereaved-family session scope it cannot resolve, and M30/M33 must show a
+// measure as UNAVAILABLE rather than as a zero the agency did not earn.
+
+/** M16 — the plan header / roster / closeout rollup (M28 FHIR, M30 HQRP, M31 portal, M33, M36 channel). */
+export const bereavementPlanProviderDenyStub: BereavementPlanProvider = {
+  planById() {
+    throw new NotImplementedError("BereavementPlanProvider");
+  },
+  planByAdmissionId() {
+    throw new NotImplementedError("BereavementPlanProvider");
+  },
+  isInBereavementWindow() {
+    throw new NotImplementedError("BereavementPlanProvider");
+  },
+  contactsForPlan() {
+    throw new NotImplementedError("BereavementPlanProvider");
+  },
+  summarize() {
+    throw new NotImplementedError("BereavementPlanProvider");
+  },
+};
+
+/** M16 — the touchpoint reads + the CoP 418.64(d) counts (M30's rate, M33's operational dashboard). */
+export const bereavementOutreachProviderDenyStub: BereavementOutreachProvider = {
+  listForPlan() {
+    throw new NotImplementedError("BereavementOutreachProvider");
+  },
+  countByStatus() {
+    throw new NotImplementedError("BereavementOutreachProvider");
+  },
+  copComplianceCounts() {
+    throw new NotImplementedError("BereavementOutreachProvider");
+  },
+};
+
+/** M16 — the D3/D17 factor snapshot + deterministic score + the M32 Layer-2 append (§4.6's one write). */
+export const bereavementRiskFactorsProviderDenyStub: BereavementRiskFactorsProvider = {
+  factorsForContact() {
+    throw new NotImplementedError("BereavementRiskFactorsProvider");
+  },
+  deterministicScore() {
+    throw new NotImplementedError("BereavementRiskFactorsProvider");
+  },
+  registerAugmentation() {
+    throw new NotImplementedError("BereavementRiskFactorsProvider");
+  },
+};
+
+/** M16 — plan assignment + counselor caseload (M36's recipient resolver, M3's `bereavement_window`). */
+export const bereavementAssignmentReaderDenyStub: BereavementAssignmentReader = {
+  assignmentForPlan() {
+    throw new NotImplementedError("BereavementAssignmentReader");
+  },
+  plansForCounselor() {
+    throw new NotImplementedError("BereavementAssignmentReader");
+  },
+};
+
+/** M16 — the M31 bereaved-family session scope (§1.2 / D10 narrow: own row, own touchpoints, opt-out). */
+export const bereavedPortalScopeProviderDenyStub: BereavedPortalScopeProvider = {
+  scopeForPortalAccount() {
+    throw new NotImplementedError("BereavedPortalScopeProvider");
+  },
+};
+
+/** M16 — the M30 HQRP measure inputs + M33 rollups, as COUNTS (never a pre-divided rate). */
+export const bereavementComplianceProviderDenyStub: BereavementComplianceProvider = {
+  copOutreachCounts() {
+    throw new NotImplementedError("BereavementComplianceProvider");
+  },
+  riskScreeningCompletenessCounts() {
+    throw new NotImplementedError("BereavementComplianceProvider");
+  },
+  planClosureCounts() {
+    throw new NotImplementedError("BereavementComplianceProvider");
+  },
+};
+
+/** M16 — the risk-tier distribution (M30's chart, M33's dashboard). */
+export const bereavementRiskTierProviderDenyStub: BereavementRiskTierProvider = {
+  tierDistribution() {
+    throw new NotImplementedError("BereavementRiskTierProvider");
+  },
+};
+
+// M21 (Supplies, DME & Comfort Kits) §4.8 / D14 PUBLISHED seams (M21-T05). LEAF-TYPED (interfaces in
+// @wardenx/types), so each gets a concrete typed deny-stub that denies until `registerSuppliesSeams()`
+// stands the real impl over it. A deny is the right answer for every consumer here, and one of them is
+// safety-critical: M13 must NOT be told a comfort kit's controlled-substance inventory is empty when the
+// truth is that M21 could not answer. An empty list would read at the bedside as "there is no morphine in
+// this kit"; a throw reads as "ask again".
+export const supplyFulfillmentProviderDenyStub: SupplyFulfillmentProvider = {
+  createDirectSupplyRequest() {
+    throw new NotImplementedError("SupplyFulfillmentProvider");
+  },
+  getSupplyRequestStatus() {
+    throw new NotImplementedError("SupplyFulfillmentProvider");
+  },
+  isTerminal() {
+    throw new NotImplementedError("SupplyFulfillmentProvider");
+  },
+};
+
+/** M21 — bedside kit inventory + lot detail + the D17 IPU-room stock kit (M13, M27, M30, M33, M37). */
+export const comfortKitDispatchProviderDenyStub: ComfortKitDispatchProvider = {
+  listActiveDispatchesForPatient() {
+    throw new NotImplementedError("ComfortKitDispatchProvider");
+  },
+  getDispatchDetail() {
+    throw new NotImplementedError("ComfortKitDispatchProvider");
+  },
+  getIpuRoomKitInventory() {
+    throw new NotImplementedError("ComfortKitDispatchProvider");
+  },
+  notifyAdministrationDrawdown() {
+    throw new NotImplementedError("ComfortKitDispatchProvider");
+  },
+};
+
+/** M21 — per-patient / per-org supply spend in integer CENTS (M23 cap analysis, M27 cost report). */
+export const supplyCostProviderDenyStub: SupplyCostProvider = {
+  getPatientSupplyCostSummary() {
+    throw new NotImplementedError("SupplyCostProvider");
+  },
+  getOrgSupplySpendSummary() {
+    throw new NotImplementedError("SupplyCostProvider");
   },
 };
 

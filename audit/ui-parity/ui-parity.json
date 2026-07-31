@@ -26,8 +26,11 @@
     "12-dosespot",
     "13-emar",
     "14-idg",
+    "15-discipline-care-plans",
+    "16-bereavement",
     "17-scheduling",
     "18-evv",
+    "21-supplies",
     "22-documents",
     "23-billing-medicare",
     "24-billing-medicaid",
@@ -506,6 +509,167 @@
       "permission": "idg.read"
     },
     {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "discipline-plan.index",
+      "path": "/patients/:patientId/discipline-plans",
+      "permission": "discipline_plan.read"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "discipline-plan.aide-poc",
+      "path": "/patients/:patientId/discipline-plans/aide-poc",
+      "permission": "discipline_plan.read"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "discipline-plan.aide-poc.edit",
+      "path": "/patients/:patientId/discipline-plans/aide-poc/:versionId/edit",
+      "permission": "discipline_plan.author"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "discipline-plan.msw",
+      "path": "/patients/:patientId/discipline-plans/msw-plan",
+      "permission": "discipline_plan.read"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "discipline-plan.assessment",
+      "path": "/patients/:patientId/discipline-plans/msw-plan/:planId/assessments/:assessmentId",
+      "permission": "discipline_assessment.author"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "discipline-plan.spiritual",
+      "path": "/patients/:patientId/discipline-plans/spiritual-plan",
+      "permission": "discipline_plan.read"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "discipline-plan.volunteer",
+      "path": "/patients/:patientId/discipline-plans/volunteer-plan",
+      "permission": "discipline_plan.read"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "discipline-plan.summary",
+      "path": "/patients/:patientId/discipline-plans/summary",
+      "permission": "discipline_plan.read_summary"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "discipline-plan.versions",
+      "path": "/patients/:patientId/discipline-plans/:kind/versions",
+      "permission": "discipline_plan.read"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "discipline-plan.idg-revision",
+      "path": "/patients/:patientId/discipline-plans/:kind/idg-revisions/:versionId",
+      "permission": "discipline_plan.idg_revise"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "volunteer.compliance",
+      "path": "/admin/volunteer-compliance",
+      "permission": "volunteer_compliance.read"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "volunteer.ratio",
+      "path": "/admin/volunteer-ratio",
+      "permission": "volunteer_compliance.read_ratio"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.caseload",
+      "path": "/bereavement",
+      "permission": "bereavement.dashboard.counselor"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.supervisor",
+      "path": "/bereavement/supervisor",
+      "permission": "bereavement.dashboard.supervisor"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.intake",
+      "path": "/bereavement/eligible",
+      "permission": "bereavement.plan.assign_counselor"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.plan",
+      "path": "/bereavement/plans/:planId",
+      "permission": "bereavement.plan.read"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.plan.seed",
+      "path": "/bereavement/plans/:planId/seed",
+      "permission": "bereavement.plan.activate"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.plan.closeout",
+      "path": "/bereavement/plans/:planId/closeout",
+      "permission": "bereavement.plan.read"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.plan.outreach",
+      "path": "/bereavement/plans/:planId/outreach",
+      "permission": "bereavement.outreach.read"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.plan.risk",
+      "path": "/bereavement/plans/:planId/risk",
+      "permission": "bereavement.risk.read"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.contact",
+      "path": "/bereavement/plans/:planId/contacts/:contactId",
+      "permission": "bereavement.plan.read"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.contact.screen",
+      "path": "/bereavement/plans/:planId/contacts/:contactId/screen",
+      "permission": "bereavement.contact.flag_complicated_grief"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.plan.history",
+      "path": "/bereavement/plans/:planId/history",
+      "permission": "bereavement.plan.read"
+    },
+    {
       "module": "17-scheduling",
       "moduleId": 17,
       "id": "scheduling.day",
@@ -623,6 +787,76 @@
       "id": "evv.my-devices",
       "path": "/me/evv/devices",
       "permission": "evv.device.read"
+    },
+    {
+      "module": "21-supplies",
+      "moduleId": 21,
+      "id": "supplies.dashboard",
+      "path": "/supplies",
+      "permission": "supplies.request.read"
+    },
+    {
+      "module": "21-supplies",
+      "moduleId": 21,
+      "id": "supplies.request",
+      "path": "/supplies/requests/:supplyRequestId",
+      "permission": "supplies.request.read"
+    },
+    {
+      "module": "21-supplies",
+      "moduleId": 21,
+      "id": "supplies.dispatch.new",
+      "path": "/supplies/dispatches/new",
+      "permission": "comfort_kit.dispatch.create"
+    },
+    {
+      "module": "21-supplies",
+      "moduleId": 21,
+      "id": "supplies.dispatch",
+      "path": "/supplies/dispatches/:dispatchId",
+      "permission": "comfort_kit.dispatch.read"
+    },
+    {
+      "module": "21-supplies",
+      "moduleId": 21,
+      "id": "supplies.dispatch.perpetual_log",
+      "path": "/supplies/dispatches/:dispatchId/perpetual-log",
+      "permission": "comfort_kit.perpetual_log.read"
+    },
+    {
+      "module": "21-supplies",
+      "moduleId": 21,
+      "id": "supplies.return",
+      "path": "/supplies/returns/:returnId",
+      "permission": "comfort_kit.return.read"
+    },
+    {
+      "module": "21-supplies",
+      "moduleId": 21,
+      "id": "supplies.par_stock",
+      "path": "/supplies/par-stock",
+      "permission": "par_stock.read"
+    },
+    {
+      "module": "21-supplies",
+      "moduleId": 21,
+      "id": "supplies.vendor_routing",
+      "path": "/supplies/vendor-routing",
+      "permission": "vendor_routing.read"
+    },
+    {
+      "module": "21-supplies",
+      "moduleId": 21,
+      "id": "supplies.comfort_kit_templates",
+      "path": "/supplies/comfort-kit-templates",
+      "permission": "comfort_kit.template.read"
+    },
+    {
+      "module": "21-supplies",
+      "moduleId": 21,
+      "id": "supplies.items",
+      "path": "/supplies/items",
+      "permission": "supplies.item.read"
     },
     {
       "module": "22-documents",

@@ -463,11 +463,121 @@ waves (M7–M37). They are **Track B**: each ships with its module's wave (inclu
 `apps/web/src/modules/NN-*` codePath from T01; the terminal screen task builds it). The `done` items below
 shipped in-wave; the generated **ui-parity matrix** (`audit/ui-parity/UI_PARITY.md`) is the authoritative
 per-screen status. Examples:
-Care Plan (M7+M15), Orders (M11; done¹⁸), eMAR administration (M13; done²⁰; M12 prescribing is done¹⁹),
-IDG (M14; done²¹), Scheduling (M17; done²²), EVV (M18; done²³), Claims (M23; done — M24 deferred),
+Care Plan (M7 done; M15 discipline plans + volunteer management done²⁴), Orders (M11; done¹⁸),
+eMAR administration (M13; done²⁰; M12 prescribing is done¹⁹),
+IDG (M14; done²¹), Bereavement (M16; done²⁵), Scheduling (M17; done²²), EVV (M18; done²³),
+Supplies/DME/Comfort Kits (M21; done²⁶), Claims (M23; done), Medicaid (M24; done),
 Remittance & Denials (M25; done), Cap (M26; done), Cost Report (M27), FHIR (M28), HQRP (M30),
 Portal/Telehealth (M31), Copilot (M32), Reporting (M33; done), Onboarding (M34; done),
 Subscription (M35), IPU Bed Board (M37). See each spec's `Module:` line for the authoritative owner.
+
+> ²⁴ **M15 Discipline Care Plans + Volunteer Management now LIVE (Wave P2-1, M15-T07).** Twelve screens under
+> `apps/web/src/modules/15-discipline-care-plans`, registered into the M1 shell via `disciplinePlanScreens`
+> (`main.tsx`) and reached from a new "Discipline Plans" item on the patient-chart module rail. They cover
+> the M15 §5.1 inventory: the four-plan index; the Aide POC view with the 42 CFR §418.76(h) next-due ladder,
+> the RN supervisory-attestation ledger and its capture/sign modals; the Aide POC task/goal editor; the MSW,
+> Spiritual and Volunteer plan views (the last with the gate-checked assignment ceremony); the discipline
+> assessment capture/sign/amend surface; the version chain with its sealed snapshot + signed-version diff;
+> the post-IDG revision review; the printable summary; and — under "Admin", the two tenant-wide 418.78
+> surfaces — the volunteer compliance-gate manager and the 5% time-cost ratio dashboard. Built to Lantern:
+> the §6.6 StatusPill taxonomy through a per-module `discipline-status.ts`, No-Line tables (§6.7), CSS-var
+> tokens only (zero hex). The §5.1 modals are not separate registry entries — each lives in the parent screen
+> that already read the row `version` its `If-Match` needs. Nav visibility is gated by the real §4.4 keys
+> (`discipline_plan.read` / `.author` / `.read_summary` / `.idg_revise`, `discipline_assessment.author`,
+> `volunteer_compliance.read` / `.read_ratio`); the SERVER stays the only enforcement point — an off-caseload
+> plan is a non-leaking 404 and the §7.8/§7.9 SUD + family-violence filtering happens in SQL, surfaced to the
+> user as the response's `redacted_categories` marker rather than as a silent omission. Honest gaps, stated
+> on the screens themselves rather than faked: the 5% ratio renders "cost basis unavailable" while the M27
+> patient-care-hours denominator is unbound (never a 0% breach); the assessment `data` payload is entered as
+> JSON because the §3.4 per-kind TypeBox schemas are not published to the client; the aide/supervising-RN
+> binding is read-only because M15 publishes no route that re-points it; and the §5.2 mobile + §5.3 portal
+> variants remain forward-seams.
+
+> ²⁵ **M16 Bereavement now LIVE (Wave P2-1, M16-T07).** Eleven screens under
+> `apps/web/src/modules/16-bereavement`, registered into the M1 shell via `bereavementScreens` (`main.tsx`)
+> under a new "Bereavement" nav group, over the live 33-route M16 backend. They cover the M16 §5.1
+> inventory: the counselor caseload dashboard (with the 30/14/7-day anniversary banner as a polite live
+> region); the supervisor program dashboard; the intake queue with the counselor + volunteer assignment
+> ceremonies; the plan detail with the D18 first-contact gate; the roster + D4 schedule seeding flow; the
+> bereaved-contact detail with the opt-out / rescind / deceased / unreachable / confirm ceremonies; the
+> outreach planner with the start / complete / decline / no-response / cancel / late-attempt transitions;
+> the D3+D17 risk ledger with its recompute + override ceremony; the PG-13 complicated-grief screen with
+> the escalation and referral composers; the 13-month closeout; and the §7.15 survey-reconstruction
+> history. Built to Lantern: the §6.6 StatusPill taxonomy through a per-module `bereavement-status.ts`,
+> No-Line tables (§6.7), CSS-var tokens only (zero hex). §5.1 modals are not separate registry entries —
+> each lives in the parent that already read the row `version` its `If-Match` needs. Nav visibility is
+> gated by the real §4.7 keys (`bereavement.dashboard.counselor` / `.supervisor`, `bereavement.plan.read` /
+> `.assign_counselor` / `.activate`, `bereavement.outreach.read`, `bereavement.risk.read`,
+> `bereavement.contact.flag_complicated_grief`); the SERVER stays the only enforcement point — an
+> off-caseload plan is a non-leaking **404**, deliberately, because "this plan 403s" would tell an
+> unauthorized caller that a particular patient died.
+>
+> Two route-shape departures from §5.1, both because architecture wins over the screen spec: the
+> bereaved-contact detail and the grief screen are **plan-scoped** (`/bereavement/plans/:planId/contacts/…`)
+> because M16 publishes no "get one contact" read — a survivor is only ever returned inside their plan,
+> which is what makes the §7.13 redaction and the D10 volunteer scope ONE decision on ONE body; and paths
+> are mounted at the root rather than under `/app`, per the M15/M17/M18 shell convention.
+>
+> Honest gaps, stated on the screens themselves rather than faked: §5.1 #9's drag-to-reschedule is not
+> built because M16 publishes no per-touchpoint date PATCH — the planner offers route 27's forward
+> regeneration, which is what the server actually has; §5.1 #5's live `volunteer_gates_satisfied` badge is
+> not pre-rendered because no route reads one volunteer's 418.78 status, so the assignment attempt's
+> refusal is the real gate answer; §5.1 #18's "transition to `closed_completed`" is not a button, because
+> §2.2 makes the 13-month completion a cron cascade and the four system-driven closure reasons are
+> excluded from `CloseEarlyBody` — a button there would have had to misuse the early-close path and record
+> a curtailed obligation as a fulfilled one; the §5.1 #19 history is reconstructed from the plan's own
+> rows and says so, since the immutable audit trail (refused reads, break-glass, cascade actors) belongs
+> to the M4 surface that owns it; the M40 external grief-resource picker takes an id rather than browsing
+> a catalog M16 does not publish; and the §5.2 mobile + §5.3 portal variants remain forward-seams.
+
+> ²⁶ **M21 Supplies, DME & Comfort Kits now LIVE (Wave P2-1, M21-T06).** Ten screens under
+> `apps/web/src/modules/21-supplies`, registered into the M1 shell via `supplyScreens` (`main.tsx`) under a
+> new "Supplies" nav group, over the live 37-route M21 backend. They cover the M21 §5.1 inventory: the
+> supply-team dashboard (which is also the index for requests, dispatches and returns, since §4.1 publishes
+> no separate list screens); the supply-request detail driving the §2.2 fulfillment machine with the frozen
+> D4 routing trace; comfort-kit dispatch creation and detail; the §2.6 return reconciliation with its
+> witnessed-disposal and write-off ceremonies; and the four agency-operations surfaces — par stock, vendor
+> routing, comfort-kit templates and the D11 SKU catalog. Built to Lantern: the §6.6 StatusPill taxonomy
+> through a per-module `supplies-status.ts` keyed on the frozen pgEnum lists, No-Line tables (§6.7), CSS-var
+> tokens only (zero hex). §5's ceremonies are not separate registry entries — each lives in the parent that
+> already read the row's `updated_at`, which is M21's `If-Match` value (§7.2; M21's tables carry no version
+> counter). Nav visibility is gated by the real §4.3 keys (`supplies.request.read`, `supplies.item.read`,
+> `comfort_kit.dispatch.create` / `.read`, `comfort_kit.perpetual_log.read`, `comfort_kit.return.read`,
+> `comfort_kit.template.read`, `vendor_routing.read`, `par_stock.read`); the SERVER stays the only
+> enforcement point.
+>
+> **An eleventh screen that §5.1 does not list: the DEA 21 CFR §1304 perpetual log**
+> (`/supplies/dispatches/:id/perpetual-log`). §4.3 gives it its own `compliance`-category key, disjoint from
+> `comfort_kit.dispatch.read` — a coordinator who may dispatch must not thereby acquire the lot-level
+> custody chain. Nav gating is per-screen, so folding it into the dispatch detail would have made the
+> dispatch key the effective gate on the ledger, strictly wider than §4.3 says.
+>
+> Honest gaps and departures, stated on the screens themselves rather than faked: the §5.2 KPI tiles are
+> PAGE-derived (M21 publishes no aggregate route and no `total_count`), so a truncated page carries an
+> explicit "at least" notice; §5.2's "in-transit late" and "undeliverable" tiles are not built, because
+> `supply_request` has no expected-delivery column and the status enum has no undeliverable value; §5.4's
+> patient autocomplete is replaced by an open-kit-request picker, since the dispatch body has no patient
+> field (patient, admission and provider entity come from the request); §5.4's per-line witness picker and
+> chain-of-custody scan list are not built, because the dispatch stores neither — the witness is a §2.6
+> *disposal* fact and only for at-home destruction; §5.7's threshold editor edits the real columns
+> (`reorder_point` / `reorder_quantity` / `min_safety_stock`, not the sketch's par_min/par_target) and its
+> photo capture is dropped for want of a document column; §5.8's fallback-chain column and "simulate
+> routing" panel are not built, because §3.0 REMOVED the fallback model and simulating client-side would put
+> a second copy of the resolver in the browser — the frozen `routingRuleResolved` trace on each request is
+> the real answer; §5.9's RxNorm autocomplete is free text (M21 publishes no terminology lookup and M38's is
+> another module's screen); §5.10's tenant-extension drawer is dropped because the overlay rows are already
+> first-class list entries; §5.3's M4 audit drawer is not built — the audit trail belongs to the M4 surface
+> and its own permission, so the lifecycle timeline is reconstructed from the request's own columns and says
+> so; and the §5.11 mobile variants (courier delivery, clinician confirm, kit-return witness) remain
+> forward-seams — the first two are the same routes the request detail's action panel already drives, and
+> the third has no route at all, since witness co-attestation is a field inside `reconcile` rather than its
+> own transition.
+>
+> **`discrepancy_pct` and `replenishment_threshold_pct` are FRACTIONS in [0,1], not percentages** — the D8
+> trigger compares against `0.05` and §3.1.4's CHECK bounds the threshold to [0,1] — and they reach the wire
+> raw. The web slice converts in exactly one place (`fractionAsPct`); the §9.3 live RLS suite asserts the
+> scale, because printing 0.05 under a "%" heading would understate a controlled-substance shortfall a
+> hundredfold.
 
 ---
 

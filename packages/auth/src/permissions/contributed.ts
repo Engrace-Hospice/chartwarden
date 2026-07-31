@@ -3147,6 +3147,560 @@ export const M24_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M24 contributed permission keys (twenty-six). */
 export type M24ContributedPermissionKey = keyof typeof M24_CONTRIBUTED_PERMISSIONS;
 
+// M15 — Module 15's twenty Discipline Care Plans permission keys registered into M3's catalog (§4.4). The
+// four §4.5 predicates M15 OWNS (aide_supervisor_eligible / volunteer_compliance_active /
+// family_violence_disclosure_allowed / volunteer_coordinator_role) are named as the per-key DEFAULT where the
+// key has exactly one; the routes compose the rest (the §4.1 inventory's `caseload_or_scope` ∧
+// `discipline_scope` ∧ the two disclosure gates) at the route layer, since a key can carry only one default.
+// category 'clinical' for the plan/assessment/supervisory surface, 'compliance' for the 418.78 volunteer-gate
+// + hour-ratio surface (a Compliance Officer/DON reads those without a caseload), and the three
+// `*_internal` seam keys are system-principal-only (M14's `idg.*` precedent for the shape).
+export const M15_CONTRIBUTED_PERMISSIONS = {
+  "discipline_plan.read": {
+    resource: "discipline_care_plan",
+    action: "read",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
+  "discipline_plan.read_summary": {
+    resource: "discipline_care_plan",
+    action: "read_summary",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
+  "discipline_plan.author": {
+    resource: "discipline_care_plan",
+    action: "author",
+    category: "clinical",
+    abac: "discipline_scope",
+  },
+  "discipline_plan.finalize": {
+    resource: "discipline_care_plan_version",
+    action: "finalize",
+    category: "clinical",
+    abac: "discipline_scope",
+  },
+  "discipline_plan.sign": {
+    resource: "discipline_care_plan_version",
+    action: "sign",
+    category: "clinical",
+    abac: "signer_role_match",
+  },
+  "discipline_plan.idg_revise": {
+    resource: "discipline_care_plan_version",
+    action: "idg_revise",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
+  "discipline_assessment.author": {
+    resource: "discipline_assessment",
+    action: "author",
+    category: "clinical",
+    abac: "discipline_scope",
+  },
+  "discipline_assessment.sign": {
+    resource: "discipline_assessment",
+    action: "sign",
+    category: "clinical",
+    abac: "discipline_scope",
+  },
+  "discipline_assessment.amend": {
+    resource: "discipline_assessment",
+    action: "amend",
+    category: "clinical",
+    abac: "discipline_scope",
+  },
+  "aide_supervisory.author": {
+    resource: "aide_supervisory_visit",
+    action: "author",
+    category: "clinical",
+    abac: "aide_supervisor_eligible",
+  },
+  "aide_supervisory.sign": {
+    resource: "aide_supervisory_visit",
+    action: "sign",
+    category: "clinical",
+    abac: "aide_supervisor_eligible",
+  },
+  "volunteer_assignment.author": {
+    resource: "volunteer_assignment",
+    action: "author",
+    category: "clinical",
+    abac: "volunteer_coordinator_role",
+  },
+  "volunteer_compliance.read": {
+    resource: "volunteer_compliance_gate",
+    action: "read",
+    category: "compliance",
+    abac: "none",
+  },
+  "volunteer_compliance.author": {
+    resource: "volunteer_compliance_gate",
+    action: "author",
+    category: "compliance",
+    abac: "volunteer_coordinator_role",
+  },
+  "volunteer_compliance.revoke": {
+    resource: "volunteer_compliance_gate",
+    action: "revoke",
+    category: "compliance",
+    abac: "none",
+  },
+  "volunteer_compliance.read_ratio": {
+    resource: "volunteer_hour_ledger",
+    action: "read_ratio",
+    category: "compliance",
+    abac: "none",
+  },
+  "volunteer_compliance.adjust_hours": {
+    resource: "volunteer_hour_entry",
+    action: "adjust_hours",
+    category: "compliance",
+    abac: "none",
+  },
+  // The three §4.1 `/internal/...` seam routes — system principals only (never granted to a role template).
+  "discipline_plan.read_internal": {
+    resource: "discipline_care_plan",
+    action: "read_internal",
+    category: "platform",
+    abac: "none",
+  },
+  "volunteer_compliance.read_internal": {
+    resource: "volunteer_compliance_gate",
+    action: "read_internal",
+    category: "platform",
+    abac: "none",
+  },
+  "aide_supervisory.read_internal": {
+    resource: "aide_supervisory_visit",
+    action: "read_internal",
+    category: "platform",
+    abac: "none",
+  },
+} satisfies Record<string, PermissionDef>;
+
+/** Union of the M15 contributed permission keys (twenty). */
+export type M15ContributedPermissionKey = keyof typeof M15_CONTRIBUTED_PERMISSIONS;
+
+/**
+ * M16-T06 — the twenty-nine §4.7 Bereavement permission keys Module 16 registers into M3's catalog.
+ *
+ * `abac` names the DEFAULT predicate the M3 catalog records for the key; the §4.1 route table is what
+ * actually binds a guard, and it may bind a different (or no) predicate per route. Four of the five §4.8
+ * predicate names are M16-OWNED and registered by `registerBereavementAbacPredicates`:
+ * `bereavement_window`, `discipline_can_provide_bereavement`, `org_scope_bereavement_oversight` and
+ * `portal_self_service`. §4.8 calls the last two "reused / M3 §4.2 family", but no module on the platform
+ * registers either name today — an UNREGISTERED predicate denies exactly like a typo, so M16 registers
+ * them rather than binding a name nothing declares.
+ *
+ * `volunteer_gates_satisfied` is deliberately NOT a separate key here: §4.8 folds it INTO
+ * `discipline_can_provide_bereavement` for the volunteer discipline, and M16 resolves it through M15's
+ * published `VolunteerComplianceProvider` seam so there is one 418.78 gate implementation, not two.
+ */
+export const M16_CONTRIBUTED_PERMISSIONS = {
+  "bereavement.plan.read": {
+    resource: "bereavement_plan",
+    action: "read",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.plan.assign_counselor": {
+    resource: "bereavement_plan",
+    action: "assign_counselor",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  "bereavement.plan.assign_volunteer": {
+    resource: "bereavement_plan",
+    action: "assign_volunteer",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  "bereavement.plan.activate": {
+    resource: "bereavement_plan",
+    action: "activate",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  "bereavement.plan.pause": {
+    resource: "bereavement_plan",
+    action: "pause",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.plan.resume": {
+    resource: "bereavement_plan",
+    action: "resume",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.plan.close_early": {
+    resource: "bereavement_plan",
+    action: "close_early",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.plan.close_cosign": {
+    resource: "bereavement_plan",
+    action: "close_cosign",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  "bereavement.plan.regenerate_schedule": {
+    resource: "bereavement_plan",
+    action: "regenerate_schedule",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.contact.create": {
+    resource: "bereaved_contact",
+    action: "create",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.contact.update": {
+    resource: "bereaved_contact",
+    action: "update",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.contact.confirm": {
+    resource: "bereaved_contact",
+    action: "confirm",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.contact.opt_out": {
+    resource: "bereaved_contact",
+    action: "opt_out",
+    category: "clinical",
+    abac: "portal_self_service",
+  },
+  "bereavement.contact.rescind_opt_out": {
+    resource: "bereaved_contact",
+    action: "rescind_opt_out",
+    category: "clinical",
+    abac: "portal_self_service",
+  },
+  "bereavement.contact.mark_deceased": {
+    resource: "bereaved_contact",
+    action: "mark_deceased",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.contact.mark_unreachable": {
+    resource: "bereaved_contact",
+    action: "mark_unreachable",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.contact.flag_complicated_grief": {
+    resource: "bereaved_contact",
+    action: "flag_complicated_grief",
+    category: "clinical",
+    abac: "discipline_can_provide_bereavement",
+  },
+  "bereavement.outreach.read": {
+    resource: "bereavement_outreach",
+    action: "read",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.outreach.start": {
+    resource: "bereavement_outreach",
+    action: "start",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.outreach.complete": {
+    resource: "bereavement_outreach",
+    action: "complete",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.outreach.cancel": {
+    resource: "bereavement_outreach",
+    action: "cancel",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.outreach.late_attempt": {
+    resource: "bereavement_outreach",
+    action: "late_attempt",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.contact_log.write": {
+    resource: "bereavement_contact_log",
+    action: "write",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.risk.read": {
+    resource: "bereavement_risk_score",
+    action: "read",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.risk.recompute": {
+    resource: "bereavement_risk_score",
+    action: "recompute",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.referral.create": {
+    resource: "bereavement_contact_log",
+    action: "refer_external",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.dashboard.counselor": {
+    resource: "bereavement_plan",
+    action: "dashboard_counselor",
+    category: "clinical",
+    abac: "discipline_can_provide_bereavement",
+  },
+  "bereavement.dashboard.supervisor": {
+    resource: "bereavement_plan",
+    action: "dashboard_supervisor",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  // §4.1 route 33 — the D18-gated counselor first contact. §4.1 gates it on `bereavement.outreach.start`,
+  // but the gate REFUSAL is the whole point of the route, so it carries its own key: a tenant that wants a
+  // coordinator (and not every outreach-capable worker) to make first contact on an external-source plan
+  // can grant one without the other. The route binds BOTH keys, so the §4.1 contract is not loosened.
+  "bereavement.plan.initiate_contact": {
+    resource: "bereavement_plan",
+    action: "initiate_contact",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+} satisfies Record<string, PermissionDef>;
+
+/** Union of the M16 contributed permission keys (twenty-nine). */
+export type M16ContributedPermissionKey = keyof typeof M16_CONTRIBUTED_PERMISSIONS;
+
+/**
+ * M21-T05 — the twenty-eight Supplies / DME / Comfort-Kit permission keys Module 21 registers into M3's
+ * catalog: §4.3's twenty-six, plus the two the §4.1 route inventory needs and §4.3 never named (see the
+ * last block).
+ *
+ * `abac` names the DEFAULT predicate the M3 catalog records for the key; the §4.1 route table is what
+ * actually binds a guard, and it may bind a different (or no) predicate per route. Both §4.4 predicate
+ * names are M21-OWNED and registered by `registerSuppliesAbacPredicates`:
+ * `controlled_substance_dispatcher_eligible` and `comfort_kit_return_reconciler_eligible`.
+ *
+ * TWO catalog decisions worth stating, because both are easy to get backwards:
+ *
+ *   1. `supplies.request.create` records `'none'` as its DEFAULT, even though §4.1 binds
+ *      `controlled_substance_dispatcher_eligible` on the row. The §4.1 cell is CONDITIONAL —
+ *      "(when kind=comfort_kit_deploy)" — and the catalog default is unconditional. Recording the
+ *      predicate here would make every DME and wound-supply request require controlled-substance
+ *      dispatch authority, which is strictly stricter than the spec and would ground the aides who file
+ *      most requests. The conditional gate lives in the route guard (`ABAC_DISPATCHER_ON_KIT_KIND`), where
+ *      the kind is actually in hand.
+ *   2. The four catalog keys (`supplies.item.*`) are PLATFORM-only in §4.3 and their category is `admin`,
+ *      not `clinical`: `supply_item` carries no organization_id at all (D11), so a tenant clinician role
+ *      must never pick them up by category grant. The tenant's own overlay
+ *      (`supplies.tenant_item.write`) is the org-scoped key beside them.
+ */
+export const M21_CONTRIBUTED_PERMISSIONS = {
+  // ── supply requests (§4.1 rows 1-10) ────────────────────────────────────────────────────────────────
+  "supplies.request.create": {
+    resource: "supply_request",
+    action: "create",
+    category: "clinical",
+    abac: "none",
+  },
+  "supplies.request.read": {
+    resource: "supply_request",
+    action: "read",
+    category: "clinical",
+    abac: "none",
+  },
+  "supplies.request.assign_vendor": {
+    resource: "supply_request",
+    action: "assign_vendor",
+    category: "clinical",
+    abac: "none",
+  },
+  "supplies.request.mark_ordered": {
+    resource: "supply_request",
+    action: "mark_ordered",
+    category: "clinical",
+    abac: "none",
+  },
+  "supplies.request.mark_in_transit": {
+    resource: "supply_request",
+    action: "mark_in_transit",
+    category: "clinical",
+    abac: "none",
+  },
+  "supplies.request.mark_delivered": {
+    resource: "supply_request",
+    action: "mark_delivered",
+    category: "clinical",
+    abac: "none",
+  },
+  "supplies.request.confirm_received": {
+    resource: "supply_request",
+    action: "confirm_received",
+    category: "clinical",
+    abac: "none",
+  },
+  "supplies.request.cancel": {
+    resource: "supply_request",
+    action: "cancel",
+    category: "clinical",
+    abac: "none",
+  },
+  "supplies.request.return": {
+    resource: "supply_request",
+    action: "return",
+    category: "clinical",
+    abac: "none",
+  },
+
+  // ── SKU catalog (§4.1 rows 11-16; D11 platform + tenant overlay) ────────────────────────────────────
+  "supplies.item.read": {
+    resource: "supply_item",
+    action: "read",
+    category: "clinical",
+    abac: "none",
+  },
+  "supplies.item.write": {
+    resource: "supply_item",
+    action: "write",
+    category: "admin",
+    abac: "none",
+  },
+  "supplies.item.retire": {
+    resource: "supply_item",
+    action: "retire",
+    category: "admin",
+    abac: "none",
+  },
+  "supplies.tenant_item.write": {
+    resource: "tenant_supply_item_extension",
+    action: "write",
+    category: "admin",
+    abac: "none",
+  },
+
+  // ── comfort-kit templates (§4.1 rows 17-19; D3 floor-plus-overlay) ─────────────────────────────────
+  "comfort_kit.template.read": {
+    resource: "comfort_kit_template",
+    action: "read",
+    category: "clinical",
+    abac: "none",
+  },
+  "comfort_kit.template.write": {
+    resource: "comfort_kit_template",
+    action: "write",
+    category: "clinical",
+    abac: "none",
+  },
+
+  // ── comfort-kit dispatch (§4.1 rows 20-23; D6 controlled-substance custody) ────────────────────────
+  "comfort_kit.dispatch.create": {
+    resource: "comfort_kit_dispatch",
+    action: "create",
+    category: "clinical",
+    abac: "controlled_substance_dispatcher_eligible",
+  },
+  "comfort_kit.dispatch.read": {
+    resource: "comfort_kit_dispatch",
+    action: "read",
+    category: "clinical",
+    abac: "none",
+  },
+  "comfort_kit.dispatch.deploy": {
+    resource: "comfort_kit_dispatch",
+    action: "deploy",
+    category: "clinical",
+    abac: "none",
+  },
+
+  // ── comfort-kit return + reconciliation (§4.1 rows 24-27; D8 / DEA 21 CFR §1304) ───────────────────
+  "comfort_kit.return.create": {
+    resource: "comfort_kit_return",
+    action: "create",
+    category: "clinical",
+    abac: "none",
+  },
+  "comfort_kit.return.read": {
+    resource: "comfort_kit_return",
+    action: "read",
+    category: "clinical",
+    abac: "none",
+  },
+  "comfort_kit.return.reconcile": {
+    resource: "comfort_kit_return",
+    action: "reconcile",
+    category: "compliance",
+    abac: "comfort_kit_return_reconciler_eligible",
+  },
+
+  // ── vendor routing + par stock (§4.1 rows 28-35; agency operations, no patient in them) ────────────
+  "vendor_routing.read": {
+    resource: "vendor_routing_rule",
+    action: "read",
+    category: "admin",
+    abac: "none",
+  },
+  "vendor_routing.write": {
+    resource: "vendor_routing_rule",
+    action: "write",
+    category: "admin",
+    abac: "none",
+  },
+  "par_stock.read": {
+    resource: "par_stock",
+    action: "read",
+    category: "admin",
+    abac: "none",
+  },
+  "par_stock.write": {
+    resource: "par_stock",
+    action: "write",
+    category: "admin",
+    abac: "none",
+  },
+  "par_stock.observe": {
+    resource: "par_stock",
+    action: "observe",
+    category: "admin",
+    abac: "none",
+  },
+
+  // ── the two keys §4.1 implies but does not name a row for ──────────────────────────────────────────
+  // §5.5 / §7.3's reconciliation screen and §8.1's `m21.controlled_substance.*` attestation trail are both
+  // read surfaces over the DEA perpetual log — the lot-level custody chain, not the request. A surveyor or
+  // compliance officer reads them without any need to touch a supply request, and a supply coordinator who
+  // may file requests must not thereby acquire the controlled-substance ledger. Separate key, `compliance`
+  // category.
+  "comfort_kit.perpetual_log.read": {
+    resource: "comfort_kit_dispatched_content",
+    action: "read",
+    category: "compliance",
+    abac: "none",
+  },
+  // §2.6 — the 90-day assumption-of-loss disposition. §4.1 has no row (the escalation is a cron finding),
+  // but §3.1.10's CHECK requires an attested reason from a named human, so there IS a route and it needs a
+  // key. Deliberately NOT folded into `comfort_kit.return.reconcile`: writing off a kit that holds a CII
+  // solution is a different authority from counting one that came back.
+  "comfort_kit.return.declare_unreturnable": {
+    resource: "comfort_kit_return",
+    action: "declare_unreturnable",
+    category: "compliance",
+    abac: "comfort_kit_return_reconciler_eligible",
+  },
+} satisfies Record<string, PermissionDef>;
+
+/** Union of the M21 contributed permission keys (twenty-eight). */
+export type M21ContributedPermissionKey = keyof typeof M21_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -3287,6 +3841,21 @@ export function m27ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
 /** Project the M24 contributed keys into `permission`-table mirror rows (M24 §4.7). */
 export function m24ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M24_CONTRIBUTED_PERMISSIONS);
+}
+
+/** Project the M15 contributed keys into `permission`-table mirror rows (M15 §4.4). */
+export function m15ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M15_CONTRIBUTED_PERMISSIONS);
+}
+
+/** Project the M16 contributed keys into `permission`-table mirror rows (M16 §4.7). */
+export function m16ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M16_CONTRIBUTED_PERMISSIONS);
+}
+
+/** Project the M21 contributed keys into `permission`-table mirror rows (M21 §4.3). */
+export function m21ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M21_CONTRIBUTED_PERMISSIONS);
 }
 
 /**
@@ -3537,5 +4106,8 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m27ContributedPermissionMirrorRows(),
     ...m24ContributedPermissionMirrorRows(),
     ...m30ContributedPermissionMirrorRows(),
+    ...m15ContributedPermissionMirrorRows(),
+    ...m16ContributedPermissionMirrorRows(),
+    ...m21ContributedPermissionMirrorRows(),
   ];
 }

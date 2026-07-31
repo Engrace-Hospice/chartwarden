@@ -167,6 +167,15 @@ describe("OrderSignatureProvider (§2.8 D14)", () => {
 describe("OrderProvider (§4.3)", () => {
   const provider = () => createOrderProvider(createInMemoryOrderSeamStore(seed()).store);
 
+  it("getOrder resolves one order by id and null for an unknown one (M21-T04 / §2.8)", async () => {
+    // M21's supply cascade reads the order back because `m11.order.supply_fulfillment_requested` carries
+    // no patient — this is the only method that answers "who is this order for?".
+    const found = await provider().getOrder({ orderId: "ord-dme" });
+    expect(found?.patientId).toBe(PAT);
+    expect(found?.admissionId).toBeTruthy();
+    expect(await provider().getOrder({ orderId: "ord-nonexistent" })).toBeNull();
+  });
+
   it("findActiveOrder returns the active order of the kind for the patient", async () => {
     expect((await provider().findActiveOrder({ patientId: PAT, kind: "lab" }))?.orderId).toBe("ord-lab");
     expect(await provider().findActiveOrder({ patientId: PAT, kind: "recertification" })).toBeNull();

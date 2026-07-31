@@ -4,7 +4,7 @@
 > corpus is consistent; this shows how much of it is BUILT in `apps/web`. Do not hand-edit —
 > the `ui:parity --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 28 module screen-sets registered · 164 screens wired in `apps/web`.
+**Coverage:** 113 documented screen specs · 31 module screen-sets registered · 197 screens wired in `apps/web`.
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -91,6 +91,29 @@
 | 14-idg | `idg.packet` | `/idg/meetings/:meetingId/packets/:patientId` | `idg.read` | ✅ |
 | 14-idg | `idg.action-items` | `/idg/action-items` | `idg.read` | ✅ |
 | 14-idg | `idg.minutes` | `/idg/meetings/:id/minutes` | `idg.read` | ✅ |
+| 15-discipline-care-plans | `discipline-plan.index` | `/patients/:patientId/discipline-plans` | `discipline_plan.read` | ✅ |
+| 15-discipline-care-plans | `discipline-plan.aide-poc` | `/patients/:patientId/discipline-plans/aide-poc` | `discipline_plan.read` | ✅ |
+| 15-discipline-care-plans | `discipline-plan.aide-poc.edit` | `/patients/:patientId/discipline-plans/aide-poc/:versionId/edit` | `discipline_plan.author` | ✅ |
+| 15-discipline-care-plans | `discipline-plan.msw` | `/patients/:patientId/discipline-plans/msw-plan` | `discipline_plan.read` | ✅ |
+| 15-discipline-care-plans | `discipline-plan.assessment` | `/patients/:patientId/discipline-plans/msw-plan/:planId/assessments/:assessmentId` | `discipline_assessment.author` | ✅ |
+| 15-discipline-care-plans | `discipline-plan.spiritual` | `/patients/:patientId/discipline-plans/spiritual-plan` | `discipline_plan.read` | ✅ |
+| 15-discipline-care-plans | `discipline-plan.volunteer` | `/patients/:patientId/discipline-plans/volunteer-plan` | `discipline_plan.read` | ✅ |
+| 15-discipline-care-plans | `discipline-plan.summary` | `/patients/:patientId/discipline-plans/summary` | `discipline_plan.read_summary` | ✅ |
+| 15-discipline-care-plans | `discipline-plan.versions` | `/patients/:patientId/discipline-plans/:kind/versions` | `discipline_plan.read` | ✅ |
+| 15-discipline-care-plans | `discipline-plan.idg-revision` | `/patients/:patientId/discipline-plans/:kind/idg-revisions/:versionId` | `discipline_plan.idg_revise` | ✅ |
+| 15-discipline-care-plans | `volunteer.compliance` | `/admin/volunteer-compliance` | `volunteer_compliance.read` | ✅ |
+| 15-discipline-care-plans | `volunteer.ratio` | `/admin/volunteer-ratio` | `volunteer_compliance.read_ratio` | ✅ |
+| 16-bereavement | `bereavement.caseload` | `/bereavement` | `bereavement.dashboard.counselor` | ✅ |
+| 16-bereavement | `bereavement.supervisor` | `/bereavement/supervisor` | `bereavement.dashboard.supervisor` | ✅ |
+| 16-bereavement | `bereavement.intake` | `/bereavement/eligible` | `bereavement.plan.assign_counselor` | ✅ |
+| 16-bereavement | `bereavement.plan` | `/bereavement/plans/:planId` | `bereavement.plan.read` | ✅ |
+| 16-bereavement | `bereavement.plan.seed` | `/bereavement/plans/:planId/seed` | `bereavement.plan.activate` | ✅ |
+| 16-bereavement | `bereavement.plan.closeout` | `/bereavement/plans/:planId/closeout` | `bereavement.plan.read` | ✅ |
+| 16-bereavement | `bereavement.plan.outreach` | `/bereavement/plans/:planId/outreach` | `bereavement.outreach.read` | ✅ |
+| 16-bereavement | `bereavement.plan.risk` | `/bereavement/plans/:planId/risk` | `bereavement.risk.read` | ✅ |
+| 16-bereavement | `bereavement.contact` | `/bereavement/plans/:planId/contacts/:contactId` | `bereavement.plan.read` | ✅ |
+| 16-bereavement | `bereavement.contact.screen` | `/bereavement/plans/:planId/contacts/:contactId/screen` | `bereavement.contact.flag_complicated_grief` | ✅ |
+| 16-bereavement | `bereavement.plan.history` | `/bereavement/plans/:planId/history` | `bereavement.plan.read` | ✅ |
 | 17-scheduling | `scheduling.day` | `/scheduling/day` | `visit.read_team` | ✅ |
 | 17-scheduling | `scheduling.week` | `/scheduling/week` | `visit.read_team` | ✅ |
 | 17-scheduling | `scheduling.proposals` | `/scheduling/proposals` | `visit.proposal.read` | ✅ |
@@ -108,6 +131,16 @@
 | 18-evv | `evv.devices` | `/evv/devices/pending` | `evv.device.read` | ✅ |
 | 18-evv | `evv.metrics` | `/admin/evv-metrics` | `evv.read_metrics` | ✅ |
 | 18-evv | `evv.my-devices` | `/me/evv/devices` | `evv.device.read` | ✅ |
+| 21-supplies | `supplies.dashboard` | `/supplies` | `supplies.request.read` | ✅ |
+| 21-supplies | `supplies.request` | `/supplies/requests/:supplyRequestId` | `supplies.request.read` | ✅ |
+| 21-supplies | `supplies.dispatch.new` | `/supplies/dispatches/new` | `comfort_kit.dispatch.create` | ✅ |
+| 21-supplies | `supplies.dispatch` | `/supplies/dispatches/:dispatchId` | `comfort_kit.dispatch.read` | ✅ |
+| 21-supplies | `supplies.dispatch.perpetual_log` | `/supplies/dispatches/:dispatchId/perpetual-log` | `comfort_kit.perpetual_log.read` | ✅ |
+| 21-supplies | `supplies.return` | `/supplies/returns/:returnId` | `comfort_kit.return.read` | ✅ |
+| 21-supplies | `supplies.par_stock` | `/supplies/par-stock` | `par_stock.read` | ✅ |
+| 21-supplies | `supplies.vendor_routing` | `/supplies/vendor-routing` | `vendor_routing.read` | ✅ |
+| 21-supplies | `supplies.comfort_kit_templates` | `/supplies/comfort-kit-templates` | `comfort_kit.template.read` | ✅ |
+| 21-supplies | `supplies.items` | `/supplies/items` | `supplies.item.read` | ✅ |
 | 22-documents | `documents.explorer` | `/documents` | `documents.read` | ✅ |
 | 22-documents | `documents.version-history` | `/documents/:documentId/versions` | `documents.read_history` | ✅ |
 | 22-documents | `documents.intake-batch` | `/intake/:batchId` | `intake.read` | ✅ |

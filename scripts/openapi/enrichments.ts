@@ -342,6 +342,105 @@ import {
   ResolveVarianceRequest as CapResolveVarianceRequest,
   SettlementDto as CapSettlementDto,
 } from "../../apps/backend/src/modules/26-cap/routes/m26-typebox";
+// M15 Discipline Care Plans — the §4.2 request bodies + list queries the route handlers `parse(...)` /
+// `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M15-T07
+// web screens call the surface these type.
+import {
+  AmendAssessmentBody as M15AmendAssessmentBody,
+  CreateAssessmentBody as M15CreateAssessmentBody,
+  CreateGoalBody as M15CreateGoalBody,
+  CreateHourEntryBody as M15CreateHourEntryBody,
+  CreateInterventionBody as M15CreateInterventionBody,
+  CreateSupervisoryVisitBody as M15CreateSupervisoryVisitBody,
+  CreateVolunteerAssignmentBody as M15CreateVolunteerAssignmentBody,
+  CreateVolunteerGateBody as M15CreateVolunteerGateBody,
+  FinalizeVersionBody as M15FinalizeVersionBody,
+  GateListQuerySchema as M15GateListQuerySchema,
+  HourRatioQuerySchema as M15HourRatioQuerySchema,
+  PlanListQuerySchema as M15PlanListQuerySchema,
+  RelevantElementsQuerySchema as M15RelevantElementsQuerySchema,
+  RevokeVolunteerGateBody as M15RevokeVolunteerGateBody,
+  RiskFactorQuerySchema as M15RiskFactorQuerySchema,
+  SignVersionBody as M15SignVersionBody,
+  SupervisoryCadenceQuerySchema as M15SupervisoryCadenceQuerySchema,
+  UpdateGoalBody as M15UpdateGoalBody,
+  UpdateInterventionBody as M15UpdateInterventionBody,
+  UpdateVolunteerAssignmentBody as M15UpdateVolunteerAssignmentBody,
+  UpdateVolunteerGateBody as M15UpdateVolunteerGateBody,
+  VersionListQuerySchema as M15VersionListQuerySchema,
+  VolunteerStatusQuerySchema as M15VolunteerStatusQuerySchema,
+} from "../../apps/backend/src/modules/15-discipline-care-plans/routes/m15-typebox";
+// M16 Bereavement — the §4.2 request bodies + list queries the §4.1 route handlers `parse(...)` /
+// `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M16-T07
+// web screens call the surface these type.
+import {
+  AssignCounselorBody as M16AssignCounselorBody,
+  AssignVolunteerBody as M16AssignVolunteerBody,
+  CancelOutreachBody as M16CancelOutreachBody,
+  CloseEarlyBody as M16CloseEarlyBody,
+  CompleteOutreachBody as M16CompleteOutreachBody,
+  ConfirmContactBody as M16ConfirmContactBody,
+  CosignCloseBody as M16CosignCloseBody,
+  CounselorDashboardQuerySchema as M16CounselorDashboardQuerySchema,
+  CreateContactBody as M16CreateContactBody,
+  FlagComplicatedGriefBody as M16FlagComplicatedGriefBody,
+  InitiateContactBody as M16InitiateContactBody,
+  LateAttemptBody as M16LateAttemptBody,
+  LogDirectContactBody as M16LogDirectContactBody,
+  MarkDeceasedBody as M16MarkDeceasedBody,
+  MarkUnreachableBody as M16MarkUnreachableBody,
+  OptOutBody as M16OptOutBody,
+  OutreachListQuerySchema as M16OutreachListQuerySchema,
+  OutreachOutcomeBody as M16OutreachOutcomeBody,
+  PausePlanBody as M16PausePlanBody,
+  PlanListQuerySchema as M16PlanListQuerySchema,
+  RecomputeRiskBody as M16RecomputeRiskBody,
+  ReferExternalBody as M16ReferExternalBody,
+  RegenerateScheduleBody as M16RegenerateScheduleBody,
+  RescindOptOutBody as M16RescindOptOutBody,
+  ResumePlanBody as M16ResumePlanBody,
+  RiskScoreListQuerySchema as M16RiskScoreListQuerySchema,
+  SeedRosterAndScheduleBody as M16SeedRosterAndScheduleBody,
+  StartOutreachBody as M16StartOutreachBody,
+  SupervisorDashboardQuerySchema as M16SupervisorDashboardQuerySchema,
+  UpdateContactBody as M16UpdateContactBody,
+} from "../../apps/backend/src/modules/16-bereavement/routes/m16-typebox";
+// M21 Supplies / DME / Comfort Kits — the §4.2 request bodies + list queries the §4.1 route handlers
+// `parse(...)` / `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator;
+// the M21-T06 web screens call the surface these type. Note the decimal-STRING quantities: §4.2.2's sketch
+// types them as numbers, the `numeric` columns win, and the enrichment publishes what the validator
+// enforces rather than what the prose proposed.
+import {
+  AssignRetrieverBody as M21AssignRetrieverBody,
+  AssignVendorBody as M21AssignVendorBody,
+  CancelRequestBody as M21CancelRequestBody,
+  ConfirmReceivedBody as M21ConfirmReceivedBody,
+  CreateDispatchBody as M21CreateDispatchBody,
+  CreateReturnBody as M21CreateReturnBody,
+  CreateSupplyItemBody as M21CreateSupplyItemBody,
+  CreateSupplyRequestBody as M21CreateSupplyRequestBody,
+  CreateTemplateBody as M21CreateTemplateBody,
+  DeclareUnreturnableBody as M21DeclareUnreturnableBody,
+  DeployAtPatientBody as M21DeployAtPatientBody,
+  ListDispatchesQuery as M21ListDispatchesQuery,
+  ListParStockQuery as M21ListParStockQuery,
+  ListReturnsQuery as M21ListReturnsQuery,
+  ListRoutingRulesQuery as M21ListRoutingRulesQuery,
+  ListSupplyItemsQuery as M21ListSupplyItemsQuery,
+  ListSupplyRequestsQuery as M21ListSupplyRequestsQuery,
+  ListTemplatesQuery as M21ListTemplatesQuery,
+  MarkDeliveredBody as M21MarkDeliveredBody,
+  MarkInTransitBody as M21MarkInTransitBody,
+  MarkOrderedBody as M21MarkOrderedBody,
+  ObserveParStockBody as M21ObserveParStockBody,
+  ReconcileReturnBody as M21ReconcileReturnBody,
+  RetireSupplyItemBody as M21RetireSupplyItemBody,
+  ReturnRequestBody as M21ReturnRequestBody,
+  SupersedeTemplateBody as M21SupersedeTemplateBody,
+  UpdateParStockBody as M21UpdateParStockBody,
+  UpsertRoutingRuleBody as M21UpsertRoutingRuleBody,
+  UpsertTenantSupplyItemBody as M21UpsertTenantSupplyItemBody,
+} from "../../apps/backend/src/modules/21-supplies/routes/m21-typebox";
 // M27 Cost Report — the §4.1 request bodies + list query the cost-report routes bind (the realigned
 // Form CMS-1984-14 surface; modules/27-cost-report/routes path flips the OpenAPI-enriched flag).
 import {
@@ -2670,5 +2769,435 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "POST /api/v1/cost-report-validation-rules": {
     summary: "Create a tenant validation rule layered on the platform floor (cost_report.manage_rules; D21; §11.B)",
     body: CreateValidationRuleBodySchema,
+  },
+
+  // ── M15 Discipline Care Plans (§4.1) — the four CoP discipline plans, their version/signature ladder,
+  // the 418.76(h) aide supervisory attestation and the 418.78 volunteer surface. Org / acting membership
+  // binding is server-side (§8.6 S), so NO body or query carries an org or membership id for the actor.
+  // Every mutation additionally requires an `Idempotency-Key` (§F08) and every PATCH / state transition an
+  // `If-Match` row version (§2.5) — both header contracts enforced by preHandlers, not by a body field.
+  // Reads returning the §4.1 view interfaces are omitted rather than sketched (the M26 posture — no
+  // fabrication); their params auto-derive from the path.
+  "GET /api/v1/discipline-plans": {
+    summary: "Discipline-plan worklist — cursor-paginated, filterable by patient/admission/kind/status (§4.1 #1)",
+    query: M15PlanListQuerySchema,
+  },
+  "GET /api/v1/discipline-plans/:planId/versions": {
+    summary: "The plan's version chain, cursor-paginated by sequence (§4.1 #4)",
+    query: M15VersionListQuerySchema,
+  },
+  "POST /api/v1/discipline-plans/:planId/versions/:versionId/finalize": {
+    summary:
+      "Finalize a draft version — seals the state snapshot and freezes the D11 quorum, which a tenant may tighten but never loosen (§4.1 #6)",
+    body: M15FinalizeVersionBody,
+  },
+  "POST /api/v1/discipline-plans/:planId/versions/:versionId/sign": {
+    summary:
+      "Sign one slot of the sealed quorum — step-up; the last signature flips the version to signed and triggers the plan-PDF render (§4.1 #7)",
+    body: M15SignVersionBody,
+  },
+  "POST /api/v1/discipline-plans/:planId/goals": {
+    summary: "Author a discipline goal refining an IPOC problem (§4.1 #8)",
+    body: M15CreateGoalBody,
+  },
+  "PATCH /api/v1/discipline-plans/:planId/goals/:goalId": {
+    summary:
+      "Edit a goal — a status event and/or the refinement fields; `originalText` is immutable (§2.3; §4.1 #9)",
+    body: M15UpdateGoalBody,
+  },
+  "POST /api/v1/discipline-plans/:planId/interventions": {
+    summary: "Author a discipline intervention (§4.1 #10)",
+    body: M15CreateInterventionBody,
+  },
+  "PATCH /api/v1/discipline-plans/:planId/interventions/:interventionId": {
+    summary: "Edit an intervention — discontinue (reason required) / complete / refine (§4.1 #11)",
+    body: M15UpdateInterventionBody,
+  },
+  "POST /api/v1/discipline-plans/:planId/assessments": {
+    summary:
+      "Capture a discipline assessment (draft); `data` is validated against the per-kind schema, and the SUD / family-violence flags drive every later read's SQL filter (§4.1 #12)",
+    body: M15CreateAssessmentBody,
+  },
+  "POST /api/v1/discipline-plans/:planId/assessments/:assessmentId/amend": {
+    summary:
+      "Amend a signed assessment — append-only correction of record; the superseded row is retained (§4.1 #14)",
+    body: M15AmendAssessmentBody,
+  },
+  "POST /api/v1/discipline-plans/:planId/aide-supervisory-visits": {
+    summary:
+      "Record an RN supervisory attestation (42 CFR §418.76(h)); a null sourceEncounterId is a phone-only contact and does NOT re-arm the 14-day clock (§4.1 #15)",
+    body: M15CreateSupervisoryVisitBody,
+  },
+  "POST /api/v1/discipline-plans/:planId/volunteer-assignments": {
+    summary:
+      "Create a volunteer assignment — the 418.78 gate check runs unless a documented overrideReason is supplied (§8.6; §4.1 #17)",
+    body: M15CreateVolunteerAssignmentBody,
+  },
+  "PATCH /api/v1/discipline-plans/:planId/volunteer-assignments/:assignmentId": {
+    summary:
+      "Edit / acknowledge / inactivate / reactivate an assignment — reactivation is always manual (§7.5; §4.1 #18)",
+    body: M15UpdateVolunteerAssignmentBody,
+  },
+  "GET /api/v1/volunteer-compliance-gates": {
+    summary:
+      "Volunteer compliance-gate worklist — cursor-paginated; status is re-derived over the validity window as of now (§2.2.6; §4.1 #19)",
+    query: M15GateListQuerySchema,
+  },
+  "POST /api/v1/volunteer-compliance-gates": {
+    summary: "Record a 42 CFR §418.78(b)/(d) compliance gate for a volunteer (§4.1 #20)",
+    body: M15CreateVolunteerGateBody,
+  },
+  "PATCH /api/v1/volunteer-compliance-gates/:gateId": {
+    summary: "Correct a recorded gate's validity window / evidence (§4.1 #21)",
+    body: M15UpdateVolunteerGateBody,
+  },
+  "POST /api/v1/volunteer-compliance-gates/:gateId/revoke": {
+    summary: "Revoke a satisfied gate — reason required; cascades the volunteer to inactive (§4.1 #22)",
+    body: M15RevokeVolunteerGateBody,
+  },
+  "GET /api/v1/volunteer-hour-ratio": {
+    summary:
+      "The 418.78(e) 5% ratio for one provider entity × fiscal year; an unbound cost basis returns `unavailable` with its reason, never a 0% breach (§7.6; §4.1 #23)",
+    query: M15HourRatioQuerySchema,
+  },
+  "POST /api/v1/volunteer-hour-entries": {
+    summary:
+      "Record an audited manual hour adjustment — the only ledger path that may carry negative minutes (§4.1 #24)",
+    body: M15CreateHourEntryBody,
+  },
+  "GET /internal/discipline-plans/relevant-elements": {
+    summary: "System-principal seam — discipline goals/interventions for a patient's plans (§4.1 #25)",
+    query: M15RelevantElementsQuerySchema,
+  },
+  "GET /internal/discipline-plans/msw-risk-factors": {
+    summary: "System-principal seam — MSW psychosocial risk factors for an admission (M16; §4.1 #26)",
+    query: M15RiskFactorQuerySchema,
+  },
+  "GET /internal/discipline-plans/volunteer-effective-status": {
+    summary:
+      "System-principal seam — a volunteer's effective 418.78 status; fail-CLOSED (an unreadable gate store answers not-active; §4.1 #27)",
+    query: M15VolunteerStatusQuerySchema,
+  },
+  "GET /internal/discipline-plans/supervisory-cadence": {
+    summary: "System-principal seam — the supervisory-cadence worklist for a scope (M17/M14; §4.1 #28)",
+    query: M15SupervisoryCadenceQuerySchema,
+  },
+
+  // ── M16 Bereavement (§4.1) — the 42 CFR §418.64(d) 13-month survivor-follow-up program: the plan
+  // ladder, the per-survivor lifecycle, the D4 touchpoint book, the D3/D17 risk ledger and the two
+  // dashboards. Org / acting membership binding is server-side (§6.1's boundary spoofing control), so NO
+  // body or query carries an org id or an acting membership id. Every mutation additionally requires an
+  // `Idempotency-Key` (ADR-0021) and every state transition an `If-Match` row version (§2.5) — both
+  // header contracts enforced by preHandlers, not by a body field. Reads returning the §4.1 view
+  // interfaces are omitted rather than sketched (the M15/M26 no-fabrication posture); their params
+  // auto-derive from the path.
+  "GET /api/v1/bereavement/plans": {
+    summary:
+      "Bereavement plan worklist — cursor-paginated; the counselor's own caseload by default, widened by the filters for an oversight role (§4.1 #1)",
+    query: M16PlanListQuerySchema,
+  },
+  "POST /api/v1/bereavement/plans/:planId/assign-counselor": {
+    summary: "Assign the bereavement counselor — eligible → initiating (§4.1 #3)",
+    body: M16AssignCounselorBody,
+  },
+  "POST /api/v1/bereavement/plans/:planId/assign-volunteer": {
+    summary:
+      "Assign a bereavement volunteer — the 42 CFR §418.78 gates resolve through Module 15's compliance seam, never the body (§4.1 #4)",
+    body: M16AssignVolunteerBody,
+  },
+  "POST /api/v1/bereavement/plans/:planId/seed-roster-and-schedule": {
+    summary:
+      "Seed the survivor roster from M5 and materialize the D4 platform-floor schedule — initiating → active (§4.1 #5)",
+    body: M16SeedRosterAndScheduleBody,
+  },
+  "POST /api/v1/bereavement/plans/:planId/pause": {
+    summary:
+      "Pause the plan — cancels every future-dated touchpoint; a recorded reason is mandatory, because a pause without one is a lapse (§4.1 #6)",
+    body: M16PausePlanBody,
+  },
+  "POST /api/v1/bereavement/plans/:planId/resume": {
+    summary:
+      "Resume the plan — regenerates the schedule FROM NOW; a touchpoint whose due date passed during the pause is not resurrected as a backdated obligation (§4.1 #7)",
+    body: M16ResumePlanBody,
+  },
+  "POST /api/v1/bereavement/plans/:planId/close-early": {
+    summary:
+      "D7 early close — step-up; ≥40-char narrative; lands the closure row awaiting the supervisor cosign (§4.1 #8)",
+    body: M16CloseEarlyBody,
+  },
+  "POST /api/v1/bereavement/plans/:planId/cosign-close": {
+    summary:
+      "The clinical-supervisor cosign that ratifies an early close — step-up; the cosigner is the server-assembled acting membership (§4.1 #9)",
+    body: M16CosignCloseBody,
+  },
+  "GET /api/v1/bereavement/plans/:planId/outreach": {
+    summary: "The plan's touchpoints, scheduled and historical, cursor-paginated (§4.1 #19)",
+    query: M16OutreachListQuerySchema,
+  },
+  "POST /api/v1/bereavement/plans/:planId/regenerate-schedule": {
+    summary:
+      "Regenerate the FORWARD outreach book — whole plan or one survivor; never writes a backdated obligation (§4.1 #27)",
+    body: M16RegenerateScheduleBody,
+  },
+  "POST /api/v1/bereavement/plans/:planId/recompute-risk": {
+    summary:
+      "Recompute the deterministic D3/D17 risk score (Layer 2 narrative only when the platform's full-AI capability is on) — ALWAYS an append; the ledger refuses UPDATE (§4.1 #28)",
+    body: M16RecomputeRiskBody,
+  },
+  "GET /api/v1/bereavement/plans/:planId/risk-scores": {
+    summary: "The append-only risk-score ledger — per-survivor and plan-level, newest first (§4.1 #29)",
+    query: M16RiskScoreListQuerySchema,
+  },
+  "POST /api/v1/bereavement/plans/:planId/initiate-contact": {
+    summary:
+      "The counselor's FIRST contact — D18-gated: an external-source plan awaiting its medical-director cosign is refused with the machine-readable gate reason, not a bare 403 (§4.1 #33)",
+    body: M16InitiateContactBody,
+  },
+  "POST /api/v1/bereavement/plans/:planId/contacts": {
+    summary: "Add a bereaved contact to an open plan — lands `proposed` (§4.1 #11)",
+    body: M16CreateContactBody,
+  },
+  "PATCH /api/v1/bereavement/contacts/:contactId": {
+    summary:
+      "Update a survivor's preferences / channels — `If-Match` required, because a blind overwrite could send a condolence letter to an address the family already corrected (§4.1 #12)",
+    body: M16UpdateContactBody,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/confirm": {
+    summary:
+      "Confirm a survivor — proposed → active; the M39 consent verdict is resolved server-side and fails CLOSED (§4.1 #13)",
+    body: M16ConfirmContactBody,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/opt-out": {
+    summary:
+      "Record a per-survivor opt-out (D9) — staff, or the survivor's own portal session; `m39_revocation_cascade` is never accepted from the wire (§4.1 #14)",
+    body: M16OptOutBody,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/rescind-opt-out": {
+    summary:
+      "Undo an opt-out — the D9 90-day window binds the self-service path; a counselor rescind must say why (§4.1 #15)",
+    body: M16RescindOptOutBody,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/mark-deceased": {
+    summary:
+      "Mark the survivor deceased — the lifecycle's only terminal state, so the verified date and its source are both required (§4.1 #16)",
+    body: M16MarkDeceasedBody,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/mark-unreachable": {
+    summary:
+      "Accept the nightly three-strikes proposal — the threshold is enforced by the lifecycle machine, so an early call is refused (§4.1 #17)",
+    body: M16MarkUnreachableBody,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/flag-complicated-grief": {
+    summary:
+      "§7.7 complicated-grief escalation — ends the program for this survivor and routes them to the named M40 resource, which is REQUIRED (§4.1 #18)",
+    body: M16FlagComplicatedGriefBody,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/log-direct": {
+    summary:
+      "Log an ad-hoc contact with no scheduled outreach — the kind must be one the survivor allows, stricter than the schedule generator (§4.1 #26)",
+    body: M16LogDirectContactBody,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/refer-external": {
+    summary:
+      "Log an M40 external-resource referral WITHOUT ending the program — a different clinical fact from the §7.7 escalation (§4.1 #32)",
+    body: M16ReferExternalBody,
+  },
+  "POST /api/v1/bereavement/outreach/:outreachId/start": {
+    summary: "Start a touchpoint — scheduled → in_progress (§4.1 #20)",
+    body: M16StartOutreachBody,
+  },
+  "POST /api/v1/bereavement/outreach/:outreachId/complete": {
+    summary:
+      "Complete a touchpoint, writing its contact log in the SAME transaction. D15: the in-person branch REQUIRES the M8 encounter and every other kind must NOT carry one (§4.1 #21)",
+    body: M16CompleteOutreachBody,
+  },
+  "POST /api/v1/bereavement/outreach/:outreachId/decline": {
+    summary:
+      "The survivor declined THIS touchpoint — not an opt-out: the forward schedule continues untouched (§4.1 #22)",
+    body: M16OutreachOutcomeBody,
+  },
+  "POST /api/v1/bereavement/outreach/:outreachId/no-response": {
+    summary: "No response after retries — feeds the three-strikes unreachable proposal (§4.1 #23)",
+    body: M16OutreachOutcomeBody,
+  },
+  "POST /api/v1/bereavement/outreach/:outreachId/cancel": {
+    summary: "Cancel a scheduled touchpoint — a reason is mandatory (§4.1 #24)",
+    body: M16CancelOutreachBody,
+  },
+  "POST /api/v1/bereavement/outreach/:outreachId/late-attempt": {
+    summary:
+      "Re-open a missed touchpoint inside the 7-day late grace — audit-flagged, but NOT a compliance failure (§4.1 #25)",
+    body: M16LateAttemptBody,
+  },
+  "GET /api/v1/bereavement/dashboard/counselor": {
+    summary:
+      "The caller's OWN bereavement caseload plus what is due in N days — the counselor id comes from the session, never a query param (§4.1 #30)",
+    query: M16CounselorDashboardQuerySchema,
+  },
+  "GET /api/v1/bereavement/dashboard/supervisor": {
+    summary:
+      "Full-tenant bereavement rollups, optionally narrowed to one CCN / location — COUNTS, never rates (§4.1 #31)",
+    query: M16SupervisorDashboardQuerySchema,
+  },
+
+  // ── M21 Supplies, DME & Comfort Kits (§4.1) — the §2.2 fulfillment machine, the D11 SKU catalog, the D3
+  // kit templates, the DEA 21 CFR §1304 dispatch/return chain of custody, the D4 vendor-routing ladder and
+  // the D5 par shelf. Org / acting membership binding is server-side (routes/actor.ts is the DEA
+  // chain-of-custody control at the boundary), so NO body or query carries an org id or an acting
+  // membership id — the ONE exception is the reconciliation's disposal WITNESS, who is by definition a
+  // second person. Every mutation additionally requires an `Idempotency-Key` (ADR-0021) and every state
+  // transition an `If-Match` carrying the row's `updated_at` (§7.2 — M21's tables have no version counter);
+  // both are header contracts enforced by preHandlers, not body fields. Reads returning the §4.1 view
+  // interfaces are omitted rather than sketched (the M15/M16/M26 no-fabrication posture); their params
+  // auto-derive from the path.
+  "POST /api/v1/supplies/supply-requests": {
+    summary:
+      "Create a DME / supply / comfort-kit request — the §4.4 dispatcher predicate applies CONDITIONALLY, only when the kind is a comfort-kit deploy (§4.1 #1)",
+    body: M21CreateSupplyRequestBody,
+  },
+  "GET /api/v1/supplies/supply-requests": {
+    summary:
+      "The supply-team worklist — cursor-paginated; `openOnly` narrows to the §2.2 non-terminal set, which is the dashboard's default view (§4.1 #2)",
+    query: M21ListSupplyRequestsQuery,
+  },
+  "POST /api/v1/supplies/supply-requests/:supplyRequestId/assign-vendor": {
+    summary:
+      "D4 vendor override — the ladder still runs and the override is recorded ON TOP of its trace, so the record shows both the rules evaluated and the human decision that overrode them (§4.1 #4)",
+    body: M21AssignVendorBody,
+  },
+  "POST /api/v1/supplies/supply-requests/:supplyRequestId/mark-ordered": {
+    summary:
+      "The vendor accepted — Phase-1 portal/email/fax entry, Phase-2 the EDI 855 acknowledgment (§4.1 #5)",
+    body: M21MarkOrderedBody,
+  },
+  "POST /api/v1/supplies/supply-requests/:supplyRequestId/mark-in-transit": {
+    summary: "Shipment identifiers — Phase-1 manual, Phase-2 the EDI 856 ASN (§4.1 #6)",
+    body: M21MarkInTransitBody,
+  },
+  "POST /api/v1/supplies/supply-requests/:supplyRequestId/mark-delivered": {
+    summary:
+      "D7 courier attestation — the delivering membership is stamped from the SESSION and is not a body field: a courier who could name someone else has attested to nothing (§4.1 #7)",
+    body: M21MarkDeliveredBody,
+  },
+  "POST /api/v1/supplies/supply-requests/:supplyRequestId/confirm-received": {
+    summary:
+      "Caregiver / clinician receipt confirmation — `system_auto_confirm` is NOT accepted here, it is the 72h fallback the worker writes (§4.1 #8)",
+    body: M21ConfirmReceivedBody,
+  },
+  "POST /api/v1/supplies/supply-requests/:supplyRequestId/cancel": {
+    summary:
+      "Cancel — ONE route for both §2.2 edges: immediate before `ordered`, two-phase after, so a caller never has to know which side of the vendor handshake the row sits on (§4.1 #9)",
+    body: M21CancelRequestBody,
+  },
+  "POST /api/v1/supplies/supply-requests/:supplyRequestId/return": {
+    summary:
+      "Initiate an equipment return — the kit-only §2.2 `returned` branch; DME comes back through the M11 rental-pickup path instead (§4.1 #10)",
+    body: M21ReturnRequestBody,
+  },
+  "GET /api/v1/supplies/supply-items": {
+    summary: "The D11 SKU catalog — the platform rows UNION the tenant overlay, one browsable list (§4.1 #11)",
+    query: M21ListSupplyItemsQuery,
+  },
+  "POST /api/v1/supplies/supply-items": {
+    summary:
+      "Create a canonical HCPCS-keyed SKU — PLATFORM-ONLY: `supply_item` carries no organization_id, so the permission is the first gate and the wardenx_admin-only write policy is the backstop (§4.1 #12)",
+    body: M21CreateSupplyItemBody,
+  },
+  "POST /api/v1/supplies/supply-items/:id/retire": {
+    summary:
+      "Retire a canonical SKU — effective-dating, never deletion: a retired HCPCS code must keep resolving for every historical request written against it (§4.1 #14)",
+    body: M21RetireSupplyItemBody,
+  },
+  "POST /api/v1/supplies/tenant-supply-items": {
+    summary: "Create a tenant-local, non-billable overlay item (D11's tenant half; §4.1 #15)",
+    body: M21UpsertTenantSupplyItemBody,
+  },
+  "PUT /api/v1/supplies/tenant-supply-items/:id": {
+    summary: "Edit a tenant-local overlay item (§4.1 #16)",
+    body: M21UpsertTenantSupplyItemBody,
+  },
+  "GET /api/v1/supplies/comfort-kit-templates": {
+    summary:
+      "The §2.3 comfort-kit templates — `includePlatformFloor` defaults ON so the admin screen shows the D3 floor row as locked; a picker passes false (§4.1 #17)",
+    query: M21ListTemplatesQuery,
+  },
+  "POST /api/v1/supplies/comfort-kit-templates": {
+    summary:
+      "Author a tenant template — the D3 floor validation runs BEFORE anything is written, so a template that drops below the floor never exists even transiently (§4.1 #18)",
+    body: M21CreateTemplateBody,
+  },
+  "PUT /api/v1/supplies/comfort-kit-templates/:templateId": {
+    summary:
+      "Supersede a template — this INSERTS a new row pointing back through `replaces_template_id` rather than patching, so a dispatch from three months ago still resolves the recipe it actually used (§4.1 #19)",
+    body: M21SupersedeTemplateBody,
+  },
+  "POST /api/v1/supplies/comfort-kit-dispatches": {
+    summary:
+      "Dispatch a comfort kit — the DEA 21 CFR §1304 outbound log entry: §4.4's dispatcher predicate plus a step-up gate, and the §2.5 refusals, shelf decrement and per-line log all in ONE transaction (§4.1 #20)",
+    body: M21CreateDispatchBody,
+  },
+  "GET /api/v1/supplies/comfort-kit-dispatches": {
+    summary:
+      "Dispatch list — per patient, per Location, or per IPU room for the D17 stock-kit view (§4.1 #21)",
+    query: M21ListDispatchesQuery,
+  },
+  "POST /api/v1/supplies/comfort-kit-dispatches/:dispatchId/deploy-at-patient": {
+    summary:
+      "The kit is physically at the patient — the event M13 builds its deployment rows FROM, so the emitted payload carries the whole manifest rather than making M13 read back (§4.1 #23)",
+    body: M21DeployAtPatientBody,
+  },
+  "POST /api/v1/supplies/comfort-kit-returns": {
+    summary:
+      "Open a return obligation — refused until M13 has acked the deployment, because a return with nothing to close is a count nobody can reconcile (§4.1 #24)",
+    body: M21CreateReturnBody,
+  },
+  "GET /api/v1/supplies/comfort-kit-returns": {
+    summary:
+      "The reconciliation worklist — OLDEST due first, with `daysOverdue` computed at read time from `return_due_at` (§4.1 #25)",
+    query: M21ListReturnsQuery,
+  },
+  "POST /api/v1/supplies/comfort-kit-returns/:returnId/assign-retriever": {
+    summary:
+      "Assign the supply-team member who will physically retrieve — §4.4's separation-of-duties clause compares them against the witness (§2.6)",
+    body: M21AssignRetrieverBody,
+  },
+  "POST /api/v1/supplies/comfort-kit-returns/:returnId/reconcile": {
+    summary:
+      "Reconcile the physical count — step-up plus the reconciler predicate whose FIRST clause is separation of duties; the D8 discrepancy is COMPUTED from the quantities and never accepted from the body (§4.1 #27)",
+    body: M21ReconcileReturnBody,
+  },
+  "POST /api/v1/supplies/comfort-kit-returns/:returnId/declare-unreturnable": {
+    summary:
+      "The 90-day assumption of loss — deliberately NOT folded into reconcile: writing off a kit that held a CII solution is a different authority from counting one that came back (§2.6)",
+    body: M21DeclareUnreturnableBody,
+  },
+  "GET /api/v1/supplies/vendor-routing-rules": {
+    summary:
+      "The D4 ladder, most-specific first — the platform-scope rows come back for every tenant via the table's own floor-plus-overlay policy (§4.1 #28)",
+    query: M21ListRoutingRulesQuery,
+  },
+  "POST /api/v1/supplies/vendor-routing-rules": {
+    summary:
+      "Author a routing rule — `platform` scope is absent from the union by design: a tenant may never author one, and the RLS write policy would refuse it anyway (§4.1 #29)",
+    body: M21UpsertRoutingRuleBody,
+  },
+  "PUT /api/v1/supplies/vendor-routing-rules/:ruleId": {
+    summary: "Edit a routing rule (§4.1 #30)",
+    body: M21UpsertRoutingRuleBody,
+  },
+  "GET /api/v1/supplies/par-stock": {
+    summary:
+      "The hub shelf — `severity` is DERIVED per row and never stored, because a stored band goes stale the moment a threshold is edited (§4.1 #32)",
+    query: M21ListParStockQuery,
+  },
+  "PUT /api/v1/supplies/par-stock/:parStockId": {
+    summary:
+      "Edit the par thresholds — the boundary mirrors §3.1.6's ordering CHECK, so an inverted pair is a field-anchored 422 rather than a 500 out of PostgreSQL (§4.1 #33)",
+    body: M21UpdateParStockBody,
+  },
+  "POST /api/v1/supplies/par-stock/observe": {
+    summary:
+      "Record an on-hand count — this SETS the shelf rather than adjusting it, and the nightly cron (not this route) is the canonical emitter of the below-threshold alert (§4.1 #34)",
+    body: M21ObserveParStockBody,
   },
 };

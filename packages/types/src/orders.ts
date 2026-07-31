@@ -452,10 +452,21 @@ export interface OrderSignatureProvider {
 
 /**
  * §4.3 — the order read seam M14 (IDG "since last IDG" tracked elements) + M30 (quality measures) +
- * M7 (care-plan intervention → order back-ref) consume. Resolved within the caller's tenant context.
+ * M7 (care-plan intervention → order back-ref) + M21 (the §2.8 logical-FK check behind
+ * `supply_request.source_order_id`) consume. Resolved within the caller's tenant context.
  * The impl + M1-registry wiring land in M11-T05.
  */
 export interface OrderProvider {
+  /**
+   * M21-T04 — resolve ONE order by id. Added for the M21 supply cascade: `m11.order.supply_fulfillment_
+   * requested` carries `orderId` but no patient or admission, and every M21 PHI row needs both, so the
+   * consumer has to read the order back. M21's spec §2.8 words this as
+   * `OrderProvider.assertOrderExistsAndActive(orderId)`; the seam returns the row (or null) instead of
+   * asserting, because "does it still exist" and "is it still active" are two different decisions and the
+   * §7.1 cascade branches on the second one (a discharged/cancelled order does NOT dead-letter — it opens
+   * the request and immediately cancels it). The store read this projects has existed since M11-T05.
+   */
+  getOrder(input: { orderId: OrderRecordId }): Promise<OrderRecordDto | null>;
   findActiveOrder(input: {
     patientId: PatientId;
     kind: OrderKind;
