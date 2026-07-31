@@ -5263,6 +5263,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/escalations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The escalation inbox, narrowed server-side to the actor's tier band; `openOnly` defaults TRUE because an inbox shows what is outstanding (§4.1 #16) */
+        get: operations["getApiV1Escalations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/escalations/{escalationId}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Acknowledge — the write §7.2 waits on; until it lands the call may take no disposition but the hand-off (§4.1 #17) */
+        post: operations["postApiV1EscalationsByEscalationIdAcknowledge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/escalations/{escalationId}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve with the escalated party's own account (≥ 30 chars) — the ONLY place a MANDATORY row can reach `resolved` (§2.2.4 / §4.1 #18) */
+        post: operations["postApiV1EscalationsByEscalationIdResolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/evv/aggregator-submissions": {
         parameters: {
             query?: never;
@@ -8057,6 +8108,144 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/oncall/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who is on call NOW, keyed PER ProviderEntity and never unioned — CoP 418.100(c)(2) is per-CCN, and `actors: []` for an entity is a REAL answer (a coverage gap), not an empty result (§4.1 #24) */
+        get: operations["getApiV1OncallCurrent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oncall/external-vendors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1OncallExternalvendors"];
+        put?: never;
+        /** Create a vendor binding (step-up). The BAA is a PRECONDITION, and there is deliberately NO secret field — ADR-0026 puts vendor credentials in the platform secret store, and the absence of the field is the control (§4.1 #34) */
+        post: operations["postApiV1OncallExternalvendors"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oncall/external-vendors/{vendorId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** BAA renewal updates only — the narrow request shape IS the rule: changing the adapter key or the minimization profile would silently re-point live PHI at a different contract (§4.1 #35) */
+        patch: operations["patchApiV1OncallExternalvendorsByVendorId"];
+        trace?: never;
+    };
+    "/api/v1/oncall/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tenant on-call policy for one ProviderEntity. NOT auto-created on read: a default invented at read time would be pinned onto shifts as though the tenant had chosen it (§4.1 #25) */
+        get: operations["getApiV1OncallPolicy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit the policy (step-up) — a `hybrid`/`centralized` selection where the D3 flag is off is REFUSED rather than accepted-and-ignored, so a tenant can never believe a vendor is answering their nights (§4.1 #26) */
+        patch: operations["patchApiV1OncallPolicy"];
+        trace?: never;
+    };
+    "/api/v1/oncall/shifts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The on-call schedule, cursor-paginated (§4.1 #19) */
+        get: operations["getApiV1OncallShifts"];
+        put?: never;
+        /** Manual shift create — `policySnapshot` is NOT a body field: D7 pins it from the tenant policy at activation, and a caller-supplied snapshot would be a caller-supplied answer to 'which ladder was in effect that night' (§4.1 #20) */
+        post: operations["postApiV1OncallShifts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oncall/shifts/{shiftId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Cancel with a reason. No outbox event: a shift that never activated was never in M36's `on_call` channel, so the hole it leaves is the coverage-gap watchdog's finding (§4.1 #21) */
+        patch: operations["patchApiV1OncallShiftsByShiftIdCancel"];
+        trace?: never;
+    };
+    "/api/v1/oncall/shifts/{shiftId}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Manual close — removes the departing actor from M36's channel; messages sent during their tenure stay attributed to them (§4.1 #23) */
+        post: operations["postApiV1OncallShiftsByShiftIdClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oncall/shifts/{shiftId}/open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Manual 'go on shift' — pins the D7 policy snapshot and emits the single canonical shift-open topic M36's synchronizer and M20's SOS path both subscribe to (§4.1 #22) */
+        post: operations["postApiV1OncallShiftsByShiftIdOpen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/optimize-day": {
         parameters: {
             query?: never;
@@ -9229,6 +9418,23 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["postApiV1PlatformTenantsByOrgSlugStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/triage/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The M31 portal projection — lay-language, caregiver-scoped, with the D11 advisory and the D13 vendor-handoff details excluded BY CONSTRUCTION rather than by filtering (§4.1 #36) */
+        get: operations["getApiV1PortalTriageRecent"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -12573,6 +12779,343 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["postApiV1TimeoffByIdDeny"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/triage-calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The supervisor board / caseload list — cursor-paginated (offset is refused); `openOnly` is the six-state live set, which deliberately includes `documented_pending_encounter` (§4.1 #2) */
+        get: operations["getApiV1Triagecalls"];
+        put?: never;
+        /** Open a triage call — `source` is pinned to `manual` and the covering shift is resolved server-side, because attributing a call to somebody else's coverage window would forge the CoP 418.100(c)(2) record (§4.1 #1) */
+        post: operations["postApiV1Triagecalls"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/triage-calls/{triageCallId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1TriagecallsByTriageCallId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/triage-calls/{triageCallId}/abandon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The caller disconnected. A mandatory escalation still blocks: 'the caller hung up' is not an answer to 'did a human respond to the suicidal-ideation page?' (§4.1 #13) */
+        post: operations["postApiV1TriagecallsByTriageCallIdAbandon"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/triage-calls/{triageCallId}/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Append one answer — a DISCRIMINATED value union, so 'exactly one typed value' is a 422 at the boundary rather than a CHECK violation from the driver; `red_flag_hit` is absent because D5 makes it the server's (§4.1 #6) */
+        post: operations["postApiV1TriagecallsByTriageCallIdAnswers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/triage-calls/{triageCallId}/answers/{answerId}/correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Append a CORRECTION (§2.2.3 amend-by-append) — the original row is preserved, because a 'no' later corrected to 'yes' means the call HAD a red flag (§4.1 #7) */
+        patch: operations["patchApiV1TriagecallsByTriageCallIdAnswersByAnswerIdCorrect"];
+        trace?: never;
+    };
+    "/api/v1/triage-calls/{triageCallId}/apply-protocol": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pin the protocol (D4) and, when the catalog row demands it, write the D7 mandatory escalation in the SAME transaction; `aiOverrideReason` is required only above the §8.6 confidence floor (§4.1 #5) */
+        post: operations["postApiV1TriagecallsByTriageCallIdApplyprotocol"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/triage-calls/{triageCallId}/awaiting-callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Park the call on a callback; it stays in the open set so it keeps its place on the supervisor board while the SLA detector watches the clock (§4.1 #9) */
+        post: operations["postApiV1TriagecallsByTriageCallIdAwaitingcallback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/triage-calls/{triageCallId}/complete-protocol": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1TriagecallsByTriageCallIdCompleteprotocol"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/triage-calls/{triageCallId}/disposition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Select the disposition (D6) over the PUBLISHED `TriageDispositionData` union — one route for both §2.2.1 edges into `documented_pending_encounter` (§4.1 #11) */
+        post: operations["postApiV1TriagecallsByTriageCallIdDisposition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/triage-calls/{triageCallId}/document": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Invoke M8's `EncounterCreator` (D8). The call does NOT reach `documented` here — that transition belongs to the `m8.encounter.signed` consumer (§4.1 #12) */
+        post: operations["postApiV1TriagecallsByTriageCallIdDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/triage-calls/{triageCallId}/escalations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Raise an escalation on a call — gated by the CALL's predicate, not the escalation ones, because the actor raising the page is the clinician working the call (§4.1 #15) */
+        post: operations["postApiV1TriagecallsByTriageCallIdEscalations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/triage-calls/{triageCallId}/identify-patient": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve the caller to a served person — patient AND admission together, because M8's encounter creator requires both NOT NULL (§4.1 #4) */
+        post: operations["postApiV1TriagecallsByTriageCallIdIdentifypatient"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/triage-calls/{triageCallId}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1TriagecallsByTriageCallIdResume"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/triage-calls/{triageCallId}/transcript-decrypt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1TriagecallsByTriageCallIdTranscriptdecrypt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/triage-calls/paper-reentry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** §2.7 BCP paper-origin re-entry — its own permission plus a step-up, because the back-dated `opened_at` is §8.3.2's way a coverage gap gets hidden; the instant is range-checked against the worklist row's outage window */
+        post: operations["postApiV1TriagecallsPaperreentry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/triage-calls/paper-reentry/worklist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1TriagecallsPaperreentryWorklist"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/triage-protocol-questions/{questionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit one question — a system-locked question is refused: it is the D5 red-flag predicate behind a platform-floor mandatory escalation, and editing it is the cheapest way to disable one (§4.1 #32) */
+        patch: operations["patchApiV1TriageprotocolquestionsByQuestionId"];
+        trace?: never;
+    };
+    "/api/v1/triage-protocols": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The catalog — the org-less platform floor plus this tenant's own rows (D4), effective-dated by default (§4.1 #27) */
+        get: operations["getApiV1Triageprotocols"];
+        put?: never;
+        /** Author a TENANT-CUSTOM protocol (step-up). `isSystemLocked` is absent: accepting and ignoring it would leave the DON believing they had authored a protected question (§4.1 #29) */
+        post: operations["postApiV1Triageprotocols"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/triage-protocols/{protocolId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1TriageprotocolsByProtocolId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a tenant protocol — a platform-floor row is refused with its key NAMED, because '0 rows updated' is not an answer a DON can act on (§4.1 #30) */
+        patch: operations["patchApiV1TriageprotocolsByProtocolId"];
+        trace?: never;
+    };
+    "/api/v1/triage-protocols/{protocolId}/questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a question — a tenant cannot write a child row against an org-less parent, so the attempt is refused with the protocol named rather than failing as a policy violation (§4.1 #31) */
+        post: operations["postApiV1TriageprotocolsByProtocolIdQuestions"];
         delete?: never;
         options?: never;
         head?: never;
@@ -22559,6 +23102,86 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1Escalations: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                tier?: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                openOnly?: boolean;
+                triageCallId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1EscalationsByEscalationIdAcknowledge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                escalationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1EscalationsByEscalationIdResolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                escalationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    resolution: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1EvvAggregatorsubmissions: {
         parameters: {
             query?: {
@@ -27755,6 +28378,325 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1OncallCurrent: {
+        parameters: {
+            query?: {
+                providerEntityId?: string;
+                asOf?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OncallExternalvendors: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OncallExternalvendors: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    mdmVendorId: string;
+                    name: string;
+                    adapterKey: string;
+                    rnCoverageAttested: boolean;
+                    baaInEffect: boolean;
+                    baaExpiresOn?: string | null;
+                    defaultMinimizationPolicy: {
+                        profile: "hybrid_phi_min" | "centralized_phi_min";
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1OncallExternalvendorsByVendorId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                vendorId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    rnCoverageAttested?: boolean;
+                    baaInEffect?: boolean;
+                    baaExpiresOn?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OncallPolicy: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1OncallPolicy: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    model?: "direct" | "hybrid" | "centralized";
+                    escalationTiers?: {
+                        [key: string]: unknown;
+                    };
+                    callbackSlaPerSeverity?: {
+                        [key: string]: unknown;
+                    };
+                    stateOverrides?: {
+                        [key: string]: unknown;
+                    };
+                    externalTriageVendorId?: string | null;
+                    emergencyContactE164?: string | null;
+                    aiProtocolSuggestionEnabled?: boolean;
+                    aiHospitalizationRiskEnabled?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OncallShifts: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                providerEntityId?: string;
+                discipline?: "clinical_rn" | "clinical_lpn" | "medical_director" | "msw" | "chaplain" | "external";
+                from?: string;
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OncallShifts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: date-time */
+                    shiftStartsAt: string;
+                    /** Format: date-time */
+                    shiftEndsAt: string;
+                    discipline: "clinical_rn" | "clinical_lpn" | "medical_director" | "msw" | "chaplain" | "external";
+                    /** Format: uuid */
+                    primaryOnCallMembershipId?: string;
+                    /** Format: uuid */
+                    backupMembershipId?: string;
+                    /** Format: uuid */
+                    externalActorId?: string;
+                    externalActorLabel?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1OncallShiftsByShiftIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shiftId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OncallShiftsByShiftIdClose: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shiftId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OncallShiftsByShiftIdOpen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shiftId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1Optimizeday: {
         parameters: {
             query?: never;
@@ -30313,6 +31255,30 @@ export interface operations {
             path: {
                 orgSlug: string;
             };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PortalTriageRecent: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                sinceDays?: number;
+            };
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -37385,6 +38351,824 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Triagecalls: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                state?: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                openOnly?: boolean;
+                providerEntityId?: string;
+                patientId?: string;
+                openedFrom?: string;
+                openedTo?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Triagecalls: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                    callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                    callerDisplayName?: string;
+                    callerPhoneE164?: string;
+                    callerRelationshipLabel?: string;
+                    /** Format: uuid */
+                    patientId?: string;
+                    /** Format: uuid */
+                    admissionId?: string;
+                    /** Format: uuid */
+                    callerCaregiverId?: string;
+                    /** @constant */
+                    source?: "manual";
+                    chiefComplaintText?: string;
+                    chiefComplaintSnomed?: string;
+                    callerQuote?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TriagecallsByTriageCallId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                triageCallId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TriagecallsByTriageCallIdAbandon: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                triageCallId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    callbackAttempts: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TriagecallsByTriageCallIdAnswers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                triageCallId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    triageProtocolQuestionId: string;
+                    value: {
+                        /** @constant */
+                        kind: "text";
+                        value: string;
+                    } | {
+                        /** @constant */
+                        kind: "int";
+                        value: number;
+                    } | {
+                        /** @constant */
+                        kind: "bool";
+                        value: boolean;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1TriagecallsByTriageCallIdAnswersByAnswerIdCorrect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                triageCallId: string;
+                answerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    triageProtocolQuestionId: string;
+                    value: {
+                        /** @constant */
+                        kind: "text";
+                        value: string;
+                    } | {
+                        /** @constant */
+                        kind: "int";
+                        value: number;
+                    } | {
+                        /** @constant */
+                        kind: "bool";
+                        value: boolean;
+                    };
+                    correctionReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TriagecallsByTriageCallIdApplyprotocol: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                triageCallId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    triageProtocolId: string;
+                    aiOverrideReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TriagecallsByTriageCallIdAwaitingcallback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                triageCallId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    /** Format: date-time */
+                    callbackTargetAt?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TriagecallsByTriageCallIdCompleteprotocol: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                triageCallId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TriagecallsByTriageCallIdDisposition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                triageCallId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    dispositionData: {
+                        /** @constant */
+                        disposition: "caregiver_education_only";
+                        educationSummary: string;
+                        followUpCallAt: string | null;
+                    } | {
+                        /** @constant */
+                        disposition: "prn_intervention_authorized";
+                        orderRecordId: string | null;
+                        medicationOrderId: string | null;
+                        instructionsGiven: string;
+                    } | {
+                        /** @constant */
+                        disposition: "verbal_order_recorded";
+                        /** Format: uuid */
+                        orderRecordId: string;
+                        attendingPhysicianId: string | null;
+                    } | {
+                        /** @constant */
+                        disposition: "visit_dispatched_now";
+                        requestedDiscipline: string;
+                        /** Format: date-time */
+                        requestedArrivalBy: string;
+                        reason: string;
+                    } | {
+                        /** @constant */
+                        disposition: "visit_scheduled_first_light";
+                        requestedDiscipline: string;
+                        /** Format: date */
+                        proposedForDate: string;
+                        reason: string;
+                    } | {
+                        /** @constant */
+                        disposition: "gip_admission_proposed";
+                        gipCriteriaSummary: string;
+                        preferredFacility: string | null;
+                    } | {
+                        /** @constant */
+                        disposition: "ed_transfer_acknowledged";
+                        electionText: string;
+                        transportArrangedBy: "family" | "ems" | "facility" | "unknown";
+                    } | {
+                        /** @constant */
+                        disposition: "pronouncement_scheduled";
+                        pronouncingDiscipline: string;
+                        expectedArrivalBy: string | null;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TriagecallsByTriageCallIdDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                triageCallId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    narrativeSummary?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TriagecallsByTriageCallIdEscalations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                triageCallId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                    reason: string;
+                    /** Format: uuid */
+                    escalatedToMembershipId?: string;
+                    /** Format: uuid */
+                    escalatedToExternalActorId?: string;
+                    handOffCall?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TriagecallsByTriageCallIdIdentifypatient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                triageCallId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    admissionId: string;
+                    /** Format: uuid */
+                    locationId?: string;
+                    /** Format: uuid */
+                    callerCaregiverId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TriagecallsByTriageCallIdResume: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                triageCallId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TriagecallsByTriageCallIdTranscriptdecrypt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                triageCallId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TriagecallsPaperreentry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    worklistId: string;
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: date-time */
+                    paperOriginalOpenedAt: string;
+                    inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                    callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                    /** Format: uuid */
+                    patientId?: string;
+                    /** Format: uuid */
+                    admissionId?: string;
+                    chiefComplaintText?: string;
+                    callerDisplayName?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TriagecallsPaperreentryWorklist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1TriageprotocolquestionsByQuestionId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                questionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    questionOrder?: number;
+                    prompt?: string;
+                    answerType?: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                    answerEnumValues?: string[] | null;
+                    required?: boolean;
+                    isRedFlagQuestion?: boolean;
+                    redFlagMatch?: ({
+                        /** @constant */
+                        kind: "bool_is";
+                        value: boolean;
+                    } | {
+                        /** @constant */
+                        kind: "int_at_least";
+                        threshold: number;
+                    } | {
+                        /** @constant */
+                        kind: "int_at_most";
+                        threshold: number;
+                    } | {
+                        /** @constant */
+                        kind: "enum_in";
+                        values: string[];
+                    } | {
+                        /** @constant */
+                        kind: "text_any";
+                    }) | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Triageprotocols: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                effectiveOnly?: boolean;
+                disciplineRequired?: "clinical_rn" | "clinical_lpn" | "medical_director" | "msw" | "chaplain" | "external";
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Triageprotocols: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    key: string;
+                    chiefComplaintLabel: string;
+                    snomedCode: string;
+                    disciplineRequired: "clinical_rn" | "clinical_lpn" | "medical_director" | "msw" | "chaplain" | "external";
+                    requiresMandatoryEscalation?: boolean;
+                    mandatoryEscalationTier?: ("tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external") | null;
+                    version?: string;
+                    /** Format: date-time */
+                    effectiveFrom?: string;
+                    effectiveTo?: string | null;
+                    sortOrder?: number;
+                    questions?: {
+                        questionOrder: number;
+                        prompt: string;
+                        answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                        answerEnumValues?: string[] | null;
+                        required?: boolean;
+                        isRedFlagQuestion?: boolean;
+                        redFlagMatch?: ({
+                            /** @constant */
+                            kind: "bool_is";
+                            value: boolean;
+                        } | {
+                            /** @constant */
+                            kind: "int_at_least";
+                            threshold: number;
+                        } | {
+                            /** @constant */
+                            kind: "int_at_most";
+                            threshold: number;
+                        } | {
+                            /** @constant */
+                            kind: "enum_in";
+                            values: string[];
+                        } | {
+                            /** @constant */
+                            kind: "text_any";
+                        }) | null;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TriageprotocolsByProtocolId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                protocolId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1TriageprotocolsByProtocolId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                protocolId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    chiefComplaintLabel?: string;
+                    snomedCode?: string;
+                    disciplineRequired?: "clinical_rn" | "clinical_lpn" | "medical_director" | "msw" | "chaplain" | "external";
+                    requiresMandatoryEscalation?: boolean;
+                    mandatoryEscalationTier?: ("tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external") | null;
+                    version?: string;
+                    effectiveTo?: string | null;
+                    sortOrder?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TriageprotocolsByProtocolIdQuestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                protocolId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    questionOrder: number;
+                    prompt: string;
+                    answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                    answerEnumValues?: string[] | null;
+                    required?: boolean;
+                    isRedFlagQuestion?: boolean;
+                    redFlagMatch?: ({
+                        /** @constant */
+                        kind: "bool_is";
+                        value: boolean;
+                    } | {
+                        /** @constant */
+                        kind: "int_at_least";
+                        threshold: number;
+                    } | {
+                        /** @constant */
+                        kind: "int_at_most";
+                        threshold: number;
+                    } | {
+                        /** @constant */
+                        kind: "enum_in";
+                        values: string[];
+                    } | {
+                        /** @constant */
+                        kind: "text_any";
+                    }) | null;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {

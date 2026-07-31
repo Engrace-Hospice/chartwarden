@@ -405,6 +405,44 @@ import {
   SupervisorDashboardQuerySchema as M16SupervisorDashboardQuerySchema,
   UpdateContactBody as M16UpdateContactBody,
 } from "../../apps/backend/src/modules/16-bereavement/routes/m16-typebox";
+// M19 On-Call Triage — the §4.2 request bodies + list queries the §4.1 route handlers `parse(...)` /
+// `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M19-T08
+// web screens call the surface these type. Note what is deliberately ABSENT from every body and therefore
+// from the published contract: no organization, no acting membership, no vendor identity, no
+// `red_flag_hit`, no `onCallShiftId` and no `policySnapshot` — each is server-derived, and their absence
+// from the schema is the structural half of §8.3's spoofing controls.
+import {
+  AbandonCallBody as M19AbandonCallBody,
+  AcknowledgeEscalationBody as M19AcknowledgeEscalationBody,
+  ApplyProtocolBody as M19ApplyProtocolBody,
+  AwaitingCallbackBody as M19AwaitingCallbackBody,
+  CancelShiftBody as M19CancelShiftBody,
+  CorrectAnswerBody as M19CorrectAnswerBody,
+  CreateProtocolBody as M19CreateProtocolBody,
+  CreateShiftBody as M19CreateShiftBody,
+  CreateVendorBindingBody as M19CreateVendorBindingBody,
+  CurrentOnCallQuery as M19CurrentOnCallQuery,
+  DocumentCallBody as M19DocumentCallBody,
+  EscalateBody as M19EscalateBody,
+  IdentifyPatientBody as M19IdentifyPatientBody,
+  ListEscalationsQuery as M19ListEscalationsQuery,
+  ListProtocolsQuery as M19ListProtocolsQuery,
+  ListShiftsQuery as M19ListShiftsQuery,
+  ListTriageCallsQuery as M19ListTriageCallsQuery,
+  OpenTriageCallBody as M19OpenTriageCallBody,
+  PaperReentryBody as M19PaperReentryBody,
+  PatchOncallPolicyBody as M19PatchOncallPolicyBody,
+  PatchProtocolBody as M19PatchProtocolBody,
+  PatchProtocolQuestionBody as M19PatchProtocolQuestionBody,
+  PatchVendorBindingBody as M19PatchVendorBindingBody,
+  PolicyQuery as M19PolicyQuery,
+  PortalRecentQuery as M19PortalRecentQuery,
+  ProtocolQuestionBody as M19ProtocolQuestionBody,
+  RecordAnswerBody as M19RecordAnswerBody,
+  ResolveEscalationBody as M19ResolveEscalationBody,
+  SelectDispositionBody as M19SelectDispositionBody,
+  ShiftTransitionBody as M19ShiftTransitionBody,
+} from "../../apps/backend/src/modules/19-oncall/routes/m19-typebox";
 // M21 Supplies / DME / Comfort Kits — the §4.2 request bodies + list queries the §4.1 route handlers
 // `parse(...)` / `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator;
 // the M21-T06 web screens call the surface these type. Note the decimal-STRING quantities: §4.2.2's sketch
@@ -3040,6 +3078,171 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     query: M16SupervisorDashboardQuerySchema,
   },
 
+  // ── M19 On-Call Triage (§4.1) — the §2.2.1 call machine, the D5 server-gated protocol walk, the D7
+  // escalation ladder, the CoP 418.100(c)(2) shift roster, the D4 two-layer protocol catalog, the tenant
+  // policy, the §8.5 vendor bindings and the §2.7 BCP paper re-entry. Org, acting membership and vendor
+  // identity are ALL server-side (routes/actor.ts), so no body or query carries any of them — the ONE
+  // membership id a caller may supply is `escalatedToMembershipId`, because an escalation is by definition
+  // addressed to a second person. Every mutation additionally requires an `Idempotency-Key` (ADR-0021) and
+  // every state transition an `If-Match` carrying the row's INTEGER `version` (§2.5, unlike M21's
+  // timestamp ETag); both are header contracts enforced by preHandlers, not body fields. Reads returning
+  // the §4.1 view interfaces are omitted rather than sketched (the M15/M16/M21/M26 no-fabrication
+  // posture); their params auto-derive from the path.
+  "POST /api/v1/triage-calls": {
+    summary:
+      "Open a triage call — `source` is pinned to `manual` and the covering shift is resolved server-side, because attributing a call to somebody else's coverage window would forge the CoP 418.100(c)(2) record (§4.1 #1)",
+    body: M19OpenTriageCallBody,
+  },
+  "GET /api/v1/triage-calls": {
+    summary:
+      "The supervisor board / caseload list — cursor-paginated (offset is refused); `openOnly` is the six-state live set, which deliberately includes `documented_pending_encounter` (§4.1 #2)",
+    query: M19ListTriageCallsQuery,
+  },
+  "POST /api/v1/triage-calls/:triageCallId/identify-patient": {
+    summary:
+      "Resolve the caller to a served person — patient AND admission together, because M8's encounter creator requires both NOT NULL (§4.1 #4)",
+    body: M19IdentifyPatientBody,
+  },
+  "POST /api/v1/triage-calls/:triageCallId/apply-protocol": {
+    summary:
+      "Pin the protocol (D4) and, when the catalog row demands it, write the D7 mandatory escalation in the SAME transaction; `aiOverrideReason` is required only above the §8.6 confidence floor (§4.1 #5)",
+    body: M19ApplyProtocolBody,
+  },
+  "POST /api/v1/triage-calls/:triageCallId/answers": {
+    summary:
+      "Append one answer — a DISCRIMINATED value union, so 'exactly one typed value' is a 422 at the boundary rather than a CHECK violation from the driver; `red_flag_hit` is absent because D5 makes it the server's (§4.1 #6)",
+    body: M19RecordAnswerBody,
+  },
+  "PATCH /api/v1/triage-calls/:triageCallId/answers/:answerId/correct": {
+    summary:
+      "Append a CORRECTION (§2.2.3 amend-by-append) — the original row is preserved, because a 'no' later corrected to 'yes' means the call HAD a red flag (§4.1 #7)",
+    body: M19CorrectAnswerBody,
+  },
+  "POST /api/v1/triage-calls/:triageCallId/awaiting-callback": {
+    summary:
+      "Park the call on a callback; it stays in the open set so it keeps its place on the supervisor board while the SLA detector watches the clock (§4.1 #9)",
+    body: M19AwaitingCallbackBody,
+  },
+  "POST /api/v1/triage-calls/:triageCallId/disposition": {
+    summary:
+      "Select the disposition (D6) over the PUBLISHED `TriageDispositionData` union — one route for both §2.2.1 edges into `documented_pending_encounter` (§4.1 #11)",
+    body: M19SelectDispositionBody,
+  },
+  "POST /api/v1/triage-calls/:triageCallId/document": {
+    summary:
+      "Invoke M8's `EncounterCreator` (D8). The call does NOT reach `documented` here — that transition belongs to the `m8.encounter.signed` consumer (§4.1 #12)",
+    body: M19DocumentCallBody,
+  },
+  "POST /api/v1/triage-calls/:triageCallId/abandon": {
+    summary:
+      "The caller disconnected. A mandatory escalation still blocks: 'the caller hung up' is not an answer to 'did a human respond to the suicidal-ideation page?' (§4.1 #13)",
+    body: M19AbandonCallBody,
+  },
+  "POST /api/v1/triage-calls/paper-reentry": {
+    summary:
+      "§2.7 BCP paper-origin re-entry — its own permission plus a step-up, because the back-dated `opened_at` is §8.3.2's way a coverage gap gets hidden; the instant is range-checked against the worklist row's outage window",
+    body: M19PaperReentryBody,
+  },
+  "POST /api/v1/triage-calls/:triageCallId/escalations": {
+    summary:
+      "Raise an escalation on a call — gated by the CALL's predicate, not the escalation ones, because the actor raising the page is the clinician working the call (§4.1 #15)",
+    body: M19EscalateBody,
+  },
+  "GET /api/v1/escalations": {
+    summary:
+      "The escalation inbox, narrowed server-side to the actor's tier band; `openOnly` defaults TRUE because an inbox shows what is outstanding (§4.1 #16)",
+    query: M19ListEscalationsQuery,
+  },
+  "POST /api/v1/escalations/:escalationId/acknowledge": {
+    summary:
+      "Acknowledge — the write §7.2 waits on; until it lands the call may take no disposition but the hand-off (§4.1 #17)",
+    body: M19AcknowledgeEscalationBody,
+  },
+  "POST /api/v1/escalations/:escalationId/resolve": {
+    summary:
+      "Resolve with the escalated party's own account (≥ 30 chars) — the ONLY place a MANDATORY row can reach `resolved` (§2.2.4 / §4.1 #18)",
+    body: M19ResolveEscalationBody,
+  },
+  "GET /api/v1/oncall/shifts": {
+    summary: "The on-call schedule, cursor-paginated (§4.1 #19)",
+    query: M19ListShiftsQuery,
+  },
+  "POST /api/v1/oncall/shifts": {
+    summary:
+      "Manual shift create — `policySnapshot` is NOT a body field: D7 pins it from the tenant policy at activation, and a caller-supplied snapshot would be a caller-supplied answer to 'which ladder was in effect that night' (§4.1 #20)",
+    body: M19CreateShiftBody,
+  },
+  "PATCH /api/v1/oncall/shifts/:shiftId/cancel": {
+    summary:
+      "Cancel with a reason. No outbox event: a shift that never activated was never in M36's `on_call` channel, so the hole it leaves is the coverage-gap watchdog's finding (§4.1 #21)",
+    body: M19CancelShiftBody,
+  },
+  "POST /api/v1/oncall/shifts/:shiftId/open": {
+    summary:
+      "Manual 'go on shift' — pins the D7 policy snapshot and emits the single canonical shift-open topic M36's synchronizer and M20's SOS path both subscribe to (§4.1 #22)",
+    body: M19ShiftTransitionBody,
+  },
+  "POST /api/v1/oncall/shifts/:shiftId/close": {
+    summary:
+      "Manual close — removes the departing actor from M36's channel; messages sent during their tenure stay attributed to them (§4.1 #23)",
+    body: M19ShiftTransitionBody,
+  },
+  "GET /api/v1/oncall/current": {
+    summary:
+      "Who is on call NOW, keyed PER ProviderEntity and never unioned — CoP 418.100(c)(2) is per-CCN, and `actors: []` for an entity is a REAL answer (a coverage gap), not an empty result (§4.1 #24)",
+    query: M19CurrentOnCallQuery,
+  },
+  "GET /api/v1/oncall/policy": {
+    summary:
+      "The tenant on-call policy for one ProviderEntity. NOT auto-created on read: a default invented at read time would be pinned onto shifts as though the tenant had chosen it (§4.1 #25)",
+    query: M19PolicyQuery,
+  },
+  "PATCH /api/v1/oncall/policy": {
+    summary:
+      "Edit the policy (step-up) — a `hybrid`/`centralized` selection where the D3 flag is off is REFUSED rather than accepted-and-ignored, so a tenant can never believe a vendor is answering their nights (§4.1 #26)",
+    body: M19PatchOncallPolicyBody,
+    query: M19PolicyQuery,
+  },
+  "GET /api/v1/triage-protocols": {
+    summary:
+      "The catalog — the org-less platform floor plus this tenant's own rows (D4), effective-dated by default (§4.1 #27)",
+    query: M19ListProtocolsQuery,
+  },
+  "POST /api/v1/triage-protocols": {
+    summary:
+      "Author a TENANT-CUSTOM protocol (step-up). `isSystemLocked` is absent: accepting and ignoring it would leave the DON believing they had authored a protected question (§4.1 #29)",
+    body: M19CreateProtocolBody,
+  },
+  "PATCH /api/v1/triage-protocols/:protocolId": {
+    summary:
+      "Edit a tenant protocol — a platform-floor row is refused with its key NAMED, because '0 rows updated' is not an answer a DON can act on (§4.1 #30)",
+    body: M19PatchProtocolBody,
+  },
+  "POST /api/v1/triage-protocols/:protocolId/questions": {
+    summary:
+      "Add a question — a tenant cannot write a child row against an org-less parent, so the attempt is refused with the protocol named rather than failing as a policy violation (§4.1 #31)",
+    body: M19ProtocolQuestionBody,
+  },
+  "PATCH /api/v1/triage-protocol-questions/:questionId": {
+    summary:
+      "Edit one question — a system-locked question is refused: it is the D5 red-flag predicate behind a platform-floor mandatory escalation, and editing it is the cheapest way to disable one (§4.1 #32)",
+    body: M19PatchProtocolQuestionBody,
+  },
+  "POST /api/v1/oncall/external-vendors": {
+    summary:
+      "Create a vendor binding (step-up). The BAA is a PRECONDITION, and there is deliberately NO secret field — ADR-0026 puts vendor credentials in the platform secret store, and the absence of the field is the control (§4.1 #34)",
+    body: M19CreateVendorBindingBody,
+  },
+  "PATCH /api/v1/oncall/external-vendors/:vendorId": {
+    summary:
+      "BAA renewal updates only — the narrow request shape IS the rule: changing the adapter key or the minimization profile would silently re-point live PHI at a different contract (§4.1 #35)",
+    body: M19PatchVendorBindingBody,
+  },
+  "GET /api/v1/portal/triage/recent": {
+    summary:
+      "The M31 portal projection — lay-language, caregiver-scoped, with the D11 advisory and the D13 vendor-handoff details excluded BY CONSTRUCTION rather than by filtering (§4.1 #36)",
+    query: M19PortalRecentQuery,
+  },
   // ── M21 Supplies, DME & Comfort Kits (§4.1) — the §2.2 fulfillment machine, the D11 SKU catalog, the D3
   // kit templates, the DEA 21 CFR §1304 dispatch/return chain of custody, the D4 vendor-routing ladder and
   // the D5 par shelf. Org / acting membership binding is server-side (routes/actor.ts is the DEA
