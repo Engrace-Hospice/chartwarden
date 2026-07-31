@@ -805,6 +805,10 @@ export function buildDrizzleM30ReadService(
         const before = filter.occurredBefore ? new Date(filter.occurredBefore) : null;
         const mapped = rows
           .filter((r) => {
+            // Abuse allegations are a separately-gated surface (`incident.abuse_review`, its own
+            // /abuse-allegations route). Dropped here BEFORE pagination so a caller without the key
+            // cannot infer their existence from a short page or a cursor that skips ids.
+            if (r.kind === "allegation_of_abuse" && !filter.mayViewAbuseAllegations) return false;
             if (kinds && !kinds.has(r.kind)) return false;
             if (states && !states.has(r.lifecycle)) return false;
             if (severities && !severities.has(r.severity)) return false;

@@ -30,7 +30,7 @@
 // caching; this guard enforces PRESENCE). Org/actor/owner binding is ALWAYS server-side (the M2-assembled
 // `request.context` via `actorOf`/`writeActorOf`), NEVER read off the body. The service drives the pure
 // reducers (it does not re-implement state logic) and emits the §4.10 `m30.incident.*` events transactionally.
-import { requireAbac, requirePermission } from "@wardenx/auth";
+import { requireAbac, requirePermission, resolveActorPermissions } from "@wardenx/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
@@ -97,13 +97,24 @@ const IDEMPOTENT = requireIdempotencyKey();
 export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRouteDeps): void {
   const { readService, writeService } = deps;
 
-  // R-50 — list the incident register (cursor-paginated; `incidentVisibility` masks abuse rows). §4.1/§4.1.2.
+  // R-50 — list the incident register (cursor-paginated). §4.1/§4.1.2.
+  //
+  // NOT gated on `incidentVisibility`. That predicate opens `targetStr(target, "incidentId")` and denies
+  // when absent — correct for a point-read, structurally impossible on a COLLECTION, which carries no
+  // incident to key on. Wired here it resolved false for every caller, so this endpoint 403'd for
+  // everyone regardless of permission (found by running the app, not by a test).
+  //
+  // A collection enforces the same rule the way a collection must: it FILTERS. The route resolves
+  // `incident.abuse_review` from the actor's effective permissions — the same resolver `requirePermission`
+  // gates on — and the read service drops abuse rows before pagination when the caller lacks it. The
+  // detail route keeps `incidentVisibility`, where it has an id and belongs.
   app.get(
     "/api/v1/quality/incidents",
-    { preHandler: [INC_READ, READ_INORG, READ_VISIBILITY] },
+    { preHandler: [INC_READ, READ_INORG] },
     async (request) => {
       const actor = actorOf(request);
       const q = parse(IncidentListQuerySchema, request.query);
+      const granted = await resolveActorPermissions(request.context);
       const filter: IncidentListFilter = {
         kinds: q.kind,
         states: q.state,
@@ -111,6 +122,7 @@ export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRoute
         occurredAfter: q.occurredAfter,
         occurredBefore: q.occurredBefore,
         patientId: q.patientId,
+        mayViewAbuseAllegations: granted.has("incident.abuse_review"),
       };
       return readService.listIncidents(actor, filter, q.cursor, q.limit);
     },
