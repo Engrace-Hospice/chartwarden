@@ -4,59 +4,84 @@
 //
 // Lantern six-tone alphabet: progress≈in-flight · success≈meets target · warning≈at-risk · error≈breach ·
 // critical(gold)≈reserved irreversible ceremony · neutral≈inert/insufficient data.
-import type { StatusTone } from "@wardenx/ui";
+import type { StatusTone, paths } from "@wardenx/ui";
+
+// ── the wire vocabularies, DERIVED ────────────────────────────────────────────────────────────
+//
+// These were hand-typed from the module SPEC and almost none of them matched the frozen pgEnums the
+// server emits: the band was `amber` (server: `yellow`), incident states `reported`/`investigating`/
+// `closed` (server: `submitted`/`under_investigation`/`closed_followup_complete`), severities
+// `major`/`sentinel` (server: `severe`/`critical`), and every QAPI phase but `abandoned` was invented.
+// `Record<string, StatusTone>` accepted all of it, so the maps compiled, the screens rendered, and
+// every unmatched row silently fell through `toneOf`'s `?? "neutral"` — a StatusPill taxonomy that was
+// mostly decoration. Deriving the keys from the generated client makes a wrong key a compile error and
+// a MISSING key a compile error too, so a vocabulary that grows server-side cannot be ignored here.
+type MeasureRow =
+  paths["/api/v1/quality/measures"]["get"]["responses"][200]["content"]["application/json"]["items"][number];
+type CitationRow =
+  paths["/api/v1/quality/cop/citations"]["get"]["responses"][200]["content"]["application/json"]["items"][number];
+type IncidentRow =
+  paths["/api/v1/quality/incidents"]["get"]["responses"][200]["content"]["application/json"]["items"][number];
+type ProjectRow =
+  paths["/api/v1/quality/qapi/projects"]["get"]["responses"][200]["content"]["application/json"]["items"][number];
+
+export type MeasureBandColor = NonNullable<MeasureRow["latestValue"]>["bandColor"];
+export type MeasureDomain = MeasureRow["domain"];
+export type CopStatus = CitationRow["status"];
+export type IncidentState = IncidentRow["state"];
+export type IncidentSeverity = IncidentRow["severity"];
+export type QapiProjectPhase = ProjectRow["phase"];
 
 /**
  * `MeasureBandColor` → tone. `insufficient_n` maps to NEUTRAL, and that is the whole point: a measure
  * suppressed under the CMS reportable-denominator floor has no verdict, and colouring it green (or red)
  * would assert one the data does not support. It reads as "no verdict", never as "passing".
  */
-export const MEASURE_BAND_TONE: Record<string, StatusTone> = {
+export const MEASURE_BAND_TONE: Record<MeasureBandColor, StatusTone> = {
   green: "success",
-  amber: "warning",
+  yellow: "warning",
   red: "error",
   insufficient_n: "neutral",
 };
 
 /** CoP compliance status → tone. A deficiency is an ERROR: 418.310 makes it terminable. */
-export const COP_STATUS_TONE: Record<string, StatusTone> = {
+export const COP_STATUS_TONE: Record<CopStatus, StatusTone> = {
   compliant: "success",
   at_risk: "warning",
   deficient: "error",
-  not_assessed: "neutral",
 };
 
-/** Incident state → tone. `reported` is untriaged work; `closed` is terminal/inert. */
-export const INCIDENT_STATE_TONE: Record<string, StatusTone> = {
+/** Incident state → tone. `submitted` is untriaged work; `closed_followup_complete` is terminal/inert. */
+export const INCIDENT_STATE_TONE: Record<IncidentState, StatusTone> = {
   draft: "neutral",
-  reported: "warning",
+  submitted: "warning",
   triaged: "progress",
-  investigating: "progress",
+  under_investigation: "progress",
   resolved: "success",
-  closed: "neutral",
+  closed_followup_complete: "neutral",
   reopened: "warning",
 };
 
 /** Incident severity → tone. Severity is the triage signal, so it is deliberately louder than state. */
-export const INCIDENT_SEVERITY_TONE: Record<string, StatusTone> = {
+export const INCIDENT_SEVERITY_TONE: Record<IncidentSeverity, StatusTone> = {
   minor: "neutral",
   moderate: "warning",
-  major: "error",
-  sentinel: "error",
+  severe: "error",
+  critical: "error",
 };
 
-/** QAPI project phase → tone (PDSA-ish lifecycle; `sustained` is the good terminal state). */
-export const QAPI_PHASE_TONE: Record<string, StatusTone> = {
-  chartered: "neutral",
-  measuring: "progress",
-  intervening: "progress",
-  evaluating: "progress",
-  sustained: "success",
+/** QAPI project phase → tone. `completed` is the good terminal state; `corrective_action` is a breach
+ *  the programme is answering, so it reads louder than ordinary in-flight work. */
+export const QAPI_PHASE_TONE: Record<QapiProjectPhase, StatusTone> = {
+  proposed: "neutral",
+  active: "progress",
+  corrective_action: "warning",
+  completed: "success",
   abandoned: "neutral",
 };
 
 /** Measure domain → a short human label for the hub's grouping. */
-export const DOMAIN_LABEL: Record<string, string> = {
+export const DOMAIN_LABEL: Record<MeasureDomain, string> = {
   hci: "HCI",
   hvldl: "HVLDL",
   hope: "HOPE",
@@ -64,7 +89,19 @@ export const DOMAIN_LABEL: Record<string, string> = {
   operational: "Operational",
 };
 
-export function toneOf(map: Record<string, StatusTone>, value?: string | null): StatusTone {
+/**
+ * Resolve a wire value through a tone map, falling back to neutral.
+ *
+ * The maps are now keyed by the DERIVED vocabulary, so `value` is typed to that vocabulary at every
+ * call site and the fallback should be unreachable. It stays because the value crosses the wire: a
+ * server mid-deploy can emit a member this build does not know, and an unknown status must render
+ * inert rather than throw. It is a runtime guard, no longer a silent absorber of authoring mistakes —
+ * a wrong literal is now caught by tsc at the map.
+ */
+export function toneOf<K extends string>(
+  map: Record<K, StatusTone>,
+  value?: K | null,
+): StatusTone {
   return (value ? map[value] : undefined) ?? "neutral";
 }
 
@@ -79,7 +116,7 @@ export function humanize(value?: string | null): string {
  * opposite things (no reportable population vs. a real zero), and conflating them on a CMS-published
  * measure is the exact misreading the `insufficient_n` band exists to prevent.
  */
-export function ratePct(rate: number | null, bandColor?: string): string {
+export function ratePct(rate: number | null, bandColor?: MeasureBandColor): string {
   if (bandColor === "insufficient_n" || rate === null) return "—";
   return `${(rate * 100).toFixed(1)}%`;
 }

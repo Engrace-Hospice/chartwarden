@@ -21,6 +21,7 @@ import {
 // as a miss would invent one, and counting it as a pass would hide one.
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
+import type { paths } from "@wardenx/ui";
 import {
   COP_STATUS_TONE,
   DOMAIN_LABEL,
@@ -32,29 +33,14 @@ import {
   toneOf,
 } from "./quality-status";
 
-interface MeasureValue {
-  numerator: number;
-  denominator: number;
-  rate: number | null;
-  thresholdMet: boolean | null;
-  bandColor: string;
-  computedAt: string;
-}
-interface MeasureRow {
-  measureId: string;
-  displayName: string;
-  domain: string;
-  fiscalYear: number;
-  latestValue: MeasureValue | null;
-}
-interface CitationRow {
-  citationId: string;
-  citationRef: string;
-  displayName: string;
-  status: string;
-  lastReviewedAt: string | null;
-  nextReviewDueAt: string | null;
-}
+// Rows come from the GENERATED client, not a hand-written mirror — see the note in qapi-incidents.tsx
+// for what the local interfaces cost. Here they widened `bandColor` and `status` to `string`, which is
+// how `MEASURE_BAND_TONE`'s `amber` key (the server emits `yellow`) survived review: every wrong
+// literal is a valid `string`, so nothing objected and yellow-band measures rendered untoned.
+type MeasureRow =
+  paths["/api/v1/quality/measures"]["get"]["responses"][200]["content"]["application/json"]["items"][number];
+type CitationRow =
+  paths["/api/v1/quality/cop/citations"]["get"]["responses"][200]["content"]["application/json"]["items"][number];
 
 const cell: CSSProperties = { padding: "0.55rem 0.75rem", textAlign: "left", verticalAlign: "middle" };
 const head: CSSProperties = {
