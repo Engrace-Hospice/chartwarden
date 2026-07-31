@@ -605,6 +605,16 @@ export interface IdgScheduleProvider {
     range: { fromIso: IsoInstant; toIso: IsoInstant },
   ): Promise<IdgMeetingDigest[]>;
 
+  /**
+   * ORG-LEVEL IDG meeting-cadence population over a scheduled-start window — M30's
+   * `idg_cadence_adherence` input. Returns the numerator/denominator PAIR, not a rate: M30's kernel
+   * suppresses a measure whose denominator is under the CMS reportable floor. Aggregate only (D6).
+   */
+  getCadenceCountsForOrg(
+    organizationId: string,
+    window: { from: string; to: string },
+  ): Promise<{ readonly numerator: number; readonly denominator: number }>;
+
   /** M30 measure: 15-day-IDG-cadence adherence per admission. */
   getCadenceAdherence(
     orgId: string,

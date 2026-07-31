@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeCarePlan15DayAdherence,
   computeEvvComplianceRate,
+  computeIdgCadenceAdherence,
   computeLateEncounterEntryRate,
   computeMissedDoseRate,
   computeVerbalOrderSignatureOnTime,
@@ -40,6 +41,7 @@ const seamsWith = (
   orders: { async getVerbalTimelinessCountsForOrg() { return lateEntry; } },
   carePlan: { async fifteenDayCycleCountsForOrg() { return lateEntry; } },
   administrations: { async getMissedDoseCountsForOrg() { return lateEntry; } },
+  idg: { async getCadenceCountsForOrg() { return lateEntry; } },
 });
 
 describe("M30 operational measure inputs — counts, not rates", () => {
@@ -150,6 +152,28 @@ describe("M30 operational measure inputs — counts, not rates", () => {
     );
     expect(input).toMatchObject({ scheduledDoses: 1200, missedDoses: 9 });
     expect(computeMissedDoseRate(input as never).rate).toBeCloseTo(9 / 1200);
+  });
+
+  it("shapes M14's org-level IDG cadence tally into its calculator input", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("idg_cadence_adherence"),
+      seamsWith({ numerator: 0, denominator: 0 }, undefined, { numerator: 38, denominator: 40 }),
+    );
+    expect(input).toMatchObject({ requiredMeetingCycles: 40, meetingsWithinCadence: 38 });
+    expect(computeIdgCadenceAdherence(input as never).rate).toBeCloseTo(0.95);
+  });
+
+  it("a skipped cadence cycle stays in the denominator (0 held of 40 due is 0%, not suppressed)", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("idg_cadence_adherence"),
+      seamsWith({ numerator: 0, denominator: 0 }, undefined, { numerator: 0, denominator: 40 }),
+    );
+    const result = computeIdgCadenceAdherence(input as never);
+    // The whole point of keeping never-convened meetings in the population: a skipped cycle must show
+    // as non-adherence, not vanish from the measure.
+    expect(result.denominator).toBe(40);
+    expect(result.rate).toBe(0);
+    expect(result.bandColor).not.toBe("insufficient_n");
   });
 
   it("refuses a measure code it does not shape rather than computing on an empty input", async () => {
