@@ -127,6 +127,15 @@ export function createEvvMetricsProvider(store: EvvSeamStore): EvvMetricsProvide
       // No billable visits in window → vacuously fully compliant (no non-compliant visit has occurred).
       return c.total === 0 ? 1 : c.compliant / c.total;
     },
+    /**
+     * The same tally WITHOUT the division — M30's `evv_compliance_rate` measure input. The "vacuously 1"
+     * answer the rate method gives an empty window is right for a dashboard and wrong for a reportable
+     * measure, where 0/0 must SUPPRESS. M30's kernel applies the small-N floor once it has the pair.
+     */
+    async getComplianceCounts(_orgId, windowIso) {
+      const c = await store.complianceCountsForWindow(windowIso);
+      return { numerator: c.compliant, denominator: c.total };
+    },
     async getLateCheckoutRate(_orgId, windowIso) {
       const m = await store.metricWindowCounts(windowIso);
       return m.totalVisits === 0 ? 0 : m.lateCheckoutVisits / m.totalVisits;

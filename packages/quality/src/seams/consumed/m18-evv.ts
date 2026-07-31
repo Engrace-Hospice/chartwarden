@@ -7,6 +7,15 @@
 export interface QualityEvvConsumer {
   /** M18 `EvvMetricsProvider.getComplianceRate` — EVV-compliance rate over a window (Cures Act §12006). */
   complianceRate(organizationId: string, period: { from: string; to: string }): Promise<number>;
+  /**
+   * M18 `EvvMetricsProvider.getComplianceCounts` — the compliance POPULATION the
+   * `evv_compliance_rate` measure needs. See the M17 consumer for why a rate cannot drive a
+   * CMS-reportable measure (the denominator is the suppression trigger).
+   */
+  complianceCounts(
+    organizationId: string,
+    period: { from: string; to: string },
+  ): Promise<{ numerator: number; denominator: number }>;
   /** M18 `EvvMetricsProvider.getLateCheckoutRate` — late-checkout rate over a window. */
   lateCheckoutRate(organizationId: string, period: { from: string; to: string }): Promise<number>;
   /** M18 `EvvMetricsProvider.getGeofenceBreachRate` — geofence-breach rate over a window. */
