@@ -525,7 +525,7 @@ export const MODULES: ModuleDef[] = [
       "apps/backend/src/modules/15-discipline-care-plans",
       "apps/web/src/modules/15-discipline-care-plans",
     ], // +packages/discipline-plans: §3.1 M15-owned feature pkg (cadence/signer/volunteer-ratio policy → per-kind TypeBox + lifecycle), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M15-T07
-    dependsOn: [7, 8],
+    dependsOn: [1, 7, 8], // +M1: the bootstrap seam registry (getSeam) M15 resolves the §4.3 CONSUMED seams through — M7 CarePlanReader + M8 SignedEncountersReader (M15-T03); M15's own published seams register there in M15-T05 (M6..M14 seam-task precedent)
     ownedTables: [
       "aide_supervisory_visit",
       "discipline_assessment",
