@@ -562,7 +562,12 @@ exports.MODULES = [
   {
     id: 19,
     name: "On-Call Triage",
-    codePaths: ["packages/triage-vendors", "apps/backend/src/modules/19-oncall"],
+    codePaths: [
+      "packages/triage-vendors",
+      "apps/backend/src/modules/19-oncall",
+      "apps/web/src/modules/19-oncall",
+    ], // +web: Track B in-task screens (ADR-0030), land in M19-T08. `packages/oncall` from the spec's
+    // §3.1 layout is deliberately NOT adopted — see the .ts manifest for the full read.
     dependsOn: [5, 17, 36],
     ownedTables: [
       "external_triage_vendor",

@@ -35,6 +35,7 @@ WARDENX_MODULE_29_TASKS_T29.zip
 
 # wardenx-piv: per-run resolved plan path (workflow setup node)
 .archon/run-plan.txt
+.archon/run-scope.txt
 .archon/commit-msg.txt
 .archon/pr-body.md
 

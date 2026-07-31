@@ -1,8 +1,8 @@
 {
   "totals": {
     "Implemented": 32,
-    "Partial": 0,
-    "Placeholder": 8
+    "Partial": 1,
+    "Placeholder": 7
   },
   "rows": [
     {
@@ -260,15 +260,15 @@
     {
       "id": 19,
       "module": "M19 On-Call Triage",
-      "status": "Placeholder",
+      "status": "Partial",
       "spec": true,
       "schema": false,
       "migration": false,
       "routes": false,
       "enriched": false,
       "screens": false,
-      "tests": false,
-      "adapter": false,
+      "tests": true,
+      "adapter": true,
       "liveInfra": false
     },
     {

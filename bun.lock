@@ -348,6 +348,9 @@
     "packages/triage-vendors": {
       "name": "@wardenx/triage-vendors",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
     },
     "packages/types": {
       "name": "@wardenx/types",

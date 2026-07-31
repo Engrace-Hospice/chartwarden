@@ -419,7 +419,11 @@ export const MODULES: ModuleDef[] = [
   {
     id: 9,
     name: "Clinical Assessments Suite",
-    codePaths: ["packages/assessments", "apps/backend/src/modules/09-assessments", "apps/web/src/modules/09-assessments"],
+    codePaths: [
+      "packages/assessments",
+      "apps/backend/src/modules/09-assessments",
+      "apps/web/src/modules/09-assessments",
+    ],
     dependsOn: [1, 38], // +1: M9 registers its §4.7/D7 LatestAssessmentProvider + ScaleSeriesProvider seams via the M1-owned bootstrap registry (M9-T04); +web: Track B in-task screens (ADR-0030), land in M9-T07
     ownedTables: [
       "clinical_assessment",
@@ -432,7 +436,12 @@ export const MODULES: ModuleDef[] = [
   {
     id: 10,
     name: "HOPE Engine",
-    codePaths: ["packages/hope", "packages/iqies-client", "apps/backend/src/modules/10-hope", "apps/web/src/modules/10-hope"],
+    codePaths: [
+      "packages/hope",
+      "packages/iqies-client",
+      "apps/backend/src/modules/10-hope",
+      "apps/web/src/modules/10-hope",
+    ],
     dependsOn: [1, 9, 36, 38], // +M1: registers HOPE seams into the M1-owned bootstrap registry (M10-T05); +iqies-client ADR-0028; +web: Track B in-task screens (ADR-0030), land in M10-T08
     ownedTables: [
       "hope_timepoint_schedule",
@@ -446,7 +455,11 @@ export const MODULES: ModuleDef[] = [
   {
     id: 11,
     name: "Orders",
-    codePaths: ["packages/orders", "apps/backend/src/modules/11-orders", "apps/web/src/modules/11-orders"],
+    codePaths: [
+      "packages/orders",
+      "apps/backend/src/modules/11-orders",
+      "apps/web/src/modules/11-orders",
+    ],
     dependsOn: [1, 6, 36, 38, 40], // +M1: the bootstrap seam registry (registerSeam/getSeam) M11's backend module wires its §2.8/§4.3 owned seams into (M11-T05; M6..M10 seam-task precedent); +packages/orders: §3.1 M11-owned feature pkg (kinds/catalog/seams/alerts), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M11-T08
     ownedTables: [
       "order_record",
@@ -503,11 +516,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: 14,
     name: "IDG",
-    codePaths: [
-      "packages/idg",
-      "apps/backend/src/modules/14-idg",
-      "apps/web/src/modules/14-idg",
-    ], // +packages/idg: §3.1 M14-owned feature pkg (quorum/schedule/discipline-view policy → lifecycle/packet-builder), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M14-T07
+    codePaths: ["packages/idg", "apps/backend/src/modules/14-idg", "apps/web/src/modules/14-idg"], // +packages/idg: §3.1 M14-owned feature pkg (quorum/schedule/discipline-view policy → lifecycle/packet-builder), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M14-T07
     dependsOn: [1, 7, 8, 36], // +M1: the bootstrap seam registry (registerSeam/getSeam) M14's backend module wires its §4.8 owned seams (IdgPacketProvider/IdgDecisionProvider/IdgScheduleProvider) into (M14-T05; M6..M13 seam-task precedent)
     ownedTables: [
       "idg_meeting",
@@ -608,7 +617,15 @@ export const MODULES: ModuleDef[] = [
   {
     id: 19,
     name: "On-Call Triage",
-    codePaths: ["packages/triage-vendors", "apps/backend/src/modules/19-oncall"],
+    codePaths: [
+      "packages/triage-vendors",
+      "apps/backend/src/modules/19-oncall",
+      "apps/web/src/modules/19-oncall",
+    ], // +web: Track B in-task screens (ADR-0030), land in M19-T08. NOTE: the spec's §3.1 layout also
+    // proposes a `packages/oncall` feature package — NOT adopted. Wave P2-2 acceptance #1 limits this
+    // wave's manifest changes to the triage-vendors codePath (already applied, ADR-0028) and the two
+    // Track B web codePaths, so M19's leaf CONTRACTS live in `packages/types/src/oncall.ts` (ADR-0005
+    // D1/D2) and its domain services under `apps/backend/src/modules/19-oncall` (the M6 precedent).
     dependsOn: [5, 17, 36],
     ownedTables: [
       "external_triage_vendor",
@@ -737,7 +754,11 @@ export const MODULES: ModuleDef[] = [
   {
     id: 24,
     name: "Billing — Medicaid",
-    codePaths: ["packages/medicaid-adapters", "apps/backend/src/modules/24-billing-medicaid", "apps/web/src/modules/24-billing-medicaid"],
+    codePaths: [
+      "packages/medicaid-adapters",
+      "apps/backend/src/modules/24-billing-medicaid",
+      "apps/web/src/modules/24-billing-medicaid",
+    ],
     dependsOn: [1, 23, 40],
     ownedTables: [
       "medicaid_claim",
@@ -782,7 +803,11 @@ export const MODULES: ModuleDef[] = [
   {
     id: 26,
     name: "Cap Management",
-    codePaths: ["packages/cap-management", "apps/backend/src/modules/26-cap", "apps/web/src/modules/26-cap"],
+    codePaths: [
+      "packages/cap-management",
+      "apps/backend/src/modules/26-cap",
+      "apps/web/src/modules/26-cap",
+    ],
     // ADR-0005: genuine compile-time edges only. +M1: the backend repos/services/abac resolver/seam impls
     // import the @wardenx/db barrel (packages/db/src/index.ts) — a real compile edge, so M1 is declared (the
     // M25 [1,23,36] / M27 [1,23,26,38] precedent). The broader read-direction inventory (M2-6/M25/M38/M40
