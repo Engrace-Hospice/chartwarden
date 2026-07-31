@@ -444,6 +444,15 @@ export interface IncidentListFilter {
   readonly occurredAfter?: string;
   readonly occurredBefore?: string;
   readonly patientId?: string;
+  /**
+   * Whether the caller may see `allegation_of_abuse` rows — i.e. holds `incident.abuse_review`.
+   *
+   * ABSENT OR FALSE MEANS HIDE THEM. The route resolves this from the actor's effective permissions and
+   * passes it in; the read service never infers it. A per-incident ABAC predicate cannot gate a LIST (it
+   * has no incident to key on), so the collection enforces the same rule the way a collection must — by
+   * dropping the rows server-side, before they reach a page or a cursor.
+   */
+  readonly mayViewAbuseAllegations?: boolean;
 }
 export interface MortalityListFilter {
   readonly status?: "created" | "in_progress" | "completed";
