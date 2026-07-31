@@ -11763,6 +11763,591 @@
         }
       }
     },
+    "/api/v1/discipline-plans": {
+      "get": {
+        "operationId": "getApiV1Disciplineplans",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/discipline-plans/{planId}": {
+      "get": {
+        "operationId": "getApiV1DisciplineplansByPlanId",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/discipline-plans/{planId}/aide-supervisory-visits": {
+      "post": {
+        "operationId": "postApiV1DisciplineplansByPlanIdAidesupervisoryvisits",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/discipline-plans/{planId}/aide-supervisory-visits/{visitId}/sign": {
+      "post": {
+        "operationId": "postApiV1DisciplineplansByPlanIdAidesupervisoryvisitsByVisitIdSign",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/discipline-plans/{planId}/assessments": {
+      "post": {
+        "operationId": "postApiV1DisciplineplansByPlanIdAssessments",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/discipline-plans/{planId}/assessments/{assessmentId}/amend": {
+      "post": {
+        "operationId": "postApiV1DisciplineplansByPlanIdAssessmentsByAssessmentIdAmend",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "assessmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/discipline-plans/{planId}/assessments/{assessmentId}/sign": {
+      "post": {
+        "operationId": "postApiV1DisciplineplansByPlanIdAssessmentsByAssessmentIdSign",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "assessmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/discipline-plans/{planId}/goals": {
+      "post": {
+        "operationId": "postApiV1DisciplineplansByPlanIdGoals",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/discipline-plans/{planId}/goals/{goalId}": {
+      "patch": {
+        "operationId": "patchApiV1DisciplineplansByPlanIdGoalsByGoalId",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "goalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/discipline-plans/{planId}/interventions": {
+      "post": {
+        "operationId": "postApiV1DisciplineplansByPlanIdInterventions",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/discipline-plans/{planId}/interventions/{interventionId}": {
+      "patch": {
+        "operationId": "patchApiV1DisciplineplansByPlanIdInterventionsByInterventionId",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "interventionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/discipline-plans/{planId}/summary": {
+      "get": {
+        "operationId": "getApiV1DisciplineplansByPlanIdSummary",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/discipline-plans/{planId}/versions": {
+      "get": {
+        "operationId": "getApiV1DisciplineplansByPlanIdVersions",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/discipline-plans/{planId}/versions/{versionId}": {
+      "get": {
+        "operationId": "getApiV1DisciplineplansByPlanIdVersionsByVersionId",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/discipline-plans/{planId}/versions/{versionId}/finalize": {
+      "post": {
+        "operationId": "postApiV1DisciplineplansByPlanIdVersionsByVersionIdFinalize",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/discipline-plans/{planId}/versions/{versionId}/sign": {
+      "post": {
+        "operationId": "postApiV1DisciplineplansByPlanIdVersionsByVersionIdSign",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/discipline-plans/{planId}/volunteer-assignments": {
+      "post": {
+        "operationId": "postApiV1DisciplineplansByPlanIdVolunteerassignments",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/discipline-plans/{planId}/volunteer-assignments/{assignmentId}": {
+      "patch": {
+        "operationId": "patchApiV1DisciplineplansByPlanIdVolunteerassignmentsByAssignmentId",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "assignmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/documents": {
       "get": {
         "operationId": "getApiV1Documents",
@@ -42139,6 +42724,142 @@
         }
       }
     },
+    "/api/v1/volunteer-compliance-gates": {
+      "get": {
+        "operationId": "getApiV1Volunteercompliancegates",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Volunteercompliancegates",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/volunteer-compliance-gates/{gateId}": {
+      "patch": {
+        "operationId": "patchApiV1VolunteercompliancegatesByGateId",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [
+          {
+            "name": "gateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/volunteer-compliance-gates/{gateId}/revoke": {
+      "post": {
+        "operationId": "postApiV1VolunteercompliancegatesByGateIdRevoke",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [
+          {
+            "name": "gateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/volunteer-hour-entries": {
+      "post": {
+        "operationId": "postApiV1Volunteerhourentries",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/volunteer-hour-ratio": {
+      "get": {
+        "operationId": "getApiV1Volunteerhourratio",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/week-view": {
       "get": {
         "operationId": "getApiV1Weekview",
@@ -42385,6 +43106,86 @@
         "operationId": "getHealth",
         "tags": [
           "bootstrap"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/internal/discipline-plans/msw-risk-factors": {
+      "get": {
+        "operationId": "getInternalDisciplineplansMswriskfactors",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/internal/discipline-plans/relevant-elements": {
+      "get": {
+        "operationId": "getInternalDisciplineplansRelevantelements",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/internal/discipline-plans/supervisory-cadence": {
+      "get": {
+        "operationId": "getInternalDisciplineplansSupervisorycadence",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/internal/discipline-plans/volunteer-effective-status": {
+      "get": {
+        "operationId": "getInternalDisciplineplansVolunteereffectivestatus",
+        "tags": [
+          "15-discipline-care-plans"
         ],
         "parameters": [],
         "responses": {

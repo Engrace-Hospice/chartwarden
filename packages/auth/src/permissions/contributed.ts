@@ -3147,6 +3147,141 @@ export const M24_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M24 contributed permission keys (twenty-six). */
 export type M24ContributedPermissionKey = keyof typeof M24_CONTRIBUTED_PERMISSIONS;
 
+// M15 — Module 15's twenty Discipline Care Plans permission keys registered into M3's catalog (§4.4). The
+// four §4.5 predicates M15 OWNS (aide_supervisor_eligible / volunteer_compliance_active /
+// family_violence_disclosure_allowed / volunteer_coordinator_role) are named as the per-key DEFAULT where the
+// key has exactly one; the routes compose the rest (the §4.1 inventory's `caseload_or_scope` ∧
+// `discipline_scope` ∧ the two disclosure gates) at the route layer, since a key can carry only one default.
+// category 'clinical' for the plan/assessment/supervisory surface, 'compliance' for the 418.78 volunteer-gate
+// + hour-ratio surface (a Compliance Officer/DON reads those without a caseload), and the three
+// `*_internal` seam keys are system-principal-only (M14's `idg.*` precedent for the shape).
+export const M15_CONTRIBUTED_PERMISSIONS = {
+  "discipline_plan.read": {
+    resource: "discipline_care_plan",
+    action: "read",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
+  "discipline_plan.read_summary": {
+    resource: "discipline_care_plan",
+    action: "read_summary",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
+  "discipline_plan.author": {
+    resource: "discipline_care_plan",
+    action: "author",
+    category: "clinical",
+    abac: "discipline_scope",
+  },
+  "discipline_plan.finalize": {
+    resource: "discipline_care_plan_version",
+    action: "finalize",
+    category: "clinical",
+    abac: "discipline_scope",
+  },
+  "discipline_plan.sign": {
+    resource: "discipline_care_plan_version",
+    action: "sign",
+    category: "clinical",
+    abac: "signer_role_match",
+  },
+  "discipline_plan.idg_revise": {
+    resource: "discipline_care_plan_version",
+    action: "idg_revise",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
+  "discipline_assessment.author": {
+    resource: "discipline_assessment",
+    action: "author",
+    category: "clinical",
+    abac: "discipline_scope",
+  },
+  "discipline_assessment.sign": {
+    resource: "discipline_assessment",
+    action: "sign",
+    category: "clinical",
+    abac: "discipline_scope",
+  },
+  "discipline_assessment.amend": {
+    resource: "discipline_assessment",
+    action: "amend",
+    category: "clinical",
+    abac: "discipline_scope",
+  },
+  "aide_supervisory.author": {
+    resource: "aide_supervisory_visit",
+    action: "author",
+    category: "clinical",
+    abac: "aide_supervisor_eligible",
+  },
+  "aide_supervisory.sign": {
+    resource: "aide_supervisory_visit",
+    action: "sign",
+    category: "clinical",
+    abac: "aide_supervisor_eligible",
+  },
+  "volunteer_assignment.author": {
+    resource: "volunteer_assignment",
+    action: "author",
+    category: "clinical",
+    abac: "volunteer_coordinator_role",
+  },
+  "volunteer_compliance.read": {
+    resource: "volunteer_compliance_gate",
+    action: "read",
+    category: "compliance",
+    abac: "none",
+  },
+  "volunteer_compliance.author": {
+    resource: "volunteer_compliance_gate",
+    action: "author",
+    category: "compliance",
+    abac: "volunteer_coordinator_role",
+  },
+  "volunteer_compliance.revoke": {
+    resource: "volunteer_compliance_gate",
+    action: "revoke",
+    category: "compliance",
+    abac: "none",
+  },
+  "volunteer_compliance.read_ratio": {
+    resource: "volunteer_hour_ledger",
+    action: "read_ratio",
+    category: "compliance",
+    abac: "none",
+  },
+  "volunteer_compliance.adjust_hours": {
+    resource: "volunteer_hour_entry",
+    action: "adjust_hours",
+    category: "compliance",
+    abac: "none",
+  },
+  // The three §4.1 `/internal/...` seam routes — system principals only (never granted to a role template).
+  "discipline_plan.read_internal": {
+    resource: "discipline_care_plan",
+    action: "read_internal",
+    category: "platform",
+    abac: "none",
+  },
+  "volunteer_compliance.read_internal": {
+    resource: "volunteer_compliance_gate",
+    action: "read_internal",
+    category: "platform",
+    abac: "none",
+  },
+  "aide_supervisory.read_internal": {
+    resource: "aide_supervisory_visit",
+    action: "read_internal",
+    category: "platform",
+    abac: "none",
+  },
+} satisfies Record<string, PermissionDef>;
+
+/** Union of the M15 contributed permission keys (twenty). */
+export type M15ContributedPermissionKey = keyof typeof M15_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -3289,6 +3424,11 @@ export function m24ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M24_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M15 contributed keys into `permission`-table mirror rows (M15 §4.4). */
+export function m15ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M15_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -3324,5 +3464,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m26ContributedPermissionMirrorRows(),
     ...m27ContributedPermissionMirrorRows(),
     ...m24ContributedPermissionMirrorRows(),
+    ...m15ContributedPermissionMirrorRows(),
   ];
 }

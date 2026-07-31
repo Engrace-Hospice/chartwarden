@@ -715,6 +715,18 @@ export type DataClass =
   // specific references inside `idg_minutes` snapshots are hash-redacted by the M4 trigger pattern, not deleted
   // here. `subjectId` is the patient being destroyed; disjoint from every other module's clinical subtree.
   | "idg_record"
+  // M15 (Discipline Care Plans) per-patient discipline record: the plan subtree M15 owns — the
+  // `discipline_goal`, `discipline_intervention`, `discipline_assessment` (both the signed rows and their
+  // append-only amendments), `discipline_care_plan_signature`, `discipline_care_plan_version` and
+  // `aide_supervisory_visit` rows hung off a patient's `discipline_care_plan` roots, plus the patient's
+  // `volunteer_assignment` rows. Erased by M15's registered eraser (M15-T06) under an M4 destruction
+  // certificate (§8.5): the version `state_snapshot` and the assessment `data` jsonb — the two PHI-bearing
+  // payload columns — are scrubbed before the rows go, and the four `discipline_care_plan` roots are left
+  // as tombstones for FK referential integrity (the M5/M6/M7/M8 root-tombstone pattern). The
+  // WORKFORCE-scoped `volunteer_compliance_gate` / `volunteer_hour_ledger` / `volunteer_hour_entry` rows are
+  // NEVER touched — they are a volunteer's own credential + hours record, not the patient's (§8.5).
+  // `subjectId` is the patient being destroyed; disjoint from M7's `care_plan_record` (the shared IPOC).
+  | "discipline_plan_record"
   // M17 (Scheduling & Route Optimization) per-patient schedule record: the patient-scoped scheduling rows
   // M17 owns — the partitioned `visit` rows (and their cascaded `visit_state_history` transitions),
   // `recurring_visit` policies, `visit_proposal` rows, and the `route_segment` legs joinable via a visit

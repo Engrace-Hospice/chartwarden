@@ -68,7 +68,18 @@ import { registerOrderErasers, registerOrderSeams } from "./modules/11-orders/in
 import { registerDoseSpotErasers, registerDoseSpotSeams } from "./modules/12-dosespot/index";
 import { registerEmarErasers, registerEmarSeams } from "./modules/13-emar/index";
 import { registerIdgErasers, registerIdgSeams } from "./modules/14-idg/index";
-import { registerDisciplinePlanSeams } from "./modules/15-discipline-care-plans/index";
+import {
+  M15_OUTBOX_EVENTS,
+  buildDrizzleDisciplinePlanAbacResolver,
+  buildDrizzleM15ReadService,
+  buildDrizzleM15WriteService,
+  createDrizzleDisciplinePlanEraseStore,
+  denyStubDisciplinePlanAbacResolver,
+  mountM15Routes,
+  registerDisciplinePlanAbacPredicates,
+  registerDisciplinePlanErasers,
+  registerDisciplinePlanSeams,
+} from "./modules/15-discipline-care-plans/index";
 import { registerSchedulingSeams } from "./modules/17-scheduling/index";
 import { registerEvvSeams } from "./modules/18-evv/index";
 import { registerDocumentErasers, registerDocumentSeams } from "./modules/22-documents/index";
@@ -365,6 +376,16 @@ export function wireModuleSeams(
   // lands with M15's routes/repos (M15-T06+), so today's reads answer empty/null — never a fabricated pass:
   // the volunteer gate still denies fail-CLOSED on an unreadable store and the ratio still badges `unavailable`.
   registerDisciplinePlanSeams();
+  // M15-T06 — the four §4.5 ABAC predicates M15 OWNS (aide_supervisor_eligible /
+  // volunteer_compliance_active / family_violence_disclosure_allowed / volunteer_coordinator_role) into
+  // M3's named-predicate registry. Their subject facts load through the Drizzle resolver when a DB client
+  // is present; WITHOUT one the deny-stub resolver stands, so every predicate denies rather than silently
+  // passing (§8.7 fail-CLOSED — an unreadable subject is never an authorized one).
+  registerDisciplinePlanAbacPredicates({
+    resolver: deps.db
+      ? buildDrizzleDisciplinePlanAbacResolver(deps.db)
+      : denyStubDisciplinePlanAbacResolver,
+  });
   // M17 — the four §4.3 owned READ seams (VisitReader — the visit read path M8 (encounter-authoring context,
   // which CLOSES M8's visit-seeding inert consumer M8 D9) / M18 (EVV geofence target) / M14 (IDG since-meeting)
   // consume — + VisitAssignmentReader — the assignment read path M5 (the §4.5 D11 caseload-contribution
@@ -551,7 +572,7 @@ const SLICE_M34_ABAC_RESOLVER: TenantPlatformAbacResolver = {
  * eraser stands over its stub. A right-to-erasure request then hits a working eraser, not a
  * silent no-op (M2-T10).
  */
-export function wireModuleErasers(): void {
+export function wireModuleErasers(deps: { db?: DbClient } = {}): void {
   registerIdentityErasers(); // M2 — `identity` data class (two_factor/passkey + invitations)
   registerAuditErasers(); // M4-T08 — `audit_event` data class (legal-hold + Part 2 lifetime aware)
   registerTerminologyErasers(); // M38-T10 — `terminology_tenant_extensions` (D8 tenant offboarding)
@@ -567,6 +588,13 @@ export function wireModuleErasers(): void {
   registerOrderErasers(); // M11-T08 — `order_record` (orders-subtree destruction-cert callback; partition-drop; §7.7; D12; D7/D8)
   registerDoseSpotErasers(); // M12-T09 — `medication_order_record` (prescribing-subtree destruction-cert callback; partition-drop; §7.7; D15; D7/D8)
   registerEmarErasers(); // M13-T10 — `emar_record` (eMAR-subtree destruction-cert callback; partition-drop; §7.7; D7/D8)
+  // M15-T06 — `discipline_plan_record` (per-PATIENT destruction-cert callback; scrubs the version
+  // `state_snapshot` + assessment `data` jsonb FIRST, deletes the discipline subtree, tombstones the plan
+  // roots for FK integrity; the workforce-scoped volunteer gate/ledger/hour rows survive, §8.5). The
+  // Drizzle store binds when a DB client is present; without one the slice's in-memory store stands.
+  registerDisciplinePlanErasers(
+    deps.db ? { store: createDrizzleDisciplinePlanEraseStore(deps.db) } : {},
+  );
   registerIdgErasers(); // M14-T07 — `idg_record` (patient-scoped packet/decision/action-item/agenda destruction-cert callback; meetings/minutes survive; §8.4)
   registerDocumentErasers(); // M22-T10 — `documents` (document/intake-subtree destruction-cert callback; DEK crypto-erase §8.6; legal-hold + Part 2 skip; D9/D12)
   registerSaasTenantPlatformErasers(); // M34 — `saas_tenant_platform_class` (tenant-offboarding control-plane cleanup; subjectId=org; D6/§8.4)
@@ -610,6 +638,7 @@ if ((import.meta as { main?: boolean }).main) {
   // completeness but is intentionally NOT bound (its emit payloads are non-conformant — zero regression).
   // A duplicate `eventName` across contributions fails boot here (OutboxEventCollisionError — fail-closed).
   const bootOutboxCatalog = buildBootOutboxCatalog([
+    M15_OUTBOX_EVENTS,
     M23_OUTBOX_EVENTS,
     M24_OUTBOX_EVENTS,
     M25_OUTBOX_EVENTS,
@@ -624,6 +653,7 @@ if ((import.meta as { main?: boolean }).main) {
   // dispatcher's namespace check requires it). Each forwards the caller's open tx + envelope to the shared
   // publisher. M30/M33/M34 — M34's lifecycle outbox now binds too (#107; its emit is gated to the conformant
   // `m34.tenant.provisioned` event, so no mutation rolls back).
+  const m15OutboxPublisher = bindCallerModule(txOutboxPublisher, "m15");
   const m23OutboxPublisher = bindCallerModule(txOutboxPublisher, "m23");
   const m24OutboxPublisher = bindCallerModule(txOutboxPublisher, "m24");
   const m25OutboxPublisher = bindCallerModule(txOutboxPublisher, "m25");
@@ -842,6 +872,21 @@ if ((import.meta as { main?: boolean }).main) {
               m24CoverageResolver,
             ),
           });
+          // M15 (Discipline Care Plans) — mount the §4.1 route plugins over the Drizzle READ + WRITE
+          // services. Every read opens its own withOrgContext (RLS scopes each statement to app.org_id)
+          // and resolves the §7.8/§7.9 SUD + family-violence gates through M39's ConsentEvaluator seam
+          // BEFORE it queries, so a caller who is not cleared never has the row in the result set. Every
+          // mutation runs the pure §2.2/§2.3 machines and emits its §2.4 `m15.*` event through the
+          // catalog-validating tx publisher (callerModule `m15`) on the mutation's own transaction — which
+          // is how the D12 M22 plan-PDF render handshake (`m15.plan.version_signed`) reaches M22. The M27
+          // patient-care-HOURS denominator for the 418.78(e) ratio stays unbound (M15-F04): the ratio
+          // answers the honest `unavailable` badge, never a fabricated 0%.
+          mountM15Routes(app, {
+            readService: buildDrizzleM15ReadService(dbHandle.db),
+            writeService: buildDrizzleM15WriteService(dbHandle.db, {
+              outbox: m15OutboxPublisher,
+            }),
+          });
         }
       : undefined,
     registerModuleSeams: () =>
@@ -851,7 +896,7 @@ if ((import.meta as { main?: boolean }).main) {
           : undefined,
         db: dbHandle?.db,
       }),
-    registerModuleErasers: wireModuleErasers,
+    registerModuleErasers: () => wireModuleErasers({ db: dbHandle?.db }),
   });
   if (dbHandle && auth) {
     registerIdentityAuth(app, auth); // AUTH-T02: mount /api/auth/* (needs BETTER_AUTH_SECRET/URL in prod)
