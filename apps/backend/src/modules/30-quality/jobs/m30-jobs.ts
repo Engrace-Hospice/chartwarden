@@ -315,6 +315,12 @@ const OPERATIONAL_MEASURE_THRESHOLDS: Readonly<Record<string, ThresholdRule>> = 
     direction: "gte",
     label: "EVV compliance rate (platform default; state aggregators commonly require 95%)",
   },
+  // LOWER is better — a late entry is a documentation-integrity defect (§8 late-entry tiers).
+  late_encounter_entry_rate: {
+    value: 0.05,
+    direction: "lte",
+    label: "late encounter-entry rate (platform default; lower is better)",
+  },
 };
 
 /** The M17 on-time counts read, as this resolver uses it (the registry holds the seam opaquely). */
@@ -322,6 +328,14 @@ interface VisitOnTimeCountsView {
   getOnTimeVisitCounts(
     orgId: string,
     windowIso: { from: string; to: string },
+  ): Promise<{ numerator: number; denominator: number }>;
+}
+
+/** The M8 org-level late-entry tally, as this resolver uses it. */
+interface LateEntryCountsView {
+  lateEntryCountsForOrg(
+    orgId: string,
+    window: { from: string; to: string },
   ): Promise<{ numerator: number; denominator: number }>;
 }
 
@@ -334,7 +348,11 @@ interface EvvComplianceCountsView {
 }
 
 /** The measure codes {@link resolveOperationalMeasureInput} can shape (the routing predicate). */
-export const OPERATIONAL_BOUND_MEASURE_CODES = new Set(["visit_on_time_rate", "evv_compliance_rate"]);
+export const OPERATIONAL_BOUND_MEASURE_CODES = new Set([
+  "visit_on_time_rate",
+  "evv_compliance_rate",
+  "late_encounter_entry_rate",
+]);
 
 /**
  * Shape the live M17/M18 org-level count pairs into their calculator inputs. Aggregate-only — no patient
@@ -352,6 +370,7 @@ export async function resolveOperationalMeasureInput(
   seams: {
     readonly visitMetrics: VisitOnTimeCountsView;
     readonly evvMetrics: EvvComplianceCountsView;
+    readonly signedEncounters: LateEntryCountsView;
   },
 ): Promise<unknown> {
   const { organizationId, providerEntityId, periodStart, periodEnd } = request;
@@ -374,6 +393,10 @@ export async function resolveOperationalMeasureInput(
     case "evv_compliance_rate": {
       const c = await seams.evvMetrics.getComplianceCounts(organizationId, window);
       return { ...base, evvRequiredVisits: c.denominator, evvVerifiedVisits: c.numerator, threshold };
+    }
+    case "late_encounter_entry_rate": {
+      const c = await seams.signedEncounters.lateEntryCountsForOrg(organizationId, window);
+      return { ...base, signedEncounters: c.denominator, lateEntries: c.numerator, threshold };
     }
     default:
       return unboundWorkerPort(
@@ -570,6 +593,11 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
         "measureRecompute.hvldl.signedEncounters.renderPayloadFor",
         "the HVLDL resolver only calls signedEncountersForPatientSince; renderPayloadFor is unused on this path",
       ),
+    lateEntryCountsForOrg: () =>
+      unboundWorkerPort(
+        "measureRecompute.lateEntry.signedEncounters.lateEntryCountsForOrg",
+        "bind the M8 SignedEncountersReader (the org-level late-entry tally) via getSeam at the composition root",
+      ),
   };
 
   // ── m30.measure_recompute (withOrgContext) — §7.1 / V-8 ────────────────────────────────────────────────
@@ -606,6 +634,9 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
           return resolveOperationalMeasureInput(request, {
             visitMetrics: getSeam("VisitMetricsProvider") as never,
             evvMetrics: getSeam("EvvMetricsProvider") as never,
+            // The same M8 reader the HVLDL path uses — closed over from deps so an unbound boot throws
+            // lazily on RUN rather than at port-bundle construction.
+            signedEncounters,
           });
         return resolveHopeMeasureInput(request, seams);
       },

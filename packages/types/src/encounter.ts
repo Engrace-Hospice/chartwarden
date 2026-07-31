@@ -312,6 +312,17 @@ export interface SignedEncountersReader {
   ): Promise<ReadonlyArray<SignedEncounterDigest>>;
 
   renderPayloadFor(encounterId: EncounterId): Promise<EncounterRenderPayload>;
+
+  /**
+   * ORG-LEVEL late-entry population over a signing window — M30's `late_encounter_entry_rate` input.
+   * Returns the numerator/denominator PAIR, not a rate: M30's kernel suppresses a measure whose
+   * denominator is under the CMS reportable floor, and a rate has already discarded it. Aggregate counts
+   * only — no patient row crosses (D6).
+   */
+  lateEntryCountsForOrg(
+    organizationId: string,
+    window: { from: IsoInstant; to: IsoInstant },
+  ): Promise<{ readonly numerator: number; readonly denominator: number }>;
 }
 
 /**

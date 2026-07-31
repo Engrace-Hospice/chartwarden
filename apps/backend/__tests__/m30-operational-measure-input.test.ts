@@ -11,7 +11,11 @@
 // stores; the division at the seam boundary was the loss. These tests pin the shaping and, more
 // importantly, the empty-window behaviour the two answers disagree about.
 import { describe, expect, it } from "vitest";
-import { computeEvvComplianceRate, computeVisitOnTimeRate } from "@wardenx/quality";
+import {
+  computeEvvComplianceRate,
+  computeLateEncounterEntryRate,
+  computeVisitOnTimeRate,
+} from "@wardenx/quality";
 import { resolveOperationalMeasureInput } from "../src/modules/30-quality/jobs/m30-jobs";
 
 const REQUEST = (code: string) => ({
@@ -22,9 +26,14 @@ const REQUEST = (code: string) => ({
   periodEnd: "2026-04-01T00:00:00.000Z",
 });
 
-const seamsWith = (visit: { numerator: number; denominator: number }, evv = visit) => ({
+const seamsWith = (
+  visit: { numerator: number; denominator: number },
+  evv = visit,
+  lateEntry = visit,
+) => ({
   visitMetrics: { async getOnTimeVisitCounts() { return visit; } },
   evvMetrics: { async getComplianceCounts() { return evv; } },
+  signedEncounters: { async lateEntryCountsForOrg() { return lateEntry; } },
 });
 
 describe("M30 operational measure inputs — counts, not rates", () => {
@@ -73,9 +82,34 @@ describe("M30 operational measure inputs — counts, not rates", () => {
     expect(result.rate).toBeNull();
   });
 
+  it("shapes M8's org-level late-entry tally into the late_encounter_entry_rate input", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("late_encounter_entry_rate"),
+      seamsWith({ numerator: 0, denominator: 0 }, undefined, { numerator: 7, denominator: 300 }),
+    );
+    expect(input).toMatchObject({ signedEncounters: 300, lateEntries: 7 });
+
+    const result = computeLateEncounterEntryRate(input as never);
+    expect(result.denominator).toBe(300);
+    expect(result.rate).toBeCloseTo(7 / 300);
+  });
+
+  it("a window with no SIGNED encounters suppresses rather than scoring zero late entries", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("late_encounter_entry_rate"),
+      seamsWith({ numerator: 0, denominator: 0 }),
+    );
+    const result = computeLateEncounterEntryRate(input as never);
+    expect(result.bandColor).toBe("insufficient_n");
+    expect(result.rate).toBeNull();
+  });
+
   it("refuses a measure code it does not shape rather than computing on an empty input", async () => {
     await expect(
-      resolveOperationalMeasureInput(REQUEST("missed_dose_rate"), seamsWith({ numerator: 1, denominator: 2 })),
+      resolveOperationalMeasureInput(
+        REQUEST("missed_dose_rate"),
+        seamsWith({ numerator: 1, denominator: 2 }),
+      ),
     ).rejects.toThrow();
   });
 });

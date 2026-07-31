@@ -13,7 +13,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { EvvBracketState, SignedEncounterDigest } from "@wardenx/types";
-import { and, asc, eq, gte, inArray } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { type EncounterReaderStore, createInMemoryEncounterReaderStore } from "./store";
 
 const E = schema.encounters;
@@ -35,6 +35,45 @@ export function createDrizzleEncounterReaderStore(db: DbClient): EncounterReader
   const fallback = createInMemoryEncounterReaderStore().store;
   return {
     ...fallback,
+    /**
+     * The ORG-LEVEL late-entry tally M30's `late_encounter_entry_rate` reads. Denominator = encounters
+     * SIGNED inside the window; numerator = those whose `late_entry_tier` is anything but `normal`.
+     *
+     * Returns the PAIR, never a rate: M30's kernel suppresses a measure whose denominator is under the CMS
+     * reportable floor, so a quotient computed here would destroy the suppression signal. A window with no
+     * signed encounters yields 0/0 and the measure suppresses — it does not score "zero late entries".
+     */
+    lateEntryCountsForOrg(organizationId, window) {
+      return withOrgContext(
+        db,
+        { organizationId, userId: ENCOUNTER_READER_SYSTEM_USER_ID },
+        async (tx) => {
+          const rows = await tx
+            .select({
+              tier: E.lateEntryTier,
+              n: sql<number>`count(*)::int`,
+            })
+            .from(E)
+            .where(
+              and(
+                eq(E.organizationId, organizationId),
+                gte(E.signedAt, new Date(window.from)),
+                lt(E.signedAt, new Date(window.to)),
+              ),
+            )
+            .groupBy(E.lateEntryTier);
+
+          let denominator = 0;
+          let numerator = 0;
+          for (const r of rows) {
+            const n = Number(r.n) || 0;
+            denominator += n;
+            if (r.tier !== "normal") numerator += n;
+          }
+          return { numerator, denominator };
+        },
+      );
+    },
     signedEncountersForPatientSince(organizationId, patientId, since) {
       return withOrgContext(
         db,

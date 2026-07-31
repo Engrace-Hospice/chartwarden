@@ -63,6 +63,9 @@ export function createBillableEncounterReader(
 /** §4.7 SignedEncountersReader — signed-encounter digests (M14 IDG) + render payload (M22 PDF). */
 export function createSignedEncountersReader(store: EncounterReaderStore): SignedEncountersReader {
   return {
+    async lateEntryCountsForOrg(organizationId, window) {
+      return store.lateEntryCountsForOrg(organizationId, window);
+    },
     async signedEncountersForPatientSince(organizationId, patientId, since) {
       return store.signedEncountersForPatientSince(organizationId, patientId, since);
     },
