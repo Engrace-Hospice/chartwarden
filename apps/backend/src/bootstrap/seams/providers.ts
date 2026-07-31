@@ -710,6 +710,9 @@ export const medicationAdministrationProviderDenyStub: MedicationAdministrationP
   getMissedDoseSummary() {
     throw new NotImplementedError("MedicationAdministrationProvider");
   },
+  getMissedDoseCountsForOrg() {
+    throw new NotImplementedError("MedicationAdministrationProvider");
+  },
   getPortalAdministrationSummary() {
     throw new NotImplementedError("MedicationAdministrationProvider");
   },

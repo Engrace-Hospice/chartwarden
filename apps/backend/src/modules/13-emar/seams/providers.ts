@@ -98,6 +98,9 @@ export function createMedicationAdministrationProvider(
         intervalMinutes: minutesBetween(timeline.deployedAt, timeline.firstAdministrationAt),
       };
     },
+    async getMissedDoseCountsForOrg(organizationId, window) {
+      return store.missedDoseCountsForOrg(organizationId, window);
+    },
     async getMissedDoseSummary(_orgId, patientId, windowIso) {
       const rows = await store.doseScheduleRowsForPatient(patientId);
       // A cancelled dose (discharge / discontinuation) was never an expected administration → out of the

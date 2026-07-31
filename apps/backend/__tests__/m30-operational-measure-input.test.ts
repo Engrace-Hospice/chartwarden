@@ -15,6 +15,7 @@ import {
   computeCarePlan15DayAdherence,
   computeEvvComplianceRate,
   computeLateEncounterEntryRate,
+  computeMissedDoseRate,
   computeVerbalOrderSignatureOnTime,
   computeVisitOnTimeRate,
 } from "@wardenx/quality";
@@ -38,6 +39,7 @@ const seamsWith = (
   signedEncounters: { async lateEntryCountsForOrg() { return lateEntry; } },
   orders: { async getVerbalTimelinessCountsForOrg() { return lateEntry; } },
   carePlan: { async fifteenDayCycleCountsForOrg() { return lateEntry; } },
+  administrations: { async getMissedDoseCountsForOrg() { return lateEntry; } },
 });
 
 describe("M30 operational measure inputs — counts, not rates", () => {
@@ -141,10 +143,19 @@ describe("M30 operational measure inputs — counts, not rates", () => {
     }
   });
 
+  it("shapes M13's org-level missed-dose tally into its calculator input", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("missed_dose_rate"),
+      seamsWith({ numerator: 0, denominator: 0 }, undefined, { numerator: 9, denominator: 1200 }),
+    );
+    expect(input).toMatchObject({ scheduledDoses: 1200, missedDoses: 9 });
+    expect(computeMissedDoseRate(input as never).rate).toBeCloseTo(9 / 1200);
+  });
+
   it("refuses a measure code it does not shape rather than computing on an empty input", async () => {
     await expect(
       resolveOperationalMeasureInput(
-        REQUEST("missed_dose_rate"),
+        REQUEST("prn_effectiveness_documented_rate"),
         seamsWith({ numerator: 1, denominator: 2 }),
       ),
     ).rejects.toThrow();

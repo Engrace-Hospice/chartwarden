@@ -454,6 +454,15 @@ export interface MedicationAdministrationProvider {
     firstAdministrationAt: string | null;
     intervalMinutes: number | null;
   } | null>;
+  /**
+   * ORG-LEVEL missed-dose population over a due-at window — M30's `missed_dose_rate` input. Returns the
+   * numerator/denominator PAIR, not a rate: M30's kernel suppresses a measure whose denominator is under
+   * the CMS reportable floor. Aggregate only — no patient row crosses (D6).
+   */
+  getMissedDoseCountsForOrg(
+    orgId: string,
+    window: { from: string; to: string },
+  ): Promise<{ readonly numerator: number; readonly denominator: number }>;
   getMissedDoseSummary(
     orgId: string,
     patientId: string,
