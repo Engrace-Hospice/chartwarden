@@ -19,6 +19,7 @@ import type {
   MswRiskFactorReader,
   PatientReader,
   ScaleSeriesProvider,
+  VolunteerComplianceProvider,
 } from "@wardenx/types";
 import { getSeam } from "../../../bootstrap/index";
 
@@ -51,4 +52,15 @@ export function getMswRiskFactorReader(): MswRiskFactorReader {
  *  `suddenUnexpectedDeath`. A slope needs two comparable captures; anything less is `unknown` (§7.17). */
 export function getScaleSeriesProvider(): ScaleSeriesProvider {
   return getSeam("ScaleSeriesProvider");
+}
+
+/**
+ * M16-T06 CONSUMES M15's §4.3 VolunteerComplianceProvider — the 42 CFR §418.78 gate set for a bereavement
+ * VOLUNTEER. §4.8 makes "volunteer_gates_satisfied" a clause of `discipline_can_provide_bereavement`, and
+ * this is the ONE implementation of that fact on the platform: M16 asks M15 rather than deriving gates of
+ * its own, so a volunteer whose TB screening lapsed disappears from the bereavement roster at the same
+ * instant they disappear from M17's schedule. Fail-CLOSED — an unbound/erroring seam denies the volunteer.
+ */
+export function getVolunteerComplianceProvider(): VolunteerComplianceProvider {
+  return getSeam("VolunteerComplianceProvider");
 }

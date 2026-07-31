@@ -55,6 +55,7 @@ export {
   getMswRiskFactorReader,
   getPatientReader,
   getScaleSeriesProvider,
+  getVolunteerComplianceProvider,
 } from "./consumed";
 export {
   type BereavementAugmentedScoreDraft,

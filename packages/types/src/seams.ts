@@ -760,6 +760,23 @@ export type DataClass =
   // NEVER touched — they are a volunteer's own credential + hours record, not the patient's (§8.5).
   // `subjectId` is the patient being destroyed; disjoint from M7's `care_plan_record` (the shared IPOC).
   | "discipline_plan_record"
+  // M16 (Bereavement) per-patient bereavement record: the survivor-facing subtree M16 owns for one
+  // DECEDENT — the `bereaved_contact` roster, the `bereavement_outreach` touchpoints, the monthly-
+  // partitioned `bereavement_contact_log` rows, the immutable `bereavement_risk_score` ledger, the
+  // `bereavement_opt_out` and `bereavement_anniversary_reminder` rows, and the `bereavement_plan_closure`
+  // record, all hung off the patient's single `bereavement_plan` root. Erased by M16's registered eraser
+  // (M16-T06) under an M4 destruction certificate (§8.5): the PHI-bearing columns are SHREDDED first — the
+  // three `bereaved_contact` channel ciphers, `bereavement_contact_log.contact_notes_cipher`, the risk
+  // ledger's `risk_factors_jsonb` + `augmented_narrative_redacted`, and the four redacted narrative columns
+  // — and only then are the rows removed, so the PHI is gone even if a later delete step fails. The
+  // `bereavement_plan` root is left as a TOMBSTONE for FK referential integrity (the M5/M6/M7/M8/M15
+  // root-tombstone pattern) and the `bereavement_plan_closure` row SURVIVES with its narrative shredded,
+  // because the §7.15 survey reconstruction has to be able to say a program existed and why it ended even
+  // after the survivors' details are destroyed. The ORG-scoped
+  // `tenant_bereavement_external_source_gate_override` is tenant configuration, not patient data, and is
+  // NEVER touched. `subjectId` is the DECEDENT whose death opened the program — disjoint from M7's
+  // `care_plan_record` and M15's `discipline_plan_record`.
+  | "bereavement_record"
   // M17 (Scheduling & Route Optimization) per-patient schedule record: the patient-scoped scheduling rows
   // M17 owns — the partitioned `visit` rows (and their cascaded `visit_state_history` transitions),
   // `recurring_visit` policies, `visit_proposal` rows, and the `route_segment` legs joinable via a visit

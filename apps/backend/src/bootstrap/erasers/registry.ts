@@ -114,6 +114,17 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // volunteer_hour_ledger / volunteer_hour_entry rows are a volunteer's own record, not the patient's, and
   // stay untouched. The `subjectId` is the patient.
   "discipline_plan_record",
+  // M16-T06: a DECEDENT's bereavement record (bereaved_contact / bereavement_outreach /
+  // bereavement_contact_log / bereavement_risk_score / bereavement_opt_out /
+  // bereavement_anniversary_reminder). M16 registers the REAL eraser via the composition-root hook over
+  // this deny-stub — under an M4 destruction certificate (§8.5) it SHREDS the PHI-bearing columns first
+  // (the three `bereaved_contact` channel ciphers, `contact_notes_cipher`, the risk `risk_factors_jsonb` +
+  // `augmented_narrative_redacted`, and the four redacted narrative columns), then deletes the subtree and
+  // tombstones the `bereavement_plan` root for FK integrity. The `bereavement_plan_closure` row SURVIVES
+  // with its narrative shredded (§7.15 survey reconstruction), and the ORG-scoped
+  // `tenant_bereavement_external_source_gate_override` is tenant config that stays untouched. The
+  // `subjectId` is the decedent whose death opened the program.
+  "bereavement_record",
   // M17-T02 (this task) registers the data-class contract; the Phase-0 deny-stub (wireErasers) stands until
   // M17-T08 registers the REAL eraser via the composition-root hook. Under an M4 destruction certificate the
   // real eraser row-deletes the patient's partitioned `visit` rows (+ cascaded `visit_state_history`),

@@ -3800,6 +3800,936 @@
         }
       }
     },
+    "/api/v1/bereavement/contacts/{contactId}": {
+      "patch": {
+        "operationId": "patchApiV1BereavementContactsByContactId",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/contacts/{contactId}/confirm": {
+      "post": {
+        "operationId": "postApiV1BereavementContactsByContactIdConfirm",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/contacts/{contactId}/flag-complicated-grief": {
+      "post": {
+        "operationId": "postApiV1BereavementContactsByContactIdFlagcomplicatedgrief",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/contacts/{contactId}/log-direct": {
+      "post": {
+        "operationId": "postApiV1BereavementContactsByContactIdLogdirect",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/contacts/{contactId}/mark-deceased": {
+      "post": {
+        "operationId": "postApiV1BereavementContactsByContactIdMarkdeceased",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/contacts/{contactId}/mark-unreachable": {
+      "post": {
+        "operationId": "postApiV1BereavementContactsByContactIdMarkunreachable",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/contacts/{contactId}/opt-out": {
+      "post": {
+        "operationId": "postApiV1BereavementContactsByContactIdOptout",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/contacts/{contactId}/refer-external": {
+      "post": {
+        "operationId": "postApiV1BereavementContactsByContactIdReferexternal",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/contacts/{contactId}/rescind-opt-out": {
+      "post": {
+        "operationId": "postApiV1BereavementContactsByContactIdRescindoptout",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "contactId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/dashboard/counselor": {
+      "get": {
+        "operationId": "getApiV1BereavementDashboardCounselor",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/dashboard/supervisor": {
+      "get": {
+        "operationId": "getApiV1BereavementDashboardSupervisor",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/outreach/{outreachId}/cancel": {
+      "post": {
+        "operationId": "postApiV1BereavementOutreachByOutreachIdCancel",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "outreachId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/outreach/{outreachId}/complete": {
+      "post": {
+        "operationId": "postApiV1BereavementOutreachByOutreachIdComplete",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "outreachId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/outreach/{outreachId}/decline": {
+      "post": {
+        "operationId": "postApiV1BereavementOutreachByOutreachIdDecline",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "outreachId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/outreach/{outreachId}/late-attempt": {
+      "post": {
+        "operationId": "postApiV1BereavementOutreachByOutreachIdLateattempt",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "outreachId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/outreach/{outreachId}/no-response": {
+      "post": {
+        "operationId": "postApiV1BereavementOutreachByOutreachIdNoresponse",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "outreachId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/outreach/{outreachId}/start": {
+      "post": {
+        "operationId": "postApiV1BereavementOutreachByOutreachIdStart",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "outreachId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/plans": {
+      "get": {
+        "operationId": "getApiV1BereavementPlans",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/plans/{planId}": {
+      "get": {
+        "operationId": "getApiV1BereavementPlansByPlanId",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/plans/{planId}/assign-counselor": {
+      "post": {
+        "operationId": "postApiV1BereavementPlansByPlanIdAssigncounselor",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/plans/{planId}/assign-volunteer": {
+      "post": {
+        "operationId": "postApiV1BereavementPlansByPlanIdAssignvolunteer",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/plans/{planId}/close-early": {
+      "post": {
+        "operationId": "postApiV1BereavementPlansByPlanIdCloseearly",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/plans/{planId}/closure": {
+      "get": {
+        "operationId": "getApiV1BereavementPlansByPlanIdClosure",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/plans/{planId}/contacts": {
+      "post": {
+        "operationId": "postApiV1BereavementPlansByPlanIdContacts",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/plans/{planId}/cosign-close": {
+      "post": {
+        "operationId": "postApiV1BereavementPlansByPlanIdCosignclose",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/plans/{planId}/initiate-contact": {
+      "post": {
+        "operationId": "postApiV1BereavementPlansByPlanIdInitiatecontact",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/plans/{planId}/outreach": {
+      "get": {
+        "operationId": "getApiV1BereavementPlansByPlanIdOutreach",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/plans/{planId}/pause": {
+      "post": {
+        "operationId": "postApiV1BereavementPlansByPlanIdPause",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/plans/{planId}/recompute-risk": {
+      "post": {
+        "operationId": "postApiV1BereavementPlansByPlanIdRecomputerisk",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/plans/{planId}/regenerate-schedule": {
+      "post": {
+        "operationId": "postApiV1BereavementPlansByPlanIdRegenerateschedule",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/plans/{planId}/resume": {
+      "post": {
+        "operationId": "postApiV1BereavementPlansByPlanIdResume",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/plans/{planId}/risk-scores": {
+      "get": {
+        "operationId": "getApiV1BereavementPlansByPlanIdRiskscores",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/bereavement/plans/{planId}/seed-roster-and-schedule": {
+      "post": {
+        "operationId": "postApiV1BereavementPlansByPlanIdSeedrosterandschedule",
+        "tags": [
+          "16-bereavement"
+        ],
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/billing/ar-dashboard": {
       "get": {
         "operationId": "getApiV1BillingArdashboard",

@@ -8,6 +8,7 @@ import { audit } from "@wardenx/audit";
 import {
   createDbActorEnrichmentReader,
   createDbAdminMembershipReader,
+  createDbEffectivePermissionStore,
   createDbSessionContextStore,
   createIdentityAuth,
   getIdentitySession,
@@ -80,7 +81,18 @@ import {
   registerDisciplinePlanErasers,
   registerDisciplinePlanSeams,
 } from "./modules/15-discipline-care-plans/index";
-import { registerBereavementSeams } from "./modules/16-bereavement/index";
+import {
+  M16_OUTBOX_EVENTS,
+  buildDrizzleBereavementAbacResolver,
+  buildDrizzleM16ReadService,
+  buildDrizzleM16WriteService,
+  createDrizzleBereavementEraseStore,
+  denyStubBereavementAbacResolver,
+  mountM16Routes,
+  registerBereavementAbacPredicates,
+  registerBereavementErasers,
+  registerBereavementSeams,
+} from "./modules/16-bereavement/index";
 import { registerSchedulingSeams } from "./modules/17-scheduling/index";
 import { registerEvvSeams } from "./modules/18-evv/index";
 import { registerDocumentErasers, registerDocumentSeams } from "./modules/22-documents/index";
@@ -398,6 +410,34 @@ export function wireModuleSeams(
   // so today's reads answer empty/null — never a fabricated pass: `isInBereavementWindow` still denies
   // fail-CLOSED on an unreadable plan, which is what M36 and M3's `bereavement_window` predicate read.
   registerBereavementSeams();
+  // M16-T06 — the four §4.8 ABAC predicates M16 OWNS (bereavement_window / discipline_can_provide_bereavement
+  // / org_scope_bereavement_oversight / portal_self_service) into M3's named-predicate registry. §4.8 calls
+  // the last two "reused / M3 §4.2 family", but nothing on the platform registers either name, and an
+  // UNREGISTERED predicate denies exactly like a typo does — so M16 owns them. Their subject facts load
+  // through the Drizzle resolver when a DB client is present; WITHOUT one the deny-stub resolver stands, so
+  // every predicate denies rather than silently passing (§8.7 fail-CLOSED). `roleGrants` is M3's own
+  // effective-permission store, which is the platform's ONE discipline-derivation input (`RoleGrant.roleKey`)
+  // — M16 reads it through that port rather than importing M3's `role` / `membership_role` schema.
+  registerBereavementAbacPredicates({
+    resolver: deps.db
+      ? buildDrizzleBereavementAbacResolver(deps.db, {
+          roleGrants: createDbEffectivePermissionStore(deps.db),
+        })
+      : denyStubBereavementAbacResolver,
+    // §4.8's volunteer clause resolves through M15's published `VolunteerComplianceProvider` — the ONE
+    // 42 CFR §418.78 gate implementation on the platform. Resolved lazily per call, fail-CLOSED on throw.
+    volunteerGatesSatisfied: async ({ organizationId, volunteerMembershipId }) => {
+      try {
+        const status = await getSeam("VolunteerComplianceProvider").effectiveStatusFor(
+          organizationId as never,
+          volunteerMembershipId as never,
+        );
+        return status.isActive === true;
+      } catch {
+        return false;
+      }
+    },
+  });
   // M17 — the four §4.3 owned READ seams (VisitReader — the visit read path M8 (encounter-authoring context,
   // which CLOSES M8's visit-seeding inert consumer M8 D9) / M18 (EVV geofence target) / M14 (IDG since-meeting)
   // consume — + VisitAssignmentReader — the assignment read path M5 (the §4.5 D11 caseload-contribution
@@ -607,6 +647,15 @@ export function wireModuleErasers(deps: { db?: DbClient } = {}): void {
   registerDisciplinePlanErasers(
     deps.db ? { store: createDrizzleDisciplinePlanEraseStore(deps.db) } : {},
   );
+  // M16-T06 — `bereavement_record` (per-DECEDENT destruction-cert callback; shreds the contact channel
+  // ciphers + the contact-log notes + the risk `risk_factors_jsonb` FIRST, deletes the survivor subtree,
+  // tombstones the plan root for FK integrity. The `bereavement_plan_closure` row SURVIVES with its
+  // narrative shredded — §7.15 survey reconstruction — and the org-scoped external-source gate override is
+  // tenant config that is never touched, §8.5). The Drizzle store binds when a DB client is present;
+  // without one the slice's in-memory store stands.
+  registerBereavementErasers(
+    deps.db ? { store: createDrizzleBereavementEraseStore(deps.db) } : {},
+  );
   registerIdgErasers(); // M14-T07 — `idg_record` (patient-scoped packet/decision/action-item/agenda destruction-cert callback; meetings/minutes survive; §8.4)
   registerDocumentErasers(); // M22-T10 — `documents` (document/intake-subtree destruction-cert callback; DEK crypto-erase §8.6; legal-hold + Part 2 skip; D9/D12)
   registerSaasTenantPlatformErasers(); // M34 — `saas_tenant_platform_class` (tenant-offboarding control-plane cleanup; subjectId=org; D6/§8.4)
@@ -651,6 +700,7 @@ if ((import.meta as { main?: boolean }).main) {
   // A duplicate `eventName` across contributions fails boot here (OutboxEventCollisionError — fail-closed).
   const bootOutboxCatalog = buildBootOutboxCatalog([
     M15_OUTBOX_EVENTS,
+    M16_OUTBOX_EVENTS,
     M23_OUTBOX_EVENTS,
     M24_OUTBOX_EVENTS,
     M25_OUTBOX_EVENTS,
@@ -666,6 +716,7 @@ if ((import.meta as { main?: boolean }).main) {
   // publisher. M30/M33/M34 — M34's lifecycle outbox now binds too (#107; its emit is gated to the conformant
   // `m34.tenant.provisioned` event, so no mutation rolls back).
   const m15OutboxPublisher = bindCallerModule(txOutboxPublisher, "m15");
+  const m16OutboxPublisher = bindCallerModule(txOutboxPublisher, "m16");
   const m23OutboxPublisher = bindCallerModule(txOutboxPublisher, "m23");
   const m24OutboxPublisher = bindCallerModule(txOutboxPublisher, "m24");
   const m25OutboxPublisher = bindCallerModule(txOutboxPublisher, "m25");
@@ -897,6 +948,21 @@ if ((import.meta as { main?: boolean }).main) {
             readService: buildDrizzleM15ReadService(dbHandle.db),
             writeService: buildDrizzleM15WriteService(dbHandle.db, {
               outbox: m15OutboxPublisher,
+            }),
+          });
+          // M16 (Bereavement) — mount the §4.1 route plugins over the Drizzle READ + WRITE services. Every
+          // read opens its own withOrgContext (RLS scopes each statement to app.org_id) and resolves the
+          // §7.13 42 CFR Part 2 gate through M39's ConsentEvaluator seam; every mutation runs the pure
+          // §2.2–§2.4 machines and emits its §4.4 `m16.*` event through the catalog-validating tx publisher
+          // (callerModule `m16`) on the mutation's own transaction — which is how the D14 M22
+          // sympathy-letter render handshake (`m16.bereavement.outreach_artifact_requested`) reaches M22.
+          // The write service takes the READ service so every plan-shaped mutation answers with the SAME
+          // projection route 2 serves (one DTO, one disclosure gate, no drift).
+          const m16ReadService = buildDrizzleM16ReadService(dbHandle.db);
+          mountM16Routes(app, {
+            readService: m16ReadService,
+            writeService: buildDrizzleM16WriteService(dbHandle.db, m16ReadService, {
+              outbox: m16OutboxPublisher,
             }),
           });
         }

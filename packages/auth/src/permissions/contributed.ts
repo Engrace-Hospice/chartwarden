@@ -3282,6 +3282,205 @@ export const M15_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M15 contributed permission keys (twenty). */
 export type M15ContributedPermissionKey = keyof typeof M15_CONTRIBUTED_PERMISSIONS;
 
+/**
+ * M16-T06 — the twenty-nine §4.7 Bereavement permission keys Module 16 registers into M3's catalog.
+ *
+ * `abac` names the DEFAULT predicate the M3 catalog records for the key; the §4.1 route table is what
+ * actually binds a guard, and it may bind a different (or no) predicate per route. Four of the five §4.8
+ * predicate names are M16-OWNED and registered by `registerBereavementAbacPredicates`:
+ * `bereavement_window`, `discipline_can_provide_bereavement`, `org_scope_bereavement_oversight` and
+ * `portal_self_service`. §4.8 calls the last two "reused / M3 §4.2 family", but no module on the platform
+ * registers either name today — an UNREGISTERED predicate denies exactly like a typo, so M16 registers
+ * them rather than binding a name nothing declares.
+ *
+ * `volunteer_gates_satisfied` is deliberately NOT a separate key here: §4.8 folds it INTO
+ * `discipline_can_provide_bereavement` for the volunteer discipline, and M16 resolves it through M15's
+ * published `VolunteerComplianceProvider` seam so there is one 418.78 gate implementation, not two.
+ */
+export const M16_CONTRIBUTED_PERMISSIONS = {
+  "bereavement.plan.read": {
+    resource: "bereavement_plan",
+    action: "read",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.plan.assign_counselor": {
+    resource: "bereavement_plan",
+    action: "assign_counselor",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  "bereavement.plan.assign_volunteer": {
+    resource: "bereavement_plan",
+    action: "assign_volunteer",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  "bereavement.plan.activate": {
+    resource: "bereavement_plan",
+    action: "activate",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  "bereavement.plan.pause": {
+    resource: "bereavement_plan",
+    action: "pause",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.plan.resume": {
+    resource: "bereavement_plan",
+    action: "resume",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.plan.close_early": {
+    resource: "bereavement_plan",
+    action: "close_early",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.plan.close_cosign": {
+    resource: "bereavement_plan",
+    action: "close_cosign",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  "bereavement.plan.regenerate_schedule": {
+    resource: "bereavement_plan",
+    action: "regenerate_schedule",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.contact.create": {
+    resource: "bereaved_contact",
+    action: "create",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.contact.update": {
+    resource: "bereaved_contact",
+    action: "update",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.contact.confirm": {
+    resource: "bereaved_contact",
+    action: "confirm",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.contact.opt_out": {
+    resource: "bereaved_contact",
+    action: "opt_out",
+    category: "clinical",
+    abac: "portal_self_service",
+  },
+  "bereavement.contact.rescind_opt_out": {
+    resource: "bereaved_contact",
+    action: "rescind_opt_out",
+    category: "clinical",
+    abac: "portal_self_service",
+  },
+  "bereavement.contact.mark_deceased": {
+    resource: "bereaved_contact",
+    action: "mark_deceased",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.contact.mark_unreachable": {
+    resource: "bereaved_contact",
+    action: "mark_unreachable",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.contact.flag_complicated_grief": {
+    resource: "bereaved_contact",
+    action: "flag_complicated_grief",
+    category: "clinical",
+    abac: "discipline_can_provide_bereavement",
+  },
+  "bereavement.outreach.read": {
+    resource: "bereavement_outreach",
+    action: "read",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.outreach.start": {
+    resource: "bereavement_outreach",
+    action: "start",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.outreach.complete": {
+    resource: "bereavement_outreach",
+    action: "complete",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.outreach.cancel": {
+    resource: "bereavement_outreach",
+    action: "cancel",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.outreach.late_attempt": {
+    resource: "bereavement_outreach",
+    action: "late_attempt",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.contact_log.write": {
+    resource: "bereavement_contact_log",
+    action: "write",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.risk.read": {
+    resource: "bereavement_risk_score",
+    action: "read",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.risk.recompute": {
+    resource: "bereavement_risk_score",
+    action: "recompute",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.referral.create": {
+    resource: "bereavement_contact_log",
+    action: "refer_external",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.dashboard.counselor": {
+    resource: "bereavement_plan",
+    action: "dashboard_counselor",
+    category: "clinical",
+    abac: "discipline_can_provide_bereavement",
+  },
+  "bereavement.dashboard.supervisor": {
+    resource: "bereavement_plan",
+    action: "dashboard_supervisor",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  // §4.1 route 33 — the D18-gated counselor first contact. §4.1 gates it on `bereavement.outreach.start`,
+  // but the gate REFUSAL is the whole point of the route, so it carries its own key: a tenant that wants a
+  // coordinator (and not every outreach-capable worker) to make first contact on an external-source plan
+  // can grant one without the other. The route binds BOTH keys, so the §4.1 contract is not loosened.
+  "bereavement.plan.initiate_contact": {
+    resource: "bereavement_plan",
+    action: "initiate_contact",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+} satisfies Record<string, PermissionDef>;
+
+/** Union of the M16 contributed permission keys (twenty-nine). */
+export type M16ContributedPermissionKey = keyof typeof M16_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -3429,6 +3628,11 @@ export function m15ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M15_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M16 contributed keys into `permission`-table mirror rows (M16 §4.7). */
+export function m16ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M16_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -3465,5 +3669,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m27ContributedPermissionMirrorRows(),
     ...m24ContributedPermissionMirrorRows(),
     ...m15ContributedPermissionMirrorRows(),
+    ...m16ContributedPermissionMirrorRows(),
   ];
 }
