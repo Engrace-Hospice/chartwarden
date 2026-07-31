@@ -24,7 +24,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M12 DoseSpot Integration | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | M13 eMAR & Med Administration | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 | M14 IDG | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
-| M15 Discipline Care Plans | 🟡 Partial | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | — | ❌ |
+| M15 Discipline Care Plans | 🟡 Partial | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | — | ❌ |
 | M16 Bereavement | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — | ❌ |
 | M17 Scheduling & Route Optimization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | M18 EVV | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |

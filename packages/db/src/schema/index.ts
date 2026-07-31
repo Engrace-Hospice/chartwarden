@@ -557,3 +557,18 @@ export * from "./cap/index";
 // Enums migration 0092; non-partitioned tables 0093; PE-partitioned 0094; org-partitioned 0095; RLS/grants
 // 0096; M4 write-audit + service-date-within-claim trigger 0097.
 export * from "./medicaid-billing/index";
+
+// M15 Discipline Care Plans: 11 owned tables (§3.3) — discipline_care_plan (the one-per-(admission, kind)
+// ROOT for the four CoP discipline plans) + discipline_care_plan_version/_signature (the §2.2.2 M7-verbatim
+// version chain, snapshot sealed at in_review, §3.5 D11 required-signer quorum) + discipline_goal/
+// discipline_intervention/discipline_assessment (the authored content; goals hang off M7 problems by
+// LOGICAL uuid) + aide_supervisory_visit (the 418.76(h) 14-day RN attestation ledger) + volunteer_assignment
+// + volunteer_compliance_gate (the 418.78(b)/(d) per-volunteer postures M17's deny-stub is waiting on) +
+// volunteer_hour_ledger/_entry (the 418.78(e) 5% ratio NUMERATOR; the denominator is M27's cost basis, read
+// through a seam, never stored). All 11 org-scoped (organization_id NOT NULL → canonical app.org_id RLS);
+// the eight patient-bearing tables also carry provider_entity_id + location_id NOT NULL (M15-F05) so the
+// §4.3 compliance seams roll up per PE/location without joining through M5/M6. NOTHING is partitioned
+// (M15-F06 / ADR-0022 D1.1 — the partial unique indexes win over a partition key at trivial volumes).
+// Tables + enums migration 0098; RLS/grants + M4 write-audit (incl. the nested `data`/`state_snapshot`
+// jsonb re-scrub) 0099.
+export * from "./discipline-plans/index";
