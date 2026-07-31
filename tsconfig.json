@@ -48,6 +48,9 @@
       "path": "./packages/db"
     },
     {
+      "path": "./packages/discipline-plans"
+    },
+    {
       "path": "./packages/domain"
     },
     {

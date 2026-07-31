@@ -2110,3 +2110,133 @@ export const tenantExportJobPurpose = pgEnum("tenant_export_job_purpose", [
   "compliance_audit",
   "surveyor_request",
 ]);
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// Module 15 — Discipline Care Plans (§3.2 · M15-T01). The four CoP-driven discipline plan kinds
+// (418.76 Aide POC · 418.64 MSW + Spiritual · 418.78 Volunteer) with the D2 hybrid version/signature
+// lifecycle, the D6 discipline-assessment vocabulary, the 418.76(h)(2) supervisory attestation mode, and
+// the 418.78(b)/(e) volunteer gate + hour-ledger vocabularies. The eleven Drizzle tables land in M15-T02
+// (`packages/db/src/schema/discipline-plans/`); the leaf mirrors live in `@wardenx/types`
+// (`discipline-plans.ts`) so M14/M16/M17/M22/M27/M28/M30/M33 read them with no `dependsOn` edge.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** `discipline_plan_kind` — the D1 shared-row discriminator; selects which per-kind TypeBox validates
+ *  `discipline_care_plan.data` and which §3.5 `RequiredSignerSet` the version's quorum is built from. */
+export const disciplinePlanKind = pgEnum("discipline_plan_kind", [
+  "aide_poc",
+  "msw_plan",
+  "spiritual_plan",
+  "volunteer_plan",
+]);
+
+/** `discipline_plan_status` — the §2.2.1 plan-root lifecycle. `draft` at bootstrap (`m6.admission.activated`
+ *  for the first three kinds; first volunteer assignment for `volunteer_plan`), `active` on the first signed
+ *  version, `draft_revising` while an IDG-opened next version is in flight, `discharged` terminal. */
+export const disciplinePlanStatus = pgEnum("discipline_plan_status", [
+  "draft",
+  "active",
+  "draft_revising",
+  "discharged",
+]);
+
+/** `discipline_plan_version_status` — the §2.2.2 / D2 hybrid-versioning lifecycle (M7 D1 verbatim). The
+ *  `state_snapshot` is SEALED at the `in_review` transition; an edit-after-snapshot or any signer rejection
+ *  returns the version to `draft` and clears prior signatures. */
+export const disciplinePlanVersionStatus = pgEnum("discipline_plan_version_status", [
+  "draft",
+  "in_review",
+  "signed",
+  "superseded",
+]);
+
+/** `discipline_plan_version_kind` — mirrors M7's version taxonomy. The `discharge` version is auto-built
+ *  and auto-signed by the system actor on `m6.admission.discharged` to seal the terminal state. */
+export const disciplinePlanVersionKind = pgEnum("discipline_plan_version_kind", [
+  "initial",
+  "idg_review",
+  "interim_revision",
+  "discharge",
+]);
+
+/** `discipline_goal_source` — D5 / M7 D6 verbatim attribution. A `agent_stated` goal requires a non-null
+ *  `acting_consent_id` naming an active M39 `dpoa_healthcare` consent; `original_text` is immutable for
+ *  every non-`clinical` source. */
+export const disciplineGoalSource = pgEnum("discipline_goal_source", [
+  "clinical",
+  "patient_stated",
+  "family_stated",
+  "agent_stated",
+]);
+
+/** `discipline_goal_status` — the §2.2.3 goal lifecycle. */
+export const disciplineGoalStatus = pgEnum("discipline_goal_status", [
+  "not_started",
+  "in_progress",
+  "met",
+  "not_met",
+  "revised",
+  "discontinued",
+]);
+
+/** `discipline_intervention_status` — the §2.2.3 intervention lifecycle; `discontinued` requires a reason. */
+export const disciplineInterventionStatus = pgEnum("discipline_intervention_status", [
+  "active",
+  "discontinued",
+  "completed",
+]);
+
+/** `discipline_assessment_kind` — the D6 per-discipline assessment taxonomy. Explicitly DISTINCT from M9's
+ *  scored clinical scales (PPS/FAST/PAINAD/ESAS-r); these are domain-narrative structured forms. */
+export const disciplineAssessmentKind = pgEnum("discipline_assessment_kind", [
+  "msw_psychosocial",
+  "chaplain_spiritual",
+  "aide_environmental",
+  "volunteer_relationship",
+]);
+
+/** `discipline_assessment_status` — append-only correction-of-record mirroring M9 D9 (§2.2.3). */
+export const disciplineAssessmentStatus = pgEnum("discipline_assessment_status", [
+  "draft",
+  "signed",
+  "amended",
+]);
+
+/** `aide_supervisory_attestation_mode` — 42 CFR §418.76(h)(2): the RN supervisory contact is either made
+ *  with the aide present or as an observation of the aide's work at the patient's home. */
+export const aideSupervisoryAttestationMode = pgEnum("aide_supervisory_attestation_mode", [
+  "aide_present",
+  "observation_of_work",
+]);
+
+/** `volunteer_gate_kind` — the 42 CFR §418.78(b)(1)/(d) per-volunteer compliance postures M17's
+ *  pre-schedule gate reads through `VolunteerComplianceProvider` (D7). */
+export const volunteerGateKind = pgEnum("volunteer_gate_kind", [
+  "background_check",
+  "tb_screening",
+  "confidentiality_agreement",
+  "initial_training",
+  "annual_ce",
+  "assignment_specific_training",
+  "vaccination_status",
+]);
+
+/** `volunteer_gate_status` — §2.2.6. `expiring_soon` is derived nightly 30 days ahead of `valid_until`; it
+ *  drives the 30/14/7/1-day M36 alerts but does NOT block scheduling. `expired`/`revoked`/`not_yet_satisfied`
+ *  all fail the gate (fail-CLOSED per M15-F11). */
+export const volunteerGateStatus = pgEnum("volunteer_gate_status", [
+  "satisfied",
+  "expiring_soon",
+  "expired",
+  "revoked",
+  "not_yet_satisfied",
+]);
+
+/** `volunteer_hour_entry_source` — the §2.2.7 ledger numerator sources for the 42 CFR §418.78(e) ratio.
+ *  M15-F04: administrative volunteer time gets its OWN typed source (`volunteer_admin_hours`) rather than
+ *  being smuggled through `manual_adjustment`; `manual_adjustment` survives as the audited correction path
+ *  behind the `volunteer_compliance.adjust_hours` permission (§4.4) and carries `adjustment_reason`. */
+export const volunteerHourEntrySource = pgEnum("volunteer_hour_entry_source", [
+  "encounter",
+  "volunteer_admin_hours",
+  "manual_adjustment",
+]);

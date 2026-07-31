@@ -474,7 +474,11 @@ exports.MODULES = [
   {
     id: 15,
     name: "Discipline Care Plans",
-    codePaths: ["apps/backend/src/modules/15-discipline-care-plans"],
+    codePaths: [
+      "packages/discipline-plans",
+      "apps/backend/src/modules/15-discipline-care-plans",
+      "apps/web/src/modules/15-discipline-care-plans",
+    ], // +packages/discipline-plans: §3.1 M15-owned feature pkg (cadence/signer/volunteer-ratio policy → per-kind TypeBox + lifecycle), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M15-T07
     dependsOn: [7, 8],
     ownedTables: [
       "aide_supervisory_visit",

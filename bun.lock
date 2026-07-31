@@ -156,6 +156,13 @@
         "@types/pg": "^8.11.10",
       },
     },
+    "packages/discipline-plans": {
+      "name": "@wardenx/discipline-plans",
+      "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
+    },
     "packages/domain": {
       "name": "@wardenx/domain",
       "version": "0.0.0",
@@ -862,6 +869,8 @@
     "@wardenx/cost-report": ["@wardenx/cost-report@workspace:packages/cost-report"],
 
     "@wardenx/db": ["@wardenx/db@workspace:packages/db"],
+
+    "@wardenx/discipline-plans": ["@wardenx/discipline-plans@workspace:packages/discipline-plans"],
 
     "@wardenx/domain": ["@wardenx/domain@workspace:packages/domain"],
 
