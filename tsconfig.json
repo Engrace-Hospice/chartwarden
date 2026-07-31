@@ -129,6 +129,9 @@
       "path": "./packages/subscription-billing"
     },
     {
+      "path": "./packages/supplies"
+    },
+    {
       "path": "./packages/telehealth-client"
     },
     {

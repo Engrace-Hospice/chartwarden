@@ -1,0 +1,15 @@
+{
+  "name": "@wardenx/supplies",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.0",
+    "@wardenx/types": "workspace:*",
+    "decimal.js": "^10.6.0"
+  }
+}

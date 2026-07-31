@@ -1,8 +1,8 @@
 {
   "totals": {
     "Implemented": 31,
-    "Partial": 0,
-    "Placeholder": 9
+    "Partial": 1,
+    "Placeholder": 8
   },
   "rows": [
     {
@@ -288,14 +288,14 @@
     {
       "id": 21,
       "module": "M21 Supplies, DME & Comfort Kits",
-      "status": "Placeholder",
+      "status": "Partial",
       "spec": true,
       "schema": false,
       "migration": false,
       "routes": false,
       "enriched": false,
       "screens": false,
-      "tests": false,
+      "tests": true,
       "adapter": null,
       "liveInfra": false
     },

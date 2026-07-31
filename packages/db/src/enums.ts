@@ -2418,3 +2418,150 @@ export const bereavementConfidenceBand = pgEnum("bereavement_confidence_band", [
   "MEDIUM",
   "LOW",
 ]);
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// Module 21 — Supplies, DME & Comfort Kits (§3.1.1 · M21-T01). The D1 single-`supply_request`-row
+// discriminator + its D2 ten-state fulfillment machine, the D4 vendor-routing precedence vocabulary, and
+// the controlled-substance chain of custody the DEA 21 CFR §1304 perpetual log projects from: the D6
+// dispatch mode / source / schedule, the D17 deployment site, and the D8 return + disposal machine. The
+// eleven Drizzle tables land in M21-T02 (`packages/db/src/schema/supplies/`); the leaf mirrors live in
+// `@wardenx/types` (`supplies.ts`) so M11/M13/M22/M27/M30/M33/M36/M37 read them with no `dependsOn` edge.
+//
+// NAMING: M21's SQL enum names carry the spec's `m21_` prefix (§3.1.1 is the normative schema per §3.0 /
+// ADR-0023). Unlike every earlier module's unprefixed names this is deliberate — `delivery_method`,
+// `return_state`, `dispatch_source` and `disposal_method` are words M18/M24/M37 will each want, and a
+// pgEnum name is CLUSTER-global. The TS binding stays descriptive-unprefixed, as elsewhere in this file.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** `m21_supply_request_kind` — the D1 shared-row discriminator; selects which per-kind TypeBox validates
+ *  `supply_request.data` (`@wardenx/supplies/kinds/*`) and which §2.2 transitions the row may take. M11
+ *  signs one order `kind='comfort_kit'`; M21 splits it into `comfort_kit_deploy` (first placement) vs
+ *  `comfort_kit_replenish` (M13 drawdown crossed threshold) because only the latter has no M11 order. */
+export const supplyRequestKind = pgEnum("m21_supply_request_kind", [
+  "dme",
+  "supply",
+  "comfort_kit_deploy",
+  "comfort_kit_replenish",
+]);
+
+/** `m21_supply_request_status` — the §2.2 / D2 fulfillment lifecycle. Seven forward states plus the two
+ *  cancellation states and the kit-only `returned` branch. `cancellation_pending` exists because a
+ *  post-`ordered` cancellation is a REQUEST to the vendor, not a fact: the row keeps its real state until
+ *  the vendor confirms (a DME already on the truck cannot be un-shipped by our writing `cancelled`). */
+export const supplyRequestStatus = pgEnum("m21_supply_request_status", [
+  "requested",
+  "vendor_assigned",
+  "ordered",
+  "in_transit",
+  "delivered",
+  "received_confirmed",
+  "completed",
+  "cancelled",
+  "cancellation_pending",
+  "returned",
+]);
+
+/** `m21_deployment_site` — D17. The one discriminator unifying home / ALF / SNF-as-residence / IPU-room
+ *  kits behind a single dispatch surface; `ipu_room` is the only value that carries `ipu_room_id` (the
+ *  M37 forward seam) and the only one with no patient delivery address. */
+export const comfortKitDeploymentSite = pgEnum("m21_deployment_site", [
+  "home",
+  "alf",
+  "snf_residence",
+  "ipu_room",
+]);
+
+/** `m21_pharmacy_dispatch_mode` — D6. WHO physically fills the kit. `supply_hub_dispatch` is the only
+ *  mode with a null vendor (the agency's own DEA-registered hub); the two partner modes carry an M40
+ *  Pharmacy reference and differ in whether the prescription routed through M12 DoseSpot first. */
+export const pharmacyDispatchMode = pgEnum("m21_pharmacy_dispatch_mode", [
+  "supply_hub_dispatch",
+  "partner_pharmacy_dispatch",
+  "dosespot_to_partner_pharmacy",
+]);
+
+/** `m21_fulfillment_mode` — D4. What a resolved `vendor_routing_rule` assigns. `vendor` is the only value
+ *  requiring a non-null `assigned_vendor_id` (SQL CHECK); the other three are internal or pharmacy paths
+ *  where a null vendor is CORRECT rather than an unresolved routing failure. */
+export const supplyFulfillmentMode = pgEnum("m21_fulfillment_mode", [
+  "vendor",
+  "internal_supply_hub",
+  "partner_pharmacy",
+  "dosespot_to_partner_pharmacy",
+]);
+
+/** `m21_controlled_substance_schedule` — the DEA schedule of a kit medication (21 CFR §1308). Only CII–CV
+ *  appear: a CI substance has no accepted medical use and can never be on a comfort-kit line. Presence of
+ *  a value is what arms the lot / expiration NOT NULL CHECK and the D8 5% discrepancy rule. */
+export const controlledSubstanceSchedule = pgEnum("m21_controlled_substance_schedule", [
+  "CII",
+  "CIII",
+  "CIV",
+  "CV",
+]);
+
+/** `m21_disposal_method` — D6 / CoP 418.106(f)(3) / DEA 21 CFR §1317. How the kit's remaining controlled
+ *  substance stopped existing. `dispose_at_home_by_witnessed_destruction` is the only value requiring a
+ *  witness membership distinct from the retriever AND the reconciler (SQL CHECK) — it is the value with
+ *  no downstream custodian to corroborate the count. */
+export const comfortKitDisposalMethod = pgEnum("m21_disposal_method", [
+  "take_back_by_supply_team",
+  "dispose_at_home_by_witnessed_destruction",
+  "transferred_to_disposing_pharmacy",
+]);
+
+/** `m21_return_state` — the §2.6 / D8 chain-of-custody machine on `comfort_kit_return`. `overdue` (30d) and
+ *  `unreturnable` (90d) are STATES, not flags, because a kit that never comes back is a survey-reportable
+ *  disposition needing an attested reason — not a retrieval still in progress. */
+export const comfortKitReturnState = pgEnum("m21_return_state", [
+  "requested",
+  "assigned",
+  "retrieving",
+  "retrieved",
+  "reconciled",
+  "overdue",
+  "unreturnable",
+]);
+
+/** `m21_routing_scope_kind` — D4. The precedence ladder a `vendor_routing_rule` sits on, most specific
+ *  first: `sku` > `location` > `tenant` > `platform`. `platform` is the only scope with a null `org_id`
+ *  (SQL CHECK) and the only one tenants may read but never write. */
+export const vendorRoutingScopeKind = pgEnum("m21_routing_scope_kind", [
+  "sku",
+  "location",
+  "tenant",
+  "platform",
+]);
+
+/** `m21_delivery_method` — D7. How the item physically reached the patient, captured with the courier
+ *  attestation at the `delivered` transition. Recorded on every kind because the DME liability question
+ *  ("who put the hospital bed in the room?") is asked long after the row goes terminal. */
+export const supplyDeliveryMethod = pgEnum("m21_delivery_method", [
+  "agency_courier",
+  "vendor_direct_ship",
+  "pharmacy_partner_courier",
+  "patient_pickup",
+  "in_facility_internal",
+]);
+
+/** `m21_dispatch_source` — D6. Which DEA registration the kit left from. Distinct from
+ *  `m21_pharmacy_dispatch_mode`: the mode is the ROUTING decision, the source is the physical origin the
+ *  1304 perpetual log debits. */
+export const comfortKitDispatchSource = pgEnum("m21_dispatch_source", [
+  "supply_hub",
+  "pharmacy_partner",
+  "dosespot_pharmacy",
+]);
+
+/** `m21_comfort_kit_dispatch_status` — M21-F04. The dispatch row's own lifecycle, which does NOT track the
+ *  parent `supply_request.status`: the request goes terminal (`completed`) at deployment, while the
+ *  dispatch stays live for the whole return + reconciliation tail. `reconciled_with_discrepancy` is a
+ *  separate terminal from `reconciled` so the survey query is an equality, not a join to the content rows. */
+export const comfortKitDispatchStatus = pgEnum("m21_comfort_kit_dispatch_status", [
+  "dispatched",
+  "deployed_at_patient",
+  "partially_returned",
+  "fully_returned",
+  "reconciled",
+  "reconciled_with_discrepancy",
+]);

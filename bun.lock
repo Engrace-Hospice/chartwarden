@@ -324,6 +324,15 @@
       "name": "@wardenx/subscription-billing",
       "version": "0.0.0",
     },
+    "packages/supplies": {
+      "name": "@wardenx/supplies",
+      "version": "0.0.0",
+      "dependencies": {
+        "@sinclair/typebox": "^0.34.0",
+        "@wardenx/types": "workspace:*",
+        "decimal.js": "^10.6.0",
+      },
+    },
     "packages/telehealth-client": {
       "name": "@wardenx/telehealth-client",
       "version": "0.0.0",
@@ -932,6 +941,8 @@
     "@wardenx/shared": ["@wardenx/shared@workspace:packages/shared"],
 
     "@wardenx/subscription-billing": ["@wardenx/subscription-billing@workspace:packages/subscription-billing"],
+
+    "@wardenx/supplies": ["@wardenx/supplies@workspace:packages/supplies"],
 
     "@wardenx/telehealth-client": ["@wardenx/telehealth-client@workspace:packages/telehealth-client"],
 

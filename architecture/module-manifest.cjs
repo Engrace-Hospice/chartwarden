@@ -597,7 +597,11 @@ exports.MODULES = [
   {
     id: 21,
     name: "Supplies, DME & Comfort Kits",
-    codePaths: ["apps/backend/src/modules/21-supplies"],
+    codePaths: [
+      "packages/supplies",
+      "apps/backend/src/modules/21-supplies",
+      "apps/web/src/modules/21-supplies",
+    ], // +packages/supplies: §2 M21-owned feature pkg (D1 per-kind TypeBox / D2 lifecycle graph / D3 kit floor / D4 routing ladder / D8 reconciliation math), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M21-T06
     dependsOn: [11, 40],
     ownedTables: [
       "supply_item",
