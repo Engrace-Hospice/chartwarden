@@ -27,7 +27,10 @@ import {
   registerEraser,
 } from "./bootstrap/index";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
-import { buildPrimaryProviderEntityResolver } from "./bootstrap/provider-entity-resolver";
+import {
+  buildOrgProviderEntityLister,
+  buildPrimaryProviderEntityResolver,
+} from "./bootstrap/provider-entity-resolver";
 import {
   type OutboxPublishPort,
   type OutboxTx,
@@ -98,6 +101,7 @@ import {
   mountM30Routes,
   registerM30AbacPredicates,
   registerM30CronWorkers,
+  registerM30PublishedSeams,
   registerM30Workers,
   registerQualityErasers,
   scheduleM30Jobs,
@@ -330,6 +334,15 @@ export function wireModuleSeams(
   // the live actual interim-payment aggregate (835 CLP04) via getSeam. The M1 fail-closed deny-stub stands when
   // no db is present.
   registerM25PublishedSeams(deps.db);
+  // M30 — register the FIVE §4.3 published seams (QualityMeasureProvider / IncidentRegisterProvider /
+  // QapiProjectProvider / ComplianceStatusProvider / SecurityRiskAssessmentReader) so M22's quality report,
+  // M28's FHIR MeasureReport/AdverseEvent, M33's dashboards and M34's FY-rollover tenant gate reach M30's
+  // read surfaces via getSeam. Before this M30 was outbox-only across boundaries. The per-PE aggregation
+  // grain binds to the same M40 provider-entity resolver the M30 workers use; UNBOUND ⇒ empty, never a
+  // fabricated cross-provider rollup. The M1 fail-closed deny-stubs stand when no db is present.
+  registerM30PublishedSeams(deps.db, {
+    providerEntities: deps.db ? buildOrgProviderEntityLister(deps.db) : undefined,
+  });
   // M11 — the two §2.8 D14 / §4.3 owned seams (OrderSignatureProvider — the polymorphic clinical-signature
   // WRITE primitive M12 routes medication-order signatures through, D4 — + OrderProvider — the read-side
   // counterpart M14/M23/M30/M7 consume). Slice/tests keep the in-memory store; the Drizzle-backed store lands

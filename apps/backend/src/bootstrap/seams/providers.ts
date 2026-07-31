@@ -261,6 +261,21 @@ export const drugCostBillingReaderDenyStub: unknown = denyingSeamProxy("DrugCost
  *  `claimSettlementProviderBound:false` (the E-1↔D tie rule SKIPS) when this denies. */
 export const claimSettlementProviderDenyStub: unknown = denyingSeamProxy("ClaimSettlementProvider");
 
+/** M30 §4.3 — the five HQRP/Quality read seams. Opaque rich-seams (interfaces in @wardenx/quality);
+ *  M22 / M28 / M33 / M34 resolve via `getSeam` + cast. Deny until M30 registers the live Drizzle-backed
+ *  providers (db-present boot) — a quality number is never fabricated when the seam is unbound (D6/D13). */
+export const qualityMeasureProviderDenyStub: unknown = denyingSeamProxy("QualityMeasureProvider");
+export const incidentRegisterProviderDenyStub: unknown = denyingSeamProxy(
+  "IncidentRegisterProvider",
+);
+export const qapiProjectProviderDenyStub: unknown = denyingSeamProxy("QapiProjectProvider");
+export const complianceStatusProviderDenyStub: unknown = denyingSeamProxy(
+  "ComplianceStatusProvider",
+);
+export const securityRiskAssessmentReaderDenyStub: unknown = denyingSeamProxy(
+  "SecurityRiskAssessmentReader",
+);
+
 /** M36 — channel/message surface (DEK-encrypted bodies). Denies until M36 registers the real
  *  provider (its DB-backed impl lands with the routes/realtime tasks, M36-T07/T08). */
 export const messagingProviderDenyStub: unknown = denyingSeamProxy("MessagingProvider");

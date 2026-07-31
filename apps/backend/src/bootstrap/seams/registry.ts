@@ -22,6 +22,11 @@ import {
   baaStatusProviderDenyStub,
   billableEncounterReaderDenyStub,
   capAccrualReaderDenyStub,
+  complianceStatusProviderDenyStub,
+  incidentRegisterProviderDenyStub,
+  qapiProjectProviderDenyStub,
+  qualityMeasureProviderDenyStub,
+  securityRiskAssessmentReaderDenyStub,
   capProjectionProviderDenyStub,
   patientDaysProviderDenyStub,
   drugCostBillingReaderDenyStub,
@@ -259,6 +264,44 @@ export const REQUIRED_SEAMS = [
     ownerModule: 25,
     phi: false,
     denyStub: claimSettlementProviderDenyStub,
+  },
+  // M30 (HQRP & Quality) §4.3 — the FIVE read seams M30 publishes. Until these entries existed, M30 was
+  // reachable cross-module ONLY through its §4.10 outbox events: M22's quality report, M28's FHIR
+  // MeasureReport/AdverseEvent, M33's executive dashboards and M34's FY-rollover tenant gate had no read
+  // path to the measure ledger, the incident register, QAPI, CoP status, or the SRA posture at all.
+  //
+  // Four are aggregate-only (the `quality_measure_value` ledger and the QAPI/CoP/SRA surfaces carry no
+  // patient row). `IncidentRegisterProvider` is the exception: an incident may be patient-linked, so it
+  // is phi:true and its own methods take the caller's actor context and require patient scope.
+  {
+    key: "QualityMeasureProvider",
+    ownerModule: 30,
+    phi: false,
+    denyStub: qualityMeasureProviderDenyStub,
+  },
+  {
+    key: "IncidentRegisterProvider",
+    ownerModule: 30,
+    phi: true,
+    denyStub: incidentRegisterProviderDenyStub,
+  },
+  {
+    key: "QapiProjectProvider",
+    ownerModule: 30,
+    phi: false,
+    denyStub: qapiProjectProviderDenyStub,
+  },
+  {
+    key: "ComplianceStatusProvider",
+    ownerModule: 30,
+    phi: false,
+    denyStub: complianceStatusProviderDenyStub,
+  },
+  {
+    key: "SecurityRiskAssessmentReader",
+    ownerModule: 30,
+    phi: false,
+    denyStub: securityRiskAssessmentReaderDenyStub,
   },
   // M40 (MDM) — the focused §7.7 BAA disclosure gate (as-of time-travel + sending-facility
   // resolution), registered separately from the omnibus above. M22/M28/M29 consult it before any
