@@ -572,3 +572,19 @@ export * from "./medicaid-billing/index";
 // Tables + enums migration 0098; RLS/grants + M4 write-audit (incl. the nested `data`/`state_snapshot`
 // jsonb re-scrub) 0099.
 export * from "./discipline-plans/index";
+
+// M16 Bereavement: 9 owned tables (§3.3) — the D1 tripartite shape (bereavement_plan, the one-per-
+// death-discharged-admission ROOT carrying the single 13-month CoP 418.64(d) clock → bereaved_contact, one
+// row per SURVIVOR because the obligation runs to each person → bereavement_contact_log, the leaf where one
+// outreach fans out to many addressees) plus bereavement_risk_score (the append-only, UPDATE-refusing D3/D17
+// rubric ledger), bereavement_outreach (the D4 death-anchored schedule), bereavement_anniversary_reminder
+// (the lookahead worker's idempotency ledger), bereavement_plan_closure (D7's why-it-ended record with the
+// early-close cosign + 40-char CHECKs) and bereavement_opt_out (D9 level two). The ninth,
+// tenant_bereavement_external_source_gate_override, is org-level CONFIG — D18's tighten-only surface, whose
+// shape (no "disable" column) IS the enforcement that tenants may not loosen the medical-director cosign.
+// All 9 org-scoped (organization_id NOT NULL → canonical app.org_id RLS); the eight patient-bearing tables
+// also carry provider_entity_id NOT NULL + location_id for the §4.6 compliance rollups. ONLY
+// bereavement_contact_log is partitioned (D12 / §3.6, monthly RANGE by contact_at). Enums + unpartitioned
+// tables migration 0100; the partitioned contact log 0101; RLS/grants + M4 write-audit (incl. the nested
+// risk_factors_jsonb re-scrub) + risk-score immutability 0102.
+export * from "./bereavement/index";
