@@ -22,7 +22,9 @@ import {
   baaStatusProviderDenyStub,
   billableEncounterReaderDenyStub,
   capAccrualReaderDenyStub,
+  claimLineReaderDenyStub,
   complianceStatusProviderDenyStub,
+  costReportFilingStatusReaderDenyStub,
   incidentRegisterProviderDenyStub,
   qapiProjectProviderDenyStub,
   qualityMeasureProviderDenyStub,
@@ -264,6 +266,25 @@ export const REQUIRED_SEAMS = [
     ownerModule: 25,
     phi: false,
     denyStub: claimSettlementProviderDenyStub,
+  },
+  // M23 → M30 — the per-LOC billed claim-line day rollup the HCI claims-derived indicators read. M23's
+  // SECOND M1 publish (PatientDaysProvider above was the first, for M27). Aggregate day counts by level of
+  // care over a window: no patient row, no MBI (D18). Fail-closed until M23 registers the real reader —
+  // M30's adapter degrades the deny-stub throw to "suppressed", never a fabricated claims number.
+  {
+    key: "ClaimLineReader",
+    ownerModule: 23,
+    phi: false,
+    denyStub: claimLineReaderDenyStub,
+  },
+  // M27 → M30 — the cost-report filing posture per FY. M27's FIRST M1 publish (it was a pure consumer
+  // before). CoP 418.310 makes failure to file grounds for termination, so M30's compliance indicator needs
+  // the filing state + the statutory deadline, not the cost-report CONTENT. Metadata only → phi:false.
+  {
+    key: "CostReportFilingStatusReader",
+    ownerModule: 27,
+    phi: false,
+    denyStub: costReportFilingStatusReaderDenyStub,
   },
   // M30 (HQRP & Quality) §4.3 — the FIVE read seams M30 publishes. Until these entries existed, M30 was
   // reachable cross-module ONLY through its §4.10 outbox events: M22's quality report, M28's FHIR

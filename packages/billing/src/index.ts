@@ -70,6 +70,7 @@ export * as repositories from "./repositories";
 export {
   type BilledDaysAggregate,
   type BilledDaysByLevel,
+  type ClaimLineRollup,
   type BillingDb,
   type CursorKeyset,
   type CursorPage,

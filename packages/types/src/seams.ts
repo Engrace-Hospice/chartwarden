@@ -217,6 +217,8 @@ export type SeamName =
   | "PatientDaysProvider" // M23 — billed-and-accepted census patient-days for a FY (M27 stats.patient_days_reconcile)
   | "DrugCostBillingReader" // M12 — drug-cost basis for a FY, M27 Worksheet-A pharmacy cross-check (drug_cost.billed_reconciles). RESERVATION: degrades until M12 materializes med-order cost (no cost column today)
   | "ClaimSettlementProvider" // M25 — actual interim Medicare payments (835 CLP04) for a FY (M27 settlement.e1_ties_to_d)
+  | "ClaimLineReader" // M23 — per-LOC billed claim-line day rollup for a window (M30 HCI claims-derived indicators)
+  | "CostReportFilingStatusReader" // M27 — cost-report filing posture per FY (M30 CoP 418.310 failure-to-file indicator)
   // M30 (HQRP & Quality) §4.3 — the five READ-ONLY seams M30 publishes. Before these, M30 was reachable
   // cross-module ONLY through its §4.10 outbox events, so M22's quality report, M28's FHIR MeasureReport /
   // AdverseEvent, M33's executive dashboards and M34's FY-rollover tenant gate had no read path at all.
@@ -440,6 +442,11 @@ export interface SeamContracts {
   PatientDaysProvider: unknown;
   DrugCostBillingReader: unknown;
   ClaimSettlementProvider: unknown;
+  // M23/M27 → M30 quality binds. Same opaque rich-seam pattern — M30 resolves each via `getSeam` + a cast
+  // to its own consumer view, so the HCI claims-derived indicators and the CoP 418.310 failure-to-file
+  // indicator stop resolving to a forward-seam deny-stub now that M23 and M27 are both built.
+  ClaimLineReader: unknown;
+  CostReportFilingStatusReader: unknown;
   // M30's five §4.3 seams — the SAME opaque rich-seam pattern: the interfaces live in @wardenx/quality
   // (this leaf may not import it — `leaves-stay-leaves`), so the registry holds each instance as
   // `unknown` and consumers (M22 / M28 / M33 / M34) resolve via `getSeam` + cast to their own view.

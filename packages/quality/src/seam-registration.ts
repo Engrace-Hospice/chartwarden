@@ -131,17 +131,35 @@ export const QUALITY_FORWARD_SEAM_DENY_STUBS = {
 } as const;
 
 /**
- * Assemble the consumed-seam bundle: merge the PRESENT-producer live bindings the composition root
- * supplies (P2C adapters over `getSeam`) with the package's forward-seam DENY-STUBS for every ABSENT
- * producer (M15 / M16 / M23 / M27). A calculator bound to a forward seam resolves `{ value: null,
+ * The forward-seam slots a caller may now bind LIVE. M23 and M27 are built, so the composition root
+ * supplies real adapters for them; M15 and M16 are still unbuilt and keep their deny-stubs. Anything
+ * omitted falls back to the deny-stub, which is why this is a partial rather than a second required
+ * bundle — a half-wired boot degrades the specific measure, not the whole recompute.
+ */
+export interface QualityForwardSeamOverrides {
+  readonly discipline?: QualityDisciplineConsumer; // M15 (still unbuilt)
+  readonly bereavement?: QualityBereavementConsumer; // M16 (still unbuilt)
+  readonly billing?: QualityBillingConsumer; // M23 (BUILT — bindable)
+  readonly costReport?: QualityCostReportConsumer; // M27 (BUILT — bindable)
+}
+
+/**
+ * Assemble the consumed-seam bundle: the PRESENT-producer live bindings the composition root supplies
+ * (P2C adapters over `getSeam`), then the package's forward-seam DENY-STUBS, then any LIVE forward-seam
+ * overrides on top. A calculator whose source is still a deny-stub resolves `{ value: null,
  * isForwardSeamDenyStub: true }` and suppresses its measure — never throws, never fails open (D6 / D13).
- * When an absent module lands it moves into `present` and registers its real seam; nothing else changes.
+ *
+ * Overrides are applied per SLOT, and each live adapter degrades per METHOD (an adapter whose seam is
+ * unregistered returns the forward-seam marker for that call). So `patientDays` can be live while
+ * `claimLineRollup` is still suppressed, which is exactly the M23 situation during a partial rollout.
  */
 export function bindQualityConsumedSeams(
   present: QualityPresentSeamBindings,
+  overrides: QualityForwardSeamOverrides = {},
 ): QualityConsumedSeams {
   return {
     ...present,
     ...QUALITY_FORWARD_SEAM_DENY_STUBS,
+    ...Object.fromEntries(Object.entries(overrides).filter(([, v]) => v !== undefined)),
   };
 }

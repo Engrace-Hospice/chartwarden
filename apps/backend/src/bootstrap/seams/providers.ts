@@ -261,6 +261,15 @@ export const drugCostBillingReaderDenyStub: unknown = denyingSeamProxy("DrugCost
  *  `claimSettlementProviderBound:false` (the E-1↔D tie rule SKIPS) when this denies. */
 export const claimSettlementProviderDenyStub: unknown = denyingSeamProxy("ClaimSettlementProvider");
 
+/** M23 — the per-LOC billed claim-line day rollup for a window, the M30 HCI claims-derived indicators'
+ *  input. Opaque rich-seam; M30's adapter catches this deny-stub throw and DEGRADES to the forward-seam
+ *  "unavailable" marker so the indicator is SUPPRESSED, never computed from a fabricated claims number. */
+export const claimLineReaderDenyStub: unknown = denyingSeamProxy("ClaimLineReader");
+
+/** M27 — the cost-report filing posture per FY, the M30 CoP 418.310 failure-to-file indicator's input.
+ *  Opaque rich-seam; same degrade-to-suppressed contract as ClaimLineReader above. */
+export const costReportFilingStatusReaderDenyStub: unknown = denyingSeamProxy("CostReportFilingStatusReader");
+
 /** M30 §4.3 — the five HQRP/Quality read seams. Opaque rich-seams (interfaces in @wardenx/quality);
  *  M22 / M28 / M33 / M34 resolve via `getSeam` + cast. Deny until M30 registers the live Drizzle-backed
  *  providers (db-present boot) — a quality number is never fabricated when the seam is unbound (D6/D13). */

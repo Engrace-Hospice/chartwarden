@@ -107,3 +107,13 @@ export {
   resolveCapContext,
 } from "./routes/cap-context";
 export { m27CapSeamResolver } from "./routes/cap-context-wiring";
+
+// §4.3 — M27's FIRST M1 publish: the `CostReportFilingStatusReader` M30's CoP 418.310 failure-to-file
+// indicator consumes. The other six declared seams stay unregistered until they have a live consumer
+// (the M24 posture). See published-seams.ts for why only the filing POSTURE crosses, never the content.
+export {
+  type CostReportFilingStatus,
+  type CostReportFilingStatusReader,
+  buildM27FilingStatusReader,
+  registerM27PublishedSeams,
+} from "./published-seams";

@@ -44,6 +44,13 @@ export interface BilledDaysAggregate {
   readonly byLevelOfCare: BilledDaysByLevel;
 }
 
+/** The windowed claim-line rollup the M30 `ClaimLineReader` seam exposes — the FY aggregate plus the
+ *  per-diem LINE count, which M30 needs as a population denominator (see `claimLineRollupForPeriod`). */
+export interface ClaimLineRollup extends BilledDaysAggregate {
+  /** Per-diem claim LINES summed into this rollup (the population, not the day total). */
+  readonly claimLineCount: number;
+}
+
 /** Read port for the M27 cost-report billing aggregates (PatientDaysProvider). No write surface. */
 export class CostReportAggregateRepository {
   constructor(private readonly db: BillingDb) {}
@@ -84,5 +91,51 @@ export class CostReportAggregateRepository {
       totalPatientDays += days;
     }
     return { totalPatientDays, byLevelOfCare };
+  }
+
+  /**
+   * The same per-diem day rollup over an ARBITRARY window — the M30 `ClaimLineReader` seam's source for the
+   * HCI claims-derived indicators (HCI-1 continuous-or-GIP, HCI-5/6 burdensome transitions read the CHC/GIP
+   * days directly; the composite reads the level mix). Identical accepted-state + per-diem filters as the FY
+   * census above, so the two can never disagree about what "a billed day" is.
+   *
+   * Additionally returns `claimLineCount` — the number of per-diem lines the rollup summed. M30's measure
+   * kernel suppresses a rate whose DENOMINATOR is below the CMS reportable floor, so a rollup that carries
+   * only a day total (and not the population it came from) cannot drive a reportable measure honestly.
+   */
+  async claimLineRollupForPeriod(
+    organizationId: string,
+    fromIso: string,
+    toIso: string,
+  ): Promise<ClaimLineRollup> {
+    const rows = await this.db
+      .select({
+        revenueCode: L.revenueCode,
+        days: sql<number>`coalesce(sum(${L.unitCount}), 0)::int`,
+        lineCount: sql<number>`count(*)::int`,
+      })
+      .from(L)
+      .innerJoin(C, eq(L.claimId, C.id))
+      .where(
+        and(
+          eq(L.organizationId, organizationId),
+          inArray(C.state, [...ACCEPTED_STATES]),
+          inArray(L.revenueCode, [...PER_DIEM_REVENUE_CODES]),
+          between(L.serviceDateFrom, fromIso, toIso),
+        ),
+      )
+      .groupBy(L.revenueCode);
+
+    const byLevelOfCare: BilledDaysByLevel = { rhc: 0, chc: 0, irc: 0, gip: 0 };
+    let totalPatientDays = 0;
+    let claimLineCount = 0;
+    for (const r of rows) {
+      const level = LEVEL_BY_REVENUE_CODE[r.revenueCode];
+      const days = Number(r.days) || 0;
+      if (level) byLevelOfCare[level] += days;
+      totalPatientDays += days;
+      claimLineCount += Number(r.lineCount) || 0;
+    }
+    return { totalPatientDays, byLevelOfCare, claimLineCount };
   }
 }
