@@ -17,6 +17,10 @@
 //   · `reconciliation.ts` — the §2.6 / D8 return math in Decimal, plus the witness-distinctness rule;
 //   · `template/`      — the D3 four-medication platform floor and the tenant-tighten-only validator.
 //
+// M21-T03 adds:
+//   · `par.ts`         — the §2.7 / D5 par-stock bands (derived, never stored) and the refusing-not-clamping
+//                        quantity delta the dispatch decrement runs through.
+//
 // The cross-module enum / seam / outbox / alert CONTRACTS — the §3.1.1 enum mirrors, the §3.1 owned-table
 // names + D13 audit denylists, the §4.5 `m21.*` event names and payloads, the §4.7 M36 alert union, and
 // the §4.8 published-seam interfaces + read DTOs — live in the leaf `@wardenx/types` (`supplies.ts`) per
@@ -24,8 +28,11 @@
 // writes the seam file as `packages/seams/src/supplies.ts`; that package does not exist and the repo's
 // convention is the `@wardenx/types` leaf — architecture wins over the spec's proposed path.
 //
-// Still to land: the §3 schema + migration (M21-T02), the §2.2/§2.5/§2.6/§2.7 services and the XState
-// actor (M21-T03), the M11/M13 consumers + emitters (M21-T04), the §4.8 seam impls with the §4.1 routes,
+// The §2.2/§2.5/§2.6/§2.7 machines that consume this package landed in M21-T03 under
+// `apps/backend/src/modules/21-supplies/lifecycle/` — they are pure deciders over already-resolved facts,
+// so the IO stays in the M21-T05 service layer.
+//
+// Still to land: the M11/M13 consumers + emitters (M21-T04), the §4.8 seam impls with the §4.1 routes,
 // §4.3 permission keys and §4.4 ABAC predicates (M21-T05), and the §5 screens (M21-T06).
 //
 // D15 — supplies is an AI-PROHIBITED zone. Nothing in this package is reachable from an M32 prompt, and
@@ -36,6 +43,7 @@
 export * from "./policy";
 export * from "./kinds";
 export * from "./lifecycle";
+export * from "./par";
 export * from "./routing/precedence";
 export * from "./reconciliation";
 export * from "./template/floor";

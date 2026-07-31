@@ -63,7 +63,9 @@ export const comfortKitTemplateMedication = pgTable(
     /** `numeric`, never a float: 0.1 mL of a CII solution must round-trip exactly (D6). */
     expectedQuantity: numeric("expected_quantity").notNull(),
     expectedUnit: text("expected_unit").notNull(),
-    /** D3 — the fraction remaining at which M13 asks for a replenish. Tenants may only LOWER it. */
+    /** D3 — the fraction remaining at which M13 asks for a replenish. Tenants may only RAISE it above the
+     *  platform floor (a higher threshold replenishes sooner = tighter); lowering it lets a kit run further
+     *  down before anyone is told. Enforced by `validateTenantTemplate` in `@wardenx/supplies`. */
     replenishmentThresholdPct: numeric("replenishment_threshold_pct").notNull().default("0.25"),
 
     systemLocked: boolean("system_locked").notNull().default(false),
