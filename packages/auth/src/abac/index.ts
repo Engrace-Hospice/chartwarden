@@ -5,10 +5,13 @@
 // in ./registry (M3-T07).
 export {
   type AbacPredicate,
+  type DeviceAttestation,
   type PredicateRegistry,
+  DEVICE_ATTESTATION_ATTRIBUTE,
   M3_INTRINSIC_PREDICATES,
   abacRegistry,
   createPredicateRegistry,
+  deviceAttestationValid,
   locationScope,
   providerEntityScope,
   registerAbacRegistry,

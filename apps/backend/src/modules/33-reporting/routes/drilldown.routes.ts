@@ -33,6 +33,12 @@ const DRILL_BULK = P("report.drilldown.bulk_export");
 const STEPUP_BULK = requireStepUp("report.drilldown.bulk_export") as PreHandler;
 // SecHardening §12.4: the bulk export refuses from a non-attested device (`device_attestation_valid`, the shared
 // D8 predicate; deny-by-default when unresolved — fail-closed, never an un-attested bulk PHI export).
+//
+// THIS ROUTE IS CLOSED TO EVERYONE TODAY, BY DESIGN. Nothing yet PRODUCES an attestation — M2 owns no
+// `device_attestation` table (ADR-0023 D2), the request context hard-codes `attributes: {}`, and the mobile
+// client that runs the §12.4 posture check is unbuilt (ADR-0035) — so the predicate denies every caller. The
+// deny is semantic (see `deviceAttestationValid` in @wardenx/auth), not a missing registration; it lifts on its
+// own when M2 lands the attestation surface, with no change here. Do not "fix" it by dropping this preHandler.
 const DEVICE_ATTESTED = requireAbac(
   "report.drilldown.bulk_export",
   "device_attestation_valid",
