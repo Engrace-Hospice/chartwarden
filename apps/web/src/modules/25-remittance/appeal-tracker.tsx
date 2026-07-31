@@ -24,10 +24,6 @@ interface AppealRow {
   decisionOutcome: string | null;
   tierDeadlineAt: string;
 }
-interface Page<T> {
-  items: T[];
-  nextCursor: string | null;
-}
 
 const TIER_LABEL: Record<string, string> = {
   redetermination: "Redetermination",
@@ -65,7 +61,7 @@ export function AppealTracker(): JSX.Element {
       setLoading(false);
       return;
     }
-    setRows(((res.data as unknown as Page<AppealRow>)?.items ?? []) as AppealRow[]);
+    setRows(res.data?.items ?? []);
     setLoading(false);
   }, [client]);
 

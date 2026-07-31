@@ -12,7 +12,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 |---|---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
 | M01 Foundation | 🟢 Implemented | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | — | ✅ |
 | M02 Identity & Org | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
-| M03 Authorization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | — | ✅ |
+| M03 Authorization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | — | ✅ |
 | M04 Audit & Compliance Log | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 | M05 Patient & Demographics | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 | M06 Admission, Election & Certification | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
@@ -34,7 +34,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M22 Document Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 | M23 Billing — Medicare | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | M24 Billing — Medicaid | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| M25 Remittance & Denials | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| M25 Remittance & Denials | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | M26 Cap Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 | M27 Cost Report | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | M28 FHIR Gateway | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — | ❌ |
@@ -48,7 +48,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M36 Secure Messaging & Alerts | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 | M37 Inpatient Unit (IPU) Management | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — | ❌ |
 | M38 Clinical Terminology Service | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
-| M39 Consent & Authorization Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | — | ✅ |
+| M39 Consent & Authorization Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | — | ✅ |
 | M40 Master Data Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 
 ## Hard-fail consistency checks

@@ -36,10 +36,6 @@ interface DenialRow {
   dollarValue: string;
   taxonomyStatus: string;
 }
-interface Page<T> {
-  items: T[];
-  nextCursor: string | null;
-}
 
 const STATE_FILTERS = ["all", "open", "in_progress", "escalated", "appealed", "resolved", "closed"];
 
@@ -70,7 +66,7 @@ export function DenialWorklist(): JSX.Element {
       setLoading(false);
       return;
     }
-    setRows(((res.data as unknown as Page<DenialRow>)?.items ?? []) as DenialRow[]);
+    setRows(res.data?.items ?? []);
     setLoading(false);
   }, [client]);
 

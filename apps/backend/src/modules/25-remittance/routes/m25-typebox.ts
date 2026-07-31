@@ -117,3 +117,90 @@ export const TaxonomyOverlayPatchSchema = Type.Object({
   ]),
   severity: Type.Union([Type.Literal("info"), Type.Literal("warn"), Type.Literal("critical")]),
 });
+
+// ── §4.1 RESPONSE DTOs ─────────────────────────────────────────────────────────────────────────
+//
+// The four cursor-paginated reads the M25 web screens call. Without these the generated client types
+// every M25 response as `content?: never`, so the screens cast through
+// `res.data as unknown as Page<DenialRow>` with a hand-maintained row shape that can drift from the
+// server silently. These mirror `read-service.ts`'s view interfaces — that file is the contract, this
+// is its wire projection.
+//
+// Money is a decimal STRING on the wire (the ledger columns are `numeric`), never a float: rounding a
+// remittance amount through an IEEE double is exactly the bug the string avoids.
+
+const nullableString = () => Type.Union([Type.String(), Type.Null()]);
+
+/** A cursor page (§4.12 — opaque cursor, never an offset). */
+const pageOf = <T extends TSchema>(item: T) =>
+  Type.Object({
+    items: Type.Array(item),
+    nextCursor: nullableString(),
+  });
+
+/** `read-service.ts` → `DenialWorklistItem`. */
+export const DenialWorklistItemSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  providerEntityId: Type.String({ format: "uuid" }),
+  claimId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+  carcCode: Type.String(),
+  rarcCode: nullableString(),
+  category: Type.String(),
+  source: Type.String(),
+  state: Type.String(),
+  assigneeMembershipId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+  openedAt: Type.String({ format: "date-time" }),
+  agingBucketDays: Type.Integer(),
+  agingBucketLabel: Type.String(),
+  dollarValue: Type.String({ description: "Decimal string (numeric column) — never a float" }),
+  taxonomyStatus: Type.String(),
+});
+export const DenialWorklistPageSchema = pageOf(DenialWorklistItemSchema);
+
+/** `read-service.ts` → `AppealSummary`. */
+export const AppealSummarySchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  denialCaseId: Type.String({ format: "uuid" }),
+  claimId: Type.String({ format: "uuid" }),
+  tier: Type.String(),
+  state: Type.String(),
+  decisionOutcome: nullableString(),
+  tierDeadlineAt: Type.String({ format: "date-time" }),
+  version: Type.Integer(),
+});
+export const AppealSummaryPageSchema = pageOf(AppealSummarySchema);
+
+/** `read-service.ts` → `RemittanceAdviceSummary`. */
+export const RemittanceAdviceSummarySchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  providerEntityId: Type.String({ format: "uuid" }),
+  payerId: Type.String(),
+  payerKind: Type.String(),
+  paymentMethod: Type.String(),
+  totalPaymentAmount: Type.String({ description: "Decimal string — never a float" }),
+  parseStatus: Type.String(),
+  receivedAt: Type.String({ format: "date-time" }),
+});
+export const RemittanceAdviceSummaryPageSchema = pageOf(RemittanceAdviceSummarySchema);
+
+/** `read-service.ts` → `RemittanceLineSummary` (the unmatched-lines worklist reads the same shape). */
+export const RemittanceLineSummarySchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  remittanceAdviceId: Type.String({ format: "uuid" }),
+  claimId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+  clp02StatusCode: Type.Integer(),
+  clp03TotalChargeAmount: Type.String({ description: "Decimal string — never a float" }),
+  clp04TotalPaymentAmount: Type.String({ description: "Decimal string — never a float" }),
+  clp05PatientResponsibilityAmount: Type.String({ description: "Decimal string — never a float" }),
+  matchState: Type.String(),
+  matchStrategy: nullableString(),
+  matchConfidence: Type.Union([Type.Number(), Type.Null()]),
+  receivedAt: Type.String({ format: "date-time" }),
+});
+export const RemittanceLineSummaryPageSchema = pageOf(RemittanceLineSummarySchema);
+
+/** The §4.12 cursor-page query every M25 list read accepts. */
+export const M25ListQuerySchema = Type.Object({
+  cursor: Type.Optional(Type.String({ minLength: 1 })),
+  pageSize: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 50 })),
+});
