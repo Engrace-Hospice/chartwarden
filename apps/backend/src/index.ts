@@ -80,6 +80,7 @@ import {
   registerDisciplinePlanErasers,
   registerDisciplinePlanSeams,
 } from "./modules/15-discipline-care-plans/index";
+import { registerBereavementSeams } from "./modules/16-bereavement/index";
 import { registerSchedulingSeams } from "./modules/17-scheduling/index";
 import { registerEvvSeams } from "./modules/18-evv/index";
 import { registerDocumentErasers, registerDocumentSeams } from "./modules/22-documents/index";
@@ -386,6 +387,17 @@ export function wireModuleSeams(
       ? buildDrizzleDisciplinePlanAbacResolver(deps.db)
       : denyStubDisciplinePlanAbacResolver,
   });
+  // M16 — the seven §4.6 / D13 owned seams: `BereavementPlanProvider` (the plan header + roster + closeout
+  // rollup M28 (FHIR `CarePlan`) / M30 (HQRP) / M31 (portal) / M33 (dashboards) / M36 (bereavement-channel
+  // membership + `archives_at`) consume), `BereavementOutreachProvider` (touchpoints + the CoP 418.64(d)
+  // counts), `BereavementRiskFactorsProvider` (the D3/D17 snapshot M32 narrates from, the deterministic score,
+  // and the Layer-2 write-back — the ONE write, an APPEND to the immutable §3.3.3 ledger),
+  // `BereavementAssignmentReader`, `BereavedPortalScopeProvider` (M31's bereaved-family session scope),
+  // `BereavementComplianceProvider` and `BereavementRiskTierProvider` (the M30/M33 rollups, as COUNTS).
+  // Slice/tests keep the in-memory store; the Drizzle-backed store lands with M16's routes/repos (M16-T06+),
+  // so today's reads answer empty/null — never a fabricated pass: `isInBereavementWindow` still denies
+  // fail-CLOSED on an unreadable plan, which is what M36 and M3's `bereavement_window` predicate read.
+  registerBereavementSeams();
   // M17 — the four §4.3 owned READ seams (VisitReader — the visit read path M8 (encounter-authoring context,
   // which CLOSES M8's visit-seeding inert consumer M8 D9) / M18 (EVV geofence target) / M14 (IDG since-meeting)
   // consume — + VisitAssignmentReader — the assignment read path M5 (the §4.5 D11 caseload-contribution

@@ -14,6 +14,13 @@ import type {
   AdmissionCensusReader,
   AdmissionStatusReader,
   AuditorSessionMinter,
+  BereavedPortalScopeProvider,
+  BereavementAssignmentReader,
+  BereavementComplianceProvider,
+  BereavementOutreachProvider,
+  BereavementPlanProvider,
+  BereavementRiskFactorsProvider,
+  BereavementRiskTierProvider,
   BillableEncounterReader,
   CarePlanReader,
   CaseloadProvider,
@@ -869,6 +876,94 @@ export const disciplineComplianceProviderDenyStub: DisciplineComplianceProvider 
   },
   volunteerHourCostRatio() {
     throw new NotImplementedError("DisciplineComplianceProvider");
+  },
+};
+
+// M16 (Bereavement) §4.6 / D13 PUBLISHED seams (M16-T05). LEAF-TYPED (interfaces in @wardenx/types), so each
+// gets a concrete typed deny-stub that denies until `registerBereavementSeams()` stands the real impl over it.
+// A deny here is the right answer for every consumer: M36 must not open a bereavement channel it cannot prove
+// a window for, M31 must not mint a bereaved-family session scope it cannot resolve, and M30/M33 must show a
+// measure as UNAVAILABLE rather than as a zero the agency did not earn.
+
+/** M16 — the plan header / roster / closeout rollup (M28 FHIR, M30 HQRP, M31 portal, M33, M36 channel). */
+export const bereavementPlanProviderDenyStub: BereavementPlanProvider = {
+  planById() {
+    throw new NotImplementedError("BereavementPlanProvider");
+  },
+  planByAdmissionId() {
+    throw new NotImplementedError("BereavementPlanProvider");
+  },
+  isInBereavementWindow() {
+    throw new NotImplementedError("BereavementPlanProvider");
+  },
+  contactsForPlan() {
+    throw new NotImplementedError("BereavementPlanProvider");
+  },
+  summarize() {
+    throw new NotImplementedError("BereavementPlanProvider");
+  },
+};
+
+/** M16 — the touchpoint reads + the CoP 418.64(d) counts (M30's rate, M33's operational dashboard). */
+export const bereavementOutreachProviderDenyStub: BereavementOutreachProvider = {
+  listForPlan() {
+    throw new NotImplementedError("BereavementOutreachProvider");
+  },
+  countByStatus() {
+    throw new NotImplementedError("BereavementOutreachProvider");
+  },
+  copComplianceCounts() {
+    throw new NotImplementedError("BereavementOutreachProvider");
+  },
+};
+
+/** M16 — the D3/D17 factor snapshot + deterministic score + the M32 Layer-2 append (§4.6's one write). */
+export const bereavementRiskFactorsProviderDenyStub: BereavementRiskFactorsProvider = {
+  factorsForContact() {
+    throw new NotImplementedError("BereavementRiskFactorsProvider");
+  },
+  deterministicScore() {
+    throw new NotImplementedError("BereavementRiskFactorsProvider");
+  },
+  registerAugmentation() {
+    throw new NotImplementedError("BereavementRiskFactorsProvider");
+  },
+};
+
+/** M16 — plan assignment + counselor caseload (M36's recipient resolver, M3's `bereavement_window`). */
+export const bereavementAssignmentReaderDenyStub: BereavementAssignmentReader = {
+  assignmentForPlan() {
+    throw new NotImplementedError("BereavementAssignmentReader");
+  },
+  plansForCounselor() {
+    throw new NotImplementedError("BereavementAssignmentReader");
+  },
+};
+
+/** M16 — the M31 bereaved-family session scope (§1.2 / D10 narrow: own row, own touchpoints, opt-out). */
+export const bereavedPortalScopeProviderDenyStub: BereavedPortalScopeProvider = {
+  scopeForPortalAccount() {
+    throw new NotImplementedError("BereavedPortalScopeProvider");
+  },
+};
+
+/** M16 — the M30 HQRP measure inputs + M33 rollups, as COUNTS (never a pre-divided rate). */
+export const bereavementComplianceProviderDenyStub: BereavementComplianceProvider = {
+  copOutreachCounts() {
+    throw new NotImplementedError("BereavementComplianceProvider");
+  },
+  riskScreeningCompletenessCounts() {
+    throw new NotImplementedError("BereavementComplianceProvider");
+  },
+  planClosureCounts() {
+    throw new NotImplementedError("BereavementComplianceProvider");
+  },
+};
+
+/** M16 — the risk-tier distribution (M30's chart, M33's dashboard). */
+export const bereavementRiskTierProviderDenyStub: BereavementRiskTierProvider = {
+  tierDistribution() {
+    throw new NotImplementedError("BereavementRiskTierProvider");
   },
 };
 

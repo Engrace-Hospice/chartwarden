@@ -6,16 +6,13 @@
 // `MswRiskFactorReader` + M9's `ScaleSeriesProvider`, the §4.3.3 deterministic D3/D17 scorer that turns it
 // into the immutable `bereavement_risk_score` draft, and the `ai.full`-gated M32 Layer-2 narrative adapter.
 //
-// Still to land: the §4.6 published seams (M16-T05), the §4.1 routes with the §4.7 permission keys + §4.8
-// ABAC predicates + the §4.9 workers that execute these machines' side effects (M16-T06), and the §5
-// screens (M16-T07).
+// M16-T05 completes `seams/`: the seven §4.6 / D13 PUBLISHED surfaces (`registerBereavementSeams`) over one
+// injected `BereavementSeamStore`, registered into the M1 registry from the composition root ahead of
+// `validateSeams()` — six reads plus M32's Layer-2 write-back, which APPENDS to the immutable score ledger.
+//
+// Still to land: the §4.1 routes with the §4.7 permission keys + §4.8 ABAC predicates + the §4.9 workers that
+// execute these machines' side effects (M16-T06), and the §5 screens (M16-T07).
 export * from "./lifecycle/index";
 export * from "./consumers/index";
 export * from "./risk/index";
-export {
-  getAdmissionStatusReader,
-  getDeathDischargeReader,
-  getMswRiskFactorReader,
-  getPatientReader,
-  getScaleSeriesProvider,
-} from "./seams/index";
+export * from "./seams/index";

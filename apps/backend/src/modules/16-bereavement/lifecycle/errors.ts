@@ -60,6 +60,9 @@ export const M16_ERROR_STATUS = {
   // rubric, so it is the one path that must be documented before it can land.
   RISK_OVERRIDE_REASON_TOO_SHORT: 422,
   RISK_OVERRIDE_TIER_REQUIRED: 422,
+  /** §4.6 — the Layer-2 write-back found no deterministic row to narrate. It refuses rather than appending an
+   *  `llm_augmented` row whose `rule_tier` came from nowhere (M16-T05). */
+  RISK_SCORE_NOT_FOUND: 404,
   // Optimistic concurrency (§2.5)
   STALE_VERSION: 412,
   // Structural — an event dispatched from a state that does not accept it (§2.2–§2.4 graphs).

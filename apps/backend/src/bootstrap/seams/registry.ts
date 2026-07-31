@@ -20,6 +20,13 @@ import {
   alertEmitterDenyStub,
   auditorSessionMinterDenyStub,
   baaStatusProviderDenyStub,
+  bereavedPortalScopeProviderDenyStub,
+  bereavementAssignmentReaderDenyStub,
+  bereavementComplianceProviderDenyStub,
+  bereavementOutreachProviderDenyStub,
+  bereavementPlanProviderDenyStub,
+  bereavementRiskFactorsProviderDenyStub,
+  bereavementRiskTierProviderDenyStub,
   billableEncounterReaderDenyStub,
   capAccrualReaderDenyStub,
   capProjectionProviderDenyStub,
@@ -637,6 +644,57 @@ export const REQUIRED_SEAMS = [
     ownerModule: 15,
     phi: false,
     denyStub: disciplineComplianceProviderDenyStub,
+  },
+  // M16 (Bereavement) §4.6 / D13 PUBLISHED seams (M16-T05). Seven surfaces over M16's `bereavement_plan` /
+  // `bereaved_contact` / `bereavement_outreach` / `bereavement_risk_score` / `bereavement_plan_closure` rows
+  // that M28 (FHIR), M30 (HQRP), M31 (portal), M32 (Layer-2 narrative), M33 (dashboards) and M36 (the
+  // bereavement channel) attach to instead of importing M16's schema (architecture §25.15).
+  //
+  // PHI split: the plan / outreach / risk-factor / assignment / portal-scope reads are all survivor- and
+  // decedent-linked → phi: true (the plan header carries `patientId`, the portal scope a `contactId`). The two
+  // ROLLUP seams answer COUNTS over a scope — no subject id crosses — → phi: false, matching M15's
+  // `DisciplineComplianceProvider`.
+  {
+    key: "BereavementPlanProvider",
+    ownerModule: 16,
+    phi: true,
+    denyStub: bereavementPlanProviderDenyStub,
+  },
+  {
+    key: "BereavementOutreachProvider",
+    ownerModule: 16,
+    phi: true,
+    denyStub: bereavementOutreachProviderDenyStub,
+  },
+  {
+    key: "BereavementRiskFactorsProvider",
+    ownerModule: 16,
+    phi: true,
+    denyStub: bereavementRiskFactorsProviderDenyStub,
+  },
+  {
+    key: "BereavementAssignmentReader",
+    ownerModule: 16,
+    phi: true,
+    denyStub: bereavementAssignmentReaderDenyStub,
+  },
+  {
+    key: "BereavedPortalScopeProvider",
+    ownerModule: 16,
+    phi: true,
+    denyStub: bereavedPortalScopeProviderDenyStub,
+  },
+  {
+    key: "BereavementComplianceProvider",
+    ownerModule: 16,
+    phi: false,
+    denyStub: bereavementComplianceProviderDenyStub,
+  },
+  {
+    key: "BereavementRiskTierProvider",
+    ownerModule: 16,
+    phi: false,
+    denyStub: bereavementRiskTierProviderDenyStub,
   },
 ] satisfies readonly RequiredSeam[];
 

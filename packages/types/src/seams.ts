@@ -8,6 +8,15 @@ import type {
   LevelOfCareReader,
 } from "./admission";
 import type { LatestAssessmentProvider, ScaleSeriesProvider } from "./assessment";
+import type {
+  BereavedPortalScopeProvider,
+  BereavementAssignmentReader,
+  BereavementComplianceProvider,
+  BereavementOutreachProvider,
+  BereavementPlanProvider,
+  BereavementRiskFactorsProvider,
+  BereavementRiskTierProvider,
+} from "./bereavement";
 import type { CarePlanReader } from "./care-plan";
 import type {
   DisciplineComplianceProvider,
@@ -230,6 +239,18 @@ export type SeamName =
   | "VolunteerGateExpiryReader" // M15 — the 418.78 gate-expiry sweep (coordinator worklist + M36 alerts)
   | "SupervisoryCadencePlanReader" // M15 — per-plan 418.76(h) cadence state + the overdue worklist
   | "DisciplineComplianceProvider" // M15 — supervisory / initial-assessment / volunteer-gate rates + the 418.78(e) ratio
+  // M16 (Bereavement) owned seams (§4.6 / D13) — leaf-typed in ./bereavement (this package). SIX reads plus
+  // ONE write: `BereavementRiskFactorsProvider.registerAugmentation` is M32's Layer-2 write-back, and it
+  // APPENDS to the immutable `bereavement_risk_score` ledger (D8) — the narrative can never move the
+  // deterministic `rule_tier` a cadence decision was made on (AI Governance §7.4). M16-T05 registers the real
+  // impls; the deny-stubs stay the fail-closed default for a boot that does not wire M16.
+  | "BereavementPlanProvider" // M16 — plan header / roster / closeout rollup (M28 FHIR, M30, M31, M33, M36 channel)
+  | "BereavementOutreachProvider" // M16 — touchpoint reads + the CoP 418.64(d) counts (M30 rate, M33 dashboard)
+  | "BereavementRiskFactorsProvider" // M16 — D3/D17 factor snapshot + deterministic score + the M32 Layer-2 append
+  | "BereavementAssignmentReader" // M16 — plan assignment + counselor caseload (M36 recipient resolver, M3 ABAC)
+  | "BereavedPortalScopeProvider" // M16 — the M31 bereaved-family session scope (§1.2 / D10 narrow)
+  | "BereavementComplianceProvider" // M16 — CoP / screening-completeness / closure COUNTS (M30 HQRP, M33)
+  | "BereavementRiskTierProvider" // M16 — risk-tier distribution (M30 chart, M33 dashboard)
   | "CapAccrualReader" // M26 — cap-period aggregate for the M27 cost-report Worksheet-E cap calc (aggregate $/days, no PHI)
   | "CapProjectionProvider" // M26 — agency/patient/inpatient cap projection for the M23 §11.A pre-submission cap rules
   // M23/M25 → M27 cost-report validation binds. M23 is the FIRST module to publish into the typed M1
@@ -570,6 +591,18 @@ export interface SeamContracts {
   VolunteerGateExpiryReader: VolunteerGateExpiryReader;
   SupervisoryCadencePlanReader: SupervisoryCadencePlanReader;
   DisciplineComplianceProvider: DisciplineComplianceProvider;
+  // M16's owned seams (§4.6 / D13) — interfaces live in ./bereavement (this package), so the registry is
+  // statically typed against the real contract. M16 registers the real impls over the deny-stubs (M16-T05);
+  // consumers resolve them through the typed accessors with no schema import edge. The bereaved contact's
+  // envelope-encrypted channels (email / phone / address cipher) never cross: the §4.6 DTOs carry
+  // reachability and identity, never the values (§3.3.2).
+  BereavementPlanProvider: BereavementPlanProvider;
+  BereavementOutreachProvider: BereavementOutreachProvider;
+  BereavementRiskFactorsProvider: BereavementRiskFactorsProvider;
+  BereavementAssignmentReader: BereavementAssignmentReader;
+  BereavedPortalScopeProvider: BereavedPortalScopeProvider;
+  BereavementComplianceProvider: BereavementComplianceProvider;
+  BereavementRiskTierProvider: BereavementRiskTierProvider;
 }
 
 /**
