@@ -23,7 +23,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useParams } from "react-router-dom";
-import { CONSENT_STATUS_TONE, humanize, toneOf } from "./consent-status";
+import { CONSENT_STATUS_TONE, humanize, readErrorMessage, toneOf } from "./consent-status";
 
 interface ConsentRow {
   id: string;
@@ -80,7 +80,7 @@ export function ConsentRecordManager(): JSX.Element {
       ]);
       if (!active) return;
       if (pRes.data) setPatient(pRes.data as PatientSummary);
-      if (cRes.error) setError("Consents unavailable — you may lack consent.read for this patient.");
+      if (cRes.error) setError(readErrorMessage(cRes.response?.status, "consent.read"));
       else setRows(cRes.data?.data ?? []);
       setLoading(false);
     })();

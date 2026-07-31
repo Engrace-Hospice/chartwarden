@@ -26,6 +26,7 @@ import {
   DPOA_ACTIVATION_TONE,
   DPOA_AGENT_KIND_TONE,
   humanize,
+  readErrorMessage,
   toneOf,
 } from "./consent-status";
 
@@ -85,7 +86,7 @@ export function ConsentRecipientsDpoa(): JSX.Element {
       ]);
       if (!active) return;
       if (rRes.error && aRes.error) {
-        setError("Consent detail unavailable — you may lack consent.read for this record.");
+        setError(readErrorMessage(rRes.response?.status, "consent.read"));
       } else {
         setRecipients(rRes.data?.data ?? []);
         setAgents(aRes.data?.data ?? []);

@@ -88,3 +88,18 @@ export function ratePct(rate: number | null, bandColor?: string): string {
 export function fraction(numerator: number, denominator: number): string {
   return `${numerator} / ${denominator}`;
 }
+
+/**
+ * Turn a failed read into a message that does not assert a cause it cannot know.
+ *
+ * The first cut of these screens said "you may lack <permission>" for ANY error, which sent me chasing a
+ * permission grant when the real failure was a 422 (a query value outside the schema's bounds). Copy that
+ * guesses wrong is worse than copy that says less: it points the reader at the wrong fix.
+ */
+export function readErrorMessage(status: number | undefined, permission: string): string {
+  if (status === 403) return `Not permitted — this view needs ${permission}.`;
+  if (status === 401) return "Session expired — sign in again.";
+  if (status === 422) return "The server rejected this request as malformed (422).";
+  if (status && status >= 500) return `The server failed to answer (${status}).`;
+  return status ? `Unavailable (HTTP ${status}).` : "Unavailable — the server could not be reached.";
+}

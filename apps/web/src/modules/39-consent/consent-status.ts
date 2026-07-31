@@ -67,3 +67,16 @@ export function humanize(value?: string | null): string {
   const s = value.replace(/_/g, " ");
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+
+/**
+ * Turn a failed read into a message that does not assert a cause it cannot know. See the M30
+ * `quality-status.ts` twin — copy that guesses "you may lack <permission>" for every failure points the
+ * reader at the wrong fix when the real cause is a 422 or a 500.
+ */
+export function readErrorMessage(status: number | undefined, permission: string): string {
+  if (status === 403) return `Not permitted — this view needs ${permission}.`;
+  if (status === 401) return "Session expired — sign in again.";
+  if (status === 422) return "The server rejected this request as malformed (422).";
+  if (status && status >= 500) return `The server failed to answer (${status}).`;
+  return status ? `Unavailable (HTTP ${status}).` : "Unavailable — the server could not be reached.";
+}
