@@ -109,3 +109,13 @@ export {
   buildM30PublishedSeams,
   registerM30PublishedSeams,
 } from "./published-seams";
+
+// §4.4 — the M23/M27 forward-seam binds. Both producers are built and publish into the M1 registry, so
+// these adapters replace the `QUALITY_FORWARD_SEAM_DENY_STUBS` entries for `billing` and `costReport`
+// (M15/M16 stay stubbed — still unbuilt). Each DEGRADES PER METHOD to the forward-seam marker, so an
+// unavailable read suppresses its measure and never substitutes a zero.
+export {
+  buildM30BillingConsumer,
+  buildM30CostReportConsumer,
+  buildM30LiveForwardSeams,
+} from "./consumed-seam-adapters";

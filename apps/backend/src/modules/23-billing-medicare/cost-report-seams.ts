@@ -7,7 +7,7 @@
 // The read runs under `withOrgContext` (RLS-scoped to the caller's org via a synthetic system actor); the
 // aggregate is a single day count — no patient row, no MBI (D13/D18). No db → the M1 deny-stub stands.
 import { repositories } from "@wardenx/billing";
-import type { BilledDaysAggregate } from "@wardenx/billing";
+import type { BilledDaysAggregate, ClaimLineRollup } from "@wardenx/billing";
 import type { DbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { registerSeam } from "../../bootstrap/index";
@@ -38,8 +38,40 @@ export function buildM23PatientDaysProvider(db: DbClient): PatientDaysProvider {
   };
 }
 
-/** Register M23's published seams into the M1 registry. No-op without a db (the deny-stub stands). */
+/** The M23 → M30 claim-line seam contract. Opaque in the M1 registry (`unknown`); M30 casts to its own
+ *  consumer view. Aggregate day counts + the per-diem LINE population over a window — no patient row (D18). */
+export interface ClaimLineReader {
+  /** Per-LOC billed-and-accepted per-diem day rollup + line count over `[fromIso, toIso]` (inclusive). */
+  claimLineRollupForPeriod(
+    orgId: string,
+    fromIso: string,
+    toIso: string,
+  ): Promise<ClaimLineRollup>;
+}
+
+/**
+ * Build the live `ClaimLineReader` over the SAME aggregate repo `PatientDaysProvider` uses, RLS-scoped per
+ * call. Sharing the repo is deliberate: the HCI claims-derived indicators and the cost-report census must
+ * agree on what counts as a billed day, and two queries would eventually drift.
+ */
+export function buildM23ClaimLineReader(db: DbClient): ClaimLineReader {
+  return {
+    async claimLineRollupForPeriod(orgId, fromIso, toIso) {
+      return withOrgContext(db, { organizationId: orgId, userId: "system" }, (tx) =>
+        new repositories.CostReportAggregateRepository(tx).claimLineRollupForPeriod(
+          orgId,
+          fromIso,
+          toIso,
+        ),
+      );
+    },
+  };
+}
+
+/** Register M23's published seams into the M1 registry. No-op without a db (the deny-stubs stand). */
 export function registerM23PublishedSeams(db: DbClient | undefined): void {
   if (!db) return;
   registerSeam("PatientDaysProvider", buildM23PatientDaysProvider(db));
+  // M30's HCI claims-derived indicators — the second M23 publish (same repo, windowed grain).
+  registerSeam("ClaimLineReader", buildM23ClaimLineReader(db));
 }

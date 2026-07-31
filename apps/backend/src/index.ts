@@ -126,6 +126,7 @@ import {
   mountM27Routes,
   registerCostReportErasers,
   registerM27AbacPredicates,
+  registerM27PublishedSeams,
   registerM27CronWorkers,
   registerM27Workers,
   scheduleM27Jobs,
@@ -343,6 +344,10 @@ export function wireModuleSeams(
   registerM30PublishedSeams(deps.db, {
     providerEntities: deps.db ? buildOrgProviderEntityLister(deps.db) : undefined,
   });
+  // M27 — register the PUBLISHED CostReportFilingStatusReader (M27's FIRST M1 publish) so M30's CoP
+  // 418.310 failure-to-file indicator resolves the live filing posture. The other six declared M27 seams
+  // stay unregistered until they have a consumer (the M24 posture).
+  registerM27PublishedSeams(deps.db);
   // M11 — the two §2.8 D14 / §4.3 owned seams (OrderSignatureProvider — the polymorphic clinical-signature
   // WRITE primitive M12 routes medication-order signatures through, D4 — + OrderProvider — the read-side
   // counterpart M14/M23/M30/M7 consume). Slice/tests keep the in-memory store; the Drizzle-backed store lands

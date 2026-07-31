@@ -101,6 +101,7 @@ export {
   CostReportAggregateRepository,
   type BilledDaysAggregate,
   type BilledDaysByLevel,
+  type ClaimLineRollup,
 } from "./cost-report-aggregates";
 export {
   MacSubmitterCredentialRepository,
