@@ -112,16 +112,19 @@ import {
   CloseSraCycleBodySchema,
   CompleteMortalityReviewBodySchema,
   CopCitationListQuerySchema,
+  CopCitationListResponseSchema,
   CreateCahpsExportBodySchema,
   CreateIncidentBodySchema,
   CreateQapiIndicatorBodySchema,
   EnqueueRecomputeBodySchema,
   ExcludeCahpsDecedentBodySchema,
   IncidentListQuerySchema,
+  IncidentListResponseSchema,
   InfectionEventListQuerySchema,
   InfectionOutbreakListQuerySchema,
   IngestCahpsResultsBodySchema,
   MeasureListQuerySchema,
+  MeasureListResponseSchema,
   MeasureValuesQuerySchema,
   MortalityListQuerySchema,
   OpenInvestigationBodySchema,
@@ -132,6 +135,7 @@ import {
   QapiPipListQuerySchema,
   QapiProgramListQuerySchema,
   QapiProjectListQuerySchema,
+  QapiProjectListResponseSchema,
   RecordInfectionEventBodySchema,
   RecordQapiGovernanceBodySchema,
   ReopenIncidentBodySchema,
@@ -1004,6 +1008,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/quality/cop/citations": {
     summary: "CoP survey citations (§1.2 compliance posture)",
     query: CopCitationListQuerySchema,
+    response: CopCitationListResponseSchema,
   },
   "PATCH /api/v1/quality/cop/citations/:citationId": {
     summary: "Update a CoP citation's remediation state",
@@ -1016,6 +1021,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/quality/incidents": {
     summary: "Incident register (kind / severity / state filters)",
     query: IncidentListQuerySchema,
+    response: IncidentListResponseSchema,
   },
   "GET /api/v1/quality/incidents/abuse-allegations": {
     summary: "Abuse-allegation incidents (mandatory-reporter surface)",
@@ -1068,6 +1074,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/quality/measures": {
     summary: "The FY measure catalog + latest values (aggregate-only)",
     query: MeasureListQuerySchema,
+    response: MeasureListResponseSchema,
   },
   "GET /api/v1/quality/measures/:measureId/values": {
     summary: "Measure value series across a window",
@@ -1116,6 +1123,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/quality/qapi/projects": {
     summary: "QAPI projects by phase",
     query: QapiProjectListQuerySchema,
+    response: QapiProjectListResponseSchema,
   },
   "POST /api/v1/quality/qapi/projects": {
     summary: "Charter a QAPI project",

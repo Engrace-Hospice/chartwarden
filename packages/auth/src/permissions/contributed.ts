@@ -3295,6 +3295,218 @@ export function m24ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
  * `permission` table once the catalog goes real. Keys are single-owner across all sets — a
  * collision would be a registration bug, so the deploy sync (and the unit test) asserts uniqueness.
  */
+
+/**
+ * M30 HQRP & Quality — the §4.6 permission keys the module contributes to this M3-owned catalog.
+ *
+ * These existed in `apps/backend/src/modules/30-quality/permission-keys.ts` as M30's own source of truth,
+ * but were never projected INTO the catalog — the "Integrate phase's job" its header names. The effect was
+ * that no role could grant a quality permission and no screen could declare one as its
+ * `requiredPermission` (the ui-parity gate rejects a key the catalog does not know). Mirrors the M33
+ * precedent: the typed map lives here, the module keeps its own list, and the two are asserted equal.
+ */
+export const M30_CONTRIBUTED_PERMISSIONS = {
+  // --- quality measures (§6.1) — aggregate-only, `inOrg`-scoped (R-01..R-05) ---
+  // R-01/R-02 list + value series.
+  "quality.measure.read": {
+    resource: "quality_measure",
+    action: "read",
+    category: "quality",
+    abac: "inOrg",
+  },
+  // R-04/R-05 enqueue + inspect recompute queue.
+  "quality.measure.recompute": {
+    resource: "quality_measure",
+    action: "recompute",
+    category: "quality_admin",
+    abac: "inOrg",
+  },
+  // R-03 reproducibility snapshot for an emitted value.
+  "quality.measure.audit": {
+    resource: "quality_measure",
+    action: "audit",
+    category: "quality_admin",
+    abac: "inOrg",
+  },
+  // --- CAHPS (§6.2) — `quality.cahps.system` is service-only (bound to the vendor adapter's mTLS
+  // service account at boot, never granted to a human principal) ---
+  // R-10/R-12/R-17 vendor binding, decedent sample, result summaries (read).
+  "quality.cahps.read": {
+    resource: "quality_cahps",
+    action: "read",
+    category: "quality",
+    abac: "inOrg",
+  },
+  // R-11/R-13/R-14/R-15 bind vendor, exclude decedent, export, export status.
+  "quality.cahps.admin": {
+    resource: "quality_cahps",
+    action: "admin",
+    category: "quality_admin",
+    abac: "inOrg",
+  },
+  // R-16 vendor-adapter result ingest (system route, mTLS).
+  "quality.cahps.system": {
+    resource: "quality_cahps",
+    action: "system",
+    category: "quality_admin",
+    abac: "inOrg",
+  },
+  // --- QAPI (§6.3) — `qapi.close` (PIP) requires two-person co-sign (QAPI Coordinator + Medical
+  // Director); the `qapiCloseAuthority` predicate enforces the role-difference at exercise time ---
+  // R-20/R-23/R-26/R-29/R-33 list programs, indicators, projects, PIPs, governance minutes.
+  "qapi.read": { resource: "qapi", action: "read", category: "quality", abac: "inOrg" },
+  // R-27/R-28/R-30/R-32 charter projects, update phase, add PIP, record governance minutes;
+  // R-28/R-30 add `ownsQapiProject` (project lead OR `qapi.admin`).
+  "qapi.write": { resource: "qapi", action: "write", category: "quality", abac: "ownsQapiProject" },
+  // R-21/R-22/R-24/R-25 adopt program, governance composition, create/update indicators.
+  "qapi.admin": { resource: "qapi", action: "admin", category: "quality_admin", abac: "inOrg" },
+  // R-31 close PIP (two-person co-sign).
+  "qapi.close": { resource: "qapi", action: "close", category: "quality", abac: "qapiCloseAuthority" },
+  // --- SRA (§6.4) — `sra.close` requires two-person co-sign (Security Officer + Compliance Officer);
+  // the `sraCloseAuthority` predicate enforces the role split ---
+  // R-40/R-42/R-48 list cycles, cycle detail, NIST export.
+  "sra.read": { resource: "sra", action: "read", category: "quality", abac: "inOrg" },
+  // R-43/R-44/R-45/R-46 add finding, update finding, plan/update remediation; all add `ownsSraCycle`.
+  "sra.write": { resource: "sra", action: "write", category: "quality", abac: "ownsSraCycle" },
+  // R-41 open new cycle.
+  "sra.admin": { resource: "sra", action: "admin", category: "quality_admin", abac: "inOrg" },
+  // R-47 close cycle (two-person co-sign).
+  "sra.close": { resource: "sra", action: "close", category: "quality", abac: "sraCloseAuthority" },
+  // --- incidents (§6.5) — visibility is gated so the `allegation_of_abuse` kind only reaches the
+  // abuse-review queue; resolve/close/reopen enforce the M30-F03 separation-of-duties control ---
+  // R-50/R-52 list + detail (PHI when patient-linked); `incidentVisibility` masks abuse rows.
+  "incident.read": {
+    resource: "incident",
+    action: "read",
+    category: "quality",
+    abac: "incidentVisibility",
+  },
+  // R-51 create (draft, `inOrg`) / R-53 update draft fields (adds `ownsIncident`).
+  "incident.write": {
+    resource: "incident",
+    action: "write",
+    category: "quality",
+    abac: "ownsIncident",
+  },
+  // R-54 submit (draft→submitted); reporter-owned.
+  "incident.submit": {
+    resource: "incident",
+    action: "submit",
+    category: "quality",
+    abac: "ownsIncident",
+  },
+  // R-55 triage (submitted→triaged, assign owner + severity).
+  "incident.triage": {
+    resource: "incident",
+    action: "triage",
+    category: "quality",
+    abac: "inOrg",
+  },
+  // R-56 append-only investigation note; assignee-owned.
+  "incident.investigate": {
+    resource: "incident",
+    action: "investigate",
+    category: "quality",
+    abac: "assignedToIncident",
+  },
+  // R-57 open CAP / begin investigation (triaged→under_investigation); assignee-owned.
+  "incident.cap": {
+    resource: "incident",
+    action: "cap",
+    category: "quality",
+    abac: "assignedToIncident",
+  },
+  // R-58 resolve / verify CAP (under_investigation→resolved); `capVerifyAuthority` enforces
+  // resolver ≠ assignee (M30-F03 / ADR-0022).
+  "incident.resolve": {
+    resource: "incident",
+    action: "resolve",
+    category: "quality",
+    abac: "capVerifyAuthority",
+  },
+  // R-59 close (resolved→closed_followup_complete).
+  "incident.close": {
+    resource: "incident",
+    action: "close",
+    category: "quality",
+    abac: "capVerifyAuthority",
+  },
+  // R-60 reopen (closed/reopened→under_investigation).
+  "incident.reopen": {
+    resource: "incident",
+    action: "reopen",
+    category: "quality",
+    abac: "capVerifyAuthority",
+  },
+  // R-61 abuse-allegation co-sign queue; `abuseAllegationAccess` is the only path to abuse rows.
+  "incident.abuse_review": {
+    resource: "incident",
+    action: "abuse_review",
+    category: "quality",
+    abac: "abuseAllegationAccess",
+  },
+  // --- mortality (§6.6) — PHI; write/close are assignee-owned ---
+  // R-70/R-71 list + review detail (3 dimensions).
+  "mortality.read": {
+    resource: "mortality_review",
+    action: "read",
+    category: "quality",
+    abac: "inOrg",
+  },
+  // R-72 update review fields.
+  "mortality.write": {
+    resource: "mortality_review",
+    action: "write",
+    category: "quality",
+    abac: "assignedToMortality",
+  },
+  // R-73 complete review (target ≤30 days).
+  "mortality.close": {
+    resource: "mortality_review",
+    action: "close",
+    category: "quality",
+    abac: "assignedToMortality",
+  },
+  // --- CoP compliance (§6.6) — org-scoped, no PHI ---
+  // R-80 list 23 CoP citation rows.
+  "cop.read": { resource: "cop", action: "read", category: "quality", abac: "inOrg" },
+  // R-81/R-82 update status/evidence + record 6-month review attestation.
+  "cop.write": { resource: "cop", action: "write", category: "quality", abac: "inOrg" },
+  // --- infection (§6.6) — surveillance events are PHI; outbreak cases are aggregate ---
+  // R-90/R-92 list surveillance events + outbreak cases.
+  "infection.read": {
+    resource: "infection",
+    action: "read",
+    category: "quality",
+    abac: "inOrg",
+  },
+  // R-91/R-93 record event (auto-clusters) + update outbreak status.
+  "infection.write": {
+    resource: "infection",
+    action: "write",
+    category: "quality",
+    abac: "inOrg",
+  },
+  // --- risk register (§6.6) — aggregate unified view ---
+  // R-95 unified risk view.
+  "risk.read": { resource: "risk_register", action: "read", category: "quality", abac: "inOrg" },
+  // R-96 force materialized-view refresh.
+  "risk.admin": {
+    resource: "risk_register",
+    action: "admin",
+    category: "quality_admin",
+    abac: "inOrg",
+  },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M30 contributed permission keys. */
+export type M30ContributedPermissionKey = keyof typeof M30_CONTRIBUTED_PERMISSIONS;
+
+/** Project the M30 contributed keys into `permission`-table mirror rows. */
+export function m30ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M30_CONTRIBUTED_PERMISSIONS);
+}
+
 export function allPermissionMirrorRows(): PermissionMirrorRow[] {
   return [
     ...permissionMirrorRows(),
@@ -3324,5 +3536,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m26ContributedPermissionMirrorRows(),
     ...m27ContributedPermissionMirrorRows(),
     ...m24ContributedPermissionMirrorRows(),
+    ...m30ContributedPermissionMirrorRows(),
   ];
 }

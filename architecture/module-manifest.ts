@@ -860,6 +860,7 @@ export const MODULES: ModuleDef[] = [
     name: "HQRP & Quality",
     codePaths: [
       "apps/backend/src/modules/30-quality",
+      "apps/web/src/modules/30-quality",
       "packages/quality",
       "packages/cahps-vendors",
     ],

@@ -420,7 +420,7 @@
       "migration": true,
       "routes": true,
       "enriched": true,
-      "screens": false,
+      "screens": true,
       "tests": true,
       "adapter": true,
       "liveInfra": true

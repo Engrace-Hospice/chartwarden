@@ -150,8 +150,11 @@ export {
 // M34 — Module 34's forty-one permission keys registered into M3's catalog (§4.5 handshake), in a
 // dedicated const so each module's contribution stays attributable (§3.3 ownership model).
 export {
+  type M30ContributedPermissionKey,
   type M34ContributedPermissionKey,
+  M30_CONTRIBUTED_PERMISSIONS,
   M34_CONTRIBUTED_PERMISSIONS,
+  m30ContributedPermissionMirrorRows,
   m34ContributedPermissionMirrorRows,
 } from "./contributed";
 // M23 — Module 23's twenty-eight Billing — Medicare permission keys registered into M3's catalog (§4.6

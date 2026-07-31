@@ -34,6 +34,7 @@
     "25-remittance",
     "26-cap",
     "27-cost-report",
+    "30-quality",
     "33-reporting",
     "34-saas",
     "36-messaging",
@@ -1000,6 +1001,20 @@
       "id": "cost_report.snapshots",
       "path": "/cost-reports/snapshots",
       "permission": "cost_report.read_snapshot_detail"
+    },
+    {
+      "module": "30-quality",
+      "moduleId": 30,
+      "id": "quality.hub",
+      "path": "/quality",
+      "permission": "quality.measure.read"
+    },
+    {
+      "module": "30-quality",
+      "moduleId": 30,
+      "id": "quality.qapi-incidents",
+      "path": "/quality/qapi",
+      "permission": "incident.read"
     },
     {
       "module": "33-reporting",
