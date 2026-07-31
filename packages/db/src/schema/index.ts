@@ -588,3 +588,23 @@ export * from "./discipline-plans/index";
 // tables migration 0100; the partitioned contact log 0101; RLS/grants + M4 write-audit (incl. the nested
 // risk_factors_jsonb re-scrub) + risk-score immutability 0102.
 export * from "./bereavement/index";
+
+// M21 Supplies, DME & Comfort Kits: 11 owned tables (§3.1) in three layers — CATALOG (supply_item, the
+// platform-shared HCPCS SKU catalog with no organization_id at all + tenant_supply_item_extension for the
+// tenant's own non-billable items; comfort_kit_template + _medication, D3's four-medication platform floor
+// on the same floor-plus-overlay shape; vendor_routing_rule, D4's deterministic routing ladder with no
+// fallback chain; par_stock, D5's per-Location shelf posture with derived — never stored — severity),
+// REQUEST (supply_request, D1's ONE shared row across dme | supply | comfort_kit_deploy |
+// comfort_kit_replenish with the per-kind payload in a TypeBox-validated `data` jsonb), and KIT CUSTODY
+// (comfort_kit_dispatch → comfort_kit_dispatched_content, the DEA 21 CFR §1304 outbound perpetual log with
+// controlled-only lot/expiration → comfort_kit_return, the §2.6 chain-of-custody machine with the
+// witness-distinctness CHECK → comfort_kit_returned_content, where the single discrepancy formula
+// `dispatched − returned − disposed_at_home` closes the count and flags controlled lines at 5%). Nine
+// tables are org-scoped on canonical app.org_id RLS; comfort_kit_template/_medication and
+// vendor_routing_rule carry organization_id NULLABLE paired with a platform discriminator + CHECK pair so a
+// tenant reads the floor and can never write it; supply_item is genuinely org-less (NON_ORG_SCOPED,
+// dual-grant RLS, M1 baseline audit trigger — the M22 form_template posture). Exactly two tables are
+// partitioned, on different keys: supply_request monthly by created_at (migration 0104) and
+// comfort_kit_dispatch monthly by dispatched_at (0105). Enums + the nine unpartitioned tables 0103;
+// RLS/grants + M4 write-audit + the discrepancy and expiration-floor triggers 0106.
+export * from "./supplies/index";

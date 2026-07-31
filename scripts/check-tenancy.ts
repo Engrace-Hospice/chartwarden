@@ -164,6 +164,18 @@ const NON_ORG_SCOPED = new Set<string>([
   // cap.platform_constant.manage permission (the wage_index_factor / cost_report_validation_rule precedent).
   // The other eleven M26 tables carry organization_id and get standard app.org_id RLS.
   "cap_period_platform_constant",
+  // M21 Supplies (§3.1.3 / D11): supply_item is the PLATFORM-shared canonical SKU catalog — one row per
+  // real-world HCPCS-keyed item, rewritten wholesale by the annual CMS HCPCS loader, the same answer for
+  // every tenant — with NO organization_id BY DESIGN. Dual-grant RLS in 0106: read-all
+  // `USING (is_active = true)` TO wardenx_app, writes only via wardenx_admin; it audits through the M1
+  // baseline `wardenx_audit_trigger()` because the M4 generator's body reads NEW.organization_id (the M22
+  // form_template / M38 code_system / M39 consent_type_catalog precedent). The tenant half of the D11
+  // canonical-plus-overlay pair, tenant_supply_item_extension, is intentionally NOT listed here — it carries
+  // organization_id NOT NULL and gets standard app.org_id RLS. comfort_kit_template / _medication and
+  // vendor_routing_rule are likewise NOT listed: their organization_id is NULLABLE only on the platform-floor
+  // / platform-scope row, paired with a discriminator column and a CHECK pair, so the column is present and
+  // the tenant rows are org-scoped. The other seven M21 tables carry organization_id NOT NULL.
+  "supply_item",
 ]);
 // PHI signal: a table referencing a patient is PHI-bearing and MUST be fully org-scoped.
 const PHI_SIGNAL_RE =
