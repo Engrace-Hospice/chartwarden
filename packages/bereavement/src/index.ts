@@ -10,6 +10,10 @@
 //                    validator that proves a tenant policy only added, moved earlier, or converted upward;
 //   · `risk/`      — the D3 factor weights + tier cutoffs and the D17 `unknown`-aware deterministic scorer
 //                    with its completeness / confidence bands, plus the D8 grief-screen tier promotion;
+//                    M16-T04 adds the reproducible DERIVATION of that vector from M15 MSW findings / the M9
+//                    PPS trajectory / the M16 roster (`evidence.ts`), and the `ai.full` Layer-2 eligibility
+//                    ladder whose merge structurally forbids the M32 narrative from moving the tier
+//                    (`layer2.ts`);
 //   · `gate/`      — the D18 external-source first-contact gate + the cosign-receipt applier.
 //
 // The cross-module enum / seam / outbox / alert CONTRACTS — the §3.2 enum mirrors, the §3.3 owned-table
@@ -20,10 +24,8 @@
 // (`@wardenx/discipline-plans`, `@wardenx/idg`, `@wardenx/orders`) is a top-level feature package, and
 // architecture wins over the spec's proposed path.
 //
-// Still to land: the nine §3.3 Drizzle tables + RLS + M4 triggers + migration (M16-T02), the §2.2–2.4
-// XState lifecycles and the schedule generator that materializes the cadence floor (M16-T03), the risk
-// extractor + M32 augmentation adapter (M16-T04), the §4.6 seam impls (M16-T05), and the §4.1 routes with
-// the §4.7 permission keys + §4.8 ABAC predicates (M16-T06).
+// Still to land: the §4.6 seam impls (M16-T05), the §4.1 routes with the §4.7 permission keys + §4.8 ABAC
+// predicates (M16-T06), and the §5 screens (M16-T07).
 //
 // PURE — no IO, `@wardenx/types`-only.
 

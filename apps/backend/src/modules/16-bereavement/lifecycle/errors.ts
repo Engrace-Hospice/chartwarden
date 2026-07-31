@@ -56,6 +56,10 @@ export const M16_ERROR_STATUS = {
   CONTACT_LOG_REQUIRED: 422,
   // Schedule generation (D4)
   TENANT_CADENCE_LOOSENS_FLOOR: 422,
+  // D3/D17 risk scoring (§4.3.3, §7.3) — a counselor override is the ONE path that moves a tier off the
+  // rubric, so it is the one path that must be documented before it can land.
+  RISK_OVERRIDE_REASON_TOO_SHORT: 422,
+  RISK_OVERRIDE_TIER_REQUIRED: 422,
   // Optimistic concurrency (§2.5)
   STALE_VERSION: 412,
   // Structural — an event dispatched from a state that does not accept it (§2.2–§2.4 graphs).

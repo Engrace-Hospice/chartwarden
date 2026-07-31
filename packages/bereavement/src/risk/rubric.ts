@@ -147,3 +147,23 @@ export function promoteTierForGriefScreen(
 /** §2.5 / D3 — a counselor tier override must carry a documented reason of at least this length, and lands
  *  as an immutable amendment row rather than an UPDATE (the audit trigger refuses UPDATE on score rows). */
 export const RISK_TIER_OVERRIDE_REASON_MIN_LENGTH = 40 as const;
+
+/**
+ * The persistence scale (M16-T04). `bereavement_risk_score.rule_score` is an INTEGER column (§3.3.3) while
+ * the D17 divisor produces a 0..1 fraction, so the stored value is the fraction in BASIS-POINT-free
+ * hundredths: `0.51 → 51`. Multiplying rather than truncating keeps the column's "0..N deterministic sum"
+ * semantic intact and keeps two scores comparable across vectors of different completeness, which is the
+ * whole point of the D17 knowable-only divisor. The read seams divide back out
+ * ({@link ruleScoreToWeighted}) so `BereavementDeterministicScore.score` stays the documented 0..1.
+ */
+export const BEREAVEMENT_RULE_SCORE_SCALE = 100 as const;
+
+/** The `rule_score` integer for a 0..1 weighted score (rounds half-up; 0.505 → 51). */
+export function weightedScoreToRuleScore(weightedScore: number): number {
+  return Math.round(weightedScore * BEREAVEMENT_RULE_SCORE_SCALE);
+}
+
+/** The 0..1 weighted score behind a stored `rule_score` integer. */
+export function ruleScoreToWeighted(ruleScore: number): number {
+  return ruleScore / BEREAVEMENT_RULE_SCORE_SCALE;
+}

@@ -7,5 +7,7 @@
 export {
   getAdmissionStatusReader,
   getDeathDischargeReader,
+  getMswRiskFactorReader,
   getPatientReader,
+  getScaleSeriesProvider,
 } from "./consumed";
