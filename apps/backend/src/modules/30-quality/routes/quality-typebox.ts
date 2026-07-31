@@ -404,3 +404,95 @@ export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   }
   return converted as Static<T>;
 }
+
+// ── §4.1 RESPONSE DTOs ─────────────────────────────────────────────────────────────────────────
+//
+// The reads the M30 web screens call. Without these the generated client types every M30 response as
+// `content?: never`, so a screen must cast through a hand-maintained row shape that drifts silently —
+// the problem the M25 screens carried until their DTOs landed. These mirror `read-service.ts`'s view
+// interfaces; that file is the contract, this is its wire projection.
+//
+// M30's list handlers return the `CursorPage` DIRECTLY (`{ items, nextCursor, hasMore }`), not wrapped in
+// a `{ data }` envelope the way M39's do — the envelope is modelled here so no screen has to guess.
+
+const m30Nullable = <T extends TSchema>(inner: T) => Type.Union([inner, Type.Null()]);
+
+/** `concurrency.ts` → `CursorPage<T>` (§4.12 — opaque cursor, never an offset). */
+const m30PageOf = <T extends TSchema>(item: T) =>
+  Type.Object({
+    items: Type.Array(item),
+    nextCursor: m30Nullable(Type.String()),
+    hasMore: Type.Boolean(),
+  });
+
+/** `read-service.ts` → `MeasureValueView`. The numerator/denominator PAIR is on the wire deliberately:
+ *  a UI that showed only the rate could not distinguish a suppressed measure from a real 0%. */
+export const MeasureValueViewSchema = Type.Object({
+  valueId: Type.String(),
+  organizationId: Type.String(),
+  measureId: Type.String(),
+  period: Type.Object({ kind: Type.String(), start: Type.String(), end: Type.String() }),
+  numerator: Type.Number(),
+  denominator: Type.Number(),
+  rate: m30Nullable(Type.Number()),
+  thresholdMet: m30Nullable(Type.Boolean()),
+  bandColor: Type.String(),
+  computedAt: Type.String(),
+  computeVersion: Type.String(),
+  snapshotContentHash: Type.String(),
+  supersededByValueId: m30Nullable(Type.String()),
+});
+
+/** `read-service.ts` → `MeasureSummaryView`. */
+export const MeasureSummaryViewSchema = Type.Object({
+  measureId: Type.String(),
+  displayName: Type.String(),
+  domain: Type.Union(
+    ["hci", "hvldl", "hope", "cahps", "operational"].map((d) => Type.Literal(d)),
+  ),
+  latestValue: m30Nullable(MeasureValueViewSchema),
+  fiscalYear: Type.Integer(),
+});
+export const MeasureListResponseSchema = m30PageOf(MeasureSummaryViewSchema);
+
+/** `read-service.ts` → `IncidentSummaryView`. `patientId` is nullable — not every incident is clinical. */
+export const IncidentSummaryViewSchema = Type.Object({
+  incidentId: Type.String(),
+  organizationId: Type.String(),
+  kind: Type.String(),
+  state: Type.String(),
+  severity: Type.String(),
+  patientId: m30Nullable(Type.String()),
+  occurredAt: Type.String(),
+  reportedAt: Type.String(),
+  reportedByMembershipId: Type.String(),
+  assignedToMembershipId: m30Nullable(Type.String()),
+});
+export const IncidentListResponseSchema = m30PageOf(IncidentSummaryViewSchema);
+
+/** `read-service.ts` → `QapiProjectView`. */
+export const QapiProjectViewSchema = Type.Object({
+  projectId: Type.String(),
+  organizationId: Type.String(),
+  qapiProgramId: Type.String(),
+  title: Type.String(),
+  phase: Type.String(),
+  indicatorId: m30Nullable(Type.String()),
+  ledByMembershipId: m30Nullable(Type.String()),
+  charteredAt: Type.String(),
+  completedAt: m30Nullable(Type.String()),
+});
+export const QapiProjectListResponseSchema = m30PageOf(QapiProjectViewSchema);
+
+/** `read-service.ts` → `CopCitationView` (the §1.2 CoP compliance posture). */
+export const CopCitationViewSchema = Type.Object({
+  citationId: Type.String(),
+  organizationId: Type.String(),
+  citationRef: Type.String(),
+  displayName: Type.String(),
+  status: Type.String(),
+  evidencePointers: Type.Array(Type.String()),
+  lastReviewedAt: m30Nullable(Type.String()),
+  nextReviewDueAt: m30Nullable(Type.String()),
+});
+export const CopCitationListResponseSchema = m30PageOf(CopCitationViewSchema);

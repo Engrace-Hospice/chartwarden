@@ -27591,7 +27591,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            citationId: string;
+                            organizationId: string;
+                            citationRef: string;
+                            displayName: string;
+                            status: string;
+                            evidencePointers: string[];
+                            lastReviewedAt: string | null;
+                            nextReviewDueAt: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27677,7 +27692,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            incidentId: string;
+                            organizationId: string;
+                            kind: string;
+                            state: string;
+                            severity: string;
+                            patientId: string | null;
+                            occurredAt: string;
+                            reportedAt: string;
+                            reportedByMembershipId: string;
+                            assignedToMembershipId: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -28119,7 +28151,37 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            measureId: string;
+                            displayName: string;
+                            domain: "hci" | "hvldl" | "hope" | "cahps" | "operational";
+                            latestValue: {
+                                valueId: string;
+                                organizationId: string;
+                                measureId: string;
+                                period: {
+                                    kind: string;
+                                    start: string;
+                                    end: string;
+                                };
+                                numerator: number;
+                                denominator: number;
+                                rate: number | null;
+                                thresholdMet: boolean | null;
+                                bandColor: string;
+                                computedAt: string;
+                                computeVersion: string;
+                                snapshotContentHash: string;
+                                supersededByValueId: string | null;
+                            } | null;
+                            fiscalYear: number;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -28640,7 +28702,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            projectId: string;
+                            organizationId: string;
+                            qapiProgramId: string;
+                            title: string;
+                            phase: string;
+                            indicatorId: string | null;
+                            ledByMembershipId: string | null;
+                            charteredAt: string;
+                            completedAt: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
