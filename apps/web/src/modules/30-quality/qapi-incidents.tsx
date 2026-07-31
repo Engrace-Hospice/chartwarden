@@ -23,6 +23,7 @@ import {
 // this table performs on its own.
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
+import type { paths } from "@wardenx/ui";
 import {
   INCIDENT_SEVERITY_TONE,
   INCIDENT_STATE_TONE,
@@ -32,33 +33,36 @@ import {
   toneOf,
 } from "./quality-status";
 
-interface IncidentRow {
-  incidentId: string;
-  kind: string;
-  state: string;
-  severity: string;
-  patientId: string | null;
-  occurredAt: string;
-  reportedAt: string;
-  assignedToMembershipId: string | null;
-}
-interface ProjectRow {
-  projectId: string;
-  title: string;
-  phase: string;
-  charteredAt: string;
-  completedAt: string | null;
-}
+// Rows come from the GENERATED client, not a hand-written mirror. Two reasons, both learned the hard
+// way here: a local `interface` re-types the payload as whatever the author believed it to be, and its
+// `state: string` widens the server's closed vocabulary so every comparison below type-checks — even
+// against values that do not exist. This file previously filtered on "reported" / "investigating" /
+// "closed" and counted severity "major" / "sentinel", all of them from the SPEC's vocabulary rather
+// than the frozen pgEnum the server actually emits. Three filter chips matched nothing, closed
+// incidents counted as open, and the severe-incident KPI was permanently 0. Nothing failed: the local
+// interface said `string`, and every wrong literal is a valid `string`. Derived types make each of
+// those a compile error.
+type IncidentRow =
+  paths["/api/v1/quality/incidents"]["get"]["responses"][200]["content"]["application/json"]["items"][number];
+type ProjectRow =
+  paths["/api/v1/quality/qapi/projects"]["get"]["responses"][200]["content"]["application/json"]["items"][number];
 
-const STATE_FILTERS = [
+/** The incident states a caller can filter to — the pgEnum vocabulary, `all` first. */
+const STATE_FILTERS: readonly ("all" | IncidentRow["state"])[] = [
   "all",
-  "reported",
+  "draft",
+  "submitted",
   "triaged",
-  "investigating",
+  "under_investigation",
   "resolved",
-  "closed",
+  "closed_followup_complete",
   "reopened",
 ];
+
+/** The states that mean an incident no longer needs attention (§4.2 lifecycle terminal + resolved). */
+const SETTLED_STATES: readonly IncidentRow["state"][] = ["resolved", "closed_followup_complete"];
+/** The severities that escalate (`severe`/`critical` — NOT the spec's `major`/`sentinel`). */
+const ESCALATED_SEVERITIES: readonly IncidentRow["severity"][] = ["severe", "critical"];
 
 const cell: CSSProperties = { padding: "0.55rem 0.75rem", textAlign: "left", verticalAlign: "middle" };
 const head: CSSProperties = {
@@ -80,7 +84,7 @@ export function QapiIncidents(): JSX.Element {
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [stateFilter, setStateFilter] = useState("all");
+  const [stateFilter, setStateFilter] = useState<"all" | IncidentRow["state"]>("all");
 
   useEffect(() => {
     let active = true;
@@ -107,11 +111,11 @@ export function QapiIncidents(): JSX.Element {
   );
 
   const openCount = useMemo(
-    () => incidents.filter((i) => i.state !== "closed" && i.state !== "resolved").length,
+    () => incidents.filter((i) => !SETTLED_STATES.includes(i.state)).length,
     [incidents],
   );
   const severeCount = useMemo(
-    () => incidents.filter((i) => i.severity === "major" || i.severity === "sentinel").length,
+    () => incidents.filter((i) => ESCALATED_SEVERITIES.includes(i.severity)).length,
     [incidents],
   );
   const activeProjects = useMemo(
@@ -129,7 +133,7 @@ export function QapiIncidents(): JSX.Element {
 
       <KpiStrip>
         <KpiCard label="Open incidents" value={loading ? "—" : String(openCount)} />
-        <KpiCard label="Major / sentinel" value={loading ? "—" : String(severeCount)} />
+        <KpiCard label="Severe / critical" value={loading ? "—" : String(severeCount)} />
         <KpiCard label="Active QAPI projects" value={loading ? "—" : String(activeProjects)} />
         <KpiCard label="Total reported" value={loading ? "—" : String(incidents.length)} />
       </KpiStrip>

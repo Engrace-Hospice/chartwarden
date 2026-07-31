@@ -106,7 +106,11 @@ import {
   AdoptQapiProgramBodySchema,
   BindCahpsVendorBodySchema,
   CahpsDecedentListQuerySchema,
+  CahpsDecedentListResponseSchema,
+  CahpsExportJobResponseSchema,
   CahpsResultListQuerySchema,
+  CahpsResultListResponseSchema,
+  CahpsVendorResponseSchema,
   CharterQapiProjectBodySchema,
   CloseQapiPipBodySchema,
   CloseSraCycleBodySchema,
@@ -119,30 +123,45 @@ import {
   EnqueueRecomputeBodySchema,
   ExcludeCahpsDecedentBodySchema,
   IncidentListQuerySchema,
+  IncidentDetailResponseSchema,
   IncidentListResponseSchema,
   InfectionEventListQuerySchema,
+  InfectionEventListResponseSchema,
   InfectionOutbreakListQuerySchema,
+  InfectionOutbreakListResponseSchema,
   IngestCahpsResultsBodySchema,
   MeasureListQuerySchema,
   MeasureListResponseSchema,
+  MeasureValueSeriesResponseSchema,
+  MeasureValueSnapshotResponseSchema,
   MeasureValuesQuerySchema,
   MortalityListQuerySchema,
+  MortalityListResponseSchema,
+  MortalityReviewDetailResponseSchema,
   OpenInvestigationBodySchema,
   OpenSraCycleBodySchema,
   PlanSraRemediationBodySchema,
   QapiGovernanceListQuerySchema,
+  QapiGovernanceListResponseSchema,
   QapiIndicatorListQuerySchema,
+  QapiIndicatorListResponseSchema,
   QapiPipListQuerySchema,
+  QapiPipListResponseSchema,
   QapiProgramListQuerySchema,
+  QapiProgramListResponseSchema,
   QapiProjectListQuerySchema,
   QapiProjectListResponseSchema,
+  RecomputeQueueResponseSchema,
   RecordInfectionEventBodySchema,
   RecordQapiGovernanceBodySchema,
   ReopenIncidentBodySchema,
   ResolveIncidentBodySchema,
   ReviewCopCitationBodySchema,
   RiskRegisterListQuerySchema,
+  RiskRegisterListResponseSchema,
+  SraCycleDetailResponseSchema,
   SraCycleListQuerySchema,
+  SraCycleListResponseSchema,
   TriageIncidentBodySchema,
   UpdateCopCitationBodySchema,
   UpdateIncidentBodySchema,
@@ -979,8 +998,40 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   // Each entry reuses the SAME TypeBox schema the handler already `parse`s (quality-typebox.ts exports 65),
   // so the published contract cannot drift from the validator.
   //
-  // REQUEST side only. M30's read DTOs are not exported from its read-service, so typing the responses is a
-  // separate authoring job rather than a registration — tracked, not silently skipped.
+  // Responses too, as of the DTO pass: all 24 M30 GETs now publish a typed 2xx body. The response
+  // schemas mirror `read-service.ts`'s view interfaces (that file is the contract, quality-typebox's
+  // §4.1 RESPONSE DTOs are its wire projection) and a compile-time conformance test pins the two
+  // together, so a view field added or renamed breaks the build rather than the client.
+  // The seven detail/singleton reads had NO entry at all — not even a summary — so each published a
+  // bare 200 with `content?: never`. They are reads, so response-only.
+  "GET /api/v1/quality/cahps/vendor": {
+    summary: "The org's active CAHPS vendor binding (null before the first binding)",
+    response: CahpsVendorResponseSchema,
+  },
+  "GET /api/v1/quality/cahps/export/:exportId": {
+    summary: "A CAHPS export job + its signed download URL once complete",
+    response: CahpsExportJobResponseSchema,
+  },
+  "GET /api/v1/quality/incidents/:incidentId": {
+    summary: "Incident detail — state history, investigation notes, CAP plan",
+    response: IncidentDetailResponseSchema,
+  },
+  "GET /api/v1/quality/measures/recompute/queue": {
+    summary: "Pending measure-recompute jobs (bare array — bounded by the queue)",
+    response: RecomputeQueueResponseSchema,
+  },
+  "GET /api/v1/quality/measures/:measureId/values/:valueId/snapshot": {
+    summary: "The reproducibility snapshot behind one emitted measure value (D1)",
+    response: MeasureValueSnapshotResponseSchema,
+  },
+  "GET /api/v1/quality/mortality/:reviewId": {
+    summary: "Mortality-review detail — the three review dimensions",
+    response: MortalityReviewDetailResponseSchema,
+  },
+  "GET /api/v1/quality/sra/cycles/:cycleId": {
+    summary: "SRA cycle detail — progress, findings, remediations",
+    response: SraCycleDetailResponseSchema,
+  },
   "POST /api/v1/quality/cahps/vendor": {
     summary: "Bind the org's CAHPS survey vendor (§4.1)",
     body: BindCahpsVendorBodySchema,
@@ -988,6 +1039,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/quality/cahps/decedents": {
     summary: "Monthly CAHPS decedent sample (CMS exclusions applied)",
     query: CahpsDecedentListQuerySchema,
+    response: CahpsDecedentListResponseSchema,
   },
   "POST /api/v1/quality/cahps/decedents/:sampleId/exclude": {
     summary: "Exclude a decedent from the CAHPS sample (CMS criteria)",
@@ -1004,6 +1056,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/quality/cahps/results": {
     summary: "Ingested CAHPS results by reporting period",
     query: CahpsResultListQuerySchema,
+    response: CahpsResultListResponseSchema,
   },
   "GET /api/v1/quality/cop/citations": {
     summary: "CoP survey citations (§1.2 compliance posture)",
@@ -1026,6 +1079,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/quality/incidents/abuse-allegations": {
     summary: "Abuse-allegation incidents (mandatory-reporter surface)",
     query: AbuseAllegationListQuerySchema,
+    response: IncidentListResponseSchema,
   },
   "POST /api/v1/quality/incidents": {
     summary: "Report an incident",
@@ -1058,6 +1112,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/quality/infection/events": {
     summary: "Infection surveillance events",
     query: InfectionEventListQuerySchema,
+    response: InfectionEventListResponseSchema,
   },
   "POST /api/v1/quality/infection/events": {
     summary: "Record an infection surveillance event",
@@ -1066,6 +1121,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/quality/infection/outbreaks": {
     summary: "Infection outbreak cases",
     query: InfectionOutbreakListQuerySchema,
+    response: InfectionOutbreakListResponseSchema,
   },
   "PATCH /api/v1/quality/infection/outbreaks/:caseId": {
     summary: "Update an outbreak case",
@@ -1079,6 +1135,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/quality/measures/:measureId/values": {
     summary: "Measure value series across a window",
     query: MeasureValuesQuerySchema,
+    response: MeasureValueSeriesResponseSchema,
   },
   "POST /api/v1/quality/measures/recompute": {
     summary: "Enqueue a measure recompute (§4.8)",
@@ -1087,6 +1144,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/quality/mortality": {
     summary: "Mortality reviews (30-day target)",
     query: MortalityListQuerySchema,
+    response: MortalityListResponseSchema,
   },
   "PATCH /api/v1/quality/mortality/:reviewId": {
     summary: "Update a mortality review",
@@ -1099,6 +1157,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/quality/qapi/programs": {
     summary: "QAPI programs",
     query: QapiProgramListQuerySchema,
+    response: QapiProgramListResponseSchema,
   },
   "POST /api/v1/quality/qapi/programs": {
     summary: "Adopt a QAPI program",
@@ -1111,6 +1170,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/quality/qapi/indicators": {
     summary: "QAPI indicators (tenant may TIGHTEN a platform target)",
     query: QapiIndicatorListQuerySchema,
+    response: QapiIndicatorListResponseSchema,
   },
   "POST /api/v1/quality/qapi/indicators": {
     summary: "Create a QAPI indicator",
@@ -1136,6 +1196,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/quality/qapi/projects/:projectId/pips": {
     summary: "PIPs under a QAPI project",
     query: QapiPipListQuerySchema,
+    response: QapiPipListResponseSchema,
   },
   "POST /api/v1/quality/qapi/projects/:projectId/pips": {
     summary: "Add a PIP to a QAPI project",
@@ -1152,14 +1213,17 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/quality/qapi/governance": {
     summary: "QAPI governance minutes",
     query: QapiGovernanceListQuerySchema,
+    response: QapiGovernanceListResponseSchema,
   },
   "GET /api/v1/quality/risk-register": {
     summary: "Risk register — open SRA findings, incidents, CAPs, CoP status",
     query: RiskRegisterListQuerySchema,
+    response: RiskRegisterListResponseSchema,
   },
   "GET /api/v1/quality/sra/cycles": {
     summary: "Security risk assessment cycles (§164.308)",
     query: SraCycleListQuerySchema,
+    response: SraCycleListResponseSchema,
   },
   "POST /api/v1/quality/sra/cycles": {
     summary: "Open an SRA cycle",

@@ -35817,7 +35817,83 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "sampleId",
+                          "organizationId",
+                          "patientId",
+                          "dateOfDeath",
+                          "samplePeriodStart",
+                          "samplePeriodEnd",
+                          "eligible",
+                          "exclusionReason"
+                        ],
+                        "properties": {
+                          "sampleId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "dateOfDeath": {
+                            "type": "string"
+                          },
+                          "samplePeriodStart": {
+                            "type": "string"
+                          },
+                          "samplePeriodEnd": {
+                            "type": "string"
+                          },
+                          "eligible": {
+                            "type": "boolean"
+                          },
+                          "exclusionReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -35929,6 +36005,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "A CAHPS export job + its signed download URL once complete",
         "parameters": [
           {
             "name": "exportId",
@@ -35941,7 +36018,100 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "exportId",
+                    "organizationId",
+                    "vendorAdapterId",
+                    "samplePeriodStart",
+                    "samplePeriodEnd",
+                    "status",
+                    "decedentCount",
+                    "downloadUrl",
+                    "createdAt",
+                    "completedAt",
+                    "failureReason"
+                  ],
+                  "properties": {
+                    "exportId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "vendorAdapterId": {
+                      "type": "string"
+                    },
+                    "samplePeriodStart": {
+                      "type": "string"
+                    },
+                    "samplePeriodEnd": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "queued",
+                          "type": "string"
+                        },
+                        {
+                          "const": "running",
+                          "type": "string"
+                        },
+                        {
+                          "const": "completed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "failed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "decedentCount": {
+                      "type": "integer"
+                    },
+                    "downloadUrl": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "completedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "failureReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -36010,7 +36180,83 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "resultId",
+                          "organizationId",
+                          "measureId",
+                          "reportingPeriodStart",
+                          "reportingPeriodEnd",
+                          "topBoxPercent",
+                          "suppressedMinCell",
+                          "ingestedAt"
+                        ],
+                        "properties": {
+                          "resultId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "measureId": {
+                            "type": "string"
+                          },
+                          "reportingPeriodStart": {
+                            "type": "string"
+                          },
+                          "reportingPeriodEnd": {
+                            "type": "string"
+                          },
+                          "topBoxPercent": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "suppressedMinCell": {
+                            "type": "boolean"
+                          },
+                          "ingestedAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -36120,10 +36366,64 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "The org's active CAHPS vendor binding (null before the first binding)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "bindingId",
+                        "organizationId",
+                        "vendorAdapterId",
+                        "vendorName",
+                        "effectiveFrom",
+                        "effectiveTo",
+                        "isActive"
+                      ],
+                      "properties": {
+                        "bindingId": {
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "type": "string"
+                        },
+                        "vendorAdapterId": {
+                          "type": "string"
+                        },
+                        "vendorName": {
+                          "type": "string"
+                        },
+                        "effectiveFrom": {
+                          "type": "string"
+                        },
+                        "effectiveTo": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "isActive": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -36247,7 +36547,20 @@
                             "type": "string"
                           },
                           "status": {
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "const": "compliant",
+                                "type": "string"
+                              },
+                              {
+                                "const": "at_risk",
+                                "type": "string"
+                              },
+                              {
+                                "const": "deficient",
+                                "type": "string"
+                              }
+                            ]
                           },
                           "evidencePointers": {
                             "type": "array",
@@ -36620,13 +36933,84 @@
                             "type": "string"
                           },
                           "kind": {
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "const": "fall",
+                                "type": "string"
+                              },
+                              {
+                                "const": "medication_error",
+                                "type": "string"
+                              },
+                              {
+                                "const": "complaint",
+                                "type": "string"
+                              },
+                              {
+                                "const": "allegation_of_abuse",
+                                "type": "string"
+                              },
+                              {
+                                "const": "exposure_event",
+                                "type": "string"
+                              },
+                              {
+                                "const": "other_safety_event",
+                                "type": "string"
+                              }
+                            ]
                           },
                           "state": {
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "const": "draft",
+                                "type": "string"
+                              },
+                              {
+                                "const": "submitted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "triaged",
+                                "type": "string"
+                              },
+                              {
+                                "const": "under_investigation",
+                                "type": "string"
+                              },
+                              {
+                                "const": "resolved",
+                                "type": "string"
+                              },
+                              {
+                                "const": "closed_followup_complete",
+                                "type": "string"
+                              },
+                              {
+                                "const": "reopened",
+                                "type": "string"
+                              }
+                            ]
                           },
                           "severity": {
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "const": "minor",
+                                "type": "string"
+                              },
+                              {
+                                "const": "moderate",
+                                "type": "string"
+                              },
+                              {
+                                "const": "severe",
+                                "type": "string"
+                              },
+                              {
+                                "const": "critical",
+                                "type": "string"
+                              }
+                            ]
                           },
                           "patientId": {
                             "anyOf": [
@@ -36792,6 +37176,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Incident detail — state history, investigation notes, CAP plan",
         "parameters": [
           {
             "name": "incidentId",
@@ -36804,7 +37189,394 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "incidentId",
+                        "organizationId",
+                        "kind",
+                        "state",
+                        "severity",
+                        "patientId",
+                        "occurredAt",
+                        "reportedAt",
+                        "reportedByMembershipId",
+                        "assignedToMembershipId"
+                      ],
+                      "properties": {
+                        "incidentId": {
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "anyOf": [
+                            {
+                              "const": "fall",
+                              "type": "string"
+                            },
+                            {
+                              "const": "medication_error",
+                              "type": "string"
+                            },
+                            {
+                              "const": "complaint",
+                              "type": "string"
+                            },
+                            {
+                              "const": "allegation_of_abuse",
+                              "type": "string"
+                            },
+                            {
+                              "const": "exposure_event",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other_safety_event",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "state": {
+                          "anyOf": [
+                            {
+                              "const": "draft",
+                              "type": "string"
+                            },
+                            {
+                              "const": "submitted",
+                              "type": "string"
+                            },
+                            {
+                              "const": "triaged",
+                              "type": "string"
+                            },
+                            {
+                              "const": "under_investigation",
+                              "type": "string"
+                            },
+                            {
+                              "const": "resolved",
+                              "type": "string"
+                            },
+                            {
+                              "const": "closed_followup_complete",
+                              "type": "string"
+                            },
+                            {
+                              "const": "reopened",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "severity": {
+                          "anyOf": [
+                            {
+                              "const": "minor",
+                              "type": "string"
+                            },
+                            {
+                              "const": "moderate",
+                              "type": "string"
+                            },
+                            {
+                              "const": "severe",
+                              "type": "string"
+                            },
+                            {
+                              "const": "critical",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "patientId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "occurredAt": {
+                          "type": "string"
+                        },
+                        "reportedAt": {
+                          "type": "string"
+                        },
+                        "reportedByMembershipId": {
+                          "type": "string"
+                        },
+                        "assignedToMembershipId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "data",
+                        "capPlan",
+                        "capVerifiedByMembershipId",
+                        "capVerifiedAt",
+                        "closedByMembershipId",
+                        "closedAt",
+                        "stateHistory",
+                        "investigationNotes",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "patternProperties": {
+                            "^(.*)$": {}
+                          }
+                        },
+                        "capPlan": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "rootCauseSummary",
+                                "actions",
+                                "verificationCriteria"
+                              ],
+                              "properties": {
+                                "rootCauseSummary": {
+                                  "type": "string"
+                                },
+                                "actions": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "action",
+                                      "ownerMembershipId",
+                                      "dueAt",
+                                      "completedAt"
+                                    ],
+                                    "properties": {
+                                      "action": {
+                                        "type": "string"
+                                      },
+                                      "ownerMembershipId": {
+                                        "type": "string"
+                                      },
+                                      "dueAt": {
+                                        "type": "string"
+                                      },
+                                      "completedAt": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                },
+                                "verificationCriteria": {
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "capVerifiedByMembershipId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "capVerifiedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "closedByMembershipId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "closedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "stateHistory": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "fromState",
+                              "toState",
+                              "actorMembershipId",
+                              "occurredAt"
+                            ],
+                            "properties": {
+                              "fromState": {
+                                "anyOf": [
+                                  {
+                                    "anyOf": [
+                                      {
+                                        "const": "draft",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "submitted",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "triaged",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "under_investigation",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "resolved",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "closed_followup_complete",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "reopened",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "toState": {
+                                "anyOf": [
+                                  {
+                                    "const": "draft",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "submitted",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "triaged",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "under_investigation",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "resolved",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "closed_followup_complete",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "reopened",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "actorMembershipId": {
+                                "type": "string"
+                              },
+                              "occurredAt": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        },
+                        "investigationNotes": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "noteId",
+                              "incidentId",
+                              "authorMembershipId",
+                              "body",
+                              "createdAt"
+                            ],
+                            "properties": {
+                              "noteId": {
+                                "type": "string"
+                              },
+                              "incidentId": {
+                                "type": "string"
+                              },
+                              "authorMembershipId": {
+                                "type": "string"
+                              },
+                              "body": {
+                                "type": "string"
+                              },
+                              "createdAt": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -37277,7 +38049,169 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "incidentId",
+                          "organizationId",
+                          "kind",
+                          "state",
+                          "severity",
+                          "patientId",
+                          "occurredAt",
+                          "reportedAt",
+                          "reportedByMembershipId",
+                          "assignedToMembershipId"
+                        ],
+                        "properties": {
+                          "incidentId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "const": "fall",
+                                "type": "string"
+                              },
+                              {
+                                "const": "medication_error",
+                                "type": "string"
+                              },
+                              {
+                                "const": "complaint",
+                                "type": "string"
+                              },
+                              {
+                                "const": "allegation_of_abuse",
+                                "type": "string"
+                              },
+                              {
+                                "const": "exposure_event",
+                                "type": "string"
+                              },
+                              {
+                                "const": "other_safety_event",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "state": {
+                            "anyOf": [
+                              {
+                                "const": "draft",
+                                "type": "string"
+                              },
+                              {
+                                "const": "submitted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "triaged",
+                                "type": "string"
+                              },
+                              {
+                                "const": "under_investigation",
+                                "type": "string"
+                              },
+                              {
+                                "const": "resolved",
+                                "type": "string"
+                              },
+                              {
+                                "const": "closed_followup_complete",
+                                "type": "string"
+                              },
+                              {
+                                "const": "reopened",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "severity": {
+                            "anyOf": [
+                              {
+                                "const": "minor",
+                                "type": "string"
+                              },
+                              {
+                                "const": "moderate",
+                                "type": "string"
+                              },
+                              {
+                                "const": "severe",
+                                "type": "string"
+                              },
+                              {
+                                "const": "critical",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "patientId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "occurredAt": {
+                            "type": "string"
+                          },
+                          "reportedAt": {
+                            "type": "string"
+                          },
+                          "reportedByMembershipId": {
+                            "type": "string"
+                          },
+                          "assignedToMembershipId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -37355,7 +38289,83 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "eventId",
+                          "organizationId",
+                          "patientId",
+                          "pathogen",
+                          "bodySite",
+                          "observedAt",
+                          "filedByMembershipId",
+                          "outbreakCaseId"
+                        ],
+                        "properties": {
+                          "eventId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "pathogen": {
+                            "type": "string"
+                          },
+                          "bodySite": {
+                            "type": "string"
+                          },
+                          "observedAt": {
+                            "type": "string"
+                          },
+                          "filedByMembershipId": {
+                            "type": "string"
+                          },
+                          "outbreakCaseId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -37486,7 +38496,104 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "caseId",
+                          "organizationId",
+                          "pathogen",
+                          "bodySite",
+                          "eventCount",
+                          "firstEventAt",
+                          "lastEventAt",
+                          "status",
+                          "resolvedAt"
+                        ],
+                        "properties": {
+                          "caseId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "pathogen": {
+                            "type": "string"
+                          },
+                          "bodySite": {
+                            "type": "string"
+                          },
+                          "eventCount": {
+                            "type": "integer"
+                          },
+                          "firstEventAt": {
+                            "type": "string"
+                          },
+                          "lastEventAt": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "notified",
+                                "type": "string"
+                              },
+                              {
+                                "const": "contained",
+                                "type": "string"
+                              },
+                              {
+                                "const": "resolved",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "resolvedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -37717,7 +38824,24 @@
                                     ],
                                     "properties": {
                                       "kind": {
-                                        "type": "string"
+                                        "anyOf": [
+                                          {
+                                            "const": "rolling_12m_to_quarter",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "calendar_quarter",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "calendar_year",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "cap_year_overlay",
+                                            "type": "string"
+                                          }
+                                        ]
                                       },
                                       "start": {
                                         "type": "string"
@@ -37754,7 +38878,24 @@
                                     ]
                                   },
                                   "bandColor": {
-                                    "type": "string"
+                                    "anyOf": [
+                                      {
+                                        "const": "green",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "yellow",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "red",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "insufficient_n",
+                                        "type": "string"
+                                      }
+                                    ]
                                   },
                                   "computedAt": {
                                     "type": "string"
@@ -37852,7 +38993,160 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "measureId",
+                    "displayName",
+                    "values"
+                  ],
+                  "properties": {
+                    "measureId": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "values": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "valueId",
+                          "organizationId",
+                          "measureId",
+                          "period",
+                          "numerator",
+                          "denominator",
+                          "rate",
+                          "thresholdMet",
+                          "bandColor",
+                          "computedAt",
+                          "computeVersion",
+                          "snapshotContentHash",
+                          "supersededByValueId"
+                        ],
+                        "properties": {
+                          "valueId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "measureId": {
+                            "type": "string"
+                          },
+                          "period": {
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "start",
+                              "end"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "anyOf": [
+                                  {
+                                    "const": "rolling_12m_to_quarter",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "calendar_quarter",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "calendar_year",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "cap_year_overlay",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "start": {
+                                "type": "string"
+                              },
+                              "end": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "numerator": {
+                            "type": "number"
+                          },
+                          "denominator": {
+                            "type": "number"
+                          },
+                          "rate": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "thresholdMet": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "bandColor": {
+                            "anyOf": [
+                              {
+                                "const": "green",
+                                "type": "string"
+                              },
+                              {
+                                "const": "yellow",
+                                "type": "string"
+                              },
+                              {
+                                "const": "red",
+                                "type": "string"
+                              },
+                              {
+                                "const": "insufficient_n",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "computedAt": {
+                            "type": "string"
+                          },
+                          "computeVersion": {
+                            "type": "string"
+                          },
+                          "snapshotContentHash": {
+                            "type": "string"
+                          },
+                          "supersededByValueId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -37869,6 +39163,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "The reproducibility snapshot behind one emitted measure value (D1)",
         "parameters": [
           {
             "name": "measureId",
@@ -37889,7 +39184,121 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "valueId",
+                    "measureId",
+                    "computeVersion",
+                    "snapshotContentHash",
+                    "computedAt",
+                    "inputs",
+                    "intermediates",
+                    "output"
+                  ],
+                  "properties": {
+                    "valueId": {
+                      "type": "string"
+                    },
+                    "measureId": {
+                      "type": "string"
+                    },
+                    "computeVersion": {
+                      "type": "string"
+                    },
+                    "snapshotContentHash": {
+                      "type": "string"
+                    },
+                    "computedAt": {
+                      "type": "string"
+                    },
+                    "inputs": {
+                      "type": "object",
+                      "required": [
+                        "populationSourceTables",
+                        "populationFilter",
+                        "inputRowCounts",
+                        "parameters",
+                        "thresholdConstants"
+                      ],
+                      "properties": {
+                        "populationSourceTables": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "populationFilter": {
+                          "type": "string"
+                        },
+                        "inputRowCounts": {
+                          "type": "object",
+                          "patternProperties": {
+                            "^(.*)$": {
+                              "type": "number"
+                            }
+                          }
+                        },
+                        "parameters": {
+                          "type": "object",
+                          "patternProperties": {
+                            "^(.*)$": {}
+                          }
+                        },
+                        "thresholdConstants": {
+                          "type": "object",
+                          "patternProperties": {
+                            "^(.*)$": {}
+                          }
+                        }
+                      }
+                    },
+                    "intermediates": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "patternProperties": {
+                            "^(.*)$": {}
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "output": {
+                      "type": "object",
+                      "required": [
+                        "numerator",
+                        "denominator",
+                        "rate"
+                      ],
+                      "properties": {
+                        "numerator": {
+                          "type": "number"
+                        },
+                        "denominator": {
+                          "type": "number"
+                        },
+                        "rate": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -38027,10 +39436,137 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Pending measure-recompute jobs (bare array — bounded by the queue)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "jobId",
+                      "scope",
+                      "priority",
+                      "enqueuedAt",
+                      "state"
+                    ],
+                    "properties": {
+                      "jobId": {
+                        "type": "string"
+                      },
+                      "scope": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "kind"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "const": "all",
+                                "type": "string"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "measureId"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "const": "measure",
+                                "type": "string"
+                              },
+                              "measureId": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "domain"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "const": "domain",
+                                "type": "string"
+                              },
+                              "domain": {
+                                "anyOf": [
+                                  {
+                                    "const": "hci",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "hvldl",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "hope",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "cahps",
+                                    "type": "string"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "priority": {
+                        "anyOf": [
+                          {
+                            "const": "normal",
+                            "type": "string"
+                          },
+                          {
+                            "const": "high",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "enqueuedAt": {
+                        "type": "string"
+                      },
+                      "state": {
+                        "anyOf": [
+                          {
+                            "const": "waiting",
+                            "type": "string"
+                          },
+                          {
+                            "const": "active",
+                            "type": "string"
+                          },
+                          {
+                            "const": "delayed",
+                            "type": "string"
+                          },
+                          {
+                            "const": "completed",
+                            "type": "string"
+                          },
+                          {
+                            "const": "failed",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -38101,7 +39637,103 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "reviewId",
+                          "organizationId",
+                          "patientId",
+                          "dateOfDeath",
+                          "assignedToMembershipId",
+                          "status",
+                          "targetCompletionAt",
+                          "completedAt"
+                        ],
+                        "properties": {
+                          "reviewId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "dateOfDeath": {
+                            "type": "string"
+                          },
+                          "assignedToMembershipId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "created",
+                                "type": "string"
+                              },
+                              {
+                                "const": "in_progress",
+                                "type": "string"
+                              },
+                              {
+                                "const": "completed",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "targetCompletionAt": {
+                            "type": "string"
+                          },
+                          "completedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -38118,6 +39750,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Mortality-review detail — the three review dimensions",
         "parameters": [
           {
             "name": "reviewId",
@@ -38130,7 +39763,158 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "reviewId",
+                        "organizationId",
+                        "patientId",
+                        "dateOfDeath",
+                        "assignedToMembershipId",
+                        "status",
+                        "targetCompletionAt",
+                        "completedAt"
+                      ],
+                      "properties": {
+                        "reviewId": {
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "type": "string"
+                        },
+                        "patientId": {
+                          "type": "string"
+                        },
+                        "dateOfDeath": {
+                          "type": "string"
+                        },
+                        "assignedToMembershipId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "created",
+                              "type": "string"
+                            },
+                            {
+                              "const": "in_progress",
+                              "type": "string"
+                            },
+                            {
+                              "const": "completed",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "targetCompletionAt": {
+                          "type": "string"
+                        },
+                        "completedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "dimensions",
+                        "reviewerMembershipId",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "dimensions": {
+                          "type": "object",
+                          "required": [
+                            "clinical",
+                            "satisfaction",
+                            "compliance"
+                          ],
+                          "properties": {
+                            "clinical": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "patternProperties": {
+                                    "^(.*)$": {}
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "satisfaction": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "patternProperties": {
+                                    "^(.*)$": {}
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "compliance": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "patternProperties": {
+                                    "^(.*)$": {}
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "reviewerMembershipId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -38311,7 +40095,87 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "minutesId",
+                          "organizationId",
+                          "qapiProgramId",
+                          "meetingAt",
+                          "recordedByMembershipId",
+                          "summary",
+                          "attendees"
+                        ],
+                        "properties": {
+                          "minutesId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "qapiProgramId": {
+                            "type": "string"
+                          },
+                          "meetingAt": {
+                            "type": "string"
+                          },
+                          "recordedByMembershipId": {
+                            "type": "string"
+                          },
+                          "summary": {
+                            "type": "string"
+                          },
+                          "attendees": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "role",
+                                "membershipId"
+                              ],
+                              "properties": {
+                                "role": {
+                                  "type": "string"
+                                },
+                                "membershipId": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -38424,7 +40288,131 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "indicatorId",
+                          "organizationId",
+                          "qapiProgramId",
+                          "displayName",
+                          "measureId",
+                          "thresholdDirection",
+                          "thresholdValue",
+                          "currentRate",
+                          "currentBand",
+                          "breached"
+                        ],
+                        "properties": {
+                          "indicatorId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "qapiProgramId": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "measureId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "thresholdDirection": {
+                            "anyOf": [
+                              {
+                                "const": "min",
+                                "type": "string"
+                              },
+                              {
+                                "const": "max",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "thresholdValue": {
+                            "type": "number"
+                          },
+                          "currentRate": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "currentBand": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "green",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "yellow",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "red",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "insufficient_n",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "breached": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -38673,7 +40661,92 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "programId",
+                          "organizationId",
+                          "planYear",
+                          "charterAdoptedAt",
+                          "governanceComposition",
+                          "status"
+                        ],
+                        "properties": {
+                          "programId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "planYear": {
+                            "type": "integer"
+                          },
+                          "charterAdoptedAt": {
+                            "type": "string"
+                          },
+                          "governanceComposition": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "role",
+                                "membershipId"
+                              ],
+                              "properties": {
+                                "role": {
+                                  "type": "string"
+                                },
+                                "membershipId": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "active",
+                                "type": "string"
+                              },
+                              {
+                                "const": "superseded",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -38925,7 +40998,28 @@
                             "type": "string"
                           },
                           "phase": {
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "const": "proposed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "active",
+                                "type": "string"
+                              },
+                              {
+                                "const": "corrective_action",
+                                "type": "string"
+                              },
+                              {
+                                "const": "completed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "abandoned",
+                                "type": "string"
+                              }
+                            ]
                           },
                           "indicatorId": {
                             "anyOf": [
@@ -39160,7 +41254,115 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "pipId",
+                          "organizationId",
+                          "projectId",
+                          "phase",
+                          "charterText",
+                          "charteredByMembershipId",
+                          "outcome",
+                          "closedAt"
+                        ],
+                        "properties": {
+                          "pipId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "projectId": {
+                            "type": "string"
+                          },
+                          "phase": {
+                            "anyOf": [
+                              {
+                                "const": "chartering",
+                                "type": "string"
+                              },
+                              {
+                                "const": "root_cause_analysis",
+                                "type": "string"
+                              },
+                              {
+                                "const": "intervention_in_progress",
+                                "type": "string"
+                              },
+                              {
+                                "const": "measurement",
+                                "type": "string"
+                              },
+                              {
+                                "const": "concluded",
+                                "type": "string"
+                              },
+                              {
+                                "const": "suspended",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "charterText": {
+                            "type": "string"
+                          },
+                          "charteredByMembershipId": {
+                            "type": "string"
+                          },
+                          "outcome": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "closedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -39307,7 +41509,122 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "entryId",
+                          "organizationId",
+                          "source",
+                          "sourceRef",
+                          "title",
+                          "severity",
+                          "status",
+                          "openedAt",
+                          "lastActivityAt"
+                        ],
+                        "properties": {
+                          "entryId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "anyOf": [
+                              {
+                                "const": "incident",
+                                "type": "string"
+                              },
+                              {
+                                "const": "qapi",
+                                "type": "string"
+                              },
+                              {
+                                "const": "sra",
+                                "type": "string"
+                              },
+                              {
+                                "const": "infection",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cop",
+                                "type": "string"
+                              },
+                              {
+                                "const": "measure",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "sourceRef": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "severity": {
+                            "anyOf": [
+                              {
+                                "const": "critical",
+                                "type": "string"
+                              },
+                              {
+                                "const": "high",
+                                "type": "string"
+                              },
+                              {
+                                "const": "medium",
+                                "type": "string"
+                              },
+                              {
+                                "const": "low",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "openedAt": {
+                            "type": "string"
+                          },
+                          "lastActivityAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -39368,7 +41685,104 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "cycleId",
+                          "organizationId",
+                          "cycleYear",
+                          "status",
+                          "scopeTemplateVersion",
+                          "ownerMembershipId",
+                          "openedAt",
+                          "closedAt"
+                        ],
+                        "properties": {
+                          "cycleId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "cycleYear": {
+                            "type": "integer"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "chartered",
+                                "type": "string"
+                              },
+                              {
+                                "const": "in_progress",
+                                "type": "string"
+                              },
+                              {
+                                "const": "review",
+                                "type": "string"
+                              },
+                              {
+                                "const": "closed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "reopened",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "scopeTemplateVersion": {
+                            "type": "string"
+                          },
+                          "ownerMembershipId": {
+                            "type": "string"
+                          },
+                          "openedAt": {
+                            "type": "string"
+                          },
+                          "closedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -39424,6 +41838,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "SRA cycle detail — progress, findings, remediations",
         "parameters": [
           {
             "name": "cycleId",
@@ -39436,7 +41851,269 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "cycleId",
+                        "organizationId",
+                        "cycleYear",
+                        "status",
+                        "scopeTemplateVersion",
+                        "ownerMembershipId",
+                        "openedAt",
+                        "closedAt"
+                      ],
+                      "properties": {
+                        "cycleId": {
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "type": "string"
+                        },
+                        "cycleYear": {
+                          "type": "integer"
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "chartered",
+                              "type": "string"
+                            },
+                            {
+                              "const": "in_progress",
+                              "type": "string"
+                            },
+                            {
+                              "const": "review",
+                              "type": "string"
+                            },
+                            {
+                              "const": "closed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "reopened",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "scopeTemplateVersion": {
+                          "type": "string"
+                        },
+                        "ownerMembershipId": {
+                          "type": "string"
+                        },
+                        "openedAt": {
+                          "type": "string"
+                        },
+                        "closedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "progress",
+                        "findings",
+                        "remediations"
+                      ],
+                      "properties": {
+                        "progress": {
+                          "type": "object",
+                          "required": [
+                            "findingsCount",
+                            "openFindingsCount",
+                            "remediationsCount"
+                          ],
+                          "properties": {
+                            "findingsCount": {
+                              "type": "integer"
+                            },
+                            "openFindingsCount": {
+                              "type": "integer"
+                            },
+                            "remediationsCount": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "findings": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "findingId",
+                              "cycleId",
+                              "findingNumber",
+                              "controlRef",
+                              "likelihood",
+                              "impact",
+                              "riskScore",
+                              "riskBand",
+                              "disposition"
+                            ],
+                            "properties": {
+                              "findingId": {
+                                "type": "string"
+                              },
+                              "cycleId": {
+                                "type": "string"
+                              },
+                              "findingNumber": {
+                                "type": "integer"
+                              },
+                              "controlRef": {
+                                "type": "string"
+                              },
+                              "likelihood": {
+                                "type": "number"
+                              },
+                              "impact": {
+                                "type": "number"
+                              },
+                              "riskScore": {
+                                "type": "number"
+                              },
+                              "riskBand": {
+                                "anyOf": [
+                                  {
+                                    "const": "critical",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "high",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "medium",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "low",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "disposition": {
+                                "anyOf": [
+                                  {
+                                    "const": "open",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "accepted",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "remediating",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "remediated",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "transferred",
+                                    "type": "string"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        "remediations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "remediationId",
+                              "findingId",
+                              "remediationNumber",
+                              "plan",
+                              "ownerMembershipId",
+                              "dueAt",
+                              "status",
+                              "completedAt"
+                            ],
+                            "properties": {
+                              "remediationId": {
+                                "type": "string"
+                              },
+                              "findingId": {
+                                "type": "string"
+                              },
+                              "remediationNumber": {
+                                "type": "integer"
+                              },
+                              "plan": {
+                                "type": "string"
+                              },
+                              "ownerMembershipId": {
+                                "type": "string"
+                              },
+                              "dueAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "status": {
+                                "anyOf": [
+                                  {
+                                    "const": "planned",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "in_progress",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "completed",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "deferred",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "completedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"

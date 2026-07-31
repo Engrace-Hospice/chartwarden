@@ -8513,6 +8513,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** A CAHPS export job + its signed download URL once complete */
         get: operations["getApiV1QualityCahpsExportByExportId"];
         put?: never;
         post?: never;
@@ -8563,6 +8564,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The org's active CAHPS vendor binding (null before the first binding) */
         get: operations["getApiV1QualityCahpsVendor"];
         put?: never;
         /** Bind the org's CAHPS survey vendor (§4.1) */
@@ -8649,6 +8651,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Incident detail — state history, investigation notes, CAP plan */
         get: operations["getApiV1QualityIncidentsByIncidentId"];
         put?: never;
         post?: never;
@@ -8886,6 +8889,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The reproducibility snapshot behind one emitted measure value (D1) */
         get: operations["getApiV1QualityMeasuresByMeasureIdValuesByValueIdSnapshot"];
         put?: never;
         post?: never;
@@ -8919,6 +8923,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Pending measure-recompute jobs (bare array — bounded by the queue) */
         get: operations["getApiV1QualityMeasuresRecomputeQueue"];
         put?: never;
         post?: never;
@@ -8952,6 +8957,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Mortality-review detail — the three review dimensions */
         get: operations["getApiV1QualityMortalityByReviewId"];
         put?: never;
         post?: never;
@@ -9195,6 +9201,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** SRA cycle detail — progress, findings, remediations */
         get: operations["getApiV1QualitySraCyclesByCycleId"];
         put?: never;
         post?: never;
@@ -27379,7 +27386,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            sampleId: string;
+                            organizationId: string;
+                            patientId: string;
+                            dateOfDeath: string;
+                            samplePeriodStart: string;
+                            samplePeriodEnd: string;
+                            eligible: boolean;
+                            exclusionReason: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27458,7 +27480,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        exportId: string;
+                        organizationId: string;
+                        vendorAdapterId: string;
+                        samplePeriodStart: string;
+                        samplePeriodEnd: string;
+                        status: "queued" | "running" | "completed" | "failed";
+                        decedentCount: number;
+                        downloadUrl: string | null;
+                        createdAt: string;
+                        completedAt: string | null;
+                        failureReason: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27484,7 +27520,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            resultId: string;
+                            organizationId: string;
+                            measureId: string;
+                            reportingPeriodStart: string;
+                            reportingPeriodEnd: string;
+                            topBoxPercent: number | null;
+                            suppressedMinCell: boolean;
+                            ingestedAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27540,7 +27591,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        bindingId: string;
+                        organizationId: string;
+                        vendorAdapterId: string;
+                        vendorName: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        isActive: boolean;
+                    } | null;
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27598,7 +27659,7 @@ export interface operations {
                             organizationId: string;
                             citationRef: string;
                             displayName: string;
-                            status: string;
+                            status: "compliant" | "at_risk" | "deficient";
                             evidencePointers: string[];
                             lastReviewedAt: string | null;
                             nextReviewDueAt: string | null;
@@ -27697,9 +27758,9 @@ export interface operations {
                         items: {
                             incidentId: string;
                             organizationId: string;
-                            kind: string;
-                            state: string;
-                            severity: string;
+                            kind: "fall" | "medication_error" | "complaint" | "allegation_of_abuse" | "exposure_event" | "other_safety_event";
+                            state: "draft" | "submitted" | "triaged" | "under_investigation" | "resolved" | "closed_followup_complete" | "reopened";
+                            severity: "minor" | "moderate" | "severe" | "critical";
                             patientId: string | null;
                             occurredAt: string;
                             reportedAt: string;
@@ -27765,7 +27826,53 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        incidentId: string;
+                        organizationId: string;
+                        kind: "fall" | "medication_error" | "complaint" | "allegation_of_abuse" | "exposure_event" | "other_safety_event";
+                        state: "draft" | "submitted" | "triaged" | "under_investigation" | "resolved" | "closed_followup_complete" | "reopened";
+                        severity: "minor" | "moderate" | "severe" | "critical";
+                        patientId: string | null;
+                        occurredAt: string;
+                        reportedAt: string;
+                        reportedByMembershipId: string;
+                        assignedToMembershipId: string | null;
+                    } & {
+                        data: {
+                            [key: string]: unknown;
+                        };
+                        capPlan: {
+                            rootCauseSummary: string;
+                            actions: {
+                                action: string;
+                                ownerMembershipId: string;
+                                dueAt: string;
+                                completedAt: string | null;
+                            }[];
+                            verificationCriteria: string;
+                        } | null;
+                        capVerifiedByMembershipId: string | null;
+                        capVerifiedAt: string | null;
+                        closedByMembershipId: string | null;
+                        closedAt: string | null;
+                        stateHistory: {
+                            fromState: ("draft" | "submitted" | "triaged" | "under_investigation" | "resolved" | "closed_followup_complete" | "reopened") | null;
+                            toState: "draft" | "submitted" | "triaged" | "under_investigation" | "resolved" | "closed_followup_complete" | "reopened";
+                            actorMembershipId: string;
+                            occurredAt: string;
+                        }[];
+                        investigationNotes: {
+                            noteId: string;
+                            incidentId: string;
+                            authorMembershipId: string;
+                            body: string;
+                            createdAt: string;
+                        }[];
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -28015,7 +28122,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            incidentId: string;
+                            organizationId: string;
+                            kind: "fall" | "medication_error" | "complaint" | "allegation_of_abuse" | "exposure_event" | "other_safety_event";
+                            state: "draft" | "submitted" | "triaged" | "under_investigation" | "resolved" | "closed_followup_complete" | "reopened";
+                            severity: "minor" | "moderate" | "severe" | "critical";
+                            patientId: string | null;
+                            occurredAt: string;
+                            reportedAt: string;
+                            reportedByMembershipId: string;
+                            assignedToMembershipId: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -28042,7 +28166,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            eventId: string;
+                            organizationId: string;
+                            patientId: string;
+                            pathogen: string;
+                            bodySite: string;
+                            observedAt: string;
+                            filedByMembershipId: string;
+                            outbreakCaseId: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -28098,7 +28237,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            caseId: string;
+                            organizationId: string;
+                            pathogen: string;
+                            bodySite: string;
+                            eventCount: number;
+                            firstEventAt: string;
+                            lastEventAt: string;
+                            status: "open" | "notified" | "contained" | "resolved";
+                            resolvedAt: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -28162,7 +28317,7 @@ export interface operations {
                                 organizationId: string;
                                 measureId: string;
                                 period: {
-                                    kind: string;
+                                    kind: "rolling_12m_to_quarter" | "calendar_quarter" | "calendar_year" | "cap_year_overlay";
                                     start: string;
                                     end: string;
                                 };
@@ -28170,7 +28325,7 @@ export interface operations {
                                 denominator: number;
                                 rate: number | null;
                                 thresholdMet: boolean | null;
-                                bandColor: string;
+                                bandColor: "green" | "yellow" | "red" | "insufficient_n";
                                 computedAt: string;
                                 computeVersion: string;
                                 snapshotContentHash: string;
@@ -28206,7 +28361,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        measureId: string;
+                        displayName: string;
+                        values: {
+                            valueId: string;
+                            organizationId: string;
+                            measureId: string;
+                            period: {
+                                kind: "rolling_12m_to_quarter" | "calendar_quarter" | "calendar_year" | "cap_year_overlay";
+                                start: string;
+                                end: string;
+                            };
+                            numerator: number;
+                            denominator: number;
+                            rate: number | null;
+                            thresholdMet: boolean | null;
+                            bandColor: "green" | "yellow" | "red" | "insufficient_n";
+                            computedAt: string;
+                            computeVersion: string;
+                            snapshotContentHash: string;
+                            supersededByValueId: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -28229,7 +28408,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        valueId: string;
+                        measureId: string;
+                        computeVersion: string;
+                        snapshotContentHash: string;
+                        computedAt: string;
+                        inputs: {
+                            populationSourceTables: string[];
+                            populationFilter: string;
+                            inputRowCounts: {
+                                [key: string]: number;
+                            };
+                            parameters: {
+                                [key: string]: unknown;
+                            };
+                            thresholdConstants: {
+                                [key: string]: unknown;
+                            };
+                        };
+                        intermediates: {
+                            [key: string]: unknown;
+                        } | null;
+                        output: {
+                            numerator: number;
+                            denominator: number;
+                            rate: number | null;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -28288,7 +28496,26 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        jobId: string;
+                        scope: {
+                            /** @constant */
+                            kind: "all";
+                        } | {
+                            /** @constant */
+                            kind: "measure";
+                            measureId: string;
+                        } | {
+                            /** @constant */
+                            kind: "domain";
+                            domain: "hci" | "hvldl" | "hope" | "cahps";
+                        };
+                        priority: "normal" | "high";
+                        enqueuedAt: string;
+                        state: "waiting" | "active" | "delayed" | "completed" | "failed";
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -28313,7 +28540,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            reviewId: string;
+                            organizationId: string;
+                            patientId: string;
+                            dateOfDeath: string;
+                            assignedToMembershipId: string | null;
+                            status: "created" | "in_progress" | "completed";
+                            targetCompletionAt: string;
+                            completedAt: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -28335,7 +28577,33 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        reviewId: string;
+                        organizationId: string;
+                        patientId: string;
+                        dateOfDeath: string;
+                        assignedToMembershipId: string | null;
+                        status: "created" | "in_progress" | "completed";
+                        targetCompletionAt: string;
+                        completedAt: string | null;
+                    } & {
+                        dimensions: {
+                            clinical: {
+                                [key: string]: unknown;
+                            } | null;
+                            satisfaction: {
+                                [key: string]: unknown;
+                            } | null;
+                            compliance: {
+                                [key: string]: unknown;
+                            } | null;
+                        };
+                        reviewerMembershipId: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -28436,7 +28704,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            minutesId: string;
+                            organizationId: string;
+                            qapiProgramId: string;
+                            meetingAt: string;
+                            recordedByMembershipId: string;
+                            summary: string;
+                            attendees: {
+                                role: string;
+                                membershipId: string;
+                            }[];
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -28494,7 +28779,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            indicatorId: string;
+                            organizationId: string;
+                            qapiProgramId: string;
+                            displayName: string;
+                            measureId: string | null;
+                            thresholdDirection: "min" | "max";
+                            thresholdValue: number;
+                            currentRate: number | null;
+                            currentBand: ("green" | "yellow" | "red" | "insufficient_n") | null;
+                            breached: boolean;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -28614,7 +28916,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            programId: string;
+                            organizationId: string;
+                            planYear: number;
+                            charterAdoptedAt: string;
+                            governanceComposition: {
+                                role: string;
+                                membershipId: string;
+                            }[];
+                            status: "active" | "superseded";
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -28709,7 +29027,7 @@ export interface operations {
                             organizationId: string;
                             qapiProgramId: string;
                             title: string;
-                            phase: string;
+                            phase: "proposed" | "active" | "corrective_action" | "completed" | "abandoned";
                             indicatorId: string | null;
                             ledByMembershipId: string | null;
                             charteredAt: string;
@@ -28805,7 +29123,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            pipId: string;
+                            organizationId: string;
+                            projectId: string;
+                            phase: "chartering" | "root_cause_analysis" | "intervention_in_progress" | "measurement" | "concluded" | "suspended";
+                            charterText: string;
+                            charteredByMembershipId: string;
+                            outcome: string | null;
+                            closedAt: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -28858,7 +29191,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            entryId: string;
+                            organizationId: string;
+                            source: "incident" | "qapi" | "sra" | "infection" | "cop" | "measure";
+                            sourceRef: string;
+                            title: string;
+                            severity: "critical" | "high" | "medium" | "low";
+                            status: string;
+                            openedAt: string;
+                            lastActivityAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -28901,7 +29250,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            cycleId: string;
+                            organizationId: string;
+                            cycleYear: number;
+                            status: "chartered" | "in_progress" | "review" | "closed" | "reopened";
+                            scopeTemplateVersion: string;
+                            ownerMembershipId: string;
+                            openedAt: string;
+                            closedAt: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -28949,7 +29313,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        cycleId: string;
+                        organizationId: string;
+                        cycleYear: number;
+                        status: "chartered" | "in_progress" | "review" | "closed" | "reopened";
+                        scopeTemplateVersion: string;
+                        ownerMembershipId: string;
+                        openedAt: string;
+                        closedAt: string | null;
+                    } & {
+                        progress: {
+                            findingsCount: number;
+                            openFindingsCount: number;
+                            remediationsCount: number;
+                        };
+                        findings: {
+                            findingId: string;
+                            cycleId: string;
+                            findingNumber: number;
+                            controlRef: string;
+                            likelihood: number;
+                            impact: number;
+                            riskScore: number;
+                            riskBand: "critical" | "high" | "medium" | "low";
+                            disposition: "open" | "accepted" | "remediating" | "remediated" | "transferred";
+                        }[];
+                        remediations: {
+                            remediationId: string;
+                            findingId: string;
+                            remediationNumber: number;
+                            plan: string;
+                            ownerMembershipId: string;
+                            dueAt: string | null;
+                            status: "planned" | "in_progress" | "completed" | "deferred";
+                            completedAt: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

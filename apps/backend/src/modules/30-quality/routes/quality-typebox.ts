@@ -77,6 +77,21 @@ const OUTBREAK_STATUS = ["open", "notified", "contained", "resolved"] as const;
 const RISK_SOURCE = ["incident", "qapi", "sra", "infection", "cop", "measure"] as const;
 const RISK_SEVERITY = ["critical", "high", "medium", "low"] as const;
 const PRIORITY = ["normal", "high"] as const;
+const MEASURE_BAND_COLOR = ["green", "yellow", "red", "insufficient_n"] as const;
+const SRA_CYCLE_STATUS = ["chartered", "in_progress", "review", "closed", "reopened"] as const;
+const SRA_RISK_BAND = ["critical", "high", "medium", "low"] as const;
+const QAPI_PIP_PHASE = [
+  "chartering",
+  "root_cause_analysis",
+  "intervention_in_progress",
+  "measurement",
+  "concluded",
+  "suspended",
+] as const;
+const QAPI_PROGRAM_STATUS = ["active", "superseded"] as const;
+const CAHPS_EXPORT_STATUS = ["queued", "running", "completed", "failed"] as const;
+const RECOMPUTE_JOB_STATE = ["waiting", "active", "delayed", "completed", "failed"] as const;
+const THRESHOLD_DIRECTION = ["min", "max"] as const;
 
 // ── shared sub-schemas ────────────────────────────────────────────────────────────────────────────────
 const GovernanceMemberSchema = Type.Object({
@@ -431,12 +446,12 @@ export const MeasureValueViewSchema = Type.Object({
   valueId: Type.String(),
   organizationId: Type.String(),
   measureId: Type.String(),
-  period: Type.Object({ kind: Type.String(), start: Type.String(), end: Type.String() }),
+  period: Type.Object({ kind: lit(MEASURE_PERIOD_KIND), start: Type.String(), end: Type.String() }),
   numerator: Type.Number(),
   denominator: Type.Number(),
   rate: m30Nullable(Type.Number()),
   thresholdMet: m30Nullable(Type.Boolean()),
-  bandColor: Type.String(),
+  bandColor: lit(MEASURE_BAND_COLOR),
   computedAt: Type.String(),
   computeVersion: Type.String(),
   snapshotContentHash: Type.String(),
@@ -447,9 +462,7 @@ export const MeasureValueViewSchema = Type.Object({
 export const MeasureSummaryViewSchema = Type.Object({
   measureId: Type.String(),
   displayName: Type.String(),
-  domain: Type.Union(
-    ["hci", "hvldl", "hope", "cahps", "operational"].map((d) => Type.Literal(d)),
-  ),
+  domain: lit(MEASURE_DOMAIN),
   latestValue: m30Nullable(MeasureValueViewSchema),
   fiscalYear: Type.Integer(),
 });
@@ -459,9 +472,9 @@ export const MeasureListResponseSchema = m30PageOf(MeasureSummaryViewSchema);
 export const IncidentSummaryViewSchema = Type.Object({
   incidentId: Type.String(),
   organizationId: Type.String(),
-  kind: Type.String(),
-  state: Type.String(),
-  severity: Type.String(),
+  kind: lit(INCIDENT_KIND),
+  state: lit(INCIDENT_STATE),
+  severity: lit(INCIDENT_SEVERITY),
   patientId: m30Nullable(Type.String()),
   occurredAt: Type.String(),
   reportedAt: Type.String(),
@@ -476,7 +489,7 @@ export const QapiProjectViewSchema = Type.Object({
   organizationId: Type.String(),
   qapiProgramId: Type.String(),
   title: Type.String(),
-  phase: Type.String(),
+  phase: lit(QAPI_PROJECT_PHASE),
   indicatorId: m30Nullable(Type.String()),
   ledByMembershipId: m30Nullable(Type.String()),
   charteredAt: Type.String(),
@@ -490,9 +503,481 @@ export const CopCitationViewSchema = Type.Object({
   organizationId: Type.String(),
   citationRef: Type.String(),
   displayName: Type.String(),
-  status: Type.String(),
+  status: lit(COP_STATUS),
   evidencePointers: Type.Array(Type.String()),
   lastReviewedAt: m30Nullable(Type.String()),
   nextReviewDueAt: m30Nullable(Type.String()),
 });
 export const CopCitationListResponseSchema = m30PageOf(CopCitationViewSchema);
+
+// ── §4.1 RESPONSE DTOs, part 2 — the remaining 20 reads ────────────────────────────────────────
+//
+// The four above covered the reads the first two Quality screens call. These cover the rest, so no
+// M30 GET publishes `content?: never` and no future screen has to invent a row shape to cast to.
+//
+// VOCAB RULE — EVERY vocabulary field is published CLOSED, through the `lit(...)` mirrors at the top
+// of this file. Part 1 originally published the pgEnum-backed ones (`IncidentKind`, `CopStatus`,
+// `SraCycleStatus`, `MeasurePeriodKind`, `MeasureBandColor`, `QapiProjectPhase`) as `Type.String()`,
+// on the theory that a second literal list here is a second place to drift. The conformance aliases
+// at the bottom of this file rejected that immediately, and correctly: `Type.String()` publishes a
+// contract WIDER than what the service returns, so the generated client cannot narrow — a screen
+// switching on `incident.state` gets `string` and no exhaustiveness checking, which is most of the
+// value of publishing the read at all. The mirrors are the drift control (one `lit()` const per
+// vocabulary, reused by request AND response schemas); widening the wire type is not.
+
+/** `{ role, membershipId }` — the QAPI governance roster / attendee shape. */
+const M30GovernanceMemberSchema = Type.Object({
+  role: Type.String(),
+  membershipId: Type.String(),
+});
+
+/** Free-form structured payloads (per-kind incident data, mortality dimensions, snapshot inputs). */
+const m30Json = () => Type.Record(Type.String(), Type.Unknown());
+
+// ── Measures (R-02, R-03, R-05) ───────────────────────────────────────────────────────────────
+
+/** `read-service.ts` → `MeasureValueSeriesView`. NOT a page: the rolling window is the unit. */
+export const MeasureValueSeriesResponseSchema = Type.Object({
+  measureId: Type.String(),
+  displayName: Type.String(),
+  values: Type.Array(MeasureValueViewSchema),
+});
+
+/** `read-service.ts` → `MeasureValueSnapshotView` (D1 reproducibility; `quality.measure.audit`).
+ *  The hashed-over inputs are published in full — a snapshot a caller cannot inspect cannot be
+ *  used to reproduce the value, which is the whole point of the row. */
+export const MeasureValueSnapshotResponseSchema = Type.Object({
+  valueId: Type.String(),
+  measureId: Type.String(),
+  computeVersion: Type.String(),
+  snapshotContentHash: Type.String(),
+  computedAt: Type.String(),
+  inputs: Type.Object({
+    populationSourceTables: Type.Array(Type.String()),
+    populationFilter: Type.String(),
+    inputRowCounts: Type.Record(Type.String(), Type.Number()),
+    parameters: m30Json(),
+    thresholdConstants: m30Json(),
+  }),
+  intermediates: m30Nullable(m30Json()),
+  output: Type.Object({
+    numerator: Type.Number(),
+    denominator: Type.Number(),
+    rate: m30Nullable(Type.Number()),
+  }),
+});
+
+/** `read-service.ts` → `RecomputeQueueEntryView`. The scope is a discriminated union, published as
+ *  one so a client can narrow on `kind` instead of probing for optional fields. */
+export const RecomputeQueueEntryViewSchema = Type.Object({
+  jobId: Type.String(),
+  scope: Type.Union([
+    Type.Object({ kind: Type.Literal("all") }),
+    Type.Object({ kind: Type.Literal("measure"), measureId: Type.String() }),
+    Type.Object({
+      kind: Type.Literal("domain"),
+      domain: lit(RECOMPUTE_DOMAIN),
+    }),
+  ]),
+  priority: lit(PRIORITY),
+  enqueuedAt: Type.String(),
+  state: lit(RECOMPUTE_JOB_STATE),
+});
+/** The queue read returns a BARE ARRAY — it is bounded by the queue, so it carries no cursor. */
+export const RecomputeQueueResponseSchema = Type.Array(RecomputeQueueEntryViewSchema);
+
+// ── CAHPS (R-10, R-12, R-15, R-17) ────────────────────────────────────────────────────────────
+
+/** `read-service.ts` → `CahpsVendorBindingView`. */
+export const CahpsVendorBindingViewSchema = Type.Object({
+  bindingId: Type.String(),
+  organizationId: Type.String(),
+  vendorAdapterId: Type.String(),
+  vendorName: Type.String(),
+  effectiveFrom: Type.String(),
+  effectiveTo: m30Nullable(Type.String()),
+  isActive: Type.Boolean(),
+});
+/** NULLABLE on the wire: an org that has never bound a vendor is a 200 with `null`, not a 404 —
+ *  "no vendor yet" is the normal pre-binding state, not a missing resource. */
+export const CahpsVendorResponseSchema = m30Nullable(CahpsVendorBindingViewSchema);
+
+/** `read-service.ts` → `CahpsDecedentView`. PHI (patient-linked). */
+export const CahpsDecedentViewSchema = Type.Object({
+  sampleId: Type.String(),
+  organizationId: Type.String(),
+  patientId: Type.String(),
+  dateOfDeath: Type.String(),
+  samplePeriodStart: Type.String(),
+  samplePeriodEnd: Type.String(),
+  eligible: Type.Boolean(),
+  exclusionReason: m30Nullable(Type.String()),
+});
+export const CahpsDecedentListResponseSchema = m30PageOf(CahpsDecedentViewSchema);
+
+/** `read-service.ts` → `CahpsExportJobView`. `downloadUrl` is a short-lived signed URL, present
+ *  only once `status === "completed"`. */
+export const CahpsExportJobResponseSchema = Type.Object({
+  exportId: Type.String(),
+  organizationId: Type.String(),
+  vendorAdapterId: Type.String(),
+  samplePeriodStart: Type.String(),
+  samplePeriodEnd: Type.String(),
+  status: lit(CAHPS_EXPORT_STATUS),
+  decedentCount: Type.Integer(),
+  downloadUrl: m30Nullable(Type.String()),
+  createdAt: Type.String(),
+  completedAt: m30Nullable(Type.String()),
+  failureReason: m30Nullable(Type.String()),
+});
+
+/** `read-service.ts` → `CahpsResultSummaryView`. `topBoxPercent` is null when the cell was
+ *  suppressed — `suppressedMinCell` is what distinguishes that from "not yet reported". */
+export const CahpsResultSummaryViewSchema = Type.Object({
+  resultId: Type.String(),
+  organizationId: Type.String(),
+  measureId: Type.String(),
+  reportingPeriodStart: Type.String(),
+  reportingPeriodEnd: Type.String(),
+  topBoxPercent: m30Nullable(Type.Number()),
+  suppressedMinCell: Type.Boolean(),
+  ingestedAt: Type.String(),
+});
+export const CahpsResultListResponseSchema = m30PageOf(CahpsResultSummaryViewSchema);
+
+// ── QAPI (R-20, R-23, R-29, R-33) ─────────────────────────────────────────────────────────────
+
+/** `read-service.ts` → `QapiProgramView`. */
+export const QapiProgramViewSchema = Type.Object({
+  programId: Type.String(),
+  organizationId: Type.String(),
+  planYear: Type.Integer(),
+  charterAdoptedAt: Type.String(),
+  governanceComposition: Type.Array(M30GovernanceMemberSchema),
+  status: lit(QAPI_PROGRAM_STATUS),
+});
+export const QapiProgramListResponseSchema = m30PageOf(QapiProgramViewSchema);
+
+/** `read-service.ts` → `QapiIndicatorView`. `breached` is the SERVER's verdict against the
+ *  threshold direction — a client re-deriving it from `currentRate` would get the `min`/`max`
+ *  cases backwards half the time. */
+export const QapiIndicatorViewSchema = Type.Object({
+  indicatorId: Type.String(),
+  organizationId: Type.String(),
+  qapiProgramId: Type.String(),
+  displayName: Type.String(),
+  measureId: m30Nullable(Type.String()),
+  thresholdDirection: lit(THRESHOLD_DIRECTION),
+  thresholdValue: Type.Number(),
+  currentRate: m30Nullable(Type.Number()),
+  currentBand: m30Nullable(lit(MEASURE_BAND_COLOR)),
+  breached: Type.Boolean(),
+});
+export const QapiIndicatorListResponseSchema = m30PageOf(QapiIndicatorViewSchema);
+
+/** `read-service.ts` → `QapiPipView`. */
+export const QapiPipViewSchema = Type.Object({
+  pipId: Type.String(),
+  organizationId: Type.String(),
+  projectId: Type.String(),
+  phase: lit(QAPI_PIP_PHASE),
+  charterText: Type.String(),
+  charteredByMembershipId: Type.String(),
+  outcome: m30Nullable(Type.String()),
+  closedAt: m30Nullable(Type.String()),
+});
+export const QapiPipListResponseSchema = m30PageOf(QapiPipViewSchema);
+
+/** `read-service.ts` → `QapiGovernanceMinutesView`. */
+export const QapiGovernanceMinutesViewSchema = Type.Object({
+  minutesId: Type.String(),
+  organizationId: Type.String(),
+  qapiProgramId: Type.String(),
+  meetingAt: Type.String(),
+  recordedByMembershipId: Type.String(),
+  summary: Type.String(),
+  attendees: Type.Array(M30GovernanceMemberSchema),
+});
+export const QapiGovernanceListResponseSchema = m30PageOf(QapiGovernanceMinutesViewSchema);
+
+// ── SRA (R-40, R-42) ──────────────────────────────────────────────────────────────────────────
+
+/** `read-service.ts` → `SraCycleView`. */
+export const SraCycleViewSchema = Type.Object({
+  cycleId: Type.String(),
+  organizationId: Type.String(),
+  cycleYear: Type.Integer(),
+  status: lit(SRA_CYCLE_STATUS),
+  scopeTemplateVersion: Type.String(),
+  ownerMembershipId: Type.String(),
+  openedAt: Type.String(),
+  closedAt: m30Nullable(Type.String()),
+});
+export const SraCycleListResponseSchema = m30PageOf(SraCycleViewSchema);
+
+/** `read-service.ts` → `SraFindingView`. `riskScore`/`riskBand` are server-computed from
+ *  likelihood × impact; both ride the wire so a UI never re-implements the banding. */
+export const SraFindingViewSchema = Type.Object({
+  findingId: Type.String(),
+  cycleId: Type.String(),
+  findingNumber: Type.Integer(),
+  controlRef: Type.String(),
+  likelihood: Type.Number(),
+  impact: Type.Number(),
+  riskScore: Type.Number(),
+  riskBand: lit(SRA_RISK_BAND),
+  disposition: lit(SRA_FINDING_DISPOSITION),
+});
+
+/** `read-service.ts` → `SraRemediationView`. */
+export const SraRemediationViewSchema = Type.Object({
+  remediationId: Type.String(),
+  findingId: Type.String(),
+  remediationNumber: Type.Integer(),
+  plan: Type.String(),
+  ownerMembershipId: Type.String(),
+  dueAt: m30Nullable(Type.String()),
+  status: lit(SRA_REMEDIATION_STATUS),
+  completedAt: m30Nullable(Type.String()),
+});
+
+/** `read-service.ts` → `SraCycleDetailView` (cycle + progress + findings + remediations). */
+export const SraCycleDetailResponseSchema = Type.Intersect([
+  SraCycleViewSchema,
+  Type.Object({
+    progress: Type.Object({
+      findingsCount: Type.Integer(),
+      openFindingsCount: Type.Integer(),
+      remediationsCount: Type.Integer(),
+    }),
+    findings: Type.Array(SraFindingViewSchema),
+    remediations: Type.Array(SraRemediationViewSchema),
+  }),
+]);
+
+// ── Incidents (R-52, R-61) ────────────────────────────────────────────────────────────────────
+
+/** `read-service.ts` → `IncidentStateHistoryView`. `fromState` is null on the opening entry. */
+export const IncidentStateHistoryViewSchema = Type.Object({
+  fromState: m30Nullable(lit(INCIDENT_STATE)),
+  toState: lit(INCIDENT_STATE),
+  actorMembershipId: Type.String(),
+  occurredAt: Type.String(),
+});
+
+/** `read-service.ts` → `IncidentInvestigationNoteView` (append-only). */
+export const IncidentInvestigationNoteViewSchema = Type.Object({
+  noteId: Type.String(),
+  incidentId: Type.String(),
+  authorMembershipId: Type.String(),
+  body: Type.String(),
+  createdAt: Type.String(),
+});
+
+/** `read-service.ts` → `IncidentCapPlanView` (corrective-action plan). */
+export const IncidentCapPlanViewSchema = Type.Object({
+  rootCauseSummary: Type.String(),
+  actions: Type.Array(
+    Type.Object({
+      action: Type.String(),
+      ownerMembershipId: Type.String(),
+      dueAt: Type.String(),
+      completedAt: m30Nullable(Type.String()),
+    }),
+  ),
+  verificationCriteria: Type.String(),
+});
+
+/** `read-service.ts` → `IncidentDetailView`. PHI when patient-linked. `data` stays open — it is the
+ *  kind-discriminated payload validated against the per-kind §4.2 schema on WRITE, and freezing one
+ *  union here would fight that. */
+export const IncidentDetailResponseSchema = Type.Intersect([
+  IncidentSummaryViewSchema,
+  Type.Object({
+    data: m30Json(),
+    capPlan: m30Nullable(IncidentCapPlanViewSchema),
+    capVerifiedByMembershipId: m30Nullable(Type.String()),
+    capVerifiedAt: m30Nullable(Type.String()),
+    closedByMembershipId: m30Nullable(Type.String()),
+    closedAt: m30Nullable(Type.String()),
+    stateHistory: Type.Array(IncidentStateHistoryViewSchema),
+    investigationNotes: Type.Array(IncidentInvestigationNoteViewSchema),
+    createdAt: Type.String(),
+    updatedAt: Type.String(),
+  }),
+]);
+
+// ── Mortality (R-70, R-71) ────────────────────────────────────────────────────────────────────
+
+/** `read-service.ts` → `MortalityReviewSummaryView`. PHI. */
+export const MortalityReviewSummaryViewSchema = Type.Object({
+  reviewId: Type.String(),
+  organizationId: Type.String(),
+  patientId: Type.String(),
+  dateOfDeath: Type.String(),
+  assignedToMembershipId: m30Nullable(Type.String()),
+  status: lit(MORTALITY_STATUS),
+  targetCompletionAt: Type.String(),
+  completedAt: m30Nullable(Type.String()),
+});
+export const MortalityListResponseSchema = m30PageOf(MortalityReviewSummaryViewSchema);
+
+/** `read-service.ts` → `MortalityReviewDetailView`. Each dimension is independently nullable —
+ *  a partially-reviewed death is the normal in-progress state. */
+export const MortalityReviewDetailResponseSchema = Type.Intersect([
+  MortalityReviewSummaryViewSchema,
+  Type.Object({
+    dimensions: Type.Object({
+      clinical: m30Nullable(m30Json()),
+      satisfaction: m30Nullable(m30Json()),
+      compliance: m30Nullable(m30Json()),
+    }),
+    reviewerMembershipId: m30Nullable(Type.String()),
+    createdAt: Type.String(),
+    updatedAt: Type.String(),
+  }),
+]);
+
+// ── Infection (R-90, R-92) ────────────────────────────────────────────────────────────────────
+
+/** `read-service.ts` → `InfectionEventView`. PHI. */
+export const InfectionEventViewSchema = Type.Object({
+  eventId: Type.String(),
+  organizationId: Type.String(),
+  patientId: Type.String(),
+  pathogen: Type.String(),
+  bodySite: Type.String(),
+  observedAt: Type.String(),
+  filedByMembershipId: Type.String(),
+  outbreakCaseId: m30Nullable(Type.String()),
+});
+export const InfectionEventListResponseSchema = m30PageOf(InfectionEventViewSchema);
+
+/** `read-service.ts` → `InfectionOutbreakView`. Aggregate-only — the case carries counts, never
+ *  the patient ids of its member events. */
+export const InfectionOutbreakViewSchema = Type.Object({
+  caseId: Type.String(),
+  organizationId: Type.String(),
+  pathogen: Type.String(),
+  bodySite: Type.String(),
+  eventCount: Type.Integer(),
+  firstEventAt: Type.String(),
+  lastEventAt: Type.String(),
+  status: lit(OUTBREAK_STATUS),
+  resolvedAt: m30Nullable(Type.String()),
+});
+export const InfectionOutbreakListResponseSchema = m30PageOf(InfectionOutbreakViewSchema);
+
+// ── Risk register (R-95) ──────────────────────────────────────────────────────────────────────
+
+/** `read-service.ts` → `RiskRegisterEntryView`, projected from the `risk_register_view` MV.
+ *  `status` stays open: it is the SOURCE module's status vocabulary, six different ones unioned. */
+export const RiskRegisterEntryViewSchema = Type.Object({
+  entryId: Type.String(),
+  organizationId: Type.String(),
+  source: lit(RISK_SOURCE),
+  sourceRef: Type.String(),
+  title: Type.String(),
+  severity: lit(RISK_SEVERITY),
+  status: Type.String(),
+  openedAt: Type.String(),
+  lastActivityAt: Type.String(),
+});
+export const RiskRegisterListResponseSchema = m30PageOf(RiskRegisterEntryViewSchema);
+
+// ── CONFORMANCE: the DTOs above must match what `read-service.ts` actually returns ─────────────
+//
+// `read-service.ts` is the CONTRACT (what the handlers return); the DTOs above are its WIRE
+// PROJECTION (what the OpenAPI document, and so every generated client, says they return). Nothing
+// structural connects them — the DTOs are hand-authored — so a view field renamed, retyped or added
+// would leave the published contract quietly wrong and every screen typed against a lie. That is the
+// drift the M25 screens carried while they cast through `as unknown as Page<Row>`.
+//
+// These aliases are the proof, and they live HERE rather than in a test on purpose: `apps/backend`
+// type-checks `src` only (`tsconfig.json` → `"include": ["src"]`), and vitest transpiles without
+// type-checking, so the same assertions in `__tests__` would compile-check NOWHERE and rot silently.
+// In this file, `bun run build` fails the moment a projection stops matching its view.
+//
+// Type-only import: zero runtime coupling, and no import cycle (read-service does not import this).
+import type {
+  CahpsDecedentView,
+  CahpsExportJobView,
+  CahpsResultSummaryView,
+  CahpsVendorBindingView,
+  CopCitationView,
+  IncidentDetailView,
+  IncidentSummaryView,
+  InfectionEventView,
+  InfectionOutbreakView,
+  MeasureSummaryView,
+  MeasureValueSeriesView,
+  MeasureValueSnapshotView,
+  MortalityReviewDetailView,
+  MortalityReviewSummaryView,
+  QapiGovernanceMinutesView,
+  QapiIndicatorView,
+  QapiPipView,
+  QapiProgramView,
+  QapiProjectView,
+  RecomputeQueueEntryView,
+  RiskRegisterEntryView,
+  SraCycleDetailView,
+  SraCycleView,
+} from "./read-service";
+
+/** Asserts `T` (what the schema publishes) is assignable to `V` (what the service returns). */
+type Conforms<T extends V, V> = T;
+/** The `{ items, nextCursor, hasMore }` envelope every M30 LIST read returns verbatim. */
+type PageItem<S> = S extends { items: readonly (infer I)[] } ? I : never;
+type Item<S> = PageItem<Static<S extends TSchema ? S : never>>;
+
+// list reads — the page ITEM conforms to the view
+type _Measures = Conforms<Item<typeof MeasureListResponseSchema>, MeasureSummaryView>;
+type _Incidents = Conforms<Item<typeof IncidentListResponseSchema>, IncidentSummaryView>;
+type _CopCitations = Conforms<Item<typeof CopCitationListResponseSchema>, CopCitationView>;
+type _QapiProjects = Conforms<Item<typeof QapiProjectListResponseSchema>, QapiProjectView>;
+type _CahpsDecedents = Conforms<Item<typeof CahpsDecedentListResponseSchema>, CahpsDecedentView>;
+type _CahpsResults = Conforms<Item<typeof CahpsResultListResponseSchema>, CahpsResultSummaryView>;
+type _QapiPrograms = Conforms<Item<typeof QapiProgramListResponseSchema>, QapiProgramView>;
+type _QapiIndicators = Conforms<Item<typeof QapiIndicatorListResponseSchema>, QapiIndicatorView>;
+type _QapiPips = Conforms<Item<typeof QapiPipListResponseSchema>, QapiPipView>;
+type _QapiGovernance = Conforms<
+  Item<typeof QapiGovernanceListResponseSchema>,
+  QapiGovernanceMinutesView
+>;
+type _SraCycles = Conforms<Item<typeof SraCycleListResponseSchema>, SraCycleView>;
+type _Mortality = Conforms<Item<typeof MortalityListResponseSchema>, MortalityReviewSummaryView>;
+type _InfectionEvents = Conforms<Item<typeof InfectionEventListResponseSchema>, InfectionEventView>;
+type _InfectionOutbreaks = Conforms<
+  Item<typeof InfectionOutbreakListResponseSchema>,
+  InfectionOutbreakView
+>;
+type _RiskRegister = Conforms<Item<typeof RiskRegisterListResponseSchema>, RiskRegisterEntryView>;
+
+// detail + singleton reads
+type _MeasureSeries = Conforms<
+  Static<typeof MeasureValueSeriesResponseSchema>,
+  MeasureValueSeriesView
+>;
+type _MeasureSnapshot = Conforms<
+  Static<typeof MeasureValueSnapshotResponseSchema>,
+  MeasureValueSnapshotView
+>;
+type _IncidentDetail = Conforms<Static<typeof IncidentDetailResponseSchema>, IncidentDetailView>;
+type _SraCycleDetail = Conforms<Static<typeof SraCycleDetailResponseSchema>, SraCycleDetailView>;
+type _MortalityDetail = Conforms<
+  Static<typeof MortalityReviewDetailResponseSchema>,
+  MortalityReviewDetailView
+>;
+type _CahpsExport = Conforms<Static<typeof CahpsExportJobResponseSchema>, CahpsExportJobView>;
+// Three reads deliberately break the page envelope — the vendor read is NULLABLE (an org with no
+// binding is a 200 `null`, not a 404) and the recompute queue is a BARE ARRAY (bounded by the queue,
+// so it carries no cursor). A client that assumed `{ items }` everywhere would crash on both.
+type _CahpsVendor = Conforms<
+  Static<typeof CahpsVendorResponseSchema>,
+  CahpsVendorBindingView | null
+>;
+type _RecomputeQueue = Conforms<
+  Static<typeof RecomputeQueueResponseSchema>[number],
+  RecomputeQueueEntryView
+>;
