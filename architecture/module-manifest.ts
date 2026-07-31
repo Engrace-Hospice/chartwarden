@@ -626,7 +626,11 @@ export const MODULES: ModuleDef[] = [
     // wave's manifest changes to the triage-vendors codePath (already applied, ADR-0028) and the two
     // Track B web codePaths, so M19's leaf CONTRACTS live in `packages/types/src/oncall.ts` (ADR-0005
     // D1/D2) and its domain services under `apps/backend/src/modules/19-oncall` (the M6 precedent).
-    dependsOn: [5, 17, 36],
+    dependsOn: [1, 5, 17, 36], // +M1 (M19-T02): the M1 FOUNDATION edge every implemented module carries — `@wardenx/db`
+    // (the ten owned tables), `@wardenx/tenancy`'s withOrgContext, and the bootstrap eraser registry the
+    // §3.7 `triage_record` eraser registers into. Not a widening of the module graph: it is the same edge
+    // M15/M16/M18/M21 each added at their first backend task, and Wave P2-2 acceptance #1 governs
+    // codePaths (no `packages/oncall`), which is unchanged.
     ownedTables: [
       "external_triage_vendor",
       "on_call_shift",

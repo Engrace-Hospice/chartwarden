@@ -860,6 +860,24 @@ export type DataClass =
   // SURVIVE (not patient data; device erases on workforce departure per M2 D8). `subjectId` is the patient
   // being destroyed; disjoint from every other module's subtree.
   | "evv_record"
+  // M19 (On-Call Triage) per-patient triage record: the after-hours subtree M19 owns for one patient — the
+  // `triage_call` rows and their `triage_call_answer` / `triage_escalation` / `triage_call_state_history`
+  // children. Registered in M19-T02 (the schema task) so the contract is present from the moment the tables
+  // exist; the REAL eraser is bound through the composition-root hook over the Phase-0 deny-stub. Under an
+  // M4 destruction certificate (§3.7) the children are DELETED outright and the `triage_call` row is left as
+  // a de-identified TOMBSTONE — the M5/M6/M7/M8/M15/M16 root-tombstone pattern, and here it is load-bearing
+  // for a second reason: M8's signed `triage_telephonic_contact` encounter carries a back-reference to the
+  // call, so deleting the row would orphan a signed clinical document. Every PHI-bearing column on it
+  // (patient/admission/caregiver ids, caller name + phone, chief complaint, the two DEK ciphers, the
+  // disposition payload) is nulled first, so the PHI is unreadable even if a later step fails; a
+  // tenant-offboarding DEK shred makes `caller_quote_cipher` / `transcript_cipher` unreadable in the same
+  // operation with no per-row delete (§3.7). The ORG-scoped configuration — `tenant_oncall_policy`,
+  // `external_triage_vendor`, `on_call_shift`, `triage_protocol` and `triage_protocol_question` — is NEVER
+  // touched: a policy, a vendor binding, a roster and a protocol catalog are not one patient's data, and
+  // `on_call_shift` in particular is the CoP 418.100(c)(2) evidence that a nurse was reachable, which a
+  // right-to-erasure request does not reach. `subjectId` is the patient being destroyed; disjoint from M8's
+  // `encounter_record` (which erases its own side in parallel) and from every other module's subtree.
+  | "triage_record"
   // M34 (SaaS Tenant Platform) per-TENANT control-plane record (NOT patient data): on tenant offboarding
   // (D6, §3.5/§8.4) M34's eraser deletes the org's operational working rows — `onboarding_task`,
   // `support_consent_grant`, `support_session` headers, `platform_tenant_baa_record`, `tenant_invitation`,

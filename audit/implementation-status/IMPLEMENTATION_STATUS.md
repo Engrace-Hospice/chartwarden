@@ -28,7 +28,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M16 Bereavement | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 | M17 Scheduling & Route Optimization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | M18 EVV | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
-| M19 On-Call Triage | 🟡 Partial | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| M19 On-Call Triage | 🟡 Partial | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | M20 Field Safety | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — | ❌ |
 | M21 Supplies, DME & Comfort Kits | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 | M22 Document Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |

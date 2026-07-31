@@ -568,7 +568,8 @@ exports.MODULES = [
       "apps/web/src/modules/19-oncall",
     ], // +web: Track B in-task screens (ADR-0030), land in M19-T08. `packages/oncall` from the spec's
     // §3.1 layout is deliberately NOT adopted — see the .ts manifest for the full read.
-    dependsOn: [5, 17, 36],
+    dependsOn: [1, 5, 17, 36], // +M1 (M19-T02): foundation edge — @wardenx/db + tenancy + the bootstrap
+    // eraser registry the §3.7 triage_record eraser registers into. See the .ts manifest.
     ownedTables: [
       "external_triage_vendor",
       "on_call_shift",

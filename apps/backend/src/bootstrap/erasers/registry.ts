@@ -151,6 +151,16 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // `evv_device` rows are not patient data and stay untouched (device erases on workforce departure per M2 D8).
   // The `subjectId` is the patient.
   "evv_record",
+  // M19-T02 (the schema task) registers the data-class contract the moment the tables exist; the Phase-0
+  // deny-stub (wireErasers) stands until the composition root binds the REAL eraser with a DB client. Under
+  // an M4 destruction certificate it nulls every PHI-bearing column on the patient's `triage_call` rows
+  // FIRST, deletes the `triage_call_answer` / `triage_escalation` / `triage_call_state_history` children,
+  // and leaves the call row as a de-identified TOMBSTONE — M8's signed `triage_telephonic_contact` encounter
+  // back-references it, so deleting it would orphan a signed clinical document (§3.7). The org-scoped
+  // `tenant_oncall_policy` / `external_triage_vendor` / `on_call_shift` / `triage_protocol(_question)` rows
+  // are configuration and CoP 418.100(c)(2) roster evidence, not patient data, and stay untouched. The
+  // `subjectId` is the patient.
+  "triage_record",
   // M34: a TENANT's control-plane footprint (NOT patient data) on offboarding (D6, §3.5/§8.4). M34 registers
   // the REAL eraser via the composition-root hook over this deny-stub — it deletes the org's operational
   // working rows (onboarding_task / support_consent_grant / support_session headers / platform_tenant_baa_record

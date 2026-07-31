@@ -99,6 +99,10 @@ import {
 import { registerSchedulingSeams } from "./modules/17-scheduling/index";
 import { registerEvvSeams } from "./modules/18-evv/index";
 import {
+  createDrizzleTriageEraseStore,
+  registerTriageErasers,
+} from "./modules/19-oncall/index";
+import {
   M21_OUTBOX_EVENTS,
   buildDrizzleM21ReadService,
   buildDrizzleM21WriteService,
@@ -736,6 +740,13 @@ export function wireModuleErasers(deps: { db?: DbClient } = {}): void {
   // config is never touched. Registers only with a DB client — the shred is a privileged write, and a
   // slice boot must keep the deny-stub rather than report a destruction it did not perform.
   if (deps.db) registerSupplyEraser(deps.db);
+  // M19-T02 — `triage_record` (per-PATIENT destruction-cert callback; nulls the caller identity, chief
+  // complaint and the two DEK ciphers on the patient's `triage_call` rows FIRST, deletes the escalation /
+  // answer / state-history subtree, then leaves each call as a de-identified closed TOMBSTONE because M8's
+  // signed `triage_telephonic_contact` encounter back-references it. The org-scoped policy / vendor binding
+  // / protocol catalog and the CoP 418.100(c)(2) `on_call_shift` roster evidence are never touched, §3.7).
+  // The Drizzle store binds when a DB client is present; without one the slice's in-memory store stands.
+  registerTriageErasers(deps.db ? { store: createDrizzleTriageEraseStore(deps.db) } : {});
   // Phase-1 data-class owners append here as they land.
 }
 
