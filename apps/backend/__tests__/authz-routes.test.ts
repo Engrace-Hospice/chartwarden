@@ -108,6 +108,11 @@ const ADMIN = { "x-test-user": "admin_1", "x-test-org": "org_a", "x-test-roles":
 const COMPLIANCE = { "x-test-user": "co_1", "x-test-org": "org_a", "x-test-roles": "compliance" };
 const CLINICIAN = { "x-test-user": "rn_1", "x-test-org": "org_a", "x-test-roles": "clinical_rn" };
 
+// `break_glass_event.target_patient_id` is a uuid column, and the route validates the body against
+// `authz-typebox` at the boundary — so the glass fixtures are real uuids, not opaque handles.
+const TARGET_PATIENT = "11111111-1111-4111-8111-111111111111";
+const OTHER_PATIENT = "22222222-2222-4222-8222-222222222222";
+
 beforeEach(() => {
   resetAuthorizationContract();
   resetRbacEngine();
@@ -235,7 +240,7 @@ describe("M3-T08 authorization route inventory", () => {
         method: "POST",
         url: "/api/v1/breakglass",
         headers: CLINICIAN,
-        payload: { targetPatientId: "pat_42", reason: "short" },
+        payload: { targetPatientId: TARGET_PATIENT, reason: "short" },
       });
       expect(res.statusCode).toBe(422);
       await app.close();
@@ -247,7 +252,7 @@ describe("M3-T08 authorization route inventory", () => {
         method: "POST",
         url: "/api/v1/breakglass",
         headers: CLINICIAN,
-        payload: { targetPatientId: "pat_42", reason: "covering nurse, chest pain emergency" },
+        payload: { targetPatientId: TARGET_PATIENT, reason: "covering nurse, chest pain emergency" },
       });
       expect(res.statusCode).toBe(201);
       expect(res.json()).toMatchObject({ status: "active" });
@@ -264,7 +269,7 @@ describe("M3-T08 authorization route inventory", () => {
         method: "POST",
         url: "/api/v1/breakglass",
         headers: CLINICIAN,
-        payload: { targetPatientId: "pat_42", reason: "covering nurse, chest pain emergency" },
+        payload: { targetPatientId: TARGET_PATIENT, reason: "covering nurse, chest pain emergency" },
       });
       const eventId = invoke.json().breakGlassId;
       expect(breakGlass.all()).toHaveLength(1);
@@ -288,13 +293,13 @@ describe("M3-T08 authorization route inventory", () => {
         params: { patientId },
       });
 
-      await expect(guard(probe("pat_42"))).resolves.toBeUndefined(); // allowed under glass
+      await expect(guard(probe(TARGET_PATIENT))).resolves.toBeUndefined(); // allowed under glass
       const access = auditSink.rows.find((r) => r.eventType === "m3.breakglass.access");
       expect(access?.severity).toBe("critical");
       expect((access?.context as { breakGlassEventId: string }).breakGlassEventId).toBe(eventId);
 
       // A patient NOT covered by the glass stays denied (deny by default).
-      await expect(guard(probe("pat_99"))).rejects.toMatchObject({ statusCode: 403 });
+      await expect(guard(probe(OTHER_PATIENT))).rejects.toMatchObject({ statusCode: 403 });
       await app.close();
     });
 
@@ -304,7 +309,7 @@ describe("M3-T08 authorization route inventory", () => {
         method: "POST",
         url: "/api/v1/breakglass",
         headers: CLINICIAN,
-        payload: { targetPatientId: "pat_42", reason: "covering nurse, chest pain emergency" },
+        payload: { targetPatientId: TARGET_PATIENT, reason: "covering nurse, chest pain emergency" },
       });
       const eventId = invoke.json().breakGlassId;
 
