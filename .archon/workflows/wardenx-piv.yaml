@@ -3,21 +3,28 @@
 # Drives an AI coding agent through a WardenX task plan ONE task at a time, gating
 # every task on the WardenX fitness suite. The workflow structure controls flow.
 #
-# PLAN RESOLUTION (archon v0.4.x): there is no `--input` flag and `{{ inputs.X }}` is
-# NOT interpolated. Per-run data arrives only via the run MESSAGE, exposed to bash nodes
-# as `$ARGUMENTS`. So the `setup` node resolves the plan ONCE — a `docs/plans/*.md` path
-# named in the message, else the slice default — and writes it to `.archon/run-plan.txt`
-# (gitignored). Every prompt reads that file, so even fresh-context loop iterations get
-# the right plan without relying on prompt-variable interpolation.
+# PLAN RESOLUTION (still true on archon v0.6.0 — re-checked 2026-07-31): there is no `--input`
+# flag and `{{ inputs.X }}` is NOT interpolated. Per-run data arrives only via the run MESSAGE,
+# exposed to bash nodes as `$ARGUMENTS`. So the `setup` node resolves the plan ONCE — a
+# `docs/plans/*.md` path named in the message, else the slice default — and writes it to
+# `.archon/run-plan.txt` (gitignored). Every prompt reads that file, so even fresh-context loop
+# iterations get the right plan without relying on prompt-variable interpolation.
 #   slice:  archon workflow run wardenx-piv --branch feat/m1-m2-slice
 #   wave A: archon workflow run wardenx-piv --branch feat/wave-a "Use the plan at docs/plans/WAVE_A_M3-M4_PLAN.md"
+#
+# SCOPE (added after the Wave P2-1 run): the same "$ARGUMENTS is the only channel" fact means a
+# qualifier like "(Module 15 only)" was previously READ BY NOBODY — `setup` grepped out the plan
+# path and dropped the rest, and `implement` just walked the plan to exhaustion. That run built
+# M15 + M16 + M21 when one module was asked for. `setup` now also parses an optional module
+# filter into `.archon/run-scope.txt`, and `implement`/`confirm-plan` read it. Accepted forms:
+#   "(Module 15 only)"  ·  "modules 15,16"  ·  "M15 only"      → else the file holds ALL.
 
 name: wardenx-piv
 description: >
   Execute a WardenX module task plan end-to-end: implement each task in a fresh context,
   validate against the full fitness suite, self-fix on failure, then commit LOCALLY on the
   run branch (no push, no PR — review happens on the local branch before you merge to main).
-version: 0.4.0
+version: 0.5.0
 
 nodes:
   - id: setup
@@ -31,6 +38,17 @@ nodes:
       test -f "$RUN_PLAN" || { echo "[setup] plan not found: $RUN_PLAN" >&2; exit 1; }
       printf '%s\n' "$RUN_PLAN" > .archon/run-plan.txt
       echo "[setup] run plan: $RUN_PLAN"
+      # Optional module filter from the same message. Matches "Module 15 only" / "modules 15,16" /
+      # "M15 only"; anything else means the whole plan. Written for the prompts to read, because
+      # $ARGUMENTS reaches bash nodes ONLY — a prompt cannot see the run message.
+      # Strip the plan PATH first: "WAVE_P2-1_M15-M16-M21-M24_PLAN.md" is full of module numbers,
+      # and without this the filename alone parses as a 4-module scope (verified — it did).
+      RUN_SCOPE=$(printf '%s' "${ARGUMENTS:-}" \
+        | sed -E 's#docs/plans/[A-Za-z0-9._/-]+\.md##g' \
+        | grep -ioE '\b(module|modules|m)[[:space:]]*([0-9]{1,2}([[:space:]]*[,&+/and]+[[:space:]]*[0-9]{1,2})*)' \
+        | grep -oE '[0-9]{1,2}' | sort -un | paste -sd, - || true)
+      printf '%s\n' "${RUN_SCOPE:-ALL}" > .archon/run-scope.txt
+      echo "[setup] run scope: ${RUN_SCOPE:-ALL (every module in the plan)}"
       # Confirm a GREEN baseline before any task work.
       git rev-parse --abbrev-ref HEAD
       bun install --frozen-lockfile
@@ -40,7 +58,11 @@ nodes:
     depends_on: [setup]
     prompt: |
       Read THIS run's task plan: its path is in `.archon/run-plan.txt` (read that file first — it
-      holds a single docs/plans/*.md path). Read that plan and the spec sections it cites under
+      holds a single docs/plans/*.md path). Then read `.archon/run-scope.txt`: it holds either the
+      word ALL, or a comma-separated list of module numbers this run is RESTRICTED to. If it names
+      modules, every task belonging to any other module is OUT OF SCOPE for this run — do not plan,
+      start, or "just finish" it, even when the plan lists it and it looks ready.
+      Read that plan and the spec sections it cites under
       docs/modules/. Identify the NEXT unstarted task, its exact files (manifest codePaths), and its
       acceptance gate(s). Restate the task's scope and STOP if anything is ambiguous.
       Authority: architecture docs + ADRs win over module specs (ADR-0005). The manifest
@@ -54,9 +76,11 @@ nodes:
       until: ALL_TASKS_COMPLETE
       max_iterations: 40
       prompt: |
-        Read the plan path from `.archon/run-plan.txt`, then implement the NEXT unstarted task from
-        that plan — that task ONLY, nothing beyond its scope. Follow the cited spec section. Hard
-        rules (the gates enforce them):
+        Read the plan path from `.archon/run-plan.txt` and the module filter from
+        `.archon/run-scope.txt` (ALL, or a comma-separated list of module numbers this run is
+        restricted to). Then implement the NEXT unstarted task from that plan that is IN SCOPE —
+        that task ONLY, nothing beyond its scope. A task for a module outside the filter does not
+        exist for this run. Follow the cited spec section. Hard rules (the gates enforce them):
           • Tables exactly per the manifest ownedTables; schema in packages/db/src/schema.
           • Every PHI table: organization_id (+ provider_entity_id + location_id), RLS keyed
             ONLY on app.org_id, an M4 audit trigger.
@@ -66,6 +90,18 @@ nodes:
             with the field denylist; register an eraser.
           • packages/foundation is BANNED — use packages/types | shared | tenancy | audit.
         Then run the validate gate and do not mark the task complete unless it is GREEN.
+
+        TERMINATION — this loop exits ONLY on a literal token, and nothing else ends it. When you
+        find that no in-scope unstarted task remains, do NOT implement anything, do NOT re-verify
+        the branch, and do NOT summarise the wave: reply with exactly
+
+        ALL_TASKS_COMPLETE
+
+        as the entire response. Omitting it is what makes the run burn every remaining iteration on
+        no-ops and then fail with "exceeded max iterations", which SKIPS validate/fix/finalize/commit
+        via trigger_rule — so the wave ships with no commit message and no review summary. On the
+        Wave P2-1 run that cost 15 wasted iterations and both output files. Never print the token
+        while work remains; it is the only stop signal.
 
   - id: validate
     depends_on: [implement]
@@ -83,6 +119,14 @@ nodes:
       prompt: |
         If `bun run build && bun run arch:fitness && bun run test` is red, fix the ROOT CAUSE
         (never weaken a gate or a fixture) and re-run it. Repeat until green.
+
+        TERMINATION — same contract as the implement loop: the moment the full gate passes, reply
+        with exactly
+
+        GATE_GREEN
+
+        as the entire response. That token is the only thing that ends this loop; without it a
+        green branch still burns all 10 iterations and then reports the run as failed.
 
   # No interactive approval node: it hangs under nested execution (coleam00/Archon#1067), and the
   # original `pr` node also never committed the work. Instead `finalize` (non-interactive) composes
