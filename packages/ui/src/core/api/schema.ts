@@ -941,6 +941,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Appeal tracker (cursor-paginated, §4.12) */
         get: operations["getApiV1Appeals"];
         put?: never;
         post?: never;
@@ -995,6 +996,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Attach supporting evidence to an appeal (§4.1) */
         patch: operations["patchApiV1AppealsByIdAttach"];
         trace?: never;
     };
@@ -1023,6 +1025,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record the payer's appeal decision (§4.1) */
         post: operations["postApiV1AppealsByIdDecide"];
         delete?: never;
         options?: never;
@@ -1039,6 +1042,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Submit an appeal to the payer (§4.1) */
         post: operations["postApiV1AppealsByIdSubmit"];
         delete?: never;
         options?: never;
@@ -1055,6 +1059,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Withdraw a submitted appeal (§4.1) */
         post: operations["postApiV1AppealsByIdWithdraw"];
         delete?: never;
         options?: never;
@@ -1633,6 +1638,7 @@ export interface paths {
         };
         get: operations["getApiV1Breakglass"];
         put?: never;
+        /** Invoke break-glass emergency access (§7.4; reason ≥10 chars) */
         post: operations["postApiV1Breakglass"];
         delete?: never;
         options?: never;
@@ -2523,6 +2529,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Publish a TIGHTEN-ONLY tenant consent-type overlay (§7.6) */
         post: operations["postApiV1ConsenttypesOverlay"];
         delete?: never;
         options?: never;
@@ -2543,6 +2550,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Edit a consent draft — only `status='draft'` is editable (D1) */
         patch: operations["patchApiV1ConsentsByConsentId"];
         trace?: never;
     };
@@ -2587,6 +2595,7 @@ export interface paths {
         };
         get: operations["getApiV1ConsentsByConsentIdDpoaagents"];
         put?: never;
+        /** Name a DPOA agent (D5) */
         post: operations["postApiV1ConsentsByConsentIdDpoaagents"];
         delete?: never;
         options?: never;
@@ -2607,6 +2616,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Mutate a DPOA agent's scope / activation / term, or retire them (D5) */
         patch: operations["patchApiV1ConsentsByConsentIdDpoaagentsByAgentId"];
         trace?: never;
     };
@@ -2617,6 +2627,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Per-consent decision audit (cursor-paginated, §4.12) */
         get: operations["getApiV1ConsentsByConsentIdEvalaudit"];
         put?: never;
         post?: never;
@@ -2635,6 +2646,7 @@ export interface paths {
         };
         get: operations["getApiV1ConsentsByConsentIdRecipients"];
         put?: never;
+        /** Add a named disclosure recipient (D6) */
         post: operations["postApiV1ConsentsByConsentIdRecipients"];
         delete?: never;
         options?: never;
@@ -2652,6 +2664,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
+        /** Remove a named recipient — flips removed_at, never deletes (D6) */
         delete: operations["deleteApiV1ConsentsByConsentIdRecipientsByRecipientId"];
         options?: never;
         head?: never;
@@ -2667,6 +2680,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Renew an expired/revoked consent (D13 renewal chain) */
         post: operations["postApiV1ConsentsByConsentIdRenew"];
         delete?: never;
         options?: never;
@@ -2699,6 +2713,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Revoke a consent (§7.3 cascade; staff revocation needs evidence) */
         post: operations["postApiV1ConsentsByConsentIdRevoke"];
         delete?: never;
         options?: never;
@@ -2731,6 +2746,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Supersede an active consent with a new row (D1 append-only) */
         post: operations["postApiV1ConsentsByConsentIdSupersede"];
         delete?: never;
         options?: never;
@@ -2763,6 +2779,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Capture post-mortem bereavement-outreach consent (D14) */
         post: operations["postApiV1ConsentsBereavementoutreach"];
         delete?: never;
         options?: never;
@@ -2777,6 +2794,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Patient-scoped consent-decision audit (cursor-paginated, §4.12) */
         get: operations["getApiV1ConsentsEvalauditBypatient"];
         put?: never;
         post?: never;
@@ -3509,6 +3527,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Denial worklist (cursor-paginated, §4.12) */
         get: operations["getApiV1Denials"];
         put?: never;
         post?: never;
@@ -3543,6 +3562,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Open an appeal against a denial case (§4.1) */
         post: operations["postApiV1DenialsByIdAppeals"];
         delete?: never;
         options?: never;
@@ -3563,6 +3583,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Assign a denial case to a membership (§4.1) */
         patch: operations["patchApiV1DenialsByIdAssign"];
         trace?: never;
     };
@@ -3591,6 +3612,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Close a denial case as a write-off (§4.1) */
         post: operations["postApiV1DenialsByIdClosewriteoff"];
         delete?: never;
         options?: never;
@@ -3611,6 +3633,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Escalate a denial case (§4.1) */
         patch: operations["patchApiV1DenialsByIdEscalate"];
         trace?: never;
     };
@@ -3623,6 +3646,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Reopen a closed denial case (§4.1) */
         post: operations["postApiV1DenialsByIdReopen"];
         delete?: never;
         options?: never;
@@ -3643,6 +3667,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Resolve a denial case (§4.1) */
         patch: operations["patchApiV1DenialsByIdResolve"];
         trace?: never;
     };
@@ -4318,6 +4343,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Open an auditor engagement over a defined slice + window (§7.5) */
         post: operations["postApiV1Engagements"];
         delete?: never;
         options?: never;
@@ -4338,6 +4364,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Shorten an engagement window or cancel it (§7.5) */
         patch: operations["patchApiV1EngagementsById"];
         trace?: never;
     };
@@ -4350,6 +4377,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Enroll an auditor — M2 mints the magic link out-of-band (D4) */
         post: operations["postApiV1EngagementsByIdAuditors"];
         delete?: never;
         options?: never;
@@ -6729,6 +6757,7 @@ export interface paths {
         };
         get: operations["getApiV1MembershipsByIdRoles"];
         put?: never;
+        /** Grant a role onto a membership (§6 anti-escalation applies) */
         post: operations["postApiV1MembershipsByIdRoles"];
         delete?: never;
         options?: never;
@@ -7743,6 +7772,7 @@ export interface paths {
         };
         get: operations["getApiV1PatientsByPatientIdConsents"];
         put?: never;
+        /** Create a consent DRAFT for a patient (§4.1) */
         post: operations["postApiV1PatientsByPatientIdConsents"];
         delete?: never;
         options?: never;
@@ -7789,6 +7819,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Consents inside the renewal window (cursor-paginated, §4.12) */
         get: operations["getApiV1PatientsByPatientIdExpiringconsents"];
         put?: never;
         post?: never;
@@ -9612,6 +9643,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Override an adjustment's taxonomy classification (§4.1) */
         post: operations["postApiV1RemittanceAdjustmentsByIdOverride"];
         delete?: never;
         options?: never;
@@ -9626,6 +9658,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Remittance advices (835 headers, cursor-paginated, §4.12) */
         get: operations["getApiV1RemittanceAdvices"];
         put?: never;
         post?: never;
@@ -9674,6 +9707,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Remittance service lines (cursor-paginated, §4.12) */
         get: operations["getApiV1RemittanceLines"];
         put?: never;
         post?: never;
@@ -9708,6 +9742,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Manually match a remittance line to a claim (§4.1) */
         post: operations["postApiV1RemittanceLinesByIdManualmatch"];
         delete?: never;
         options?: never;
@@ -9722,6 +9757,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Unmatched remittance lines awaiting manual match (§4.1) */
         get: operations["getApiV1RemittanceUnmatched"];
         put?: never;
         post?: never;
@@ -10321,6 +10357,7 @@ export interface paths {
         /** List role catalog for the org (templates + customized, §6) */
         get: operations["getApiV1Roles"];
         put?: never;
+        /** Clone/extend a platform template into an org-owned custom role (§7.6) */
         post: operations["postApiV1Roles"];
         delete?: never;
         options?: never;
@@ -10341,6 +10378,7 @@ export interface paths {
         delete: operations["deleteApiV1RolesById"];
         options?: never;
         head?: never;
+        /** Rename / enable / edit a role's permission set (§7.6) */
         patch: operations["patchApiV1RolesById"];
         trace?: never;
     };
@@ -10637,6 +10675,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Patch the tenant CARC taxonomy overlay (§4.1) */
         patch: operations["patchApiV1TaxonomyOverlaysByCarc"];
         trace?: never;
     };
@@ -13066,7 +13105,10 @@ export interface operations {
     };
     getApiV1Appeals: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                pageSize?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -13078,7 +13120,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            denialCaseId: string;
+                            /** Format: uuid */
+                            claimId: string;
+                            tier: string;
+                            state: string;
+                            decisionOutcome: string | null;
+                            /** Format: date-time */
+                            tierDeadlineAt: string;
+                            version: number;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -13137,7 +13197,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    documentId: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -13181,7 +13248,19 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    outcome: "favorable" | "partial" | "unfavorable";
+                    /** Format: date-time */
+                    decidedAt: string;
+                    macReferenceNumbers?: {
+                        [key: string]: string;
+                    };
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -13203,7 +13282,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    appealNarrative: string;
+                    attachedDocumentIds: string[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -13225,7 +13311,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -14344,7 +14436,15 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    targetPatientId?: string | null;
+                    cosignRequired?: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15971,7 +16071,18 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                    tighterExpirationSeconds?: number | null;
+                    tighterCaptureMethods?: ("electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized")[];
+                    tighterReminderCadence?: ("90_days" | "30_days" | "14_days" | "7_days" | "1_day")[];
+                    stateAddendumText?: string | null;
+                    jurisdictionCodeRequired?: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -16015,7 +16126,16 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    scopeDescriptor?: unknown;
+                    captureMethod?: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
+                    grantorKind?: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
+                    survivesDeath?: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -16103,7 +16223,22 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    agentKind: "primary" | "alternate_1" | "alternate_2";
+                    agentName: string;
+                    agentRelationship: string;
+                    agentContact: {
+                        [key: string]: unknown;
+                    };
+                    scopeKind: "healthcare_full" | "healthcare_end_of_life_only" | "financial_narrow" | "financial_broad";
+                    activationCondition: "immediate" | "upon_incapacity_attested" | "upon_physician_determination" | "upon_incompetence_court_order";
+                    termKind: "indefinite" | "until_date" | "event_driven";
+                    termUntil?: string | null;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -16126,7 +16261,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    scopeKind?: "healthcare_full" | "healthcare_end_of_life_only" | "financial_narrow" | "financial_broad";
+                    activationCondition?: "immediate" | "upon_incapacity_attested" | "upon_physician_determination" | "upon_incompetence_court_order";
+                    termKind?: "indefinite" | "until_date" | "event_driven";
+                    termUntil?: string | null;
+                    remove?: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -16141,7 +16286,10 @@ export interface operations {
     };
     getApiV1ConsentsByConsentIdEvalaudit: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                pageSize?: number;
+            };
             header?: never;
             path: {
                 consentId: string;
@@ -16192,7 +16340,18 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    recipientKind: "external_physician" | "facility" | "pharmacy" | "irb" | "family_member" | "attorney" | "employer" | "researcher" | "free_text";
+                    recipientEntityId?: string | null;
+                    recipientFreeText?: string | null;
+                    recipientDisplayName: string;
+                    purposeCode?: string | null;
+                    expiresAt?: string | null;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -16215,7 +16374,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    removedReasonText: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -16237,7 +16402,16 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    scopeDescriptor: unknown;
+                    captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
+                    grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
+                    expiresAt?: string | null;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -16281,7 +16455,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    revokedByKind: "patient_self_via_portal" | "staff" | "dpoa_agent" | "court_order" | "platform_admin_break_glass";
+                    /** @default  */
+                    reasonText: string;
+                    /** Format: uuid */
+                    evidenceDocumentId?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -16325,7 +16509,16 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    scopeDescriptor: unknown;
+                    captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
+                    grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
+                    survivesDeath?: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -16367,7 +16560,16 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    patientId: string;
+                    grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
+                    captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
+                    scopeDescriptor: unknown;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -16382,7 +16584,11 @@ export interface operations {
     };
     getApiV1ConsentsEvalauditBypatient: {
         parameters: {
-            query?: never;
+            query?: {
+                patientId?: string;
+                cursor?: string;
+                pageSize?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -17674,7 +17880,10 @@ export interface operations {
     };
     getApiV1Denials: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                pageSize?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -17686,7 +17895,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            claimId: string | null;
+                            carcCode: string;
+                            rarcCode: string | null;
+                            category: string;
+                            source: string;
+                            state: string;
+                            assigneeMembershipId: string | null;
+                            /** Format: date-time */
+                            openedAt: string;
+                            agingBucketDays: number;
+                            agingBucketLabel: string;
+                            /** @description Decimal string (numeric column) — never a float */
+                            dollarValue: string;
+                            taxonomyStatus: string;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -17723,7 +17956,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    tier?: "redetermination" | "reconsideration" | "alj" | "council" | "federal_court";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -17745,7 +17984,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    assigneeMembershipId: string;
+                    reason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -17789,7 +18036,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -17811,7 +18064,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -17833,7 +18092,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -17855,7 +18120,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -19013,7 +19284,21 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    engagementType: "cms_survey" | "state_survey" | "tpe_probe" | "upic_investigation" | "cost_report_field_audit" | "financial_audit" | "accreditation" | "other";
+                    auditorAgency: string;
+                    scope?: {
+                        [key: string]: unknown;
+                    };
+                    /** Format: date-time */
+                    startAt: string;
+                    /** Format: date-time */
+                    endAt: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -19035,7 +19320,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    cancel?: boolean;
+                    /** Format: date-time */
+                    endAt?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -19057,7 +19350,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    /** Format: email */
+                    email: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -23545,7 +23846,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    roleId: string;
+                    scope?: {
+                        [key: string]: unknown;
+                    };
+                    expiresAt?: string | null;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -25701,7 +26012,16 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                    grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
+                    captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
+                    scopeDescriptor: unknown;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -25760,7 +26080,11 @@ export interface operations {
     };
     getApiV1PatientsByPatientIdExpiringconsents: {
         parameters: {
-            query?: never;
+            query?: {
+                windowDays?: number;
+                cursor?: string;
+                pageSize?: number;
+            };
             header?: never;
             path: {
                 patientId: string;
@@ -29216,7 +29540,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    newPostAction: "auto_posted" | "ledger_recorded" | "denial_seeded";
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -29231,7 +29562,10 @@ export interface operations {
     };
     getApiV1RemittanceAdvices: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                pageSize?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -29243,7 +29577,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            payerId: string;
+                            payerKind: string;
+                            paymentMethod: string;
+                            /** @description Decimal string — never a float */
+                            totalPaymentAmount: string;
+                            parseStatus: string;
+                            /** Format: date-time */
+                            receivedAt: string;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -29295,7 +29647,10 @@ export interface operations {
     };
     getApiV1RemittanceLines: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                pageSize?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -29307,7 +29662,30 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            remittanceAdviceId: string;
+                            claimId: string | null;
+                            clp02StatusCode: number;
+                            /** @description Decimal string — never a float */
+                            clp03TotalChargeAmount: string;
+                            /** @description Decimal string — never a float */
+                            clp04TotalPaymentAmount: string;
+                            /** @description Decimal string — never a float */
+                            clp05PatientResponsibilityAmount: string;
+                            matchState: string;
+                            matchStrategy: string | null;
+                            matchConfidence: number | null;
+                            /** Format: date-time */
+                            receivedAt: string;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -29344,7 +29722,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    proposedClaimId: string;
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -29359,7 +29745,10 @@ export interface operations {
     };
     getApiV1RemittanceUnmatched: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                pageSize?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -29371,7 +29760,30 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            remittanceAdviceId: string;
+                            claimId: string | null;
+                            clp02StatusCode: number;
+                            /** @description Decimal string — never a float */
+                            clp03TotalChargeAmount: string;
+                            /** @description Decimal string — never a float */
+                            clp04TotalPaymentAmount: string;
+                            /** @description Decimal string — never a float */
+                            clp05PatientResponsibilityAmount: string;
+                            matchState: string;
+                            matchStrategy: string | null;
+                            matchConfidence: number | null;
+                            /** Format: date-time */
+                            receivedAt: string;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30341,7 +30753,18 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    key: string;
+                    name: string;
+                    category: "clinical_staff" | "clinical_leadership" | "operations" | "admin_executive" | "billing_finance" | "compliance_quality" | "volunteer" | "patient_family" | "external_auditor" | "external_collaborator" | "platform_staff" | "temporary_special";
+                    scopeLevel?: "organization" | "provider_entity" | "location" | "patient";
+                    permissionKeys?: string[];
+                    clonedFromKey?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -30385,7 +30808,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    enabled?: boolean;
+                    permissionKeys?: string[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -30950,7 +31381,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    rarcCode?: string;
+                    plainLanguageOverride?: string;
+                    suggestedAction: string;
+                    ownerRole: "billing_specialist" | "billing_manager" | "clinical_records" | "compliance_officer" | "md_or_np";
+                    severity: "info" | "warn" | "critical";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {

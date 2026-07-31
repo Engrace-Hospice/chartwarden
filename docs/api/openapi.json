@@ -2776,10 +2776,108 @@
         "tags": [
           "25-remittance"
         ],
-        "parameters": [],
+        "summary": "Appeal tracker (cursor-paginated, §4.12)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "denialCaseId",
+                          "claimId",
+                          "tier",
+                          "state",
+                          "decisionOutcome",
+                          "tierDeadlineAt",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "denialCaseId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "claimId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "tier": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "decisionOutcome": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "tierDeadlineAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -2854,6 +2952,7 @@
         "tags": [
           "25-remittance"
         ],
+        "summary": "Attach supporting evidence to an appeal (§4.1)",
         "parameters": [
           {
             "name": "id",
@@ -2873,6 +2972,25 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "documentId"
+                ],
+                "properties": {
+                  "documentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -2912,6 +3030,7 @@
         "tags": [
           "25-remittance"
         ],
+        "summary": "Record the payer's appeal decision (§4.1)",
         "parameters": [
           {
             "name": "id",
@@ -2931,6 +3050,56 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "outcome",
+                  "decidedAt",
+                  "reason"
+                ],
+                "properties": {
+                  "outcome": {
+                    "anyOf": [
+                      {
+                        "const": "favorable",
+                        "type": "string"
+                      },
+                      {
+                        "const": "partial",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unfavorable",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "decidedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "macReferenceNumbers": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "reason": {
+                    "minLength": 40,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -2941,6 +3110,7 @@
         "tags": [
           "25-remittance"
         ],
+        "summary": "Submit an appeal to the payer (§4.1)",
         "parameters": [
           {
             "name": "id",
@@ -2960,6 +3130,35 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "appealNarrative",
+                  "attachedDocumentIds"
+                ],
+                "properties": {
+                  "appealNarrative": {
+                    "minLength": 100,
+                    "maxLength": 10000,
+                    "type": "string"
+                  },
+                  "attachedDocumentIds": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -2970,6 +3169,7 @@
         "tags": [
           "25-remittance"
         ],
+        "summary": "Withdraw a submitted appeal (§4.1)",
         "parameters": [
           {
             "name": "id",
@@ -2989,6 +3189,26 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 40,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -5385,6 +5605,7 @@
         "tags": [
           "03-authorization"
         ],
+        "summary": "Invoke break-glass emergency access (§7.4; reason ≥10 chars)",
         "parameters": [],
         "responses": {
           "200": {
@@ -5395,6 +5616,41 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 10,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "targetPatientId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "cosignRequired": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -9193,6 +9449,7 @@
         "tags": [
           "39-consent"
         ],
+        "summary": "Publish a TIGHTEN-ONLY tenant consent-type overlay (§7.6)",
         "parameters": [],
         "responses": {
           "200": {
@@ -9203,6 +9460,154 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "typeKey"
+                ],
+                "properties": {
+                  "typeKey": {
+                    "anyOf": [
+                      {
+                        "const": "portal_access",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dpoa_healthcare",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dpoa_financial",
+                        "type": "string"
+                      },
+                      {
+                        "const": "family_caregiver_access",
+                        "type": "string"
+                      },
+                      {
+                        "const": "42_cfr_part_2_release",
+                        "type": "string"
+                      },
+                      {
+                        "const": "media_release",
+                        "type": "string"
+                      },
+                      {
+                        "const": "research_participation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "telehealth_consent",
+                        "type": "string"
+                      },
+                      {
+                        "const": "advance_directive_acknowledgment",
+                        "type": "string"
+                      },
+                      {
+                        "const": "hipaa_release",
+                        "type": "string"
+                      },
+                      {
+                        "const": "bereavement_outreach_consent",
+                        "type": "string"
+                      },
+                      {
+                        "const": "custom",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "tighterExpirationSeconds": {
+                    "anyOf": [
+                      {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "tighterCaptureMethods": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "const": "electronic_portal_signature",
+                          "type": "string"
+                        },
+                        {
+                          "const": "typed_signature_in_app",
+                          "type": "string"
+                        },
+                        {
+                          "const": "uploaded_signed_pdf",
+                          "type": "string"
+                        },
+                        {
+                          "const": "witnessed_verbal_documented",
+                          "type": "string"
+                        },
+                        {
+                          "const": "notarized",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "tighterReminderCadence": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "const": "90_days",
+                          "type": "string"
+                        },
+                        {
+                          "const": "30_days",
+                          "type": "string"
+                        },
+                        {
+                          "const": "14_days",
+                          "type": "string"
+                        },
+                        {
+                          "const": "7_days",
+                          "type": "string"
+                        },
+                        {
+                          "const": "1_day",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "stateAddendumText": {
+                    "anyOf": [
+                      {
+                        "maxLength": 8000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "jurisdictionCodeRequired": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -9240,6 +9645,7 @@
         "tags": [
           "39-consent"
         ],
+        "summary": "Edit a consent draft — only `status='draft'` is editable (D1)",
         "parameters": [
           {
             "name": "consentId",
@@ -9259,6 +9665,78 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "scopeDescriptor": {},
+                  "captureMethod": {
+                    "anyOf": [
+                      {
+                        "const": "electronic_portal_signature",
+                        "type": "string"
+                      },
+                      {
+                        "const": "typed_signature_in_app",
+                        "type": "string"
+                      },
+                      {
+                        "const": "uploaded_signed_pdf",
+                        "type": "string"
+                      },
+                      {
+                        "const": "witnessed_verbal_documented",
+                        "type": "string"
+                      },
+                      {
+                        "const": "notarized",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "grantorKind": {
+                    "anyOf": [
+                      {
+                        "const": "patient_self",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dpoa_healthcare_agent",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dpoa_financial_agent",
+                        "type": "string"
+                      },
+                      {
+                        "const": "court_guardian",
+                        "type": "string"
+                      },
+                      {
+                        "const": "parent_for_minor",
+                        "type": "string"
+                      },
+                      {
+                        "const": "healthcare_surrogate",
+                        "type": "string"
+                      },
+                      {
+                        "const": "bereaved_person_self",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "survivesDeath": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -9354,6 +9832,7 @@
         "tags": [
           "39-consent"
         ],
+        "summary": "Name a DPOA agent (D5)",
         "parameters": [
           {
             "name": "consentId",
@@ -9374,6 +9853,126 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "agentKind",
+                  "agentName",
+                  "agentRelationship",
+                  "agentContact",
+                  "scopeKind",
+                  "activationCondition",
+                  "termKind"
+                ],
+                "properties": {
+                  "agentKind": {
+                    "anyOf": [
+                      {
+                        "const": "primary",
+                        "type": "string"
+                      },
+                      {
+                        "const": "alternate_1",
+                        "type": "string"
+                      },
+                      {
+                        "const": "alternate_2",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "agentName": {
+                    "minLength": 1,
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  "agentRelationship": {
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "type": "string"
+                  },
+                  "agentContact": {
+                    "additionalProperties": true,
+                    "type": "object",
+                    "properties": {}
+                  },
+                  "scopeKind": {
+                    "anyOf": [
+                      {
+                        "const": "healthcare_full",
+                        "type": "string"
+                      },
+                      {
+                        "const": "healthcare_end_of_life_only",
+                        "type": "string"
+                      },
+                      {
+                        "const": "financial_narrow",
+                        "type": "string"
+                      },
+                      {
+                        "const": "financial_broad",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "activationCondition": {
+                    "anyOf": [
+                      {
+                        "const": "immediate",
+                        "type": "string"
+                      },
+                      {
+                        "const": "upon_incapacity_attested",
+                        "type": "string"
+                      },
+                      {
+                        "const": "upon_physician_determination",
+                        "type": "string"
+                      },
+                      {
+                        "const": "upon_incompetence_court_order",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "termKind": {
+                    "anyOf": [
+                      {
+                        "const": "indefinite",
+                        "type": "string"
+                      },
+                      {
+                        "const": "until_date",
+                        "type": "string"
+                      },
+                      {
+                        "const": "event_driven",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "termUntil": {
+                    "anyOf": [
+                      {
+                        "minLength": 20,
+                        "description": "ISO-8601 instant (timestamptz column)",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -9383,6 +9982,7 @@
         "tags": [
           "39-consent"
         ],
+        "summary": "Mutate a DPOA agent's scope / activation / term, or retire them (D5)",
         "parameters": [
           {
             "name": "consentId",
@@ -9411,6 +10011,89 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "scopeKind": {
+                    "anyOf": [
+                      {
+                        "const": "healthcare_full",
+                        "type": "string"
+                      },
+                      {
+                        "const": "healthcare_end_of_life_only",
+                        "type": "string"
+                      },
+                      {
+                        "const": "financial_narrow",
+                        "type": "string"
+                      },
+                      {
+                        "const": "financial_broad",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "activationCondition": {
+                    "anyOf": [
+                      {
+                        "const": "immediate",
+                        "type": "string"
+                      },
+                      {
+                        "const": "upon_incapacity_attested",
+                        "type": "string"
+                      },
+                      {
+                        "const": "upon_physician_determination",
+                        "type": "string"
+                      },
+                      {
+                        "const": "upon_incompetence_court_order",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "termKind": {
+                    "anyOf": [
+                      {
+                        "const": "indefinite",
+                        "type": "string"
+                      },
+                      {
+                        "const": "until_date",
+                        "type": "string"
+                      },
+                      {
+                        "const": "event_driven",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "termUntil": {
+                    "anyOf": [
+                      {
+                        "minLength": 20,
+                        "description": "ISO-8601 instant (timestamptz column)",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "remove": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -9420,6 +10103,7 @@
         "tags": [
           "39-consent"
         ],
+        "summary": "Per-consent decision audit (cursor-paginated, §4.12)",
         "parameters": [
           {
             "name": "consentId",
@@ -9427,6 +10111,26 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50,
+              "type": "integer"
             }
           }
         ],
@@ -9476,6 +10180,7 @@
         "tags": [
           "39-consent"
         ],
+        "summary": "Add a named disclosure recipient (D6)",
         "parameters": [
           {
             "name": "consentId",
@@ -9496,6 +10201,112 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "recipientKind",
+                  "recipientDisplayName"
+                ],
+                "properties": {
+                  "recipientKind": {
+                    "anyOf": [
+                      {
+                        "const": "external_physician",
+                        "type": "string"
+                      },
+                      {
+                        "const": "facility",
+                        "type": "string"
+                      },
+                      {
+                        "const": "pharmacy",
+                        "type": "string"
+                      },
+                      {
+                        "const": "irb",
+                        "type": "string"
+                      },
+                      {
+                        "const": "family_member",
+                        "type": "string"
+                      },
+                      {
+                        "const": "attorney",
+                        "type": "string"
+                      },
+                      {
+                        "const": "employer",
+                        "type": "string"
+                      },
+                      {
+                        "const": "researcher",
+                        "type": "string"
+                      },
+                      {
+                        "const": "free_text",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "recipientEntityId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "recipientFreeText": {
+                    "anyOf": [
+                      {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "recipientDisplayName": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "purposeCode": {
+                    "anyOf": [
+                      {
+                        "maxLength": 100,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "expiresAt": {
+                    "anyOf": [
+                      {
+                        "minLength": 20,
+                        "description": "ISO-8601 instant (timestamptz column)",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -9505,6 +10316,7 @@
         "tags": [
           "39-consent"
         ],
+        "summary": "Remove a named recipient — flips removed_at, never deletes (D6)",
         "parameters": [
           {
             "name": "consentId",
@@ -9533,6 +10345,26 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "removedReasonText"
+                ],
+                "properties": {
+                  "removedReasonText": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -9542,6 +10374,7 @@
         "tags": [
           "39-consent"
         ],
+        "summary": "Renew an expired/revoked consent (D13 renewal chain)",
         "parameters": [
           {
             "name": "consentId",
@@ -9561,6 +10394,92 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "scopeDescriptor",
+                  "captureMethod",
+                  "grantorKind"
+                ],
+                "properties": {
+                  "scopeDescriptor": {},
+                  "captureMethod": {
+                    "anyOf": [
+                      {
+                        "const": "electronic_portal_signature",
+                        "type": "string"
+                      },
+                      {
+                        "const": "typed_signature_in_app",
+                        "type": "string"
+                      },
+                      {
+                        "const": "uploaded_signed_pdf",
+                        "type": "string"
+                      },
+                      {
+                        "const": "witnessed_verbal_documented",
+                        "type": "string"
+                      },
+                      {
+                        "const": "notarized",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "grantorKind": {
+                    "anyOf": [
+                      {
+                        "const": "patient_self",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dpoa_healthcare_agent",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dpoa_financial_agent",
+                        "type": "string"
+                      },
+                      {
+                        "const": "court_guardian",
+                        "type": "string"
+                      },
+                      {
+                        "const": "parent_for_minor",
+                        "type": "string"
+                      },
+                      {
+                        "const": "healthcare_surrogate",
+                        "type": "string"
+                      },
+                      {
+                        "const": "bereaved_person_self",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "expiresAt": {
+                    "anyOf": [
+                      {
+                        "minLength": 20,
+                        "description": "ISO-8601 instant (timestamptz column)",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -9600,6 +10519,7 @@
         "tags": [
           "39-consent"
         ],
+        "summary": "Revoke a consent (§7.3 cascade; staff revocation needs evidence)",
         "parameters": [
           {
             "name": "consentId",
@@ -9619,6 +10539,54 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "revokedByKind",
+                  "reasonText"
+                ],
+                "properties": {
+                  "revokedByKind": {
+                    "anyOf": [
+                      {
+                        "const": "patient_self_via_portal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "staff",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dpoa_agent",
+                        "type": "string"
+                      },
+                      {
+                        "const": "court_order",
+                        "type": "string"
+                      },
+                      {
+                        "const": "platform_admin_break_glass",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reasonText": {
+                    "default": "",
+                    "type": "string"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -9658,6 +10626,7 @@
         "tags": [
           "39-consent"
         ],
+        "summary": "Supersede an active consent with a new row (D1 append-only)",
         "parameters": [
           {
             "name": "consentId",
@@ -9677,6 +10646,83 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "scopeDescriptor",
+                  "captureMethod",
+                  "grantorKind"
+                ],
+                "properties": {
+                  "scopeDescriptor": {},
+                  "captureMethod": {
+                    "anyOf": [
+                      {
+                        "const": "electronic_portal_signature",
+                        "type": "string"
+                      },
+                      {
+                        "const": "typed_signature_in_app",
+                        "type": "string"
+                      },
+                      {
+                        "const": "uploaded_signed_pdf",
+                        "type": "string"
+                      },
+                      {
+                        "const": "witnessed_verbal_documented",
+                        "type": "string"
+                      },
+                      {
+                        "const": "notarized",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "grantorKind": {
+                    "anyOf": [
+                      {
+                        "const": "patient_self",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dpoa_healthcare_agent",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dpoa_financial_agent",
+                        "type": "string"
+                      },
+                      {
+                        "const": "court_guardian",
+                        "type": "string"
+                      },
+                      {
+                        "const": "parent_for_minor",
+                        "type": "string"
+                      },
+                      {
+                        "const": "healthcare_surrogate",
+                        "type": "string"
+                      },
+                      {
+                        "const": "bereaved_person_self",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "survivesDeath": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -9716,6 +10762,7 @@
         "tags": [
           "39-consent"
         ],
+        "summary": "Capture post-mortem bereavement-outreach consent (D14)",
         "parameters": [],
         "responses": {
           "200": {
@@ -9727,6 +10774,85 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "patientId",
+                  "grantorKind",
+                  "captureMethod",
+                  "scopeDescriptor"
+                ],
+                "properties": {
+                  "patientId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "grantorKind": {
+                    "anyOf": [
+                      {
+                        "const": "patient_self",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dpoa_healthcare_agent",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dpoa_financial_agent",
+                        "type": "string"
+                      },
+                      {
+                        "const": "court_guardian",
+                        "type": "string"
+                      },
+                      {
+                        "const": "parent_for_minor",
+                        "type": "string"
+                      },
+                      {
+                        "const": "healthcare_surrogate",
+                        "type": "string"
+                      },
+                      {
+                        "const": "bereaved_person_self",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "captureMethod": {
+                    "anyOf": [
+                      {
+                        "const": "electronic_portal_signature",
+                        "type": "string"
+                      },
+                      {
+                        "const": "typed_signature_in_app",
+                        "type": "string"
+                      },
+                      {
+                        "const": "uploaded_signed_pdf",
+                        "type": "string"
+                      },
+                      {
+                        "const": "witnessed_verbal_documented",
+                        "type": "string"
+                      },
+                      {
+                        "const": "notarized",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "scopeDescriptor": {}
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -9736,7 +10862,38 @@
         "tags": [
           "39-consent"
         ],
-        "parameters": [],
+        "summary": "Patient-scoped consent-decision audit (cursor-paginated, §4.12)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -11944,10 +13101,148 @@
         "tags": [
           "25-remittance"
         ],
-        "parameters": [],
+        "summary": "Denial worklist (cursor-paginated, §4.12)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "providerEntityId",
+                          "claimId",
+                          "carcCode",
+                          "rarcCode",
+                          "category",
+                          "source",
+                          "state",
+                          "assigneeMembershipId",
+                          "openedAt",
+                          "agingBucketDays",
+                          "agingBucketLabel",
+                          "dollarValue",
+                          "taxonomyStatus"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "claimId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "carcCode": {
+                            "type": "string"
+                          },
+                          "rarcCode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "category": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "assigneeMembershipId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "openedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "agingBucketDays": {
+                            "type": "integer"
+                          },
+                          "agingBucketLabel": {
+                            "type": "string"
+                          },
+                          "dollarValue": {
+                            "description": "Decimal string (numeric column) — never a float",
+                            "type": "string"
+                          },
+                          "taxonomyStatus": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -11993,6 +13288,7 @@
         "tags": [
           "25-remittance"
         ],
+        "summary": "Open an appeal against a denial case (§4.1)",
         "parameters": [
           {
             "name": "id",
@@ -12012,6 +13308,42 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "tier": {
+                    "anyOf": [
+                      {
+                        "const": "redetermination",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reconsideration",
+                        "type": "string"
+                      },
+                      {
+                        "const": "alj",
+                        "type": "string"
+                      },
+                      {
+                        "const": "council",
+                        "type": "string"
+                      },
+                      {
+                        "const": "federal_court",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -12022,6 +13354,7 @@
         "tags": [
           "25-remittance"
         ],
+        "summary": "Assign a denial case to a membership (§4.1)",
         "parameters": [
           {
             "name": "id",
@@ -12041,6 +13374,29 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "assigneeMembershipId"
+                ],
+                "properties": {
+                  "assigneeMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -12080,6 +13436,7 @@
         "tags": [
           "25-remittance"
         ],
+        "summary": "Close a denial case as a write-off (§4.1)",
         "parameters": [
           {
             "name": "id",
@@ -12099,6 +13456,26 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 40,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -12109,6 +13486,7 @@
         "tags": [
           "25-remittance"
         ],
+        "summary": "Escalate a denial case (§4.1)",
         "parameters": [
           {
             "name": "id",
@@ -12128,6 +13506,26 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 20,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -12138,6 +13536,7 @@
         "tags": [
           "25-remittance"
         ],
+        "summary": "Reopen a closed denial case (§4.1)",
         "parameters": [
           {
             "name": "id",
@@ -12157,6 +13556,26 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 40,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -12167,6 +13586,7 @@
         "tags": [
           "25-remittance"
         ],
+        "summary": "Resolve a denial case (§4.1)",
         "parameters": [
           {
             "name": "id",
@@ -12186,6 +13606,26 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 40,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -14240,6 +15680,7 @@
         "tags": [
           "03-authorization"
         ],
+        "summary": "Open an auditor engagement over a defined slice + window (§7.5)",
         "parameters": [],
         "responses": {
           "200": {
@@ -14251,6 +15692,79 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "engagementType",
+                  "auditorAgency",
+                  "startAt",
+                  "endAt"
+                ],
+                "properties": {
+                  "engagementType": {
+                    "anyOf": [
+                      {
+                        "const": "cms_survey",
+                        "type": "string"
+                      },
+                      {
+                        "const": "state_survey",
+                        "type": "string"
+                      },
+                      {
+                        "const": "tpe_probe",
+                        "type": "string"
+                      },
+                      {
+                        "const": "upic_investigation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "cost_report_field_audit",
+                        "type": "string"
+                      },
+                      {
+                        "const": "financial_audit",
+                        "type": "string"
+                      },
+                      {
+                        "const": "accreditation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "auditorAgency": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "scope": {
+                    "additionalProperties": true,
+                    "type": "object",
+                    "properties": {}
+                  },
+                  "startAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "endAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -14260,6 +15774,7 @@
         "tags": [
           "03-authorization"
         ],
+        "summary": "Shorten an engagement window or cancel it (§7.5)",
         "parameters": [
           {
             "name": "id",
@@ -14279,6 +15794,26 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {
+                  "cancel": {
+                    "type": "boolean"
+                  },
+                  "endAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -14289,6 +15824,7 @@
         "tags": [
           "03-authorization"
         ],
+        "summary": "Enroll an auditor — M2 mints the magic link out-of-band (D4)",
         "parameters": [
           {
             "name": "id",
@@ -14308,6 +15844,33 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "name",
+                  "email"
+                ],
+                "properties": {
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "email": {
+                    "format": "email",
+                    "maxLength": 320,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -25541,6 +27104,7 @@
         "tags": [
           "03-authorization"
         ],
+        "summary": "Grant a role onto a membership (§6 anti-escalation applies)",
         "parameters": [
           {
             "name": "id",
@@ -25560,6 +27124,43 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "roleId"
+                ],
+                "properties": {
+                  "roleId": {
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "type": "string"
+                  },
+                  "scope": {
+                    "additionalProperties": true,
+                    "type": "object",
+                    "properties": {}
+                  },
+                  "expiresAt": {
+                    "anyOf": [
+                      {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -31175,6 +32776,7 @@
         "tags": [
           "39-consent"
         ],
+        "summary": "Create a consent DRAFT for a patient (§4.1)",
         "parameters": [
           {
             "name": "patientId",
@@ -31194,6 +32796,133 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "typeKey",
+                  "grantorKind",
+                  "captureMethod",
+                  "scopeDescriptor"
+                ],
+                "properties": {
+                  "typeKey": {
+                    "anyOf": [
+                      {
+                        "const": "portal_access",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dpoa_healthcare",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dpoa_financial",
+                        "type": "string"
+                      },
+                      {
+                        "const": "family_caregiver_access",
+                        "type": "string"
+                      },
+                      {
+                        "const": "42_cfr_part_2_release",
+                        "type": "string"
+                      },
+                      {
+                        "const": "media_release",
+                        "type": "string"
+                      },
+                      {
+                        "const": "research_participation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "telehealth_consent",
+                        "type": "string"
+                      },
+                      {
+                        "const": "advance_directive_acknowledgment",
+                        "type": "string"
+                      },
+                      {
+                        "const": "hipaa_release",
+                        "type": "string"
+                      },
+                      {
+                        "const": "bereavement_outreach_consent",
+                        "type": "string"
+                      },
+                      {
+                        "const": "custom",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "grantorKind": {
+                    "anyOf": [
+                      {
+                        "const": "patient_self",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dpoa_healthcare_agent",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dpoa_financial_agent",
+                        "type": "string"
+                      },
+                      {
+                        "const": "court_guardian",
+                        "type": "string"
+                      },
+                      {
+                        "const": "parent_for_minor",
+                        "type": "string"
+                      },
+                      {
+                        "const": "healthcare_surrogate",
+                        "type": "string"
+                      },
+                      {
+                        "const": "bereaved_person_self",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "captureMethod": {
+                    "anyOf": [
+                      {
+                        "const": "electronic_portal_signature",
+                        "type": "string"
+                      },
+                      {
+                        "const": "typed_signature_in_app",
+                        "type": "string"
+                      },
+                      {
+                        "const": "uploaded_signed_pdf",
+                        "type": "string"
+                      },
+                      {
+                        "const": "witnessed_verbal_documented",
+                        "type": "string"
+                      },
+                      {
+                        "const": "notarized",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "scopeDescriptor": {}
+                }
+              }
+            }
           }
         }
       }
@@ -31262,6 +32991,7 @@
         "tags": [
           "39-consent"
         ],
+        "summary": "Consents inside the renewal window (cursor-paginated, §4.12)",
         "parameters": [
           {
             "name": "patientId",
@@ -31269,6 +32999,37 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "windowDays",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 365,
+              "default": 90,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50,
+              "type": "integer"
             }
           }
         ],
@@ -37799,6 +39560,7 @@
         "tags": [
           "25-remittance"
         ],
+        "summary": "Override an adjustment's taxonomy classification (§4.1)",
         "parameters": [
           {
             "name": "id",
@@ -37819,6 +39581,43 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "newPostAction",
+                  "reason"
+                ],
+                "properties": {
+                  "newPostAction": {
+                    "anyOf": [
+                      {
+                        "const": "auto_posted",
+                        "type": "string"
+                      },
+                      {
+                        "const": "ledger_recorded",
+                        "type": "string"
+                      },
+                      {
+                        "const": "denial_seeded",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 40,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -37828,10 +39627,101 @@
         "tags": [
           "25-remittance"
         ],
-        "parameters": [],
+        "summary": "Remittance advices (835 headers, cursor-paginated, §4.12)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "providerEntityId",
+                          "payerId",
+                          "payerKind",
+                          "paymentMethod",
+                          "totalPaymentAmount",
+                          "parseStatus",
+                          "receivedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "payerId": {
+                            "type": "string"
+                          },
+                          "payerKind": {
+                            "type": "string"
+                          },
+                          "paymentMethod": {
+                            "type": "string"
+                          },
+                          "totalPaymentAmount": {
+                            "description": "Decimal string — never a float",
+                            "type": "string"
+                          },
+                          "parseStatus": {
+                            "type": "string"
+                          },
+                          "receivedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -37906,10 +39796,137 @@
         "tags": [
           "25-remittance"
         ],
-        "parameters": [],
+        "summary": "Remittance service lines (cursor-paginated, §4.12)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "remittanceAdviceId",
+                          "claimId",
+                          "clp02StatusCode",
+                          "clp03TotalChargeAmount",
+                          "clp04TotalPaymentAmount",
+                          "clp05PatientResponsibilityAmount",
+                          "matchState",
+                          "matchStrategy",
+                          "matchConfidence",
+                          "receivedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "remittanceAdviceId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "claimId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "clp02StatusCode": {
+                            "type": "integer"
+                          },
+                          "clp03TotalChargeAmount": {
+                            "description": "Decimal string — never a float",
+                            "type": "string"
+                          },
+                          "clp04TotalPaymentAmount": {
+                            "description": "Decimal string — never a float",
+                            "type": "string"
+                          },
+                          "clp05PatientResponsibilityAmount": {
+                            "description": "Decimal string — never a float",
+                            "type": "string"
+                          },
+                          "matchState": {
+                            "type": "string"
+                          },
+                          "matchStrategy": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "matchConfidence": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "receivedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -37955,6 +39972,7 @@
         "tags": [
           "25-remittance"
         ],
+        "summary": "Manually match a remittance line to a claim (§4.1)",
         "parameters": [
           {
             "name": "id",
@@ -37975,6 +39993,31 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "proposedClaimId",
+                  "reason"
+                ],
+                "properties": {
+                  "proposedClaimId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 20,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -37984,10 +40027,137 @@
         "tags": [
           "25-remittance"
         ],
-        "parameters": [],
+        "summary": "Unmatched remittance lines awaiting manual match (§4.1)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "remittanceAdviceId",
+                          "claimId",
+                          "clp02StatusCode",
+                          "clp03TotalChargeAmount",
+                          "clp04TotalPaymentAmount",
+                          "clp05PatientResponsibilityAmount",
+                          "matchState",
+                          "matchStrategy",
+                          "matchConfidence",
+                          "receivedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "remittanceAdviceId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "claimId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "clp02StatusCode": {
+                            "type": "integer"
+                          },
+                          "clp03TotalChargeAmount": {
+                            "description": "Decimal string — never a float",
+                            "type": "string"
+                          },
+                          "clp04TotalPaymentAmount": {
+                            "description": "Decimal string — never a float",
+                            "type": "string"
+                          },
+                          "clp05PatientResponsibilityAmount": {
+                            "description": "Decimal string — never a float",
+                            "type": "string"
+                          },
+                          "matchState": {
+                            "type": "string"
+                          },
+                          "matchStrategy": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "matchConfidence": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "receivedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -39339,6 +41509,7 @@
         "tags": [
           "03-authorization"
         ],
+        "summary": "Clone/extend a platform template into an org-owned custom role (§7.6)",
         "parameters": [],
         "responses": {
           "200": {
@@ -39349,6 +41520,121 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "key",
+                  "name",
+                  "category"
+                ],
+                "properties": {
+                  "key": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[a-z0-9_]+$",
+                    "type": "string"
+                  },
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "category": {
+                    "anyOf": [
+                      {
+                        "const": "clinical_staff",
+                        "type": "string"
+                      },
+                      {
+                        "const": "clinical_leadership",
+                        "type": "string"
+                      },
+                      {
+                        "const": "operations",
+                        "type": "string"
+                      },
+                      {
+                        "const": "admin_executive",
+                        "type": "string"
+                      },
+                      {
+                        "const": "billing_finance",
+                        "type": "string"
+                      },
+                      {
+                        "const": "compliance_quality",
+                        "type": "string"
+                      },
+                      {
+                        "const": "volunteer",
+                        "type": "string"
+                      },
+                      {
+                        "const": "patient_family",
+                        "type": "string"
+                      },
+                      {
+                        "const": "external_auditor",
+                        "type": "string"
+                      },
+                      {
+                        "const": "external_collaborator",
+                        "type": "string"
+                      },
+                      {
+                        "const": "platform_staff",
+                        "type": "string"
+                      },
+                      {
+                        "const": "temporary_special",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "scopeLevel": {
+                    "anyOf": [
+                      {
+                        "const": "organization",
+                        "type": "string"
+                      },
+                      {
+                        "const": "provider_entity",
+                        "type": "string"
+                      },
+                      {
+                        "const": "location",
+                        "type": "string"
+                      },
+                      {
+                        "const": "patient",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "permissionKeys": {
+                    "maxItems": 512,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+){1,3}$",
+                      "maxLength": 128,
+                      "type": "string"
+                    }
+                  },
+                  "clonedFromKey": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -39386,6 +41672,7 @@
         "tags": [
           "03-authorization"
         ],
+        "summary": "Rename / enable / edit a role's permission set (§7.6)",
         "parameters": [
           {
             "name": "id",
@@ -39405,6 +41692,36 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "permissionKeys": {
+                    "maxItems": 512,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+){1,3}$",
+                      "maxLength": 128,
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -40533,6 +42850,7 @@
         "tags": [
           "25-remittance"
         ],
+        "summary": "Patch the tenant CARC taxonomy overlay (§4.1)",
         "parameters": [
           {
             "name": "carc",
@@ -40552,6 +42870,76 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "suggestedAction",
+                  "ownerRole",
+                  "severity"
+                ],
+                "properties": {
+                  "rarcCode": {
+                    "maxLength": 8,
+                    "type": "string"
+                  },
+                  "plainLanguageOverride": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "suggestedAction": {
+                    "minLength": 10,
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "ownerRole": {
+                    "anyOf": [
+                      {
+                        "const": "billing_specialist",
+                        "type": "string"
+                      },
+                      {
+                        "const": "billing_manager",
+                        "type": "string"
+                      },
+                      {
+                        "const": "clinical_records",
+                        "type": "string"
+                      },
+                      {
+                        "const": "compliance_officer",
+                        "type": "string"
+                      },
+                      {
+                        "const": "md_or_np",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "severity": {
+                    "anyOf": [
+                      {
+                        "const": "info",
+                        "type": "string"
+                      },
+                      {
+                        "const": "warn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "critical",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }

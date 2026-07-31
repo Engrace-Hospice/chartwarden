@@ -32,10 +32,6 @@ interface LineRow {
   matchState: string;
   receivedAt: string;
 }
-interface Page<T> {
-  items: T[];
-  nextCursor: string | null;
-}
 
 const cellStyle = { padding: "0.55rem 0.75rem", textAlign: "left" as const, verticalAlign: "middle" as const };
 const headStyle = {
@@ -67,9 +63,9 @@ export function RemittanceWorklist(): JSX.Element {
       setLoading(false);
       return;
     }
-    setAdvices(((adviceRes.data as unknown as Page<AdviceRow>)?.items ?? []) as AdviceRow[]);
+    setAdvices(adviceRes.data?.items ?? []);
     setUnmatched(
-      unmatchedRes.error ? [] : (((unmatchedRes.data as unknown as Page<LineRow>)?.items ?? []) as LineRow[]),
+      unmatchedRes.error ? [] : (unmatchedRes.data?.items ?? []),
     );
     setLoading(false);
   }, [client]);

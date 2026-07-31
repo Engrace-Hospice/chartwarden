@@ -49,6 +49,51 @@ import {
   PatientPrivacyFlagsResponseSchema,
   PatientSummarySchema,
 } from "../../apps/backend/src/modules/05-patient/routes/patient-typebox";
+import {
+  AdjustmentOverrideRequestSchema,
+  AppealAttachRequestSchema,
+  AppealCreateRequestSchema,
+  AppealDecideRequestSchema,
+  AppealSubmitRequestSchema,
+  AppealSummaryPageSchema,
+  AppealWithdrawRequestSchema,
+  DenialAssignRequestSchema,
+  DenialCloseWriteOffRequestSchema,
+  DenialEscalateRequestSchema,
+  DenialReopenRequestSchema,
+  DenialResolveRequestSchema,
+  DenialWorklistPageSchema,
+  M25ListQuerySchema,
+  ManualMatchRequestSchema,
+  RemittanceAdviceSummaryPageSchema,
+  RemittanceLineSummaryPageSchema,
+  TaxonomyOverlayPatchSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
+import {
+  AddDpoaAgentBodySchema,
+  AddRecipientBodySchema,
+  BereavementOutreachBodySchema,
+  ConsentEvalAuditQuerySchema,
+  CreateDraftBodySchema as ConsentCreateDraftBodySchema,
+  EvalAuditQuerySchema as ConsentEvalAuditByPatientQuerySchema,
+  RevokeBodySchema as ConsentRevokeBodySchema,
+  ExpiringConsentsQuerySchema,
+  RemoveRecipientBodySchema,
+  RenewBodySchema,
+  SupersedeBodySchema,
+  UpdateDpoaAgentBodySchema,
+  UpdateDraftBodySchema,
+  UpsertOverlayBodySchema,
+} from "../../apps/backend/src/modules/39-consent/routes/consent-typebox";
+import {
+  AssignRoleBody,
+  CreateEngagementBody,
+  CreateRoleBody,
+  EnrollAuditorBody,
+  InvokeBreakGlassBody,
+  UpdateEngagementBody,
+  UpdateRoleBody,
+} from "../../apps/backend/src/modules/03-authorization/routes/authz-typebox";
 import { OrderListQuerySchema } from "../../apps/backend/src/modules/11-orders/routes/orders-typebox";
 import {
   AdministrationListResponseSchema,
@@ -868,6 +913,177 @@ export interface RouteEnrichment {
 
 /** `METHOD /path` → enrichment. Keys MUST match a scanned route (openapi:check enforces). */
 export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
+  // ── M25 Remittance & Denials (§4.1). The four cursor-paginated reads the built screens call get a
+  // typed response so the client stops handing them `never` (the screens were casting through
+  // `res.data as unknown as Page<DenialRow>` with a hand-maintained row shape); every write route gets
+  // the SAME TypeBox body its handler already `parse`s, so the contract cannot drift from the validator.
+  "GET /api/v1/denials": {
+    summary: "Denial worklist (cursor-paginated, §4.12)",
+    query: M25ListQuerySchema,
+    response: DenialWorklistPageSchema,
+  },
+  "GET /api/v1/appeals": {
+    summary: "Appeal tracker (cursor-paginated, §4.12)",
+    query: M25ListQuerySchema,
+    response: AppealSummaryPageSchema,
+  },
+  "GET /api/v1/remittance/advices": {
+    summary: "Remittance advices (835 headers, cursor-paginated, §4.12)",
+    query: M25ListQuerySchema,
+    response: RemittanceAdviceSummaryPageSchema,
+  },
+  "GET /api/v1/remittance/lines": {
+    summary: "Remittance service lines (cursor-paginated, §4.12)",
+    query: M25ListQuerySchema,
+    response: RemittanceLineSummaryPageSchema,
+  },
+  "GET /api/v1/remittance/unmatched": {
+    summary: "Unmatched remittance lines awaiting manual match (§4.1)",
+    query: M25ListQuerySchema,
+    response: RemittanceLineSummaryPageSchema,
+  },
+  "POST /api/v1/remittance/lines/:id/manual-match": {
+    summary: "Manually match a remittance line to a claim (§4.1)",
+    body: ManualMatchRequestSchema,
+  },
+  "POST /api/v1/remittance/adjustments/:id/override": {
+    summary: "Override an adjustment's taxonomy classification (§4.1)",
+    body: AdjustmentOverrideRequestSchema,
+  },
+  "PATCH /api/v1/denials/:id/assign": {
+    summary: "Assign a denial case to a membership (§4.1)",
+    body: DenialAssignRequestSchema,
+  },
+  "PATCH /api/v1/denials/:id/escalate": {
+    summary: "Escalate a denial case (§4.1)",
+    body: DenialEscalateRequestSchema,
+  },
+  "PATCH /api/v1/denials/:id/resolve": {
+    summary: "Resolve a denial case (§4.1)",
+    body: DenialResolveRequestSchema,
+  },
+  "POST /api/v1/denials/:id/close-write-off": {
+    summary: "Close a denial case as a write-off (§4.1)",
+    body: DenialCloseWriteOffRequestSchema,
+  },
+  "POST /api/v1/denials/:id/reopen": {
+    summary: "Reopen a closed denial case (§4.1)",
+    body: DenialReopenRequestSchema,
+  },
+  "POST /api/v1/denials/:id/appeals": {
+    summary: "Open an appeal against a denial case (§4.1)",
+    body: AppealCreateRequestSchema,
+  },
+  "PATCH /api/v1/appeals/:id/attach": {
+    summary: "Attach supporting evidence to an appeal (§4.1)",
+    body: AppealAttachRequestSchema,
+  },
+  "POST /api/v1/appeals/:id/submit": {
+    summary: "Submit an appeal to the payer (§4.1)",
+    body: AppealSubmitRequestSchema,
+  },
+  "POST /api/v1/appeals/:id/decide": {
+    summary: "Record the payer's appeal decision (§4.1)",
+    body: AppealDecideRequestSchema,
+  },
+  "POST /api/v1/appeals/:id/withdraw": {
+    summary: "Withdraw a submitted appeal (§4.1)",
+    body: AppealWithdrawRequestSchema,
+  },
+  "PATCH /api/v1/taxonomy/overlays/:carc": {
+    summary: "Patch the tenant CARC taxonomy overlay (§4.1)",
+    body: TaxonomyOverlayPatchSchema,
+  },
+
+  // ── M39 Consent (§4.1–4.2). Bodies + queries from the module's own validators.
+  "POST /api/v1/consent-types/overlay": {
+    summary: "Publish a TIGHTEN-ONLY tenant consent-type overlay (§7.6)",
+    body: UpsertOverlayBodySchema,
+  },
+  "POST /api/v1/patients/:patientId/consents": {
+    summary: "Create a consent DRAFT for a patient (§4.1)",
+    body: ConsentCreateDraftBodySchema,
+  },
+  "PATCH /api/v1/consents/:consentId": {
+    summary: "Edit a consent draft — only `status='draft'` is editable (D1)",
+    body: UpdateDraftBodySchema,
+  },
+  "POST /api/v1/consents/:consentId/supersede": {
+    summary: "Supersede an active consent with a new row (D1 append-only)",
+    body: SupersedeBodySchema,
+  },
+  "POST /api/v1/consents/:consentId/revoke": {
+    summary: "Revoke a consent (§7.3 cascade; staff revocation needs evidence)",
+    body: ConsentRevokeBodySchema,
+  },
+  "POST /api/v1/consents/:consentId/renew": {
+    summary: "Renew an expired/revoked consent (D13 renewal chain)",
+    body: RenewBodySchema,
+  },
+  "POST /api/v1/consents/:consentId/recipients": {
+    summary: "Add a named disclosure recipient (D6)",
+    body: AddRecipientBodySchema,
+  },
+  "DELETE /api/v1/consents/:consentId/recipients/:recipientId": {
+    summary: "Remove a named recipient — flips removed_at, never deletes (D6)",
+    body: RemoveRecipientBodySchema,
+  },
+  "POST /api/v1/consents/:consentId/dpoa-agents": {
+    summary: "Name a DPOA agent (D5)",
+    body: AddDpoaAgentBodySchema,
+  },
+  "PATCH /api/v1/consents/:consentId/dpoa-agents/:agentId": {
+    summary: "Mutate a DPOA agent's scope / activation / term, or retire them (D5)",
+    body: UpdateDpoaAgentBodySchema,
+  },
+  "POST /api/v1/consents/bereavement-outreach": {
+    summary: "Capture post-mortem bereavement-outreach consent (D14)",
+    body: BereavementOutreachBodySchema,
+  },
+  "GET /api/v1/patients/:patientId/expiring-consents": {
+    summary: "Consents inside the renewal window (cursor-paginated, §4.12)",
+    query: ExpiringConsentsQuerySchema,
+  },
+  "GET /api/v1/consents/:consentId/eval-audit": {
+    summary: "Per-consent decision audit (cursor-paginated, §4.12)",
+    query: ConsentEvalAuditQuerySchema,
+  },
+  "GET /api/v1/consents/eval-audit/by-patient": {
+    summary: "Patient-scoped consent-decision audit (cursor-paginated, §4.12)",
+    query: ConsentEvalAuditByPatientQuerySchema,
+  },
+
+  // ── M3 Authorization (§4.3–4.4). The bodies its routes now validate at the boundary — the surface
+  // that GRANTS PERMISSIONS had no request contract in the published API at all.
+  "POST /api/v1/roles": {
+    summary: "Clone/extend a platform template into an org-owned custom role (§7.6)",
+    body: CreateRoleBody,
+  },
+  "PATCH /api/v1/roles/:id": {
+    summary: "Rename / enable / edit a role's permission set (§7.6)",
+    body: UpdateRoleBody,
+  },
+  "POST /api/v1/memberships/:id/roles": {
+    summary: "Grant a role onto a membership (§6 anti-escalation applies)",
+    body: AssignRoleBody,
+  },
+  "POST /api/v1/breakglass": {
+    summary: "Invoke break-glass emergency access (§7.4; reason ≥10 chars)",
+    body: InvokeBreakGlassBody,
+  },
+  "POST /api/v1/engagements": {
+    summary: "Open an auditor engagement over a defined slice + window (§7.5)",
+    body: CreateEngagementBody,
+  },
+  "PATCH /api/v1/engagements/:id": {
+    summary: "Shorten an engagement window or cancel it (§7.5)",
+    body: UpdateEngagementBody,
+  },
+  "POST /api/v1/engagements/:id/auditors": {
+    summary: "Enroll an auditor — M2 mints the magic link out-of-band (D4)",
+    body: EnrollAuditorBody,
+  },
+
   // M6 Admission, Election & Certification (Track B — Referral Inbox / Admission Detail /
   // Compliance Dashboard / Admission Census, M6-T12). Read responses only; the write routes keep
   // their route-level TypeBox request bodies (already in the contract).
