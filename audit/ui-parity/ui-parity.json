@@ -26,6 +26,7 @@
     "12-dosespot",
     "13-emar",
     "14-idg",
+    "15-discipline-care-plans",
     "17-scheduling",
     "18-evv",
     "22-documents",
@@ -502,6 +503,90 @@
       "id": "idg.minutes",
       "path": "/idg/meetings/:id/minutes",
       "permission": "idg.read"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "discipline-plan.index",
+      "path": "/patients/:patientId/discipline-plans",
+      "permission": "discipline_plan.read"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "discipline-plan.aide-poc",
+      "path": "/patients/:patientId/discipline-plans/aide-poc",
+      "permission": "discipline_plan.read"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "discipline-plan.aide-poc.edit",
+      "path": "/patients/:patientId/discipline-plans/aide-poc/:versionId/edit",
+      "permission": "discipline_plan.author"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "discipline-plan.msw",
+      "path": "/patients/:patientId/discipline-plans/msw-plan",
+      "permission": "discipline_plan.read"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "discipline-plan.assessment",
+      "path": "/patients/:patientId/discipline-plans/msw-plan/:planId/assessments/:assessmentId",
+      "permission": "discipline_assessment.author"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "discipline-plan.spiritual",
+      "path": "/patients/:patientId/discipline-plans/spiritual-plan",
+      "permission": "discipline_plan.read"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "discipline-plan.volunteer",
+      "path": "/patients/:patientId/discipline-plans/volunteer-plan",
+      "permission": "discipline_plan.read"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "discipline-plan.summary",
+      "path": "/patients/:patientId/discipline-plans/summary",
+      "permission": "discipline_plan.read_summary"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "discipline-plan.versions",
+      "path": "/patients/:patientId/discipline-plans/:kind/versions",
+      "permission": "discipline_plan.read"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "discipline-plan.idg-revision",
+      "path": "/patients/:patientId/discipline-plans/:kind/idg-revisions/:versionId",
+      "permission": "discipline_plan.idg_revise"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "volunteer.compliance",
+      "path": "/admin/volunteer-compliance",
+      "permission": "volunteer_compliance.read"
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "moduleId": 15,
+      "id": "volunteer.ratio",
+      "path": "/admin/volunteer-ratio",
+      "permission": "volunteer_compliance.read_ratio"
     },
     {
       "module": "17-scheduling",

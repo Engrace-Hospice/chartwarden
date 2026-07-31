@@ -218,6 +218,34 @@ import {
   ResolveVarianceRequest as CapResolveVarianceRequest,
   SettlementDto as CapSettlementDto,
 } from "../../apps/backend/src/modules/26-cap/routes/m26-typebox";
+// M15 Discipline Care Plans — the §4.2 request bodies + list queries the route handlers `parse(...)` /
+// `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M15-T07
+// web screens call the surface these type.
+import {
+  AmendAssessmentBody as M15AmendAssessmentBody,
+  CreateAssessmentBody as M15CreateAssessmentBody,
+  CreateGoalBody as M15CreateGoalBody,
+  CreateHourEntryBody as M15CreateHourEntryBody,
+  CreateInterventionBody as M15CreateInterventionBody,
+  CreateSupervisoryVisitBody as M15CreateSupervisoryVisitBody,
+  CreateVolunteerAssignmentBody as M15CreateVolunteerAssignmentBody,
+  CreateVolunteerGateBody as M15CreateVolunteerGateBody,
+  FinalizeVersionBody as M15FinalizeVersionBody,
+  GateListQuerySchema as M15GateListQuerySchema,
+  HourRatioQuerySchema as M15HourRatioQuerySchema,
+  PlanListQuerySchema as M15PlanListQuerySchema,
+  RelevantElementsQuerySchema as M15RelevantElementsQuerySchema,
+  RevokeVolunteerGateBody as M15RevokeVolunteerGateBody,
+  RiskFactorQuerySchema as M15RiskFactorQuerySchema,
+  SignVersionBody as M15SignVersionBody,
+  SupervisoryCadenceQuerySchema as M15SupervisoryCadenceQuerySchema,
+  UpdateGoalBody as M15UpdateGoalBody,
+  UpdateInterventionBody as M15UpdateInterventionBody,
+  UpdateVolunteerAssignmentBody as M15UpdateVolunteerAssignmentBody,
+  UpdateVolunteerGateBody as M15UpdateVolunteerGateBody,
+  VersionListQuerySchema as M15VersionListQuerySchema,
+  VolunteerStatusQuerySchema as M15VolunteerStatusQuerySchema,
+} from "../../apps/backend/src/modules/15-discipline-care-plans/routes/m15-typebox";
 // M27 Cost Report — the §4.1 request bodies + list query the cost-report routes bind (the realigned
 // Form CMS-1984-14 surface; modules/27-cost-report/routes path flips the OpenAPI-enriched flag).
 import {
@@ -2104,5 +2132,117 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "POST /api/v1/cost-report-validation-rules": {
     summary: "Create a tenant validation rule layered on the platform floor (cost_report.manage_rules; D21; §11.B)",
     body: CreateValidationRuleBodySchema,
+  },
+
+  // ── M15 Discipline Care Plans (§4.1) — the four CoP discipline plans, their version/signature ladder,
+  // the 418.76(h) aide supervisory attestation and the 418.78 volunteer surface. Org / acting membership
+  // binding is server-side (§8.6 S), so NO body or query carries an org or membership id for the actor.
+  // Every mutation additionally requires an `Idempotency-Key` (§F08) and every PATCH / state transition an
+  // `If-Match` row version (§2.5) — both header contracts enforced by preHandlers, not by a body field.
+  // Reads returning the §4.1 view interfaces are omitted rather than sketched (the M26 posture — no
+  // fabrication); their params auto-derive from the path.
+  "GET /api/v1/discipline-plans": {
+    summary: "Discipline-plan worklist — cursor-paginated, filterable by patient/admission/kind/status (§4.1 #1)",
+    query: M15PlanListQuerySchema,
+  },
+  "GET /api/v1/discipline-plans/:planId/versions": {
+    summary: "The plan's version chain, cursor-paginated by sequence (§4.1 #4)",
+    query: M15VersionListQuerySchema,
+  },
+  "POST /api/v1/discipline-plans/:planId/versions/:versionId/finalize": {
+    summary:
+      "Finalize a draft version — seals the state snapshot and freezes the D11 quorum, which a tenant may tighten but never loosen (§4.1 #6)",
+    body: M15FinalizeVersionBody,
+  },
+  "POST /api/v1/discipline-plans/:planId/versions/:versionId/sign": {
+    summary:
+      "Sign one slot of the sealed quorum — step-up; the last signature flips the version to signed and triggers the plan-PDF render (§4.1 #7)",
+    body: M15SignVersionBody,
+  },
+  "POST /api/v1/discipline-plans/:planId/goals": {
+    summary: "Author a discipline goal refining an IPOC problem (§4.1 #8)",
+    body: M15CreateGoalBody,
+  },
+  "PATCH /api/v1/discipline-plans/:planId/goals/:goalId": {
+    summary:
+      "Edit a goal — a status event and/or the refinement fields; `originalText` is immutable (§2.3; §4.1 #9)",
+    body: M15UpdateGoalBody,
+  },
+  "POST /api/v1/discipline-plans/:planId/interventions": {
+    summary: "Author a discipline intervention (§4.1 #10)",
+    body: M15CreateInterventionBody,
+  },
+  "PATCH /api/v1/discipline-plans/:planId/interventions/:interventionId": {
+    summary: "Edit an intervention — discontinue (reason required) / complete / refine (§4.1 #11)",
+    body: M15UpdateInterventionBody,
+  },
+  "POST /api/v1/discipline-plans/:planId/assessments": {
+    summary:
+      "Capture a discipline assessment (draft); `data` is validated against the per-kind schema, and the SUD / family-violence flags drive every later read's SQL filter (§4.1 #12)",
+    body: M15CreateAssessmentBody,
+  },
+  "POST /api/v1/discipline-plans/:planId/assessments/:assessmentId/amend": {
+    summary:
+      "Amend a signed assessment — append-only correction of record; the superseded row is retained (§4.1 #14)",
+    body: M15AmendAssessmentBody,
+  },
+  "POST /api/v1/discipline-plans/:planId/aide-supervisory-visits": {
+    summary:
+      "Record an RN supervisory attestation (42 CFR §418.76(h)); a null sourceEncounterId is a phone-only contact and does NOT re-arm the 14-day clock (§4.1 #15)",
+    body: M15CreateSupervisoryVisitBody,
+  },
+  "POST /api/v1/discipline-plans/:planId/volunteer-assignments": {
+    summary:
+      "Create a volunteer assignment — the 418.78 gate check runs unless a documented overrideReason is supplied (§8.6; §4.1 #17)",
+    body: M15CreateVolunteerAssignmentBody,
+  },
+  "PATCH /api/v1/discipline-plans/:planId/volunteer-assignments/:assignmentId": {
+    summary:
+      "Edit / acknowledge / inactivate / reactivate an assignment — reactivation is always manual (§7.5; §4.1 #18)",
+    body: M15UpdateVolunteerAssignmentBody,
+  },
+  "GET /api/v1/volunteer-compliance-gates": {
+    summary:
+      "Volunteer compliance-gate worklist — cursor-paginated; status is re-derived over the validity window as of now (§2.2.6; §4.1 #19)",
+    query: M15GateListQuerySchema,
+  },
+  "POST /api/v1/volunteer-compliance-gates": {
+    summary: "Record a 42 CFR §418.78(b)/(d) compliance gate for a volunteer (§4.1 #20)",
+    body: M15CreateVolunteerGateBody,
+  },
+  "PATCH /api/v1/volunteer-compliance-gates/:gateId": {
+    summary: "Correct a recorded gate's validity window / evidence (§4.1 #21)",
+    body: M15UpdateVolunteerGateBody,
+  },
+  "POST /api/v1/volunteer-compliance-gates/:gateId/revoke": {
+    summary: "Revoke a satisfied gate — reason required; cascades the volunteer to inactive (§4.1 #22)",
+    body: M15RevokeVolunteerGateBody,
+  },
+  "GET /api/v1/volunteer-hour-ratio": {
+    summary:
+      "The 418.78(e) 5% ratio for one provider entity × fiscal year; an unbound cost basis returns `unavailable` with its reason, never a 0% breach (§7.6; §4.1 #23)",
+    query: M15HourRatioQuerySchema,
+  },
+  "POST /api/v1/volunteer-hour-entries": {
+    summary:
+      "Record an audited manual hour adjustment — the only ledger path that may carry negative minutes (§4.1 #24)",
+    body: M15CreateHourEntryBody,
+  },
+  "GET /internal/discipline-plans/relevant-elements": {
+    summary: "System-principal seam — discipline goals/interventions for a patient's plans (§4.1 #25)",
+    query: M15RelevantElementsQuerySchema,
+  },
+  "GET /internal/discipline-plans/msw-risk-factors": {
+    summary: "System-principal seam — MSW psychosocial risk factors for an admission (M16; §4.1 #26)",
+    query: M15RiskFactorQuerySchema,
+  },
+  "GET /internal/discipline-plans/volunteer-effective-status": {
+    summary:
+      "System-principal seam — a volunteer's effective 418.78 status; fail-CLOSED (an unreadable gate store answers not-active; §4.1 #27)",
+    query: M15VolunteerStatusQuerySchema,
+  },
+  "GET /internal/discipline-plans/supervisory-cadence": {
+    summary: "System-principal seam — the supervisory-cadence worklist for a scope (M17/M14; §4.1 #28)",
+    query: M15SupervisoryCadenceQuerySchema,
   },
 };

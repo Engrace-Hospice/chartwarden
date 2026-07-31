@@ -4,7 +4,7 @@
 > corpus is consistent; this shows how much of it is BUILT in `apps/web`. Do not hand-edit —
 > the `ui:parity --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 26 module screen-sets registered · 159 screens wired in `apps/web`.
+**Coverage:** 113 documented screen specs · 27 module screen-sets registered · 171 screens wired in `apps/web`.
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -91,6 +91,18 @@
 | 14-idg | `idg.packet` | `/idg/meetings/:meetingId/packets/:patientId` | `idg.read` | ✅ |
 | 14-idg | `idg.action-items` | `/idg/action-items` | `idg.read` | ✅ |
 | 14-idg | `idg.minutes` | `/idg/meetings/:id/minutes` | `idg.read` | ✅ |
+| 15-discipline-care-plans | `discipline-plan.index` | `/patients/:patientId/discipline-plans` | `discipline_plan.read` | ✅ |
+| 15-discipline-care-plans | `discipline-plan.aide-poc` | `/patients/:patientId/discipline-plans/aide-poc` | `discipline_plan.read` | ✅ |
+| 15-discipline-care-plans | `discipline-plan.aide-poc.edit` | `/patients/:patientId/discipline-plans/aide-poc/:versionId/edit` | `discipline_plan.author` | ✅ |
+| 15-discipline-care-plans | `discipline-plan.msw` | `/patients/:patientId/discipline-plans/msw-plan` | `discipline_plan.read` | ✅ |
+| 15-discipline-care-plans | `discipline-plan.assessment` | `/patients/:patientId/discipline-plans/msw-plan/:planId/assessments/:assessmentId` | `discipline_assessment.author` | ✅ |
+| 15-discipline-care-plans | `discipline-plan.spiritual` | `/patients/:patientId/discipline-plans/spiritual-plan` | `discipline_plan.read` | ✅ |
+| 15-discipline-care-plans | `discipline-plan.volunteer` | `/patients/:patientId/discipline-plans/volunteer-plan` | `discipline_plan.read` | ✅ |
+| 15-discipline-care-plans | `discipline-plan.summary` | `/patients/:patientId/discipline-plans/summary` | `discipline_plan.read_summary` | ✅ |
+| 15-discipline-care-plans | `discipline-plan.versions` | `/patients/:patientId/discipline-plans/:kind/versions` | `discipline_plan.read` | ✅ |
+| 15-discipline-care-plans | `discipline-plan.idg-revision` | `/patients/:patientId/discipline-plans/:kind/idg-revisions/:versionId` | `discipline_plan.idg_revise` | ✅ |
+| 15-discipline-care-plans | `volunteer.compliance` | `/admin/volunteer-compliance` | `volunteer_compliance.read` | ✅ |
+| 15-discipline-care-plans | `volunteer.ratio` | `/admin/volunteer-ratio` | `volunteer_compliance.read_ratio` | ✅ |
 | 17-scheduling | `scheduling.day` | `/scheduling/day` | `visit.read_team` | ✅ |
 | 17-scheduling | `scheduling.week` | `/scheduling/week` | `visit.read_team` | ✅ |
 | 17-scheduling | `scheduling.proposals` | `/scheduling/proposals` | `visit.proposal.read` | ✅ |

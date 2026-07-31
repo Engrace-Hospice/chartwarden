@@ -11769,7 +11769,80 @@
         "tags": [
           "15-discipline-care-plans"
         ],
-        "parameters": [],
+        "summary": "Discipline-plan worklist — cursor-paginated, filterable by patient/admission/kind/status (§4.1 #1)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "admissionId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "aide_poc",
+                  "type": "string"
+                },
+                {
+                  "const": "msw_plan",
+                  "type": "string"
+                },
+                {
+                  "const": "spiritual_plan",
+                  "type": "string"
+                },
+                {
+                  "const": "volunteer_plan",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 32,
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -11818,6 +11891,7 @@
         "tags": [
           "15-discipline-care-plans"
         ],
+        "summary": "Record an RN supervisory attestation (42 CFR §418.76(h)); a null sourceEncounterId is a phone-only contact and does NOT re-arm the 14-day clock (§4.1 #15)",
         "parameters": [
           {
             "name": "planId",
@@ -11837,6 +11911,82 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "aideMembershipId",
+                  "supervisingRnMembershipId",
+                  "sourceEncounterId",
+                  "supervisoryAt",
+                  "attestationMode",
+                  "aidePerformanceSatisfactory",
+                  "correctiveActions",
+                  "supervisoryNarrative"
+                ],
+                "properties": {
+                  "aideMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "supervisingRnMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "sourceEncounterId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "supervisoryAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "attestationMode": {
+                    "anyOf": [
+                      {
+                        "const": "aide_present",
+                        "type": "string"
+                      },
+                      {
+                        "const": "observation_of_work",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aidePerformanceSatisfactory": {
+                    "type": "boolean"
+                  },
+                  "correctiveActions": {
+                    "anyOf": [
+                      {
+                        "maxLength": 4000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "supervisoryNarrative": {
+                    "minLength": 40,
+                    "maxLength": 8000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -11884,6 +12034,7 @@
         "tags": [
           "15-discipline-care-plans"
         ],
+        "summary": "Capture a discipline assessment (draft); `data` is validated against the per-kind schema, and the SUD / family-violence flags drive every later read's SQL filter (§4.1 #12)",
         "parameters": [
           {
             "name": "planId",
@@ -11904,6 +12055,53 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "capturedAt",
+                  "data"
+                ],
+                "properties": {
+                  "kind": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "capturedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "isInitial": {
+                    "type": "boolean"
+                  },
+                  "sudFlag": {
+                    "type": "boolean"
+                  },
+                  "familyViolenceFlag": {
+                    "type": "boolean"
+                  },
+                  "sourceEncounterId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "data": {}
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -11913,6 +12111,7 @@
         "tags": [
           "15-discipline-care-plans"
         ],
+        "summary": "Amend a signed assessment — append-only correction of record; the superseded row is retained (§4.1 #14)",
         "parameters": [
           {
             "name": "planId",
@@ -11940,6 +12139,36 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "amendmentReason",
+                  "data"
+                ],
+                "properties": {
+                  "amendmentReason": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "data": {},
+                  "amendedFields": {
+                    "maxItems": 64,
+                    "type": "array",
+                    "items": {
+                      "maxLength": 64,
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -11987,6 +12216,7 @@
         "tags": [
           "15-discipline-care-plans"
         ],
+        "summary": "Author a discipline goal refining an IPOC problem (§4.1 #8)",
         "parameters": [
           {
             "name": "planId",
@@ -12007,6 +12237,142 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "parentProblemId",
+                  "source",
+                  "originalText",
+                  "addedByDiscipline"
+                ],
+                "properties": {
+                  "parentProblemId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "parentGoalId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "source": {
+                    "anyOf": [
+                      {
+                        "const": "clinician_authored",
+                        "type": "string"
+                      },
+                      {
+                        "const": "patient_stated",
+                        "type": "string"
+                      },
+                      {
+                        "const": "family_stated",
+                        "type": "string"
+                      },
+                      {
+                        "const": "agent_stated",
+                        "type": "string"
+                      },
+                      {
+                        "const": "idg_directed",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "originalText": {
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "measurableOutcome": {
+                    "anyOf": [
+                      {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "targetAt": {
+                    "anyOf": [
+                      {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "frequencyText": {
+                    "anyOf": [
+                      {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "frequencyValue": {
+                    "anyOf": [
+                      {
+                        "maxLength": 64,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "modalityText": {
+                    "anyOf": [
+                      {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sudRelated": {
+                    "type": "boolean"
+                  },
+                  "actingConsentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "addedByDiscipline": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -12016,6 +12382,7 @@
         "tags": [
           "15-discipline-care-plans"
         ],
+        "summary": "Edit a goal — a status event and/or the refinement fields; `originalText` is immutable (§2.3; §4.1 #9)",
         "parameters": [
           {
             "name": "planId",
@@ -12044,6 +12411,115 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "event": {
+                    "type": "object",
+                    "required": [
+                      "type"
+                    ],
+                    "properties": {
+                      "type": {
+                        "anyOf": [
+                          {
+                            "const": "start",
+                            "type": "string"
+                          },
+                          {
+                            "const": "meet",
+                            "type": "string"
+                          },
+                          {
+                            "const": "missTarget",
+                            "type": "string"
+                          },
+                          {
+                            "const": "revise",
+                            "type": "string"
+                          },
+                          {
+                            "const": "discontinue",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "revisedText": {
+                        "minLength": 1,
+                        "maxLength": 4000,
+                        "type": "string"
+                      },
+                      "reason": {
+                        "minLength": 1,
+                        "maxLength": 2000,
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "measurableOutcome": {
+                    "anyOf": [
+                      {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "targetAt": {
+                    "anyOf": [
+                      {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "frequencyText": {
+                    "anyOf": [
+                      {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "frequencyValue": {
+                    "anyOf": [
+                      {
+                        "maxLength": 64,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "modalityText": {
+                    "anyOf": [
+                      {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -12053,6 +12529,7 @@
         "tags": [
           "15-discipline-care-plans"
         ],
+        "summary": "Author a discipline intervention (§4.1 #10)",
         "parameters": [
           {
             "name": "planId",
@@ -12073,6 +12550,77 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "scopeText",
+                  "frequencyText",
+                  "frequencyValue",
+                  "discipline",
+                  "addedByDiscipline"
+                ],
+                "properties": {
+                  "parentInterventionId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "goalRefs": {
+                    "maxItems": 64,
+                    "type": "array",
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  },
+                  "scopeText": {
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "frequencyText": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "frequencyValue": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "discipline": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "responsibleRoles": {
+                    "maxItems": 16,
+                    "type": "array",
+                    "items": {
+                      "maxLength": 64,
+                      "type": "string"
+                    }
+                  },
+                  "addedByDiscipline": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -12082,6 +12630,7 @@
         "tags": [
           "15-discipline-care-plans"
         ],
+        "summary": "Edit an intervention — discontinue (reason required) / complete / refine (§4.1 #11)",
         "parameters": [
           {
             "name": "planId",
@@ -12109,6 +12658,66 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "event": {
+                    "type": "object",
+                    "required": [
+                      "type"
+                    ],
+                    "properties": {
+                      "type": {
+                        "anyOf": [
+                          {
+                            "const": "discontinue",
+                            "type": "string"
+                          },
+                          {
+                            "const": "complete",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "reason": {
+                        "minLength": 1,
+                        "maxLength": 2000,
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "scopeText": {
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "frequencyText": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "frequencyValue": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "responsibleRoles": {
+                    "maxItems": 16,
+                    "type": "array",
+                    "items": {
+                      "maxLength": 64,
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -12148,6 +12757,7 @@
         "tags": [
           "15-discipline-care-plans"
         ],
+        "summary": "The plan's version chain, cursor-paginated by sequence (§4.1 #4)",
         "parameters": [
           {
             "name": "planId",
@@ -12155,6 +12765,25 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "type": "integer"
             }
           }
         ],
@@ -12214,6 +12843,7 @@
         "tags": [
           "15-discipline-care-plans"
         ],
+        "summary": "Finalize a draft version — seals the state snapshot and freezes the D11 quorum, which a tenant may tighten but never loosen (§4.1 #6)",
         "parameters": [
           {
             "name": "planId",
@@ -12241,6 +12871,45 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "requiredSignerSet": {
+                    "maxItems": 8,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "role",
+                        "count",
+                        "isAcknowledgment"
+                      ],
+                      "properties": {
+                        "role": {
+                          "minLength": 1,
+                          "maxLength": 64,
+                          "type": "string"
+                        },
+                        "count": {
+                          "minimum": 1,
+                          "maximum": 8,
+                          "type": "integer"
+                        },
+                        "isAcknowledgment": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -12251,6 +12920,7 @@
         "tags": [
           "15-discipline-care-plans"
         ],
+        "summary": "Sign one slot of the sealed quorum — step-up; the last signature flips the version to signed and triggers the plan-PDF render (§4.1 #7)",
         "parameters": [
           {
             "name": "planId",
@@ -12279,6 +12949,35 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "signerRole",
+                  "attestationText"
+                ],
+                "properties": {
+                  "signerRole": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "attestationText": {
+                    "minLength": 10,
+                    "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "isAcknowledgment": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -12288,6 +12987,7 @@
         "tags": [
           "15-discipline-care-plans"
         ],
+        "summary": "Create a volunteer assignment — the 418.78 gate check runs unless a documented overrideReason is supplied (§8.6; §4.1 #17)",
         "parameters": [
           {
             "name": "planId",
@@ -12308,6 +13008,63 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "volunteerMembershipId",
+                  "activities",
+                  "startsAt"
+                ],
+                "properties": {
+                  "volunteerMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "activities": {
+                    "minItems": 1,
+                    "maxItems": 32,
+                    "type": "array",
+                    "items": {
+                      "minLength": 1,
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "startsAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "endsAt": {
+                    "anyOf": [
+                      {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "overrideReason": {
+                    "anyOf": [
+                      {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -12317,6 +13074,7 @@
         "tags": [
           "15-discipline-care-plans"
         ],
+        "summary": "Edit / acknowledge / inactivate / reactivate an assignment — reactivation is always manual (§7.5; §4.1 #18)",
         "parameters": [
           {
             "name": "planId",
@@ -12344,6 +13102,57 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "activities": {
+                    "maxItems": 32,
+                    "type": "array",
+                    "items": {
+                      "minLength": 1,
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  },
+                  "endsAt": {
+                    "anyOf": [
+                      {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "coordinatorAcknowledged": {
+                    "type": "boolean"
+                  },
+                  "inactivate": {
+                    "type": "object",
+                    "required": [
+                      "reason"
+                    ],
+                    "properties": {
+                      "reason": {
+                        "minLength": 1,
+                        "maxLength": 2000,
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "reactivate": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -42730,7 +43539,84 @@
         "tags": [
           "15-discipline-care-plans"
         ],
-        "parameters": [],
+        "summary": "Volunteer compliance-gate worklist — cursor-paginated; status is re-derived over the validity window as of now (§2.2.6; §4.1 #19)",
+        "parameters": [
+          {
+            "name": "volunteerMembershipId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "gateKind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "background_check",
+                  "type": "string"
+                },
+                {
+                  "const": "tb_screening",
+                  "type": "string"
+                },
+                {
+                  "const": "confidentiality_agreement",
+                  "type": "string"
+                },
+                {
+                  "const": "initial_training",
+                  "type": "string"
+                },
+                {
+                  "const": "annual_ce",
+                  "type": "string"
+                },
+                {
+                  "const": "assignment_specific_training",
+                  "type": "string"
+                },
+                {
+                  "const": "vaccination_status",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "expiringWithinDays",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 0,
+              "maximum": 365,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -42748,6 +43634,7 @@
         "tags": [
           "15-discipline-care-plans"
         ],
+        "summary": "Record a 42 CFR §418.78(b)/(d) compliance gate for a volunteer (§4.1 #20)",
         "parameters": [],
         "responses": {
           "200": {
@@ -42758,6 +43645,97 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "volunteerMembershipId",
+                  "gateKind",
+                  "validFrom",
+                  "validUntil"
+                ],
+                "properties": {
+                  "volunteerMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "gateKind": {
+                    "anyOf": [
+                      {
+                        "const": "background_check",
+                        "type": "string"
+                      },
+                      {
+                        "const": "tb_screening",
+                        "type": "string"
+                      },
+                      {
+                        "const": "confidentiality_agreement",
+                        "type": "string"
+                      },
+                      {
+                        "const": "initial_training",
+                        "type": "string"
+                      },
+                      {
+                        "const": "annual_ce",
+                        "type": "string"
+                      },
+                      {
+                        "const": "assignment_specific_training",
+                        "type": "string"
+                      },
+                      {
+                        "const": "vaccination_status",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "validFrom": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "validUntil": {
+                    "anyOf": [
+                      {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sourceDocumentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "notes": {
+                    "anyOf": [
+                      {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -42768,6 +43746,7 @@
         "tags": [
           "15-discipline-care-plans"
         ],
+        "summary": "Correct a recorded gate's validity window / evidence (§4.1 #21)",
         "parameters": [
           {
             "name": "gateId",
@@ -42787,6 +43766,51 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "validUntil": {
+                    "anyOf": [
+                      {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sourceDocumentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "notes": {
+                    "anyOf": [
+                      {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -42797,6 +43821,7 @@
         "tags": [
           "15-discipline-care-plans"
         ],
+        "summary": "Revoke a satisfied gate — reason required; cascades the volunteer to inactive (§4.1 #22)",
         "parameters": [
           {
             "name": "gateId",
@@ -42817,6 +43842,26 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "revokedReason"
+                ],
+                "properties": {
+                  "revokedReason": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -42826,6 +43871,7 @@
         "tags": [
           "15-discipline-care-plans"
         ],
+        "summary": "Record an audited manual hour adjustment — the only ledger path that may carry negative minutes (§4.1 #24)",
         "parameters": [],
         "responses": {
           "200": {
@@ -42837,6 +43883,53 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "fiscalYear",
+                  "volunteerMembershipId",
+                  "durationMinutes",
+                  "occurredAt",
+                  "adjustmentReason"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "fiscalYear": {
+                    "minimum": 2000,
+                    "maximum": 2200,
+                    "type": "integer"
+                  },
+                  "volunteerMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "durationMinutes": {
+                    "minimum": -100000,
+                    "maximum": 100000,
+                    "type": "integer"
+                  },
+                  "occurredAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "adjustmentReason": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -42846,7 +43939,28 @@
         "tags": [
           "15-discipline-care-plans"
         ],
-        "parameters": [],
+        "summary": "The 418.78(e) 5% ratio for one provider entity × fiscal year; an unbound cost basis returns `unavailable` with its reason, never a 0% breach (§7.6; §4.1 #23)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "fiscalYear",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "minimum": 2000,
+              "maximum": 2200,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -43127,7 +44241,37 @@
         "tags": [
           "15-discipline-care-plans"
         ],
-        "parameters": [],
+        "summary": "System-principal seam — MSW psychosocial risk factors for an admission (M16; §4.1 #26)",
+        "parameters": [
+          {
+            "name": "admissionId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -43147,7 +44291,46 @@
         "tags": [
           "15-discipline-care-plans"
         ],
-        "parameters": [],
+        "summary": "System-principal seam — discipline goals/interventions for a patient's plans (§4.1 #25)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "planId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -43167,7 +44350,54 @@
         "tags": [
           "15-discipline-care-plans"
         ],
-        "parameters": [],
+        "summary": "System-principal seam — the supervisory-cadence worklist for a scope (M17/M14; §4.1 #28)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "overdueOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -43187,7 +44417,18 @@
         "tags": [
           "15-discipline-care-plans"
         ],
-        "parameters": [],
+        "summary": "System-principal seam — a volunteer's effective 418.78 status; fail-CLOSED (an unreadable gate store answers not-active; §4.1 #27)",
+        "parameters": [
+          {
+            "name": "volunteerMembershipId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"

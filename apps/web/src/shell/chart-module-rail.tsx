@@ -10,6 +10,7 @@ import { Link } from "react-router-dom";
 export type ChartSection =
   | "summary"
   | "care-plan"
+  | "discipline-plans"
   | "encounters"
   | "assessments"
   | "orders"
@@ -41,6 +42,7 @@ function NavIcon({ name }: { name: NavIconName }): JSX.Element {
 const ITEMS: { key: ChartSection; label: string; icon: NavIconName; route: ((id: string) => string) | null }[] = [
   { key: "summary", label: "Summary", icon: "summary", route: null },
   { key: "care-plan", label: "Care Plan", icon: "carePlan", route: (id) => `/patients/${id}/care-plan` },
+  { key: "discipline-plans", label: "Discipline Plans", icon: "checklist", route: (id) => `/patients/${id}/discipline-plans` },
   { key: "encounters", label: "Encounters", icon: "stethoscope", route: null },
   { key: "assessments", label: "Assessments", icon: "checklist", route: (id) => `/patients/${id}/assessments` },
   { key: "orders", label: "Orders", icon: "orders", route: (id) => `/patients/${id}/orders` },

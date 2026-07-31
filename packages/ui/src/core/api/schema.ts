@@ -3461,6 +3461,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Discipline-plan worklist — cursor-paginated, filterable by patient/admission/kind/status (§4.1 #1) */
         get: operations["getApiV1Disciplineplans"];
         put?: never;
         post?: never;
@@ -3495,6 +3496,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record an RN supervisory attestation (42 CFR §418.76(h)); a null sourceEncounterId is a phone-only contact and does NOT re-arm the 14-day clock (§4.1 #15) */
         post: operations["postApiV1DisciplineplansByPlanIdAidesupervisoryvisits"];
         delete?: never;
         options?: never;
@@ -3527,6 +3529,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Capture a discipline assessment (draft); `data` is validated against the per-kind schema, and the SUD / family-violence flags drive every later read's SQL filter (§4.1 #12) */
         post: operations["postApiV1DisciplineplansByPlanIdAssessments"];
         delete?: never;
         options?: never;
@@ -3543,6 +3546,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Amend a signed assessment — append-only correction of record; the superseded row is retained (§4.1 #14) */
         post: operations["postApiV1DisciplineplansByPlanIdAssessmentsByAssessmentIdAmend"];
         delete?: never;
         options?: never;
@@ -3575,6 +3579,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Author a discipline goal refining an IPOC problem (§4.1 #8) */
         post: operations["postApiV1DisciplineplansByPlanIdGoals"];
         delete?: never;
         options?: never;
@@ -3595,6 +3600,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Edit a goal — a status event and/or the refinement fields; `originalText` is immutable (§2.3; §4.1 #9) */
         patch: operations["patchApiV1DisciplineplansByPlanIdGoalsByGoalId"];
         trace?: never;
     };
@@ -3607,6 +3613,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Author a discipline intervention (§4.1 #10) */
         post: operations["postApiV1DisciplineplansByPlanIdInterventions"];
         delete?: never;
         options?: never;
@@ -3627,6 +3634,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Edit an intervention — discontinue (reason required) / complete / refine (§4.1 #11) */
         patch: operations["patchApiV1DisciplineplansByPlanIdInterventionsByInterventionId"];
         trace?: never;
     };
@@ -3653,6 +3661,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The plan's version chain, cursor-paginated by sequence (§4.1 #4) */
         get: operations["getApiV1DisciplineplansByPlanIdVersions"];
         put?: never;
         post?: never;
@@ -3687,6 +3696,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Finalize a draft version — seals the state snapshot and freezes the D11 quorum, which a tenant may tighten but never loosen (§4.1 #6) */
         post: operations["postApiV1DisciplineplansByPlanIdVersionsByVersionIdFinalize"];
         delete?: never;
         options?: never;
@@ -3703,6 +3713,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Sign one slot of the sealed quorum — step-up; the last signature flips the version to signed and triggers the plan-PDF render (§4.1 #7) */
         post: operations["postApiV1DisciplineplansByPlanIdVersionsByVersionIdSign"];
         delete?: never;
         options?: never;
@@ -3719,6 +3730,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Create a volunteer assignment — the 418.78 gate check runs unless a documented overrideReason is supplied (§8.6; §4.1 #17) */
         post: operations["postApiV1DisciplineplansByPlanIdVolunteerassignments"];
         delete?: never;
         options?: never;
@@ -3739,6 +3751,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Edit / acknowledge / inactivate / reactivate an assignment — reactivation is always manual (§7.5; §4.1 #18) */
         patch: operations["patchApiV1DisciplineplansByPlanIdVolunteerassignmentsByAssignmentId"];
         trace?: never;
     };
@@ -11311,8 +11324,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Volunteer compliance-gate worklist — cursor-paginated; status is re-derived over the validity window as of now (§2.2.6; §4.1 #19) */
         get: operations["getApiV1Volunteercompliancegates"];
         put?: never;
+        /** Record a 42 CFR §418.78(b)/(d) compliance gate for a volunteer (§4.1 #20) */
         post: operations["postApiV1Volunteercompliancegates"];
         delete?: never;
         options?: never;
@@ -11333,6 +11348,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Correct a recorded gate's validity window / evidence (§4.1 #21) */
         patch: operations["patchApiV1VolunteercompliancegatesByGateId"];
         trace?: never;
     };
@@ -11345,6 +11361,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Revoke a satisfied gate — reason required; cascades the volunteer to inactive (§4.1 #22) */
         post: operations["postApiV1VolunteercompliancegatesByGateIdRevoke"];
         delete?: never;
         options?: never;
@@ -11361,6 +11378,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record an audited manual hour adjustment — the only ledger path that may carry negative minutes (§4.1 #24) */
         post: operations["postApiV1Volunteerhourentries"];
         delete?: never;
         options?: never;
@@ -11375,6 +11393,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The 418.78(e) 5% ratio for one provider entity × fiscal year; an unbound cost basis returns `unavailable` with its reason, never a 0% breach (§7.6; §4.1 #23) */
         get: operations["getApiV1Volunteerhourratio"];
         put?: never;
         post?: never;
@@ -11424,6 +11443,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** System-principal seam — MSW psychosocial risk factors for an admission (M16; §4.1 #26) */
         get: operations["getInternalDisciplineplansMswriskfactors"];
         put?: never;
         post?: never;
@@ -11440,6 +11460,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** System-principal seam — discipline goals/interventions for a patient's plans (§4.1 #25) */
         get: operations["getInternalDisciplineplansRelevantelements"];
         put?: never;
         post?: never;
@@ -11456,6 +11477,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** System-principal seam — the supervisory-cadence worklist for a scope (M17/M14; §4.1 #28) */
         get: operations["getInternalDisciplineplansSupervisorycadence"];
         put?: never;
         post?: never;
@@ -11472,6 +11494,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** System-principal seam — a volunteer's effective 418.78 status; fail-CLOSED (an unreadable gate store answers not-active; §4.1 #27) */
         get: operations["getInternalDisciplineplansVolunteereffectivestatus"];
         put?: never;
         post?: never;
@@ -17702,7 +17725,14 @@ export interface operations {
     };
     getApiV1Disciplineplans: {
         parameters: {
-            query?: never;
+            query?: {
+                patientId?: string;
+                admissionId?: string;
+                kind?: "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan";
+                status?: string;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -17751,7 +17781,23 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    aideMembershipId: string;
+                    /** Format: uuid */
+                    supervisingRnMembershipId: string;
+                    sourceEncounterId: string | null;
+                    /** Format: date-time */
+                    supervisoryAt: string;
+                    attestationMode: "aide_present" | "observation_of_work";
+                    aidePerformanceSatisfactory: boolean;
+                    correctiveActions: string | null;
+                    supervisoryNarrative: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -17796,7 +17842,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    kind: string;
+                    /** Format: date-time */
+                    capturedAt: string;
+                    isInitial?: boolean;
+                    sudFlag?: boolean;
+                    familyViolenceFlag?: boolean;
+                    sourceEncounterId?: string | null;
+                    data: unknown;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -17819,7 +17878,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    amendmentReason: string;
+                    data: unknown;
+                    amendedFields?: string[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -17864,7 +17931,25 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    parentProblemId: string;
+                    parentGoalId?: string | null;
+                    source: "clinician_authored" | "patient_stated" | "family_stated" | "agent_stated" | "idg_directed";
+                    originalText: string;
+                    measurableOutcome?: string | null;
+                    targetAt?: string | null;
+                    frequencyText?: string | null;
+                    frequencyValue?: string | null;
+                    modalityText?: string | null;
+                    sudRelated?: boolean;
+                    actingConsentId?: string | null;
+                    addedByDiscipline: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -17887,7 +17972,22 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    event?: {
+                        type: "start" | "meet" | "missTarget" | "revise" | "discontinue";
+                        revisedText?: string;
+                        reason?: string;
+                    };
+                    measurableOutcome?: string | null;
+                    targetAt?: string | null;
+                    frequencyText?: string | null;
+                    frequencyValue?: string | null;
+                    modalityText?: string | null;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -17909,7 +18009,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    parentInterventionId?: string | null;
+                    goalRefs?: string[];
+                    scopeText: string;
+                    frequencyText: string;
+                    frequencyValue: string;
+                    discipline: string;
+                    responsibleRoles?: string[];
+                    addedByDiscipline: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -17932,7 +18045,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    event?: {
+                        type: "discontinue" | "complete";
+                        reason?: string;
+                    };
+                    scopeText?: string;
+                    frequencyText?: string;
+                    frequencyValue?: string;
+                    responsibleRoles?: string[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -17969,7 +18095,10 @@ export interface operations {
     };
     getApiV1DisciplineplansByPlanIdVersions: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 planId: string;
@@ -18022,7 +18151,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    requiredSignerSet?: {
+                        role: string;
+                        count: number;
+                        isAcknowledgment: boolean;
+                    }[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -18045,7 +18184,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    signerRole: string;
+                    attestationText: string;
+                    isAcknowledgment?: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -18067,7 +18214,19 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    volunteerMembershipId: string;
+                    activities: string[];
+                    /** Format: date-time */
+                    startsAt: string;
+                    endsAt?: string | null;
+                    overrideReason?: string | null;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -18090,7 +18249,19 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    activities?: string[];
+                    endsAt?: string | null;
+                    coordinatorAcknowledged?: boolean;
+                    inactivate?: {
+                        reason: string;
+                    };
+                    reactivate?: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -32204,7 +32375,13 @@ export interface operations {
     };
     getApiV1Volunteercompliancegates: {
         parameters: {
-            query?: never;
+            query?: {
+                volunteerMembershipId?: string;
+                gateKind?: "background_check" | "tb_screening" | "confidentiality_agreement" | "initial_training" | "annual_ce" | "assignment_specific_training" | "vaccination_status";
+                expiringWithinDays?: number;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -32229,7 +32406,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    volunteerMembershipId: string;
+                    gateKind: "background_check" | "tb_screening" | "confidentiality_agreement" | "initial_training" | "annual_ce" | "assignment_specific_training" | "vaccination_status";
+                    /** Format: date-time */
+                    validFrom: string;
+                    validUntil: string | null;
+                    sourceDocumentId?: string | null;
+                    notes?: string | null;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -32251,7 +32441,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    validUntil?: string | null;
+                    sourceDocumentId?: string | null;
+                    notes?: string | null;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -32273,7 +32471,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    revokedReason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -32293,7 +32497,21 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    fiscalYear: number;
+                    /** Format: uuid */
+                    volunteerMembershipId: string;
+                    durationMinutes: number;
+                    /** Format: date-time */
+                    occurredAt: string;
+                    adjustmentReason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -32308,7 +32526,10 @@ export interface operations {
     };
     getApiV1Volunteerhourratio: {
         parameters: {
-            query?: never;
+            query: {
+                providerEntityId: string;
+                fiscalYear: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -32401,7 +32622,11 @@ export interface operations {
     };
     getInternalDisciplineplansMswriskfactors: {
         parameters: {
-            query?: never;
+            query: {
+                admissionId: string;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -32421,7 +32646,12 @@ export interface operations {
     };
     getInternalDisciplineplansRelevantelements: {
         parameters: {
-            query?: never;
+            query?: {
+                patientId?: string;
+                planId?: string;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -32441,7 +32671,13 @@ export interface operations {
     };
     getInternalDisciplineplansSupervisorycadence: {
         parameters: {
-            query?: never;
+            query?: {
+                providerEntityId?: string;
+                locationId?: string;
+                overdueOnly?: boolean;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -32461,7 +32697,9 @@ export interface operations {
     };
     getInternalDisciplineplansVolunteereffectivestatus: {
         parameters: {
-            query?: never;
+            query: {
+                volunteerMembershipId: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
