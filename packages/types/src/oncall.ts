@@ -166,6 +166,33 @@ export type TriageEscalationTrigger =
  *  server writes, and therefore which column D5's red-flag match is evaluated against. */
 export type TriageProtocolAnswerType = "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
 
+/**
+ * D5 (M19-T03) — the shape stored in `triage_protocol_question.red_flag_match`, and therefore the shape
+ * the platform-floor seed encodes and the server-side evaluator reads.
+ *
+ * It is a CLOSED, declarative union rather than an expression string on purpose. `red_flag_match` decides
+ * whether a suicidal-ideation answer writes a mandatory escalation; if it were a snippet the catalog
+ * evaluated, a tenant-authored protocol would be arbitrary code running inside the escalation path, and a
+ * malformed one would fail at 2 a.m. in the direction of NOT escalating. Each arm names exactly one of the
+ * three typed answer columns, so a predicate can never be evaluated against a column the question does not
+ * write (`answerTypeForMatch` in the protocol engine is the compile-time-checked mapping).
+ *
+ * `text_any` exists because a `free_text` red-flag question ("describe what the caller said") is a flag on
+ * the PRESENCE of an answer, not on its content: matching prose would need the caller's own words to be
+ * pattern-matched, and those words are the §3.6-denylisted column.
+ */
+export type TriageRedFlagMatch =
+  /** `boolean` questions — fires when the recorded boolean equals `value`. */
+  | { readonly kind: "bool_is"; readonly value: boolean }
+  /** `integer` / `scale_0_10` — fires at or above the threshold (pain ≥ 7). */
+  | { readonly kind: "int_at_least"; readonly threshold: number }
+  /** `integer` / `scale_0_10` — fires at or below (glucose ≤ 60). */
+  | { readonly kind: "int_at_most"; readonly threshold: number }
+  /** `enum` — fires when the recorded member is in the set. */
+  | { readonly kind: "enum_in"; readonly values: readonly string[] }
+  /** `free_text` — fires when any non-blank text was recorded. */
+  | { readonly kind: "text_any" };
+
 /** `triage_risk_band` — D11. ADVISORY ONLY: gates nothing, alters no disposition option, and is excluded
  *  from the M31 portal projection. */
 export type TriageRiskBand = "low" | "medium" | "high";
