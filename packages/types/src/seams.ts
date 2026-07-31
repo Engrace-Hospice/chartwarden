@@ -216,7 +216,15 @@ export type SeamName =
   // registry (it was outbox-only before); M25 follows. All three are aggregate, FY-scoped, PHI-free (D18):
   | "PatientDaysProvider" // M23 — billed-and-accepted census patient-days for a FY (M27 stats.patient_days_reconcile)
   | "DrugCostBillingReader" // M12 — drug-cost basis for a FY, M27 Worksheet-A pharmacy cross-check (drug_cost.billed_reconciles). RESERVATION: degrades until M12 materializes med-order cost (no cost column today)
-  | "ClaimSettlementProvider"; // M25 — actual interim Medicare payments (835 CLP04) for a FY (M27 settlement.e1_ties_to_d)
+  | "ClaimSettlementProvider" // M25 — actual interim Medicare payments (835 CLP04) for a FY (M27 settlement.e1_ties_to_d)
+  // M30 (HQRP & Quality) §4.3 — the five READ-ONLY seams M30 publishes. Before these, M30 was reachable
+  // cross-module ONLY through its §4.10 outbox events, so M22's quality report, M28's FHIR MeasureReport /
+  // AdverseEvent, M33's executive dashboards and M34's FY-rollover tenant gate had no read path at all.
+  | "QualityMeasureProvider" // M30 — HQRP measure values/series/snapshot + the FY measure catalog (aggregate-only)
+  | "IncidentRegisterProvider" // M30 — incident register (PHI: patient-scoped rows require caller patient scope)
+  | "QapiProjectProvider" // M30 — QAPI projects/PIPs by phase (M22 minutes, M33 dashboards)
+  | "ComplianceStatusProvider" // M30 — CoP compliance status per condition (M34 tenant gate, M33 dashboards)
+  | "SecurityRiskAssessmentReader"; // M30 — SRA cycle posture (§164.308(a)(1)(ii)(A) attestation surface)
 
 /**
  * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
@@ -432,6 +440,15 @@ export interface SeamContracts {
   PatientDaysProvider: unknown;
   DrugCostBillingReader: unknown;
   ClaimSettlementProvider: unknown;
+  // M30's five §4.3 seams — the SAME opaque rich-seam pattern: the interfaces live in @wardenx/quality
+  // (this leaf may not import it — `leaves-stay-leaves`), so the registry holds each instance as
+  // `unknown` and consumers (M22 / M28 / M33 / M34) resolve via `getSeam` + cast to their own view.
+  // Registered by M30 at boot over the fail-closed deny-stub.
+  QualityMeasureProvider: unknown;
+  IncidentRegisterProvider: unknown;
+  QapiProjectProvider: unknown;
+  ComplianceStatusProvider: unknown;
+  SecurityRiskAssessmentReader: unknown;
   // M40's `BaaStatusProvider` is the focused §7.7 disclosure gate, registered separately from the
   // omnibus above (different contract: as-of time-travel + sending-facility resolution). Same
   // opaque rich-seam pattern — interface in @wardenx/mdm; M22/M28/M29 import the real type.

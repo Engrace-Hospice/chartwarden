@@ -13,6 +13,7 @@
 // Only an org with ZERO provider entities is genuinely unresolvable → fail-closed 503 (the prior deny-stub's
 // contract, unchanged).
 import { type DbClient, schema } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
 import { asc, eq } from "drizzle-orm";
 
@@ -44,4 +45,29 @@ export function buildPrimaryProviderEntityResolver(): PrimaryProviderEntityResol
       return chosen.id;
     },
   };
+}
+
+/**
+ * List ALL of an org's provider-entity ids — the per-PE AGGREGATION GRAIN M30's published seams fold
+ * their measure/CoP rollups across (§4.3). Distinct from `primaryProviderEntityId` above, which picks the
+ * ONE entity a write stamps: a rollup that silently used only the primary would under-count a multi-PE
+ * agency's numbers, which is worse than reporting none.
+ *
+ * Opens its OWN `withOrgContext` transaction because the published seams are called OUTSIDE M30's request
+ * pipeline (M22 / M28 / M33 / M34 consume them through `getSeam`), so there is no ambient tx to borrow.
+ * An org with zero provider entities resolves to `[]` — the impls then produce empty aggregates rather
+ * than a fabricated number, which is the same fail-closed shape as an unbound resolver (D6 / D13).
+ */
+export function buildOrgProviderEntityLister(
+  db: DbClient,
+): (organizationId: string) => Promise<readonly string[]> {
+  return async (organizationId) =>
+    withOrgContext(db, { organizationId, userId: "system" }, async (tx) => {
+      const rows = await tx
+        .select({ id: schema.providerEntities.id })
+        .from(schema.providerEntities)
+        .where(eq(schema.providerEntities.organizationId, organizationId))
+        .orderBy(asc(schema.providerEntities.createdAt));
+      return rows.map((r) => r.id);
+    });
 }
