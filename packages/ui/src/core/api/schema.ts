@@ -8459,6 +8459,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Monthly CAHPS decedent sample (CMS exclusions applied) */
         get: operations["getApiV1QualityCahpsDecedents"];
         put?: never;
         post?: never;
@@ -8477,6 +8478,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Exclude a decedent from the CAHPS sample (CMS criteria) */
         post: operations["postApiV1QualityCahpsDecedentsBySampleIdExclude"];
         delete?: never;
         options?: never;
@@ -8493,6 +8495,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Open a CAHPS vendor export (encrypted caregiver PHI, §3.6) */
         post: operations["postApiV1QualityCahpsExport"];
         delete?: never;
         options?: never;
@@ -8523,6 +8526,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Ingested CAHPS results by reporting period */
         get: operations["getApiV1QualityCahpsResults"];
         put?: never;
         post?: never;
@@ -8541,6 +8545,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Ingest vendor-returned CAHPS result aggregates */
         post: operations["postApiV1QualityCahpsResultsIngest"];
         delete?: never;
         options?: never;
@@ -8557,6 +8562,7 @@ export interface paths {
         };
         get: operations["getApiV1QualityCahpsVendor"];
         put?: never;
+        /** Bind the org's CAHPS survey vendor (§4.1) */
         post: operations["postApiV1QualityCahpsVendor"];
         delete?: never;
         options?: never;
@@ -8571,6 +8577,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** CoP survey citations (§1.2 compliance posture) */
         get: operations["getApiV1QualityCopCitations"];
         put?: never;
         post?: never;
@@ -8593,6 +8600,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Update a CoP citation's remediation state */
         patch: operations["patchApiV1QualityCopCitationsByCitationId"];
         trace?: never;
     };
@@ -8605,6 +8613,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record a compliance review of a CoP citation */
         post: operations["postApiV1QualityCopCitationsByCitationIdReview"];
         delete?: never;
         options?: never;
@@ -8619,8 +8628,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Incident register (kind / severity / state filters) */
         get: operations["getApiV1QualityIncidents"];
         put?: never;
+        /** Report an incident */
         post: operations["postApiV1QualityIncidents"];
         delete?: never;
         options?: never;
@@ -8641,6 +8652,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Update an incident */
         patch: operations["patchApiV1QualityIncidentsByIncidentId"];
         trace?: never;
     };
@@ -8669,6 +8681,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Open the investigation on an incident */
         post: operations["postApiV1QualityIncidentsByIncidentIdInvestigate"];
         delete?: never;
         options?: never;
@@ -8685,6 +8698,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Append an investigation note */
         post: operations["postApiV1QualityIncidentsByIncidentIdInvestigation"];
         delete?: never;
         options?: never;
@@ -8701,6 +8715,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Reopen a closed incident */
         post: operations["postApiV1QualityIncidentsByIncidentIdReopen"];
         delete?: never;
         options?: never;
@@ -8717,6 +8732,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Resolve an incident */
         post: operations["postApiV1QualityIncidentsByIncidentIdResolve"];
         delete?: never;
         options?: never;
@@ -8749,6 +8765,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Triage an incident (severity + routing) */
         post: operations["postApiV1QualityIncidentsByIncidentIdTriage"];
         delete?: never;
         options?: never;
@@ -8763,6 +8780,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Abuse-allegation incidents (mandatory-reporter surface) */
         get: operations["getApiV1QualityIncidentsAbuseallegations"];
         put?: never;
         post?: never;
@@ -8779,8 +8797,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Infection surveillance events */
         get: operations["getApiV1QualityInfectionEvents"];
         put?: never;
+        /** Record an infection surveillance event */
         post: operations["postApiV1QualityInfectionEvents"];
         delete?: never;
         options?: never;
@@ -8795,6 +8815,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Infection outbreak cases */
         get: operations["getApiV1QualityInfectionOutbreaks"];
         put?: never;
         post?: never;
@@ -8817,6 +8838,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Update an outbreak case */
         patch: operations["patchApiV1QualityInfectionOutbreaksByCaseId"];
         trace?: never;
     };
@@ -8827,6 +8849,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The FY measure catalog + latest values (aggregate-only) */
         get: operations["getApiV1QualityMeasures"];
         put?: never;
         post?: never;
@@ -8843,6 +8866,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Measure value series across a window */
         get: operations["getApiV1QualityMeasuresByMeasureIdValues"];
         put?: never;
         post?: never;
@@ -8877,6 +8901,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Enqueue a measure recompute (§4.8) */
         post: operations["postApiV1QualityMeasuresRecompute"];
         delete?: never;
         options?: never;
@@ -8907,6 +8932,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Mortality reviews (30-day target) */
         get: operations["getApiV1QualityMortality"];
         put?: never;
         post?: never;
@@ -8929,6 +8955,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Update a mortality review */
         patch: operations["patchApiV1QualityMortalityByReviewId"];
         trace?: never;
     };
@@ -8941,6 +8968,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Complete a mortality review */
         post: operations["postApiV1QualityMortalityByReviewIdComplete"];
         delete?: never;
         options?: never;
@@ -8955,8 +8983,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** QAPI governance minutes */
         get: operations["getApiV1QualityQapiGovernance"];
         put?: never;
+        /** Record QAPI governance minutes */
         post: operations["postApiV1QualityQapiGovernance"];
         delete?: never;
         options?: never;
@@ -8971,8 +9001,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** QAPI indicators (tenant may TIGHTEN a platform target) */
         get: operations["getApiV1QualityQapiIndicators"];
         put?: never;
+        /** Create a QAPI indicator */
         post: operations["postApiV1QualityQapiIndicators"];
         delete?: never;
         options?: never;
@@ -8993,6 +9025,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Update a QAPI indicator */
         patch: operations["patchApiV1QualityQapiIndicatorsByIndicatorId"];
         trace?: never;
     };
@@ -9005,6 +9038,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Close a PIP */
         post: operations["postApiV1QualityQapiPipsByPipIdClose"];
         delete?: never;
         options?: never;
@@ -9019,8 +9053,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** QAPI programs */
         get: operations["getApiV1QualityQapiPrograms"];
         put?: never;
+        /** Adopt a QAPI program */
         post: operations["postApiV1QualityQapiPrograms"];
         delete?: never;
         options?: never;
@@ -9041,6 +9077,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Update a QAPI program's governance cadence */
         patch: operations["patchApiV1QualityQapiProgramsByProgramIdGovernance"];
         trace?: never;
     };
@@ -9051,8 +9088,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** QAPI projects by phase */
         get: operations["getApiV1QualityQapiProjects"];
         put?: never;
+        /** Charter a QAPI project */
         post: operations["postApiV1QualityQapiProjects"];
         delete?: never;
         options?: never;
@@ -9073,6 +9112,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Update a QAPI project */
         patch: operations["patchApiV1QualityQapiProjectsByProjectId"];
         trace?: never;
     };
@@ -9083,8 +9123,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** PIPs under a QAPI project */
         get: operations["getApiV1QualityQapiProjectsByProjectIdPips"];
         put?: never;
+        /** Add a PIP to a QAPI project */
         post: operations["postApiV1QualityQapiProjectsByProjectIdPips"];
         delete?: never;
         options?: never;
@@ -9099,6 +9141,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Risk register — open SRA findings, incidents, CAPs, CoP status */
         get: operations["getApiV1QualityRiskregister"];
         put?: never;
         post?: never;
@@ -9131,8 +9174,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Security risk assessment cycles (§164.308) */
         get: operations["getApiV1QualitySraCycles"];
         put?: never;
+        /** Open an SRA cycle */
         post: operations["postApiV1QualitySraCycles"];
         delete?: never;
         options?: never;
@@ -9165,6 +9210,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Close an SRA cycle (two-person close) */
         post: operations["postApiV1QualitySraCyclesByCycleIdClose"];
         delete?: never;
         options?: never;
@@ -9181,6 +9227,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Add a finding to an SRA cycle */
         post: operations["postApiV1QualitySraCyclesByCycleIdFindings"];
         delete?: never;
         options?: never;
@@ -9201,6 +9248,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Update an SRA finding */
         patch: operations["patchApiV1QualitySraFindingsByFindingId"];
         trace?: never;
     };
@@ -9213,6 +9261,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Plan remediation for an SRA finding */
         post: operations["postApiV1QualitySraFindingsByFindingIdRemediation"];
         delete?: never;
         options?: never;
@@ -9233,6 +9282,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Update an SRA remediation */
         patch: operations["patchApiV1QualitySraRemediationByRemediationId"];
         trace?: never;
     };
@@ -27225,7 +27275,13 @@ export interface operations {
     };
     getApiV1QualityCahpsDecedents: {
         parameters: {
-            query?: never;
+            query?: {
+                samplePeriodStart?: string;
+                samplePeriodEnd?: string;
+                eligibleOnly?: boolean;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -27252,7 +27308,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    exclusionReason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27272,7 +27334,16 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date */
+                    samplePeriodStart: string;
+                    /** Format: date */
+                    samplePeriodEnd: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27309,7 +27380,13 @@ export interface operations {
     };
     getApiV1QualityCahpsResults: {
         parameters: {
-            query?: never;
+            query?: {
+                reportingPeriodStart?: string;
+                reportingPeriodEnd?: string;
+                measureId?: string;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -27334,7 +27411,23 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    vendorAdapterId: string;
+                    /** Format: date */
+                    reportingPeriodStart: string;
+                    /** Format: date */
+                    reportingPeriodEnd: string;
+                    results: {
+                        measureId: string;
+                        topBoxPercent: number | null;
+                        respondentCount: number;
+                    }[];
+                    payloadHash: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27374,7 +27467,15 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    vendorAdapterId: string;
+                    /** Format: date */
+                    effectiveFrom: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27389,7 +27490,10 @@ export interface operations {
     };
     getApiV1QualityCopCitations: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -27416,7 +27520,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    status?: "compliant" | "at_risk" | "deficient";
+                    evidencePointers?: string[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27438,7 +27549,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    attestation: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27453,7 +27570,16 @@ export interface operations {
     };
     getApiV1QualityIncidents: {
         parameters: {
-            query?: never;
+            query?: {
+                kind?: ("fall" | "medication_error" | "complaint" | "allegation_of_abuse" | "exposure_event" | "other_safety_event")[];
+                state?: ("draft" | "submitted" | "triaged" | "under_investigation" | "resolved" | "closed_followup_complete" | "reopened")[];
+                severity?: ("minor" | "moderate" | "severe" | "critical")[];
+                occurredAfter?: string;
+                occurredBefore?: string;
+                patientId?: string;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -27478,7 +27604,21 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    kind: "fall" | "medication_error" | "complaint" | "allegation_of_abuse" | "exposure_event" | "other_safety_event";
+                    severity: "minor" | "moderate" | "severe" | "critical";
+                    /** Format: uuid */
+                    patientId?: string;
+                    /** Format: date-time */
+                    occurredAt: string;
+                    data: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27522,7 +27662,18 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    severity?: "minor" | "moderate" | "severe" | "critical";
+                    data?: {
+                        [key: string]: unknown;
+                    };
+                    /** Format: date-time */
+                    occurredAt?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27566,7 +27717,21 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    rootCauseSummary: string;
+                    actions: {
+                        action: string;
+                        /** Format: uuid */
+                        ownerMembershipId: string;
+                        /** Format: date */
+                        dueAt: string;
+                    }[];
+                    verificationCriteria: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27588,7 +27753,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    body: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27610,7 +27781,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reopenReason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27632,7 +27809,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    resolutionNote: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27676,7 +27859,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    assignedToMembershipId: string;
+                    severity: "minor" | "moderate" | "severe" | "critical";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27691,7 +27882,10 @@ export interface operations {
     };
     getApiV1QualityIncidentsAbuseallegations: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -27711,7 +27905,14 @@ export interface operations {
     };
     getApiV1QualityInfectionEvents: {
         parameters: {
-            query?: never;
+            query?: {
+                pathogen?: string;
+                patientId?: string;
+                observedAfter?: string;
+                observedBefore?: string;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -27736,7 +27937,18 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    pathogen: string;
+                    bodySite: string;
+                    /** Format: date-time */
+                    observedAt: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27751,7 +27963,12 @@ export interface operations {
     };
     getApiV1QualityInfectionOutbreaks: {
         parameters: {
-            query?: never;
+            query?: {
+                status?: "open" | "notified" | "contained" | "resolved";
+                pathogen?: string;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -27778,7 +27995,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    status: "open" | "notified" | "contained" | "resolved";
+                    resolutionNote?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27793,7 +28017,11 @@ export interface operations {
     };
     getApiV1QualityMeasures: {
         parameters: {
-            query?: never;
+            query?: {
+                domain?: "hci" | "hvldl" | "hope" | "cahps" | "operational";
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -27813,7 +28041,10 @@ export interface operations {
     };
     getApiV1QualityMeasuresByMeasureIdValues: {
         parameters: {
-            query?: never;
+            query?: {
+                windowStart?: string;
+                windowEnd?: string;
+            };
             header?: never;
             path: {
                 measureId: string;
@@ -27863,7 +28094,26 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    scope: {
+                        /** @constant */
+                        kind: "all";
+                    } | {
+                        /** @constant */
+                        kind: "measure";
+                        measureId: string;
+                    } | {
+                        /** @constant */
+                        kind: "domain";
+                        domain: "hci" | "hvldl" | "hope" | "cahps";
+                    };
+                    reason: string;
+                    priority?: "normal" | "high";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27898,7 +28148,12 @@ export interface operations {
     };
     getApiV1QualityMortality: {
         parameters: {
-            query?: never;
+            query?: {
+                status?: "created" | "in_progress" | "completed";
+                patientId?: string;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -27947,7 +28202,25 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    dimensions?: {
+                        clinical?: {
+                            [key: string]: unknown;
+                        };
+                        satisfaction?: {
+                            [key: string]: unknown;
+                        };
+                        compliance?: {
+                            [key: string]: unknown;
+                        };
+                    };
+                    /** Format: uuid */
+                    assignedToMembershipId?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27969,7 +28242,23 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    dimensions: {
+                        clinical: {
+                            [key: string]: unknown;
+                        };
+                        satisfaction: {
+                            [key: string]: unknown;
+                        };
+                        compliance: {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27984,7 +28273,10 @@ export interface operations {
     };
     getApiV1QualityQapiGovernance: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -28009,7 +28301,22 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    qapiProgramId: string;
+                    /** Format: date-time */
+                    meetingAt: string;
+                    summary: string;
+                    attendees: {
+                        role: string;
+                        /** Format: uuid */
+                        membershipId: string;
+                    }[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -28024,7 +28331,10 @@ export interface operations {
     };
     getApiV1QualityQapiIndicators: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -28049,7 +28359,19 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    qapiProgramId: string;
+                    displayName: string;
+                    measureId?: string;
+                    thresholdDirection: "min" | "max";
+                    thresholdValue: number;
+                    dataPath: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -28071,7 +28393,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    thresholdValue?: number;
+                    thresholdDirection?: "min" | "max";
+                    displayName?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -28093,7 +28423,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    conclusionText: string;
+                    outcome: string;
+                    cosign: {
+                        /** Format: uuid */
+                        qapiCoordinatorMembershipId: string;
+                        /** Format: uuid */
+                        medicalDirectorMembershipId: string;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -28108,7 +28451,10 @@ export interface operations {
     };
     getApiV1QualityQapiPrograms: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -28133,7 +28479,18 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    planYear: number;
+                    governanceComposition: {
+                        role: string;
+                        /** Format: uuid */
+                        membershipId: string;
+                    }[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -28155,7 +28512,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    governanceComposition: {
+                        role: string;
+                        /** Format: uuid */
+                        membershipId: string;
+                    }[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -28170,7 +28537,12 @@ export interface operations {
     };
     getApiV1QualityQapiProjects: {
         parameters: {
-            query?: never;
+            query?: {
+                phase?: ("proposed" | "active" | "corrective_action" | "completed" | "abandoned")[];
+                programId?: string;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -28195,7 +28567,18 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    qapiProgramId: string;
+                    title: string;
+                    /** Format: uuid */
+                    indicatorId?: string;
+                    charterNarrative: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -28217,7 +28600,16 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    phase?: "proposed" | "active" | "corrective_action" | "completed" | "abandoned";
+                    interventions?: string[];
+                    /** Format: uuid */
+                    ledByMembershipId?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -28232,7 +28624,10 @@ export interface operations {
     };
     getApiV1QualityQapiProjectsByProjectIdPips: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 projectId: string;
@@ -28261,7 +28656,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    charterText: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -28276,7 +28677,12 @@ export interface operations {
     };
     getApiV1QualityRiskregister: {
         parameters: {
-            query?: never;
+            query?: {
+                source?: "incident" | "qapi" | "sra" | "infection" | "cop" | "measure";
+                severity?: "critical" | "high" | "medium" | "low";
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -28316,7 +28722,10 @@ export interface operations {
     };
     getApiV1QualitySraCycles: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -28341,7 +28750,13 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    cycleYear: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -28385,7 +28800,18 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    cosign: {
+                        /** Format: uuid */
+                        securityOfficerMembershipId: string;
+                        /** Format: uuid */
+                        complianceOfficerMembershipId: string;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -28407,7 +28833,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    findingNumber: number;
+                    controlRef: string;
+                    likelihood: number;
+                    impact: number;
+                    description: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -28429,7 +28865,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    likelihood?: number;
+                    impact?: number;
+                    disposition?: "open" | "accepted" | "remediating" | "remediated" | "transferred";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -28451,7 +28895,18 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    remediationNumber: number;
+                    plan: string;
+                    /** Format: uuid */
+                    ownerMembershipId: string;
+                    /** Format: date */
+                    dueAt?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -28473,7 +28928,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    status?: "planned" | "in_progress" | "completed" | "deferred";
+                    /** Format: date */
+                    dueAt?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {

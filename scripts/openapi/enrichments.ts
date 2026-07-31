@@ -94,6 +94,58 @@ import {
   UpdateEngagementBody,
   UpdateRoleBody,
 } from "../../apps/backend/src/modules/03-authorization/routes/authz-typebox";
+import {
+  AbuseAllegationListQuerySchema,
+  AddInvestigationNoteBodySchema,
+  AddQapiPipBodySchema,
+  AddSraFindingBodySchema,
+  AdoptQapiProgramBodySchema,
+  BindCahpsVendorBodySchema,
+  CahpsDecedentListQuerySchema,
+  CahpsResultListQuerySchema,
+  CharterQapiProjectBodySchema,
+  CloseQapiPipBodySchema,
+  CloseSraCycleBodySchema,
+  CompleteMortalityReviewBodySchema,
+  CopCitationListQuerySchema,
+  CreateCahpsExportBodySchema,
+  CreateIncidentBodySchema,
+  CreateQapiIndicatorBodySchema,
+  EnqueueRecomputeBodySchema,
+  ExcludeCahpsDecedentBodySchema,
+  IncidentListQuerySchema,
+  InfectionEventListQuerySchema,
+  InfectionOutbreakListQuerySchema,
+  IngestCahpsResultsBodySchema,
+  MeasureListQuerySchema,
+  MeasureValuesQuerySchema,
+  MortalityListQuerySchema,
+  OpenInvestigationBodySchema,
+  OpenSraCycleBodySchema,
+  PlanSraRemediationBodySchema,
+  QapiGovernanceListQuerySchema,
+  QapiIndicatorListQuerySchema,
+  QapiPipListQuerySchema,
+  QapiProgramListQuerySchema,
+  QapiProjectListQuerySchema,
+  RecordInfectionEventBodySchema,
+  RecordQapiGovernanceBodySchema,
+  ReopenIncidentBodySchema,
+  ResolveIncidentBodySchema,
+  ReviewCopCitationBodySchema,
+  RiskRegisterListQuerySchema,
+  SraCycleListQuerySchema,
+  TriageIncidentBodySchema,
+  UpdateCopCitationBodySchema,
+  UpdateIncidentBodySchema,
+  UpdateInfectionOutbreakBodySchema,
+  UpdateMortalityReviewBodySchema,
+  UpdateQapiGovernanceBodySchema,
+  UpdateQapiIndicatorBodySchema,
+  UpdateQapiProjectBodySchema,
+  UpdateSraFindingBodySchema,
+  UpdateSraRemediationBodySchema,
+} from "../../apps/backend/src/modules/30-quality/routes/quality-typebox";
 import { OrderListQuerySchema } from "../../apps/backend/src/modules/11-orders/routes/orders-typebox";
 import {
   AdministrationListResponseSchema,
@@ -913,6 +965,215 @@ export interface RouteEnrichment {
 
 /** `METHOD /path` → enrichment. Keys MUST match a scanned route (openapi:check enforces). */
 export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
+  // ── M30 HQRP & Quality (§4.1–4.2). 47 routes across seven sub-surfaces (CAHPS / CoP / incidents /
+  // infection / measures / mortality / QAPI / SRA / risk register) published with NO request contract:
+  // the generated client typed every body and query as `never`, so nothing could call M30 in a typed way.
+  // Each entry reuses the SAME TypeBox schema the handler already `parse`s (quality-typebox.ts exports 65),
+  // so the published contract cannot drift from the validator.
+  //
+  // REQUEST side only. M30's read DTOs are not exported from its read-service, so typing the responses is a
+  // separate authoring job rather than a registration — tracked, not silently skipped.
+  "POST /api/v1/quality/cahps/vendor": {
+    summary: "Bind the org's CAHPS survey vendor (§4.1)",
+    body: BindCahpsVendorBodySchema,
+  },
+  "GET /api/v1/quality/cahps/decedents": {
+    summary: "Monthly CAHPS decedent sample (CMS exclusions applied)",
+    query: CahpsDecedentListQuerySchema,
+  },
+  "POST /api/v1/quality/cahps/decedents/:sampleId/exclude": {
+    summary: "Exclude a decedent from the CAHPS sample (CMS criteria)",
+    body: ExcludeCahpsDecedentBodySchema,
+  },
+  "POST /api/v1/quality/cahps/export": {
+    summary: "Open a CAHPS vendor export (encrypted caregiver PHI, §3.6)",
+    body: CreateCahpsExportBodySchema,
+  },
+  "POST /api/v1/quality/cahps/results/ingest": {
+    summary: "Ingest vendor-returned CAHPS result aggregates",
+    body: IngestCahpsResultsBodySchema,
+  },
+  "GET /api/v1/quality/cahps/results": {
+    summary: "Ingested CAHPS results by reporting period",
+    query: CahpsResultListQuerySchema,
+  },
+  "GET /api/v1/quality/cop/citations": {
+    summary: "CoP survey citations (§1.2 compliance posture)",
+    query: CopCitationListQuerySchema,
+  },
+  "PATCH /api/v1/quality/cop/citations/:citationId": {
+    summary: "Update a CoP citation's remediation state",
+    body: UpdateCopCitationBodySchema,
+  },
+  "POST /api/v1/quality/cop/citations/:citationId/review": {
+    summary: "Record a compliance review of a CoP citation",
+    body: ReviewCopCitationBodySchema,
+  },
+  "GET /api/v1/quality/incidents": {
+    summary: "Incident register (kind / severity / state filters)",
+    query: IncidentListQuerySchema,
+  },
+  "GET /api/v1/quality/incidents/abuse-allegations": {
+    summary: "Abuse-allegation incidents (mandatory-reporter surface)",
+    query: AbuseAllegationListQuerySchema,
+  },
+  "POST /api/v1/quality/incidents": {
+    summary: "Report an incident",
+    body: CreateIncidentBodySchema,
+  },
+  "PATCH /api/v1/quality/incidents/:incidentId": {
+    summary: "Update an incident",
+    body: UpdateIncidentBodySchema,
+  },
+  "POST /api/v1/quality/incidents/:incidentId/triage": {
+    summary: "Triage an incident (severity + routing)",
+    body: TriageIncidentBodySchema,
+  },
+  "POST /api/v1/quality/incidents/:incidentId/investigation": {
+    summary: "Append an investigation note",
+    body: AddInvestigationNoteBodySchema,
+  },
+  "POST /api/v1/quality/incidents/:incidentId/investigate": {
+    summary: "Open the investigation on an incident",
+    body: OpenInvestigationBodySchema,
+  },
+  "POST /api/v1/quality/incidents/:incidentId/resolve": {
+    summary: "Resolve an incident",
+    body: ResolveIncidentBodySchema,
+  },
+  "POST /api/v1/quality/incidents/:incidentId/reopen": {
+    summary: "Reopen a closed incident",
+    body: ReopenIncidentBodySchema,
+  },
+  "GET /api/v1/quality/infection/events": {
+    summary: "Infection surveillance events",
+    query: InfectionEventListQuerySchema,
+  },
+  "POST /api/v1/quality/infection/events": {
+    summary: "Record an infection surveillance event",
+    body: RecordInfectionEventBodySchema,
+  },
+  "GET /api/v1/quality/infection/outbreaks": {
+    summary: "Infection outbreak cases",
+    query: InfectionOutbreakListQuerySchema,
+  },
+  "PATCH /api/v1/quality/infection/outbreaks/:caseId": {
+    summary: "Update an outbreak case",
+    body: UpdateInfectionOutbreakBodySchema,
+  },
+  "GET /api/v1/quality/measures": {
+    summary: "The FY measure catalog + latest values (aggregate-only)",
+    query: MeasureListQuerySchema,
+  },
+  "GET /api/v1/quality/measures/:measureId/values": {
+    summary: "Measure value series across a window",
+    query: MeasureValuesQuerySchema,
+  },
+  "POST /api/v1/quality/measures/recompute": {
+    summary: "Enqueue a measure recompute (§4.8)",
+    body: EnqueueRecomputeBodySchema,
+  },
+  "GET /api/v1/quality/mortality": {
+    summary: "Mortality reviews (30-day target)",
+    query: MortalityListQuerySchema,
+  },
+  "PATCH /api/v1/quality/mortality/:reviewId": {
+    summary: "Update a mortality review",
+    body: UpdateMortalityReviewBodySchema,
+  },
+  "POST /api/v1/quality/mortality/:reviewId/complete": {
+    summary: "Complete a mortality review",
+    body: CompleteMortalityReviewBodySchema,
+  },
+  "GET /api/v1/quality/qapi/programs": {
+    summary: "QAPI programs",
+    query: QapiProgramListQuerySchema,
+  },
+  "POST /api/v1/quality/qapi/programs": {
+    summary: "Adopt a QAPI program",
+    body: AdoptQapiProgramBodySchema,
+  },
+  "PATCH /api/v1/quality/qapi/programs/:programId/governance": {
+    summary: "Update a QAPI program's governance cadence",
+    body: UpdateQapiGovernanceBodySchema,
+  },
+  "GET /api/v1/quality/qapi/indicators": {
+    summary: "QAPI indicators (tenant may TIGHTEN a platform target)",
+    query: QapiIndicatorListQuerySchema,
+  },
+  "POST /api/v1/quality/qapi/indicators": {
+    summary: "Create a QAPI indicator",
+    body: CreateQapiIndicatorBodySchema,
+  },
+  "PATCH /api/v1/quality/qapi/indicators/:indicatorId": {
+    summary: "Update a QAPI indicator",
+    body: UpdateQapiIndicatorBodySchema,
+  },
+  "GET /api/v1/quality/qapi/projects": {
+    summary: "QAPI projects by phase",
+    query: QapiProjectListQuerySchema,
+  },
+  "POST /api/v1/quality/qapi/projects": {
+    summary: "Charter a QAPI project",
+    body: CharterQapiProjectBodySchema,
+  },
+  "PATCH /api/v1/quality/qapi/projects/:projectId": {
+    summary: "Update a QAPI project",
+    body: UpdateQapiProjectBodySchema,
+  },
+  "GET /api/v1/quality/qapi/projects/:projectId/pips": {
+    summary: "PIPs under a QAPI project",
+    query: QapiPipListQuerySchema,
+  },
+  "POST /api/v1/quality/qapi/projects/:projectId/pips": {
+    summary: "Add a PIP to a QAPI project",
+    body: AddQapiPipBodySchema,
+  },
+  "POST /api/v1/quality/qapi/pips/:pipId/close": {
+    summary: "Close a PIP",
+    body: CloseQapiPipBodySchema,
+  },
+  "POST /api/v1/quality/qapi/governance": {
+    summary: "Record QAPI governance minutes",
+    body: RecordQapiGovernanceBodySchema,
+  },
+  "GET /api/v1/quality/qapi/governance": {
+    summary: "QAPI governance minutes",
+    query: QapiGovernanceListQuerySchema,
+  },
+  "GET /api/v1/quality/risk-register": {
+    summary: "Risk register — open SRA findings, incidents, CAPs, CoP status",
+    query: RiskRegisterListQuerySchema,
+  },
+  "GET /api/v1/quality/sra/cycles": {
+    summary: "Security risk assessment cycles (§164.308)",
+    query: SraCycleListQuerySchema,
+  },
+  "POST /api/v1/quality/sra/cycles": {
+    summary: "Open an SRA cycle",
+    body: OpenSraCycleBodySchema,
+  },
+  "POST /api/v1/quality/sra/cycles/:cycleId/findings": {
+    summary: "Add a finding to an SRA cycle",
+    body: AddSraFindingBodySchema,
+  },
+  "PATCH /api/v1/quality/sra/findings/:findingId": {
+    summary: "Update an SRA finding",
+    body: UpdateSraFindingBodySchema,
+  },
+  "POST /api/v1/quality/sra/findings/:findingId/remediation": {
+    summary: "Plan remediation for an SRA finding",
+    body: PlanSraRemediationBodySchema,
+  },
+  "PATCH /api/v1/quality/sra/remediation/:remediationId": {
+    summary: "Update an SRA remediation",
+    body: UpdateSraRemediationBodySchema,
+  },
+  "POST /api/v1/quality/sra/cycles/:cycleId/close": {
+    summary: "Close an SRA cycle (two-person close)",
+    body: CloseSraCycleBodySchema,
+  },
+
   // ── M25 Remittance & Denials (§4.1). The four cursor-paginated reads the built screens call get a
   // typed response so the client stops handing them `never` (the screens were casting through
   // `res.data as unknown as Page<DenialRow>` with a hand-maintained row shape); every write route gets

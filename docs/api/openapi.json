@@ -35160,7 +35160,54 @@
         "tags": [
           "30-quality"
         ],
-        "parameters": [],
+        "summary": "Monthly CAHPS decedent sample (CMS exclusions applied)",
+        "parameters": [
+          {
+            "name": "samplePeriodStart",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "samplePeriodEnd",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "eligibleOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -35180,6 +35227,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Exclude a decedent from the CAHPS sample (CMS criteria)",
         "parameters": [
           {
             "name": "sampleId",
@@ -35200,6 +35248,26 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "exclusionReason"
+                ],
+                "properties": {
+                  "exclusionReason": {
+                    "minLength": 4,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -35209,6 +35277,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Open a CAHPS vendor export (encrypted caregiver PHI, §3.6)",
         "parameters": [],
         "responses": {
           "200": {
@@ -35219,6 +35288,30 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "samplePeriodStart",
+                  "samplePeriodEnd"
+                ],
+                "properties": {
+                  "samplePeriodStart": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "samplePeriodEnd": {
+                    "format": "date",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -35258,7 +35351,56 @@
         "tags": [
           "30-quality"
         ],
-        "parameters": [],
+        "summary": "Ingested CAHPS results by reporting period",
+        "parameters": [
+          {
+            "name": "reportingPeriodStart",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "reportingPeriodEnd",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "measureId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -35278,6 +35420,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Ingest vendor-returned CAHPS result aggregates",
         "parameters": [],
         "responses": {
           "200": {
@@ -35288,6 +35431,78 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "vendorAdapterId",
+                  "reportingPeriodStart",
+                  "reportingPeriodEnd",
+                  "results",
+                  "payloadHash"
+                ],
+                "properties": {
+                  "vendorAdapterId": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "reportingPeriodStart": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "reportingPeriodEnd": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "results": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "measureId",
+                        "topBoxPercent",
+                        "respondentCount"
+                      ],
+                      "properties": {
+                        "measureId": {
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "type": "string"
+                        },
+                        "topBoxPercent": {
+                          "anyOf": [
+                            {
+                              "minimum": 0,
+                              "maximum": 100,
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "respondentCount": {
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  },
+                  "payloadHash": {
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -35316,6 +35531,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Bind the org's CAHPS survey vendor (§4.1)",
         "parameters": [],
         "responses": {
           "200": {
@@ -35327,6 +35543,31 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "vendorAdapterId",
+                  "effectiveFrom"
+                ],
+                "properties": {
+                  "vendorAdapterId": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -35336,7 +35577,28 @@
         "tags": [
           "30-quality"
         ],
-        "parameters": [],
+        "summary": "CoP survey citations (§1.2 compliance posture)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -35356,6 +35618,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Update a CoP citation's remediation state",
         "parameters": [
           {
             "name": "citationId",
@@ -35375,6 +35638,42 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "compliant",
+                        "type": "string"
+                      },
+                      {
+                        "const": "at_risk",
+                        "type": "string"
+                      },
+                      {
+                        "const": "deficient",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "evidencePointers": {
+                    "type": "array",
+                    "items": {
+                      "minLength": 1,
+                      "maxLength": 500,
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -35385,6 +35684,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Record a compliance review of a CoP citation",
         "parameters": [
           {
             "name": "citationId",
@@ -35405,6 +35705,26 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "attestation"
+                ],
+                "properties": {
+                  "attestation": {
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -35414,7 +35734,162 @@
         "tags": [
           "30-quality"
         ],
-        "parameters": [],
+        "summary": "Incident register (kind / severity / state filters)",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxItems": 6,
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "const": "fall",
+                    "type": "string"
+                  },
+                  {
+                    "const": "medication_error",
+                    "type": "string"
+                  },
+                  {
+                    "const": "complaint",
+                    "type": "string"
+                  },
+                  {
+                    "const": "allegation_of_abuse",
+                    "type": "string"
+                  },
+                  {
+                    "const": "exposure_event",
+                    "type": "string"
+                  },
+                  {
+                    "const": "other_safety_event",
+                    "type": "string"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxItems": 7,
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "const": "draft",
+                    "type": "string"
+                  },
+                  {
+                    "const": "submitted",
+                    "type": "string"
+                  },
+                  {
+                    "const": "triaged",
+                    "type": "string"
+                  },
+                  {
+                    "const": "under_investigation",
+                    "type": "string"
+                  },
+                  {
+                    "const": "resolved",
+                    "type": "string"
+                  },
+                  {
+                    "const": "closed_followup_complete",
+                    "type": "string"
+                  },
+                  {
+                    "const": "reopened",
+                    "type": "string"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxItems": 4,
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "const": "minor",
+                    "type": "string"
+                  },
+                  {
+                    "const": "moderate",
+                    "type": "string"
+                  },
+                  {
+                    "const": "severe",
+                    "type": "string"
+                  },
+                  {
+                    "const": "critical",
+                    "type": "string"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": "occurredAfter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "occurredBefore",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -35432,6 +35907,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Report an incident",
         "parameters": [],
         "responses": {
           "200": {
@@ -35442,6 +35918,86 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "severity",
+                  "occurredAt",
+                  "data"
+                ],
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "const": "fall",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medication_error",
+                        "type": "string"
+                      },
+                      {
+                        "const": "complaint",
+                        "type": "string"
+                      },
+                      {
+                        "const": "allegation_of_abuse",
+                        "type": "string"
+                      },
+                      {
+                        "const": "exposure_event",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other_safety_event",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "severity": {
+                    "anyOf": [
+                      {
+                        "const": "minor",
+                        "type": "string"
+                      },
+                      {
+                        "const": "moderate",
+                        "type": "string"
+                      },
+                      {
+                        "const": "severe",
+                        "type": "string"
+                      },
+                      {
+                        "const": "critical",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "occurredAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "data": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {}
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -35479,6 +36035,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Update an incident",
         "parameters": [
           {
             "name": "incidentId",
@@ -35498,6 +36055,48 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "severity": {
+                    "anyOf": [
+                      {
+                        "const": "minor",
+                        "type": "string"
+                      },
+                      {
+                        "const": "moderate",
+                        "type": "string"
+                      },
+                      {
+                        "const": "severe",
+                        "type": "string"
+                      },
+                      {
+                        "const": "critical",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "data": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {}
+                    }
+                  },
+                  "occurredAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -35537,6 +36136,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Open the investigation on an incident",
         "parameters": [
           {
             "name": "incidentId",
@@ -35556,6 +36156,60 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "rootCauseSummary",
+                  "actions",
+                  "verificationCriteria"
+                ],
+                "properties": {
+                  "rootCauseSummary": {
+                    "minLength": 40,
+                    "maxLength": 8000,
+                    "type": "string"
+                  },
+                  "actions": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "action",
+                        "ownerMembershipId",
+                        "dueAt"
+                      ],
+                      "properties": {
+                        "action": {
+                          "minLength": 1,
+                          "maxLength": 2000,
+                          "type": "string"
+                        },
+                        "ownerMembershipId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "dueAt": {
+                          "format": "date",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "verificationCriteria": {
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -35566,6 +36220,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Append an investigation note",
         "parameters": [
           {
             "name": "incidentId",
@@ -35585,6 +36240,26 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "body"
+                ],
+                "properties": {
+                  "body": {
+                    "minLength": 1,
+                    "maxLength": 16000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -35595,6 +36270,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Reopen a closed incident",
         "parameters": [
           {
             "name": "incidentId",
@@ -35614,6 +36290,26 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reopenReason"
+                ],
+                "properties": {
+                  "reopenReason": {
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -35624,6 +36320,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Resolve an incident",
         "parameters": [
           {
             "name": "incidentId",
@@ -35643,6 +36340,26 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "resolutionNote"
+                ],
+                "properties": {
+                  "resolutionNote": {
+                    "minLength": 1,
+                    "maxLength": 8000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -35682,6 +36399,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Triage an incident (severity + routing)",
         "parameters": [
           {
             "name": "incidentId",
@@ -35702,6 +36420,46 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "assignedToMembershipId",
+                  "severity"
+                ],
+                "properties": {
+                  "assignedToMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "severity": {
+                    "anyOf": [
+                      {
+                        "const": "minor",
+                        "type": "string"
+                      },
+                      {
+                        "const": "moderate",
+                        "type": "string"
+                      },
+                      {
+                        "const": "severe",
+                        "type": "string"
+                      },
+                      {
+                        "const": "critical",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -35711,7 +36469,28 @@
         "tags": [
           "30-quality"
         ],
-        "parameters": [],
+        "summary": "Abuse-allegation incidents (mandatory-reporter surface)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -35731,7 +36510,65 @@
         "tags": [
           "30-quality"
         ],
-        "parameters": [],
+        "summary": "Infection surveillance events",
+        "parameters": [
+          {
+            "name": "pathogen",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "observedAfter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "observedBefore",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -35749,6 +36586,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Record an infection surveillance event",
         "parameters": [],
         "responses": {
           "200": {
@@ -35760,6 +36598,42 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "patientId",
+                  "pathogen",
+                  "bodySite",
+                  "observedAt"
+                ],
+                "properties": {
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "pathogen": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "bodySite": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "observedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -35769,7 +36643,63 @@
         "tags": [
           "30-quality"
         ],
-        "parameters": [],
+        "summary": "Infection outbreak cases",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "open",
+                  "type": "string"
+                },
+                {
+                  "const": "notified",
+                  "type": "string"
+                },
+                {
+                  "const": "contained",
+                  "type": "string"
+                },
+                {
+                  "const": "resolved",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "pathogen",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -35789,6 +36719,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Update an outbreak case",
         "parameters": [
           {
             "name": "caseId",
@@ -35809,6 +36740,46 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "open",
+                        "type": "string"
+                      },
+                      {
+                        "const": "notified",
+                        "type": "string"
+                      },
+                      {
+                        "const": "contained",
+                        "type": "string"
+                      },
+                      {
+                        "const": "resolved",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "resolutionNote": {
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -35818,7 +36789,57 @@
         "tags": [
           "30-quality"
         ],
-        "parameters": [],
+        "summary": "The FY measure catalog + latest values (aggregate-only)",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "hci",
+                  "type": "string"
+                },
+                {
+                  "const": "hvldl",
+                  "type": "string"
+                },
+                {
+                  "const": "hope",
+                  "type": "string"
+                },
+                {
+                  "const": "cahps",
+                  "type": "string"
+                },
+                {
+                  "const": "operational",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -35838,12 +36859,31 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Measure value series across a window",
         "parameters": [
           {
             "name": "measureId",
             "in": "path",
             "required": true,
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "windowStart",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "windowEnd",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date",
               "type": "string"
             }
           }
@@ -35904,6 +36944,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Enqueue a measure recompute (§4.8)",
         "parameters": [],
         "responses": {
           "200": {
@@ -35914,6 +36955,106 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "scope",
+                  "reason"
+                ],
+                "properties": {
+                  "scope": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "all",
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "measureId"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "measure",
+                            "type": "string"
+                          },
+                          "measureId": {
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "domain"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "domain",
+                            "type": "string"
+                          },
+                          "domain": {
+                            "anyOf": [
+                              {
+                                "const": "hci",
+                                "type": "string"
+                              },
+                              {
+                                "const": "hvldl",
+                                "type": "string"
+                              },
+                              {
+                                "const": "hope",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cahps",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 240,
+                    "type": "string"
+                  },
+                  "priority": {
+                    "anyOf": [
+                      {
+                        "const": "normal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "high",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -35944,7 +37085,58 @@
         "tags": [
           "30-quality"
         ],
-        "parameters": [],
+        "summary": "Mortality reviews (30-day target)",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "created",
+                  "type": "string"
+                },
+                {
+                  "const": "in_progress",
+                  "type": "string"
+                },
+                {
+                  "const": "completed",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -35991,6 +37183,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Update a mortality review",
         "parameters": [
           {
             "name": "reviewId",
@@ -36010,6 +37203,45 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dimensions": {
+                    "type": "object",
+                    "properties": {
+                      "clinical": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      },
+                      "satisfaction": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      },
+                      "compliance": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      }
+                    }
+                  },
+                  "assignedToMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -36020,6 +37252,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Complete a mortality review",
         "parameters": [
           {
             "name": "reviewId",
@@ -36040,6 +37273,49 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "dimensions"
+                ],
+                "properties": {
+                  "dimensions": {
+                    "type": "object",
+                    "required": [
+                      "clinical",
+                      "satisfaction",
+                      "compliance"
+                    ],
+                    "properties": {
+                      "clinical": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      },
+                      "satisfaction": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      },
+                      "compliance": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -36049,7 +37325,28 @@
         "tags": [
           "30-quality"
         ],
-        "parameters": [],
+        "summary": "QAPI governance minutes",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -36067,6 +37364,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Record QAPI governance minutes",
         "parameters": [],
         "responses": {
           "200": {
@@ -36078,6 +37376,59 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "qapiProgramId",
+                  "meetingAt",
+                  "summary",
+                  "attendees"
+                ],
+                "properties": {
+                  "qapiProgramId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "meetingAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "summary": {
+                    "minLength": 1,
+                    "maxLength": 16000,
+                    "type": "string"
+                  },
+                  "attendees": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "role",
+                        "membershipId"
+                      ],
+                      "properties": {
+                        "role": {
+                          "minLength": 1,
+                          "maxLength": 120,
+                          "type": "string"
+                        },
+                        "membershipId": {
+                          "format": "uuid",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -36087,7 +37438,28 @@
         "tags": [
           "30-quality"
         ],
-        "parameters": [],
+        "summary": "QAPI indicators (tenant may TIGHTEN a platform target)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -36105,6 +37477,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Create a QAPI indicator",
         "parameters": [],
         "responses": {
           "200": {
@@ -36116,6 +37489,59 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "qapiProgramId",
+                  "displayName",
+                  "thresholdDirection",
+                  "thresholdValue",
+                  "dataPath"
+                ],
+                "properties": {
+                  "qapiProgramId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "measureId": {
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "type": "string"
+                  },
+                  "thresholdDirection": {
+                    "anyOf": [
+                      {
+                        "const": "min",
+                        "type": "string"
+                      },
+                      {
+                        "const": "max",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "thresholdValue": {
+                    "type": "number"
+                  },
+                  "dataPath": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -36125,6 +37551,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Update a QAPI indicator",
         "parameters": [
           {
             "name": "indicatorId",
@@ -36145,6 +37572,38 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "thresholdValue": {
+                    "type": "number"
+                  },
+                  "thresholdDirection": {
+                    "anyOf": [
+                      {
+                        "const": "min",
+                        "type": "string"
+                      },
+                      {
+                        "const": "max",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "displayName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -36154,6 +37613,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Close a PIP",
         "parameters": [
           {
             "name": "pipId",
@@ -36174,6 +37634,50 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "conclusionText",
+                  "outcome",
+                  "cosign"
+                ],
+                "properties": {
+                  "conclusionText": {
+                    "minLength": 1,
+                    "maxLength": 8000,
+                    "type": "string"
+                  },
+                  "outcome": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "cosign": {
+                    "type": "object",
+                    "required": [
+                      "qapiCoordinatorMembershipId",
+                      "medicalDirectorMembershipId"
+                    ],
+                    "properties": {
+                      "qapiCoordinatorMembershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "medicalDirectorMembershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -36183,7 +37687,28 @@
         "tags": [
           "30-quality"
         ],
-        "parameters": [],
+        "summary": "QAPI programs",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -36201,6 +37726,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Adopt a QAPI program",
         "parameters": [],
         "responses": {
           "200": {
@@ -36212,6 +37738,49 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "planYear",
+                  "governanceComposition"
+                ],
+                "properties": {
+                  "planYear": {
+                    "minimum": 2000,
+                    "maximum": 2100,
+                    "type": "integer"
+                  },
+                  "governanceComposition": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "role",
+                        "membershipId"
+                      ],
+                      "properties": {
+                        "role": {
+                          "minLength": 1,
+                          "maxLength": 120,
+                          "type": "string"
+                        },
+                        "membershipId": {
+                          "format": "uuid",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -36221,6 +37790,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Update a QAPI program's governance cadence",
         "parameters": [
           {
             "name": "programId",
@@ -36241,6 +37811,43 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "governanceComposition"
+                ],
+                "properties": {
+                  "governanceComposition": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "role",
+                        "membershipId"
+                      ],
+                      "properties": {
+                        "role": {
+                          "minLength": 1,
+                          "maxLength": 120,
+                          "type": "string"
+                        },
+                        "membershipId": {
+                          "format": "uuid",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -36250,7 +37857,70 @@
         "tags": [
           "30-quality"
         ],
-        "parameters": [],
+        "summary": "QAPI projects by phase",
+        "parameters": [
+          {
+            "name": "phase",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxItems": 5,
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "const": "proposed",
+                    "type": "string"
+                  },
+                  {
+                    "const": "active",
+                    "type": "string"
+                  },
+                  {
+                    "const": "corrective_action",
+                    "type": "string"
+                  },
+                  {
+                    "const": "completed",
+                    "type": "string"
+                  },
+                  {
+                    "const": "abandoned",
+                    "type": "string"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": "programId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -36268,6 +37938,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Charter a QAPI project",
         "parameters": [],
         "responses": {
           "200": {
@@ -36279,6 +37950,41 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "qapiProgramId",
+                  "title",
+                  "charterNarrative"
+                ],
+                "properties": {
+                  "qapiProgramId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "title": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "indicatorId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "charterNarrative": {
+                    "minLength": 1,
+                    "maxLength": 8000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -36288,6 +37994,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Update a QAPI project",
         "parameters": [
           {
             "name": "projectId",
@@ -36308,6 +38015,54 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phase": {
+                    "anyOf": [
+                      {
+                        "const": "proposed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "active",
+                        "type": "string"
+                      },
+                      {
+                        "const": "corrective_action",
+                        "type": "string"
+                      },
+                      {
+                        "const": "completed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "abandoned",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "interventions": {
+                    "type": "array",
+                    "items": {
+                      "minLength": 1,
+                      "maxLength": 2000,
+                      "type": "string"
+                    }
+                  },
+                  "ledByMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -36317,6 +38072,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "PIPs under a QAPI project",
         "parameters": [
           {
             "name": "projectId",
@@ -36324,6 +38080,25 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
             }
           }
         ],
@@ -36344,6 +38119,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Add a PIP to a QAPI project",
         "parameters": [
           {
             "name": "projectId",
@@ -36364,6 +38140,26 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "charterText"
+                ],
+                "properties": {
+                  "charterText": {
+                    "minLength": 1,
+                    "maxLength": 8000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -36373,7 +38169,86 @@
         "tags": [
           "30-quality"
         ],
-        "parameters": [],
+        "summary": "Risk register — open SRA findings, incidents, CAPs, CoP status",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "incident",
+                  "type": "string"
+                },
+                {
+                  "const": "qapi",
+                  "type": "string"
+                },
+                {
+                  "const": "sra",
+                  "type": "string"
+                },
+                {
+                  "const": "infection",
+                  "type": "string"
+                },
+                {
+                  "const": "cop",
+                  "type": "string"
+                },
+                {
+                  "const": "measure",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "critical",
+                  "type": "string"
+                },
+                {
+                  "const": "high",
+                  "type": "string"
+                },
+                {
+                  "const": "medium",
+                  "type": "string"
+                },
+                {
+                  "const": "low",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -36413,7 +38288,28 @@
         "tags": [
           "30-quality"
         ],
-        "parameters": [],
+        "summary": "Security risk assessment cycles (§164.308)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -36431,6 +38327,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Open an SRA cycle",
         "parameters": [],
         "responses": {
           "200": {
@@ -36441,6 +38338,26 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "cycleYear"
+                ],
+                "properties": {
+                  "cycleYear": {
+                    "minimum": 2000,
+                    "maximum": 2100,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -36480,6 +38397,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Close an SRA cycle (two-person close)",
         "parameters": [
           {
             "name": "cycleId",
@@ -36499,6 +38417,38 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "cosign"
+                ],
+                "properties": {
+                  "cosign": {
+                    "type": "object",
+                    "required": [
+                      "securityOfficerMembershipId",
+                      "complianceOfficerMembershipId"
+                    ],
+                    "properties": {
+                      "securityOfficerMembershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "complianceOfficerMembershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -36509,6 +38459,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Add a finding to an SRA cycle",
         "parameters": [
           {
             "name": "cycleId",
@@ -36529,6 +38480,49 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "findingNumber",
+                  "controlRef",
+                  "likelihood",
+                  "impact",
+                  "description"
+                ],
+                "properties": {
+                  "findingNumber": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "controlRef": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "likelihood": {
+                    "minimum": 1,
+                    "maximum": 5,
+                    "type": "integer"
+                  },
+                  "impact": {
+                    "minimum": 1,
+                    "maximum": 5,
+                    "type": "integer"
+                  },
+                  "description": {
+                    "minLength": 1,
+                    "maxLength": 8000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -36538,6 +38532,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Update an SRA finding",
         "parameters": [
           {
             "name": "findingId",
@@ -36557,6 +38552,52 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "likelihood": {
+                    "minimum": 1,
+                    "maximum": 5,
+                    "type": "integer"
+                  },
+                  "impact": {
+                    "minimum": 1,
+                    "maximum": 5,
+                    "type": "integer"
+                  },
+                  "disposition": {
+                    "anyOf": [
+                      {
+                        "const": "open",
+                        "type": "string"
+                      },
+                      {
+                        "const": "accepted",
+                        "type": "string"
+                      },
+                      {
+                        "const": "remediating",
+                        "type": "string"
+                      },
+                      {
+                        "const": "remediated",
+                        "type": "string"
+                      },
+                      {
+                        "const": "transferred",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -36567,6 +38608,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Plan remediation for an SRA finding",
         "parameters": [
           {
             "name": "findingId",
@@ -36587,6 +38629,40 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "remediationNumber",
+                  "plan",
+                  "ownerMembershipId"
+                ],
+                "properties": {
+                  "remediationNumber": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "plan": {
+                    "minLength": 1,
+                    "maxLength": 8000,
+                    "type": "string"
+                  },
+                  "ownerMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "dueAt": {
+                    "format": "date",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -36596,6 +38672,7 @@
         "tags": [
           "30-quality"
         ],
+        "summary": "Update an SRA remediation",
         "parameters": [
           {
             "name": "remediationId",
@@ -36615,6 +38692,42 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "planned",
+                        "type": "string"
+                      },
+                      {
+                        "const": "in_progress",
+                        "type": "string"
+                      },
+                      {
+                        "const": "completed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "deferred",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "dueAt": {
+                    "format": "date",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
