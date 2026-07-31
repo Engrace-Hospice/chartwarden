@@ -121,6 +121,43 @@ export const M19_ERROR_STATUS = {
   PAPER_REENTRY_WORKLIST_EXPIRED: 409,
   /** §3.3 `m19_triage_paper_reentry_pair` — the worklist row already names a re-entered call. */
   PAPER_REENTRY_ALREADY_LINKED: 409,
+
+  // ── §2.2.2 / D2 / D3 on-call shift lifecycle (M19-T04) ─────────────────────────────────────────────
+  /** §2.2.2 — an edge that does not exist for this (status, command) pair. */
+  SHIFT_INVALID_STATE_TRANSITION: 409,
+  /** §2.2.2 — `completed` / `cancelled`; no command advances out of either. */
+  SHIFT_TERMINAL: 409,
+  /** §2.5 — optimistic concurrency on `on_call_shift`. */
+  SHIFT_STALE_VERSION: 412,
+  /** §2.2.2 / §4.8 — the shift-open cron opens shifts whose `shift_starts_at <= now()`. Activating before
+   *  the window begins would enter a CoP 418.100(c)(2) coverage claim for hours nobody agreed to cover. */
+  SHIFT_NOT_YET_STARTED: 409,
+  /** D7 — `activateShift` with no `tenant_oncall_policy` row to pin. `policy_snapshot` is the survey
+   *  evidence of which escalation ladder was live; a shift that opens without one can never prove it. */
+  SHIFT_POLICY_SNAPSHOT_REQUIRED: 422,
+  /** §2.2.2 — `cancelShift(reason)` with nothing to record. A cancelled shift is a coverage window the
+   *  agency deliberately gave up; why is the only thing the row exists to say. */
+  SHIFT_CANCEL_REASON_REQUIRED: 422,
+
+  // ── §4.5 / D3 the M17 roster sync (M19-T04) ────────────────────────────────────────────────────────
+  /** §4.5 — an `OnCallRosterEntry.discipline` string that maps to no `oncall_shift_discipline` member.
+   *  Reported per entry rather than thrown (see `reconcileOnCallRoster`); this code names it when a caller
+   *  asks for the mapping directly. */
+  ROSTER_DISCIPLINE_UNMAPPED: 422,
+
+  // ── D10 the M17/M18 inbound triggers (M19-T04) ─────────────────────────────────────────────────────
+  /** §7.6 / §4.8 — the source visit could not be read back through M17's `VisitReader`. Every M19 PHI row
+   *  needs `organization_id` + `provider_entity_id` NOT NULL and the trigger payloads carry neither, so a
+   *  visit that will not resolve dead-letters rather than anchoring a call to a guessed tenancy. */
+  TRIGGER_VISIT_UNRESOLVED: 422,
+  /** D10 — `triage_call.on_call_shift_id` is NOT NULL: a proactive call has to belong to somebody's shift.
+   *  No shift covering the trigger instant IS the coverage gap; the consumer surfaces it as one (see
+   *  `decideNoShowTrigger`) rather than retrying into a dead-letter queue nobody reads at 2 a.m. */
+  TRIGGER_NO_COVERING_SHIFT: 409,
+  /** D10 — the trigger names an organization other than the one the worker is running under. M17/M18
+   *  payloads travel through the M1 outbox with their own envelope; a mismatch is a routing fault, and
+   *  opening the call anyway would write a row for the wrong tenant. */
+  TRIGGER_ORG_MISMATCH: 409,
   /** §2.7 step 1 — `paper_origin_flag` and `source='paper_origin'` move together (the §3.3 CHECK), and so
    *  do the flag and `paper_original_opened_at`. */
   PAPER_ORIGIN_FIELDS_INCOHERENT: 422,

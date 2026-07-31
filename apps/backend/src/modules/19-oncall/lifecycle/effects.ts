@@ -13,9 +13,9 @@
 //
 // TIMESTAMP FIELDS ARE A CLOSED UNION, not `string`. M21-T03's finding: a `set_timestamp` effect naming a
 // column the schema does not have compiles clean and passes every gate, because a pure machine's effects
-// type-check against nothing. `TriageTimestampField` lists the six `triage_call` / `triage_escalation`
-// timestamp columns migration 0107 actually created; a seventh is a compile error here rather than a
-// silent no-op at 2 a.m.
+// type-check against nothing. `TriageTimestampField` lists the `triage_call` / `triage_escalation` /
+// `on_call_shift` timestamp columns migration 0107 actually created; one more is a compile error here
+// rather than a silent no-op at 2 a.m.
 import type {
   IsoInstant,
   M19EventName,
@@ -30,14 +30,22 @@ import type {
   TriageProtocolQuestionId,
 } from "@wardenx/types";
 
-/** The timestamp columns a transition may stamp — exactly the ones in migration 0107. */
+/**
+ * The timestamp columns a transition may stamp — exactly the ones in migration 0107.
+ *
+ * `opened_at` / `closed_at` belong to `on_call_shift` (M19-T04's §2.2.2 machine); `closed_at` is spelled
+ * the same on `triage_call`, and that collision is safe because an effect list is always read against the
+ * ONE aggregate whose transition produced it — the call machine never returns a shift effect and vice
+ * versa. Splitting the union per aggregate would buy nothing the effect-runner does not already know.
+ */
 export type TriageTimestampField =
   | "first_response_at"
   | "documented_at"
   | "closed_at"
   | "acknowledged_at"
   | "resolved_at"
-  | "reentered_at";
+  | "reentered_at"
+  | "opened_at";
 
 /** One in-transaction side effect a transition declares (§2.4). */
 export type TriageSideEffect =
@@ -114,7 +122,17 @@ export type TriageSideEffect =
    *  with M2 step-up (§7.7); M19 stores only the id it gets back. */
   | { readonly kind: "link_verbal_order"; readonly orderRecordId: string }
   /** §2.7 step 3 — close a `triage_paper_reentry_worklist` row against the re-entered call. */
-  | { readonly kind: "link_paper_reentry_worklist"; readonly worklistId: string };
+  | { readonly kind: "link_paper_reentry_worklist"; readonly worklistId: string }
+  /**
+   * D7 / §2.2.2 (M19-T04) — pin `on_call_shift.policy_snapshot` to the `tenant_oncall_policy` row as it
+   * stands at the `scheduled → active` transition, so a later policy edit cannot retroactively change
+   * what escalation ladder was in effect during a past night.
+   *
+   * The snapshot is carried as an opaque value rather than a typed policy shape: the column is `jsonb` and
+   * its whole purpose is to preserve the policy row VERBATIM, including any field a future migration adds.
+   * Narrowing it to today's fields here would silently drop tomorrow's from the survey record.
+   */
+  | { readonly kind: "pin_policy_snapshot"; readonly snapshot: unknown };
 
 /** A transition's full result — the new state + its ordered side-effect list. */
 export interface TriageTransitionResult<S extends string, C extends string> {

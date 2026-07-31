@@ -12,9 +12,20 @@
 // platform-floor protocols migration 0109 seeds (§3.2 Phase E, deferred out of T02 because the seed
 // encodes the `red_flag_match` predicate shape the engine owns).
 //
-// Still to land: the M17/M18 inbound triggers (T04), the M8/M11/M12 seam consumers (T05), the five
-// published reader seams (T06), routes/permissions/ABAC (T07) and the §5 screens (T08).
+// M19-T04 lands the on-call roster and the two D10 inbound triggers — the first cross-module BINDS this
+// module makes. `roster/` holds the §2.2.2 shift machine and the §4.5 reconciliation of M17's
+// `VisitAssignmentReader.tonightsOnCallRoster` into `on_call_shift` rows (closing M17's Wave-F on-call
+// roster deny-stub); `consumers/` holds the `m17.visit.no_show_detected` (§7.6) and
+// `m18.evv.late_check_out_detected` (§4.8) deciders that open a proactive welfare-check call, closing M17's
+// and M18's Phase-1 inert consumers. `seams/consumed.ts` is the only place M19 reaches across a module
+// boundary, and it does so through the M1 registry — never a schema import.
+//
+// Still to land: the M8/M11/M12 seam consumers (T05), the five published reader seams (T06),
+// routes/permissions/ABAC (T07) and the §5 screens (T08).
 export * from "./lifecycle";
+export * from "./roster";
+export * from "./consumers";
+export { getVisitAssignmentReader, getVisitReader } from "./seams/consumed";
 export {
   type InMemoryTriageEraseSeed,
   type TriageEraseCounts,
