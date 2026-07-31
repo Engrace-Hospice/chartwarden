@@ -46,6 +46,7 @@ import type {
   HopeOrgRollupProvider,
   HopeSubmissionProvider,
   HopeTimepointProvider,
+  HospitalizationRiskProvider,
   IdgDecisionProvider,
   IdgPacketProvider,
   IdgScheduleProvider,
@@ -56,13 +57,16 @@ import type {
   MedicationOrderProvider,
   MileagePayrollReader,
   MswRiskFactorReader,
+  OnCallProvider,
   OrderProvider,
   OrderSignatureProvider,
   PatientCoverageReader,
   PatientMutator,
   PatientReader,
   PortalDocumentReader,
+  PortalTriageReader,
   PortalVisitReader,
+  ProtocolSuggestionProvider,
   ReconciliationProvider,
   RefillInboxProvider,
   RenderedDocumentProvider,
@@ -75,6 +79,9 @@ import type {
   SupervisoryCadencePlanReader,
   SupervisoryCadenceReader,
   TenantOrgCreationProvider,
+  TriageCallMetricsProvider,
+  TriageCallProvider,
+  TriageCallReader,
   VisitAssignmentReader,
   VisitMetricsProvider,
   VisitReader,
@@ -1059,6 +1066,105 @@ export const supplyCostProviderDenyStub: SupplyCostProvider = {
   },
   getOrgSupplySpendSummary() {
     throw new NotImplementedError("SupplyCostProvider");
+  },
+};
+
+// M19 (On-Call Triage) §4.3 PUBLISHED seams (M19-T06). LEAF-TYPED (interfaces in @wardenx/types), so each
+// gets a concrete typed deny-stub that denies until `registerOncallSeams()` stands the real impl over it.
+//
+// ALL FIVE THROW, and `OnCallProvider` is the one that decides the shape. It answers "who is on call right
+// now" for M36's alert routing and M20's after-hours SOS. An unregistered/unreadable M19 must NOT resolve to
+// an empty actor list: `[]` is a real, meaningful answer there — it means a COVERAGE GAP, the thing the §4.8
+// watchdog exists to alert on — and returning it on an outage would silently swallow a 2 a.m. escalation
+// into "nobody was on call". A throw is what lets M36 fall back to its degraded alert path (the same
+// distinction `OnCallRosterRead` draws on the consumed side, M19-T04).
+export const onCallProviderDenyStub: OnCallProvider = {
+  currentOnCallActors() {
+    throw new NotImplementedError("OnCallProvider");
+  },
+  activeShiftsAt() {
+    throw new NotImplementedError("OnCallProvider");
+  },
+};
+
+/** M19 — M32's PHI-free feature read + M14's since-last-IDG digest. */
+export const triageCallReaderDenyStub: TriageCallReader = {
+  recentCallsForPatient() {
+    throw new NotImplementedError("TriageCallReader");
+  },
+  callsForPatientSince() {
+    throw new NotImplementedError("TriageCallReader");
+  },
+};
+
+/** M19 — M14's full packet slice + M11's verbal-order → triage-context reverse lookup. */
+export const triageCallProviderDenyStub: TriageCallProvider = {
+  callForPacket() {
+    throw new NotImplementedError("TriageCallProvider");
+  },
+  triageContextForVerbalOrder() {
+    throw new NotImplementedError("TriageCallProvider");
+  },
+};
+
+/** M19 — the ONLY M19 surface M31's portal may reach (lay-language, D11/D13 scrubbed). */
+export const portalTriageReaderDenyStub: PortalTriageReader = {
+  summaryForPatient() {
+    throw new NotImplementedError("PortalTriageReader");
+  },
+};
+
+/** M19 — M30/M33 operational + quality measures. Throws rather than answering 0: a zeroed p95 or a
+ *  fabricated `{numerator:0, denominator:0}` is a reportable misstatement on a quality surface, not a
+ *  degraded read (the M21 `SupplyCostProvider` posture, for the same reason). */
+export const triageCallMetricsProviderDenyStub: TriageCallMetricsProvider = {
+  getResponseTimeP95() {
+    throw new NotImplementedError("TriageCallMetricsProvider");
+  },
+  getHospitalizationAvoidanceRate() {
+    throw new NotImplementedError("TriageCallMetricsProvider");
+  },
+  getHospitalizationAvoidanceCounts() {
+    throw new NotImplementedError("TriageCallMetricsProvider");
+  },
+  getEscalationDistribution() {
+    throw new NotImplementedError("TriageCallMetricsProvider");
+  },
+  getAfterHoursVisitConversionRate() {
+    throw new NotImplementedError("TriageCallMetricsProvider");
+  },
+  getAfterHoursVisitConversionCounts() {
+    throw new NotImplementedError("TriageCallMetricsProvider");
+  },
+  getChiefComplaintPareto() {
+    throw new NotImplementedError("TriageCallMetricsProvider");
+  },
+  getCoverageGapMinutes() {
+    throw new NotImplementedError("TriageCallMetricsProvider");
+  },
+};
+
+// M32 (AI Platform) — the two ADVISORY seams M19 consumes (§4.4 / §8.6, D11/D12). Non-throwing deny-stubs,
+// deliberately, on the `tenantOrgCreationProviderDenyStub` precedent above: the contract's own discriminated
+// result is the degradation path, so denying is expressed as a VALUE rather than an exception.
+//
+// Every other seam here guards a fact a caller acts on, so denying is the safe direction. These two guard
+// an ADVISORY that architecture §17 / D11 / D12 forbid from gating anything: the clinician selects the
+// protocol and the disposition either way. Throwing would let an unlanded M32 take down the 2 a.m.
+// call-open path on behalf of a banner. §8.6 is explicit about the alternative — with M32 deny-stubbed the
+// AI block renders "visibly disabled — no silent fallback or guess" and `m19_ai_block_disabled_total`
+// counts it — which needs `unavailable` to arrive as a VALUE the caller can branch on, distinct from the
+// model genuinely having no suggestion. `provider_unregistered` is exactly what these are.
+export const protocolSuggestionProviderDenyStub: ProtocolSuggestionProvider = {
+  async suggestProtocol() {
+    return { kind: "unavailable", reason: "provider_unregistered" };
+  },
+};
+
+/** M32 — D11's 30-day risk band. Same non-throwing advisory posture as its sibling above. */
+export const hospitalizationRiskProviderDenyStub: HospitalizationRiskProvider = {
+  async hospitalizationRiskForPatient() {
+    return { kind: "unavailable", reason: "provider_unregistered" };
   },
 };
 

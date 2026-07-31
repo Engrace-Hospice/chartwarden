@@ -64,6 +64,7 @@ import {
   hopeOrgRollupProviderDenyStub,
   hopeSubmissionProviderDenyStub,
   hopeTimepointProviderDenyStub,
+  hospitalizationRiskProviderDenyStub,
   idgDecisionProviderDenyStub,
   idgPacketProviderDenyStub,
   idgScheduleProviderDenyStub,
@@ -77,6 +78,7 @@ import {
   metricsProviderDenyStub,
   mileagePayrollReaderDenyStub,
   mswRiskFactorReaderDenyStub,
+  onCallProviderDenyStub,
   orderProviderDenyStub,
   orderSignatureProviderDenyStub,
   patientCoverageReaderDenyStub,
@@ -84,7 +86,9 @@ import {
   patientMutatorDenyStub,
   patientReaderDenyStub,
   portalDocumentReaderDenyStub,
+  portalTriageReaderDenyStub,
   portalVisitReaderDenyStub,
+  protocolSuggestionProviderDenyStub,
   reconciliationProviderDenyStub,
   refillInboxProviderDenyStub,
   renderedDocumentProviderDenyStub,
@@ -97,6 +101,9 @@ import {
   supplyFulfillmentProviderDenyStub,
   tenantOrgCreationProviderDenyStub,
   terminologyProviderDenyStub,
+  triageCallMetricsProviderDenyStub,
+  triageCallProviderDenyStub,
+  triageCallReaderDenyStub,
   visitAssignmentReaderDenyStub,
   visitMetricsProviderDenyStub,
   visitReaderDenyStub,
@@ -791,6 +798,63 @@ export const REQUIRED_SEAMS = [
     ownerModule: 21,
     phi: true,
     denyStub: supplyCostProviderDenyStub,
+  },
+  // M19 (On-Call Triage) §4.3 PUBLISHED seams (M19-T06). Five read surfaces over M19's `on_call_shift` /
+  // `triage_call` / `triage_call_answer` / `triage_escalation` / `triage_protocol` rows that M14 (IDG
+  // packet), M20 (after-hours SOS recipient), M30/M33 (operational + quality measures), M31 (portal
+  // care-log), M32 (hospitalization-risk features) and M36 (`on_call` channel membership + alert routing)
+  // attach to instead of importing M19's schema (architecture §25.15).
+  //
+  // PHI split — per SEAM, decided by its widest method:
+  //   • `OnCallProvider` is phi: FALSE. Nothing on it names a patient: a shift row is staffing evidence
+  //     (CoP 418.100(c)(2)), and the actors are memberships and vendor labels. It is still boot-validated
+  //     and fail-closed, because "who is on call" is what routes a 2 a.m. escalation.
+  //   • `TriageCallReader` is phi: TRUE even though `TriageCallFeatureDto` carries no verbatim PHI —
+  //     `recentCallsForPatient` names a patient and returns that patient's after-hours history, and the
+  //     digest arm carries the chief-complaint label. A "features only" DTO does not de-identify the
+  //     REQUEST.
+  //   • `TriageCallProvider` and `PortalTriageReader` are phi: TRUE (a full call slice; a family-facing
+  //     care-log entry for one patient).
+  //   • `TriageCallMetricsProvider` is phi: FALSE — window-scoped aggregates only, no patient argument
+  //     and no per-patient row (the M17 `VisitMetricsProvider` / M18 `EvvMetricsProvider` precedent).
+  { key: "OnCallProvider", ownerModule: 19, phi: false, denyStub: onCallProviderDenyStub },
+  { key: "TriageCallReader", ownerModule: 19, phi: true, denyStub: triageCallReaderDenyStub },
+  {
+    key: "TriageCallProvider",
+    ownerModule: 19,
+    phi: true,
+    denyStub: triageCallProviderDenyStub,
+  },
+  {
+    key: "PortalTriageReader",
+    ownerModule: 19,
+    phi: true,
+    denyStub: portalTriageReaderDenyStub,
+  },
+  {
+    key: "TriageCallMetricsProvider",
+    ownerModule: 19,
+    phi: false,
+    denyStub: triageCallMetricsProviderDenyStub,
+  },
+  // M32 (AI Platform) — the two ADVISORY seams M19 consumes (§4.4 / §8.6, D11/D12). Owned by M32, which is
+  // a placeholder module, so these stand on their deny-stubs until it lands. Both are phi: TRUE — the
+  // suggestion input carries the caller's chief-complaint free text and the risk read names a patient, and
+  // PHI leaving the platform for a model is exactly the boundary AI Governance §2.1.4 governs.
+  //
+  // Their deny-stubs do NOT throw (see providers.ts): an advisory that D11/D12 forbid from gating anything
+  // must not be able to fail the intake path. `unavailable` is the answer, and it is a value, not silence.
+  {
+    key: "ProtocolSuggestionProvider",
+    ownerModule: 32,
+    phi: true,
+    denyStub: protocolSuggestionProviderDenyStub,
+  },
+  {
+    key: "HospitalizationRiskProvider",
+    ownerModule: 32,
+    phi: true,
+    denyStub: hospitalizationRiskProviderDenyStub,
   },
 ] satisfies readonly RequiredSeam[];
 

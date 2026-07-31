@@ -11,11 +11,14 @@
 // M15-T03 / M16-T03 / M21-T04 each use.
 //
 // The seams M19 PUBLISHES (§4.3 `OnCallProvider`, `TriageCallReader`, `TriageCallProvider`,
-// `PortalTriageReader`, `TriageCallMetricsProvider`) land in M19-T06.
+// `PortalTriageReader`, `TriageCallMetricsProvider`) land in `./index.ts` (M19-T06), alongside the two
+// ADVISORY M32 seams added at the bottom of this file.
 import type {
   EncounterCreator,
+  HospitalizationRiskProvider,
   MedicationOrderProvider,
   OrderSignatureProvider,
+  ProtocolSuggestionProvider,
   RefillInboxProvider,
   VisitAssignmentReader,
   VisitReader,
@@ -96,4 +99,35 @@ export function getRefillInboxProvider(): RefillInboxProvider {
  */
 export function getMedicationOrderProvider(): MedicationOrderProvider {
   return getSeam("MedicationOrderProvider");
+}
+
+// ── §4.4 / §8.6 the two ADVISORY M32 seams (D11 / D12), added at M19-T06 ─────────────────────────────
+//
+// Both stand on NON-THROWING deny-stubs until M32 lands (`apps/backend/src/bootstrap/seams/providers.ts`),
+// which is the whole reason these accessors are safe to call from the intake path: architecture §17 and
+// D11/D12 forbid either advisory from gating anything, so an unlanded M32 must degrade to a disabled AI
+// block (§8.6: "visibly disabled — no silent fallback or guess"), never to a failed call-open. The
+// `unavailable` arm is a VALUE the caller branches on, distinct from the model having no suggestion.
+//
+// The CONSUMER services these feed (the D12 suggestion handler and the D11 intake advisory loader) are
+// spec §10 tasks 39/40 and land with the M19-T07 route layer; what M19-T06 owns is the registered,
+// boot-validated contract they will resolve.
+
+/**
+ * M19 CONSUMES M32's §8.6 `ProtocolSuggestionProvider` (D12). ADVISORY: the suggestion is recorded on
+ * `triage_call.suggested_protocol_id` / `suggested_protocol_confidence` and DISPLAYED; the clinician must
+ * explicitly select or override, and nothing M32 returns may move a `triage_call` row.
+ */
+export function getProtocolSuggestionProvider(): ProtocolSuggestionProvider {
+  return getSeam("ProtocolSuggestionProvider");
+}
+
+/**
+ * M19 CONSUMES M32's §8.6 `HospitalizationRiskProvider` (D11). ADVISORY: the band is recorded on
+ * `triage_call.hospitalization_risk_band` and shown in the panel header; it gates nothing, alters no
+ * disposition option, and is EXCLUDED from the M31 portal projection (`PortalTriageSummary` has no field
+ * for it, by construction).
+ */
+export function getHospitalizationRiskProvider(): HospitalizationRiskProvider {
+  return getSeam("HospitalizationRiskProvider");
 }

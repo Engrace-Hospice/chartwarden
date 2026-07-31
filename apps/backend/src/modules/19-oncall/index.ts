@@ -27,20 +27,20 @@
 // chosen against (D15). Three published contracts disagreed with the spec's sketch of them and the OWNER
 // won each time — see the file headers in `clinical/`.
 //
-// Still to land: the five published reader seams (T06), routes/permissions/ABAC (T07) and the §5
-// screens (T08).
+// M19-T06 lands `seams/` — the five §4.3 PUBLISHED reader seams (`OnCallProvider` · `TriageCallReader` ·
+// `TriageCallProvider` · `PortalTriageReader` · `TriageCallMetricsProvider`) registered into the M1
+// registry over their boot deny-stubs, all five composed over ONE injected `OncallSeamStore` (Drizzle in
+// production). `OnCallProvider` is what M36's `on_call` channel membership + alert routing and M20's
+// after-hours SOS parallel recipient (M20 §7.5 D14) resolve through. The same task registers the two
+// ADVISORY M32 seams (§8.6 D11/D12) as the platform's only NON-THROWING deny-stubs — an advisory that
+// gates nothing must degrade to a disabled AI block, not to a failed call-open.
+//
+// Still to land: routes/permissions/ABAC (T07) and the §5 screens (T08).
 export * from "./lifecycle";
 export * from "./roster";
 export * from "./consumers";
 export * from "./clinical";
-export {
-  getEncounterCreator,
-  getMedicationOrderProvider,
-  getOrderSignatureProvider,
-  getRefillInboxProvider,
-  getVisitAssignmentReader,
-  getVisitReader,
-} from "./seams/consumed";
+export * from "./seams/index";
 export {
   type InMemoryTriageEraseSeed,
   type TriageEraseCounts,

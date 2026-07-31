@@ -99,7 +99,9 @@ import {
 import { registerSchedulingSeams } from "./modules/17-scheduling/index";
 import { registerEvvSeams } from "./modules/18-evv/index";
 import {
+  buildDrizzleOncallSeamStore,
   createDrizzleTriageEraseStore,
+  registerOncallSeams,
   registerTriageErasers,
 } from "./modules/19-oncall/index";
 import {
@@ -489,6 +491,22 @@ export function wireModuleSeams(
   // where the Drizzle services are constructed; unbound, the create method raises rather than writing a
   // routing-less row.
   registerSuppliesSeams(deps.db ? { store: buildDrizzleSuppliesSeamStore(deps.db) } : {});
+  // M19 — the five §4.3 owned READ seams: `OnCallProvider` (who is on call NOW for a ProviderEntity + the
+  // active shifts M36's `on_call` channel synchronizer re-syncs membership from, §4.5 — the same read M20's
+  // after-hours SOS parallel recipient resolves through, M20 §7.5 D14), `TriageCallReader` (M32's PHI-free
+  // feature read + M14's since-last-IDG digest), `TriageCallProvider` (M14's packet slice + M11's
+  // verbal-order → triage-context reverse lookup), `PortalTriageReader` (the ONLY M19 surface M31's portal
+  // may reach — lay-language, D11/D13 scrubbed) and `TriageCallMetricsProvider` (M30/M33 measures, as rates
+  // AND the counts behind them). All five share the Drizzle store, which reads under the CONSUMER's ambient
+  // request context (`withOrgContextFromRequest`), so a seam call is RLS-scoped to the caller's org without
+  // M19 comparing anything — the `orgId` seam argument is ASSERTED against that scope, never used to select.
+  //
+  // WITHOUT a DB client this registers NOTHING and the fail-closed deny-stubs stand — deliberately unlike
+  // M15/M16/M21 above. An in-memory slice would answer `currentOnCallActors` with `[]`, and `[]` from that
+  // seam is a REAL answer meaning "nobody is covering" — the fact M36's escalation routing and the §4.8
+  // watchdog act on. A DB-less boot must not manufacture a coverage gap; a throwing stub says "M19 cannot
+  // answer", which is the truth.
+  if (deps.db) registerOncallSeams({ store: buildDrizzleOncallSeamStore(deps.db) });
   // M21-T05 — the two §4.4 ABAC predicates M21 OWNS (controlled_substance_dispatcher_eligible /
   // comfort_kit_return_reconciler_eligible) into M3's named-predicate registry. Both guard a
   // controlled-substance movement, so unlike M15's and M16's per-seam split the fail direction here is

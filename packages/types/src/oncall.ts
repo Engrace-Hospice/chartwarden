@@ -1014,3 +1014,105 @@ export const ONCALL_COVERAGE_GAP_WATCHDOG_INTERVAL_MINUTES = 30;
 
 /** §2.4 / §4.8 — how far ahead the watchdog walks looking for an uncovered `clinical_rn` window. */
 export const ONCALL_COVERAGE_LOOKAHEAD_HOURS = 24;
+
+// ── §4.4 / §8.6 the two ADVISORY M32 seams M19 consumes (D11, D12) ───────────────────────────────────
+//
+// M32 (AI Platform) is a placeholder module, so both contracts are declared HERE — the same shape the
+// corpus uses whenever a consumer needs a forward seam its owner has not landed yet (M18's
+// `EvvBracketResolver` is leaf-typed in `./encounter`, M8's file, for exactly this reason). When M32
+// lands it registers its real implementation against these names; nothing about the registry entry or
+// M19's call sites changes. Declaring them ANYWHERE else would make them a second, un-registerable
+// interface — the M15/M17 `VolunteerComplianceProvider` lesson.
+//
+// FAIL POSTURE — DELIBERATELY UNLIKE EVERY OTHER SEAM ON THE PLATFORM. Both of these are ADVISORY:
+// architecture §17 and D11/D12 make them incapable of gating anything, and §8.6 is explicit that with
+// M32 deny-stubbed "the triage panel renders with the AI block visibly disabled — no silent fallback or
+// guess". So the deny-stub must NOT throw: a thrown error inside the intake path would take down the
+// 2 a.m. call-open flow on behalf of a surface that decides nothing. It answers `unavailable` instead —
+// a VALUE, discriminated from a real "the model has no suggestion" answer, so the UI can render the
+// disabled AI block and `m19_ai_block_disabled_total` can count it. A bare `null` would collapse those
+// two into one (the M19-T05 `medication-context` finding, and the same reason `OnCallRosterRead` is a
+// union rather than an array).
+
+/** Why an AI advisory is absent. `provider_unregistered` is the pre-M32 default; `tenant_opted_out` is
+ *  the §8.6 `tenant_oncall_policy.ai_*_enabled` flag; `provider_error` is a live M32 that failed. */
+export type TriageAiUnavailableReason =
+  | "provider_unregistered"
+  | "tenant_opted_out"
+  | "provider_error";
+
+/** §8.6 — the PHI-MINIMIZED input M19 sends M32 for a protocol suggestion. Chief-complaint free text is
+ *  the one PHI-bearing field and it is what the model exists to read; no full chart dump crosses (AI
+ *  Governance §2.1.4). The candidate keys are the tenant's resolvable catalog, so the model can only
+ *  ever name a protocol that exists in this org. */
+export interface TriageProtocolSuggestionInput {
+  readonly triageCallId: TriageCallId;
+  readonly patientId: PatientId | null;
+  readonly chiefComplaintText: string;
+  /** The protocol catalog keys resolvable for this tenant right now (platform floor + tenant rows). */
+  readonly candidateProtocolKeys: readonly string[];
+}
+
+/** §8.6 / D12 — one suggestion. `confidenceScore` and `confidence` are BOTH carried on purpose: the
+ *  D12 governance floor is a NUMBER (0.75) and `triage_call.suggested_protocol_confidence` is a
+ *  three-value enum. Storing only the band would make the floor comparison unrepresentable; sending only
+ *  the score would not fit the column. The `modelVersionTag` has no column at all (§3.3 has none) — it
+ *  rides the `triage.ai.suggestion_recorded` AI-governance audit event, which is where §8.7.2 puts it. */
+export interface TriageProtocolSuggestion {
+  readonly suggestedProtocolId: TriageProtocolId;
+  readonly suggestedProtocolKey: string;
+  /** 0..1. Compared against {@link M19_AI_CONFIDENCE_FLOOR}; never rounded before the comparison. */
+  readonly confidenceScore: number;
+  readonly confidence: TriageAiConfidence;
+  readonly modelVersionTag: string;
+  readonly reasoning: string | null;
+}
+
+/** The three answers a suggestion request can have — see the fail-posture note above. */
+export type TriageProtocolSuggestionResult =
+  | { readonly kind: "suggestion"; readonly suggestion: TriageProtocolSuggestion }
+  /** The model ran and declined to name a protocol — a real answer, and NOT the same as `unavailable`. */
+  | { readonly kind: "no_suggestion"; readonly modelVersionTag: string }
+  | { readonly kind: "unavailable"; readonly reason: TriageAiUnavailableReason };
+
+/** §8.6 / D11 — the intake advisory. Recorded on `triage_call.hospitalization_risk_band` for audit and
+ *  metrics; gates nothing, alters no disposition option, and is excluded from {@link PortalTriageSummary}. */
+export interface TriageHospitalizationRiskAdvisory {
+  /** 0..1. The BAND is what M19 stores; the score is carried for the AI-governance audit event. */
+  readonly riskScore: number;
+  readonly riskBand: TriageRiskBand;
+  readonly timeWindowDays: number;
+  readonly modelVersionTag: string;
+  readonly contributingFactors: readonly string[];
+}
+
+/** The two answers a risk request can have. */
+export type TriageHospitalizationRiskResult =
+  | { readonly kind: "advisory"; readonly advisory: TriageHospitalizationRiskAdvisory }
+  | { readonly kind: "unavailable"; readonly reason: TriageAiUnavailableReason };
+
+/** §4.4 / §8.6 / D12 — M32's protocol-suggestion surface. ADVISORY: the clinician must explicitly select
+ *  or override; nothing M32 returns may move a `triage_call` row on its own. */
+export interface ProtocolSuggestionProvider {
+  suggestProtocol(
+    orgId: OrgId,
+    input: TriageProtocolSuggestionInput,
+  ): Promise<TriageProtocolSuggestionResult>;
+}
+
+/** §4.4 / §8.6 / D11 — M32's 30-day hospitalization-risk surface, read once at intake. ADVISORY. */
+export interface HospitalizationRiskProvider {
+  hospitalizationRiskForPatient(
+    orgId: OrgId,
+    patientId: PatientId,
+    asOfIso: IsoInstant,
+  ): Promise<TriageHospitalizationRiskResult>;
+}
+
+/** D12 / §8.6 — the AI-governance confidence floor. Below it a suggestion is still SHOWN (de-emphasized)
+ *  and an override needs no reason; at or above it an override requires a reason ≥ 10 chars. Tenants may
+ *  configure ABOVE the floor only. */
+export const M19_AI_CONFIDENCE_FLOOR = 0.75;
+
+/** D12 — the minimum length of the override reason required at or above {@link M19_AI_CONFIDENCE_FLOOR}. */
+export const M19_AI_OVERRIDE_REASON_MIN_CHARS = 10;

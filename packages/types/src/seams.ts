@@ -56,6 +56,15 @@ import type {
   HopeTimepointProvider,
 } from "./hope";
 import type { IdgDecisionProvider, IdgPacketProvider, IdgScheduleProvider } from "./idg";
+import type {
+  HospitalizationRiskProvider,
+  OnCallProvider,
+  PortalTriageReader,
+  ProtocolSuggestionProvider,
+  TriageCallMetricsProvider,
+  TriageCallProvider,
+  TriageCallReader,
+} from "./oncall";
 import type { OrderProvider, OrderSignatureProvider } from "./orders";
 import type { PatientCoverageReader, PatientMutator, PatientReader } from "./patient";
 // @wardenx/types — Boot-registered SEAM contracts (Phase 0 skeleton).
@@ -280,7 +289,23 @@ export type SeamName =
   | "IncidentRegisterProvider" // M30 — incident register (PHI: patient-scoped rows require caller patient scope)
   | "QapiProjectProvider" // M30 — QAPI projects/PIPs by phase (M22 minutes, M33 dashboards)
   | "ComplianceStatusProvider" // M30 — CoP compliance status per condition (M34 tenant gate, M33 dashboards)
-  | "SecurityRiskAssessmentReader"; // M30 — SRA cycle posture (§164.308(a)(1)(ii)(A) attestation surface)
+  | "SecurityRiskAssessmentReader" // M30 — SRA cycle posture (§164.308(a)(1)(ii)(A) attestation surface)
+  // M19 (On-Call Triage) §4.3 — the five READ-ONLY seams M19 publishes, leaf-typed in ./oncall (this
+  // package). Before these, M19 was reachable cross-module ONLY through its §4.10 outbox events, so M36's
+  // `on_call` recipient resolver, M20's after-hours SOS parallel recipient, M14's IDG packet, M31's portal
+  // care-log and M30/M33's operational measures had no read path at all. M19-T06 registers the real impls;
+  // the deny-stubs stay the fail-closed default for a boot that does not wire M19.
+  | "OnCallProvider" // M19 — who is on call now + the active shifts M36's channel synchronizer re-syncs on
+  | "TriageCallReader" // M19 — M32's PHI-free feature read + M14's since-last-IDG digest
+  | "TriageCallProvider" // M19 — M14's full packet slice + M11's verbal-order → triage-context reverse lookup
+  | "PortalTriageReader" // M19 — the ONLY M19 surface M31's portal may reach (lay-language, D11/D13 scrubbed)
+  | "TriageCallMetricsProvider" // M19 — M30/M33 operational + quality measures (rates AND the counts behind them)
+  // M32 (AI Platform) — the two ADVISORY seams M19 CONSUMES (§4.4 / §8.6, D11/D12), leaf-typed in ./oncall
+  // because M32 is a placeholder module (the M8/`EvvBracketResolver` forward-seam precedent). Their
+  // deny-stubs answer `unavailable` rather than throwing: an advisory that gates nothing must not take
+  // down the intake path — see the fail-posture note above the interfaces.
+  | "ProtocolSuggestionProvider" // M32 — D12 protocol suggestion (advisory; never auto-applied)
+  | "HospitalizationRiskProvider"; // M32 — D11 30-day risk band (advisory; excluded from the portal projection)
 
 /**
  * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
@@ -648,6 +673,22 @@ export interface SeamContracts {
   SupplyFulfillmentProvider: SupplyFulfillmentProvider;
   ComfortKitDispatchProvider: ComfortKitDispatchProvider;
   SupplyCostProvider: SupplyCostProvider;
+  // M19's owned seams (§4.3) — interfaces live in ./oncall (this package), so the registry is statically
+  // typed against the real contract. M19-T06 registers the real impls over the deny-stubs; consumers
+  // (M14 / M20 / M30 / M31 / M32 / M33 / M36) resolve them through the typed accessors with no schema
+  // import edge. All five are READ-only — M19 owns the call lifecycle internally and no seam can move a
+  // `triage_call` row. NEITHER encrypted column crosses: `caller_quote_cipher` / `transcript_cipher` are
+  // §3.6-denylisted and the per-tenant DEK never leaves M19's boundary (D14).
+  OnCallProvider: OnCallProvider;
+  TriageCallReader: TriageCallReader;
+  TriageCallProvider: TriageCallProvider;
+  PortalTriageReader: PortalTriageReader;
+  TriageCallMetricsProvider: TriageCallMetricsProvider;
+  // M32's two ADVISORY seams (§4.4 / §8.6, D11/D12) — leaf-typed in ./oncall until M32 lands, which is
+  // then the module that registers over these deny-stubs. Both answer a discriminated `unavailable`
+  // rather than throwing; see the fail-posture note above the interfaces.
+  ProtocolSuggestionProvider: ProtocolSuggestionProvider;
+  HospitalizationRiskProvider: HospitalizationRiskProvider;
 }
 
 /**
