@@ -73,10 +73,12 @@ registry.register(medicaidBillingScreens); // M24 Billing — Medicaid (R2, ADR-
 registry.register(remittanceScreens); // M25 Remittance & Denials (R2, ADR-0030, §5)
 registry.register(capScreens); // M26 Cap Management (R2, ADR-0030, §5)
 registry.register(costReportScreens); // M27 Cost Report (R2, ADR-0030, §5)
+registry.register(qualityScreens); // M30 HQRP & Quality (R2, ADR-0030, §5.1)
 registry.register(reportingScreens); // M33 Reporting & Analytics (R2, ADR-0030)
 registry.register(saasScreens); // M34 SaaS Tenant Platform (R2, ADR-0030)
 registry.register(messagingScreens); // M36 Messaging (Track A)
 registry.register(terminologyScreens); // M38 Terminology (Track A)
+registry.register(consentScreens); // M39 Consent & Authorization Management (R2, ADR-0030, §5.1)
 registry.register(mdmScreens); // M40 MDM (Track A)
 
 const rootEl = document.getElementById("root");
