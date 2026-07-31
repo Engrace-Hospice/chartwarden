@@ -95,6 +95,7 @@ import {
 } from "./modules/16-bereavement/index";
 import { registerSchedulingSeams } from "./modules/17-scheduling/index";
 import { registerEvvSeams } from "./modules/18-evv/index";
+import { M21_OUTBOX_EVENTS } from "./modules/21-supplies/index";
 import { registerDocumentErasers, registerDocumentSeams } from "./modules/22-documents/index";
 import {
   buildDrizzleM33ExportDrilldownService,
@@ -701,6 +702,10 @@ if ((import.meta as { main?: boolean }).main) {
   const bootOutboxCatalog = buildBootOutboxCatalog([
     M15_OUTBOX_EVENTS,
     M16_OUTBOX_EVENTS,
+    // M21-T04 — the §4.5.2 `m21.*` catalog. Registered for the dispatcher's payload validation; the
+    // per-module publisher binds with the §4.6 workers + the M21-T05 service layer (the M34 precedent —
+    // catalogued now, bound when there is a mutation to bind it to).
+    M21_OUTBOX_EVENTS,
     M23_OUTBOX_EVENTS,
     M24_OUTBOX_EVENTS,
     M25_OUTBOX_EVENTS,

@@ -648,7 +648,10 @@ export const MODULES: ModuleDef[] = [
       "apps/backend/src/modules/21-supplies",
       "apps/web/src/modules/21-supplies",
     ], // +packages/supplies: §2 M21-owned feature pkg (D1 per-kind TypeBox / D2 lifecycle graph / D3 kit floor / D4 routing ladder / D8 reconciliation math), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M21-T06
-    dependsOn: [11, 40],
+    // +M1: M21-T04's §4.5.1 inbound consumers resolve M11's `OrderProvider` and M6's
+    // `AdmissionStatusReader`/`DeathDischargeReader` through the M1 boot seam registry
+    // (`apps/backend/src/bootstrap`), which is M1 code; M21's own §4.8 seams register there in M21-T05.
+    dependsOn: [1, 11, 40],
     ownedTables: [
       "supply_item",
       "tenant_supply_item_extension",

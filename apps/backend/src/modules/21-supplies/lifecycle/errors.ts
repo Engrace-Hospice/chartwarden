@@ -98,6 +98,21 @@ export const M21_ERROR_STATUS = {
   M21_PAR_THRESHOLDS_INVERTED: 422,
   M21_PAR_STOCK_INACTIVE: 409,
 
+  // ── §4.5.1 inbound-cascade resolution (M21-T04) ────────────────────────────────────────────────────
+  // All three DEAD-LETTER the delivery rather than writing a guessed row. The M11/M13 outbox retries, so
+  // nothing is lost: the request appears the moment the missing fact resolves.
+  /** §2.8 — `m11.order.supply_fulfillment_requested` named an order `OrderProvider` cannot read back. The
+   *  event carries no patient, so without the order there is no admission to anchor the request to. */
+  M21_SOURCE_ORDER_UNRESOLVED: 422,
+  /** §7.1 — no serving Location resolved for the cascade. `supply_request.location_id` is NOT NULL and it
+   *  drives par-stock decrement and controlled-substance custody, so a guess is worse than a retry. */
+  M21_SERVING_LOCATION_UNRESOLVED: 422,
+  /** §2.5 / §2.6 — an inbound `m13.comfort_kit.*` referenced a deployment M21 has no dispatch for. */
+  M21_DISPATCH_NOT_FOUND: 422,
+  /** §2.8 / §3.1 — a replenish request has no M11 order behind it, so the outbox event id is its ONLY
+   *  provenance and the one-upstream CHECK cannot be satisfied without it. */
+  M21_REPLENISHMENT_PROVENANCE_MISSING: 422,
+
   // ── Optimistic concurrency (§7.2 / §7.3 / §7.4) ────────────────────────────────────────────────────
   M21_STALE_VERSION: 412,
 } as const;
