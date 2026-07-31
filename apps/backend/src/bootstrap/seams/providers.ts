@@ -397,6 +397,9 @@ export const signedEncountersReaderDenyStub: SignedEncountersReader = {
   renderPayloadFor() {
     throw new NotImplementedError("SignedEncountersReader");
   },
+  lateEntryCountsForOrg() {
+    throw new NotImplementedError("SignedEncountersReader");
+  },
 };
 
 /** M8 — authoritative per-clinician mileage for payroll/AP (M27). Denies until M8 registers it. */

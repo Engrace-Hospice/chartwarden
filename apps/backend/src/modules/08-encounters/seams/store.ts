@@ -63,6 +63,15 @@ export interface EncounterReaderStore {
   ): Promise<ReadonlyArray<MileagePayrollRow>>;
   /** Insert a DRAFT encounter on behalf of an upstream reuser (M16/M17) and return its new id. */
   insertDraftEncounter(input: CreateEncounterInput): Promise<{ encounterId: EncounterId }>;
+  /**
+   * ORG-LEVEL late-entry tally over a signing window — M30's `late_encounter_entry_rate` input.
+   * Denominator = encounters SIGNED in the window; numerator = those signed outside the normal window
+   * (`late_entry_tier <> 'normal'`). Aggregate counts only, no patient rows cross (D6).
+   */
+  lateEntryCountsForOrg(
+    organizationId: string,
+    window: { from: string; to: string },
+  ): Promise<{ numerator: number; denominator: number }>;
 }
 
 // ── in-memory slice store ─────────────────────────────────────────────────────────────────────────
@@ -126,6 +135,11 @@ export function createInMemoryEncounterReaderStore(seed: EncounterReaderSeed = {
           lateEntryAttested: false,
         });
         return { encounterId };
+      },
+      /** Slice default: the in-memory facts carry no signing timestamps, so an empty tally — 0/0, which
+       *  M30's kernel SUPPRESSES rather than scoring as zero late entries. */
+      async lateEntryCountsForOrg() {
+        return { numerator: 0, denominator: 0 };
       },
     },
   };
