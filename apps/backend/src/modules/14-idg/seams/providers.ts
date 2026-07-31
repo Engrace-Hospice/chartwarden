@@ -83,6 +83,9 @@ export function createIdgScheduleProvider(store: IdgSeamStore): IdgScheduleProvi
     async listMeetingsForLocation(_orgId, locationId, range) {
       return [...(await store.meetingsForLocation(locationId, range))];
     },
+    async getCadenceCountsForOrg(organizationId, window) {
+      return store.cadenceCountsForOrg(organizationId, window);
+    },
     async getCadenceAdherence(_orgId, admissionId) {
       const rollup = await store.cadenceForAdmission(admissionId);
       // A null-safe shape when the admission has no visible IDG context under the consumer's tenant: zero

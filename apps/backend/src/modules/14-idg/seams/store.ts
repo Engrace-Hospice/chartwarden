@@ -64,6 +64,15 @@ export interface IdgSeamStore {
     range: { fromIso: IsoInstant; toIso: IsoInstant },
   ): Promise<ReadonlyArray<IdgMeetingDigest>>;
   cadenceForAdmission(admissionId: AdmissionId): Promise<IdgCadenceAdherence | null>;
+  /**
+   * ORG-LEVEL IDG meeting-cadence tally over a SCHEDULED-START window — M30's `idg_cadence_adherence`
+   * input. Denominator = meetings scheduled to start inside the window (the cycles that came due);
+   * numerator = those actually convened within their scheduled slot. Aggregate counts only (D6).
+   */
+  cadenceCountsForOrg(
+    organizationId: string,
+    window: { from: string; to: string },
+  ): Promise<{ numerator: number; denominator: number }>;
 }
 
 // ── in-memory slice store ─────────────────────────────────────────────────────────────────────────────────
@@ -119,6 +128,10 @@ export function createInMemoryIdgSeamStore(seed: IdgSeamSeed = {}): { store: Idg
       },
       async cadenceForAdmission(admissionId) {
         return cadence.get(admissionId) ?? null;
+      },
+      /** Slice default: 0/0 — M30's kernel SUPPRESSES rather than scoring perfect cadence. */
+      async cadenceCountsForOrg() {
+        return { numerator: 0, denominator: 0 };
       },
     },
   };

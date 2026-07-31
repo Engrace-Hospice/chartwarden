@@ -339,6 +339,12 @@ const OPERATIONAL_MEASURE_THRESHOLDS: Readonly<Record<string, ThresholdRule>> = 
     direction: "lte",
     label: "missed scheduled-dose rate (platform default; lower is better)",
   },
+  // CoP 418.56 — the IDG must meet on its scheduled cadence.
+  idg_cadence_adherence: {
+    value: 0.95,
+    direction: "gte",
+    label: "IDG meeting-cadence adherence (CoP 418.56; platform default)",
+  },
 };
 
 /** The M17 on-time counts read, as this resolver uses it (the registry holds the seam opaquely). */
@@ -381,6 +387,14 @@ interface MissedDoseCountsView {
   ): Promise<{ numerator: number; denominator: number }>;
 }
 
+/** The M14 org-level IDG cadence tally, as this resolver uses it. */
+interface IdgCadenceCountsView {
+  getCadenceCountsForOrg(
+    orgId: string,
+    window: { from: string; to: string },
+  ): Promise<{ numerator: number; denominator: number }>;
+}
+
 /** The M18 compliance counts read, as this resolver uses it. */
 interface EvvComplianceCountsView {
   getComplianceCounts(
@@ -397,6 +411,7 @@ export const OPERATIONAL_BOUND_MEASURE_CODES = new Set([
   "verbal_order_signature_on_time",
   "care_plan_15_day_adherence",
   "missed_dose_rate",
+  "idg_cadence_adherence",
 ]);
 
 /**
@@ -419,6 +434,7 @@ export async function resolveOperationalMeasureInput(
     readonly orders: VerbalTimelinessCountsView;
     readonly carePlan: CarePlanCycleCountsView;
     readonly administrations: MissedDoseCountsView;
+    readonly idg: IdgCadenceCountsView;
   },
 ): Promise<unknown> {
   const { organizationId, providerEntityId, periodStart, periodEnd } = request;
@@ -449,6 +465,15 @@ export async function resolveOperationalMeasureInput(
     case "verbal_order_signature_on_time": {
       const c = await seams.orders.getVerbalTimelinessCountsForOrg(organizationId, window);
       return { ...base, totalVerbalOrders: c.denominator, signedOnTime: c.numerator, threshold };
+    }
+    case "idg_cadence_adherence": {
+      const c = await seams.idg.getCadenceCountsForOrg(organizationId, window);
+      return {
+        ...base,
+        requiredMeetingCycles: c.denominator,
+        meetingsWithinCadence: c.numerator,
+        threshold,
+      };
     }
     case "missed_dose_rate": {
       const c = await seams.administrations.getMissedDoseCountsForOrg(organizationId, window);
@@ -705,6 +730,7 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
             orders: getSeam("OrderProvider") as never,
             carePlan: getSeam("CarePlanReader") as never,
             administrations: getSeam("MedicationAdministrationProvider") as never,
+            idg: getSeam("IdgScheduleProvider") as never,
           });
         return resolveHopeMeasureInput(request, seams);
       },
