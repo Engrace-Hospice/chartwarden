@@ -10,6 +10,13 @@ import type {
 import type { LatestAssessmentProvider, ScaleSeriesProvider } from "./assessment";
 import type { CarePlanReader } from "./care-plan";
 import type {
+  DisciplineComplianceProvider,
+  DisciplinePlanReader,
+  MswRiskFactorReader,
+  SupervisoryCadencePlanReader,
+  VolunteerGateExpiryReader,
+} from "./discipline-plans";
+import type {
   DocumentReader,
   DocumentStorageProvider,
   ExtractionProvenanceReader,
@@ -204,12 +211,25 @@ export type SeamName =
   | "VisitAssignmentReader" // M17 — assignment read seam (caseload contribution / on-call roster / live in_visit)
   | "PortalVisitReader" // M17 — portal upcoming-visit read seam (lay-language, scrubbed)
   | "VisitMetricsProvider" // M17 — productivity + quality measures read seam (on-time / no-show / reschedule / route / stability)
-  // M15 (Discipline Care Plans, Phase 2) owned seams M17 CONSUMES (§4.4) — leaf-typed in ./scheduling (M15 has no
-  // types file yet) so M17's D8 pre-schedule gate (predicate 6) + day-view advisory compile against the real
-  // contract. Both fail-closed deny-stub until M15 ships (M17-F06/ADR-0009); the volunteer gate denies LOUDLY
-  // exactly when a `volunteer_visit` is scheduled before M15 lands. No `dependsOn` edge (registry is M1-owned).
+  // M15 (Discipline Care Plans) owned seams M17 CONSUMES (§4.4) — leaf-typed in ./scheduling because M17 shipped
+  // FIRST and its D8 pre-schedule gate (predicate 6) + day-view advisory compile against those LOCKED shapes
+  // (per-membership / per-ADMISSION). M15-T05 registers the real impls over the M17-F06/ADR-0009 deny-stubs;
+  // the stubs remain the fail-closed default for a boot that does not wire M15. No `dependsOn` edge (registry
+  // is M1-owned).
   | "VolunteerComplianceProvider" // M15 — per-membership volunteer-compliance status (gate predicate 6, VOLUNTEER_GATE_UNMET)
   | "SupervisoryCadenceReader" // M15 — next-due RN supervisory visit per admission (day-view advisory + propose-from-frequency)
+  // The rest of M15's §4.3 published surface (M15-T05) — leaf-typed in ./discipline-plans. `DisciplinePlanReader`
+  // is the plan read path M14's IDG packet builder + M22 (plan PDFs) + M28/M31/M33 consume; `MswRiskFactorReader`
+  // exposes the psychosocial factors M16's bereavement rubric SCORES (M15 never scores, §1.2);
+  // `VolunteerGateExpiryReader` + `SupervisoryCadencePlanReader` carry the §4.3 surface the two LOCKED M17
+  // contracts above do not cover (the expiry sweep, the per-PLAN cadence + overdue worklist);
+  // `DisciplineComplianceProvider` is the M30 HQRP / M33 dashboard rollup. All read-only — M15 owns the plan,
+  // supervisory and volunteer lifecycles internally and never mutates through a seam.
+  | "DisciplinePlanReader" // M15 — discipline-plan read seam (active plans / full plan / IDG one-pager)
+  | "MswRiskFactorReader" // M15 — MSW psychosocial risk factors per admission (M16 bereavement rubric input)
+  | "VolunteerGateExpiryReader" // M15 — the 418.78 gate-expiry sweep (coordinator worklist + M36 alerts)
+  | "SupervisoryCadencePlanReader" // M15 — per-plan 418.76(h) cadence state + the overdue worklist
+  | "DisciplineComplianceProvider" // M15 — supervisory / initial-assessment / volunteer-gate rates + the 418.78(e) ratio
   | "CapAccrualReader" // M26 — cap-period aggregate for the M27 cost-report Worksheet-E cap calc (aggregate $/days, no PHI)
   | "CapProjectionProvider" // M26 — agency/patient/inpatient cap projection for the M23 §11.A pre-submission cap rules
   // M23/M25 → M27 cost-report validation binds. M23 is the FIRST module to publish into the typed M1
@@ -535,11 +555,21 @@ export interface SeamContracts {
   VisitAssignmentReader: VisitAssignmentReader;
   PortalVisitReader: PortalVisitReader;
   VisitMetricsProvider: VisitMetricsProvider;
-  // M15's consumed-by-M17 seams (§4.4) are LEAF-TYPED too — interfaces live in ./scheduling (M15 has no types
-  // file yet, Phase 2). The registry holds the deny-stub until M15 registers the real impls (M17-F06/ADR-0009);
-  // M17 resolves them through the module-17 consumed-seam accessors with no schema import edge.
+  // M15's consumed-by-M17 seams (§4.4) are LEAF-TYPED too — interfaces live in ./scheduling because M17 shipped
+  // first and locked those shapes (M17-F06/ADR-0009). M15 registers the real impls over the deny-stubs
+  // (M15-T05); M17 resolves them through the module-17 consumed-seam accessors with no schema import edge.
   VolunteerComplianceProvider: VolunteerComplianceProvider;
   SupervisoryCadenceReader: SupervisoryCadenceReader;
+  // The rest of M15's §4.3 owned seams — interfaces live in ./discipline-plans (this package), so the registry
+  // is statically typed against the real contract. M15 registers the real impls over the deny-stubs (M15-T05);
+  // consumers that list `15` in their manifest `dependsOn` (M14/M16/M22/M28/M30/M31/M33) resolve them through
+  // the typed accessors with no schema import edge. All five are READ-only, and the SUD / family-violence
+  // gated assessment bodies never cross (the §4.3 DTOs carry the flags, never the free-text, §2.3).
+  DisciplinePlanReader: DisciplinePlanReader;
+  MswRiskFactorReader: MswRiskFactorReader;
+  VolunteerGateExpiryReader: VolunteerGateExpiryReader;
+  SupervisoryCadencePlanReader: SupervisoryCadencePlanReader;
+  DisciplineComplianceProvider: DisciplineComplianceProvider;
 }
 
 /**

@@ -23,17 +23,18 @@ import {
   billableEncounterReaderDenyStub,
   capAccrualReaderDenyStub,
   capProjectionProviderDenyStub,
-  patientDaysProviderDenyStub,
-  drugCostBillingReaderDenyStub,
-  claimSettlementProviderDenyStub,
   carePlanReaderDenyStub,
   caseloadDenyStub,
   certificationReaderDenyStub,
+  claimSettlementProviderDenyStub,
   consentEvaluatorDenyStub,
   deathDischargeReaderDenyStub,
+  disciplineComplianceProviderDenyStub,
+  disciplinePlanReaderDenyStub,
   documentReaderDenyStub,
   documentRendererDenyStub,
   documentStorageProviderDenyStub,
+  drugCostBillingReaderDenyStub,
   electionPeriodReaderDenyStub,
   encounterCreatorDenyStub,
   evvAggregatorReferenceReaderDenyStub,
@@ -55,15 +56,17 @@ import {
   latestAssessmentProviderDenyStub,
   levelOfCareReaderDenyStub,
   mdmEntityProviderDenyStub,
-  metricsProviderDenyStub,
   medicationAdministrationProviderDenyStub,
   medicationOrderProviderDenyStub,
   messagingProviderDenyStub,
+  metricsProviderDenyStub,
   mileagePayrollReaderDenyStub,
+  mswRiskFactorReaderDenyStub,
   orderProviderDenyStub,
   orderSignatureProviderDenyStub,
-  patientMutatorDenyStub,
   patientCoverageReaderDenyStub,
+  patientDaysProviderDenyStub,
+  patientMutatorDenyStub,
   patientReaderDenyStub,
   portalDocumentReaderDenyStub,
   portalVisitReaderDenyStub,
@@ -73,6 +76,7 @@ import {
   scaleSeriesProviderDenyStub,
   sessionContextResolverDenyStub,
   signedEncountersReaderDenyStub,
+  supervisoryCadencePlanReaderDenyStub,
   supervisoryCadenceReaderDenyStub,
   tenantOrgCreationProviderDenyStub,
   terminologyProviderDenyStub,
@@ -80,6 +84,7 @@ import {
   visitMetricsProviderDenyStub,
   visitReaderDenyStub,
   volunteerComplianceProviderDenyStub,
+  volunteerGateExpiryReaderDenyStub,
 } from "./providers";
 
 export class SeamError extends Error {
@@ -103,7 +108,12 @@ export const REQUIRED_SEAMS = [
   { key: "PatientReader", ownerModule: 5, phi: true, denyStub: patientReaderDenyStub },
   // M5 (§3.4) — the coverage list M23/M24 resolve a claim's billed payer from. PHI: carries the
   // member/subscriber id, so it is boot-validated and fail-closed like the other M5 reads.
-  { key: "PatientCoverageReader", ownerModule: 5, phi: true, denyStub: patientCoverageReaderDenyStub },
+  {
+    key: "PatientCoverageReader",
+    ownerModule: 5,
+    phi: true,
+    denyStub: patientCoverageReaderDenyStub,
+  },
   // M5 (§4.9) — applies an M29-proposal/amendment field diff (D12 strip). PHI write surface;
   // boot-validated and fail-closed until M5 registers the real mutator (M5-T08).
   { key: "PatientMutator", ownerModule: 5, phi: true, denyStub: patientMutatorDenyStub },
@@ -572,10 +582,11 @@ export const REQUIRED_SEAMS = [
     phi: true,
     denyStub: visitMetricsProviderDenyStub,
   },
-  // M15 (Discipline Care Plans, Phase 2) seams M17 CONSUMES (§4.4). Boot-validated and FAIL-CLOSED behind their
-  // deny-stubs until M15 ships (M17-F06/ADR-0009 — M17 Phase 1 no longer hard-requires Phase-2 M15). The
-  // volunteer gate is patient-agnostic staff compliance (phi: false); the supervisory cadence is admission-linked
-  // (phi: true). The volunteer deny-stub denies LOUDLY only when a `volunteer_visit` is scheduled before M15 lands.
+  // M15 (Discipline Care Plans) seams M17 CONSUMES (§4.4). M15-T05 registers the real impls over these
+  // deny-stubs (M17-F06/ADR-0009 — M17 Phase 1 never hard-required M15 to boot, so a boot that does not wire
+  // M15 stays FAIL-CLOSED here). The volunteer gate is patient-agnostic staff compliance (phi: false); the
+  // supervisory cadence is admission-linked (phi: true). The volunteer deny-stub denies LOUDLY only when a
+  // `volunteer_visit` is scheduled with M15 unwired.
   {
     key: "VolunteerComplianceProvider",
     ownerModule: 15,
@@ -587,6 +598,45 @@ export const REQUIRED_SEAMS = [
     ownerModule: 15,
     phi: true,
     denyStub: supervisoryCadenceReaderDenyStub,
+  },
+  // The rest of M15's §4.3 PUBLISHED seams (M15-T05) — leaf-typed in @wardenx/types/discipline-plans. All five
+  // are READ surfaces over M15's `discipline_care_plan` / `discipline_assessment` / `aide_supervisory_visit` /
+  // `volunteer_*` rows that forward consumers attach to instead of importing M15's schema (architecture §25.15):
+  // `DisciplinePlanReader` — the plan read path M14 (IDG packet) / M22 (plan PDF) / M28 / M31 / M33 consume;
+  // `MswRiskFactorReader` — the psychosocial factors M16's bereavement rubric SCORES (M15 exposes only, §1.2);
+  // `VolunteerGateExpiryReader` — the 418.78 expiry sweep; `SupervisoryCadencePlanReader` — the per-plan
+  // 418.76(h) cadence + overdue worklist M14/M30 consume; `DisciplineComplianceProvider` — the M30/M33 rollups.
+  // Plan/assessment/supervisory/risk-factor reads are patient-linked → phi: true; the volunteer-gate expiry sweep
+  // is staff compliance and the compliance rollups are aggregate rates → phi: false.
+  {
+    key: "DisciplinePlanReader",
+    ownerModule: 15,
+    phi: true,
+    denyStub: disciplinePlanReaderDenyStub,
+  },
+  {
+    key: "MswRiskFactorReader",
+    ownerModule: 15,
+    phi: true,
+    denyStub: mswRiskFactorReaderDenyStub,
+  },
+  {
+    key: "VolunteerGateExpiryReader",
+    ownerModule: 15,
+    phi: false,
+    denyStub: volunteerGateExpiryReaderDenyStub,
+  },
+  {
+    key: "SupervisoryCadencePlanReader",
+    ownerModule: 15,
+    phi: true,
+    denyStub: supervisoryCadencePlanReaderDenyStub,
+  },
+  {
+    key: "DisciplineComplianceProvider",
+    ownerModule: 15,
+    phi: false,
+    denyStub: disciplineComplianceProviderDenyStub,
   },
 ] satisfies readonly RequiredSeam[];
 

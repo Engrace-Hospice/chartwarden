@@ -68,6 +68,7 @@ import { registerOrderErasers, registerOrderSeams } from "./modules/11-orders/in
 import { registerDoseSpotErasers, registerDoseSpotSeams } from "./modules/12-dosespot/index";
 import { registerEmarErasers, registerEmarSeams } from "./modules/13-emar/index";
 import { registerIdgErasers, registerIdgSeams } from "./modules/14-idg/index";
+import { registerDisciplinePlanSeams } from "./modules/15-discipline-care-plans/index";
 import { registerSchedulingSeams } from "./modules/17-scheduling/index";
 import { registerEvvSeams } from "./modules/18-evv/index";
 import { registerDocumentErasers, registerDocumentSeams } from "./modules/22-documents/index";
@@ -352,6 +353,18 @@ export function wireModuleSeams(
   // 15-day-cadence read path M28 (FHIR) + M30 (cadence-adherence) + M33 consume). Slice/tests keep the
   // in-memory store; the Drizzle-backed store lands with M14's routes/repos (M14-T05+).
   registerIdgSeams();
+  // M15 — the seven §4.3 owned READ seams. Two of them are the LOCKED contracts M17 shipped first and has been
+  // consuming as fail-closed deny-stubs since Wave F (M17-F06/ADR-0009): registering `VolunteerComplianceProvider`
+  // CLOSES the D8 pre-schedule gate predicate 6 (a `volunteer_visit` now resolves the REAL 42 CFR §418.78 gate
+  // instead of denying loudly), and `SupervisoryCadenceReader` CLOSES the day-view / propose-from-frequency
+  // supervisory advisory. The other five are M15's own §4.3 surface: `DisciplinePlanReader` (M14 IDG one-pager /
+  // M22 plan PDF / M28 / M31 / M33), `MswRiskFactorReader` (the psychosocial factors M16's bereavement rubric
+  // scores — M15 exposes, never scores, §1.2), `VolunteerGateExpiryReader` (the 418.78 expiry sweep),
+  // `SupervisoryCadencePlanReader` (the per-plan cadence + overdue worklist) and `DisciplineComplianceProvider`
+  // (the M30/M33 rollups + the 418.78(e) ratio). Slice/tests keep the in-memory store; the Drizzle-backed store
+  // lands with M15's routes/repos (M15-T06+), so today's reads answer empty/null — never a fabricated pass:
+  // the volunteer gate still denies fail-CLOSED on an unreadable store and the ratio still badges `unavailable`.
+  registerDisciplinePlanSeams();
   // M17 — the four §4.3 owned READ seams (VisitReader — the visit read path M8 (encounter-authoring context,
   // which CLOSES M8's visit-seeding inert consumer M8 D9) / M18 (EVV geofence target) / M14 (IDG since-meeting)
   // consume — + VisitAssignmentReader — the assignment read path M5 (the §4.5 D11 caseload-contribution

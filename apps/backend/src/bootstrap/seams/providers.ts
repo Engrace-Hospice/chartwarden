@@ -19,6 +19,8 @@ import type {
   CaseloadProvider,
   CertificationReader,
   DeathDischargeReader,
+  DisciplineComplianceProvider,
+  DisciplinePlanReader,
   DocumentReader,
   DocumentRenderer,
   DocumentStorageProvider,
@@ -45,6 +47,7 @@ import type {
   MedicationAdministrationProvider,
   MedicationOrderProvider,
   MileagePayrollReader,
+  MswRiskFactorReader,
   OrderProvider,
   OrderSignatureProvider,
   PatientCoverageReader,
@@ -59,12 +62,14 @@ import type {
   SeamName,
   SessionContextResolver,
   SignedEncountersReader,
+  SupervisoryCadencePlanReader,
   SupervisoryCadenceReader,
   TenantOrgCreationProvider,
   VisitAssignmentReader,
   VisitMetricsProvider,
   VisitReader,
   VolunteerComplianceProvider,
+  VolunteerGateExpiryReader,
 } from "../interfaces";
 
 export class NotImplementedError extends Error {
@@ -788,10 +793,11 @@ export const visitMetricsProviderDenyStub: VisitMetricsProvider = {
   },
 };
 
-// M15 (Discipline Care Plans, Phase 2) seams M17 CONSUMES (§4.4). LEAF-TYPED (interfaces in @wardenx/types),
-// so each gets a concrete typed deny-stub. Per M17-F06/ADR-0009 M17 (Phase 1) no longer hard-requires M15 to
-// boot — these stand fail-closed until M15 ships. The volunteer gate denies LOUDLY exactly when a
-// `volunteer_visit` is scheduled before M15 lands (a non-volunteer visit never invokes predicate 6, M17-T06).
+// M15 (Discipline Care Plans) seams M17 CONSUMES (§4.4). LEAF-TYPED (interfaces in @wardenx/types), so each
+// gets a concrete typed deny-stub. Per M17-F06/ADR-0009 M17 (Phase 1) never hard-required M15 to boot — these
+// stand fail-closed for any boot that does not wire M15 (registerDisciplinePlanSeams, M15-T05). The volunteer
+// gate denies LOUDLY exactly when a `volunteer_visit` is scheduled without M15 wired (a non-volunteer visit
+// never invokes predicate 6, M17-T06).
 
 /** M15 — effective volunteer-compliance status (the D8 gate predicate-6 input). Denies until M15 registers it. */
 export const volunteerComplianceProviderDenyStub: VolunteerComplianceProvider = {
@@ -804,6 +810,65 @@ export const volunteerComplianceProviderDenyStub: VolunteerComplianceProvider = 
 export const supervisoryCadenceReaderDenyStub: SupervisoryCadenceReader = {
   nextSupervisoryDueAt() {
     throw new NotImplementedError("SupervisoryCadenceReader");
+  },
+};
+
+// The rest of M15's §4.3 PUBLISHED surface (M15-T05). All read-only; each denies until
+// registerDisciplinePlanSeams() stands the real impl over it.
+
+/** M15 — the discipline-plan read path M14's IDG packet builder + M22/M28/M31/M33 consume (§4.3). */
+export const disciplinePlanReaderDenyStub: DisciplinePlanReader = {
+  activePlansForPatient() {
+    throw new NotImplementedError("DisciplinePlanReader");
+  },
+  planById() {
+    throw new NotImplementedError("DisciplinePlanReader");
+  },
+  planSummaryForIdg() {
+    throw new NotImplementedError("DisciplinePlanReader");
+  },
+};
+
+/** M15 — the MSW psychosocial risk factors M16's bereavement rubric scores (§4.3; M15 never scores, §1.2). */
+export const mswRiskFactorReaderDenyStub: MswRiskFactorReader = {
+  riskFactorsForAdmission() {
+    throw new NotImplementedError("MswRiskFactorReader");
+  },
+};
+
+/** M15 — the 42 CFR §418.78 gate-expiry sweep (coordinator worklist + the §4.7 M36 alerts). */
+export const volunteerGateExpiryReaderDenyStub: VolunteerGateExpiryReader = {
+  listExpiringGates() {
+    throw new NotImplementedError("VolunteerGateExpiryReader");
+  },
+};
+
+/** M15 — the per-PLAN 418.76(h) cadence state + overdue worklist (M14 dashboard, M30 supervisory measure). */
+export const supervisoryCadencePlanReaderDenyStub: SupervisoryCadencePlanReader = {
+  nextSupervisoryDueFor() {
+    throw new NotImplementedError("SupervisoryCadencePlanReader");
+  },
+  listOverdueSupervisory() {
+    throw new NotImplementedError("SupervisoryCadencePlanReader");
+  },
+};
+
+/** M15 — the M30 HQRP / M33 dashboard compliance rollups + the 418.78(e) ratio (§4.3). */
+export const disciplineComplianceProviderDenyStub: DisciplineComplianceProvider = {
+  supervisoryOnTimeRate() {
+    throw new NotImplementedError("DisciplineComplianceProvider");
+  },
+  mswInitialOnTimeRate() {
+    throw new NotImplementedError("DisciplineComplianceProvider");
+  },
+  chaplainInitialOnTimeRate() {
+    throw new NotImplementedError("DisciplineComplianceProvider");
+  },
+  volunteerGateComplianceRate() {
+    throw new NotImplementedError("DisciplineComplianceProvider");
+  },
+  volunteerHourCostRatio() {
+    throw new NotImplementedError("DisciplineComplianceProvider");
   },
 };
 
