@@ -250,3 +250,90 @@ export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   }
   return converted as Static<T>;
 }
+
+// ── §4.1 RESPONSE DTOs ─────────────────────────────────────────────────────────────────────────
+//
+// The reads the M39 web screens call. Without these the generated client types every M39 response as
+// `content?: never` and a screen has to cast through a hand-maintained row shape that drifts silently —
+// the exact problem the M25 screens carried until their DTOs landed. These mirror the view interfaces in
+// @wardenx/consent's route service; that file is the contract, this is its wire projection.
+//
+// Every route wraps its payload in `{ data }` (paged reads add `nextCursor`), so the envelope is modelled
+// here rather than left for each screen to guess at.
+
+const nullableStr = () => Type.Union([Type.String(), Type.Null()]);
+const dataOf = <T extends TSchema>(payload: T) => Type.Object({ data: payload });
+const pagedOf = <T extends TSchema>(item: T) =>
+  Type.Object({ data: Type.Array(item), nextCursor: nullableStr() });
+
+/** `ConsentRecordView` — the record every consent surface renders. */
+export const ConsentRecordViewSchema = Type.Object({
+  id: Type.String(),
+  organizationId: Type.String(),
+  patientId: Type.String(),
+  typeKey: ConsentTypeKeySchema,
+  grantorKind: Type.String(),
+  captureMethod: Type.String(),
+  scopeDescriptor: Type.Unknown(),
+  status: Type.Union(
+    ["draft", "active", "superseded", "revoked", "expired"].map((s) => Type.Literal(s)),
+  ),
+  version: Type.Integer(),
+  effectiveAt: nullableStr(),
+  expiresAt: nullableStr(),
+  signedAt: nullableStr(),
+  createdById: Type.String(),
+  supersedesConsentRecordId: Type.Optional(nullableStr()),
+  renewedFromConsentRecordId: Type.Optional(nullableStr()),
+  survivesDeath: Type.Optional(Type.Boolean()),
+});
+export const ConsentListResponseSchema = dataOf(Type.Array(ConsentRecordViewSchema));
+
+/** `ExpiringConsentView` — a consent inside the renewal window, with its countdown. */
+export const ExpiringConsentViewSchema = Type.Intersect([
+  ConsentRecordViewSchema,
+  Type.Object({ daysUntilExpiry: Type.Integer() }),
+]);
+export const ExpiringConsentsResponseSchema = pagedOf(ExpiringConsentViewSchema);
+
+/** `ConsentRecipientView` — a named disclosure recipient (D6). `active` is derived server-side. */
+export const ConsentRecipientViewSchema = Type.Object({
+  id: Type.String(),
+  organizationId: Type.String(),
+  consentRecordId: Type.String(),
+  recipientKind: Type.String(),
+  recipientEntityId: nullableStr(),
+  recipientDisplayName: Type.String(),
+  purposeCode: nullableStr(),
+  expiresAt: nullableStr(),
+  addedAt: Type.String(),
+  addedById: Type.String(),
+  removedAt: nullableStr(),
+  removedReasonText: nullableStr(),
+  active: Type.Boolean(),
+});
+export const ConsentRecipientListResponseSchema = dataOf(
+  Type.Array(ConsentRecipientViewSchema),
+);
+
+/** `ConsentDpoaAgentView` — a named DPOA agent (D5). */
+export const ConsentDpoaAgentViewSchema = Type.Object({
+  id: Type.String(),
+  organizationId: Type.String(),
+  consentRecordId: Type.String(),
+  patientId: Type.String(),
+  agentKind: Type.String(),
+  agentName: Type.String(),
+  agentRelationship: Type.String(),
+  scopeKind: Type.String(),
+  activationCondition: Type.String(),
+  termKind: Type.String(),
+  termUntil: nullableStr(),
+  addedAt: Type.String(),
+  addedById: Type.String(),
+  removedAt: nullableStr(),
+  active: Type.Boolean(),
+});
+export const ConsentDpoaAgentListResponseSchema = dataOf(
+  Type.Array(ConsentDpoaAgentViewSchema),
+);

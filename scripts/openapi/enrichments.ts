@@ -72,6 +72,10 @@ import {
 import {
   AddDpoaAgentBodySchema,
   AddRecipientBodySchema,
+  ConsentDpoaAgentListResponseSchema,
+  ConsentListResponseSchema,
+  ConsentRecipientListResponseSchema,
+  ExpiringConsentsResponseSchema,
   BereavementOutreachBodySchema,
   ConsentEvalAuditQuerySchema,
   CreateDraftBodySchema as ConsentCreateDraftBodySchema,
@@ -1304,6 +1308,19 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/patients/:patientId/expiring-consents": {
     summary: "Consents inside the renewal window (cursor-paginated, §4.12)",
     query: ExpiringConsentsQuerySchema,
+    response: ExpiringConsentsResponseSchema,
+  },
+  "GET /api/v1/patients/:patientId/consents": {
+    summary: "A patient's ACTIVE consents (§4.1)",
+    response: ConsentListResponseSchema,
+  },
+  "GET /api/v1/consents/:consentId/recipients": {
+    summary: "Named disclosure recipients on a consent, active + historical (D6)",
+    response: ConsentRecipientListResponseSchema,
+  },
+  "GET /api/v1/consents/:consentId/dpoa-agents": {
+    summary: "Named DPOA agents on a consent, active + historical (D5)",
+    response: ConsentDpoaAgentListResponseSchema,
   },
   "GET /api/v1/consents/:consentId/eval-audit": {
     summary: "Per-consent decision audit (cursor-paginated, §4.12)",

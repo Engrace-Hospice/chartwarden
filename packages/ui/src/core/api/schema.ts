@@ -2593,6 +2593,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Named DPOA agents on a consent, active + historical (D5) */
         get: operations["getApiV1ConsentsByConsentIdDpoaagents"];
         put?: never;
         /** Name a DPOA agent (D5) */
@@ -2644,6 +2645,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Named disclosure recipients on a consent, active + historical (D6) */
         get: operations["getApiV1ConsentsByConsentIdRecipients"];
         put?: never;
         /** Add a named disclosure recipient (D6) */
@@ -7770,6 +7772,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** A patient's ACTIVE consents (§4.1) */
         get: operations["getApiV1PatientsByPatientIdConsents"];
         put?: never;
         /** Create a consent DRAFT for a patient (§4.1) */
@@ -16258,7 +16261,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string;
+                            consentRecordId: string;
+                            patientId: string;
+                            agentKind: string;
+                            agentName: string;
+                            agentRelationship: string;
+                            scopeKind: string;
+                            activationCondition: string;
+                            termKind: string;
+                            termUntil: string | null;
+                            addedAt: string;
+                            addedById: string;
+                            removedAt: string | null;
+                            active: boolean;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -16375,7 +16398,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string;
+                            consentRecordId: string;
+                            recipientKind: string;
+                            recipientEntityId: string | null;
+                            recipientDisplayName: string;
+                            purposeCode: string | null;
+                            expiresAt: string | null;
+                            addedAt: string;
+                            addedById: string;
+                            removedAt: string | null;
+                            removedReasonText: string | null;
+                            active: boolean;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26047,7 +26088,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string;
+                            patientId: string;
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            grantorKind: string;
+                            captureMethod: string;
+                            scopeDescriptor: unknown;
+                            status: "draft" | "active" | "superseded" | "revoked" | "expired";
+                            version: number;
+                            effectiveAt: string | null;
+                            expiresAt: string | null;
+                            signedAt: string | null;
+                            createdById: string;
+                            supersedesConsentRecordId?: string | null;
+                            renewedFromConsentRecordId?: string | null;
+                            survivesDeath?: boolean;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26148,7 +26210,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: ({
+                            id: string;
+                            organizationId: string;
+                            patientId: string;
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            grantorKind: string;
+                            captureMethod: string;
+                            scopeDescriptor: unknown;
+                            status: "draft" | "active" | "superseded" | "revoked" | "expired";
+                            version: number;
+                            effectiveAt: string | null;
+                            expiresAt: string | null;
+                            signedAt: string | null;
+                            createdById: string;
+                            supersedesConsentRecordId?: string | null;
+                            renewedFromConsentRecordId?: string | null;
+                            survivesDeath?: boolean;
+                        } & {
+                            daysUntilExpiry: number;
+                        })[];
+                        nextCursor: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

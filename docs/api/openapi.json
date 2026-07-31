@@ -9805,6 +9805,7 @@
         "tags": [
           "39-consent"
         ],
+        "summary": "Named DPOA agents on a consent, active + historical (D5)",
         "parameters": [
           {
             "name": "consentId",
@@ -9817,7 +9818,103 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "organizationId",
+                          "consentRecordId",
+                          "patientId",
+                          "agentKind",
+                          "agentName",
+                          "agentRelationship",
+                          "scopeKind",
+                          "activationCondition",
+                          "termKind",
+                          "termUntil",
+                          "addedAt",
+                          "addedById",
+                          "removedAt",
+                          "active"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "consentRecordId": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "agentKind": {
+                            "type": "string"
+                          },
+                          "agentName": {
+                            "type": "string"
+                          },
+                          "agentRelationship": {
+                            "type": "string"
+                          },
+                          "scopeKind": {
+                            "type": "string"
+                          },
+                          "activationCondition": {
+                            "type": "string"
+                          },
+                          "termKind": {
+                            "type": "string"
+                          },
+                          "termUntil": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "addedAt": {
+                            "type": "string"
+                          },
+                          "addedById": {
+                            "type": "string"
+                          },
+                          "removedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "active": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -10153,6 +10250,7 @@
         "tags": [
           "39-consent"
         ],
+        "summary": "Named disclosure recipients on a consent, active + historical (D6)",
         "parameters": [
           {
             "name": "consentId",
@@ -10165,7 +10263,116 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "organizationId",
+                          "consentRecordId",
+                          "recipientKind",
+                          "recipientEntityId",
+                          "recipientDisplayName",
+                          "purposeCode",
+                          "expiresAt",
+                          "addedAt",
+                          "addedById",
+                          "removedAt",
+                          "removedReasonText",
+                          "active"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "consentRecordId": {
+                            "type": "string"
+                          },
+                          "recipientKind": {
+                            "type": "string"
+                          },
+                          "recipientEntityId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "recipientDisplayName": {
+                            "type": "string"
+                          },
+                          "purposeCode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "expiresAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "addedAt": {
+                            "type": "string"
+                          },
+                          "addedById": {
+                            "type": "string"
+                          },
+                          "removedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "removedReasonText": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "active": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -32749,6 +32956,7 @@
         "tags": [
           "39-consent"
         ],
+        "summary": "A patient's ACTIVE consents (§4.1)",
         "parameters": [
           {
             "name": "patientId",
@@ -32761,7 +32969,193 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "organizationId",
+                          "patientId",
+                          "typeKey",
+                          "grantorKind",
+                          "captureMethod",
+                          "scopeDescriptor",
+                          "status",
+                          "version",
+                          "effectiveAt",
+                          "expiresAt",
+                          "signedAt",
+                          "createdById"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "typeKey": {
+                            "anyOf": [
+                              {
+                                "const": "portal_access",
+                                "type": "string"
+                              },
+                              {
+                                "const": "dpoa_healthcare",
+                                "type": "string"
+                              },
+                              {
+                                "const": "dpoa_financial",
+                                "type": "string"
+                              },
+                              {
+                                "const": "family_caregiver_access",
+                                "type": "string"
+                              },
+                              {
+                                "const": "42_cfr_part_2_release",
+                                "type": "string"
+                              },
+                              {
+                                "const": "media_release",
+                                "type": "string"
+                              },
+                              {
+                                "const": "research_participation",
+                                "type": "string"
+                              },
+                              {
+                                "const": "telehealth_consent",
+                                "type": "string"
+                              },
+                              {
+                                "const": "advance_directive_acknowledgment",
+                                "type": "string"
+                              },
+                              {
+                                "const": "hipaa_release",
+                                "type": "string"
+                              },
+                              {
+                                "const": "bereavement_outreach_consent",
+                                "type": "string"
+                              },
+                              {
+                                "const": "custom",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "grantorKind": {
+                            "type": "string"
+                          },
+                          "captureMethod": {
+                            "type": "string"
+                          },
+                          "scopeDescriptor": {},
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "draft",
+                                "type": "string"
+                              },
+                              {
+                                "const": "active",
+                                "type": "string"
+                              },
+                              {
+                                "const": "superseded",
+                                "type": "string"
+                              },
+                              {
+                                "const": "revoked",
+                                "type": "string"
+                              },
+                              {
+                                "const": "expired",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "effectiveAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "expiresAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "signedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdById": {
+                            "type": "string"
+                          },
+                          "supersedesConsentRecordId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "renewedFromConsentRecordId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "survivesDeath": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -33035,7 +33429,220 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "allOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "organizationId",
+                              "patientId",
+                              "typeKey",
+                              "grantorKind",
+                              "captureMethod",
+                              "scopeDescriptor",
+                              "status",
+                              "version",
+                              "effectiveAt",
+                              "expiresAt",
+                              "signedAt",
+                              "createdById"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "organizationId": {
+                                "type": "string"
+                              },
+                              "patientId": {
+                                "type": "string"
+                              },
+                              "typeKey": {
+                                "anyOf": [
+                                  {
+                                    "const": "portal_access",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "dpoa_healthcare",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "dpoa_financial",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "family_caregiver_access",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "42_cfr_part_2_release",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "media_release",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "research_participation",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "telehealth_consent",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "advance_directive_acknowledgment",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "hipaa_release",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "bereavement_outreach_consent",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "custom",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "grantorKind": {
+                                "type": "string"
+                              },
+                              "captureMethod": {
+                                "type": "string"
+                              },
+                              "scopeDescriptor": {},
+                              "status": {
+                                "anyOf": [
+                                  {
+                                    "const": "draft",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "active",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "superseded",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "revoked",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "expired",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "version": {
+                                "type": "integer"
+                              },
+                              "effectiveAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "expiresAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "signedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "createdById": {
+                                "type": "string"
+                              },
+                              "supersedesConsentRecordId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "renewedFromConsentRecordId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "survivesDeath": {
+                                "type": "boolean"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "daysUntilExpiry"
+                            ],
+                            "properties": {
+                              "daysUntilExpiry": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
