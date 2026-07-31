@@ -99,8 +99,14 @@ import {
 import { registerSchedulingSeams } from "./modules/17-scheduling/index";
 import { registerEvvSeams } from "./modules/18-evv/index";
 import {
+  buildDrizzleM19ReadService,
+  buildDrizzleM19WriteService,
+  buildDrizzleOncallAbacResolver,
   buildDrizzleOncallSeamStore,
   createDrizzleTriageEraseStore,
+  denyStubOncallAbacResolver,
+  mountM19Routes,
+  registerOncallAbacPredicates,
   registerOncallSeams,
   registerTriageErasers,
 } from "./modules/19-oncall/index";
@@ -522,6 +528,26 @@ export function wireModuleSeams(
         })
       : denyStubSuppliesAbacResolver,
   });
+  // M19-T07 — the six §4.7 ABAC predicates M19 OWNS (`oncall_eligible`,
+  // `triage_call_owner_or_supervisor`, `external_triage_actor`, `escalation_recipient_scope`,
+  // `escalation_recipient`, `portal_session_consent_active`) into M3's named-predicate registry.
+  //
+  // Every one is an AUTHORIZATION read, so unlike M15/M16 the fail direction here is UNIFORM: unreadable
+  // resolver, unknown target, absent row, cross-tenant id and thrown error all DENY. §2.4's "a coverage gap
+  // must ALERT rather than block" governs the watchdog and boot, not who may answer the after-hours line.
+  //
+  // ONE method deliberately does NOT collapse its error into a boolean: `activeShiftForMembership` answers
+  // `true` / `false` / `null`, so "this nurse is not on call" stays distinct from "we could not read the
+  // roster" (the M19-T04 finding). `decideOnCallEligible` treats `null` as no-answer and lets the ROLE path
+  // still speak — a supervisor is not locked out of the board by a slow query, while an ordinary RN, who
+  // has no other path, is still refused.
+  registerOncallAbacPredicates({
+    resolver: deps.db
+      ? buildDrizzleOncallAbacResolver(deps.db, {
+          roleGrants: createDbEffectivePermissionStore(deps.db),
+        })
+      : denyStubOncallAbacResolver,
+  });
   // M17 — the four §4.3 owned READ seams (VisitReader — the visit read path M8 (encounter-authoring context,
   // which CLOSES M8's visit-seeding inert consumer M8 D9) / M18 (EVV geofence target) / M14 (IDG since-meeting)
   // consume — + VisitAssignmentReader — the assignment read path M5 (the §4.5 D11 caseload-contribution
@@ -820,6 +846,7 @@ if ((import.meta as { main?: boolean }).main) {
   // `m34.tenant.provisioned` event, so no mutation rolls back).
   const m15OutboxPublisher = bindCallerModule(txOutboxPublisher, "m15");
   const m16OutboxPublisher = bindCallerModule(txOutboxPublisher, "m16");
+  const m19OutboxPublisher = bindCallerModule(txOutboxPublisher, "m19");
   const m21OutboxPublisher = bindCallerModule(txOutboxPublisher, "m21");
   const m23OutboxPublisher = bindCallerModule(txOutboxPublisher, "m23");
   const m24OutboxPublisher = bindCallerModule(txOutboxPublisher, "m24");
@@ -1129,6 +1156,36 @@ if ((import.meta as { main?: boolean }).main) {
           // create and an M11 cascade (D4 routing freeze + per-kind validation + the §4.5.2 emit). Until
           // this runs the seam's create method refuses loudly rather than writing a routing-less row.
           bindSupplyRequestCreator(m21WriteService);
+          // M19 (On-Call Triage) — mount the §4.1 route plugins over the Drizzle READ + WRITE services.
+          // Every read opens its own withOrgContext (RLS scopes each statement to app.org_id) and resolves
+          // the 42 CFR Part 2 gate through M39's ConsentEvaluator BEFORE it queries, so an uncleared caller
+          // never has the SUD medication in the result set. Every mutation runs the pure §2.2-§2.7 machines
+          // and emits its §4.10 `m19.*` event through the catalog-validating tx publisher (callerModule
+          // `m19`) on the mutation's own transaction — which is how M17 learns a visit was dispatched, M16's
+          // bereavement timeline starts from a `pronouncement_scheduled` disposition, and M36's channel
+          // synchronizer follows a shift open/close.
+          //
+          // TWO fail-directions bind here and they point OPPOSITE ways, deliberately:
+          //   • the M8 `EncounterCreator` call runs AFTER the disposition commits and a failure is a
+          //     §2.7 class D-B DEFERRAL — the call parks in `documented_pending_encounter`, the clinician
+          //     is not blocked, and the §4.8 worker retries. A seam probe inside our own transaction would
+          //     also self-deadlock the pool (the M21-T05 finding).
+          //   • the D3 vendor deployment models stay OFF (`vendorModelsEnabled` unset), so a policy PATCH
+          //     selecting `hybrid`/`centralized` is REFUSED rather than accepted-and-ignored. Phase 1 has
+          //     no signed BAA and the §8.5 adapter registry is empty; a tenant must never believe a vendor
+          //     is answering their nights when none is.
+          //
+          // The two cipher ports (D14's per-tenant DEK envelope) are left UNBOUND: no key-management
+          // binding exists for M19 yet, so the caller quote is dropped rather than written plaintext into a
+          // column named `_cipher`, and the transcript decrypt refuses rather than returning the stored
+          // bytes as though they were readable.
+          const m19ReadService = buildDrizzleM19ReadService(dbHandle.db);
+          mountM19Routes(app, {
+            readService: m19ReadService,
+            writeService: buildDrizzleM19WriteService(dbHandle.db, m19ReadService, {
+              outbox: m19OutboxPublisher,
+            }),
+          });
         }
       : undefined,
     registerModuleSeams: () =>

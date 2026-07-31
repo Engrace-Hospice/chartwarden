@@ -20219,6 +20219,84 @@
         }
       }
     },
+    "/api/v1/escalations": {
+      "get": {
+        "operationId": "getApiV1Escalations",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/escalations/{escalationId}/acknowledge": {
+      "post": {
+        "operationId": "postApiV1EscalationsByEscalationIdAcknowledge",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "escalationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/escalations/{escalationId}/resolve": {
+      "post": {
+        "operationId": "postApiV1EscalationsByEscalationIdResolve",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "escalationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/evv/aggregator-submissions": {
       "get": {
         "operationId": "getApiV1EvvAggregatorsubmissions",
@@ -32867,6 +32945,256 @@
         }
       }
     },
+    "/api/v1/oncall/current": {
+      "get": {
+        "operationId": "getApiV1OncallCurrent",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/oncall/external-vendors": {
+      "get": {
+        "operationId": "getApiV1OncallExternalvendors",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1OncallExternalvendors",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/oncall/external-vendors/{vendorId}": {
+      "patch": {
+        "operationId": "patchApiV1OncallExternalvendorsByVendorId",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "vendorId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/oncall/policy": {
+      "get": {
+        "operationId": "getApiV1OncallPolicy",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1OncallPolicy",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/oncall/shifts": {
+      "get": {
+        "operationId": "getApiV1OncallShifts",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1OncallShifts",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/oncall/shifts/{shiftId}/cancel": {
+      "patch": {
+        "operationId": "patchApiV1OncallShiftsByShiftIdCancel",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "shiftId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/oncall/shifts/{shiftId}/close": {
+      "post": {
+        "operationId": "postApiV1OncallShiftsByShiftIdClose",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "shiftId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/oncall/shifts/{shiftId}/open": {
+      "post": {
+        "operationId": "postApiV1OncallShiftsByShiftIdOpen",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "shiftId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/optimize-day": {
       "post": {
         "operationId": "postApiV1Optimizeday",
@@ -39729,6 +40057,26 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/triage/recent": {
+      "get": {
+        "operationId": "getApiV1PortalTriageRecent",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [],
         "responses": {
           "200": {
             "description": "OK"
@@ -56897,6 +57245,621 @@
         "parameters": [
           {
             "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls": {
+      "get": {
+        "operationId": "getApiV1Triagecalls",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Triagecalls",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}": {
+      "get": {
+        "operationId": "getApiV1TriagecallsByTriageCallId",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/abandon": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdAbandon",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/answers": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdAnswers",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/answers/{answerId}/correct": {
+      "patch": {
+        "operationId": "patchApiV1TriagecallsByTriageCallIdAnswersByAnswerIdCorrect",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "answerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/apply-protocol": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdApplyprotocol",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/awaiting-callback": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdAwaitingcallback",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/complete-protocol": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdCompleteprotocol",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/disposition": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdDisposition",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/document": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdDocument",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/escalations": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdEscalations",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/identify-patient": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdIdentifypatient",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/resume": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdResume",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/transcript-decrypt": {
+      "get": {
+        "operationId": "getApiV1TriagecallsByTriageCallIdTranscriptdecrypt",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/paper-reentry": {
+      "post": {
+        "operationId": "postApiV1TriagecallsPaperreentry",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/paper-reentry/worklist": {
+      "get": {
+        "operationId": "getApiV1TriagecallsPaperreentryWorklist",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-protocol-questions/{questionId}": {
+      "patch": {
+        "operationId": "patchApiV1TriageprotocolquestionsByQuestionId",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "questionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-protocols": {
+      "get": {
+        "operationId": "getApiV1Triageprotocols",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Triageprotocols",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-protocols/{protocolId}": {
+      "get": {
+        "operationId": "getApiV1TriageprotocolsByProtocolId",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "protocolId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1TriageprotocolsByProtocolId",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "protocolId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-protocols/{protocolId}/questions": {
+      "post": {
+        "operationId": "postApiV1TriageprotocolsByProtocolIdQuestions",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "protocolId",
             "in": "path",
             "required": true,
             "schema": {

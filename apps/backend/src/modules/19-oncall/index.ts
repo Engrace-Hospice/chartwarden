@@ -35,12 +35,70 @@
 // ADVISORY M32 seams (§8.6 D11/D12) as the platform's only NON-THROWING deny-stubs — an advisory that
 // gates nothing must degrade to a disabled AI block, not to a failed call-open.
 //
-// Still to land: routes/permissions/ABAC (T07) and the §5 screens (T08).
+// M19-T07 lands the ROUTE LAYER — the §4.1 surface plus the three things that only exist once there is a
+// request to attach them to. `routes/` holds the five plugins (calls · escalations · shifts+policy ·
+// protocols+vendors · portal) over a split Drizzle READ/WRITE service; `permission-keys.ts` re-exports the
+// seventeen §4.6 keys M19 contributes to M3's catalog; `abac-predicates.ts` registers the six §4.7
+// predicates M19 OWNS; `alerts.ts` turns the machines' declared `{kind:'alert'}` effects into the §4.9
+// typed M36 payloads; `vendor/` is the §8.5 adapter mandate made operational plus the §7.10 PHI boundary
+// every outbound byte leaves through; and `consumers/m36-delivery-failed.ts` closes the §4.8 trigger.
+//
+// FOUR THINGS THIS TASK DECIDED THAT ARE NOT OBVIOUS FROM THE SPEC:
+//   • §4.1's per-call ABAC cell is ONE predicate chosen by SESSION CLASS, not two ANDed — ANDing
+//     `triage_call_owner_or_supervisor` with `external_triage_actor` denies every caller.
+//   • The vendor projection is a DIFFERENT TYPE (`VendorTriageCallView`), not a filtered one, so §8.3.1's
+//     "not bypassable by route-level code" is structural.
+//   • The M8 seam call runs AFTER the disposition commits — a probe inside our own transaction
+//     self-deadlocks the pool, and §2.7 class D-B needs the transition to survive an M8 outage.
+//   • The §8.5 adapter registry ships EMPTY and that is the correct state: Phase 1 has no signed BAA, so
+//     every `hybrid`/`centralized` handoff refuses and the call stays in-agency.
+//
+// Still to land: the §5 screens (T08).
 export * from "./lifecycle";
 export * from "./roster";
 export * from "./consumers";
 export * from "./clinical";
 export * from "./seams/index";
+export * from "./alerts";
+export * from "./vendor/index";
+export {
+  M19_CONTRIBUTED_PERMISSIONS,
+  M19_PERMISSION_KEY_LIST,
+  M19_STEP_UP_PERMISSION_KEYS,
+  M19_VENDOR_SESSION_PERMISSION_KEYS,
+  type M19PermissionKey,
+} from "./permission-keys";
+export {
+  type OncallAbacDeps,
+  type OncallAbacPorts,
+  type OncallAbacResolver,
+  type OnCallShiftAbacFacts,
+  type TriageCallAbacFacts,
+  type TriageEscalationAbacFacts,
+  ESCALATION_TIER_ROLES,
+  M19_ABAC_PREDICATES,
+  ONCALL_OVERSIGHT_ROLES,
+  PORTAL_SESSION_CLASSES,
+  ROLES_BY_ESCALATION_TIER,
+  TRIAGE_DISCIPLINE_FOR_ROLE_KEY,
+  VENDOR_SESSION_CLASSES,
+  buildOncallAbacPredicates,
+  decideEscalationRecipient,
+  decideEscalationRecipientScope,
+  decideExternalTriageActor,
+  decideOnCallEligible,
+  denyStubOncallAbacResolver,
+  registerOncallAbacPredicates,
+  seamOncallAbacPorts,
+  triageDisciplineForRoleKeys,
+} from "./abac-predicates";
+export {
+  type OncallAbacResolverDeps,
+  type OncallRoleGrantReader,
+  buildDrizzleOncallAbacResolver,
+} from "./abac-resolver-drizzle";
+export * from "./routes/index";
+export { mountM19Routes } from "./routes/mount";
 export {
   type InMemoryTriageEraseSeed,
   type TriageEraseCounts,

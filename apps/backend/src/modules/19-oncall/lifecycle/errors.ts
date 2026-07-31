@@ -198,6 +198,57 @@ export const M19_ERROR_STATUS = {
   /** §2.7 step 1 — `paper_origin_flag` and `source='paper_origin'` move together (the §3.3 CHECK), and so
    *  do the flag and `paper_original_opened_at`. */
   PAPER_ORIGIN_FIELDS_INCOHERENT: 422,
+
+  // ── §4.1 the route layer (M19-T07) ─────────────────────────────────────────────────────────────────
+  //
+  // The four NOT_FOUND codes below are what a route raises when its aggregate does not resolve UNDER THE
+  // CALLER'S RLS SCOPE. They are deliberately indistinguishable from "the row belongs to another tenant":
+  // §9.4's IDOR test asks that a cross-tenant id be unprobeable, and a 404 that means only "absent" would
+  // let a caller enumerate which ids exist by watching for a 403 instead.
+  /** §4.1 rows 3-15 — no `triage_call` with this id is readable by this caller. */
+  TRIAGE_CALL_NOT_FOUND: 404,
+  /** §4.1 rows 17-18 — no `triage_escalation` with this id is readable by this caller. */
+  ESCALATION_NOT_FOUND: 404,
+  /** §4.1 rows 21-23 — no `on_call_shift` with this id is readable by this caller. */
+  SHIFT_NOT_FOUND: 404,
+  /** §4.1 rows 25-26 — this (org, ProviderEntity) has no `tenant_oncall_policy` row. NOT auto-created:
+   *  D7 pins the policy onto every shift that opens, and a default invented at read time would be pinned
+   *  as though the tenant had chosen it. */
+  ONCALL_POLICY_NOT_FOUND: 404,
+  /** §4.1 rows 28-32 — no `triage_protocol` / question with this id is in this tenant's catalog. */
+  PROTOCOL_NOT_FOUND: 404,
+  /** §4.1 rows 33-35 — no `external_triage_vendor` binding with this id under this tenant. */
+  VENDOR_BINDING_NOT_FOUND: 404,
+
+  /** §4.1 rows 30-32 / §3.3's floor CHECK pair — a platform-floor (`is_system_locked`) protocol row is not
+   *  a tenant's to edit. Migration 0108's RLS policies already make the UPDATE impossible; this is the
+   *  same refusal at the layer that can say WHY, so the DON sees "this is a platform protocol" rather than
+   *  "0 rows updated". §8.3.2 lists lowering a mandatory-escalation floor as the tampering threat. */
+  PROTOCOL_SYSTEM_LOCKED: 403,
+  /** §4.1 row 29 — a tenant may author a tenant-custom protocol and may not mint a platform-floor one. */
+  PROTOCOL_PLATFORM_MINT_FORBIDDEN: 403,
+
+  /** §7.3 / §6 — the actor's M3 role keys evidence NO §3.2 discipline band, so the disposition matrix has
+   *  nothing to decide against. Fails CLOSED: an unclassifiable actor gets no disposition scope at all,
+   *  rather than the widest or the narrowest band by default. */
+  TRIAGE_ACTOR_DISCIPLINE_UNRESOLVED: 403,
+
+  /** D12 / §8.6 — the clinician overrode an AI protocol suggestion whose confidence was AT OR ABOVE the
+   *  governance floor and supplied no reason (or one under 10 chars). Below the floor no reason is
+   *  required, which is why this cannot be a blanket "reason required" on the apply route. */
+  AI_OVERRIDE_REASON_REQUIRED: 422,
+
+  /** D13 / §8.5 — a vendor binding is being created or activated without the BAA attestation §8.5 requires
+   *  to be on file before an adapter is enabled at runtime. */
+  VENDOR_BAA_ATTESTATION_REQUIRED: 422,
+  /** D3 — `hybrid` / `centralized` are structurally complete but feature-flagged OFF in Phase 1. A policy
+   *  PATCH that selects one on a deployment where the flag is off is refused rather than accepted-and-
+   *  ignored, which would leave the tenant believing a vendor was answering their nights. */
+  ONCALL_MODEL_NOT_ENABLED: 409,
+  /** §4.8 — an `m36.notification.delivery_failed` naming an on-call recipient but no ProviderEntity. Every
+   *  M19 PHI row needs `provider_entity_id` NOT NULL, so the delivery dead-letters for a human rather than
+   *  anchoring an operational call to a guessed tenancy (the D10 posture, unchanged). */
+  DELIVERY_FAILURE_PROVIDER_ENTITY_UNRESOLVED: 422,
 } as const;
 
 /** A machine-readable M19 domain failure code (§2.3 / §7). */
