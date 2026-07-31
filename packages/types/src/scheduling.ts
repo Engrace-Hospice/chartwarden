@@ -344,6 +344,20 @@ export interface PortalVisitReader {
   ): Promise<PortalVisitSummary[]>;
 }
 
+/**
+ * A measure population — the numerator and the DENOMINATOR it came from.
+ *
+ * The rate-returning methods below are fine for a dashboard tile, but M30's quality measures cannot use
+ * them: `ratioResult()` collapses a measure to `insufficient_n` when the denominator is under the CMS
+ * reportable floor, and that suppression IS the public-reporting rule. A rate alone cannot express it, and
+ * back-computing a denominator would publish a rate CMS requires withheld. So every measure-feeding read
+ * exposes the pair; the rate methods stay for the dashboard consumers that only need the number.
+ */
+export interface MeasureCounts {
+  readonly numerator: number;
+  readonly denominator: number;
+}
+
 /** §4.3 — productivity + quality measures for M30 / M33 dashboards. */
 export interface VisitMetricsProvider {
   getOnTimeVisitRate(
@@ -351,6 +365,13 @@ export interface VisitMetricsProvider {
     windowIso: { from: IsoInstant; to: IsoInstant },
     filters?: { discipline?: string },
   ): Promise<number>;
+
+  /** The on-time population behind {@link getOnTimeVisitRate} — M30's `visit_on_time_rate` input. */
+  getOnTimeVisitCounts(
+    orgId: OrgId,
+    windowIso: { from: IsoInstant; to: IsoInstant },
+    filters?: { discipline?: string },
+  ): Promise<MeasureCounts>;
   getNoShowRate(orgId: OrgId, windowIso: { from: IsoInstant; to: IsoInstant }): Promise<number>;
   getRescheduleRate(orgId: OrgId, windowIso: { from: IsoInstant; to: IsoInstant }): Promise<number>;
   getRouteEfficiencyForMembership(

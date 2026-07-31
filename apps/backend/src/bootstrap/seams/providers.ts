@@ -462,6 +462,9 @@ export const evvMetricsProviderDenyStub: EvvMetricsProvider = {
   getComplianceRate() {
     throw new NotImplementedError("EvvMetricsProvider");
   },
+  getComplianceCounts() {
+    throw new NotImplementedError("EvvMetricsProvider");
+  },
   getLateCheckoutRate() {
     throw new NotImplementedError("EvvMetricsProvider");
   },
@@ -796,6 +799,9 @@ export const portalVisitReaderDenyStub: PortalVisitReader = {
  * M30/M33 consume. Denies until M17 registers it (M17-T05). */
 export const visitMetricsProviderDenyStub: VisitMetricsProvider = {
   getOnTimeVisitRate() {
+    throw new NotImplementedError("VisitMetricsProvider");
+  },
+  getOnTimeVisitCounts() {
     throw new NotImplementedError("VisitMetricsProvider");
   },
   getNoShowRate() {

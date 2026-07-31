@@ -92,6 +92,7 @@ import type {
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { sql } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
+import { getSeam } from "../../../bootstrap/index";
 
 // ── the dep bag the composition root injects (the bindable infra + the still-missing seams) ────────────
 
@@ -284,6 +285,100 @@ export async function resolveHopeMeasureInput(
       return unboundWorkerPort(
         "measureRecompute.data.resolveInput",
         `no measure-input provider bound for '${code}' — only the four HOPE-family measures (tfp_pi / tfp_npsi / hope_sfv_on_time_rate / hope_submission_acceptance_rate) resolve from the live M10 HOPE rollups; the non-HOPE families need the M5–M18 read seams`,
+      );
+  }
+}
+
+// ── the OPERATIONAL measure-input resolver (visit-on-time + EVV compliance) ────────────────────────────
+
+/**
+ * The two operational measures whose producers already tally ORG-LEVEL counts (M17 scheduling, M18 EVV).
+ *
+ * These could not be bound before because the producer seams returned a RATE. `ratioResult()` suppresses a
+ * measure whose DENOMINATOR is below the CMS reportable floor, so a rate — which has already discarded the
+ * denominator — cannot drive a reportable measure, and back-computing one would publish a rate CMS requires
+ * withheld. M17/M18 now expose `getOnTimeVisitCounts` / `getComplianceCounts` beside their rate methods
+ * (the tallies were always in their stores; the division at the seam boundary was the loss), so the pair
+ * reaches the calculator and the kernel applies its own floor.
+ *
+ * NB the rate methods answer "vacuously 1" for an empty window — correct for a dashboard tile, wrong here:
+ * 0/0 must SUPPRESS, not read as a perfect score. That difference is exactly why these take the counts.
+ */
+const OPERATIONAL_MEASURE_THRESHOLDS: Readonly<Record<string, ThresholdRule>> = {
+  visit_on_time_rate: {
+    value: 0.9,
+    direction: "gte",
+    label: "visit on-time rate (platform default)",
+  },
+  evv_compliance_rate: {
+    value: 0.95,
+    direction: "gte",
+    label: "EVV compliance rate (platform default; state aggregators commonly require 95%)",
+  },
+};
+
+/** The M17 on-time counts read, as this resolver uses it (the registry holds the seam opaquely). */
+interface VisitOnTimeCountsView {
+  getOnTimeVisitCounts(
+    orgId: string,
+    windowIso: { from: string; to: string },
+  ): Promise<{ numerator: number; denominator: number }>;
+}
+
+/** The M18 compliance counts read, as this resolver uses it. */
+interface EvvComplianceCountsView {
+  getComplianceCounts(
+    orgId: string,
+    windowIso: { from: string; to: string },
+  ): Promise<{ numerator: number; denominator: number }>;
+}
+
+/** The measure codes {@link resolveOperationalMeasureInput} can shape (the routing predicate). */
+export const OPERATIONAL_BOUND_MEASURE_CODES = new Set(["visit_on_time_rate", "evv_compliance_rate"]);
+
+/**
+ * Shape the live M17/M18 org-level count pairs into their calculator inputs. Aggregate-only — no patient
+ * row crosses (D6). A producer whose seam is still the M1 deny-stub throws, and the worker's existing
+ * fail-closed handling records the recompute as failed rather than writing a fabricated value.
+ */
+export async function resolveOperationalMeasureInput(
+  request: {
+    readonly registration: MeasureRegistration;
+    readonly organizationId: string;
+    readonly providerEntityId: string;
+    readonly periodStart: string;
+    readonly periodEnd: string;
+  },
+  seams: {
+    readonly visitMetrics: VisitOnTimeCountsView;
+    readonly evvMetrics: EvvComplianceCountsView;
+  },
+): Promise<unknown> {
+  const { organizationId, providerEntityId, periodStart, periodEnd } = request;
+  const code = request.registration.code;
+  const window = { from: periodStart, to: periodEnd };
+  const base = { organizationId, providerEntityId, periodStart, periodEnd } as const;
+  const threshold = OPERATIONAL_MEASURE_THRESHOLDS[code];
+  if (threshold === undefined) {
+    return unboundWorkerPort(
+      "measureRecompute.data.resolveInput.threshold",
+      `no operational threshold default registered for measure '${code}'`,
+    );
+  }
+
+  switch (code) {
+    case "visit_on_time_rate": {
+      const c = await seams.visitMetrics.getOnTimeVisitCounts(organizationId, window);
+      return { ...base, scheduledVisits: c.denominator, onTimeVisits: c.numerator, threshold };
+    }
+    case "evv_compliance_rate": {
+      const c = await seams.evvMetrics.getComplianceCounts(organizationId, window);
+      return { ...base, evvRequiredVisits: c.denominator, evvVerifiedVisits: c.numerator, threshold };
+    }
+    default:
+      return unboundWorkerPort(
+        "measureRecompute.data.resolveInput",
+        `'${code}' is not one of the operational measures this resolver shapes`,
       );
   }
 }
@@ -499,10 +594,21 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
       // its two seams are closed over from `deps` (the worker's `{ hope }` seam arg carries only the HOPE
       // consumer). Any OTHER measure code stays fail-closed — the remaining families' M5–M18 read seams are
       // the integrator's remaining lazy-unbound shaping work.
-      resolveInput: (request, seams) =>
-        request.registration.code === "hvldl"
-          ? resolveHvldlMeasureInput(request, { deathDischargeReader, encounters: signedEncounters })
-          : resolveHopeMeasureInput(request, seams),
+      resolveInput: (request, seams) => {
+        if (request.registration.code === "hvldl")
+          return resolveHvldlMeasureInput(request, {
+            deathDischargeReader,
+            encounters: signedEncounters,
+          });
+        // BOUND (operational): the two measures whose producers tally ORG-LEVEL counts. M17/M18 now expose
+        // the count PAIR beside their rate methods, so the CMS small-N floor can be applied honestly.
+        if (OPERATIONAL_BOUND_MEASURE_CODES.has(request.registration.code))
+          return resolveOperationalMeasureInput(request, {
+            visitMetrics: getSeam("VisitMetricsProvider") as never,
+            evvMetrics: getSeam("EvvMetricsProvider") as never,
+          });
+        return resolveHopeMeasureInput(request, seams);
+      },
     },
     values: {
       findCurrent: (measureCode, providerEntityId, periodStart, periodEnd) =>

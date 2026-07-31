@@ -332,6 +332,16 @@ export interface EvvLocationProvider {
 /** §4.3 — productivity + quality measures for M30 / M33 dashboards (all rates 0..1). */
 export interface EvvMetricsProvider {
   getComplianceRate(orgId: OrgId, windowIso: { from: IsoInstant; to: IsoInstant }): Promise<number>;
+
+  /**
+   * The compliance population behind {@link getComplianceRate} — M30's `evv_compliance_rate` input.
+   * A rate cannot drive a CMS-reportable measure: the denominator is what triggers small-N suppression,
+   * and this seam is where it was being discarded (the store already tallies both).
+   */
+  getComplianceCounts(
+    orgId: OrgId,
+    windowIso: { from: IsoInstant; to: IsoInstant },
+  ): Promise<{ readonly numerator: number; readonly denominator: number }>;
   getLateCheckoutRate(orgId: OrgId, windowIso: { from: IsoInstant; to: IsoInstant }): Promise<number>;
   getGeofenceDeviationRate(
     orgId: OrgId,

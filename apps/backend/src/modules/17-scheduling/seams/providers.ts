@@ -81,6 +81,16 @@ export function createVisitMetricsProvider(store: SchedulingSeamStore): VisitMet
       // No scheduled visits → vacuously on-time (no late visit has occurred).
       return counts.totalScheduled === 0 ? 1 : counts.onTimeCount / counts.totalScheduled;
     },
+    /**
+     * The same tally WITHOUT the division — M30's `visit_on_time_rate` measure input. The rate method
+     * above answers "vacuously 1" for an empty window, which is right for a dashboard tile and WRONG for a
+     * CMS-reportable measure: 0/0 must suppress, not read as a perfect score. Handing over the pair lets
+     * M30's kernel apply its own small-N floor.
+     */
+    async getOnTimeVisitCounts(_orgId, windowIso, filters) {
+      const counts = await store.metricsCounts(windowIso, filters);
+      return { numerator: counts.onTimeCount, denominator: counts.totalScheduled };
+    },
     async getNoShowRate(_orgId, windowIso) {
       const counts = await store.metricsCounts(windowIso);
       // No scheduled visits → no no-shows.
