@@ -610,6 +610,73 @@ export async function resolveHvldlMeasureInput(
   };
 }
 
+// ── the HCI indicator-10 resolver (visits near death) ──────────────────────────────────────────────────
+
+/**
+ * HCI indicator 10 — the proportion of decedents who received a visit in the days immediately before
+ * death (higher is better). It resolves from the SAME two live seams the HVLDL path uses: M6's
+ * death-discharge census for the denominator, M8's signed-encounter digests for the numerator.
+ *
+ * It is deliberately NOT the HVLDL predicate. HVLDL additionally requires the visit to be
+ * EVV-verified and from a qualifying discipline, and counts visits per decedent against a minimum.
+ * HCI-10 asks the looser question — was this decedent visited at all in the window — so the predicate
+ * here is "≥1 signed encounter with a service date at or before the death date, inside the window".
+ * Sharing the HVLDL discipline/EVV filters would silently make HCI-10 a stricter measure than CMS
+ * defines and depress the score.
+ *
+ * ★ WINDOW (flagged): CMS specifies "the days immediately preceding death" without a single fixed
+ *   figure across publications; this uses the same 3-calendar-day window as HVLDL so the two indicators
+ *   cannot disagree about which visits were "near death". Revisit when the HCI technical spec pins it.
+ *
+ * Aggregate-by-default: the loop reads per-decedent digests but returns only two COUNTS (D6).
+ */
+export async function resolveHciIndicator10Input(
+  request: {
+    readonly registration: MeasureRegistration;
+    readonly organizationId: string;
+    readonly providerEntityId: string;
+    readonly periodStart: string;
+    readonly periodEnd: string;
+  },
+  seams: {
+    readonly deathDischargeReader: DeathDischargeReader;
+    readonly encounters: SignedEncountersReader;
+  },
+): Promise<unknown> {
+  const { organizationId, providerEntityId, periodStart, periodEnd } = request;
+
+  const deaths = await seams.deathDischargeReader.listDeathDischargesInPeriod(organizationId, {
+    from: periodStart,
+    to: periodEnd,
+  });
+
+  let decedentsWithNearDeathVisits = 0;
+  for (const death of deaths) {
+    const deathDate = death.deathAt.slice(0, 10);
+    const since = new Date(
+      new Date(death.deathAt).getTime() - HVLDL_LAST_DAYS_WINDOW_DAYS * MS_PER_DAY,
+    ).toISOString();
+    const digests = await seams.encounters.signedEncountersForPatientSince(
+      organizationId,
+      death.patientId,
+      since,
+    );
+    if (digests.some((e) => e.serviceDate <= deathDate)) decedentsWithNearDeathVisits += 1;
+  }
+
+  return {
+    organizationId,
+    providerEntityId,
+    periodStart,
+    periodEnd,
+    // EVERY decedent in the period is the denominator — a decedent with no visits at all must stay in
+    // the population, since "was never visited before death" is exactly what this indicator measures.
+    totalDecedents: deaths.length,
+    decedentsWithNearDeathVisits,
+    threshold: HCI_THRESHOLDS_v2025.indicators.indicator_10,
+  };
+}
+
 // ── the per-queue port bundles (bind what we can; throw-on-call for the genuinely-missing infra) ────────
 
 /** The bound port bundles `registerM30Workers` drives the four §4.8 work-queue processors with. */
@@ -713,6 +780,11 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
       // consumer). Any OTHER measure code stays fail-closed — the remaining families' M5–M18 read seams are
       // the integrator's remaining lazy-unbound shaping work.
       resolveInput: (request, seams) => {
+        if (request.registration.code === "hci_indicator_10")
+          return resolveHciIndicator10Input(request, {
+            deathDischargeReader,
+            encounters: signedEncounters,
+          });
         if (request.registration.code === "hvldl")
           return resolveHvldlMeasureInput(request, {
             deathDischargeReader,
