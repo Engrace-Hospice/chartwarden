@@ -83,11 +83,41 @@ export const locationScope: AbacPredicate = (context, target) => {
 };
 
 /**
+ * `inOrg` (§4.2): the M3-BASE org-scoping predicate every org-scoped route composes its own predicate
+ * on top of.
+ *
+ * WHAT IT ASSERTS — the request is org-scoped at all: the actor is acting inside a resolved
+ * organization, and where the target NAMES an organization it is the same one. That is the precondition
+ * an ownership/visibility/discipline predicate needs before it can mean anything.
+ *
+ * WHAT IT IS NOT — row-level tenancy enforcement. `defaultTarget` hands `requireAbac` the route's PARAMS,
+ * so on a COLLECTION route the target is `{}`: there is no row yet to compare against, and this returns
+ * true. Postgres RLS (`organization_id = current_setting('app.org_id')`) is what keeps one tenant's rows
+ * from another, on every read, proven live per module in
+ * `packages/db/migrations/__tests__/*.live.test.ts`. Reading `inOrg` as "this route is tenant-safe" would
+ * under-protect a new route: it is the cheap precondition, RLS is the control.
+ *
+ * It is an INTRINSIC (seeded) predicate rather than a module registration because modules already
+ * compose on it as given — M30's own files call it "the M3-base `inOrg` predicate" — and a registry that
+ * fails closed on unknown names turns a missing base predicate into an endpoint no one can reach.
+ *
+ * Fail closed: no resolved org denies; a target naming a DIFFERENT org denies (which catches a handler
+ * threading an org id in from a body or path instead of the session).
+ */
+export const inOrg: AbacPredicate = (context, target) => {
+  if (!context.organizationId) return false;
+  const targetOrg = targetId(target, "organizationId") ?? targetId(target, "orgId");
+  if (targetOrg !== null) return targetOrg === context.organizationId;
+  return true;
+};
+
+/**
  * The predicates M3 owns outright — evaluable from the server-assembled context + target
  * with no cross-module seam. Seeded into the default registry so they are live on install.
  * Cross-module predicates (§4.2.1) are added by their owning modules via `registerPredicate`.
  */
 export const M3_INTRINSIC_PREDICATES: Readonly<Record<string, AbacPredicate>> = {
+  inOrg,
   provider_entity_scope: providerEntityScope,
   location_scope: locationScope,
 };

@@ -24,6 +24,11 @@ import { getSeam } from "../../bootstrap/index";
 /** The single predicate name M3 owns for the step-up ceremony (the §4.2.1 freshness gate). */
 export const M3_STEP_UP_PREDICATE = "step_up_recent";
 
+/** The M3-BASE org-scoping predicate name. The predicate itself is INTRINSIC — seeded into every
+ *  registry from `@wardenx/auth` (`M3_INTRINSIC_PREDICATES`), beside provider_entity_scope /
+ *  location_scope — so it is live before any module boots. Re-exported here as the name modules gate on. */
+export const M3_IN_ORG_PREDICATE = "inOrg";
+
 /**
  * Register M3's `step_up_recent` predicate into the registry (M3-T07; idempotent). Resolves the
  * session step-up state through M2's `SessionContextResolver` seam (lazily, at request time — the

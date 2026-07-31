@@ -56,6 +56,7 @@ export {
   registerBreakGlassContract,
 } from "./contract";
 export {
+  M3_IN_ORG_PREDICATE,
   M3_STEP_UP_PREDICATE,
   registerAuthorizationAbacPredicates,
 } from "./abac-predicates";
