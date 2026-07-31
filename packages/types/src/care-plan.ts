@@ -296,4 +296,14 @@ export interface CarePlanReader {
   /** Whether the patient's active care plan is past a CoP 418.56 gate (5-day initial / 15-day review).
    * M8 calls this at encounter-sign time; `overdue=true` blocks signing (§7.8). */
   isReviewOverdue(patientId: PatientId): Promise<CarePlanOverdueStatus | null>;
+
+  /**
+   * ORG-LEVEL 15-day review-cycle population over a due-date window — M30's
+   * `care_plan_15_day_adherence` input. Returns the numerator/denominator PAIR, not a rate: M30's kernel
+   * suppresses a measure whose denominator is under the CMS reportable floor. Aggregate only (D6).
+   */
+  fifteenDayCycleCountsForOrg(
+    organizationId: string,
+    window: { from: string; to: string },
+  ): Promise<{ readonly numerator: number; readonly denominator: number }>;
 }

@@ -157,6 +157,9 @@ export function createOrderProvider(store: OrderSeamStore): OrderProvider {
     getDiscontinuationReason(input) {
       return store.discontinuationForOrder(input.orderId);
     },
+    async getVerbalTimelinessCountsForOrg(organizationId, window) {
+      return store.verbalTimelinessCountsForOrg(organizationId, window);
+    },
     async getVerbalOrderTimeliness(input) {
       const v = await store.verbalForOrder(input.orderId);
       if (v === null) return null;

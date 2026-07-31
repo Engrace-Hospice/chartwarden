@@ -81,6 +81,15 @@ export interface EmarSeamStore {
   administrationsForOrder(medicationOrderId: string): Promise<ReadonlyArray<AdministrationDto>>;
   prnEffectivenessRowsForPatient(patientId: PatientId): Promise<ReadonlyArray<PrnEffectivenessRow>>;
   doseScheduleRowsForPatient(patientId: PatientId): Promise<ReadonlyArray<DoseScheduleRow>>;
+  /**
+   * ORG-LEVEL missed-dose tally over a DUE-AT window — M30's `missed_dose_rate` input. Denominator =
+   * scheduled doses due inside the window; numerator = those with a `missed_dose` row. Aggregate counts
+   * only, no patient row crosses (D6).
+   */
+  missedDoseCountsForOrg(
+    organizationId: string,
+    window: { from: string; to: string },
+  ): Promise<{ numerator: number; denominator: number }>;
   comfortKitTimelineForAdmission(
     admissionId: AdmissionId,
   ): Promise<ComfortKitAdministrationTimeline | null>;
@@ -173,6 +182,10 @@ export function createInMemoryEmarSeamStore(seed: EmarSeamSeed = {}): {
       },
       async doseScheduleRowsForPatient(patientId) {
         return scheduleByPatient.get(patientId) ?? [];
+      },
+      /** Slice default: 0/0 — M30's kernel SUPPRESSES rather than scoring zero missed doses. */
+      async missedDoseCountsForOrg() {
+        return { numerator: 0, denominator: 0 };
       },
       async comfortKitTimelineForAdmission(admissionId) {
         return comfortKitTimelines.get(admissionId) ?? null;

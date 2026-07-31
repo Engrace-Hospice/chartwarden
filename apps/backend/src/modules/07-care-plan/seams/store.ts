@@ -58,6 +58,15 @@ export interface CarePlanReaderStore {
   activeCarePlanElements(patientId: PatientId): Promise<CarePlanElementsRecord | null>;
   /** The active care plan's overdue-gate clock facts for a patient (initial/review due columns). */
   activeCarePlanClock(patientId: PatientId): Promise<CarePlanClockRecord | null>;
+  /**
+   * ORG-LEVEL 15-day review-cycle tally over a DUE-DATE window — M30's `care_plan_15_day_adherence`
+   * input. Denominator = care plans whose review fell due inside the window; numerator = those with a
+   * signed version by that due date. Aggregate counts only, no patient row crosses (D6).
+   */
+  fifteenDayCycleCountsForOrg(
+    organizationId: string,
+    window: { from: string; to: string },
+  ): Promise<{ numerator: number; denominator: number }>;
 }
 
 // ── in-memory slice store ─────────────────────────────────────────────────────────────────────────
@@ -81,6 +90,10 @@ export function createInMemoryCarePlanReaderStore(seed: CarePlanReaderSeed = {})
       },
       async activeCarePlanClock(patientId) {
         return clocks.find((c) => c.patientId === patientId) ?? null;
+      },
+      /** Slice default: 0/0 — M30's kernel SUPPRESSES rather than scoring perfect adherence. */
+      async fifteenDayCycleCountsForOrg() {
+        return { numerator: 0, denominator: 0 };
       },
     },
   };

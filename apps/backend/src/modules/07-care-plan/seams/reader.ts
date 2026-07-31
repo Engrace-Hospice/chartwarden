@@ -66,6 +66,9 @@ export function createCarePlanReader(
       };
     },
 
+    async fifteenDayCycleCountsForOrg(organizationId: string, window: { from: string; to: string }) {
+      return store.fifteenDayCycleCountsForOrg(organizationId, window);
+    },
     async isReviewOverdue(patientId: PatientId) {
       const clock = await store.activeCarePlanClock(patientId);
       if (clock === null) return null;

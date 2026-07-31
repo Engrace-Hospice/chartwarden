@@ -12,8 +12,11 @@
 // importantly, the empty-window behaviour the two answers disagree about.
 import { describe, expect, it } from "vitest";
 import {
+  computeCarePlan15DayAdherence,
   computeEvvComplianceRate,
   computeLateEncounterEntryRate,
+  computeMissedDoseRate,
+  computeVerbalOrderSignatureOnTime,
   computeVisitOnTimeRate,
 } from "@wardenx/quality";
 import { resolveOperationalMeasureInput } from "../src/modules/30-quality/jobs/m30-jobs";
@@ -34,6 +37,9 @@ const seamsWith = (
   visitMetrics: { async getOnTimeVisitCounts() { return visit; } },
   evvMetrics: { async getComplianceCounts() { return evv; } },
   signedEncounters: { async lateEntryCountsForOrg() { return lateEntry; } },
+  orders: { async getVerbalTimelinessCountsForOrg() { return lateEntry; } },
+  carePlan: { async fifteenDayCycleCountsForOrg() { return lateEntry; } },
+  administrations: { async getMissedDoseCountsForOrg() { return lateEntry; } },
 });
 
 describe("M30 operational measure inputs — counts, not rates", () => {
@@ -104,10 +110,52 @@ describe("M30 operational measure inputs — counts, not rates", () => {
     expect(result.rate).toBeNull();
   });
 
+  it("shapes M11's verbal-order timeliness tally into its calculator input", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("verbal_order_signature_on_time"),
+      seamsWith({ numerator: 0, denominator: 0 }, undefined, { numerator: 44, denominator: 50 }),
+    );
+    expect(input).toMatchObject({ totalVerbalOrders: 50, signedOnTime: 44 });
+    expect(computeVerbalOrderSignatureOnTime(input as never).rate).toBeCloseTo(0.88);
+  });
+
+  it("shapes M7's 15-day review-cycle tally into its calculator input", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("care_plan_15_day_adherence"),
+      seamsWith({ numerator: 0, denominator: 0 }, undefined, { numerator: 118, denominator: 120 }),
+    );
+    expect(input).toMatchObject({ carePlanCyclesDue: 120, cyclesUpdatedWithin15Days: 118 });
+    expect(computeCarePlan15DayAdherence(input as never).denominator).toBe(120);
+  });
+
+  it("every newly bound measure suppresses on an empty window rather than scoring perfect", async () => {
+    const empty = seamsWith({ numerator: 0, denominator: 0 });
+    for (const code of [
+      "verbal_order_signature_on_time",
+      "care_plan_15_day_adherence",
+    ] as const) {
+      const input = await resolveOperationalMeasureInput(REQUEST(code), empty);
+      const compute =
+        code === "verbal_order_signature_on_time"
+          ? computeVerbalOrderSignatureOnTime
+          : computeCarePlan15DayAdherence;
+      expect(compute(input as never).bandColor, code).toBe("insufficient_n");
+    }
+  });
+
+  it("shapes M13's org-level missed-dose tally into its calculator input", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("missed_dose_rate"),
+      seamsWith({ numerator: 0, denominator: 0 }, undefined, { numerator: 9, denominator: 1200 }),
+    );
+    expect(input).toMatchObject({ scheduledDoses: 1200, missedDoses: 9 });
+    expect(computeMissedDoseRate(input as never).rate).toBeCloseTo(9 / 1200);
+  });
+
   it("refuses a measure code it does not shape rather than computing on an empty input", async () => {
     await expect(
       resolveOperationalMeasureInput(
-        REQUEST("missed_dose_rate"),
+        REQUEST("prn_effectiveness_documented_rate"),
         seamsWith({ numerator: 1, denominator: 2 }),
       ),
     ).rejects.toThrow();
