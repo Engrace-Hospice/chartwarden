@@ -59,7 +59,7 @@
       "screens": true,
       "tests": true,
       "adapter": null,
-      "liveInfra": false
+      "liveInfra": true
     },
     {
       "id": 5,
@@ -101,7 +101,7 @@
       "screens": true,
       "tests": true,
       "adapter": null,
-      "liveInfra": false
+      "liveInfra": true
     },
     {
       "id": 8,
