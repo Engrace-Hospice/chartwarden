@@ -377,6 +377,9 @@ export const carePlanReaderDenyStub: CarePlanReader = {
   isReviewOverdue() {
     throw new NotImplementedError("CarePlanReader");
   },
+  fifteenDayCycleCountsForOrg() {
+    throw new NotImplementedError("CarePlanReader");
+  },
 };
 
 // M8 (Encounters) owned seams (§4.7). LEAF-TYPED (interfaces in @wardenx/types) like M6/M7's readers,
@@ -611,6 +614,9 @@ export const orderProviderDenyStub: OrderProvider = {
     throw new NotImplementedError("OrderProvider");
   },
   getVerbalOrderTimeliness() {
+    throw new NotImplementedError("OrderProvider");
+  },
+  getVerbalTimelinessCountsForOrg() {
     throw new NotImplementedError("OrderProvider");
   },
   findByTriggeringAssessment() {

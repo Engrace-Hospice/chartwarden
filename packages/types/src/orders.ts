@@ -477,6 +477,15 @@ export interface OrderProvider {
   getVerbalOrderTimeliness(input: {
     orderId: OrderRecordId;
   }): Promise<{ deadlineAt: string; signedAt: string | null; status: VerbalOrderStatus; onTime: boolean } | null>;
+  /**
+   * ORG-LEVEL verbal-order timeliness population over a RECEIPT window — M30's
+   * `verbal_order_signature_on_time` input. Returns the numerator/denominator PAIR, not a rate: M30's
+   * kernel suppresses a measure whose denominator is under the CMS reportable floor. Aggregate only.
+   */
+  getVerbalTimelinessCountsForOrg(
+    organizationId: string,
+    window: { from: string; to: string },
+  ): Promise<{ readonly numerator: number; readonly denominator: number }>;
   findByTriggeringAssessment(assessmentId: string): Promise<OrderRecordDto[]>;
   findByCarePlanIntervention(interventionId: string): Promise<OrderRecordDto | null>;
 }

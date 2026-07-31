@@ -321,6 +321,18 @@ const OPERATIONAL_MEASURE_THRESHOLDS: Readonly<Record<string, ThresholdRule>> = 
     direction: "lte",
     label: "late encounter-entry rate (platform default; lower is better)",
   },
+  // §2.3 D3 — a verbal order must be signed inside the org's verbal-order deadline (48h floor).
+  verbal_order_signature_on_time: {
+    value: 0.95,
+    direction: "gte",
+    label: "verbal-order signature within deadline (platform default)",
+  },
+  // CoP 418.56(d) — the IDG must review the care plan at least every 15 days.
+  care_plan_15_day_adherence: {
+    value: 0.95,
+    direction: "gte",
+    label: "care-plan 15-day review adherence (CoP 418.56(d); platform default)",
+  },
 };
 
 /** The M17 on-time counts read, as this resolver uses it (the registry holds the seam opaquely). */
@@ -339,6 +351,22 @@ interface LateEntryCountsView {
   ): Promise<{ numerator: number; denominator: number }>;
 }
 
+/** The M11 org-level verbal-order timeliness tally, as this resolver uses it. */
+interface VerbalTimelinessCountsView {
+  getVerbalTimelinessCountsForOrg(
+    orgId: string,
+    window: { from: string; to: string },
+  ): Promise<{ numerator: number; denominator: number }>;
+}
+
+/** The M7 org-level 15-day review-cycle tally, as this resolver uses it. */
+interface CarePlanCycleCountsView {
+  fifteenDayCycleCountsForOrg(
+    orgId: string,
+    window: { from: string; to: string },
+  ): Promise<{ numerator: number; denominator: number }>;
+}
+
 /** The M18 compliance counts read, as this resolver uses it. */
 interface EvvComplianceCountsView {
   getComplianceCounts(
@@ -352,6 +380,8 @@ export const OPERATIONAL_BOUND_MEASURE_CODES = new Set([
   "visit_on_time_rate",
   "evv_compliance_rate",
   "late_encounter_entry_rate",
+  "verbal_order_signature_on_time",
+  "care_plan_15_day_adherence",
 ]);
 
 /**
@@ -371,6 +401,8 @@ export async function resolveOperationalMeasureInput(
     readonly visitMetrics: VisitOnTimeCountsView;
     readonly evvMetrics: EvvComplianceCountsView;
     readonly signedEncounters: LateEntryCountsView;
+    readonly orders: VerbalTimelinessCountsView;
+    readonly carePlan: CarePlanCycleCountsView;
   },
 ): Promise<unknown> {
   const { organizationId, providerEntityId, periodStart, periodEnd } = request;
@@ -397,6 +429,19 @@ export async function resolveOperationalMeasureInput(
     case "late_encounter_entry_rate": {
       const c = await seams.signedEncounters.lateEntryCountsForOrg(organizationId, window);
       return { ...base, signedEncounters: c.denominator, lateEntries: c.numerator, threshold };
+    }
+    case "verbal_order_signature_on_time": {
+      const c = await seams.orders.getVerbalTimelinessCountsForOrg(organizationId, window);
+      return { ...base, totalVerbalOrders: c.denominator, signedOnTime: c.numerator, threshold };
+    }
+    case "care_plan_15_day_adherence": {
+      const c = await seams.carePlan.fifteenDayCycleCountsForOrg(organizationId, window);
+      return {
+        ...base,
+        carePlanCyclesDue: c.denominator,
+        cyclesUpdatedWithin15Days: c.numerator,
+        threshold,
+      };
     }
     default:
       return unboundWorkerPort(
@@ -637,6 +682,8 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
             // The same M8 reader the HVLDL path uses — closed over from deps so an unbound boot throws
             // lazily on RUN rather than at port-bundle construction.
             signedEncounters,
+            orders: getSeam("OrderProvider") as never,
+            carePlan: getSeam("CarePlanReader") as never,
           });
         return resolveHopeMeasureInput(request, seams);
       },

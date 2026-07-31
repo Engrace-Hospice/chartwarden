@@ -90,6 +90,15 @@ export interface OrderSeamStore {
   orderForCarePlanIntervention(interventionId: string): Promise<OrderRecordDto | null>;
   discontinuationForOrder(orderId: OrderRecordId): Promise<OrderDiscontinuationDto | null>;
   verbalForOrder(orderId: OrderRecordId): Promise<VerbalTimeliness | null>;
+  /**
+   * ORG-LEVEL verbal-order timeliness tally over a RECEIPT window — M30's
+   * `verbal_order_signature_on_time` input. Denominator = verbal orders received in the window;
+   * numerator = those signed on or before their `deadline_at`. Aggregate counts only (D6).
+   */
+  verbalTimelinessCountsForOrg(
+    organizationId: string,
+    window: { from: string; to: string },
+  ): Promise<{ numerator: number; denominator: number }>;
   // ── writes (OrderSignatureProvider — polymorphic by targetKind, D4) ──────────────────────────────────
   insertSignature(input: InsertSignatureInput): Promise<OrderSignatureId>;
   insertVerbalOrder(input: InsertVerbalOrderInput): Promise<VerbalOrderId>;
@@ -173,6 +182,10 @@ export function createInMemoryOrderSeamStore(seed: OrderSeamSeed = {}): { store:
       },
       async verbalForOrder(orderId) {
         return verbalOrders.get(orderId) ?? null;
+      },
+      /** Slice default: 0/0, which M30's kernel SUPPRESSES rather than scoring as perfect timeliness. */
+      async verbalTimelinessCountsForOrg() {
+        return { numerator: 0, denominator: 0 };
       },
       async insertSignature(_input) {
         return uuidFromCounter(++seq) as OrderSignatureId;
