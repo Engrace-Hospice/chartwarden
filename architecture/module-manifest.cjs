@@ -502,7 +502,9 @@ exports.MODULES = [
       "apps/backend/src/modules/16-bereavement",
       "apps/web/src/modules/16-bereavement",
     ], // +packages/bereavement: §3.1 M16-owned feature pkg (D4 cadence floor / D3+D17 risk rubric / D15 outreach-kind + D18 external-source gate policy → lifecycle), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M16-T07
-    dependsOn: [5, 6, 36],
+    // +M1: M16-T03's §4.3.1 intake CONSUMES M6's DeathDischargeReader/AdmissionStatusReader + M5's
+    // PatientReader through the M1 boot seam registry (`apps/backend/src/bootstrap`), which is M1 code.
+    dependsOn: [1, 5, 6, 36],
     ownedTables: [
       "bereaved_contact",
       "bereavement_anniversary_reminder",
