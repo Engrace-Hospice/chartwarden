@@ -24,7 +24,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useParams } from "react-router-dom";
-import { expiryBand, expiryTone, humanize } from "./consent-status";
+import { expiryBand, expiryTone, humanize, readErrorMessage } from "./consent-status";
 
 interface ExpiringRow {
   id: string;
@@ -75,7 +75,7 @@ export function ConsentExpirationRenewal(): JSX.Element {
       ]);
       if (!active) return;
       if (pRes.data) setPatient(pRes.data as PatientSummary);
-      if (eRes.error) setError("Expiring consents unavailable — you may lack consent.read for this patient.");
+      if (eRes.error) setError(readErrorMessage(eRes.response?.status, "consent.read"));
       else setRows(eRes.data?.data ?? []);
       setLoading(false);
     })();

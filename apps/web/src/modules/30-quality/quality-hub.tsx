@@ -28,6 +28,7 @@ import {
   fraction,
   humanize,
   ratePct,
+  readErrorMessage,
   toneOf,
 } from "./quality-status";
 
@@ -66,6 +67,9 @@ const head: CSSProperties = {
 };
 const row: CSSProperties = { borderTop: `1px solid ${t.surfaceContainer}` };
 
+/** The §4.12 page bound M30's list queries enforce (`PageQuery.limit` max). Exceeding it is a 422. */
+const MAX_PAGE = 100;
+
 export function QualityHub(): JSX.Element {
   const client = useApiClient();
   const [measures, setMeasures] = useState<MeasureRow[]>([]);
@@ -78,11 +82,11 @@ export function QualityHub(): JSX.Element {
     void (async () => {
       setLoading(true);
       const [mRes, cRes] = await Promise.all([
-        client.GET("/api/v1/quality/measures", { params: { query: { limit: 200 } } }),
-        client.GET("/api/v1/quality/cop/citations", { params: { query: { limit: 100 } } }),
+        client.GET("/api/v1/quality/measures", { params: { query: { limit: MAX_PAGE } } }),
+        client.GET("/api/v1/quality/cop/citations", { params: { query: { limit: MAX_PAGE } } }),
       ]);
       if (!active) return;
-      if (mRes.error) setError("Quality measures unavailable — you may lack quality.measure.read.");
+      if (mRes.error) setError(readErrorMessage(mRes.response?.status, "quality.measure.read"));
       else setMeasures(mRes.data?.items ?? []);
       if (!cRes.error) setCitations(cRes.data?.items ?? []);
       setLoading(false);

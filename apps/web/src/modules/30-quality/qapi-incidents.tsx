@@ -28,6 +28,7 @@ import {
   INCIDENT_STATE_TONE,
   QAPI_PHASE_TONE,
   humanize,
+  readErrorMessage,
   toneOf,
 } from "./quality-status";
 
@@ -70,6 +71,9 @@ const head: CSSProperties = {
 };
 const row: CSSProperties = { borderTop: `1px solid ${t.surfaceContainer}` };
 
+/** The §4.12 page bound M30's list queries enforce (`PageQuery.limit` max). Exceeding it is a 422. */
+const MAX_PAGE = 100;
+
 export function QapiIncidents(): JSX.Element {
   const client = useApiClient();
   const [incidents, setIncidents] = useState<IncidentRow[]>([]);
@@ -83,11 +87,11 @@ export function QapiIncidents(): JSX.Element {
     void (async () => {
       setLoading(true);
       const [iRes, pRes] = await Promise.all([
-        client.GET("/api/v1/quality/incidents", { params: { query: { limit: 200 } } }),
-        client.GET("/api/v1/quality/qapi/projects", { params: { query: { limit: 100 } } }),
+        client.GET("/api/v1/quality/incidents", { params: { query: { limit: MAX_PAGE } } }),
+        client.GET("/api/v1/quality/qapi/projects", { params: { query: { limit: MAX_PAGE } } }),
       ]);
       if (!active) return;
-      if (iRes.error) setError("Incident register unavailable — you may lack quality.incident.read.");
+      if (iRes.error) setError(readErrorMessage(iRes.response?.status, "incident.read"));
       else setIncidents(iRes.data?.items ?? []);
       if (!pRes.error) setProjects(pRes.data?.items ?? []);
       setLoading(false);
