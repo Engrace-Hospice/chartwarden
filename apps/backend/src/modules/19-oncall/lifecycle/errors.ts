@@ -109,6 +109,43 @@ export const M19_ERROR_STATUS = {
   /** §2.2.1 — the `triage.close` worker fired inside the 30-minute amendment grace. */
   DOCUMENTED_CLOSE_GRACE_NOT_ELAPSED: 409,
 
+  // ── D8 the M8 EncounterCreator binding (M19-T05) ───────────────────────────────────────────────────
+  /** D8 — M8's `CreateEncounterInput` requires `patientId` AND `admissionId` NOT NULL, and both are
+   *  nullable on `triage_call` (a call is opened before the caller is matched, §3.3). A call that reaches
+   *  disposition with no identified patient cannot open the encounter that is the only thing which
+   *  advances it to `documented` — route #4 `identify-patient` is the step that was skipped. */
+  ENCOUNTER_PATIENT_NOT_IDENTIFIED: 409,
+  /** D8 / §7.5 — an external triage-vendor operator holds no WardenX clinical identity, so there is no
+   *  `authorMembershipId` M8 could attribute the encounter to and no `encounter_discipline` that names
+   *  them. The vendor's segment is documented by the in-agency clinician who took the handoff. */
+  ENCOUNTER_ACTOR_CANNOT_AUTHOR: 403,
+
+  // ── D9 / §7.7 the M11 verbal order taken during a call (M19-T05) ───────────────────────────────────
+  /** D9 / §7.7 — M2 SESSION_POLICY step-up (biometric / PIN) was absent, stale, or satisfied by a factor
+   *  the platform floor does not accept. After-hours is exactly when impersonation risk is highest, so
+   *  this gate fails CLOSED on every missing input. */
+  VERBAL_ORDER_STEP_UP_REQUIRED: 403,
+  /** §6 / D6 — `verbal_order_recorded` is an RN-or-above disposition; an LPN / MSW / chaplain / vendor
+   *  operator taking a verbal order is the scope-of-practice breach the disposition matrix already
+   *  refuses, refused here at the seam so a worker path cannot route around the disposition handler. */
+  VERBAL_ORDER_ACTOR_OUT_OF_SCOPE: 403,
+  /** M11 §2.8 `RecordVerbalOrderInput` — the attestation is the RN's own account of what the physician
+   *  said and is 100–2000 chars by M11's contract. M19 refuses BEFORE the seam call so the clinician sees
+   *  a triage error rather than an opaque upstream one. */
+  VERBAL_ORDER_ATTESTATION_INVALID: 422,
+  /** M11 §2.8 — the ordering physician is an M40 `ExternalPhysician` id and the signature is theirs; an
+   *  unattributed verbal order has nobody to route the 48-hour countersignature to. */
+  VERBAL_ORDER_PHYSICIAN_REQUIRED: 422,
+  /** D9 — the order/medication-order the verbal attestation attaches to. M11's signature primitive is
+   *  polymorphic over an EXISTING target; M19 mints no order row. */
+  VERBAL_ORDER_TARGET_REQUIRED: 422,
+
+  // ── D15 the M12 medication / refill read surface (M19-T05) ─────────────────────────────────────────
+  /** D15 — `prn_intervention_authorized` names an M12 medication order that the owning module's reader
+   *  does not return under this tenant's RLS. Authorizing a PRN dose against an order that does not
+   *  exist is the shape M13 cannot administer against. */
+  PRN_TARGET_NOT_FOUND: 422,
+
   // ── §2.7 / M19-F08 BCP paper re-entry ──────────────────────────────────────────────────────────────
   /** §2.7 step 2 — the original call time cannot be in the future; a re-entry that claims one would sort
    *  ahead of calls that really did happen later. */

@@ -20,12 +20,27 @@
 // and M18's Phase-1 inert consumers. `seams/consumed.ts` is the only place M19 reaches across a module
 // boundary, and it does so through the M1 registry — never a schema import.
 //
-// Still to land: the M8/M11/M12 seam consumers (T05), the five published reader seams (T06),
-// routes/permissions/ABAC (T07) and the §5 screens (T08).
+// M19-T05 lands `clinical/` — the three bindings a call reaches into once it is running: M8's
+// `EncounterCreator` (D8, plus the `m8.encounter.signed` consumer that is the only thing which advances a
+// call to `documented`), M11's `OrderSignatureProvider` behind the §7.7 verbal order with its M2 step-up
+// gate (D9), and M12's `RefillInboxProvider`/`MedicationOrderProvider` read surface the disposition is
+// chosen against (D15). Three published contracts disagreed with the spec's sketch of them and the OWNER
+// won each time — see the file headers in `clinical/`.
+//
+// Still to land: the five published reader seams (T06), routes/permissions/ABAC (T07) and the §5
+// screens (T08).
 export * from "./lifecycle";
 export * from "./roster";
 export * from "./consumers";
-export { getVisitAssignmentReader, getVisitReader } from "./seams/consumed";
+export * from "./clinical";
+export {
+  getEncounterCreator,
+  getMedicationOrderProvider,
+  getOrderSignatureProvider,
+  getRefillInboxProvider,
+  getVisitAssignmentReader,
+  getVisitReader,
+} from "./seams/consumed";
 export {
   type InMemoryTriageEraseSeed,
   type TriageEraseCounts,

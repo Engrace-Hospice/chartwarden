@@ -12,7 +12,14 @@
 //
 // The seams M19 PUBLISHES (§4.3 `OnCallProvider`, `TriageCallReader`, `TriageCallProvider`,
 // `PortalTriageReader`, `TriageCallMetricsProvider`) land in M19-T06.
-import type { VisitAssignmentReader, VisitReader } from "@wardenx/types";
+import type {
+  EncounterCreator,
+  MedicationOrderProvider,
+  OrderSignatureProvider,
+  RefillInboxProvider,
+  VisitAssignmentReader,
+  VisitReader,
+} from "@wardenx/types";
 import { getSeam } from "../../../bootstrap/index";
 
 /**
@@ -41,4 +48,52 @@ export function getVisitAssignmentReader(): VisitAssignmentReader {
  */
 export function getVisitReader(): VisitReader {
   return getSeam("VisitReader");
+}
+
+/**
+ * M19 CONSUMES M8's §4.7 `EncounterCreator` — D8's whole writeback path. M19 never writes an `encounter`
+ * row; it asks M8 to mint the DRAFT and stores the returned id in `triage_call.linked_encounter_id`, and
+ * M8's own `m8.encounter.signed` is what advances the call to `documented`.
+ *
+ * THE SEAM IS NOT IDEMPOTENT ON `triage_call_id`, contrary to §2.6. M8 published exactly one method,
+ * `createDraftEncounter(input: CreateEncounterInput)`, and that input carries no triage-call id at all —
+ * there is nothing for M8 to dedupe on, so a second call mints a SECOND draft encounter. That matters
+ * because the §4.8 `m19.encounter-creator.consumer` retries five times: the double-create is the LIKELY
+ * failure, not a theoretical one. M19 therefore owns the guard itself (`../clinical/encounter-link`), on
+ * the conditional `linked_encounter_id IS NULL` write.
+ */
+export function getEncounterCreator(): EncounterCreator {
+  return getSeam("EncounterCreator");
+}
+
+/**
+ * M19 CONSUMES M11's §2.8 D14 `OrderSignatureProvider` — the one MUTATE seam M19 touches (D9 / §7.7).
+ *
+ * It is a signature PRIMITIVE over an EXISTING target, not an order factory: `recordVerbalOrder` takes
+ * `(targetKind, targetId)` and attaches the RN's attestation plus M11's 48-hour countersignature deadline.
+ * §7.7's "the panel opens M11's verbal-order modal" is what creates the order row; M19's call records the
+ * verbal attestation against it and keeps the id. M19 mints no order and writes no M11 schema.
+ */
+export function getOrderSignatureProvider(): OrderSignatureProvider {
+  return getSeam("OrderSignatureProvider");
+}
+
+/**
+ * M19 CONSUMES M12's §2.10 D17 `RefillInboxProvider` — D15's "is this caller asking for a refill they
+ * already have pending?" read. STRICTLY read-only: a refill M19 authorizes during a call is the
+ * `prn_intervention_authorized` disposition plus the `m19.triage_call.disposition_selected` outbox event
+ * M12's own consumer acts on, never a write through this seam.
+ */
+export function getRefillInboxProvider(): RefillInboxProvider {
+  return getSeam("RefillInboxProvider");
+}
+
+/**
+ * M19 CONSUMES M12's §2.10 D17 `MedicationOrderProvider` — the active-medication list the triage panel
+ * shows at intake (D15) and the by-id read that validates a `prn_intervention_authorized` target.
+ * `getControlledSubstanceFlag` is annotated by M12 as an M19 surface: whether the 2 a.m. PRN the caller is
+ * asking about is a Schedule II changes what the RN may authorize by phone.
+ */
+export function getMedicationOrderProvider(): MedicationOrderProvider {
+  return getSeam("MedicationOrderProvider");
 }
