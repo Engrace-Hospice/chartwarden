@@ -27,6 +27,7 @@
     "13-emar",
     "14-idg",
     "15-discipline-care-plans",
+    "16-bereavement",
     "17-scheduling",
     "18-evv",
     "22-documents",
@@ -587,6 +588,83 @@
       "id": "volunteer.ratio",
       "path": "/admin/volunteer-ratio",
       "permission": "volunteer_compliance.read_ratio"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.caseload",
+      "path": "/bereavement",
+      "permission": "bereavement.dashboard.counselor"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.supervisor",
+      "path": "/bereavement/supervisor",
+      "permission": "bereavement.dashboard.supervisor"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.intake",
+      "path": "/bereavement/eligible",
+      "permission": "bereavement.plan.assign_counselor"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.plan",
+      "path": "/bereavement/plans/:planId",
+      "permission": "bereavement.plan.read"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.plan.seed",
+      "path": "/bereavement/plans/:planId/seed",
+      "permission": "bereavement.plan.activate"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.plan.closeout",
+      "path": "/bereavement/plans/:planId/closeout",
+      "permission": "bereavement.plan.read"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.plan.outreach",
+      "path": "/bereavement/plans/:planId/outreach",
+      "permission": "bereavement.outreach.read"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.plan.risk",
+      "path": "/bereavement/plans/:planId/risk",
+      "permission": "bereavement.risk.read"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.contact",
+      "path": "/bereavement/plans/:planId/contacts/:contactId",
+      "permission": "bereavement.plan.read"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.contact.screen",
+      "path": "/bereavement/plans/:planId/contacts/:contactId/screen",
+      "permission": "bereavement.contact.flag_complicated_grief"
+    },
+    {
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.plan.history",
+      "path": "/bereavement/plans/:planId/history",
+      "permission": "bereavement.plan.read"
     },
     {
       "module": "17-scheduling",

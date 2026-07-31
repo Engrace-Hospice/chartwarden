@@ -246,6 +246,41 @@ import {
   VersionListQuerySchema as M15VersionListQuerySchema,
   VolunteerStatusQuerySchema as M15VolunteerStatusQuerySchema,
 } from "../../apps/backend/src/modules/15-discipline-care-plans/routes/m15-typebox";
+// M16 Bereavement — the §4.2 request bodies + list queries the §4.1 route handlers `parse(...)` /
+// `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M16-T07
+// web screens call the surface these type.
+import {
+  AssignCounselorBody as M16AssignCounselorBody,
+  AssignVolunteerBody as M16AssignVolunteerBody,
+  CancelOutreachBody as M16CancelOutreachBody,
+  CloseEarlyBody as M16CloseEarlyBody,
+  CompleteOutreachBody as M16CompleteOutreachBody,
+  ConfirmContactBody as M16ConfirmContactBody,
+  CosignCloseBody as M16CosignCloseBody,
+  CounselorDashboardQuerySchema as M16CounselorDashboardQuerySchema,
+  CreateContactBody as M16CreateContactBody,
+  FlagComplicatedGriefBody as M16FlagComplicatedGriefBody,
+  InitiateContactBody as M16InitiateContactBody,
+  LateAttemptBody as M16LateAttemptBody,
+  LogDirectContactBody as M16LogDirectContactBody,
+  MarkDeceasedBody as M16MarkDeceasedBody,
+  MarkUnreachableBody as M16MarkUnreachableBody,
+  OptOutBody as M16OptOutBody,
+  OutreachListQuerySchema as M16OutreachListQuerySchema,
+  OutreachOutcomeBody as M16OutreachOutcomeBody,
+  PausePlanBody as M16PausePlanBody,
+  PlanListQuerySchema as M16PlanListQuerySchema,
+  RecomputeRiskBody as M16RecomputeRiskBody,
+  ReferExternalBody as M16ReferExternalBody,
+  RegenerateScheduleBody as M16RegenerateScheduleBody,
+  RescindOptOutBody as M16RescindOptOutBody,
+  ResumePlanBody as M16ResumePlanBody,
+  RiskScoreListQuerySchema as M16RiskScoreListQuerySchema,
+  SeedRosterAndScheduleBody as M16SeedRosterAndScheduleBody,
+  StartOutreachBody as M16StartOutreachBody,
+  SupervisorDashboardQuerySchema as M16SupervisorDashboardQuerySchema,
+  UpdateContactBody as M16UpdateContactBody,
+} from "../../apps/backend/src/modules/16-bereavement/routes/m16-typebox";
 // M27 Cost Report — the §4.1 request bodies + list query the cost-report routes bind (the realigned
 // Form CMS-1984-14 surface; modules/27-cost-report/routes path flips the OpenAPI-enriched flag).
 import {
@@ -2244,5 +2279,162 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /internal/discipline-plans/supervisory-cadence": {
     summary: "System-principal seam — the supervisory-cadence worklist for a scope (M17/M14; §4.1 #28)",
     query: M15SupervisoryCadenceQuerySchema,
+  },
+
+  // ── M16 Bereavement (§4.1) — the 42 CFR §418.64(d) 13-month survivor-follow-up program: the plan
+  // ladder, the per-survivor lifecycle, the D4 touchpoint book, the D3/D17 risk ledger and the two
+  // dashboards. Org / acting membership binding is server-side (§6.1's boundary spoofing control), so NO
+  // body or query carries an org id or an acting membership id. Every mutation additionally requires an
+  // `Idempotency-Key` (ADR-0021) and every state transition an `If-Match` row version (§2.5) — both
+  // header contracts enforced by preHandlers, not by a body field. Reads returning the §4.1 view
+  // interfaces are omitted rather than sketched (the M15/M26 no-fabrication posture); their params
+  // auto-derive from the path.
+  "GET /api/v1/bereavement/plans": {
+    summary:
+      "Bereavement plan worklist — cursor-paginated; the counselor's own caseload by default, widened by the filters for an oversight role (§4.1 #1)",
+    query: M16PlanListQuerySchema,
+  },
+  "POST /api/v1/bereavement/plans/:planId/assign-counselor": {
+    summary: "Assign the bereavement counselor — eligible → initiating (§4.1 #3)",
+    body: M16AssignCounselorBody,
+  },
+  "POST /api/v1/bereavement/plans/:planId/assign-volunteer": {
+    summary:
+      "Assign a bereavement volunteer — the 42 CFR §418.78 gates resolve through Module 15's compliance seam, never the body (§4.1 #4)",
+    body: M16AssignVolunteerBody,
+  },
+  "POST /api/v1/bereavement/plans/:planId/seed-roster-and-schedule": {
+    summary:
+      "Seed the survivor roster from M5 and materialize the D4 platform-floor schedule — initiating → active (§4.1 #5)",
+    body: M16SeedRosterAndScheduleBody,
+  },
+  "POST /api/v1/bereavement/plans/:planId/pause": {
+    summary:
+      "Pause the plan — cancels every future-dated touchpoint; a recorded reason is mandatory, because a pause without one is a lapse (§4.1 #6)",
+    body: M16PausePlanBody,
+  },
+  "POST /api/v1/bereavement/plans/:planId/resume": {
+    summary:
+      "Resume the plan — regenerates the schedule FROM NOW; a touchpoint whose due date passed during the pause is not resurrected as a backdated obligation (§4.1 #7)",
+    body: M16ResumePlanBody,
+  },
+  "POST /api/v1/bereavement/plans/:planId/close-early": {
+    summary:
+      "D7 early close — step-up; ≥40-char narrative; lands the closure row awaiting the supervisor cosign (§4.1 #8)",
+    body: M16CloseEarlyBody,
+  },
+  "POST /api/v1/bereavement/plans/:planId/cosign-close": {
+    summary:
+      "The clinical-supervisor cosign that ratifies an early close — step-up; the cosigner is the server-assembled acting membership (§4.1 #9)",
+    body: M16CosignCloseBody,
+  },
+  "GET /api/v1/bereavement/plans/:planId/outreach": {
+    summary: "The plan's touchpoints, scheduled and historical, cursor-paginated (§4.1 #19)",
+    query: M16OutreachListQuerySchema,
+  },
+  "POST /api/v1/bereavement/plans/:planId/regenerate-schedule": {
+    summary:
+      "Regenerate the FORWARD outreach book — whole plan or one survivor; never writes a backdated obligation (§4.1 #27)",
+    body: M16RegenerateScheduleBody,
+  },
+  "POST /api/v1/bereavement/plans/:planId/recompute-risk": {
+    summary:
+      "Recompute the deterministic D3/D17 risk score (Layer 2 narrative only when the platform's full-AI capability is on) — ALWAYS an append; the ledger refuses UPDATE (§4.1 #28)",
+    body: M16RecomputeRiskBody,
+  },
+  "GET /api/v1/bereavement/plans/:planId/risk-scores": {
+    summary: "The append-only risk-score ledger — per-survivor and plan-level, newest first (§4.1 #29)",
+    query: M16RiskScoreListQuerySchema,
+  },
+  "POST /api/v1/bereavement/plans/:planId/initiate-contact": {
+    summary:
+      "The counselor's FIRST contact — D18-gated: an external-source plan awaiting its medical-director cosign is refused with the machine-readable gate reason, not a bare 403 (§4.1 #33)",
+    body: M16InitiateContactBody,
+  },
+  "POST /api/v1/bereavement/plans/:planId/contacts": {
+    summary: "Add a bereaved contact to an open plan — lands `proposed` (§4.1 #11)",
+    body: M16CreateContactBody,
+  },
+  "PATCH /api/v1/bereavement/contacts/:contactId": {
+    summary:
+      "Update a survivor's preferences / channels — `If-Match` required, because a blind overwrite could send a condolence letter to an address the family already corrected (§4.1 #12)",
+    body: M16UpdateContactBody,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/confirm": {
+    summary:
+      "Confirm a survivor — proposed → active; the M39 consent verdict is resolved server-side and fails CLOSED (§4.1 #13)",
+    body: M16ConfirmContactBody,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/opt-out": {
+    summary:
+      "Record a per-survivor opt-out (D9) — staff, or the survivor's own portal session; `m39_revocation_cascade` is never accepted from the wire (§4.1 #14)",
+    body: M16OptOutBody,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/rescind-opt-out": {
+    summary:
+      "Undo an opt-out — the D9 90-day window binds the self-service path; a counselor rescind must say why (§4.1 #15)",
+    body: M16RescindOptOutBody,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/mark-deceased": {
+    summary:
+      "Mark the survivor deceased — the lifecycle's only terminal state, so the verified date and its source are both required (§4.1 #16)",
+    body: M16MarkDeceasedBody,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/mark-unreachable": {
+    summary:
+      "Accept the nightly three-strikes proposal — the threshold is enforced by the lifecycle machine, so an early call is refused (§4.1 #17)",
+    body: M16MarkUnreachableBody,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/flag-complicated-grief": {
+    summary:
+      "§7.7 complicated-grief escalation — ends the program for this survivor and routes them to the named M40 resource, which is REQUIRED (§4.1 #18)",
+    body: M16FlagComplicatedGriefBody,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/log-direct": {
+    summary:
+      "Log an ad-hoc contact with no scheduled outreach — the kind must be one the survivor allows, stricter than the schedule generator (§4.1 #26)",
+    body: M16LogDirectContactBody,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/refer-external": {
+    summary:
+      "Log an M40 external-resource referral WITHOUT ending the program — a different clinical fact from the §7.7 escalation (§4.1 #32)",
+    body: M16ReferExternalBody,
+  },
+  "POST /api/v1/bereavement/outreach/:outreachId/start": {
+    summary: "Start a touchpoint — scheduled → in_progress (§4.1 #20)",
+    body: M16StartOutreachBody,
+  },
+  "POST /api/v1/bereavement/outreach/:outreachId/complete": {
+    summary:
+      "Complete a touchpoint, writing its contact log in the SAME transaction. D15: the in-person branch REQUIRES the M8 encounter and every other kind must NOT carry one (§4.1 #21)",
+    body: M16CompleteOutreachBody,
+  },
+  "POST /api/v1/bereavement/outreach/:outreachId/decline": {
+    summary:
+      "The survivor declined THIS touchpoint — not an opt-out: the forward schedule continues untouched (§4.1 #22)",
+    body: M16OutreachOutcomeBody,
+  },
+  "POST /api/v1/bereavement/outreach/:outreachId/no-response": {
+    summary: "No response after retries — feeds the three-strikes unreachable proposal (§4.1 #23)",
+    body: M16OutreachOutcomeBody,
+  },
+  "POST /api/v1/bereavement/outreach/:outreachId/cancel": {
+    summary: "Cancel a scheduled touchpoint — a reason is mandatory (§4.1 #24)",
+    body: M16CancelOutreachBody,
+  },
+  "POST /api/v1/bereavement/outreach/:outreachId/late-attempt": {
+    summary:
+      "Re-open a missed touchpoint inside the 7-day late grace — audit-flagged, but NOT a compliance failure (§4.1 #25)",
+    body: M16LateAttemptBody,
+  },
+  "GET /api/v1/bereavement/dashboard/counselor": {
+    summary:
+      "The caller's OWN bereavement caseload plus what is due in N days — the counselor id comes from the session, never a query param (§4.1 #30)",
+    query: M16CounselorDashboardQuerySchema,
+  },
+  "GET /api/v1/bereavement/dashboard/supervisor": {
+    summary:
+      "Full-tenant bereavement rollups, optionally narrowed to one CCN / location — COUNTS, never rates (§4.1 #31)",
+    query: M16SupervisorDashboardQuerySchema,
   },
 };

@@ -465,7 +465,8 @@ shipped in-wave; the generated **ui-parity matrix** (`audit/ui-parity/UI_PARITY.
 per-screen status. Examples:
 Care Plan (M7 done; M15 discipline plans + volunteer management done²⁴), Orders (M11; done¹⁸),
 eMAR administration (M13; done²⁰; M12 prescribing is done¹⁹),
-IDG (M14; done²¹), Scheduling (M17; done²²), EVV (M18; done²³), Claims (M23; done), Medicaid (M24; done),
+IDG (M14; done²¹), Bereavement (M16; done²⁵), Scheduling (M17; done²²), EVV (M18; done²³),
+Claims (M23; done), Medicaid (M24; done),
 Remittance & Denials (M25; done), Cap (M26; done), Cost Report (M27), FHIR (M28), HQRP (M30),
 Portal/Telehealth (M31), Copilot (M32), Reporting (M33; done), Onboarding (M34; done),
 Subscription (M35), IPU Bed Board (M37). See each spec's `Module:` line for the authoritative owner.
@@ -491,6 +492,43 @@ Subscription (M35), IPU Bed Board (M37). See each spec's `Module:` line for the 
 > JSON because the §3.4 per-kind TypeBox schemas are not published to the client; the aide/supervising-RN
 > binding is read-only because M15 publishes no route that re-points it; and the §5.2 mobile + §5.3 portal
 > variants remain forward-seams.
+
+> ²⁵ **M16 Bereavement now LIVE (Wave P2-1, M16-T07).** Eleven screens under
+> `apps/web/src/modules/16-bereavement`, registered into the M1 shell via `bereavementScreens` (`main.tsx`)
+> under a new "Bereavement" nav group, over the live 33-route M16 backend. They cover the M16 §5.1
+> inventory: the counselor caseload dashboard (with the 30/14/7-day anniversary banner as a polite live
+> region); the supervisor program dashboard; the intake queue with the counselor + volunteer assignment
+> ceremonies; the plan detail with the D18 first-contact gate; the roster + D4 schedule seeding flow; the
+> bereaved-contact detail with the opt-out / rescind / deceased / unreachable / confirm ceremonies; the
+> outreach planner with the start / complete / decline / no-response / cancel / late-attempt transitions;
+> the D3+D17 risk ledger with its recompute + override ceremony; the PG-13 complicated-grief screen with
+> the escalation and referral composers; the 13-month closeout; and the §7.15 survey-reconstruction
+> history. Built to Lantern: the §6.6 StatusPill taxonomy through a per-module `bereavement-status.ts`,
+> No-Line tables (§6.7), CSS-var tokens only (zero hex). §5.1 modals are not separate registry entries —
+> each lives in the parent that already read the row `version` its `If-Match` needs. Nav visibility is
+> gated by the real §4.7 keys (`bereavement.dashboard.counselor` / `.supervisor`, `bereavement.plan.read` /
+> `.assign_counselor` / `.activate`, `bereavement.outreach.read`, `bereavement.risk.read`,
+> `bereavement.contact.flag_complicated_grief`); the SERVER stays the only enforcement point — an
+> off-caseload plan is a non-leaking **404**, deliberately, because "this plan 403s" would tell an
+> unauthorized caller that a particular patient died.
+>
+> Two route-shape departures from §5.1, both because architecture wins over the screen spec: the
+> bereaved-contact detail and the grief screen are **plan-scoped** (`/bereavement/plans/:planId/contacts/…`)
+> because M16 publishes no "get one contact" read — a survivor is only ever returned inside their plan,
+> which is what makes the §7.13 redaction and the D10 volunteer scope ONE decision on ONE body; and paths
+> are mounted at the root rather than under `/app`, per the M15/M17/M18 shell convention.
+>
+> Honest gaps, stated on the screens themselves rather than faked: §5.1 #9's drag-to-reschedule is not
+> built because M16 publishes no per-touchpoint date PATCH — the planner offers route 27's forward
+> regeneration, which is what the server actually has; §5.1 #5's live `volunteer_gates_satisfied` badge is
+> not pre-rendered because no route reads one volunteer's 418.78 status, so the assignment attempt's
+> refusal is the real gate answer; §5.1 #18's "transition to `closed_completed`" is not a button, because
+> §2.2 makes the 13-month completion a cron cascade and the four system-driven closure reasons are
+> excluded from `CloseEarlyBody` — a button there would have had to misuse the early-close path and record
+> a curtailed obligation as a fulfilled one; the §5.1 #19 history is reconstructed from the plan's own
+> rows and says so, since the immutable audit trail (refused reads, break-glass, cascade actors) belongs
+> to the M4 surface that owns it; the M40 external grief-resource picker takes an id rather than browsing
+> a catalog M16 does not publish; and the §5.2 mobile + §5.3 portal variants remain forward-seams.
 
 ---
 

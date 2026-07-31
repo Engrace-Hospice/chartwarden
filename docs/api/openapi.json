@@ -3806,6 +3806,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "Update a survivor's preferences / channels — `If-Match` required, because a blind overwrite could send a condolence letter to an address the family already corrected (§4.1 #12)",
         "parameters": [
           {
             "name": "contactId",
@@ -3825,6 +3826,117 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "displayName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "email": {
+                    "anyOf": [
+                      {
+                        "format": "email",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "phone": {
+                    "anyOf": [
+                      {
+                        "minLength": 7,
+                        "maxLength": 30,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "mailingAddress": {
+                    "anyOf": [
+                      {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "preferredLanguageIso639": {
+                    "minLength": 2,
+                    "maxLength": 8,
+                    "type": "string"
+                  },
+                  "outreachPreferences": {
+                    "type": "object",
+                    "required": [
+                      "allowedKinds"
+                    ],
+                    "properties": {
+                      "allowedKinds": {
+                        "maxItems": 9,
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "const": "phone_call",
+                              "type": "string"
+                            },
+                            {
+                              "const": "in_person_visit",
+                              "type": "string"
+                            },
+                            {
+                              "const": "sympathy_card",
+                              "type": "string"
+                            },
+                            {
+                              "const": "sympathy_letter",
+                              "type": "string"
+                            },
+                            {
+                              "const": "anniversary_letter",
+                              "type": "string"
+                            },
+                            {
+                              "const": "email",
+                              "type": "string"
+                            },
+                            {
+                              "const": "portal_message",
+                              "type": "string"
+                            },
+                            {
+                              "const": "group_support_invitation",
+                              "type": "string"
+                            },
+                            {
+                              "const": "external_referral",
+                              "type": "string"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "volunteerVisibleOnly": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -3835,6 +3947,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "Confirm a survivor — proposed → active; the M39 consent verdict is resolved server-side and fails CLOSED (§4.1 #13)",
         "parameters": [
           {
             "name": "contactId",
@@ -3854,6 +3967,22 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "consentRecordId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -3864,6 +3993,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "§7.7 complicated-grief escalation — ends the program for this survivor and routes them to the named M40 resource, which is REQUIRED (§4.1 #18)",
         "parameters": [
           {
             "name": "contactId",
@@ -3883,6 +4013,39 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "externalResourceId"
+                ],
+                "properties": {
+                  "externalResourceId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "pg13Score": {
+                    "minimum": 0,
+                    "maximum": 52,
+                    "type": "integer"
+                  },
+                  "ipgrScore": {
+                    "minimum": 0,
+                    "maximum": 200,
+                    "type": "integer"
+                  },
+                  "note": {
+                    "maxLength": 4000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -3893,6 +4056,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "Log an ad-hoc contact with no scheduled outreach — the kind must be one the survivor allows, stricter than the schedule generator (§4.1 #26)",
         "parameters": [
           {
             "name": "contactId",
@@ -3912,6 +4076,126 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "outcome",
+                  "contactAt",
+                  "contactResponded"
+                ],
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "const": "phone_call",
+                        "type": "string"
+                      },
+                      {
+                        "const": "sympathy_card",
+                        "type": "string"
+                      },
+                      {
+                        "const": "sympathy_letter",
+                        "type": "string"
+                      },
+                      {
+                        "const": "anniversary_letter",
+                        "type": "string"
+                      },
+                      {
+                        "const": "email",
+                        "type": "string"
+                      },
+                      {
+                        "const": "portal_message",
+                        "type": "string"
+                      },
+                      {
+                        "const": "group_support_invitation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "external_referral",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "outcome": {
+                    "anyOf": [
+                      {
+                        "const": "engaged",
+                        "type": "string"
+                      },
+                      {
+                        "const": "brief_acknowledgement",
+                        "type": "string"
+                      },
+                      {
+                        "const": "declined",
+                        "type": "string"
+                      },
+                      {
+                        "const": "no_response",
+                        "type": "string"
+                      },
+                      {
+                        "const": "voicemail_left",
+                        "type": "string"
+                      },
+                      {
+                        "const": "wrong_number",
+                        "type": "string"
+                      },
+                      {
+                        "const": "returned_undeliverable",
+                        "type": "string"
+                      },
+                      {
+                        "const": "requested_followup",
+                        "type": "string"
+                      },
+                      {
+                        "const": "requested_no_further_contact",
+                        "type": "string"
+                      },
+                      {
+                        "const": "crisis_referral",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "contactAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "contactResponded": {
+                    "type": "boolean"
+                  },
+                  "artifactDocumentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "notes": {
+                    "maxLength": 8000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -3922,6 +4206,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "Mark the survivor deceased — the lifecycle's only terminal state, so the verified date and its source are both required (§4.1 #16)",
         "parameters": [
           {
             "name": "contactId",
@@ -3941,6 +4226,31 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "deceasedAt",
+                  "deathSource"
+                ],
+                "properties": {
+                  "deceasedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "deathSource": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -3951,6 +4261,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "Accept the nightly three-strikes proposal — the threshold is enforced by the lifecycle machine, so an early call is refused (§4.1 #17)",
         "parameters": [
           {
             "name": "contactId",
@@ -3970,6 +4281,22 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "note": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -3980,6 +4307,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "Record a per-survivor opt-out (D9) — staff, or the survivor's own portal session; `m39_revocation_cascade` is never accepted from the wire (§4.1 #14)",
         "parameters": [
           {
             "name": "contactId",
@@ -3999,6 +4327,102 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "optOutKind",
+                  "sourceKind"
+                ],
+                "properties": {
+                  "optOutKind": {
+                    "anyOf": [
+                      {
+                        "const": "full",
+                        "type": "string"
+                      },
+                      {
+                        "const": "channel_specific",
+                        "type": "string"
+                      },
+                      {
+                        "const": "pause_temporarily",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "channelKinds": {
+                    "maxItems": 9,
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "const": "phone_call",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_person_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "sympathy_card",
+                          "type": "string"
+                        },
+                        {
+                          "const": "sympathy_letter",
+                          "type": "string"
+                        },
+                        {
+                          "const": "anniversary_letter",
+                          "type": "string"
+                        },
+                        {
+                          "const": "email",
+                          "type": "string"
+                        },
+                        {
+                          "const": "portal_message",
+                          "type": "string"
+                        },
+                        {
+                          "const": "group_support_invitation",
+                          "type": "string"
+                        },
+                        {
+                          "const": "external_referral",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "reason": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "sourceKind": {
+                    "anyOf": [
+                      {
+                        "const": "counselor_recorded",
+                        "type": "string"
+                      },
+                      {
+                        "const": "portal_self_service",
+                        "type": "string"
+                      },
+                      {
+                        "const": "written_request_uploaded",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -4009,6 +4433,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "Log an M40 external-resource referral WITHOUT ending the program — a different clinical fact from the §7.7 escalation (§4.1 #32)",
         "parameters": [
           {
             "name": "contactId",
@@ -4028,6 +4453,33 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "externalResourceId"
+                ],
+                "properties": {
+                  "externalResourceId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "contactAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "notes": {
+                    "maxLength": 8000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -4038,6 +4490,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "Undo an opt-out — the D9 90-day window binds the self-service path; a counselor rescind must say why (§4.1 #15)",
         "parameters": [
           {
             "name": "contactId",
@@ -4058,6 +4511,22 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -4067,7 +4536,29 @@
         "tags": [
           "16-bereavement"
         ],
-        "parameters": [],
+        "summary": "The caller's OWN bereavement caseload plus what is due in N days — the counselor id comes from the session, never a query param (§4.1 #30)",
+        "parameters": [
+          {
+            "name": "dueWithinDays",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 0,
+              "maximum": 90,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -4087,7 +4578,27 @@
         "tags": [
           "16-bereavement"
         ],
-        "parameters": [],
+        "summary": "Full-tenant bereavement rollups, optionally narrowed to one CCN / location — COUNTS, never rates (§4.1 #31)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -4107,6 +4618,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "Cancel a scheduled touchpoint — a reason is mandatory (§4.1 #24)",
         "parameters": [
           {
             "name": "outreachId",
@@ -4126,6 +4638,26 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -4136,6 +4668,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "Complete a touchpoint, writing its contact log in the SAME transaction. D15: the in-person branch REQUIRES the M8 encounter and every other kind must NOT carry one (§4.1 #21)",
         "parameters": [
           {
             "name": "outreachId",
@@ -4155,6 +4688,188 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "required": [
+                      "kind",
+                      "sourceEncounterId",
+                      "outcome",
+                      "contactResponded"
+                    ],
+                    "properties": {
+                      "kind": {
+                        "const": "in_person_visit",
+                        "type": "string"
+                      },
+                      "sourceEncounterId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "outcome": {
+                        "anyOf": [
+                          {
+                            "const": "engaged",
+                            "type": "string"
+                          },
+                          {
+                            "const": "brief_acknowledgement",
+                            "type": "string"
+                          },
+                          {
+                            "const": "declined",
+                            "type": "string"
+                          },
+                          {
+                            "const": "no_response",
+                            "type": "string"
+                          },
+                          {
+                            "const": "voicemail_left",
+                            "type": "string"
+                          },
+                          {
+                            "const": "wrong_number",
+                            "type": "string"
+                          },
+                          {
+                            "const": "returned_undeliverable",
+                            "type": "string"
+                          },
+                          {
+                            "const": "requested_followup",
+                            "type": "string"
+                          },
+                          {
+                            "const": "requested_no_further_contact",
+                            "type": "string"
+                          },
+                          {
+                            "const": "crisis_referral",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "contactResponded": {
+                        "type": "boolean"
+                      },
+                      "notes": {
+                        "maxLength": 8000,
+                        "type": "string"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "kind",
+                      "outcome",
+                      "contactResponded"
+                    ],
+                    "properties": {
+                      "kind": {
+                        "anyOf": [
+                          {
+                            "const": "phone_call",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sympathy_card",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sympathy_letter",
+                            "type": "string"
+                          },
+                          {
+                            "const": "anniversary_letter",
+                            "type": "string"
+                          },
+                          {
+                            "const": "email",
+                            "type": "string"
+                          },
+                          {
+                            "const": "portal_message",
+                            "type": "string"
+                          },
+                          {
+                            "const": "group_support_invitation",
+                            "type": "string"
+                          },
+                          {
+                            "const": "external_referral",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "outcome": {
+                        "anyOf": [
+                          {
+                            "const": "engaged",
+                            "type": "string"
+                          },
+                          {
+                            "const": "brief_acknowledgement",
+                            "type": "string"
+                          },
+                          {
+                            "const": "declined",
+                            "type": "string"
+                          },
+                          {
+                            "const": "no_response",
+                            "type": "string"
+                          },
+                          {
+                            "const": "voicemail_left",
+                            "type": "string"
+                          },
+                          {
+                            "const": "wrong_number",
+                            "type": "string"
+                          },
+                          {
+                            "const": "returned_undeliverable",
+                            "type": "string"
+                          },
+                          {
+                            "const": "requested_followup",
+                            "type": "string"
+                          },
+                          {
+                            "const": "requested_no_further_contact",
+                            "type": "string"
+                          },
+                          {
+                            "const": "crisis_referral",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "contactResponded": {
+                        "type": "boolean"
+                      },
+                      "artifactDocumentId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "notes": {
+                        "maxLength": 8000,
+                        "type": "string"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
           }
         }
       }
@@ -4165,6 +4880,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "The survivor declined THIS touchpoint — not an opt-out: the forward schedule continues untouched (§4.1 #22)",
         "parameters": [
           {
             "name": "outreachId",
@@ -4184,6 +4900,22 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "notes": {
+                    "maxLength": 8000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -4194,6 +4926,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "Re-open a missed touchpoint inside the 7-day late grace — audit-flagged, but NOT a compliance failure (§4.1 #25)",
         "parameters": [
           {
             "name": "outreachId",
@@ -4213,6 +4946,17 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
           }
         }
       }
@@ -4223,6 +4967,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "No response after retries — feeds the three-strikes unreachable proposal (§4.1 #23)",
         "parameters": [
           {
             "name": "outreachId",
@@ -4242,6 +4987,22 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "notes": {
+                    "maxLength": 8000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -4252,6 +5013,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "Start a touchpoint — scheduled → in_progress (§4.1 #20)",
         "parameters": [
           {
             "name": "outreachId",
@@ -4272,6 +5034,17 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
         }
       }
     },
@@ -4281,7 +5054,121 @@
         "tags": [
           "16-bereavement"
         ],
-        "parameters": [],
+        "summary": "Bereavement plan worklist — cursor-paginated; the counselor's own caseload by default, widened by the filters for an oversight role (§4.1 #1)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "admissionId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "eligible",
+                  "type": "string"
+                },
+                {
+                  "const": "initiating",
+                  "type": "string"
+                },
+                {
+                  "const": "active",
+                  "type": "string"
+                },
+                {
+                  "const": "paused",
+                  "type": "string"
+                },
+                {
+                  "const": "closed_completed",
+                  "type": "string"
+                },
+                {
+                  "const": "closed_declined",
+                  "type": "string"
+                },
+                {
+                  "const": "closed_early",
+                  "type": "string"
+                },
+                {
+                  "const": "closed_legal_hold_extended",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "counselorUserId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "riskTier",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "low",
+                  "type": "string"
+                },
+                {
+                  "const": "moderate",
+                  "type": "string"
+                },
+                {
+                  "const": "high",
+                  "type": "string"
+                },
+                {
+                  "const": "complicated",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -4330,6 +5217,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "Assign the bereavement counselor — eligible → initiating (§4.1 #3)",
         "parameters": [
           {
             "name": "planId",
@@ -4349,6 +5237,29 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "counselorUserId"
+                ],
+                "properties": {
+                  "counselorUserId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "effectiveAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -4359,6 +5270,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "Assign a bereavement volunteer — the 42 CFR §418.78 gates resolve through Module 15's compliance seam, never the body (§4.1 #4)",
         "parameters": [
           {
             "name": "planId",
@@ -4378,6 +5290,29 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "volunteerUserId"
+                ],
+                "properties": {
+                  "volunteerUserId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "effectiveAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -4388,6 +5323,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "D7 early close — step-up; ≥40-char narrative; lands the closure row awaiting the supervisor cosign (§4.1 #8)",
         "parameters": [
           {
             "name": "planId",
@@ -4407,6 +5343,51 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason",
+                  "narrative"
+                ],
+                "properties": {
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "const": "tenant_offboarding",
+                        "type": "string"
+                      },
+                      {
+                        "const": "all_bereaved_deceased",
+                        "type": "string"
+                      },
+                      {
+                        "const": "geographic_relocation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "family_legal_action",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other_early",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "narrative": {
+                    "minLength": 40,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -4446,6 +5427,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "Add a bereaved contact to an open plan — lands `proposed` (§4.1 #11)",
         "parameters": [
           {
             "name": "planId",
@@ -4465,6 +5447,169 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "displayName",
+                  "relationshipCode"
+                ],
+                "properties": {
+                  "displayName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "relationshipCode": {
+                    "anyOf": [
+                      {
+                        "const": "spouse",
+                        "type": "string"
+                      },
+                      {
+                        "const": "domestic_partner",
+                        "type": "string"
+                      },
+                      {
+                        "const": "parent",
+                        "type": "string"
+                      },
+                      {
+                        "const": "child",
+                        "type": "string"
+                      },
+                      {
+                        "const": "sibling",
+                        "type": "string"
+                      },
+                      {
+                        "const": "grandparent",
+                        "type": "string"
+                      },
+                      {
+                        "const": "grandchild",
+                        "type": "string"
+                      },
+                      {
+                        "const": "aunt_uncle",
+                        "type": "string"
+                      },
+                      {
+                        "const": "cousin",
+                        "type": "string"
+                      },
+                      {
+                        "const": "in_law",
+                        "type": "string"
+                      },
+                      {
+                        "const": "friend",
+                        "type": "string"
+                      },
+                      {
+                        "const": "neighbor",
+                        "type": "string"
+                      },
+                      {
+                        "const": "clergy",
+                        "type": "string"
+                      },
+                      {
+                        "const": "colleague",
+                        "type": "string"
+                      },
+                      {
+                        "const": "caregiver_non_family",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "email": {
+                    "format": "email",
+                    "type": "string"
+                  },
+                  "phone": {
+                    "minLength": 7,
+                    "maxLength": 30,
+                    "type": "string"
+                  },
+                  "mailingAddress": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "preferredLanguageIso639": {
+                    "minLength": 2,
+                    "maxLength": 8,
+                    "type": "string"
+                  },
+                  "consentRecordId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "outreachPreferences": {
+                    "type": "object",
+                    "required": [
+                      "allowedKinds"
+                    ],
+                    "properties": {
+                      "allowedKinds": {
+                        "maxItems": 9,
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "const": "phone_call",
+                              "type": "string"
+                            },
+                            {
+                              "const": "in_person_visit",
+                              "type": "string"
+                            },
+                            {
+                              "const": "sympathy_card",
+                              "type": "string"
+                            },
+                            {
+                              "const": "sympathy_letter",
+                              "type": "string"
+                            },
+                            {
+                              "const": "anniversary_letter",
+                              "type": "string"
+                            },
+                            {
+                              "const": "email",
+                              "type": "string"
+                            },
+                            {
+                              "const": "portal_message",
+                              "type": "string"
+                            },
+                            {
+                              "const": "group_support_invitation",
+                              "type": "string"
+                            },
+                            {
+                              "const": "external_referral",
+                              "type": "string"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -4475,6 +5620,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "The clinical-supervisor cosign that ratifies an early close — step-up; the cosigner is the server-assembled acting membership (§4.1 #9)",
         "parameters": [
           {
             "name": "planId",
@@ -4494,6 +5640,22 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "attestation": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -4504,6 +5666,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "The counselor's FIRST contact — D18-gated: an external-source plan awaiting its medical-director cosign is refused with the machine-readable gate reason, not a bare 403 (§4.1 #33)",
         "parameters": [
           {
             "name": "planId",
@@ -4524,6 +5687,65 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "contactId"
+                ],
+                "properties": {
+                  "contactId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "const": "phone_call",
+                        "type": "string"
+                      },
+                      {
+                        "const": "in_person_visit",
+                        "type": "string"
+                      },
+                      {
+                        "const": "sympathy_card",
+                        "type": "string"
+                      },
+                      {
+                        "const": "sympathy_letter",
+                        "type": "string"
+                      },
+                      {
+                        "const": "anniversary_letter",
+                        "type": "string"
+                      },
+                      {
+                        "const": "email",
+                        "type": "string"
+                      },
+                      {
+                        "const": "portal_message",
+                        "type": "string"
+                      },
+                      {
+                        "const": "group_support_invitation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "external_referral",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -4533,6 +5755,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "The plan's touchpoints, scheduled and historical, cursor-paginated (§4.1 #19)",
         "parameters": [
           {
             "name": "planId",
@@ -4540,6 +5763,134 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "contactId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "scheduled",
+                  "type": "string"
+                },
+                {
+                  "const": "in_progress",
+                  "type": "string"
+                },
+                {
+                  "const": "completed",
+                  "type": "string"
+                },
+                {
+                  "const": "declined",
+                  "type": "string"
+                },
+                {
+                  "const": "no_response",
+                  "type": "string"
+                },
+                {
+                  "const": "missed",
+                  "type": "string"
+                },
+                {
+                  "const": "cancelled",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "phone_call",
+                  "type": "string"
+                },
+                {
+                  "const": "in_person_visit",
+                  "type": "string"
+                },
+                {
+                  "const": "sympathy_card",
+                  "type": "string"
+                },
+                {
+                  "const": "sympathy_letter",
+                  "type": "string"
+                },
+                {
+                  "const": "anniversary_letter",
+                  "type": "string"
+                },
+                {
+                  "const": "email",
+                  "type": "string"
+                },
+                {
+                  "const": "portal_message",
+                  "type": "string"
+                },
+                {
+                  "const": "group_support_invitation",
+                  "type": "string"
+                },
+                {
+                  "const": "external_referral",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "dueFrom",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "dueTo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
             }
           }
         ],
@@ -4562,6 +5913,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "Pause the plan — cancels every future-dated touchpoint; a recorded reason is mandatory, because a pause without one is a lapse (§4.1 #6)",
         "parameters": [
           {
             "name": "planId",
@@ -4581,6 +5933,43 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "pauseKind",
+                  "reason"
+                ],
+                "properties": {
+                  "pauseKind": {
+                    "anyOf": [
+                      {
+                        "const": "operational",
+                        "type": "string"
+                      },
+                      {
+                        "const": "family_request",
+                        "type": "string"
+                      },
+                      {
+                        "const": "counselor_unavailable_temp",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -4591,6 +5980,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "Recompute the deterministic D3/D17 risk score (Layer 2 narrative only when the platform's full-AI capability is on) — ALWAYS an append; the ledger refuses UPDATE (§4.1 #28)",
         "parameters": [
           {
             "name": "planId",
@@ -4610,6 +6000,162 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "bereavedContactId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "factors": {
+                    "type": "object",
+                    "required": [
+                      "ambivalent_relationship",
+                      "sudden_unexpected_death",
+                      "prior_unresolved_loss",
+                      "preexisting_mental_health",
+                      "social_isolation",
+                      "financial_strain",
+                      "primary_caregiver_role",
+                      "active_substance_use"
+                    ],
+                    "properties": {
+                      "ambivalent_relationship": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "sudden_unexpected_death": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "prior_unresolved_loss": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "preexisting_mental_health": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "social_isolation": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "financial_strain": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "primary_caregiver_role": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "active_substance_use": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "const": "unknown",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "pg13_score": {
+                        "type": "number"
+                      },
+                      "ipgr_score": {
+                        "type": "number"
+                      },
+                      "notes": {
+                        "maxLength": 8000,
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "requestAugmentation": {
+                    "type": "boolean"
+                  },
+                  "overrideTier": {
+                    "anyOf": [
+                      {
+                        "const": "low",
+                        "type": "string"
+                      },
+                      {
+                        "const": "moderate",
+                        "type": "string"
+                      },
+                      {
+                        "const": "high",
+                        "type": "string"
+                      },
+                      {
+                        "const": "complicated",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "overrideReason": {
+                    "maxLength": 4000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -4620,6 +6166,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "Regenerate the FORWARD outreach book — whole plan or one survivor; never writes a backdated obligation (§4.1 #27)",
         "parameters": [
           {
             "name": "planId",
@@ -4639,6 +6186,26 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "contactId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "fromAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -4649,6 +6216,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "Resume the plan — regenerates the schedule FROM NOW; a touchpoint whose due date passed during the pause is not resurrected as a backdated obligation (§4.1 #7)",
         "parameters": [
           {
             "name": "planId",
@@ -4669,6 +6237,17 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
         }
       }
     },
@@ -4678,6 +6257,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "The append-only risk-score ledger — per-survivor and plan-level, newest first (§4.1 #29)",
         "parameters": [
           {
             "name": "planId",
@@ -4685,6 +6265,34 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "contactId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
             }
           }
         ],
@@ -4707,6 +6315,7 @@
         "tags": [
           "16-bereavement"
         ],
+        "summary": "Seed the survivor roster from M5 and materialize the D4 platform-floor schedule — initiating → active (§4.1 #5)",
         "parameters": [
           {
             "name": "planId",
@@ -4726,6 +6335,181 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "seedFromCaregivers": {
+                    "type": "boolean"
+                  },
+                  "additionalContacts": {
+                    "maxItems": 64,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "displayName",
+                        "relationshipCode"
+                      ],
+                      "properties": {
+                        "displayName": {
+                          "minLength": 1,
+                          "maxLength": 200,
+                          "type": "string"
+                        },
+                        "relationshipCode": {
+                          "anyOf": [
+                            {
+                              "const": "spouse",
+                              "type": "string"
+                            },
+                            {
+                              "const": "domestic_partner",
+                              "type": "string"
+                            },
+                            {
+                              "const": "parent",
+                              "type": "string"
+                            },
+                            {
+                              "const": "child",
+                              "type": "string"
+                            },
+                            {
+                              "const": "sibling",
+                              "type": "string"
+                            },
+                            {
+                              "const": "grandparent",
+                              "type": "string"
+                            },
+                            {
+                              "const": "grandchild",
+                              "type": "string"
+                            },
+                            {
+                              "const": "aunt_uncle",
+                              "type": "string"
+                            },
+                            {
+                              "const": "cousin",
+                              "type": "string"
+                            },
+                            {
+                              "const": "in_law",
+                              "type": "string"
+                            },
+                            {
+                              "const": "friend",
+                              "type": "string"
+                            },
+                            {
+                              "const": "neighbor",
+                              "type": "string"
+                            },
+                            {
+                              "const": "clergy",
+                              "type": "string"
+                            },
+                            {
+                              "const": "colleague",
+                              "type": "string"
+                            },
+                            {
+                              "const": "caregiver_non_family",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "email": {
+                          "format": "email",
+                          "type": "string"
+                        },
+                        "phone": {
+                          "minLength": 7,
+                          "maxLength": 30,
+                          "type": "string"
+                        },
+                        "mailingAddress": {
+                          "maxLength": 500,
+                          "type": "string"
+                        },
+                        "preferredLanguageIso639": {
+                          "minLength": 2,
+                          "maxLength": 8,
+                          "type": "string"
+                        },
+                        "consentRecordId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "outreachPreferences": {
+                          "type": "object",
+                          "required": [
+                            "allowedKinds"
+                          ],
+                          "properties": {
+                            "allowedKinds": {
+                              "maxItems": 9,
+                              "type": "array",
+                              "items": {
+                                "anyOf": [
+                                  {
+                                    "const": "phone_call",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "in_person_visit",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "sympathy_card",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "sympathy_letter",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "anniversary_letter",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "email",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "portal_message",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "group_support_invitation",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "external_referral",
+                                    "type": "string"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

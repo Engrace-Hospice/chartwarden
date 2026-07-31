@@ -27,6 +27,7 @@ import { dosespotScreens } from "./modules/12-dosespot";
 import { emarScreens } from "./modules/13-emar";
 import { idgScreens } from "./modules/14-idg";
 import { disciplinePlanScreens } from "./modules/15-discipline-care-plans";
+import { bereavementScreens } from "./modules/16-bereavement";
 import { schedulingScreens } from "./modules/17-scheduling";
 import { evvScreens } from "./modules/18-evv";
 import { documentScreens } from "./modules/22-documents";
@@ -65,6 +66,7 @@ registry.register(dosespotScreens); // M12 DoseSpot Prescribing (Track B, M12-T0
 registry.register(emarScreens); // M13 eMAR Administration (Track B, M13-T10)
 registry.register(idgScreens); // M14 Interdisciplinary Group / IDG (Track B, M14-T07)
 registry.register(disciplinePlanScreens); // M15 Discipline Care Plans (Track B, M15-T07)
+registry.register(bereavementScreens); // M16 Bereavement (Track B, M16-T07)
 registry.register(schedulingScreens); // M17 Scheduling & Route Optimization (Track B, M17-T08)
 registry.register(evvScreens); // M18 Electronic Visit Verification (Track B, M18-T07)
 registry.register(documentScreens); // M22 Document Management (Track B, M22-T10)

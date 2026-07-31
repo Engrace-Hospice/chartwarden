@@ -4,7 +4,7 @@
 > corpus is consistent; this shows how much of it is BUILT in `apps/web`. Do not hand-edit —
 > the `ui:parity --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 27 module screen-sets registered · 171 screens wired in `apps/web`.
+**Coverage:** 113 documented screen specs · 28 module screen-sets registered · 182 screens wired in `apps/web`.
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -103,6 +103,17 @@
 | 15-discipline-care-plans | `discipline-plan.idg-revision` | `/patients/:patientId/discipline-plans/:kind/idg-revisions/:versionId` | `discipline_plan.idg_revise` | ✅ |
 | 15-discipline-care-plans | `volunteer.compliance` | `/admin/volunteer-compliance` | `volunteer_compliance.read` | ✅ |
 | 15-discipline-care-plans | `volunteer.ratio` | `/admin/volunteer-ratio` | `volunteer_compliance.read_ratio` | ✅ |
+| 16-bereavement | `bereavement.caseload` | `/bereavement` | `bereavement.dashboard.counselor` | ✅ |
+| 16-bereavement | `bereavement.supervisor` | `/bereavement/supervisor` | `bereavement.dashboard.supervisor` | ✅ |
+| 16-bereavement | `bereavement.intake` | `/bereavement/eligible` | `bereavement.plan.assign_counselor` | ✅ |
+| 16-bereavement | `bereavement.plan` | `/bereavement/plans/:planId` | `bereavement.plan.read` | ✅ |
+| 16-bereavement | `bereavement.plan.seed` | `/bereavement/plans/:planId/seed` | `bereavement.plan.activate` | ✅ |
+| 16-bereavement | `bereavement.plan.closeout` | `/bereavement/plans/:planId/closeout` | `bereavement.plan.read` | ✅ |
+| 16-bereavement | `bereavement.plan.outreach` | `/bereavement/plans/:planId/outreach` | `bereavement.outreach.read` | ✅ |
+| 16-bereavement | `bereavement.plan.risk` | `/bereavement/plans/:planId/risk` | `bereavement.risk.read` | ✅ |
+| 16-bereavement | `bereavement.contact` | `/bereavement/plans/:planId/contacts/:contactId` | `bereavement.plan.read` | ✅ |
+| 16-bereavement | `bereavement.contact.screen` | `/bereavement/plans/:planId/contacts/:contactId/screen` | `bereavement.contact.flag_complicated_grief` | ✅ |
+| 16-bereavement | `bereavement.plan.history` | `/bereavement/plans/:planId/history` | `bereavement.plan.read` | ✅ |
 | 17-scheduling | `scheduling.day` | `/scheduling/day` | `visit.read_team` | ✅ |
 | 17-scheduling | `scheduling.week` | `/scheduling/week` | `visit.read_team` | ✅ |
 | 17-scheduling | `scheduling.proposals` | `/scheduling/proposals` | `visit.proposal.read` | ✅ |
