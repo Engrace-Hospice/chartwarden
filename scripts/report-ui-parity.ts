@@ -89,8 +89,15 @@ for (const dir of moduleDirs.sort()) {
   const rel = `apps/web/src/modules/${dir}/screens.ts`;
   const src = read(rel);
   const moduleId = src.match(/moduleId:\s*(\d+)/)?.[1];
-  // a module is "wired" if main.tsx imports its dir
-  if (!mainTsx.includes(`modules/${dir}`)) unregistered.push(rel);
+  // A module is "wired" only when main.tsx BOTH imports its dir AND calls
+  // `registry.register(<itsExport>)`. Checking the import alone was a real hole: a screens.ts that is
+  // imported but never registered passes the gate and then 404s at runtime, because the router only
+  // knows the screens the registry was handed. That is exactly how the M30/M39 registrations shipped
+  // broken — the import landed, the register() call did not, and this check said green.
+  const exportName = src.match(/export const (\w+):\s*ScreenRegistryModule/)?.[1];
+  const imported = mainTsx.includes(`modules/${dir}`);
+  const registered = !!exportName && mainTsx.includes(`registry.register(${exportName})`);
+  if (!imported || !registered) unregistered.push(rel);
   // each screen entry: anchor on `id:`; fields belong to the screen until the next `id:`
   const ids = [...src.matchAll(/\bid:\s*["']([^"']+)["']/g)];
   for (let i = 0; i < ids.length; i++) {
