@@ -44,10 +44,13 @@ import {
 import { RATIO_STATUS_TONE, hours, humanize, pct, toneOf } from "./discipline-status";
 
 /** The §7.6 bands, stated on the page so the color is never the only signal (Hard Rule §10.10). */
+// The band NAME is the pill (it, not the tone, is what carries the meaning for a reader who cannot
+// use the color); the threshold sits beside it as text. Keeping the whole sentence inside the pill
+// made an unwrappable ~300px box that overflowed the aside rail and clipped mid-word.
 const BANDS = [
-  { label: "Green — at or above 5%", tone: "success" as const },
-  { label: "Yellow — 3% to 5%, corrective action prompted", tone: "warning" as const },
-  { label: "Red — below 3%, escalates to DON and Compliance", tone: "error" as const },
+  { label: "Green", detail: "at or above 5%", tone: "success" as const },
+  { label: "Yellow", detail: "3% to 5%, corrective action prompted", tone: "warning" as const },
+  { label: "Red", detail: "below 3%, escalates to DON and Compliance", tone: "error" as const },
 ];
 
 function currentFiscalYear(): number {
@@ -188,8 +191,17 @@ export function VolunteerHourRatio(): JSX.Element {
           <div style={{ display: "flex", flexDirection: "column", gap: t.space3 }}>
             <Card title="Bands">
               {BANDS.map((b) => (
-                <div key={b.label} style={{ display: "flex", alignItems: "center", gap: t.space2 }}>
+                <div
+                  key={b.label}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-start",
+                    gap: t.space1,
+                  }}
+                >
                   <StatusPill label={b.label} tone={b.tone} />
+                  <span style={mutedStyle}>{b.detail}</span>
                 </div>
               ))}
               <span style={mutedStyle}>

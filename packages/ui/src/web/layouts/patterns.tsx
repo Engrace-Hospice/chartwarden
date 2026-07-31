@@ -11,6 +11,17 @@ import { cardSurface, ghostBorder, t } from "../theme/tokens";
 
 const fillColumn = { display: "flex", flexDirection: "column" as const, minHeight: 0, flex: 1 };
 const splitRow = { display: "flex", minHeight: 0, flex: 1, overflow: "hidden" };
+// A right-hand context rail. Sized like the `18rem` rails ConversationView/AdminSplitLayout use, but
+// with `flexShrink: 0` doing the real work: an aside is an unsized flex sibling otherwise, so long
+// prose inside it (M15's §5.1 volunteer-ratio bands/numerator explainers) grows the rail until the
+// `flex: 1` workspace beside it collapses to a sliver. The trailing padding is the right gutter the
+// centre column already has — without it the rail runs flush to the viewport edge.
+const asideRail = {
+  width: "18rem",
+  flexShrink: 0,
+  overflow: "auto",
+  padding: "1rem 1.5rem 1rem 0",
+};
 
 /** Auth Flow — a single focused action on a centered card (sign-in, MFA, org-select, step-up). */
 export interface CenteredCardLayoutProps {
@@ -201,7 +212,11 @@ export function DashboardLayout({
           {charts}
           {table}
         </div>
-        {aside}
+        {aside ? (
+          <div className="wx-dashboard-aside" style={asideRail}>
+            {aside}
+          </div>
+        ) : null}
       </div>
     </div>
   );
