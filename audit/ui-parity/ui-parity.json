@@ -38,6 +38,7 @@
     "34-saas",
     "36-messaging",
     "38-terminology",
+    "39-consent",
     "40-mdm"
   ],
   "screens": [
@@ -1146,6 +1147,27 @@
       "id": "terminology.admin",
       "path": "/terminology",
       "permission": "(none)"
+    },
+    {
+      "module": "39-consent",
+      "moduleId": 39,
+      "id": "consent.record-manager",
+      "path": "/patients/:patientId/consents",
+      "permission": "consent.read"
+    },
+    {
+      "module": "39-consent",
+      "moduleId": 39,
+      "id": "consent.expiration-renewal",
+      "path": "/patients/:patientId/consents/expiring",
+      "permission": "consent.read"
+    },
+    {
+      "module": "39-consent",
+      "moduleId": 39,
+      "id": "consent.recipients-dpoa",
+      "path": "/consents/:consentId/recipients",
+      "permission": "consent.read"
     },
     {
       "module": "40-mdm",

@@ -31,6 +31,7 @@ import { evvScreens } from "./modules/18-evv";
 import { documentScreens } from "./modules/22-documents";
 import { billingScreens } from "./modules/23-billing-medicare";
 import { medicaidBillingScreens } from "./modules/24-billing-medicaid";
+import { consentScreens } from "./modules/39-consent";
 import { remittanceScreens } from "./modules/25-remittance";
 import { capScreens } from "./modules/26-cap";
 import { costReportScreens } from "./modules/27-cost-report";

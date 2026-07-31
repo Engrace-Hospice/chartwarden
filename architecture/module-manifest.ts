@@ -336,7 +336,11 @@ export const MODULES: ModuleDef[] = [
   {
     id: 39,
     name: "Consent & Authorization Management",
-    codePaths: ["packages/consent", "apps/backend/src/modules/39-consent"],
+    codePaths: [
+      "packages/consent",
+      "apps/backend/src/modules/39-consent",
+      "apps/web/src/modules/39-consent",
+    ],
     // ADR-0006: dropped 22 to break the manifest's 22↔39 cycle. Consent consumes
     // Module 22 document rendering/storage via a boot-registered forward seam
     // (DocumentRenderer/DocumentStorageProvider, deny-stub) — no import edge (ADR-0005 D1).

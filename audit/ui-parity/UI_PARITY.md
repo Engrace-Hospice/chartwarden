@@ -4,7 +4,7 @@
 > corpus is consistent; this shows how much of it is BUILT in `apps/web`. Do not hand-edit —
 > the `ui:parity --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 26 module screen-sets registered · 159 screens wired in `apps/web`.
+**Coverage:** 113 documented screen specs · 27 module screen-sets registered · 162 screens wired in `apps/web`.
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -183,6 +183,9 @@
 | 36-messaging | `messaging.staff` | `/messaging` | `messaging.read` | ✅ |
 | 36-messaging | `messaging.notifications` | `/notifications` | `(none)` | ✅ |
 | 38-terminology | `terminology.admin` | `/terminology` | `(none)` | ✅ |
+| 39-consent | `consent.record-manager` | `/patients/:patientId/consents` | `consent.read` | ✅ |
+| 39-consent | `consent.expiration-renewal` | `/patients/:patientId/consents/expiring` | `consent.read` | ✅ |
+| 39-consent | `consent.recipients-dpoa` | `/consents/:consentId/recipients` | `consent.read` | ✅ |
 | 40-mdm | `mdm.console` | `/mdm` | `(none)` | ✅ |
 
 ## Hard-fail consistency checks

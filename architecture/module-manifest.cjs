@@ -291,7 +291,11 @@ exports.MODULES = [
   {
     id: 39,
     name: "Consent & Authorization Management",
-    codePaths: ["packages/consent", "apps/backend/src/modules/39-consent"],
+    codePaths: [
+      "packages/consent",
+      "apps/backend/src/modules/39-consent",
+      "apps/web/src/modules/39-consent",
+    ],
     // ADR-0006: dropped 22 to break the 22↔39 cycle; M39 consumes M22 via a
     // boot-registered forward seam (DocumentRenderer), no import edge (ADR-0005 D1).
     dependsOn: [1, 2, 3, 4, 5],
