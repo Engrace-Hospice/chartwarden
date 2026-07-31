@@ -86,6 +86,29 @@ export const VOLUNTEER_GATE_EXPIRY_POLICY = {
 } as const;
 
 /**
+ * §4.7 / §7.5 — the severity the M36 `m15.volunteer.gate_expiring` alert carries at each ladder mark:
+ * 30 → `info`, 14 → `warn`, 7 → `warn`, 1 → `critical`. A `daysOut` at or below the last mark stays
+ * `critical` (the day the gate lapses is the loudest the ladder gets), and anything above the first mark
+ * is still `info` — the ladder never goes quiet as the deadline approaches.
+ */
+export function volunteerGateAlertSeverity(daysOut: number): "info" | "warn" | "critical" {
+  if (daysOut <= 1) return "critical";
+  if (daysOut <= VOLUNTEER_GATE_EXPIRY_POLICY.expiringSoonAtDaysOut / 2) return "warn";
+  return "info";
+}
+
+/**
+ * §2.2.6 / §4.2 — the gate kinds whose credential is a ONE-TIME, lifetime fact rather than a recurring
+ * window. A `valid_until` on one of these is a data-entry error (`INITIAL_TRAINING_LIFETIME`): the
+ * 418.78(b) orientation happened or it did not, and dating it to expire would silently drop a compliant
+ * volunteer off the schedule a year later. `confidentiality_agreement` is deliberately NOT here — a null
+ * `valid_until` makes it non-expiring, but an agency that re-executes it annually may legitimately date it.
+ */
+export const LIFETIME_VOLUNTEER_GATE_KINDS: readonly VolunteerGateKind[] = [
+  "initial_training",
+] as const;
+
+/**
  * §1.1 / §7.6 / M15-F04 — the 42 CFR §418.78(e) volunteer ratio is **hours ÷ hours**: the numerator is
  * volunteer hours (direct-care `volunteer_visit` durations from M8 PLUS typed `volunteer_admin_hours`
  * entries), the denominator is the total patient-care HOURS of paid + contract staff supplied by M27/M23.
@@ -98,7 +121,30 @@ export const VOLUNTEER_RATIO_POLICY = {
   /** Below this → red with escalation to DON + Compliance Officer; in between → yellow with a
    *  corrective-action prompt. */
   criticalBelow: 0.03,
+  /**
+   * §2.2.7 — the calendar month (1–12) the agency's fiscal year opens on, when the tenant declares no
+   * override. The `volunteer_hour_ledger` is keyed on `(provider_entity_id, fiscal_year)`, so an entry's
+   * `occurred_at` has to bucket somewhere; the calendar year is the neutral default and the only one an
+   * un-configured tenant can be held to. A non-calendar FY is LABELLED BY THE YEAR IT ENDS (the federal
+   * convention: an October start makes Nov-2025 fall in FY2026).
+   */
+  defaultFiscalYearStartMonth: 1,
 } as const;
+
+/**
+ * §2.2.7 — which `volunteer_hour_ledger.fiscal_year` an entry instant belongs to. `startMonth` is the
+ * agency's FY opening month (1–12); the returned year is the one the FY ENDS in, which collapses to the
+ * plain calendar year for the default January start.
+ */
+export function fiscalYearFor(
+  occurredAtIso: string,
+  startMonth: number = VOLUNTEER_RATIO_POLICY.defaultFiscalYearStartMonth,
+): number {
+  const at = new Date(occurredAtIso);
+  const year = at.getUTCFullYear();
+  if (startMonth <= 1) return year;
+  return at.getUTCMonth() + 1 >= startMonth ? year + 1 : year;
+}
 
 /**
  * §7.6 — the M33 dashboard badge for a computed ratio. A null ratio is the honest `unavailable` state

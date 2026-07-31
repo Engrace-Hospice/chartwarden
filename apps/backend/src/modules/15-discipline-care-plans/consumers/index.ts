@@ -17,3 +17,7 @@ export {
   type AssessmentEncounterRef,
   type SupervisoryEncounterRef,
 } from "./signed-encounters";
+export {
+  resolveVolunteerVisitCandidates,
+  type VolunteerServedPatient,
+} from "./volunteer-visits";

@@ -26,6 +26,23 @@ export type DisciplinePlanSideEffect =
   | { readonly kind: "clear_signatures" }
   /** Recompute `discipline_care_plan.next_supervisory_due_at` (§2.2.4; `aide_poc` only). */
   | { readonly kind: "recompute_supervisory_due"; readonly nextDueAt: IsoInstant }
+  /**
+   * Write the §8.1 `m15.gate.override.invoked` audit event at `warn` severity and bump the
+   * `wardenx_m15_gate_override_counter` metric (§8.2). Declared by the §8.6 STRIDE path where a
+   * coordinator books a volunteer past an unmet 418.78 gate with a documented reason — the override is
+   * legal, but it is never silent.
+   */
+  | {
+      readonly kind: "gate_override";
+      readonly gateKinds: ReadonlyArray<string>;
+      readonly reason: string;
+    }
+  /** Stamp `volunteer_hour_ledger.total_volunteer_hour_minutes` + `as_of_at` (§2.2.7 aggregator). */
+  | {
+      readonly kind: "set_ledger_total";
+      readonly totalVolunteerHourMinutes: number;
+      readonly asOfAt: IsoInstant;
+    }
   /** Point the plan at its newly-signed current version (`discipline_care_plan_version.sequence`). */
   | { readonly kind: "flip_current_version" };
 

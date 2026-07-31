@@ -2,8 +2,11 @@
 //
 // M15-T03 lands the §2.2 lifecycle core (`lifecycle/`) and the seam-consuming layer (`consumers/`,
 // `seams/`) that resolves the M7 IPOC elements and the M8 signed encounters those machines decide over.
-// Routes (§4.1), permission keys (§4.4) and the ABAC predicates (§4.5) land in M15-T06; the volunteer
-// compliance + hour-ledger domain in M15-T04; the seams M15 PUBLISHES in M15-T05.
+// M15-T04 adds the §7.4/§7.5/§7.6 volunteer domain (`volunteer/`): the 418.78 compliance gates, the
+// effective status M17's pre-schedule gate reads, the expiry → inactive cascade, and the 418.78(e) 5%
+// hour ledger + ratio. Routes (§4.1), permission keys (§4.4) and the ABAC predicates (§4.5) land in
+// M15-T06; the seams M15 PUBLISHES in M15-T05.
 export * from "./lifecycle/index";
 export * from "./consumers/index";
+export * from "./volunteer/index";
 export { getCarePlanReader, getSignedEncountersReader } from "./seams/index";
