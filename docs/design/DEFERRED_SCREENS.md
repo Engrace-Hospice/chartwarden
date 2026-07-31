@@ -466,7 +466,7 @@ per-screen status. Examples:
 Care Plan (M7 done; M15 discipline plans + volunteer management done²⁴), Orders (M11; done¹⁸),
 eMAR administration (M13; done²⁰; M12 prescribing is done¹⁹),
 IDG (M14; done²¹), Bereavement (M16; done²⁵), Scheduling (M17; done²²), EVV (M18; done²³),
-Claims (M23; done), Medicaid (M24; done),
+Supplies/DME/Comfort Kits (M21; done²⁶), Claims (M23; done), Medicaid (M24; done),
 Remittance & Denials (M25; done), Cap (M26; done), Cost Report (M27), FHIR (M28), HQRP (M30),
 Portal/Telehealth (M31), Copilot (M32), Reporting (M33; done), Onboarding (M34; done),
 Subscription (M35), IPU Bed Board (M37). See each spec's `Module:` line for the authoritative owner.
@@ -529,6 +529,55 @@ Subscription (M35), IPU Bed Board (M37). See each spec's `Module:` line for the 
 > rows and says so, since the immutable audit trail (refused reads, break-glass, cascade actors) belongs
 > to the M4 surface that owns it; the M40 external grief-resource picker takes an id rather than browsing
 > a catalog M16 does not publish; and the §5.2 mobile + §5.3 portal variants remain forward-seams.
+
+> ²⁶ **M21 Supplies, DME & Comfort Kits now LIVE (Wave P2-1, M21-T06).** Ten screens under
+> `apps/web/src/modules/21-supplies`, registered into the M1 shell via `supplyScreens` (`main.tsx`) under a
+> new "Supplies" nav group, over the live 37-route M21 backend. They cover the M21 §5.1 inventory: the
+> supply-team dashboard (which is also the index for requests, dispatches and returns, since §4.1 publishes
+> no separate list screens); the supply-request detail driving the §2.2 fulfillment machine with the frozen
+> D4 routing trace; comfort-kit dispatch creation and detail; the §2.6 return reconciliation with its
+> witnessed-disposal and write-off ceremonies; and the four agency-operations surfaces — par stock, vendor
+> routing, comfort-kit templates and the D11 SKU catalog. Built to Lantern: the §6.6 StatusPill taxonomy
+> through a per-module `supplies-status.ts` keyed on the frozen pgEnum lists, No-Line tables (§6.7), CSS-var
+> tokens only (zero hex). §5's ceremonies are not separate registry entries — each lives in the parent that
+> already read the row's `updated_at`, which is M21's `If-Match` value (§7.2; M21's tables carry no version
+> counter). Nav visibility is gated by the real §4.3 keys (`supplies.request.read`, `supplies.item.read`,
+> `comfort_kit.dispatch.create` / `.read`, `comfort_kit.perpetual_log.read`, `comfort_kit.return.read`,
+> `comfort_kit.template.read`, `vendor_routing.read`, `par_stock.read`); the SERVER stays the only
+> enforcement point.
+>
+> **An eleventh screen that §5.1 does not list: the DEA 21 CFR §1304 perpetual log**
+> (`/supplies/dispatches/:id/perpetual-log`). §4.3 gives it its own `compliance`-category key, disjoint from
+> `comfort_kit.dispatch.read` — a coordinator who may dispatch must not thereby acquire the lot-level
+> custody chain. Nav gating is per-screen, so folding it into the dispatch detail would have made the
+> dispatch key the effective gate on the ledger, strictly wider than §4.3 says.
+>
+> Honest gaps and departures, stated on the screens themselves rather than faked: the §5.2 KPI tiles are
+> PAGE-derived (M21 publishes no aggregate route and no `total_count`), so a truncated page carries an
+> explicit "at least" notice; §5.2's "in-transit late" and "undeliverable" tiles are not built, because
+> `supply_request` has no expected-delivery column and the status enum has no undeliverable value; §5.4's
+> patient autocomplete is replaced by an open-kit-request picker, since the dispatch body has no patient
+> field (patient, admission and provider entity come from the request); §5.4's per-line witness picker and
+> chain-of-custody scan list are not built, because the dispatch stores neither — the witness is a §2.6
+> *disposal* fact and only for at-home destruction; §5.7's threshold editor edits the real columns
+> (`reorder_point` / `reorder_quantity` / `min_safety_stock`, not the sketch's par_min/par_target) and its
+> photo capture is dropped for want of a document column; §5.8's fallback-chain column and "simulate
+> routing" panel are not built, because §3.0 REMOVED the fallback model and simulating client-side would put
+> a second copy of the resolver in the browser — the frozen `routingRuleResolved` trace on each request is
+> the real answer; §5.9's RxNorm autocomplete is free text (M21 publishes no terminology lookup and M38's is
+> another module's screen); §5.10's tenant-extension drawer is dropped because the overlay rows are already
+> first-class list entries; §5.3's M4 audit drawer is not built — the audit trail belongs to the M4 surface
+> and its own permission, so the lifecycle timeline is reconstructed from the request's own columns and says
+> so; and the §5.11 mobile variants (courier delivery, clinician confirm, kit-return witness) remain
+> forward-seams — the first two are the same routes the request detail's action panel already drives, and
+> the third has no route at all, since witness co-attestation is a field inside `reconcile` rather than its
+> own transition.
+>
+> **`discrepancy_pct` and `replenishment_threshold_pct` are FRACTIONS in [0,1], not percentages** — the D8
+> trigger compares against `0.05` and §3.1.4's CHECK bounds the threshold to [0,1] — and they reach the wire
+> raw. The web slice converts in exactly one place (`fractionAsPct`); the §9.3 live RLS suite asserts the
+> scale, because printing 0.05 under a "%" heading would understate a controlled-substance shortfall a
+> hundredfold.
 
 ---
 

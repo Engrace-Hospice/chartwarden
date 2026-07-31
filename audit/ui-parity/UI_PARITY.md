@@ -4,7 +4,7 @@
 > corpus is consistent; this shows how much of it is BUILT in `apps/web`. Do not hand-edit —
 > the `ui:parity --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 28 module screen-sets registered · 182 screens wired in `apps/web`.
+**Coverage:** 113 documented screen specs · 29 module screen-sets registered · 192 screens wired in `apps/web`.
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -131,6 +131,16 @@
 | 18-evv | `evv.devices` | `/evv/devices/pending` | `evv.device.read` | ✅ |
 | 18-evv | `evv.metrics` | `/admin/evv-metrics` | `evv.read_metrics` | ✅ |
 | 18-evv | `evv.my-devices` | `/me/evv/devices` | `evv.device.read` | ✅ |
+| 21-supplies | `supplies.dashboard` | `/supplies` | `supplies.request.read` | ✅ |
+| 21-supplies | `supplies.request` | `/supplies/requests/:supplyRequestId` | `supplies.request.read` | ✅ |
+| 21-supplies | `supplies.dispatch.new` | `/supplies/dispatches/new` | `comfort_kit.dispatch.create` | ✅ |
+| 21-supplies | `supplies.dispatch` | `/supplies/dispatches/:dispatchId` | `comfort_kit.dispatch.read` | ✅ |
+| 21-supplies | `supplies.dispatch.perpetual_log` | `/supplies/dispatches/:dispatchId/perpetual-log` | `comfort_kit.perpetual_log.read` | ✅ |
+| 21-supplies | `supplies.return` | `/supplies/returns/:returnId` | `comfort_kit.return.read` | ✅ |
+| 21-supplies | `supplies.par_stock` | `/supplies/par-stock` | `par_stock.read` | ✅ |
+| 21-supplies | `supplies.vendor_routing` | `/supplies/vendor-routing` | `vendor_routing.read` | ✅ |
+| 21-supplies | `supplies.comfort_kit_templates` | `/supplies/comfort-kit-templates` | `comfort_kit.template.read` | ✅ |
+| 21-supplies | `supplies.items` | `/supplies/items` | `supplies.item.read` | ✅ |
 | 22-documents | `documents.explorer` | `/documents` | `documents.read` | ✅ |
 | 22-documents | `documents.version-history` | `/documents/:documentId/versions` | `documents.read_history` | ✅ |
 | 22-documents | `documents.intake-batch` | `/intake/:batchId` | `intake.read` | ✅ |

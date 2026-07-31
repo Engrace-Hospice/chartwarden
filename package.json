@@ -37,6 +37,7 @@
     "test:rls:live:m30": "vitest run packages/db/migrations/__tests__/m30-rls-isolation.live.test.ts",
     "test:rls:live:m15": "vitest run packages/db/migrations/__tests__/m15-rls-isolation.live.test.ts",
     "test:rls:live:m16": "vitest run packages/db/migrations/__tests__/m16-rls-isolation.live.test.ts",
+    "test:rls:live:m21": "vitest run packages/db/migrations/__tests__/m21-rls-isolation.live.test.ts",
     "test:auth:live": "vitest run apps/backend/__tests__/auth.live.test.ts",
     "scaffold": "bun run scripts/scaffold-from-manifest.ts",
     "scaffold:check": "bun run scripts/scaffold-from-manifest.ts --check",

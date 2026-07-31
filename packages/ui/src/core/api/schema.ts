@@ -11171,8 +11171,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Dispatch list — per patient, per Location, or per IPU room for the D17 stock-kit view (§4.1 #21) */
         get: operations["getApiV1SuppliesComfortkitdispatches"];
         put?: never;
+        /** Dispatch a comfort kit — the DEA 21 CFR §1304 outbound log entry: §4.4's dispatcher predicate plus a step-up gate, and the §2.5 refusals, shelf decrement and per-line log all in ONE transaction (§4.1 #20) */
         post: operations["postApiV1SuppliesComfortkitdispatches"];
         delete?: never;
         options?: never;
@@ -11205,6 +11207,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** The kit is physically at the patient — the event M13 builds its deployment rows FROM, so the emitted payload carries the whole manifest rather than making M13 read back (§4.1 #23) */
         post: operations["postApiV1SuppliesComfortkitdispatchesByDispatchIdDeployatpatient"];
         delete?: never;
         options?: never;
@@ -11235,8 +11238,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The reconciliation worklist — OLDEST due first, with `daysOverdue` computed at read time from `return_due_at` (§4.1 #25) */
         get: operations["getApiV1SuppliesComfortkitreturns"];
         put?: never;
+        /** Open a return obligation — refused until M13 has acked the deployment, because a return with nothing to close is a count nobody can reconcile (§4.1 #24) */
         post: operations["postApiV1SuppliesComfortkitreturns"];
         delete?: never;
         options?: never;
@@ -11269,6 +11274,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Assign the supply-team member who will physically retrieve — §4.4's separation-of-duties clause compares them against the witness (§2.6) */
         post: operations["postApiV1SuppliesComfortkitreturnsByReturnIdAssignretriever"];
         delete?: never;
         options?: never;
@@ -11285,6 +11291,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** The 90-day assumption of loss — deliberately NOT folded into reconcile: writing off a kit that held a CII solution is a different authority from counting one that came back (§2.6) */
         post: operations["postApiV1SuppliesComfortkitreturnsByReturnIdDeclareunreturnable"];
         delete?: never;
         options?: never;
@@ -11301,6 +11308,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Reconcile the physical count — step-up plus the reconciler predicate whose FIRST clause is separation of duties; the D8 discrepancy is COMPUTED from the quantities and never accepted from the body (§4.1 #27) */
         post: operations["postApiV1SuppliesComfortkitreturnsByReturnIdReconcile"];
         delete?: never;
         options?: never;
@@ -11315,8 +11323,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The §2.3 comfort-kit templates — `includePlatformFloor` defaults ON so the admin screen shows the D3 floor row as locked; a picker passes false (§4.1 #17) */
         get: operations["getApiV1SuppliesComfortkittemplates"];
         put?: never;
+        /** Author a tenant template — the D3 floor validation runs BEFORE anything is written, so a template that drops below the floor never exists even transiently (§4.1 #18) */
         post: operations["postApiV1SuppliesComfortkittemplates"];
         delete?: never;
         options?: never;
@@ -11332,6 +11342,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        /** Supersede a template — this INSERTS a new row pointing back through `replaces_template_id` rather than patching, so a dispatch from three months ago still resolves the recipe it actually used (§4.1 #19) */
         put: operations["putApiV1SuppliesComfortkittemplatesByTemplateId"];
         post?: never;
         delete?: never;
@@ -11347,6 +11358,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The hub shelf — `severity` is DERIVED per row and never stored, because a stored band goes stale the moment a threshold is edited (§4.1 #32) */
         get: operations["getApiV1SuppliesParstock"];
         put?: never;
         post?: never;
@@ -11364,6 +11376,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        /** Edit the par thresholds — the boundary mirrors §3.1.6's ordering CHECK, so an inverted pair is a field-anchored 422 rather than a 500 out of PostgreSQL (§4.1 #33) */
         put: operations["putApiV1SuppliesParstockByParStockId"];
         post?: never;
         delete?: never;
@@ -11381,6 +11394,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record an on-hand count — this SETS the shelf rather than adjusting it, and the nightly cron (not this route) is the canonical emitter of the below-threshold alert (§4.1 #34) */
         post: operations["postApiV1SuppliesParstockObserve"];
         delete?: never;
         options?: never;
@@ -11395,8 +11409,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The D11 SKU catalog — the platform rows UNION the tenant overlay, one browsable list (§4.1 #11) */
         get: operations["getApiV1SuppliesSupplyitems"];
         put?: never;
+        /** Create a canonical HCPCS-keyed SKU — PLATFORM-ONLY: `supply_item` carries no organization_id, so the permission is the first gate and the wardenx_admin-only write policy is the backstop (§4.1 #12) */
         post: operations["postApiV1SuppliesSupplyitems"];
         delete?: never;
         options?: never;
@@ -11429,6 +11445,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Retire a canonical SKU — effective-dating, never deletion: a retired HCPCS code must keep resolving for every historical request written against it (§4.1 #14) */
         post: operations["postApiV1SuppliesSupplyitemsByIdRetire"];
         delete?: never;
         options?: never;
@@ -11443,8 +11460,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The supply-team worklist — cursor-paginated; `openOnly` narrows to the §2.2 non-terminal set, which is the dashboard's default view (§4.1 #2) */
         get: operations["getApiV1SuppliesSupplyrequests"];
         put?: never;
+        /** Create a DME / supply / comfort-kit request — the §4.4 dispatcher predicate applies CONDITIONALLY, only when the kind is a comfort-kit deploy (§4.1 #1) */
         post: operations["postApiV1SuppliesSupplyrequests"];
         delete?: never;
         options?: never;
@@ -11477,6 +11496,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** D4 vendor override — the ladder still runs and the override is recorded ON TOP of its trace, so the record shows both the rules evaluated and the human decision that overrode them (§4.1 #4) */
         post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdAssignvendor"];
         delete?: never;
         options?: never;
@@ -11493,6 +11513,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Cancel — ONE route for both §2.2 edges: immediate before `ordered`, two-phase after, so a caller never has to know which side of the vendor handshake the row sits on (§4.1 #9) */
         post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdCancel"];
         delete?: never;
         options?: never;
@@ -11509,6 +11530,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Caregiver / clinician receipt confirmation — `system_auto_confirm` is NOT accepted here, it is the 72h fallback the worker writes (§4.1 #8) */
         post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdConfirmreceived"];
         delete?: never;
         options?: never;
@@ -11525,6 +11547,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** D7 courier attestation — the delivering membership is stamped from the SESSION and is not a body field: a courier who could name someone else has attested to nothing (§4.1 #7) */
         post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdMarkdelivered"];
         delete?: never;
         options?: never;
@@ -11541,6 +11564,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Shipment identifiers — Phase-1 manual, Phase-2 the EDI 856 ASN (§4.1 #6) */
         post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdMarkintransit"];
         delete?: never;
         options?: never;
@@ -11557,6 +11581,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** The vendor accepted — Phase-1 portal/email/fax entry, Phase-2 the EDI 855 acknowledgment (§4.1 #5) */
         post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdMarkordered"];
         delete?: never;
         options?: never;
@@ -11573,6 +11598,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Initiate an equipment return — the kit-only §2.2 `returned` branch; DME comes back through the M11 rental-pickup path instead (§4.1 #10) */
         post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdReturn"];
         delete?: never;
         options?: never;
@@ -11589,6 +11615,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Create a tenant-local, non-billable overlay item (D11's tenant half; §4.1 #15) */
         post: operations["postApiV1SuppliesTenantsupplyitems"];
         delete?: never;
         options?: never;
@@ -11604,6 +11631,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        /** Edit a tenant-local overlay item (§4.1 #16) */
         put: operations["putApiV1SuppliesTenantsupplyitemsById"];
         post?: never;
         delete?: never;
@@ -11619,8 +11647,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The D4 ladder, most-specific first — the platform-scope rows come back for every tenant via the table's own floor-plus-overlay policy (§4.1 #28) */
         get: operations["getApiV1SuppliesVendorroutingrules"];
         put?: never;
+        /** Author a routing rule — `platform` scope is absent from the union by design: a tenant may never author one, and the RLS write policy would refuse it anyway (§4.1 #29) */
         post: operations["postApiV1SuppliesVendorroutingrules"];
         delete?: never;
         options?: never;
@@ -11636,6 +11666,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        /** Edit a routing rule (§4.1 #30) */
         put: operations["putApiV1SuppliesVendorroutingrulesByRuleId"];
         post?: never;
         delete: operations["deleteApiV1SuppliesVendorroutingrulesByRuleId"];
@@ -33208,7 +33239,13 @@ export interface operations {
     };
     getApiV1SuppliesComfortkitdispatches: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+                patientId?: string;
+                locationId?: string;
+                ipuRoomId?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -33233,7 +33270,43 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    supplyRequestId: string;
+                    /** Format: uuid */
+                    comfortKitTemplateId: string;
+                    /** Format: uuid */
+                    locationId: string;
+                    deploymentSite: "home" | "alf" | "snf_residence" | "ipu_room";
+                    /** Format: uuid */
+                    ipuRoomId?: string;
+                    facilityIdentifier?: {
+                        facilityName: string;
+                        facilityNpi?: string;
+                        roomNumber?: string;
+                    };
+                    dispatchSource: "supply_hub" | "pharmacy_partner" | "dosespot_pharmacy";
+                    pharmacyDispatchMode: "supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy";
+                    /** Format: uuid */
+                    pharmacyPartnerId?: string;
+                    kitSerialNumber: string;
+                    contents: {
+                        /** Format: uuid */
+                        comfortKitTemplateMedicationId: string;
+                        /** Format: uuid */
+                        medicationOrderId?: string;
+                        dispatchedQuantity: string;
+                        dispatchedUnit: string;
+                        lotNumber?: string;
+                        expirationDate?: string;
+                        manufacturerNdc?: string;
+                    }[];
+                    specialHandlingNotes?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33277,7 +33350,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date-time */
+                    deployedAt: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33314,7 +33394,13 @@ export interface operations {
     };
     getApiV1SuppliesComfortkitreturns: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+                patientId?: string;
+                openOnly?: boolean;
+                overdueOnly?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -33339,7 +33425,17 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    dispatchId: string;
+                    returnReason: string;
+                    /** Format: date-time */
+                    returnRequiredAt?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33383,7 +33479,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    retrievingMembershipId: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33405,7 +33508,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33427,7 +33536,24 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    disposalMethod: "take_back_by_supply_team" | "dispose_at_home_by_witnessed_destruction" | "transferred_to_disposing_pharmacy";
+                    /** Format: uuid */
+                    disposalWitnessMembershipId?: string;
+                    perMedicationReconciliation: {
+                        /** Format: uuid */
+                        dispatchedContentId: string;
+                        quantityReturned: string;
+                        quantityDisposedAtHome: string;
+                        discrepancyExplanation?: string;
+                    }[];
+                    disposalNotes?: string;
+                    discrepancyNotes?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33442,7 +33568,12 @@ export interface operations {
     };
     getApiV1SuppliesComfortkittemplates: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+                includePlatformFloor?: boolean;
+                includeSuperseded?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -33467,7 +33598,34 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    medications: {
+                        rxnorm: string;
+                        ndc?: string;
+                        drugName: string;
+                        strength: string;
+                        dosageForm: string;
+                        routeOfAdministration: string;
+                        isControlledSubstance: boolean;
+                        controlledSubstanceSchedule?: "CII" | "CIII" | "CIV" | "CV";
+                        expectedQuantity: string;
+                        expectedUnit: string;
+                        replenishmentThresholdPct?: string;
+                        displayOrder?: number;
+                        notes?: string;
+                    }[];
+                    stateLabelingPolicy?: {
+                        [key: string]: unknown;
+                    };
+                    controlledSubstanceHandlingPolicy?: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33489,7 +33647,36 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    medications: {
+                        rxnorm: string;
+                        ndc?: string;
+                        drugName: string;
+                        strength: string;
+                        dosageForm: string;
+                        routeOfAdministration: string;
+                        isControlledSubstance: boolean;
+                        controlledSubstanceSchedule?: "CII" | "CIII" | "CIV" | "CV";
+                        expectedQuantity: string;
+                        expectedUnit: string;
+                        replenishmentThresholdPct?: string;
+                        displayOrder?: number;
+                        notes?: string;
+                    }[];
+                    stateLabelingPolicy?: {
+                        [key: string]: unknown;
+                    };
+                    controlledSubstanceHandlingPolicy?: {
+                        [key: string]: unknown;
+                    };
+                    /** Format: date-time */
+                    effectiveFrom?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33504,7 +33691,12 @@ export interface operations {
     };
     getApiV1SuppliesParstock: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+                locationId?: string;
+                belowThresholdOnly?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -33531,7 +33723,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reorderPoint?: string;
+                    reorderQuantity?: string;
+                    minSafetyStock?: string;
+                    isActive?: boolean;
+                    reorderNotes?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33551,7 +33753,18 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    parStockId: string;
+                    observedQuantity: string;
+                    /** Format: date-time */
+                    observedAt?: string;
+                    reorderNotes?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33566,7 +33779,13 @@ export interface operations {
     };
     getApiV1SuppliesSupplyitems: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+                skuClass?: "E" | "A" | "B" | "K" | "L" | "Q" | "internal";
+                q?: string;
+                includeRetired?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -33591,7 +33810,23 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    hcpcs?: string;
+                    rxnorm?: string;
+                    ndc?: string;
+                    name: string;
+                    skuClass: "E" | "A" | "B" | "K" | "L" | "Q" | "internal";
+                    defaultUnit: string;
+                    isBillable?: boolean;
+                    isControlledSubstance?: boolean;
+                    requiresLotTracking?: boolean;
+                    requiresExpirationTracking?: boolean;
+                    isSerializedAsset?: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33635,7 +33870,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date-time */
+                    effectiveTo: string;
+                    reason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33650,7 +33893,15 @@ export interface operations {
     };
     getApiV1SuppliesSupplyrequests: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+                patientId?: string;
+                status?: "requested" | "vendor_assigned" | "ordered" | "in_transit" | "delivered" | "received_confirmed" | "completed" | "cancellation_pending" | "cancelled" | "returned";
+                kind?: "dme" | "supply" | "comfort_kit_deploy" | "comfort_kit_replenish";
+                locationId?: string;
+                openOnly?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -33675,7 +33926,33 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    admissionId: string;
+                    /** Format: uuid */
+                    locationId: string;
+                    /** Format: uuid */
+                    sourceOrderId?: string;
+                    deliveryAddress: {
+                        line1: string;
+                        line2?: string;
+                        city: string;
+                        state: string;
+                        postalCode: string;
+                    };
+                    deliveryInstructions?: string;
+                    kindPayload: {
+                        kind: "dme" | "supply" | "comfort_kit_deploy" | "comfort_kit_replenish";
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33719,7 +33996,16 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    vendorId: string | null;
+                    fulfillmentMode: "vendor" | "internal_supply_hub" | "partner_pharmacy" | "dosespot_to_partner_pharmacy";
+                    pharmacyDispatchMode?: "supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy";
+                    overrideReason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33741,7 +34027,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33763,7 +34055,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    actor: "caregiver" | "patient" | "supply_team";
+                    /** Format: date-time */
+                    confirmedAt: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33785,7 +34085,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date-time */
+                    deliveredAt: string;
+                    deliveryMethod: "agency_courier" | "vendor_direct_ship" | "pharmacy_partner_courier" | "patient_pickup" | "in_facility_internal";
+                    /** Format: uuid */
+                    evidenceDocumentId?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33807,7 +34117,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    trackingNumber: string;
+                    carrier: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33829,7 +34146,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    vendorOrderReference: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33851,7 +34174,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33871,7 +34200,17 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    localSkuCode: string;
+                    defaultUnit: string;
+                    isBillable?: boolean;
+                    isActive?: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33893,7 +34232,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    localSkuCode: string;
+                    defaultUnit: string;
+                    isBillable?: boolean;
+                    isActive?: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33908,7 +34257,12 @@ export interface operations {
     };
     getApiV1SuppliesVendorroutingrules: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+                scopeKind?: "sku" | "location" | "tenant";
+                includeRetired?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -33933,7 +34287,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    scopeKind: "sku" | "location" | "tenant";
+                    /** Format: uuid */
+                    scopeId?: string;
+                    skuClassPattern?: string;
+                    assignedVendorId: string | null;
+                    assignedFulfillmentMode: "vendor" | "internal_supply_hub" | "partner_pharmacy" | "dosespot_to_partner_pharmacy";
+                    defaultPharmacyDispatchMode?: "supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy";
+                    precedencePriority?: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33955,7 +34322,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    scopeKind: "sku" | "location" | "tenant";
+                    /** Format: uuid */
+                    scopeId?: string;
+                    skuClassPattern?: string;
+                    assignedVendorId: string | null;
+                    assignedFulfillmentMode: "vendor" | "internal_supply_hub" | "partner_pharmacy" | "dosespot_to_partner_pharmacy";
+                    defaultPharmacyDispatchMode?: "supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy";
+                    precedencePriority?: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {

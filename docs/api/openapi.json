@@ -44000,7 +44000,55 @@
         "tags": [
           "21-supplies"
         ],
-        "parameters": [],
+        "summary": "Dispatch list — per patient, per Location, or per IPU room for the D17 stock-kit view (§4.1 #21)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "locationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "ipuRoomId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -44018,6 +44066,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "Dispatch a comfort kit — the DEA 21 CFR §1304 outbound log entry: §4.4's dispatcher predicate plus a step-up gate, and the §2.5 refusals, shelf decrement and per-line log all in ONE transaction (§4.1 #20)",
         "parameters": [],
         "responses": {
           "200": {
@@ -44028,6 +44077,176 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "supplyRequestId",
+                  "comfortKitTemplateId",
+                  "locationId",
+                  "deploymentSite",
+                  "dispatchSource",
+                  "pharmacyDispatchMode",
+                  "kitSerialNumber",
+                  "contents"
+                ],
+                "properties": {
+                  "supplyRequestId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "comfortKitTemplateId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "locationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "deploymentSite": {
+                    "anyOf": [
+                      {
+                        "const": "home",
+                        "type": "string"
+                      },
+                      {
+                        "const": "alf",
+                        "type": "string"
+                      },
+                      {
+                        "const": "snf_residence",
+                        "type": "string"
+                      },
+                      {
+                        "const": "ipu_room",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "ipuRoomId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "facilityIdentifier": {
+                    "type": "object",
+                    "required": [
+                      "facilityName"
+                    ],
+                    "properties": {
+                      "facilityName": {
+                        "maxLength": 255,
+                        "type": "string"
+                      },
+                      "facilityNpi": {
+                        "pattern": "^[0-9]{10}$",
+                        "type": "string"
+                      },
+                      "roomNumber": {
+                        "maxLength": 32,
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "dispatchSource": {
+                    "anyOf": [
+                      {
+                        "const": "supply_hub",
+                        "type": "string"
+                      },
+                      {
+                        "const": "pharmacy_partner",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dosespot_pharmacy",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "pharmacyDispatchMode": {
+                    "anyOf": [
+                      {
+                        "const": "supply_hub_dispatch",
+                        "type": "string"
+                      },
+                      {
+                        "const": "partner_pharmacy_dispatch",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dosespot_to_partner_pharmacy",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "pharmacyPartnerId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "kitSerialNumber": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "contents": {
+                    "minItems": 1,
+                    "maxItems": 16,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "comfortKitTemplateMedicationId",
+                        "dispatchedQuantity",
+                        "dispatchedUnit"
+                      ],
+                      "properties": {
+                        "comfortKitTemplateMedicationId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "medicationOrderId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "dispatchedQuantity": {
+                          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                          "type": "string"
+                        },
+                        "dispatchedUnit": {
+                          "minLength": 1,
+                          "maxLength": 32,
+                          "type": "string"
+                        },
+                        "lotNumber": {
+                          "minLength": 1,
+                          "maxLength": 64,
+                          "type": "string"
+                        },
+                        "expirationDate": {
+                          "minLength": 10,
+                          "maxLength": 10,
+                          "type": "string"
+                        },
+                        "manufacturerNdc": {
+                          "maxLength": 32,
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "specialHandlingNotes": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -44067,6 +44286,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "The kit is physically at the patient — the event M13 builds its deployment rows FROM, so the emitted payload carries the whole manifest rather than making M13 read back (§4.1 #23)",
         "parameters": [
           {
             "name": "dispatchId",
@@ -44086,6 +44306,25 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "deployedAt"
+                ],
+                "properties": {
+                  "deployedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -44125,7 +44364,53 @@
         "tags": [
           "21-supplies"
         ],
-        "parameters": [],
+        "summary": "The reconciliation worklist — OLDEST due first, with `daysOverdue` computed at read time from `return_due_at` (§4.1 #25)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "openOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "overdueOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -44143,6 +44428,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "Open a return obligation — refused until M13 has acked the deployment, because a return with nothing to close is a count nobody can reconcile (§4.1 #24)",
         "parameters": [],
         "responses": {
           "200": {
@@ -44153,6 +44439,35 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "dispatchId",
+                  "returnReason"
+                ],
+                "properties": {
+                  "dispatchId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "returnReason": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "returnRequiredAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -44192,6 +44507,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "Assign the supply-team member who will physically retrieve — §4.4's separation-of-duties clause compares them against the witness (§2.6)",
         "parameters": [
           {
             "name": "returnId",
@@ -44211,6 +44527,25 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "retrievingMembershipId"
+                ],
+                "properties": {
+                  "retrievingMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -44221,6 +44556,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "The 90-day assumption of loss — deliberately NOT folded into reconcile: writing off a kit that held a CII solution is a different authority from counting one that came back (§2.6)",
         "parameters": [
           {
             "name": "returnId",
@@ -44240,6 +44576,26 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -44250,6 +44606,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "Reconcile the physical count — step-up plus the reconciler predicate whose FIRST clause is separation of duties; the D8 discrepancy is COMPUTED from the quantities and never accepted from the body (§4.1 #27)",
         "parameters": [
           {
             "name": "returnId",
@@ -44270,6 +44627,84 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "disposalMethod",
+                  "perMedicationReconciliation"
+                ],
+                "properties": {
+                  "disposalMethod": {
+                    "anyOf": [
+                      {
+                        "const": "take_back_by_supply_team",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dispose_at_home_by_witnessed_destruction",
+                        "type": "string"
+                      },
+                      {
+                        "const": "transferred_to_disposing_pharmacy",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "disposalWitnessMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "perMedicationReconciliation": {
+                    "minItems": 1,
+                    "maxItems": 16,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "dispatchedContentId",
+                        "quantityReturned",
+                        "quantityDisposedAtHome"
+                      ],
+                      "properties": {
+                        "dispatchedContentId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "quantityReturned": {
+                          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                          "type": "string"
+                        },
+                        "quantityDisposedAtHome": {
+                          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                          "type": "string"
+                        },
+                        "discrepancyExplanation": {
+                          "minLength": 1,
+                          "maxLength": 1000,
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "disposalNotes": {
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "discrepancyNotes": {
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -44279,7 +44714,44 @@
         "tags": [
           "21-supplies"
         ],
-        "parameters": [],
+        "summary": "The §2.3 comfort-kit templates — `includePlatformFloor` defaults ON so the admin screen shows the D3 floor row as locked; a picker passes false (§4.1 #17)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "includePlatformFloor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "includeSuperseded",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -44297,6 +44769,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "Author a tenant template — the D3 floor validation runs BEFORE anything is written, so a template that drops below the floor never exists even transiently (§4.1 #18)",
         "parameters": [],
         "responses": {
           "200": {
@@ -44308,6 +44781,132 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "medications"
+                ],
+                "properties": {
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 255,
+                    "type": "string"
+                  },
+                  "medications": {
+                    "minItems": 1,
+                    "maxItems": 16,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "rxnorm",
+                        "drugName",
+                        "strength",
+                        "dosageForm",
+                        "routeOfAdministration",
+                        "isControlledSubstance",
+                        "expectedQuantity",
+                        "expectedUnit"
+                      ],
+                      "properties": {
+                        "rxnorm": {
+                          "minLength": 1,
+                          "maxLength": 32,
+                          "type": "string"
+                        },
+                        "ndc": {
+                          "maxLength": 32,
+                          "type": "string"
+                        },
+                        "drugName": {
+                          "minLength": 1,
+                          "maxLength": 255,
+                          "type": "string"
+                        },
+                        "strength": {
+                          "minLength": 1,
+                          "maxLength": 64,
+                          "type": "string"
+                        },
+                        "dosageForm": {
+                          "minLength": 1,
+                          "maxLength": 64,
+                          "type": "string"
+                        },
+                        "routeOfAdministration": {
+                          "minLength": 1,
+                          "maxLength": 64,
+                          "type": "string"
+                        },
+                        "isControlledSubstance": {
+                          "type": "boolean"
+                        },
+                        "controlledSubstanceSchedule": {
+                          "anyOf": [
+                            {
+                              "const": "CII",
+                              "type": "string"
+                            },
+                            {
+                              "const": "CIII",
+                              "type": "string"
+                            },
+                            {
+                              "const": "CIV",
+                              "type": "string"
+                            },
+                            {
+                              "const": "CV",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "expectedQuantity": {
+                          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                          "type": "string"
+                        },
+                        "expectedUnit": {
+                          "minLength": 1,
+                          "maxLength": 32,
+                          "type": "string"
+                        },
+                        "replenishmentThresholdPct": {
+                          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                          "type": "string"
+                        },
+                        "displayOrder": {
+                          "minimum": 0,
+                          "maximum": 999,
+                          "type": "integer"
+                        },
+                        "notes": {
+                          "minLength": 1,
+                          "maxLength": 500,
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "stateLabelingPolicy": {
+                    "additionalProperties": true,
+                    "type": "object",
+                    "properties": {}
+                  },
+                  "controlledSubstanceHandlingPolicy": {
+                    "additionalProperties": true,
+                    "type": "object",
+                    "properties": {}
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -44317,6 +44916,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "Supersede a template — this INSERTS a new row pointing back through `replaces_template_id` rather than patching, so a dispatch from three months ago still resolves the recipe it actually used (§4.1 #19)",
         "parameters": [
           {
             "name": "templateId",
@@ -44337,6 +44937,136 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "medications"
+                ],
+                "properties": {
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 255,
+                    "type": "string"
+                  },
+                  "medications": {
+                    "minItems": 1,
+                    "maxItems": 16,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "rxnorm",
+                        "drugName",
+                        "strength",
+                        "dosageForm",
+                        "routeOfAdministration",
+                        "isControlledSubstance",
+                        "expectedQuantity",
+                        "expectedUnit"
+                      ],
+                      "properties": {
+                        "rxnorm": {
+                          "minLength": 1,
+                          "maxLength": 32,
+                          "type": "string"
+                        },
+                        "ndc": {
+                          "maxLength": 32,
+                          "type": "string"
+                        },
+                        "drugName": {
+                          "minLength": 1,
+                          "maxLength": 255,
+                          "type": "string"
+                        },
+                        "strength": {
+                          "minLength": 1,
+                          "maxLength": 64,
+                          "type": "string"
+                        },
+                        "dosageForm": {
+                          "minLength": 1,
+                          "maxLength": 64,
+                          "type": "string"
+                        },
+                        "routeOfAdministration": {
+                          "minLength": 1,
+                          "maxLength": 64,
+                          "type": "string"
+                        },
+                        "isControlledSubstance": {
+                          "type": "boolean"
+                        },
+                        "controlledSubstanceSchedule": {
+                          "anyOf": [
+                            {
+                              "const": "CII",
+                              "type": "string"
+                            },
+                            {
+                              "const": "CIII",
+                              "type": "string"
+                            },
+                            {
+                              "const": "CIV",
+                              "type": "string"
+                            },
+                            {
+                              "const": "CV",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "expectedQuantity": {
+                          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                          "type": "string"
+                        },
+                        "expectedUnit": {
+                          "minLength": 1,
+                          "maxLength": 32,
+                          "type": "string"
+                        },
+                        "replenishmentThresholdPct": {
+                          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                          "type": "string"
+                        },
+                        "displayOrder": {
+                          "minimum": 0,
+                          "maximum": 999,
+                          "type": "integer"
+                        },
+                        "notes": {
+                          "minLength": 1,
+                          "maxLength": 500,
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "stateLabelingPolicy": {
+                    "additionalProperties": true,
+                    "type": "object",
+                    "properties": {}
+                  },
+                  "controlledSubstanceHandlingPolicy": {
+                    "additionalProperties": true,
+                    "type": "object",
+                    "properties": {}
+                  },
+                  "effectiveFrom": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -44346,7 +45076,45 @@
         "tags": [
           "21-supplies"
         ],
-        "parameters": [],
+        "summary": "The hub shelf — `severity` is DERIVED per row and never stored, because a stored band goes stale the moment a threshold is edited (§4.1 #32)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "locationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "belowThresholdOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -44366,6 +45134,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "Edit the par thresholds — the boundary mirrors §3.1.6's ordering CHECK, so an inverted pair is a field-anchored 422 rather than a 500 out of PostgreSQL (§4.1 #33)",
         "parameters": [
           {
             "name": "parStockId",
@@ -44386,6 +45155,38 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reorderPoint": {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                    "type": "string"
+                  },
+                  "reorderQuantity": {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                    "type": "string"
+                  },
+                  "minSafetyStock": {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                    "type": "string"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  },
+                  "reorderNotes": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -44395,6 +45196,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "Record an on-hand count — this SETS the shelf rather than adjusting it, and the nightly cron (not this route) is the canonical emitter of the below-threshold alert (§4.1 #34)",
         "parameters": [],
         "responses": {
           "200": {
@@ -44406,6 +45208,39 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "parStockId",
+                  "observedQuantity"
+                ],
+                "properties": {
+                  "parStockId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "observedQuantity": {
+                    "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                    "type": "string"
+                  },
+                  "observedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "reorderNotes": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -44415,7 +45250,82 @@
         "tags": [
           "21-supplies"
         ],
-        "parameters": [],
+        "summary": "The D11 SKU catalog — the platform rows UNION the tenant overlay, one browsable list (§4.1 #11)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "skuClass",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "E",
+                  "type": "string"
+                },
+                {
+                  "const": "A",
+                  "type": "string"
+                },
+                {
+                  "const": "B",
+                  "type": "string"
+                },
+                {
+                  "const": "K",
+                  "type": "string"
+                },
+                {
+                  "const": "L",
+                  "type": "string"
+                },
+                {
+                  "const": "Q",
+                  "type": "string"
+                },
+                {
+                  "const": "internal",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "name": "includeRetired",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -44433,6 +45343,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "Create a canonical HCPCS-keyed SKU — PLATFORM-ONLY: `supply_item` carries no organization_id, so the permission is the first gate and the wardenx_admin-only write policy is the backstop (§4.1 #12)",
         "parameters": [],
         "responses": {
           "200": {
@@ -44443,6 +45354,93 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "skuClass",
+                  "defaultUnit"
+                ],
+                "properties": {
+                  "hcpcs": {
+                    "minLength": 1,
+                    "maxLength": 16,
+                    "type": "string"
+                  },
+                  "rxnorm": {
+                    "maxLength": 32,
+                    "type": "string"
+                  },
+                  "ndc": {
+                    "maxLength": 32,
+                    "type": "string"
+                  },
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 255,
+                    "type": "string"
+                  },
+                  "skuClass": {
+                    "anyOf": [
+                      {
+                        "const": "E",
+                        "type": "string"
+                      },
+                      {
+                        "const": "A",
+                        "type": "string"
+                      },
+                      {
+                        "const": "B",
+                        "type": "string"
+                      },
+                      {
+                        "const": "K",
+                        "type": "string"
+                      },
+                      {
+                        "const": "L",
+                        "type": "string"
+                      },
+                      {
+                        "const": "Q",
+                        "type": "string"
+                      },
+                      {
+                        "const": "internal",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "defaultUnit": {
+                    "minLength": 1,
+                    "maxLength": 32,
+                    "type": "string"
+                  },
+                  "isBillable": {
+                    "type": "boolean"
+                  },
+                  "isControlledSubstance": {
+                    "type": "boolean"
+                  },
+                  "requiresLotTracking": {
+                    "type": "boolean"
+                  },
+                  "requiresExpirationTracking": {
+                    "type": "boolean"
+                  },
+                  "isSerializedAsset": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -44482,6 +45480,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "Retire a canonical SKU — effective-dating, never deletion: a retired HCPCS code must keep resolving for every historical request written against it (§4.1 #14)",
         "parameters": [
           {
             "name": "id",
@@ -44502,6 +45501,30 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "effectiveTo"
+                ],
+                "properties": {
+                  "effectiveTo": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -44511,7 +45534,128 @@
         "tags": [
           "21-supplies"
         ],
-        "parameters": [],
+        "summary": "The supply-team worklist — cursor-paginated; `openOnly` narrows to the §2.2 non-terminal set, which is the dashboard's default view (§4.1 #2)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "requested",
+                  "type": "string"
+                },
+                {
+                  "const": "vendor_assigned",
+                  "type": "string"
+                },
+                {
+                  "const": "ordered",
+                  "type": "string"
+                },
+                {
+                  "const": "in_transit",
+                  "type": "string"
+                },
+                {
+                  "const": "delivered",
+                  "type": "string"
+                },
+                {
+                  "const": "received_confirmed",
+                  "type": "string"
+                },
+                {
+                  "const": "completed",
+                  "type": "string"
+                },
+                {
+                  "const": "cancellation_pending",
+                  "type": "string"
+                },
+                {
+                  "const": "cancelled",
+                  "type": "string"
+                },
+                {
+                  "const": "returned",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "dme",
+                  "type": "string"
+                },
+                {
+                  "const": "supply",
+                  "type": "string"
+                },
+                {
+                  "const": "comfort_kit_deploy",
+                  "type": "string"
+                },
+                {
+                  "const": "comfort_kit_replenish",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "locationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "openOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -44529,6 +45673,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "Create a DME / supply / comfort-kit request — the §4.4 dispatcher predicate applies CONDITIONALLY, only when the kind is a comfort-kit deploy (§4.1 #1)",
         "parameters": [],
         "responses": {
           "200": {
@@ -44539,6 +45684,110 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "patientId",
+                  "admissionId",
+                  "locationId",
+                  "deliveryAddress",
+                  "kindPayload"
+                ],
+                "properties": {
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "admissionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "locationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "sourceOrderId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "deliveryAddress": {
+                    "type": "object",
+                    "required": [
+                      "line1",
+                      "city",
+                      "state",
+                      "postalCode"
+                    ],
+                    "properties": {
+                      "line1": {
+                        "minLength": 1,
+                        "maxLength": 255,
+                        "type": "string"
+                      },
+                      "line2": {
+                        "maxLength": 255,
+                        "type": "string"
+                      },
+                      "city": {
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "type": "string"
+                      },
+                      "state": {
+                        "minLength": 2,
+                        "maxLength": 2,
+                        "type": "string"
+                      },
+                      "postalCode": {
+                        "minLength": 5,
+                        "maxLength": 10,
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "deliveryInstructions": {
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "kindPayload": {
+                    "additionalProperties": true,
+                    "type": "object",
+                    "required": [
+                      "kind"
+                    ],
+                    "properties": {
+                      "kind": {
+                        "anyOf": [
+                          {
+                            "const": "dme",
+                            "type": "string"
+                          },
+                          {
+                            "const": "supply",
+                            "type": "string"
+                          },
+                          {
+                            "const": "comfort_kit_deploy",
+                            "type": "string"
+                          },
+                          {
+                            "const": "comfort_kit_replenish",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -44578,6 +45827,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "D4 vendor override — the ladder still runs and the override is recorded ON TOP of its trace, so the record shows both the rules evaluated and the human decision that overrode them (§4.1 #4)",
         "parameters": [
           {
             "name": "supplyRequestId",
@@ -44597,6 +45847,74 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "vendorId",
+                  "fulfillmentMode"
+                ],
+                "properties": {
+                  "vendorId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "fulfillmentMode": {
+                    "anyOf": [
+                      {
+                        "const": "vendor",
+                        "type": "string"
+                      },
+                      {
+                        "const": "internal_supply_hub",
+                        "type": "string"
+                      },
+                      {
+                        "const": "partner_pharmacy",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dosespot_to_partner_pharmacy",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "pharmacyDispatchMode": {
+                    "anyOf": [
+                      {
+                        "const": "supply_hub_dispatch",
+                        "type": "string"
+                      },
+                      {
+                        "const": "partner_pharmacy_dispatch",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dosespot_to_partner_pharmacy",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "overrideReason": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -44607,6 +45925,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "Cancel — ONE route for both §2.2 edges: immediate before `ordered`, two-phase after, so a caller never has to know which side of the vendor handshake the row sits on (§4.1 #9)",
         "parameters": [
           {
             "name": "supplyRequestId",
@@ -44626,6 +45945,26 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -44636,6 +45975,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "Caregiver / clinician receipt confirmation — `system_auto_confirm` is NOT accepted here, it is the 72h fallback the worker writes (§4.1 #8)",
         "parameters": [
           {
             "name": "supplyRequestId",
@@ -44655,6 +45995,42 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "actor",
+                  "confirmedAt"
+                ],
+                "properties": {
+                  "actor": {
+                    "anyOf": [
+                      {
+                        "const": "caregiver",
+                        "type": "string"
+                      },
+                      {
+                        "const": "patient",
+                        "type": "string"
+                      },
+                      {
+                        "const": "supply_team",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "confirmedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -44665,6 +46041,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "D7 courier attestation — the delivering membership is stamped from the SESSION and is not a body field: a courier who could name someone else has attested to nothing (§4.1 #7)",
         "parameters": [
           {
             "name": "supplyRequestId",
@@ -44684,6 +46061,54 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "deliveredAt",
+                  "deliveryMethod"
+                ],
+                "properties": {
+                  "deliveredAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "deliveryMethod": {
+                    "anyOf": [
+                      {
+                        "const": "agency_courier",
+                        "type": "string"
+                      },
+                      {
+                        "const": "vendor_direct_ship",
+                        "type": "string"
+                      },
+                      {
+                        "const": "pharmacy_partner_courier",
+                        "type": "string"
+                      },
+                      {
+                        "const": "patient_pickup",
+                        "type": "string"
+                      },
+                      {
+                        "const": "in_facility_internal",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -44694,6 +46119,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "Shipment identifiers — Phase-1 manual, Phase-2 the EDI 856 ASN (§4.1 #6)",
         "parameters": [
           {
             "name": "supplyRequestId",
@@ -44713,6 +46139,32 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "trackingNumber",
+                  "carrier"
+                ],
+                "properties": {
+                  "trackingNumber": {
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "type": "string"
+                  },
+                  "carrier": {
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -44723,6 +46175,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "The vendor accepted — Phase-1 portal/email/fax entry, Phase-2 the EDI 855 acknowledgment (§4.1 #5)",
         "parameters": [
           {
             "name": "supplyRequestId",
@@ -44742,6 +46195,26 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "vendorOrderReference"
+                ],
+                "properties": {
+                  "vendorOrderReference": {
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -44752,6 +46225,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "Initiate an equipment return — the kit-only §2.2 `returned` branch; DME comes back through the M11 rental-pickup path instead (§4.1 #10)",
         "parameters": [
           {
             "name": "supplyRequestId",
@@ -44772,6 +46246,26 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -44781,6 +46275,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "Create a tenant-local, non-billable overlay item (D11's tenant half; §4.1 #15)",
         "parameters": [],
         "responses": {
           "200": {
@@ -44792,6 +46287,44 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "localSkuCode",
+                  "defaultUnit"
+                ],
+                "properties": {
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 255,
+                    "type": "string"
+                  },
+                  "localSkuCode": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "defaultUnit": {
+                    "minLength": 1,
+                    "maxLength": 32,
+                    "type": "string"
+                  },
+                  "isBillable": {
+                    "type": "boolean"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -44801,6 +46334,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "Edit a tenant-local overlay item (§4.1 #16)",
         "parameters": [
           {
             "name": "id",
@@ -44821,6 +46355,44 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "localSkuCode",
+                  "defaultUnit"
+                ],
+                "properties": {
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 255,
+                    "type": "string"
+                  },
+                  "localSkuCode": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "defaultUnit": {
+                    "minLength": 1,
+                    "maxLength": 32,
+                    "type": "string"
+                  },
+                  "isBillable": {
+                    "type": "boolean"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -44830,7 +46402,57 @@
         "tags": [
           "21-supplies"
         ],
-        "parameters": [],
+        "summary": "The D4 ladder, most-specific first — the platform-scope rows come back for every tenant via the table's own floor-plus-overlay policy (§4.1 #28)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "scopeKind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "sku",
+                  "type": "string"
+                },
+                {
+                  "const": "location",
+                  "type": "string"
+                },
+                {
+                  "const": "tenant",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "includeRetired",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -44848,6 +46470,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "Author a routing rule — `platform` scope is absent from the union by design: a tenant may never author one, and the RLS write policy would refuse it anyway (§4.1 #29)",
         "parameters": [],
         "responses": {
           "200": {
@@ -44858,6 +46481,99 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "scopeKind",
+                  "assignedVendorId",
+                  "assignedFulfillmentMode"
+                ],
+                "properties": {
+                  "scopeKind": {
+                    "anyOf": [
+                      {
+                        "const": "sku",
+                        "type": "string"
+                      },
+                      {
+                        "const": "location",
+                        "type": "string"
+                      },
+                      {
+                        "const": "tenant",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "scopeId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "skuClassPattern": {
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "assignedVendorId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "assignedFulfillmentMode": {
+                    "anyOf": [
+                      {
+                        "const": "vendor",
+                        "type": "string"
+                      },
+                      {
+                        "const": "internal_supply_hub",
+                        "type": "string"
+                      },
+                      {
+                        "const": "partner_pharmacy",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dosespot_to_partner_pharmacy",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "defaultPharmacyDispatchMode": {
+                    "anyOf": [
+                      {
+                        "const": "supply_hub_dispatch",
+                        "type": "string"
+                      },
+                      {
+                        "const": "partner_pharmacy_dispatch",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dosespot_to_partner_pharmacy",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "precedencePriority": {
+                    "minimum": 0,
+                    "maximum": 10000,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -44895,6 +46611,7 @@
         "tags": [
           "21-supplies"
         ],
+        "summary": "Edit a routing rule (§4.1 #30)",
         "parameters": [
           {
             "name": "ruleId",
@@ -44914,6 +46631,99 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "scopeKind",
+                  "assignedVendorId",
+                  "assignedFulfillmentMode"
+                ],
+                "properties": {
+                  "scopeKind": {
+                    "anyOf": [
+                      {
+                        "const": "sku",
+                        "type": "string"
+                      },
+                      {
+                        "const": "location",
+                        "type": "string"
+                      },
+                      {
+                        "const": "tenant",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "scopeId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "skuClassPattern": {
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "assignedVendorId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "assignedFulfillmentMode": {
+                    "anyOf": [
+                      {
+                        "const": "vendor",
+                        "type": "string"
+                      },
+                      {
+                        "const": "internal_supply_hub",
+                        "type": "string"
+                      },
+                      {
+                        "const": "partner_pharmacy",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dosespot_to_partner_pharmacy",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "defaultPharmacyDispatchMode": {
+                    "anyOf": [
+                      {
+                        "const": "supply_hub_dispatch",
+                        "type": "string"
+                      },
+                      {
+                        "const": "partner_pharmacy_dispatch",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dosespot_to_partner_pharmacy",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "precedencePriority": {
+                    "minimum": 0,
+                    "maximum": 10000,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
           }
         }
       }

@@ -30,6 +30,7 @@ import { disciplinePlanScreens } from "./modules/15-discipline-care-plans";
 import { bereavementScreens } from "./modules/16-bereavement";
 import { schedulingScreens } from "./modules/17-scheduling";
 import { evvScreens } from "./modules/18-evv";
+import { supplyScreens } from "./modules/21-supplies";
 import { documentScreens } from "./modules/22-documents";
 import { billingScreens } from "./modules/23-billing-medicare";
 import { medicaidBillingScreens } from "./modules/24-billing-medicaid";
@@ -69,6 +70,7 @@ registry.register(disciplinePlanScreens); // M15 Discipline Care Plans (Track B,
 registry.register(bereavementScreens); // M16 Bereavement (Track B, M16-T07)
 registry.register(schedulingScreens); // M17 Scheduling & Route Optimization (Track B, M17-T08)
 registry.register(evvScreens); // M18 Electronic Visit Verification (Track B, M18-T07)
+registry.register(supplyScreens); // M21 Supplies, DME & Comfort Kits (Track B, M21-T06)
 registry.register(documentScreens); // M22 Document Management (Track B, M22-T10)
 registry.register(billingScreens); // M23 Billing — Medicare (R2, ADR-0030, §10 PR-J)
 registry.register(medicaidBillingScreens); // M24 Billing — Medicaid (R2, ADR-0030, §5.1)

@@ -30,6 +30,7 @@
     "16-bereavement",
     "17-scheduling",
     "18-evv",
+    "21-supplies",
     "22-documents",
     "23-billing-medicare",
     "24-billing-medicaid",
@@ -784,6 +785,76 @@
       "id": "evv.my-devices",
       "path": "/me/evv/devices",
       "permission": "evv.device.read"
+    },
+    {
+      "module": "21-supplies",
+      "moduleId": 21,
+      "id": "supplies.dashboard",
+      "path": "/supplies",
+      "permission": "supplies.request.read"
+    },
+    {
+      "module": "21-supplies",
+      "moduleId": 21,
+      "id": "supplies.request",
+      "path": "/supplies/requests/:supplyRequestId",
+      "permission": "supplies.request.read"
+    },
+    {
+      "module": "21-supplies",
+      "moduleId": 21,
+      "id": "supplies.dispatch.new",
+      "path": "/supplies/dispatches/new",
+      "permission": "comfort_kit.dispatch.create"
+    },
+    {
+      "module": "21-supplies",
+      "moduleId": 21,
+      "id": "supplies.dispatch",
+      "path": "/supplies/dispatches/:dispatchId",
+      "permission": "comfort_kit.dispatch.read"
+    },
+    {
+      "module": "21-supplies",
+      "moduleId": 21,
+      "id": "supplies.dispatch.perpetual_log",
+      "path": "/supplies/dispatches/:dispatchId/perpetual-log",
+      "permission": "comfort_kit.perpetual_log.read"
+    },
+    {
+      "module": "21-supplies",
+      "moduleId": 21,
+      "id": "supplies.return",
+      "path": "/supplies/returns/:returnId",
+      "permission": "comfort_kit.return.read"
+    },
+    {
+      "module": "21-supplies",
+      "moduleId": 21,
+      "id": "supplies.par_stock",
+      "path": "/supplies/par-stock",
+      "permission": "par_stock.read"
+    },
+    {
+      "module": "21-supplies",
+      "moduleId": 21,
+      "id": "supplies.vendor_routing",
+      "path": "/supplies/vendor-routing",
+      "permission": "vendor_routing.read"
+    },
+    {
+      "module": "21-supplies",
+      "moduleId": 21,
+      "id": "supplies.comfort_kit_templates",
+      "path": "/supplies/comfort-kit-templates",
+      "permission": "comfort_kit.template.read"
+    },
+    {
+      "module": "21-supplies",
+      "moduleId": 21,
+      "id": "supplies.items",
+      "path": "/supplies/items",
+      "permission": "supplies.item.read"
     },
     {
       "module": "22-documents",
