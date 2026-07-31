@@ -9187,9 +9187,387 @@
         }
       }
     },
+    "/api/v1/consent-types/overlay": {
+      "post": {
+        "operationId": "postApiV1ConsenttypesOverlay",
+        "tags": [
+          "39-consent"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/consents/{consentId}": {
       "get": {
         "operationId": "getApiV1ConsentsByConsentId",
+        "tags": [
+          "39-consent"
+        ],
+        "parameters": [
+          {
+            "name": "consentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1ConsentsByConsentId",
+        "tags": [
+          "39-consent"
+        ],
+        "parameters": [
+          {
+            "name": "consentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/consents/{consentId}/cascade/retry": {
+      "post": {
+        "operationId": "postApiV1ConsentsByConsentIdCascadeRetry",
+        "tags": [
+          "39-consent"
+        ],
+        "parameters": [
+          {
+            "name": "consentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/consents/{consentId}/document/re-render": {
+      "post": {
+        "operationId": "postApiV1ConsentsByConsentIdDocumentRerender",
+        "tags": [
+          "39-consent"
+        ],
+        "parameters": [
+          {
+            "name": "consentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/consents/{consentId}/dpoa-agents": {
+      "get": {
+        "operationId": "getApiV1ConsentsByConsentIdDpoaagents",
+        "tags": [
+          "39-consent"
+        ],
+        "parameters": [
+          {
+            "name": "consentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1ConsentsByConsentIdDpoaagents",
+        "tags": [
+          "39-consent"
+        ],
+        "parameters": [
+          {
+            "name": "consentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/consents/{consentId}/dpoa-agents/{agentId}": {
+      "patch": {
+        "operationId": "patchApiV1ConsentsByConsentIdDpoaagentsByAgentId",
+        "tags": [
+          "39-consent"
+        ],
+        "parameters": [
+          {
+            "name": "consentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/consents/{consentId}/eval-audit": {
+      "get": {
+        "operationId": "getApiV1ConsentsByConsentIdEvalaudit",
+        "tags": [
+          "39-consent"
+        ],
+        "parameters": [
+          {
+            "name": "consentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/consents/{consentId}/recipients": {
+      "get": {
+        "operationId": "getApiV1ConsentsByConsentIdRecipients",
+        "tags": [
+          "39-consent"
+        ],
+        "parameters": [
+          {
+            "name": "consentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1ConsentsByConsentIdRecipients",
+        "tags": [
+          "39-consent"
+        ],
+        "parameters": [
+          {
+            "name": "consentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/consents/{consentId}/recipients/{recipientId}": {
+      "delete": {
+        "operationId": "deleteApiV1ConsentsByConsentIdRecipientsByRecipientId",
+        "tags": [
+          "39-consent"
+        ],
+        "parameters": [
+          {
+            "name": "consentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "recipientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/consents/{consentId}/renew": {
+      "post": {
+        "operationId": "postApiV1ConsentsByConsentIdRenew",
+        "tags": [
+          "39-consent"
+        ],
+        "parameters": [
+          {
+            "name": "consentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/consents/{consentId}/renewal-cycle": {
+      "get": {
+        "operationId": "getApiV1ConsentsByConsentIdRenewalcycle",
         "tags": [
           "39-consent"
         ],
@@ -9274,6 +9652,84 @@
         }
       }
     },
+    "/api/v1/consents/{consentId}/supersede": {
+      "post": {
+        "operationId": "postApiV1ConsentsByConsentIdSupersede",
+        "tags": [
+          "39-consent"
+        ],
+        "parameters": [
+          {
+            "name": "consentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/consents/{consentId}/version-chain": {
+      "get": {
+        "operationId": "getApiV1ConsentsByConsentIdVersionchain",
+        "tags": [
+          "39-consent"
+        ],
+        "parameters": [
+          {
+            "name": "consentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/consents/bereavement-outreach": {
+      "post": {
+        "operationId": "postApiV1ConsentsBereavementoutreach",
+        "tags": [
+          "39-consent"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/consents/eval-audit/by-patient": {
       "get": {
         "operationId": "getApiV1ConsentsEvalauditBypatient",
@@ -9281,6 +9737,35 @@
           "39-consent"
         ],
         "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/consents/post-mortem-eligible/{patientId}": {
+      "get": {
+        "operationId": "getApiV1ConsentsPostmortemeligibleByPatientId",
+        "tags": [
+          "39-consent"
+        ],
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -30687,6 +31172,93 @@
       },
       "post": {
         "operationId": "postApiV1PatientsByPatientIdConsents",
+        "tags": [
+          "39-consent"
+        ],
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{patientId}/delegated-access": {
+      "get": {
+        "operationId": "getApiV1PatientsByPatientIdDelegatedaccess",
+        "tags": [
+          "39-consent"
+        ],
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{patientId}/dpoa/active-primary": {
+      "get": {
+        "operationId": "getApiV1PatientsByPatientIdDpoaActiveprimary",
+        "tags": [
+          "39-consent"
+        ],
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{patientId}/expiring-consents": {
+      "get": {
+        "operationId": "getApiV1PatientsByPatientIdExpiringconsents",
         "tags": [
           "39-consent"
         ],
