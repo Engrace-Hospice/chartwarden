@@ -22,6 +22,13 @@ const asideRail = {
   overflow: "auto",
   padding: "1rem 1.5rem 1rem 0",
 };
+// The same starvation bug in the OTHER optional side regions (WorkQueue `detail`, DetailPage `aside`,
+// ConversationView `detail`) — but those cannot take `asideRail`'s fixed width, because their callers
+// usually pass an ALREADY-sized child: `RightDetailPanel` is 24rem/flexShrink-0, and M23's
+// sequestration-policy + eligibility-center asides are 22rem. A fixed outer rail would fight those.
+// So this only puts a ceiling on the unsized case: a self-sizing child up to 24rem is untouched,
+// while a bare <div> of prose is capped instead of growing until the workspace collapses.
+const contextRailBounds = { flexShrink: 0, minWidth: 0, maxWidth: "24rem", overflow: "auto" };
 
 /** Auth Flow — a single focused action on a centered card (sign-in, MFA, org-select, step-up). */
 export interface CenteredCardLayoutProps {
@@ -173,7 +180,7 @@ export function WorkQueueLayout({
         <div className="wx-work-table" style={{ flex: 1, overflow: "auto" }}>
           {table}
         </div>
-        {detail}
+        {detail ? <div style={contextRailBounds}>{detail}</div> : null}
       </div>
     </div>
   );
@@ -302,7 +309,7 @@ export function ConversationView({ list, children, detail }: ConversationViewPro
         >
           {children}
         </div>
-        {detail}
+        {detail ? <div style={contextRailBounds}>{detail}</div> : null}
       </div>
     </div>
   );
@@ -339,7 +346,7 @@ export function AdminSplitLayout({
         <div className="wx-admin-matrix" style={{ flex: 1, overflow: "auto", padding: "1.5rem" }}>
           {children}
         </div>
-        {detail}
+        {detail ? <div style={contextRailBounds}>{detail}</div> : null}
       </div>
     </div>
   );
@@ -357,7 +364,7 @@ export function DetailPageLayout({ header, children, aside }: DetailPageLayoutPr
       {header}
       <div style={splitRow}>
         <div style={{ flex: 1, overflow: "auto", padding: "1.5rem" }}>{children}</div>
-        {aside}
+        {aside ? <div style={contextRailBounds}>{aside}</div> : null}
       </div>
     </div>
   );
