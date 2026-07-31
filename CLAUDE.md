@@ -90,6 +90,15 @@ the prose docs in `docs/architecture/`.
   RLS/audit-trigger presence — armed-inert until app source lands), `check-ui-screens.ts` —
   enforced via `package.json` scripts (`bun run arch:fitness`; UI-corpus check also standalone
   as `bun run docs:ui`).
+- `scripts/check-abac-predicates.ts` — **ABAC named-predicate resolution** (`bun run
+  arch:abac-predicates`). Every `requireAbac(_, "<name>")` — including through each module's
+  local `guards.ts` factory — must name a predicate some module declares. M3's registry fails
+  closed on an unknown name, so a typo'd or never-registered name is a permanently dead endpoint
+  (403 for every caller) with the whole build green; that is exactly how M30's 15 `inOrg` guards
+  sat unreachable across 7 route files. There is **no deferral allowlist**: a predicate whose
+  inputs do not exist yet is expressed as a *registered* predicate that denies and says why
+  (`deviceAttestationValid` in `packages/auth/src/abac/registry.ts`), never as an unregistered
+  name — both refuse identically, only the first is distinguishable from a mistake.
 - `scripts/audit-fitness.ts` — point-in-time enforcement audit (module matrix, table
   ownership, dependency graph/cycles); writes `audit/FITNESS_ENFORCEMENT_AUDIT.md`.
 - `scripts/report-implementation-status.ts` — per-module **implementation-status matrix**

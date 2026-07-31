@@ -14,7 +14,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   type AbacContext,
   type GuardRequest,
+  DEVICE_ATTESTATION_ATTRIBUTE,
   createPredicateRegistry,
+  deviceAttestationValid,
   locationScope,
   providerEntityScope,
   registerAbacRegistry,
@@ -93,7 +95,12 @@ describe("createPredicateRegistry — register + resolve", () => {
   it("seeds M3 intrinsic predicates by default and lists registered names", () => {
     const registry = createPredicateRegistry();
     expect(registry.names()).toEqual(
-      expect.arrayContaining(["provider_entity_scope", "location_scope"]),
+      expect.arrayContaining([
+        "inOrg",
+        "provider_entity_scope",
+        "location_scope",
+        "device_attestation_valid",
+      ]),
     );
   });
 });
@@ -111,6 +118,53 @@ describe("M3 intrinsic predicates (§4.2) — context-assembled, fail closed", (
     expect(locationScope(ctx, { locationId: "loc-1" })).toBe(true);
     expect(locationScope(ctx, { locationId: "loc-2" })).toBe(false);
     expect(locationScope(ctx, {})).toBe(false);
+  });
+});
+
+// SecHardening §12.4 — the gate M33's bulk PHI drilldown export (and, per spec, M18/M20's
+// field surfaces) add on top of RBAC + step-up. It is REGISTERED-AND-DENYING today rather than
+// unregistered: no producer sets the attribute yet, and an unresolvable name denies identically
+// but is indistinguishable from a typo — the failure mode that left M30's `inOrg` guards dead
+// across 7 route files. `arch:abac-predicates` now fails the build on such a name.
+describe("device_attestation_valid (§12.4) — deny-by-default when unresolved", () => {
+  it("DENIES when no attestation rides on the context — today's state, for every caller", () => {
+    // `applyRequestContext` hard-codes `attributes: {}` and M2 owns no attestation surface
+    // (ADR-0023 D2), so this is what the bulk export actually evaluates on every request.
+    expect(deviceAttestationValid(makeContext(), {})).toBe(false);
+  });
+
+  it("DENIES an attestation the platform did not mark valid", () => {
+    const ctx = makeContext({ attributes: { deviceAttestation: { valid: false } } });
+    expect(deviceAttestationValid(ctx, {})).toBe(false);
+  });
+
+  it("DENIES an ill-typed attestation rather than reading truthiness from it", () => {
+    // "Attested" is a verdict, not a coercion: a string, a bare `true`, or a null must not pass.
+    for (const raw of ["true", true, 1, null, [], { valid: "true" }, { valid: 1 }]) {
+      const ctx = makeContext({ attributes: { deviceAttestation: raw } });
+      expect(deviceAttestationValid(ctx, {})).toBe(false);
+    }
+  });
+
+  it("ALLOWS only an explicit server-verified attestation", () => {
+    const ctx = makeContext({
+      attributes: {
+        deviceAttestation: { valid: true, verifiedAt: "2026-07-30T12:00:00.000Z" },
+      },
+    });
+    expect(deviceAttestationValid(ctx, {})).toBe(true);
+  });
+
+  it("ignores the TARGET — it is a property of the session's device, not of the row", () => {
+    // A route must not be able to satisfy the device gate by shaping its target.
+    const ctx = makeContext();
+    expect(deviceAttestationValid(ctx, { deviceAttestation: { valid: true } })).toBe(false);
+    expect(deviceAttestationValid(ctx, { valid: true })).toBe(false);
+  });
+
+  it("reads the documented attribute key, so the future producer has one place to set", () => {
+    const ctx = makeContext({ attributes: { [DEVICE_ATTESTATION_ATTRIBUTE]: { valid: true } } });
+    expect(deviceAttestationValid(ctx, {})).toBe(true);
   });
 });
 

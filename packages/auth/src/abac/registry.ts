@@ -112,6 +112,52 @@ export const inOrg: AbacPredicate = (context, target) => {
 };
 
 /**
+ * The server-verified device attestation the platform may attach to an actor's context
+ * (`AbacContext.attributes.deviceAttestation`). `valid` is the platform's OWN verdict on the
+ * posture check (SecHardening §12.2/§12.4) — never a client-asserted claim: the value is set by
+ * the M2 auth plugin from the session's attestation record, and nothing in the request (header,
+ * body, query) may reach it.
+ */
+export interface DeviceAttestation {
+  /** True only when the platform verified the posture check for THIS session. */
+  readonly valid: boolean;
+  /** When the attestation was verified (ISO-8601), for diagnostics/audit. */
+  readonly verifiedAt?: string;
+}
+
+/** The `attributes` key the device attestation rides on. */
+export const DEVICE_ATTESTATION_ATTRIBUTE = "deviceAttestation";
+
+/**
+ * `device_attestation_valid` (§4.2, SecHardening §12.4): the actor's session is bound to a device
+ * the platform has attested — the gate the narrowest surfaces add on top of RBAC + step-up
+ * (today: M33's `report.drilldown.bulk_export`, a CSV of patient-identifiable navigation links).
+ *
+ * DENY-BY-DEFAULT WHEN UNRESOLVED. Absent, ill-typed, or `valid: false` all deny. That is the
+ * point of the control: an un-attested device must not carry a bulk PHI export, and "we could not
+ * tell" is an un-attested device.
+ *
+ * IT IS CLOSED TODAY, AND THAT IS A DECISION, NOT AN OVERSIGHT. No producer sets the attribute:
+ * `applyRequestContext` hard-codes `attributes: {}`, M2 owns no `device_attestation` table
+ * (ADR-0023 D2 lists that surface as still-unadjudicated M2 inflation), and the mobile client that
+ * performs the §12.4 posture check is unbuilt (ADR-0035). So every caller of a route gated on this
+ * is refused, deliberately. It is registered rather than left unregistered so the refusal is a
+ * SEMANTIC deny with a reason, not a name the registry cannot resolve — an unresolvable name
+ * denies identically but is indistinguishable from a typo, which is how M30's `inOrg` guards sat
+ * dead across 7 route files. `arch:abac-predicates` now fails on such a name.
+ *
+ * WHEN M2 LANDS THE ATTESTATION SURFACE, nothing here or at the route changes: the auth plugin
+ * starts setting {@link DEVICE_ATTESTATION_ATTRIBUTE} and the gate begins passing for attested
+ * devices. Widening it any earlier (registering a permissive stub, or reading a client-supplied
+ * header) would silently disable a control SecHardening requires.
+ */
+export const deviceAttestationValid: AbacPredicate = (context) => {
+  const raw = context.attributes[DEVICE_ATTESTATION_ATTRIBUTE];
+  if (typeof raw !== "object" || raw === null) return false;
+  return (raw as { valid?: unknown }).valid === true;
+};
+
+/**
  * The predicates M3 owns outright — evaluable from the server-assembled context + target
  * with no cross-module seam. Seeded into the default registry so they are live on install.
  * Cross-module predicates (§4.2.1) are added by their owning modules via `registerPredicate`.
@@ -120,6 +166,7 @@ export const M3_INTRINSIC_PREDICATES: Readonly<Record<string, AbacPredicate>> = 
   inOrg,
   provider_entity_scope: providerEntityScope,
   location_scope: locationScope,
+  device_attestation_valid: deviceAttestationValid,
 };
 
 /**
