@@ -30,6 +30,9 @@
       "path": "./packages/auth"
     },
     {
+      "path": "./packages/bereavement"
+    },
+    {
       "path": "./packages/billing"
     },
     {

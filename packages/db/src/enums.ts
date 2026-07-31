@@ -2240,3 +2240,181 @@ export const volunteerHourEntrySource = pgEnum("volunteer_hour_entry_source", [
   "volunteer_admin_hours",
   "manual_adjustment",
 ]);
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// Module 16 — Bereavement (§3.2 · M16-T01). The CoP 418.64(d) post-death program vocabulary: the D2
+// eight-state plan machine, the D1 per-bereaved-person contact machine, the D4 death-date-anchored
+// outreach cadence (kind × status × anniversary mark), the D3/D17 deterministic risk rubric's tier /
+// score-kind / completeness / confidence bands, and the D7/D9 closure + opt-out taxonomies. The nine
+// Drizzle tables land in M16-T02 (`packages/db/src/schema/bereavement/`); the leaf mirrors live in
+// `@wardenx/types` (`bereavement.ts`) so M22/M28/M30/M31/M32/M33/M36 read them with no `dependsOn` edge.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** `bereavement_plan_status` — the §2.2 / D2 plan-root lifecycle. `eligible` on the `m6.bereavement.eligible`
+ *  intake (both source branches per D16), `initiating` once a counselor is assigned, `active` once the roster
+ *  + 13-month schedule seed. The three terminal closes are distinct on purpose (survey reconstruction reads
+ *  WHY a program ended); `closed_legal_hold_extended` is the M4-driven retention extension that returns to
+ *  its original close state on release. */
+export const bereavementPlanStatus = pgEnum("bereavement_plan_status", [
+  "eligible",
+  "initiating",
+  "active",
+  "paused",
+  "closed_completed",
+  "closed_declined",
+  "closed_early",
+  "closed_legal_hold_extended",
+]);
+
+/** `bereaved_contact_status` — the §2.3 per-person lifecycle (D1: the CoP obligation is to EACH survivor,
+ *  so consent / opt-out / schedule / risk are per-contact). `ineligible_post_review` is the complicated-grief
+ *  route-to-external terminal-for-now state, reversible on clinical re-evaluation. */
+export const bereavedContactStatus = pgEnum("bereaved_contact_status", [
+  "proposed",
+  "active",
+  "opted_out",
+  "deceased",
+  "unreachable",
+  "ineligible_post_review",
+]);
+
+/** `bereaved_contact_relationship` — relationship-to-decedent. M38 owns the authoritative value set (§2.5);
+ *  this enum mirrors it for index/integrity locally. */
+export const bereavedContactRelationship = pgEnum("bereaved_contact_relationship", [
+  "spouse",
+  "domestic_partner",
+  "parent",
+  "child",
+  "sibling",
+  "grandparent",
+  "grandchild",
+  "aunt_uncle",
+  "cousin",
+  "in_law",
+  "friend",
+  "neighbor",
+  "clergy",
+  "colleague",
+  "caregiver_non_family",
+  "other",
+]);
+
+/** `bereavement_outreach_kind` — the touchpoint modality. D15 boundary: `in_person_visit` is an M8
+ *  encounter (the contact log carries `source_encounter_id`); every other kind is a direct M16 write with a
+ *  NULL `source_encounter_id`. */
+export const bereavementOutreachKind = pgEnum("bereavement_outreach_kind", [
+  "phone_call",
+  "in_person_visit",
+  "sympathy_card",
+  "sympathy_letter",
+  "anniversary_letter",
+  "email",
+  "portal_message",
+  "group_support_invitation",
+  "external_referral",
+]);
+
+/** `bereavement_outreach_status` — the §2.4 scheduled-touchpoint lifecycle. `missed` is the hourly worker's
+ *  verdict once `late_grace_until` passes; a `lateAttempt` inside the grace re-opens it to `in_progress`
+ *  (audit-flagged, NOT a compliance failure). */
+export const bereavementOutreachStatus = pgEnum("bereavement_outreach_status", [
+  "scheduled",
+  "in_progress",
+  "completed",
+  "declined",
+  "no_response",
+  "missed",
+  "cancelled",
+]);
+
+/** `bereavement_contact_log_outcome` — what actually happened on a touchpoint. Three consecutive
+ *  `no_response` rows drive the §2.3 `markUnreachable` proposal; `requested_no_further_contact` is the
+ *  counselor-captured opt-out signal (the opt-out row itself is separate). */
+export const bereavementContactLogOutcome = pgEnum("bereavement_contact_log_outcome", [
+  "engaged",
+  "brief_acknowledgement",
+  "declined",
+  "no_response",
+  "voicemail_left",
+  "wrong_number",
+  "returned_undeliverable",
+  "requested_followup",
+  "requested_no_further_contact",
+  "crisis_referral",
+]);
+
+/** `bereavement_risk_tier` — the D3 deterministic tier that drives the D4 cadence. The rubric itself only
+ *  reaches `high`; `complicated` is a PROMOTION written by a positive complicated-grief screen (D8 / §7.7),
+ *  never a weighted-sum outcome. */
+export const bereavementRiskTier = pgEnum("bereavement_risk_tier", [
+  "low",
+  "moderate",
+  "high",
+  "complicated",
+]);
+
+/** `bereavement_risk_score_kind` — D3 hybrid model. The `rule_deterministic` row is the source of truth and
+ *  must exist before any `llm_augmented` row for the same `(plan, contact, assessed_at)` (§2.5); the LLM
+ *  narrative can never change the tier (AI Governance §7.4). */
+export const bereavementRiskScoreKind = pgEnum("bereavement_risk_score_kind", [
+  "rule_deterministic",
+  "llm_augmented",
+]);
+
+/** `bereavement_plan_closure_reason` — why the program ended. The five early-close reasons carry the D7
+ *  clinical-supervisor cosign requirement (CHECK-enforced in M16-T02); the two opt-out reasons and the
+ *  13-month completion do not. */
+export const bereavementPlanClosureReason = pgEnum("bereavement_plan_closure_reason", [
+  "thirteen_month_completion",
+  "all_contacts_declined",
+  "patient_opt_out_pre_death",
+  "patient_opt_out_post_creation",
+  "tenant_offboarding",
+  "all_bereaved_deceased",
+  "geographic_relocation",
+  "family_legal_action",
+  "other_early",
+]);
+
+/** `bereavement_opt_out_kind` — D9 per-contact opt-out granularity. Only `full` closes the contact;
+ *  `channel_specific` restricts modalities and `pause_temporarily` suspends without closing. */
+export const bereavementOptOutKind = pgEnum("bereavement_opt_out_kind", [
+  "full",
+  "channel_specific",
+  "pause_temporarily",
+]);
+
+/** `bereavement_plan_pause_kind` — the §2.2 pause taxonomy. A pause cancels future-scheduled outreach;
+ *  `resumePlan` regenerates the schedule forward from now to the 13-month ceiling. */
+export const bereavementPlanPauseKind = pgEnum("bereavement_plan_pause_kind", [
+  "operational",
+  "family_request",
+  "counselor_unavailable_temp",
+]);
+
+/** `bereavement_anniversary_mark` — the D4 milestone an outreach/reminder row belongs to.
+ *  `nine_month_high_risk_only` exists only on the elevated-risk (moderate and above) cadence. */
+export const bereavementAnniversaryMark = pgEnum("bereavement_anniversary_mark", [
+  "one_month",
+  "three_month",
+  "six_month",
+  "nine_month_high_risk_only",
+  "anniversary",
+]);
+
+/** `bereavement_data_completeness` — D17. How many of the 8 rubric factors were KNOWABLE. M30's HQRP
+ *  risk-screening measure filters `minimal` out of its denominator so tenants with many external-source
+ *  (transfer-from-hospital) deaths are not penalized for data they could not have had. */
+export const bereavementDataCompleteness = pgEnum("bereavement_data_completeness", [
+  "complete",
+  "partial",
+  "minimal",
+]);
+
+/** `bereavement_confidence_band` — D17. The band derived from the knowable-factor count, surfaced next to
+ *  the score so a counselor can tell a high-confidence low score from a low-confidence one. */
+export const bereavementConfidenceBand = pgEnum("bereavement_confidence_band", [
+  "HIGH",
+  "MEDIUM",
+  "LOW",
+]);

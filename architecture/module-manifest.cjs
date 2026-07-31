@@ -497,7 +497,11 @@ exports.MODULES = [
   {
     id: 16,
     name: "Bereavement",
-    codePaths: ["apps/backend/src/modules/16-bereavement"],
+    codePaths: [
+      "packages/bereavement",
+      "apps/backend/src/modules/16-bereavement",
+      "apps/web/src/modules/16-bereavement",
+    ], // +packages/bereavement: §3.1 M16-owned feature pkg (D4 cadence floor / D3+D17 risk rubric / D15 outreach-kind + D18 external-source gate policy → lifecycle), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M16-T07
     dependsOn: [5, 6, 36],
     ownedTables: [
       "bereaved_contact",

@@ -102,6 +102,13 @@
         "hash-wasm": "^4.12.0",
       },
     },
+    "packages/bereavement": {
+      "name": "@wardenx/bereavement",
+      "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
+    },
     "packages/billing": {
       "name": "@wardenx/billing",
       "version": "0.0.0",
@@ -857,6 +864,8 @@
     "@wardenx/auth": ["@wardenx/auth@workspace:packages/auth"],
 
     "@wardenx/backend": ["@wardenx/backend@workspace:apps/backend"],
+
+    "@wardenx/bereavement": ["@wardenx/bereavement@workspace:packages/bereavement"],
 
     "@wardenx/billing": ["@wardenx/billing@workspace:packages/billing"],
 

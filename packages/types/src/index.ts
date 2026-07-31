@@ -18,6 +18,7 @@ export * from "./dosespot";
 export * from "./emar";
 export * from "./idg";
 export * from "./discipline-plans";
+export * from "./bereavement";
 export * from "./scheduling";
 export * from "./evv";
 export * from "./documents";

@@ -1,8 +1,8 @@
 {
   "totals": {
     "Implemented": 30,
-    "Partial": 0,
-    "Placeholder": 10
+    "Partial": 1,
+    "Placeholder": 9
   },
   "rows": [
     {
@@ -218,14 +218,14 @@
     {
       "id": 16,
       "module": "M16 Bereavement",
-      "status": "Placeholder",
+      "status": "Partial",
       "spec": true,
       "schema": false,
       "migration": false,
       "routes": false,
       "enriched": false,
       "screens": false,
-      "tests": false,
+      "tests": true,
       "adapter": null,
       "liveInfra": false
     },
