@@ -125,6 +125,14 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // `tenant_bereavement_external_source_gate_override` is tenant config that stays untouched. The
   // `subjectId` is the decedent whose death opened the program.
   "bereavement_record",
+  // M21-T05: a PATIENT's supply record (supply_request / comfort_kit_dispatch(+_content) /
+  // comfort_kit_return(+_content)). M21 registers the REAL eraser via the composition-root hook over this
+  // deny-stub. Unlike every other class here it does NOT delete the controlled-substance rows: DEA 21 CFR
+  // §1304.04 requires the perpetual inventory record to survive, so the eraser SHREDS the patient-linking
+  // columns and the D13 free text and PRESERVES the de-identified lot accounting. See the `supply_record`
+  // comment in packages/types/src/seams.ts for the full argument. Org-scoped catalog / template / routing /
+  // par-stock config is untouched. The `subjectId` is the patient.
+  "supply_record",
   // M17-T02 (this task) registers the data-class contract; the Phase-0 deny-stub (wireErasers) stands until
   // M17-T08 registers the REAL eraser via the composition-root hook. Under an M4 destruction certificate the
   // real eraser row-deletes the patient's partitioned `visit` rows (+ cascaded `visit_state_history`),

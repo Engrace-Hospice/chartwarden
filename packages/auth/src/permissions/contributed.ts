@@ -3481,6 +3481,226 @@ export const M16_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M16 contributed permission keys (twenty-nine). */
 export type M16ContributedPermissionKey = keyof typeof M16_CONTRIBUTED_PERMISSIONS;
 
+/**
+ * M21-T05 — the twenty-eight Supplies / DME / Comfort-Kit permission keys Module 21 registers into M3's
+ * catalog: §4.3's twenty-six, plus the two the §4.1 route inventory needs and §4.3 never named (see the
+ * last block).
+ *
+ * `abac` names the DEFAULT predicate the M3 catalog records for the key; the §4.1 route table is what
+ * actually binds a guard, and it may bind a different (or no) predicate per route. Both §4.4 predicate
+ * names are M21-OWNED and registered by `registerSuppliesAbacPredicates`:
+ * `controlled_substance_dispatcher_eligible` and `comfort_kit_return_reconciler_eligible`.
+ *
+ * TWO catalog decisions worth stating, because both are easy to get backwards:
+ *
+ *   1. `supplies.request.create` records `'none'` as its DEFAULT, even though §4.1 binds
+ *      `controlled_substance_dispatcher_eligible` on the row. The §4.1 cell is CONDITIONAL —
+ *      "(when kind=comfort_kit_deploy)" — and the catalog default is unconditional. Recording the
+ *      predicate here would make every DME and wound-supply request require controlled-substance
+ *      dispatch authority, which is strictly stricter than the spec and would ground the aides who file
+ *      most requests. The conditional gate lives in the route guard (`ABAC_DISPATCHER_ON_KIT_KIND`), where
+ *      the kind is actually in hand.
+ *   2. The four catalog keys (`supplies.item.*`) are PLATFORM-only in §4.3 and their category is `admin`,
+ *      not `clinical`: `supply_item` carries no organization_id at all (D11), so a tenant clinician role
+ *      must never pick them up by category grant. The tenant's own overlay
+ *      (`supplies.tenant_item.write`) is the org-scoped key beside them.
+ */
+export const M21_CONTRIBUTED_PERMISSIONS = {
+  // ── supply requests (§4.1 rows 1-10) ────────────────────────────────────────────────────────────────
+  "supplies.request.create": {
+    resource: "supply_request",
+    action: "create",
+    category: "clinical",
+    abac: "none",
+  },
+  "supplies.request.read": {
+    resource: "supply_request",
+    action: "read",
+    category: "clinical",
+    abac: "none",
+  },
+  "supplies.request.assign_vendor": {
+    resource: "supply_request",
+    action: "assign_vendor",
+    category: "clinical",
+    abac: "none",
+  },
+  "supplies.request.mark_ordered": {
+    resource: "supply_request",
+    action: "mark_ordered",
+    category: "clinical",
+    abac: "none",
+  },
+  "supplies.request.mark_in_transit": {
+    resource: "supply_request",
+    action: "mark_in_transit",
+    category: "clinical",
+    abac: "none",
+  },
+  "supplies.request.mark_delivered": {
+    resource: "supply_request",
+    action: "mark_delivered",
+    category: "clinical",
+    abac: "none",
+  },
+  "supplies.request.confirm_received": {
+    resource: "supply_request",
+    action: "confirm_received",
+    category: "clinical",
+    abac: "none",
+  },
+  "supplies.request.cancel": {
+    resource: "supply_request",
+    action: "cancel",
+    category: "clinical",
+    abac: "none",
+  },
+  "supplies.request.return": {
+    resource: "supply_request",
+    action: "return",
+    category: "clinical",
+    abac: "none",
+  },
+
+  // ── SKU catalog (§4.1 rows 11-16; D11 platform + tenant overlay) ────────────────────────────────────
+  "supplies.item.read": {
+    resource: "supply_item",
+    action: "read",
+    category: "clinical",
+    abac: "none",
+  },
+  "supplies.item.write": {
+    resource: "supply_item",
+    action: "write",
+    category: "admin",
+    abac: "none",
+  },
+  "supplies.item.retire": {
+    resource: "supply_item",
+    action: "retire",
+    category: "admin",
+    abac: "none",
+  },
+  "supplies.tenant_item.write": {
+    resource: "tenant_supply_item_extension",
+    action: "write",
+    category: "admin",
+    abac: "none",
+  },
+
+  // ── comfort-kit templates (§4.1 rows 17-19; D3 floor-plus-overlay) ─────────────────────────────────
+  "comfort_kit.template.read": {
+    resource: "comfort_kit_template",
+    action: "read",
+    category: "clinical",
+    abac: "none",
+  },
+  "comfort_kit.template.write": {
+    resource: "comfort_kit_template",
+    action: "write",
+    category: "clinical",
+    abac: "none",
+  },
+
+  // ── comfort-kit dispatch (§4.1 rows 20-23; D6 controlled-substance custody) ────────────────────────
+  "comfort_kit.dispatch.create": {
+    resource: "comfort_kit_dispatch",
+    action: "create",
+    category: "clinical",
+    abac: "controlled_substance_dispatcher_eligible",
+  },
+  "comfort_kit.dispatch.read": {
+    resource: "comfort_kit_dispatch",
+    action: "read",
+    category: "clinical",
+    abac: "none",
+  },
+  "comfort_kit.dispatch.deploy": {
+    resource: "comfort_kit_dispatch",
+    action: "deploy",
+    category: "clinical",
+    abac: "none",
+  },
+
+  // ── comfort-kit return + reconciliation (§4.1 rows 24-27; D8 / DEA 21 CFR §1304) ───────────────────
+  "comfort_kit.return.create": {
+    resource: "comfort_kit_return",
+    action: "create",
+    category: "clinical",
+    abac: "none",
+  },
+  "comfort_kit.return.read": {
+    resource: "comfort_kit_return",
+    action: "read",
+    category: "clinical",
+    abac: "none",
+  },
+  "comfort_kit.return.reconcile": {
+    resource: "comfort_kit_return",
+    action: "reconcile",
+    category: "compliance",
+    abac: "comfort_kit_return_reconciler_eligible",
+  },
+
+  // ── vendor routing + par stock (§4.1 rows 28-35; agency operations, no patient in them) ────────────
+  "vendor_routing.read": {
+    resource: "vendor_routing_rule",
+    action: "read",
+    category: "admin",
+    abac: "none",
+  },
+  "vendor_routing.write": {
+    resource: "vendor_routing_rule",
+    action: "write",
+    category: "admin",
+    abac: "none",
+  },
+  "par_stock.read": {
+    resource: "par_stock",
+    action: "read",
+    category: "admin",
+    abac: "none",
+  },
+  "par_stock.write": {
+    resource: "par_stock",
+    action: "write",
+    category: "admin",
+    abac: "none",
+  },
+  "par_stock.observe": {
+    resource: "par_stock",
+    action: "observe",
+    category: "admin",
+    abac: "none",
+  },
+
+  // ── the two keys §4.1 implies but does not name a row for ──────────────────────────────────────────
+  // §5.5 / §7.3's reconciliation screen and §8.1's `m21.controlled_substance.*` attestation trail are both
+  // read surfaces over the DEA perpetual log — the lot-level custody chain, not the request. A surveyor or
+  // compliance officer reads them without any need to touch a supply request, and a supply coordinator who
+  // may file requests must not thereby acquire the controlled-substance ledger. Separate key, `compliance`
+  // category.
+  "comfort_kit.perpetual_log.read": {
+    resource: "comfort_kit_dispatched_content",
+    action: "read",
+    category: "compliance",
+    abac: "none",
+  },
+  // §2.6 — the 90-day assumption-of-loss disposition. §4.1 has no row (the escalation is a cron finding),
+  // but §3.1.10's CHECK requires an attested reason from a named human, so there IS a route and it needs a
+  // key. Deliberately NOT folded into `comfort_kit.return.reconcile`: writing off a kit that holds a CII
+  // solution is a different authority from counting one that came back.
+  "comfort_kit.return.declare_unreturnable": {
+    resource: "comfort_kit_return",
+    action: "declare_unreturnable",
+    category: "compliance",
+    abac: "comfort_kit_return_reconciler_eligible",
+  },
+} satisfies Record<string, PermissionDef>;
+
+/** Union of the M21 contributed permission keys (twenty-eight). */
+export type M21ContributedPermissionKey = keyof typeof M21_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -3633,6 +3853,11 @@ export function m16ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M16_CONTRIBUTED_PERMISSIONS);
 }
 
+/** Project the M21 contributed keys into `permission`-table mirror rows (M21 §4.3). */
+export function m21ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M21_CONTRIBUTED_PERMISSIONS);
+}
+
 /**
  * The full `permission`-table mirror: M3's own cross-cutting keys plus every contributed
  * (M1/M2 + M4 + M38 + M36) key. This is the row set the deploy-time sync writes to the read-only
@@ -3670,5 +3895,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m24ContributedPermissionMirrorRows(),
     ...m15ContributedPermissionMirrorRows(),
     ...m16ContributedPermissionMirrorRows(),
+    ...m21ContributedPermissionMirrorRows(),
   ];
 }

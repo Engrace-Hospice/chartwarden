@@ -203,3 +203,10 @@ export {
   M16_CONTRIBUTED_PERMISSIONS,
   m16ContributedPermissionMirrorRows,
 } from "./contributed";
+
+// M21 — Module 21's twenty-eight Supplies / DME / Comfort-Kit permission keys (§4.3 handshake).
+export {
+  type M21ContributedPermissionKey,
+  M21_CONTRIBUTED_PERMISSIONS,
+  m21ContributedPermissionMirrorRows,
+} from "./contributed";

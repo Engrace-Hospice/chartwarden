@@ -43994,6 +43994,930 @@
         }
       }
     },
+    "/api/v1/supplies/comfort-kit-dispatches": {
+      "get": {
+        "operationId": "getApiV1SuppliesComfortkitdispatches",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1SuppliesComfortkitdispatches",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/comfort-kit-dispatches/{dispatchId}": {
+      "get": {
+        "operationId": "getApiV1SuppliesComfortkitdispatchesByDispatchId",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "dispatchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/comfort-kit-dispatches/{dispatchId}/deploy-at-patient": {
+      "post": {
+        "operationId": "postApiV1SuppliesComfortkitdispatchesByDispatchIdDeployatpatient",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "dispatchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/comfort-kit-dispatches/{dispatchId}/perpetual-log": {
+      "get": {
+        "operationId": "getApiV1SuppliesComfortkitdispatchesByDispatchIdPerpetuallog",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "dispatchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/comfort-kit-returns": {
+      "get": {
+        "operationId": "getApiV1SuppliesComfortkitreturns",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1SuppliesComfortkitreturns",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/comfort-kit-returns/{returnId}": {
+      "get": {
+        "operationId": "getApiV1SuppliesComfortkitreturnsByReturnId",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "returnId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/comfort-kit-returns/{returnId}/assign-retriever": {
+      "post": {
+        "operationId": "postApiV1SuppliesComfortkitreturnsByReturnIdAssignretriever",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "returnId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/comfort-kit-returns/{returnId}/declare-unreturnable": {
+      "post": {
+        "operationId": "postApiV1SuppliesComfortkitreturnsByReturnIdDeclareunreturnable",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "returnId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/comfort-kit-returns/{returnId}/reconcile": {
+      "post": {
+        "operationId": "postApiV1SuppliesComfortkitreturnsByReturnIdReconcile",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "returnId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/comfort-kit-templates": {
+      "get": {
+        "operationId": "getApiV1SuppliesComfortkittemplates",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1SuppliesComfortkittemplates",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/comfort-kit-templates/{templateId}": {
+      "put": {
+        "operationId": "putApiV1SuppliesComfortkittemplatesByTemplateId",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "templateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/par-stock": {
+      "get": {
+        "operationId": "getApiV1SuppliesParstock",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/par-stock/{parStockId}": {
+      "put": {
+        "operationId": "putApiV1SuppliesParstockByParStockId",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "parStockId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/par-stock/observe": {
+      "post": {
+        "operationId": "postApiV1SuppliesParstockObserve",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/supply-items": {
+      "get": {
+        "operationId": "getApiV1SuppliesSupplyitems",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1SuppliesSupplyitems",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/supply-items/{id}": {
+      "get": {
+        "operationId": "getApiV1SuppliesSupplyitemsById",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/supply-items/{id}/retire": {
+      "post": {
+        "operationId": "postApiV1SuppliesSupplyitemsByIdRetire",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/supply-requests": {
+      "get": {
+        "operationId": "getApiV1SuppliesSupplyrequests",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1SuppliesSupplyrequests",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/supply-requests/{supplyRequestId}": {
+      "get": {
+        "operationId": "getApiV1SuppliesSupplyrequestsBySupplyRequestId",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "supplyRequestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/supply-requests/{supplyRequestId}/assign-vendor": {
+      "post": {
+        "operationId": "postApiV1SuppliesSupplyrequestsBySupplyRequestIdAssignvendor",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "supplyRequestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/supply-requests/{supplyRequestId}/cancel": {
+      "post": {
+        "operationId": "postApiV1SuppliesSupplyrequestsBySupplyRequestIdCancel",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "supplyRequestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/supply-requests/{supplyRequestId}/confirm-received": {
+      "post": {
+        "operationId": "postApiV1SuppliesSupplyrequestsBySupplyRequestIdConfirmreceived",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "supplyRequestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/supply-requests/{supplyRequestId}/mark-delivered": {
+      "post": {
+        "operationId": "postApiV1SuppliesSupplyrequestsBySupplyRequestIdMarkdelivered",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "supplyRequestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/supply-requests/{supplyRequestId}/mark-in-transit": {
+      "post": {
+        "operationId": "postApiV1SuppliesSupplyrequestsBySupplyRequestIdMarkintransit",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "supplyRequestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/supply-requests/{supplyRequestId}/mark-ordered": {
+      "post": {
+        "operationId": "postApiV1SuppliesSupplyrequestsBySupplyRequestIdMarkordered",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "supplyRequestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/supply-requests/{supplyRequestId}/return": {
+      "post": {
+        "operationId": "postApiV1SuppliesSupplyrequestsBySupplyRequestIdReturn",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "supplyRequestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/tenant-supply-items": {
+      "post": {
+        "operationId": "postApiV1SuppliesTenantsupplyitems",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/tenant-supply-items/{id}": {
+      "put": {
+        "operationId": "putApiV1SuppliesTenantsupplyitemsById",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/vendor-routing-rules": {
+      "get": {
+        "operationId": "getApiV1SuppliesVendorroutingrules",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1SuppliesVendorroutingrules",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/vendor-routing-rules/{ruleId}": {
+      "delete": {
+        "operationId": "deleteApiV1SuppliesVendorroutingrulesByRuleId",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "ruleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1SuppliesVendorroutingrulesByRuleId",
+        "tags": [
+          "21-supplies"
+        ],
+        "parameters": [
+          {
+            "name": "ruleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/system/feature-flags": {
       "get": {
         "operationId": "getApiV1SystemFeatureflags",

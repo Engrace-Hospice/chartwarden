@@ -26,6 +26,7 @@ import type {
   CaseloadProvider,
   CertificationReader,
   DeathDischargeReader,
+  ComfortKitDispatchProvider,
   DisciplineComplianceProvider,
   DisciplinePlanReader,
   DocumentReader,
@@ -69,6 +70,8 @@ import type {
   SeamName,
   SessionContextResolver,
   SignedEncountersReader,
+  SupplyCostProvider,
+  SupplyFulfillmentProvider,
   SupervisoryCadencePlanReader,
   SupervisoryCadenceReader,
   TenantOrgCreationProvider,
@@ -967,6 +970,50 @@ export const bereavementComplianceProviderDenyStub: BereavementComplianceProvide
 export const bereavementRiskTierProviderDenyStub: BereavementRiskTierProvider = {
   tierDistribution() {
     throw new NotImplementedError("BereavementRiskTierProvider");
+  },
+};
+
+// M21 (Supplies, DME & Comfort Kits) §4.8 / D14 PUBLISHED seams (M21-T05). LEAF-TYPED (interfaces in
+// @wardenx/types), so each gets a concrete typed deny-stub that denies until `registerSuppliesSeams()`
+// stands the real impl over it. A deny is the right answer for every consumer here, and one of them is
+// safety-critical: M13 must NOT be told a comfort kit's controlled-substance inventory is empty when the
+// truth is that M21 could not answer. An empty list would read at the bedside as "there is no morphine in
+// this kit"; a throw reads as "ask again".
+export const supplyFulfillmentProviderDenyStub: SupplyFulfillmentProvider = {
+  createDirectSupplyRequest() {
+    throw new NotImplementedError("SupplyFulfillmentProvider");
+  },
+  getSupplyRequestStatus() {
+    throw new NotImplementedError("SupplyFulfillmentProvider");
+  },
+  isTerminal() {
+    throw new NotImplementedError("SupplyFulfillmentProvider");
+  },
+};
+
+/** M21 — bedside kit inventory + lot detail + the D17 IPU-room stock kit (M13, M27, M30, M33, M37). */
+export const comfortKitDispatchProviderDenyStub: ComfortKitDispatchProvider = {
+  listActiveDispatchesForPatient() {
+    throw new NotImplementedError("ComfortKitDispatchProvider");
+  },
+  getDispatchDetail() {
+    throw new NotImplementedError("ComfortKitDispatchProvider");
+  },
+  getIpuRoomKitInventory() {
+    throw new NotImplementedError("ComfortKitDispatchProvider");
+  },
+  notifyAdministrationDrawdown() {
+    throw new NotImplementedError("ComfortKitDispatchProvider");
+  },
+};
+
+/** M21 — per-patient / per-org supply spend in integer CENTS (M23 cap analysis, M27 cost report). */
+export const supplyCostProviderDenyStub: SupplyCostProvider = {
+  getPatientSupplyCostSummary() {
+    throw new NotImplementedError("SupplyCostProvider");
+  },
+  getOrgSupplySpendSummary() {
+    throw new NotImplementedError("SupplyCostProvider");
   },
 };
 

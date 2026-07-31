@@ -75,6 +75,11 @@ import type {
   VisitReader,
   VolunteerComplianceProvider,
 } from "./scheduling";
+import type {
+  ComfortKitDispatchProvider,
+  SupplyCostProvider,
+  SupplyFulfillmentProvider,
+} from "./supplies";
 
 /** Opaque tenant scope every seam call carries (resolved by withOrgContext). */
 export interface OrgScope {
@@ -251,6 +256,14 @@ export type SeamName =
   | "BereavedPortalScopeProvider" // M16 — the M31 bereaved-family session scope (§1.2 / D10 narrow)
   | "BereavementComplianceProvider" // M16 — CoP / screening-completeness / closure COUNTS (M30 HQRP, M33)
   | "BereavementRiskTierProvider" // M16 — risk-tier distribution (M30 chart, M33 dashboard)
+  // M21 (Supplies, DME & Comfort Kits) owned seams (§4.8 / D14) — leaf-typed in ./supplies (this package).
+  // TWO reads plus ONE write-shaped notify: `ComfortKitDispatchProvider.notifyAdministrationDrawdown` is
+  // M13's bedside-count report, and it does NOT decide a discrepancy — it cascades INTO M21's §2.6
+  // reconciliation, which owns the D8 verdict. M21-T05 registers the real impls; the deny-stubs stay the
+  // fail-closed default for a boot that does not wire M21.
+  | "SupplyFulfillmentProvider" // M21 — direct request creation + request status / terminality (M11 cascade, M22, M28, M30, M33)
+  | "ComfortKitDispatchProvider" // M21 — bedside kit inventory + lot detail + the D17 IPU-room stock kit (M13, M30, M33, M37)
+  | "SupplyCostProvider" // M21 — per-patient / per-org supply spend in CENTS (M23 cap analysis, M27 cost report)
   | "CapAccrualReader" // M26 — cap-period aggregate for the M27 cost-report Worksheet-E cap calc (aggregate $/days, no PHI)
   | "CapProjectionProvider" // M26 — agency/patient/inpatient cap projection for the M23 §11.A pre-submission cap rules
   // M23/M25 → M27 cost-report validation binds. M23 is the FIRST module to publish into the typed M1
@@ -603,6 +616,14 @@ export interface SeamContracts {
   BereavedPortalScopeProvider: BereavedPortalScopeProvider;
   BereavementComplianceProvider: BereavementComplianceProvider;
   BereavementRiskTierProvider: BereavementRiskTierProvider;
+  // M21's owned seams (§4.8 / D14) — interfaces live in ./supplies (this package). No free-text column
+  // crosses: `delivery_instructions`, `special_handling_notes`, `disposal_notes` and `discrepancy_notes`
+  // are D13-denylisted narrative and stay inside M21. What DOES cross is controlled-substance accounting
+  // (lot, expiration, dispatched/returned quantity) — that is the DEA 21 CFR §1304 record M13 must be able
+  // to draw down against, not clinical content.
+  SupplyFulfillmentProvider: SupplyFulfillmentProvider;
+  ComfortKitDispatchProvider: ComfortKitDispatchProvider;
+  SupplyCostProvider: SupplyCostProvider;
 }
 
 /**
@@ -777,6 +798,23 @@ export type DataClass =
   // NEVER touched. `subjectId` is the DECEDENT whose death opened the program — disjoint from M7's
   // `care_plan_record` and M15's `discipline_plan_record`.
   | "bereavement_record"
+  // M21 (Supplies, DME & Comfort Kits) per-patient supply record: the request + kit-custody subtree M21
+  // owns — `supply_request` (partitioned), `comfort_kit_dispatch` (partitioned) and its
+  // `comfort_kit_dispatched_content` lines, `comfort_kit_return` and its `comfort_kit_returned_content`
+  // lines. Erased by M21's registered eraser (M21-T05) under an M4 destruction certificate.
+  //
+  // THE CONTROLLED-SUBSTANCE LEDGER IS DIFFERENT FROM EVERY OTHER CLASS ABOVE, and the difference is
+  // statutory: DEA 21 CFR §1304.04 requires the perpetual inventory record of a scheduled drug to be
+  // retained for at least two years, and a patient's right to erasure does not reach a DEA registrant's
+  // controlled-substance ledger. So the eraser SHREDS the patient-identifying columns and the D13 free
+  // text but PRESERVES the lot-level accounting rows themselves, de-identified — quantity, schedule, lot,
+  // dispatcher, witness. Deleting them would erase the agency's own compliance evidence in the name of
+  // protecting the patient whose kit it documented (§8.2 tags those audit rows `regulatory_dea`).
+  //
+  // The org-scoped CONFIG — `supply_item`, `tenant_supply_item_extension`, `comfort_kit_template(_medication)`,
+  // `vendor_routing_rule`, `par_stock` — is never touched: a catalog, a recipe, a routing ladder and a shelf
+  // count are not patient data. `subjectId` is the patient.
+  | "supply_record"
   // M17 (Scheduling & Route Optimization) per-patient schedule record: the patient-scoped scheduling rows
   // M17 owns — the partitioned `visit` rows (and their cascaded `visit_state_history` transitions),
   // `recurring_visit` policies, `visit_proposal` rows, and the `route_segment` legs joinable via a visit

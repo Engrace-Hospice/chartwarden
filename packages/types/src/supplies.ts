@@ -763,6 +763,44 @@ export interface DispatchDetailView extends ActiveDispatchView {
   readonly contents: readonly ComfortKitDispatchedContentPayload[];
 }
 
+/**
+ * D6 / DEA 21 CFR §1304 — ONE entry in the perpetual inventory log kept on
+ * `comfort_kit_dispatched_content.dea_perpetual_log_jsonb` (M21-T05).
+ *
+ * §1304.04(f) requires a running record of every transaction touching a scheduled unit, and §1304.03 makes
+ * that record APPEND-ONLY: an entry is never edited or removed, because "what did the log say before
+ * someone changed it" is the first question a DEA inspection asks. The column is therefore an ARRAY of
+ * these, and M21 only ever pushes onto it.
+ *
+ * `balanceAfterQuantity` is the running balance AS RECORDED, not a value derived at read time. That is the
+ * whole point of a perpetual log — a balance recomputed from the current row set would silently absorb a
+ * missing entry, which is exactly the discrepancy the log exists to expose.
+ */
+export interface DeaPerpetualLogEntry {
+  /** What happened to the unit. `dispense` leaves the registrant's stock; `administer_drawdown` is M13's
+   *  bedside count; `return` / `disposal` close it out; `adjustment` is a corrected count, which is added
+   *  as a NEW entry rather than by editing the one it corrects. */
+  readonly transactionKind:
+    | "dispense"
+    | "administer_drawdown"
+    | "return"
+    | "disposal"
+    | "adjustment";
+  /** Signed decimal string — negative removes from the unit's balance. Never a JS number (see the M21
+   *  event-catalog header: a 0.1 mL that round-trips through a float is not the quantity recorded). */
+  readonly quantityDelta: string;
+  /** The running balance recorded WITH this entry (see above — recorded, never recomputed). */
+  readonly balanceAfterQuantity: string;
+  readonly unit: string;
+  /** WHO — the §1304 "person making the entry". */
+  readonly recordedByMembershipId: MembershipId;
+  /** The second signature §1317 requires on a witnessed destruction; null on the other kinds. */
+  readonly witnessMembershipId: MembershipId | null;
+  readonly occurredAt: IsoInstant;
+  /** The M21 row that caused the entry (a dispatch, a return, an M13 drawdown), for reconstruction. */
+  readonly sourceReference: string | null;
+}
+
 /** M13 → M21 when a bedside count disagrees with the lot's expected remainder. Cascades into the §2.6
  *  reconciliation pipeline; it does NOT itself decide a discrepancy exists. */
 export interface AdministrationDrawdownInput {

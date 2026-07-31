@@ -34,6 +34,7 @@ import {
   caseloadDenyStub,
   certificationReaderDenyStub,
   claimSettlementProviderDenyStub,
+  comfortKitDispatchProviderDenyStub,
   consentEvaluatorDenyStub,
   deathDischargeReaderDenyStub,
   disciplineComplianceProviderDenyStub,
@@ -85,6 +86,8 @@ import {
   signedEncountersReaderDenyStub,
   supervisoryCadencePlanReaderDenyStub,
   supervisoryCadenceReaderDenyStub,
+  supplyCostProviderDenyStub,
+  supplyFulfillmentProviderDenyStub,
   tenantOrgCreationProviderDenyStub,
   terminologyProviderDenyStub,
   visitAssignmentReaderDenyStub,
@@ -695,6 +698,35 @@ export const REQUIRED_SEAMS = [
     ownerModule: 16,
     phi: false,
     denyStub: bereavementRiskTierProviderDenyStub,
+  },
+  // M21 (Supplies, DME & Comfort Kits) §4.8 / D14 PUBLISHED seams (M21-T05). Three surfaces over M21's
+  // `supply_request` / `comfort_kit_dispatch` / `comfort_kit_dispatched_content` rows that M11 (the order
+  // cascade's status read-back), M13 (bedside controlled-substance inventory), M22, M23/M27 (cap + cost
+  // report), M28, M30, M33 and M37 (the D17 IPU-room stock kit) attach to instead of importing M21's schema
+  // (architecture §25.15).
+  //
+  // PHI split: the fulfillment and dispatch surfaces are patient-linked (`patientId` on every DTO, and the
+  // dispatch detail carries the lot-level controlled-substance manifest) → phi: true. `SupplyCostProvider`
+  // is the odd one: `getOrgSupplySpendSummary` is a pure aggregate, but `getPatientSupplyCostSummary` names
+  // a patient and returns that patient's spend, so the SEAM is phi: true — the classification is per seam,
+  // and the widest method on it decides.
+  {
+    key: "SupplyFulfillmentProvider",
+    ownerModule: 21,
+    phi: true,
+    denyStub: supplyFulfillmentProviderDenyStub,
+  },
+  {
+    key: "ComfortKitDispatchProvider",
+    ownerModule: 21,
+    phi: true,
+    denyStub: comfortKitDispatchProviderDenyStub,
+  },
+  {
+    key: "SupplyCostProvider",
+    ownerModule: 21,
+    phi: true,
+    denyStub: supplyCostProviderDenyStub,
   },
 ] satisfies readonly RequiredSeam[];
 
