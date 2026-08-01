@@ -935,4 +935,21 @@ export type DataClass =
   // and leaves the PLATFORM catalogs (report_base_catalog/report_metric_catalog/materialized_view_metadata)
   // untouched (shared reference data, migration-retired only). Like M34, `subjectId` here is the ORG being
   // offboarded. Registered by M33's eraseFn over the Phase-0 deny-stub via the composition-root hook.
-  | "reporting_class";
+  | "reporting_class"
+  // M20 (Field Safety) per-patient safety footprint. Registered in M20-T02 (the schema task) so the contract
+  // is present from the moment the tables exist; the REAL eraser binds through the composition-root hook
+  // over the Phase-0 deny-stub. UNLIKE almost every class above this erase DELETES NOTHING (§3.7): ten of
+  // M20's thirteen tables are filed "structural row retained with redacted markers", because the SOS
+  // event-of-record IS the row, an incident's `category`/`severity` are what a 2031 review of a 2025 assault
+  // reads, and a consent row's existence is the proof a coercion review turns on. M20 is a WORKFORCE-safety
+  // module, so its patient surface is exactly two logical M5 references — `safety_incident.patient_id` and
+  // `safety_sos_alert.last_known_patient_id`. The eraseFn redacts the free text that §3.5 says may describe
+  // the patient (incident narrative/witnesses/action plan/location description/reopen reason/WC reference;
+  // SOS resolution narrative + dispatch payload), redacts `action_taken` on the attached acknowledgments,
+  // and LAST severs the linkage itself. The clinician's own coordinates, the whole
+  // `safety_sos_location_stream` (whose destruction path is the §3.7 resolve+90d sweep), both check-in
+  // tables (no patient column at all — their only linkage is M17's `visit_id`), the policy/version replay
+  // rows, the supervisor subscriptions, the advisory polygons and the clinician's own emergency-contact
+  // consent are NEVER touched: they are a different data subject's record, and a patient's right to erasure
+  // does not reach the clinician's workers-comp evidence. `subjectId` is the patient being destroyed.
+  | "safety_record";

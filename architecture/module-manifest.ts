@@ -658,7 +658,11 @@ export const MODULES: ModuleDef[] = [
     // `SAFETY_POLICY_FLOOR` constant §3.1 puts in that package — and its domain services under
     // `apps/backend/src/modules/20-field-safety` (the M6 / M19 precedent for a module with no feature
     // package).
-    dependsOn: [17, 36],
+    dependsOn: [1, 17, 36], // +M1 (M20-T02): the M1 FOUNDATION edge every implemented module carries —
+    // `@wardenx/db` (the thirteen owned tables), `@wardenx/tenancy`'s withOrgContext, and the bootstrap
+    // eraser registry the §3.7 `safety_record` eraser registers into. Not a widening of the module graph:
+    // it is the same edge M15/M16/M18/M19/M21 each added at their first backend task, and Wave P2-2
+    // acceptance #1 governs codePaths (no `packages/safety-client`), which is unchanged.
     ownedTables: [
       "safety_acknowledgment",
       "safety_check_in",

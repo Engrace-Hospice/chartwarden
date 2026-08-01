@@ -161,6 +161,20 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // are configuration and CoP 418.100(c)(2) roster evidence, not patient data, and stay untouched. The
   // `subjectId` is the patient.
   "triage_record",
+  // M20-T02 (the schema task) registers the data-class contract the moment the tables exist; the Phase-0
+  // deny-stub (wireErasers) stands until the composition root binds the REAL eraser with a DB client. This
+  // one DELETES NOTHING (§3.7): ten of M20's thirteen tables are filed "structural row retained with
+  // redacted markers", because the SOS event-of-record IS the row and an incident's category/severity are
+  // what a later review reads. M20 is a WORKFORCE-safety module — its patient surface is exactly two logical
+  // M5 references — so the erase redacts the free text §3.5 says may describe the patient (incident
+  // narrative / witnesses / action plan / location description / reopen reason / WC reference; the SOS
+  // resolution narrative and dispatch payload), redacts `action_taken` on the attached acknowledgments, and
+  // LAST severs `patient_id` / `last_known_patient_id` / `last_known_visit_id`. The clinician's own SOS
+  // coordinates, the whole `safety_sos_location_stream`, both check-in tables (no patient column at all),
+  // the policy/version replay rows, the supervisor subscriptions, the advisory polygons and the clinician's
+  // own emergency-contact consent are never touched — a different data subject's record. The `subjectId` is
+  // the patient.
+  "safety_record",
   // M34: a TENANT's control-plane footprint (NOT patient data) on offboarding (D6, §3.5/§8.4). M34 registers
   // the REAL eraser via the composition-root hook over this deny-stub — it deletes the org's operational
   // working rows (onboarding_task / support_consent_grant / support_session headers / platform_tenant_baa_record

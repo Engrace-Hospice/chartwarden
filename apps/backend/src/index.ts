@@ -111,6 +111,10 @@ import {
   registerTriageErasers,
 } from "./modules/19-oncall/index";
 import {
+  createDrizzleSafetyEraseStore,
+  registerSafetyErasers,
+} from "./modules/20-field-safety/index";
+import {
   M21_OUTBOX_EVENTS,
   buildDrizzleM21ReadService,
   buildDrizzleM21WriteService,
@@ -791,6 +795,15 @@ export function wireModuleErasers(deps: { db?: DbClient } = {}): void {
   // / protocol catalog and the CoP 418.100(c)(2) `on_call_shift` roster evidence are never touched, §3.7).
   // The Drizzle store binds when a DB client is present; without one the slice's in-memory store stands.
   registerTriageErasers(deps.db ? { store: createDrizzleTriageEraseStore(deps.db) } : {});
+  // M20-T02 — `safety_record` (per-PATIENT destruction-cert callback that DELETES NOTHING: §3.7 files ten
+  // of M20's thirteen tables as "structural row retained with redacted markers". It redacts the free text
+  // §3.5 says may describe the patient on the incidents and SOS alerts linked to them, redacts `action_taken`
+  // on the attached acknowledgments, and LAST severs the patient/visit linkage. The clinician's own SOS
+  // coordinates and location stream, both check-in tables, the policy-version replay rows, the supervisor
+  // subscriptions, the advisory polygons and the clinician's emergency-contact consent are never touched —
+  // that is a different data subject's workers-comp evidence.) The Drizzle store binds when a DB client is
+  // present; without one the slice's in-memory store stands.
+  registerSafetyErasers(deps.db ? { store: createDrizzleSafetyEraseStore(deps.db) } : {});
   // Phase-1 data-class owners append here as they land.
 }
 
