@@ -14,7 +14,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { electionSignatureMethod, electionSignerKind } from "../../enums";
+import { electionSignatureMethod, electionSignerKind, electionStatementStatus } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
@@ -36,14 +36,17 @@ export const electionStatements = pgTable(
       .references(() => electionPeriods.id, { onDelete: "restrict" }),
     patientId: uuid("patient_id").notNull(), // M5 patient (app-validated; no cross-module FK)
     signerKind: electionSignerKind("signer_kind").notNull(),
+    // §7.3 draft → signed → voided (M6L-T03). A draft carries only intent; the signed-document fields
+    // below are nullable at draft and filled by signElection.
+    status: electionStatementStatus("status").notNull().default("drafted"),
     representativeConsentId: uuid("representative_consent_id"), // M39 consent (app-validated)
     representativeRelationship: text("representative_relationship"),
-    patientNameAtSigning: text("patient_name_at_signing").notNull(),
-    hospiceNameAtSigning: text("hospice_name_at_signing").notNull(),
+    patientNameAtSigning: text("patient_name_at_signing"),
+    hospiceNameAtSigning: text("hospice_name_at_signing"),
     attendingPhysicianId: uuid("attending_physician_id"), // M40 physician (app-validated)
-    curativeCareAcknowledgment: boolean("curative_care_acknowledgment").notNull(),
-    signedAt: date("signed_at").notNull(),
-    signatureMethod: electionSignatureMethod("signature_method").notNull(),
+    curativeCareAcknowledgment: boolean("curative_care_acknowledgment"),
+    signedAt: date("signed_at"),
+    signatureMethod: electionSignatureMethod("signature_method"),
     documentId: uuid("document_id"), // M22 document (app-validated)
     stateAddendum: jsonb("state_addendum").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

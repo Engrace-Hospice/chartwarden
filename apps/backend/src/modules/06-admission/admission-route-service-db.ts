@@ -1,18 +1,22 @@
-// apps/backend/src/modules/06-admission — PRODUCTION AdmissionRouteService (M6L-T01 reads, T02 writes).
+// apps/backend/src/modules/06-admission — PRODUCTION AdmissionRouteService (M6L-T01 reads, T02–T03 writes).
 //
 // READS (referral inbox, admission census + detail, election periods, compliance windows) run as real
-// Drizzle queries under `withOrgContext`, RLS-scoped as the unprivileged `wardenx_app` role. The T02
-// referral + admission WRITE lifecycle (intake → triage → accept → draft-from-referral cascade → NOR ack
-// → activate → hold/resume) is real too: it drives the §2.3.1 pure state machines (`transitionAdmission`),
-// enforces optimistic concurrency (stale `ifVersion` → 409), executes the §2.5 declarative side effects
-// (compliance windows open/close, `activated_at`), and emits the `m6.*` events on the transactional
-// outbox. The election/CTI/F2F/LOC/discharge writes still fail-closed 501 until M6L-T03..T05.
+// Drizzle queries under `withOrgContext`, RLS-scoped as the unprivileged `wardenx_app` role. The WRITE
+// lifecycle is real for T02 (referral intake → triage → accept → draft-from-referral cascade → NOR ack →
+// activate → hold/resume) and T03 (election statement draft/sign/void; election period create/patch; CTI
+// draft/hospice-MD sign [recert activates its period]/attending sign/void/mark-late). Each write drives
+// the §2.3.1 pure state machines, enforces optimistic concurrency (stale `ifVersion` → 409), executes the
+// §2.5 declarative effects (windows open/close, timestamps), and emits `m6.*` on the transactional outbox.
+// The F2F/LOC/discharge/transfer/revocation/compliance writes still fail-closed 501 until M6L-T04..T05.
 import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
 import { type AnyColumn, type SQL, and, desc, eq, ne, sql } from "drizzle-orm";
 import { computeActivationGate } from "./intake";
+import { decideRecertSign } from "./certification/recert";
+import { computeWrittenCertDeadline } from "./certification/window-math";
+import type { CtiDraftInput } from "./routes/service";
 import type { SideEffect } from "./state-machines/effects";
 import { type AdmissionEvent, type AdmissionState, transitionAdmission } from "./state-machines/admission";
 import {
@@ -101,6 +105,10 @@ const notImpl = (): never => {
     501,
   );
 };
+
+/** Org-TZ for the D4 written-cert deadline until a per-org TZ is threaded through the write path. */
+const DEFAULT_ORG_TZ = "America/Los_Angeles";
+const conflict = (msg: string): WardenXError => new WardenXError("INVALID_STATE", msg, 409);
 
 /** §2.5 compliance-window deadlines from open instant (only the T02 `createAdmission` kinds). */
 const WINDOW_HOURS: Record<string, number> = {
@@ -381,9 +389,12 @@ export function createDbAdmissionRouteService(
     // ── Election reads ───────────────────────────────────────────────────────────────────────────
     async getElectionStatement(organizationId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        // election_statement has no status column; a persisted row is a signed statement (signed_at NOT NULL).
-        const [r] = await tx.select({ id: ES.id, version: ES.version }).from(ES).where(eq(ES.id, id)).limit(1);
-        return r ? { id: r.id, state: "signed", version: Number(r.version) } : null;
+        const [r] = await tx
+          .select({ id: ES.id, status: ES.status, version: ES.version })
+          .from(ES)
+          .where(eq(ES.id, id))
+          .limit(1);
+        return r ? { id: r.id, state: r.status, version: Number(r.version) } : null;
       });
     },
     async listElectionPeriods(organizationId, admissionId) {
@@ -674,16 +685,288 @@ export function createDbAdmissionRouteService(
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
-    draftElectionStatement: async () => notImpl(),
-    signElection: async () => notImpl(),
-    voidElection: async () => notImpl(),
-    createElectionPeriod: async () => notImpl(),
-    patchElectionPeriod: async () => notImpl(),
-    draftCti: async () => notImpl(),
-    signCtiHospiceMd: async () => notImpl(),
-    signCtiAttending: async () => notImpl(),
-    voidCti: async () => notImpl(),
-    markCtiLate: async () => notImpl(),
+    // ── M6L-T03: election statement + period ────────────────────────────────────────────────────
+    async draftElectionStatement(organizationId, admissionId, electionPeriodId): Promise<MutationResult> {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [adm] = await tx
+          .select({ patientId: ADM.patientId })
+          .from(ADM)
+          .where(eq(ADM.id, admissionId))
+          .limit(1);
+        if (!adm) throw new ResourceNotFoundError(admissionId);
+        const es = firstOrThrow(
+          await tx
+            .insert(ES)
+            .values({ organizationId, electionPeriodId, patientId: adm.patientId, signerKind: "patient" })
+            .returning({ id: ES.id, status: ES.status, version: ES.version }),
+          "election statement insert returned no row",
+        );
+        await outbox.publish(tx, {
+          eventName: "m6.election.drafted",
+          payload: { electionStatementId: es.id },
+          organizationId,
+          aggregateKind: "election_statement",
+          aggregateId: es.id,
+        });
+        return { id: es.id, state: es.status, version: Number(es.version) };
+      });
+    },
+    async signElection(organizationId, id, ifVersion, actorUserId): Promise<MutationResult> {
+      void actorUserId;
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [cur] = await tx
+          .select({ status: ES.status, version: ES.version })
+          .from(ES)
+          .where(eq(ES.id, id))
+          .limit(1);
+        if (!cur) throw new ResourceNotFoundError(id);
+        assertVersion(id, Number(cur.version), ifVersion);
+        if (cur.status !== "drafted") throw conflict(`election statement ${id} is not draftable from '${cur.status}'`);
+        const [r] = await tx
+          .update(ES)
+          .set({
+            status: "signed",
+            signedAt: new Date().toISOString().slice(0, 10),
+            signatureMethod: "electronic_witnessed",
+            curativeCareAcknowledgment: true,
+            version: sql`${ES.version} + 1`,
+            updatedAt: now(),
+          })
+          .where(and(eq(ES.id, id), eq(ES.version, ifVersion)))
+          .returning({ id: ES.id, status: ES.status, version: ES.version });
+        if (!r) throw new ResourceNotFoundError(id);
+        await outbox.publish(tx, {
+          eventName: "m6.election.signed",
+          payload: { electionStatementId: id },
+          organizationId,
+          aggregateKind: "election_statement",
+          aggregateId: id,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    async voidElection(organizationId, id, reason, ifVersion): Promise<MutationResult> {
+      void reason;
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [cur] = await tx.select({ version: ES.version }).from(ES).where(eq(ES.id, id)).limit(1);
+        if (!cur) throw new ResourceNotFoundError(id);
+        assertVersion(id, Number(cur.version), ifVersion);
+        const [r] = await tx
+          .update(ES)
+          .set({ status: "voided", version: sql`${ES.version} + 1`, updatedAt: now() })
+          .where(and(eq(ES.id, id), eq(ES.version, ifVersion)))
+          .returning({ id: ES.id, status: ES.status, version: ES.version });
+        if (!r) throw new ResourceNotFoundError(id);
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    async createElectionPeriod(organizationId, admissionId): Promise<MutationResult> {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [adm] = await tx.select({ id: ADM.id }).from(ADM).where(eq(ADM.id, admissionId)).limit(1);
+        if (!adm) throw new ResourceNotFoundError(admissionId);
+        const [max] = await tx
+          .select({ seq: sql<number>`coalesce(max(${EP.sequenceNumber}), 0)` })
+          .from(EP)
+          .where(eq(EP.admissionId, admissionId));
+        const ep = firstOrThrow(
+          await tx
+            .insert(EP)
+            .values({
+              organizationId,
+              admissionId,
+              sequenceNumber: Number(max?.seq ?? 0) + 1,
+              periodKind: "ninety_day",
+            })
+            .returning({ id: EP.id, status: EP.status, version: EP.version }),
+          "election period insert returned no row",
+        );
+        await outbox.publish(tx, {
+          eventName: "m6.election.period_started",
+          payload: { electionPeriodId: ep.id, admissionId },
+          organizationId,
+          aggregateKind: "election_period",
+          aggregateId: ep.id,
+        });
+        return { id: ep.id, state: ep.status, version: Number(ep.version) };
+      });
+    },
+    async patchElectionPeriod(organizationId, id, ifVersion): Promise<MutationResult> {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [cur] = await tx.select({ version: EP.version }).from(EP).where(eq(EP.id, id)).limit(1);
+        if (!cur) throw new ResourceNotFoundError(id);
+        assertVersion(id, Number(cur.version), ifVersion);
+        const [r] = await tx
+          .update(EP)
+          .set({ version: sql`${EP.version} + 1`, updatedAt: now() })
+          .where(and(eq(EP.id, id), eq(EP.version, ifVersion)))
+          .returning({ id: EP.id, status: EP.status, version: EP.version });
+        if (!r) throw new ResourceNotFoundError(id);
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+
+    // ── M6L-T03: certification of terminal illness (CTI) ────────────────────────────────────────
+    async draftCti(organizationId, input: CtiDraftInput, actorUserId): Promise<MutationResult> {
+      void actorUserId;
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [period] = await tx
+          .select({ id: EP.id })
+          .from(EP)
+          .where(eq(EP.id, input.electionPeriodId))
+          .limit(1);
+        if (!period) throw new ResourceNotFoundError(input.electionPeriodId);
+        const cti = firstOrThrow(
+          await tx
+            .insert(CTI)
+            .values({
+              organizationId,
+              electionPeriodId: input.electionPeriodId,
+              hospiceMdId: input.hospiceMedicalDirectorId,
+              attendingMdId: input.attendingPhysicianId ?? null,
+            })
+            .returning({ id: CTI.id, status: CTI.status, version: CTI.version }),
+          "cti insert returned no row",
+        );
+        await outbox.publish(tx, {
+          eventName: "m6.cti.drafted",
+          payload: { ctiId: cti.id },
+          organizationId,
+          aggregateKind: "certification_of_terminal_illness",
+          aggregateId: cti.id,
+        });
+        return { id: cti.id, state: cti.status, version: Number(cti.version) };
+      });
+    },
+    async signCtiHospiceMd(organizationId, id, ifVersion, actorUserId): Promise<MutationResult> {
+      void actorUserId;
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [cti] = await tx
+          .select({ status: CTI.status, version: CTI.version, epId: CTI.electionPeriodId, att: CTI.attendingMdId })
+          .from(CTI)
+          .where(eq(CTI.id, id))
+          .limit(1);
+        if (!cti) throw new ResourceNotFoundError(id);
+        assertVersion(id, Number(cti.version), ifVersion);
+        if (cti.status === "signed" || cti.status === "voided")
+          throw conflict(`cti ${id} cannot be hospice-MD-signed from '${cti.status}'`);
+        const [period] = await tx
+          .select({ seq: EP.sequenceNumber })
+          .from(EP)
+          .where(eq(EP.id, cti.epId))
+          .limit(1);
+        // W-CTI-03/04: period-1-with-attending → awaiting_attending; a recert signs on the MD alone and
+        // advances its period to active (§7.3).
+        const outcome = decideRecertSign({
+          sequence: period?.seq ?? 1,
+          patientHasAttending: cti.att != null,
+          hospiceMdSigned: true,
+          attendingSigned: false,
+        });
+        const [r] = await tx
+          .update(CTI)
+          .set({ status: outcome.progress, hospiceMdSignedAt: now(), version: sql`${CTI.version} + 1` })
+          .where(and(eq(CTI.id, id), eq(CTI.version, ifVersion)))
+          .returning({ id: CTI.id, status: CTI.status, version: CTI.version });
+        if (!r) throw new ResourceNotFoundError(id);
+        if (outcome.activatesPeriod && cti.epId) {
+          await tx
+            .update(EP)
+            .set({ status: "active", version: sql`${EP.version} + 1` })
+            .where(and(eq(EP.id, cti.epId), ne(EP.status, "active")));
+          await outbox.publish(tx, {
+            eventName: "m6.election.period_started",
+            payload: { electionPeriodId: cti.epId },
+            organizationId,
+            aggregateKind: "election_period",
+            aggregateId: cti.epId,
+          });
+        }
+        if (outcome.fullySigned) {
+          await outbox.publish(tx, {
+            eventName: "m6.cti.signed",
+            payload: { ctiId: id },
+            organizationId,
+            aggregateKind: "certification_of_terminal_illness",
+            aggregateId: id,
+          });
+        }
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    async signCtiAttending(organizationId, id, ifVersion, actorUserId): Promise<MutationResult> {
+      void actorUserId;
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [cti] = await tx.select({ status: CTI.status, version: CTI.version }).from(CTI).where(eq(CTI.id, id)).limit(1);
+        if (!cti) throw new ResourceNotFoundError(id);
+        assertVersion(id, Number(cti.version), ifVersion);
+        if (cti.status !== "awaiting_attending")
+          throw conflict(`cti ${id} is not awaiting an attending signature (state '${cti.status}')`);
+        const [r] = await tx
+          .update(CTI)
+          .set({ status: "signed", attendingMdSignedAt: now(), version: sql`${CTI.version} + 1` })
+          .where(and(eq(CTI.id, id), eq(CTI.version, ifVersion)))
+          .returning({ id: CTI.id, status: CTI.status, version: CTI.version });
+        if (!r) throw new ResourceNotFoundError(id);
+        await outbox.publish(tx, {
+          eventName: "m6.cti.signed",
+          payload: { ctiId: id },
+          organizationId,
+          aggregateKind: "certification_of_terminal_illness",
+          aggregateId: id,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    async voidCti(organizationId, id, reason, ifVersion): Promise<MutationResult> {
+      void reason;
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [cti] = await tx.select({ version: CTI.version }).from(CTI).where(eq(CTI.id, id)).limit(1);
+        if (!cti) throw new ResourceNotFoundError(id);
+        assertVersion(id, Number(cti.version), ifVersion);
+        const [r] = await tx
+          .update(CTI)
+          .set({ status: "voided", version: sql`${CTI.version} + 1` })
+          .where(and(eq(CTI.id, id), eq(CTI.version, ifVersion)))
+          .returning({ id: CTI.id, status: CTI.status, version: CTI.version });
+        if (!r) throw new ResourceNotFoundError(id);
+        await outbox.publish(tx, {
+          eventName: "m6.cti.voided",
+          payload: { ctiId: id },
+          organizationId,
+          aggregateKind: "certification_of_terminal_illness",
+          aggregateId: id,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    async markCtiLate(organizationId, id, ifVersion): Promise<MutationResult & { writtenCertDeadlineAt: string }> {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [cti] = await tx
+          .select({ status: CTI.status, version: CTI.version, periodStart: CTI.periodStart })
+          .from(CTI)
+          .where(eq(CTI.id, id))
+          .limit(1);
+        if (!cti) throw new ResourceNotFoundError(id);
+        assertVersion(id, Number(cti.version), ifVersion);
+        const [r] = await tx
+          .update(CTI)
+          .set({ signedLate: true, version: sql`${CTI.version} + 1` })
+          .where(and(eq(CTI.id, id), eq(CTI.version, ifVersion)))
+          .returning({ id: CTI.id, status: CTI.status, version: CTI.version });
+        if (!r) throw new ResourceNotFoundError(id);
+        await outbox.publish(tx, {
+          eventName: "m6.cti.late_flagged",
+          payload: { ctiId: id },
+          organizationId,
+          aggregateKind: "certification_of_terminal_illness",
+          aggregateId: id,
+        });
+        // D4: written-cert deadline = period_start + 2 calendar days at 23:59 org-TZ.
+        const periodStart = cti.periodStart ?? new Date().toISOString().slice(0, 10);
+        const writtenCertDeadlineAt = computeWrittenCertDeadline(periodStart, DEFAULT_ORG_TZ);
+        return { id: r.id, state: r.status, version: Number(r.version), writtenCertDeadlineAt };
+      });
+    },
     scheduleF2f: async () => notImpl(),
     completeF2f: async () => notImpl(),
     attestF2f: async () => notImpl(),
