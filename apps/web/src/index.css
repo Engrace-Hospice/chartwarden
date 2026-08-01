@@ -75,10 +75,23 @@
   --radius-xl: 1rem;
   --radius-2xl: 1.5rem;
 
-  /* Spacing scale (4px base, DESIGN.md §4.1). A distinct `--space-*` namespace (NOT Tailwind's
-     `--spacing-*`, so it never clashes with the p-/m-/gap- utilities). Consumed in inline styles via
-     the `t.space*` tokens; theme-invariant. The 5→6 step is intentional (24→28px, the No-Line
-     list-item separation, §6 hard rule §10.x). */
+  /* Elevation */
+  --shadow-soft: 0 4px 24px rgba(28, 27, 26, 0.05);
+  --shadow-float: 0 12px 48px rgba(28, 27, 26, 0.1);
+  --shadow-ambient: 0 8px 32px rgba(59, 69, 168, 0.06);
+}
+
+/* Spacing scale (4px base, DESIGN.md §4.1). Theme-invariant; consumed ONLY from inline styles via the
+   `t.space*` tokens (212 call sites), never as a Tailwind utility — which is exactly why it must live
+   HERE and not in `@theme`.
+   Tailwind v4 emits an `@theme` variable only when it belongs to a recognised namespace AND a utility
+   references it. `--space-*` is deliberately not Tailwind's `--spacing-*` (so it cannot clash with the
+   p-/m-/gap- utilities), so Tailwind recognised nothing and dropped all nine SILENTLY: no build error,
+   no gate failure, just `padding: var(--space-5)` computing to 0px and `gap: var(--space-4)` to
+   `normal` on every screen in the app. That is what made page text run flush to the viewport edge.
+   A plain `:root` rule is emitted verbatim, so the scale survives regardless of utility usage.
+   The 5→6 step is intentional (24→28px, the No-Line list-item separation, §6 hard rule §10.x). */
+:root {
   --space-1: 0.25rem; /* 4 — tight icon gaps */
   --space-2: 0.5rem; /* 8 — inline element spacing */
   --space-3: 0.75rem; /* 12 — dense list/row padding */
@@ -88,11 +101,6 @@
   --space-7: 2rem; /* 32 — section gaps */
   --space-8: 2.5rem; /* 40 — major section separation */
   --space-9: 3rem; /* 48 — page vertical rhythm */
-
-  /* Elevation */
-  --shadow-soft: 0 4px 24px rgba(28, 27, 26, 0.05);
-  --shadow-float: 0 12px 48px rgba(28, 27, 26, 0.1);
-  --shadow-ambient: 0 8px 32px rgba(59, 69, 168, 0.06);
 }
 
 /* Twilight dark mode (class strategy on <html>). Designed, not inverted. */
