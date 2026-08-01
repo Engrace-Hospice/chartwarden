@@ -28,12 +28,12 @@ export const admissions = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
-    providerEntityId: uuid("provider_entity_id")
-      .notNull()
-      .references(() => providerEntities.id, { onDelete: "restrict" }),
-    locationId: uuid("location_id")
-      .notNull()
-      .references(() => locations.id, { onDelete: "restrict" }),
+    // Nullable at draft (M6L-T02): a referral-minted draft admission has no provider entity/location
+    // assigned until the §7.2 admission wizard runs, before activation. See migration 0123.
+    providerEntityId: uuid("provider_entity_id").references(() => providerEntities.id, {
+      onDelete: "restrict",
+    }),
+    locationId: uuid("location_id").references(() => locations.id, { onDelete: "restrict" }),
     patientId: uuid("patient_id").notNull(), // M5 patient (app-validated; no cross-module FK)
     referralId: uuid("referral_id").references(() => referrals.id, { onDelete: "set null" }),
     status: admissionStatus("status").notNull().default("referred"),
@@ -43,7 +43,7 @@ export const admissions = pgTable(
     releasedAt: timestamp("released_at", { withTimezone: true }),
     holdReason: text("hold_reason"),
     dischargedAt: timestamp("discharged_at", { withTimezone: true }),
-    admittedByPhysicianId: uuid("admitted_by_physician_id").notNull(), // M40 physician (app-validated)
+    admittedByPhysicianId: uuid("admitted_by_physician_id"), // M40 physician; nullable at draft (0123)
     attendingPhysicianId: uuid("attending_physician_id"), // M40 physician (app-validated)
     primaryCaregiverId: uuid("primary_caregiver_id"), // M5 caregiver (app-validated)
     transferredIn: boolean("transferred_in").notNull().default(false),

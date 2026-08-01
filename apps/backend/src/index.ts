@@ -1211,6 +1211,7 @@ if ((import.meta as { main?: boolean }).main) {
   // dispatcher's namespace check requires it). Each forwards the caller's open tx + envelope to the shared
   // publisher. M30/M33/M34 — M34's lifecycle outbox now binds too (#107; its emit is gated to the conformant
   // `m34.tenant.provisioned` event, so no mutation rolls back).
+  const m6OutboxPublisher = bindCallerModule(txOutboxPublisher, "m6");
   const m15OutboxPublisher = bindCallerModule(txOutboxPublisher, "m15");
   const m16OutboxPublisher = bindCallerModule(txOutboxPublisher, "m16");
   const m19OutboxPublisher = bindCallerModule(txOutboxPublisher, "m19");
@@ -1288,7 +1289,7 @@ if ((import.meta as { main?: boolean }).main) {
           mountIdentityRoutes(app, dbHandle.db, createDbAdminMembershipReader(dbHandle.db));
           mountAuditRoutes(app, dbHandle.db); // M4 — audit-log search on the real Drizzle AuditQuery
           mountPatientRoutes(app, dbHandle.db); // M5 — patient census/chart READS on the real patient table
-          mountAdmissionRoutes(app, dbHandle.db); // M6 — admission census/detail/referral/compliance READS on real tables under RLS (M6L-T01; writes → M6L-T02+)
+          mountAdmissionRoutes(app, dbHandle.db, m6OutboxPublisher); // M6 — reads + the T02 referral/admission write lifecycle over Drizzle+RLS, m6.* transactional outbox
           // Clinical core (M7–M14, M17, M18, M22) — reads mounted over the real Drizzle route services under
           // RLS, replacing the retired in-memory scaffold. Writes fail-closed 501 until each module's write
           // lifecycle lands. See each module's `*-route-service-db.ts`.

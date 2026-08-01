@@ -7,6 +7,7 @@
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import {
+  type AdmissionWriteOutboxPort,
   createDbAdmissionAbacResolver,
   createDbAdmissionRouteService,
 } from "./admission-route-service-db";
@@ -22,9 +23,13 @@ export * from "./state-machines";
  * 501 until the M6L-T02+ Drizzle write lifecycle lands. Replaces the in-memory clinical-core scaffold
  * mount for M6.
  */
-export function mountAdmissionRoutes(app: FastifyInstance, db: DbClient): void {
+export function mountAdmissionRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  outbox?: AdmissionWriteOutboxPort,
+): void {
   _registerM6Abac({ resolver: createDbAdmissionAbacResolver(db) });
-  _registerM6Routes(app, { service: createDbAdmissionRouteService(db) });
+  _registerM6Routes(app, { service: createDbAdmissionRouteService(db, outbox) });
 }
 
 // M6-T05 — the six §4.7 reader seams (ElectionPeriod/Certification/FaceToFace/LevelOfCare/
