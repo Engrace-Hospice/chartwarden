@@ -13,4 +13,4 @@ Architecture section 10.6; Module 22 Documents. Registered by Module 32 as capab
 State: PROPOSED. Module 32's Phase-1 inventory seeds it DESIGN_REVIEW; that advance is not ratified here and requires the section 5 approval workflow. Disabled by default and deny-stubbed regardless while `ai.full` is off.
 
 ## Controls
-Kill switch: `ai.doclens_sud_detect_kill`. A detector governing Part 2 handling must not act alone: human confirmation before the classification changes record handling, deterministic fallback to manual Part 2 marking, and full audit of every invocation are required before activation.
+Kill switch: activate an `ai_kill_switch_state` row for capability_key `doclens_sud_detect` — platform-wide (`organization_id IS NULL`) or for one tenant. The platform row and a tenant row OR together: neither overrides the other, so lifting one does not resume a capability the other still stops. A detector governing Part 2 handling must not act alone: human confirmation before the classification changes record handling, deterministic fallback to manual Part 2 marking, and full audit of every invocation are required before activation.

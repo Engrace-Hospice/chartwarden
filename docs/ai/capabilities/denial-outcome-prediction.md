@@ -13,4 +13,4 @@ Module 25 Remittance and Denials; Module 32 AI Platform. Tabular ML (XGBoost on 
 State: PROPOSED. Phase 2 or later; no Phase-1 consumer surface.
 
 ## Controls
-Kill switch: `ai.denial_outcome_prediction_kill`. The prediction ranks work, it does not close it: no appeal may be abandoned by the system on the strength of a score, and the decision to drop an appeal stays with a named user. Monitoring for payer-correlated bias and periodic re-evaluation are required.
+Kill switch: activate an `ai_kill_switch_state` row for capability_key `denial_outcome_prediction` — platform-wide (`organization_id IS NULL`) or for one tenant. The platform row and a tenant row OR together: neither overrides the other, so lifting one does not resume a capability the other still stops. The prediction ranks work, it does not close it: no appeal may be abandoned by the system on the strength of a score, and the decision to drop an appeal stays with a named user. Monitoring for payer-correlated bias and periodic re-evaluation are required.
