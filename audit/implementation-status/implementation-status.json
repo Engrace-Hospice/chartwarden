@@ -1,8 +1,8 @@
 {
   "totals": {
     "Implemented": 33,
-    "Partial": 0,
-    "Placeholder": 7
+    "Partial": 1,
+    "Placeholder": 6
   },
   "rows": [
     {
@@ -274,14 +274,14 @@
     {
       "id": 20,
       "module": "M20 Field Safety",
-      "status": "Placeholder",
+      "status": "Partial",
       "spec": true,
       "schema": false,
       "migration": false,
       "routes": false,
       "enriched": false,
       "screens": false,
-      "tests": false,
+      "tests": true,
       "adapter": null,
       "liveInfra": false
     },

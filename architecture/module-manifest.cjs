@@ -586,7 +586,11 @@ exports.MODULES = [
   {
     id: 20,
     name: "Field Safety",
-    codePaths: ["apps/backend/src/modules/20-field-safety"],
+    codePaths: [
+      "apps/backend/src/modules/20-field-safety",
+      "apps/web/src/modules/20-field-safety",
+    ], // +web: Track B in-task screens (ADR-0030), land in M20-T07. `packages/safety-client` (spec §3.1)
+    // is NOT adopted — see the .ts manifest for the full read.
     dependsOn: [17, 36],
     ownedTables: [
       "safety_acknowledgment",

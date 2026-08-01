@@ -647,7 +647,17 @@ export const MODULES: ModuleDef[] = [
   {
     id: 20,
     name: "Field Safety",
-    codePaths: ["apps/backend/src/modules/20-field-safety"],
+    codePaths: [
+      "apps/backend/src/modules/20-field-safety",
+      "apps/web/src/modules/20-field-safety",
+    ], // +web: Track B in-task screens (ADR-0030), land in M20-T07. NOTE: the spec's §3.1 layout also
+    // proposes a `packages/safety-client` leaf package (seams / events / alert payloads / policy floor)
+    // — NOT adopted. Wave P2-2 acceptance #1 limits this wave's manifest changes to the triage-vendors
+    // codePath (ADR-0028, already applied) and the two Track B web codePaths, so M20's leaf CONTRACTS
+    // live in `packages/types/src/safety.ts` (ADR-0005 D1/D2) — including the §3.2 Phase-E
+    // `SAFETY_POLICY_FLOOR` constant §3.1 puts in that package — and its domain services under
+    // `apps/backend/src/modules/20-field-safety` (the M6 / M19 precedent for a module with no feature
+    // package).
     dependsOn: [17, 36],
     ownedTables: [
       "safety_acknowledgment",
