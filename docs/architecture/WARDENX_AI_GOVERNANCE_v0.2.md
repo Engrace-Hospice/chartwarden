@@ -207,12 +207,13 @@ Each AI capability is registered, classified, and tracked. Maintained in `docs/a
 | **30-day hospitalization risk prediction** | 32 (consumed by 19, 14, 16) | High (clinical decision support) | Module 32 §2.4 |
 | **Bereavement risk narrative augmentation** | 16 Bereavement | Medium (service intensity, not care) | Module 32 §2.4 |
 | **Denial outcome / appeal probability prediction** | 25 Remittance & Denials | Medium (financial decision support) | Module 32 §2.4 |
-| **Level of care prediction** | 32 (care plan + IDG surfaces) | High (**assigned**, see capability doc) | Module 32 §2.4 |
+| **Level of care prediction** | 32 (care plan + IDG surfaces) | High (clinical decision support) | Module 32 §2.4 |
 
 The final six were added from Module 32's §2.4 Phase-1 inventory, which had registered them with no
 catalog entry. Every risk class above is inherited from a stated source except **level of care
-prediction**, which no source classified; its High is assigned in the capability doc and needs
-ratification before that capability advances past PROPOSED.
+prediction**, which no source classified — its High originated in the capability doc and was
+**ratified 2026-08-01**. That classification is settled; §4.2's standing reassignment rule still
+applies to it as it does to every other entry.
 
 ### 4.2 Risk Classification
 
