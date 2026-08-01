@@ -298,6 +298,18 @@ describe.skipIf(!DB_URL)(
     // Every covered table's policy must key ONLY on the canonical app.org_id session variable — the
     // same rule the check-tenancy.ts gate enforces. A policy that joined on tenant_account or used
     // pg_has_role(...) would be the M34-F09 regression (silent cross-tenant read) this test guards.
+    // GUARD FOR EVERY CASE BELOW. RLS is not enforced for a role holding BYPASSRLS, so if the runtime
+    // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
+    // scripts/db/migrate.ts grants exactly that behind WARDENX_DEV_BYPASSRLS=1, so this is reachable,
+    // not theoretical. Six of fifteen suites asserted this and NONE of the four suites CI runs did.
+    it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+      const { rows } = await db.query<{ rolbypassrls: boolean }>(
+        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].rolbypassrls).toBe(false);
+    });
+    
     it("§3.10 every covered policy keys ONLY on the canonical app.org_id variable", () => {
       const rls = readFileSync(join(MIGRATIONS_DIR, "0052_saas_m34_rls.sql"), "utf8");
       for (const { table } of [...COVERED, { table: "tenant_key_ring" }]) {

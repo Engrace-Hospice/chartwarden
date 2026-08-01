@@ -42,11 +42,20 @@ export function registerCopRoutes(app: FastifyInstance, deps: CopRouteDeps): voi
   const { service } = deps;
 
   // R-80 — list the 23 CoP citation rows with current status (cursor-paginated). §4.1.
-  app.get("/api/v1/quality/cop/citations", { preHandler: [COP_READ] }, async (request) => {
-    const actor = actorOf(request);
-    const q = parse(CopCitationListQuerySchema, request.query);
-    return service.listCopCitations(actor, q.cursor, q.limit);
-  });
+  app.get(
+    "/api/v1/quality/cop/citations",
+    {
+      preHandler: [COP_READ],
+      config: {
+        auditRead: { none: "CMS survey citations against the ORG, not against any patient" },
+      },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const q = parse(CopCitationListQuerySchema, request.query);
+      return service.listCopCitations(actor, q.cursor, q.limit);
+    },
+  );
 
   // R-81 — update a citation's status / evidence pointers. §4.1/§4.2.
   app.patch(

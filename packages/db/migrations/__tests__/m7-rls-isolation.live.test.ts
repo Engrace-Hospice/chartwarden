@@ -214,6 +214,18 @@ describe.skipIf(!DB_URL)("M7 Care Plan — RLS cross-tenant denial — LIVE Post
     if (db) await db.end();
   });
 
+  // GUARD FOR EVERY CASE BELOW. RLS is not enforced for a role holding BYPASSRLS, so if the runtime
+  // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
+  // scripts/db/migrate.ts grants exactly that behind WARDENX_DEV_BYPASSRLS=1, so this is reachable,
+  // not theoretical. Six of fifteen suites asserted this and NONE of the four suites CI runs did.
+  it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+    const { rows } = await db.query<{ rolbypassrls: boolean }>(
+      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].rolbypassrls).toBe(false);
+  });
+  
   it("every M7 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
     const rls = readFileSync(
       join(MIGRATIONS_DIR, "0029_care_plan_m7_rls_audit_triggers.sql"),

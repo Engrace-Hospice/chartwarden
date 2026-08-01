@@ -126,7 +126,10 @@ export function createDbBreakGlassStore(db: DbClient): BreakGlassStore {
 
     async findActiveGrant(organizationId, actorUserId, targetPatientId, nowMs) {
       // The §2.2 read on every ABAC denial: an ACTIVE, unexpired grant by this actor in this org.
-      // Target match is applied in code: a null grant target = scope-level glass (covers any target).
+      // Target match is applied in code and requires a real patient id on BOTH sides — a null on
+      // either grants nothing. A null GRANT target was the scope-level wildcard that let one
+      // `breakglass.invoke` satisfy every ABAC predicate in the org; a null REQUEST target means
+      // the predicate is not patient-keyed, which emergency chart access does not cover.
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const rows = (await tx
           .select({
@@ -143,7 +146,7 @@ export function createDbBreakGlassStore(db: DbClient): BreakGlassStore {
             ),
           )) as Array<{ id: string; targetPatientId: string | null }>;
         const grant = rows.find(
-          (r) => r.targetPatientId === null || r.targetPatientId === targetPatientId,
+          (r) => r.targetPatientId !== null && r.targetPatientId === targetPatientId,
         );
         return grant ? { eventId: grant.id } : null;
       });

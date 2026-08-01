@@ -24,7 +24,7 @@ export function registerRuleConfigRoutes(app: FastifyInstance, deps: RuleConfigR
   const { readService, writeService } = deps;
 
   // 18 — read overlay + platform registry
-  app.get("/api/v1/medicaid-rule-config", { preHandler: [P("medicaid.rule_config.read")] }, async (request, reply) =>
+  app.get("/api/v1/medicaid-rule-config", { preHandler: [P("medicaid.rule_config.read")], config: { auditRead: { none: "Medicaid validation rule configuration — tenant policy, no patient data" } } }, async (request, reply) =>
     reply.send(await readService.listRuleConfig(actorOf(request))),
   );
 

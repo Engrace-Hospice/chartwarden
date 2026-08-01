@@ -61,7 +61,7 @@ export function registerMortalityRoutes(app: FastifyInstance, deps: MortalityRou
   // R-70 — list mortality reviews (cursor-paginated; PHI). §4.1/§4.1.2.
   app.get(
     "/api/v1/quality/mortality",
-    { preHandler: [MORT_READ, READ_INORG] },
+    { preHandler: [MORT_READ, READ_INORG], config: { auditRead: { resourceKind: "mortality_review", list: true } } },
     async (request) => {
       const actor = actorOf(request);
       const q = parse(MortalityListQuerySchema, request.query);
@@ -73,7 +73,7 @@ export function registerMortalityRoutes(app: FastifyInstance, deps: MortalityRou
   // R-71 — review detail (the three review dimensions). §4.1.
   app.get(
     "/api/v1/quality/mortality/:reviewId",
-    { preHandler: [MORT_READ, READ_INORG] },
+    { preHandler: [MORT_READ, READ_INORG], config: { auditRead: { resourceKind: "mortality_review", resourceIdParam: "reviewId" } } },
     async (request) => {
       const actor = actorOf(request);
       const { reviewId } = parse(ReviewIdParamsSchema, request.params);

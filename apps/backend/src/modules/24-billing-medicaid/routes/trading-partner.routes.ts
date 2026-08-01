@@ -25,7 +25,7 @@ export function registerTradingPartnerRoutes(app: FastifyInstance, deps: Trading
   const { readService, writeService } = deps;
 
   // 32 — list credentials per PE (secrets masked)
-  app.get("/api/v1/state-medicaid-trading-partner-credentials", { preHandler: [P("medicaid.trading_partner.read")] }, async (request, reply) =>
+  app.get("/api/v1/state-medicaid-trading-partner-credentials", { preHandler: [P("medicaid.trading_partner.read")], config: { auditRead: { none: "state trading-partner credential metadata (never the secret) — no patient data" } } }, async (request, reply) =>
     reply.send(
       await readService.listTradingPartnerCredentials(actorOf(request), parseQuery(ProviderEntityQuery, request.query).providerEntityId),
     ),

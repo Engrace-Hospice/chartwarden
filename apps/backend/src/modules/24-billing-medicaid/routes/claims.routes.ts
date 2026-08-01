@@ -49,7 +49,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
   );
 
   // 2 — list
-  app.get("/api/v1/medicaid-claims", { preHandler: [P("medicaid.claim.read")] }, async (request, reply) => {
+  app.get("/api/v1/medicaid-claims", { preHandler: [P("medicaid.claim.read")], config: { auditRead: { resourceKind: "medicaid_claim", list: true } } }, async (request, reply) => {
     const q = parseQuery(ClaimListQuery, request.query);
     return reply.send(
       await readService.listClaims(
@@ -71,7 +71,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
   // 3 — read one
   app.get(
     "/api/v1/medicaid-claims/:id",
-    { preHandler: [P("medicaid.claim.read"), ABAC_CLAIM("medicaid.claim.read", "medicaid_claim_in_billing_manager_caseload")] },
+    { preHandler: [P("medicaid.claim.read"), ABAC_CLAIM("medicaid.claim.read", "medicaid_claim_in_billing_manager_caseload")], config: { auditRead: { resourceKind: "medicaid_claim", resourceIdParam: "id" } } },
     async (request, reply) => {
       const claim = await readService.getClaim(actorOf(request), pParam(request, "id"));
       if (!claim) throw new NotFoundError("medicaid claim not found");
@@ -157,26 +157,26 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
   // 11 — lines
   app.get(
     "/api/v1/medicaid-claims/:id/lines",
-    { preHandler: [P("medicaid.claim.read"), ABAC_CLAIM("medicaid.claim.read", "medicaid_claim_in_billing_manager_caseload")] },
+    { preHandler: [P("medicaid.claim.read"), ABAC_CLAIM("medicaid.claim.read", "medicaid_claim_in_billing_manager_caseload")], config: { auditRead: { resourceKind: "medicaid_claim_line", resourceIdParam: "id", list: true } } },
     async (request, reply) => reply.send(await readService.listClaimLines(actorOf(request), pParam(request, "id"))),
   );
 
   // 12 — submissions
   app.get(
     "/api/v1/medicaid-claims/:id/submissions",
-    { preHandler: [P("medicaid.claim.read"), ABAC_CLAIM("medicaid.claim.read", "medicaid_claim_in_billing_manager_caseload")] },
+    { preHandler: [P("medicaid.claim.read"), ABAC_CLAIM("medicaid.claim.read", "medicaid_claim_in_billing_manager_caseload")], config: { auditRead: { resourceKind: "medicaid_claim_submission", resourceIdParam: "id", list: true } } },
     async (request, reply) => reply.send(await readService.listSubmissions(actorOf(request), pParam(request, "id"))),
   );
 
   // 13 — acknowledgments
   app.get(
     "/api/v1/medicaid-claims/:id/acknowledgments",
-    { preHandler: [P("medicaid.claim.read"), ABAC_CLAIM("medicaid.claim.read", "medicaid_claim_in_billing_manager_caseload")] },
+    { preHandler: [P("medicaid.claim.read"), ABAC_CLAIM("medicaid.claim.read", "medicaid_claim_in_billing_manager_caseload")], config: { auditRead: { resourceKind: "medicaid_claim_acknowledgment", resourceIdParam: "id", list: true } } },
     async (request, reply) => reply.send(await readService.listAcknowledgments(actorOf(request), pParam(request, "id"))),
   );
 
   // 14 — validation run (RBAC; the run→claim caseload narrowing binds with the M5 CaseloadProvider seam)
-  app.get("/api/v1/medicaid-validation-runs/:id", { preHandler: [P("medicaid.validation.read_run")] }, async (request, reply) => {
+  app.get("/api/v1/medicaid-validation-runs/:id", { preHandler: [P("medicaid.validation.read_run")], config: { auditRead: { resourceKind: "medicaid_validation_run", resourceIdParam: "id" } } }, async (request, reply) => {
     const run = await readService.getValidationRun(actorOf(request), pParam(request, "id"));
     if (!run) throw new NotFoundError("validation run not found");
     return reply.send(run);
@@ -185,7 +185,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
   // 15 — validation runs for claim
   app.get(
     "/api/v1/medicaid-claims/:id/validation-runs",
-    { preHandler: [P("medicaid.validation.read_run"), ABAC_CLAIM("medicaid.validation.read_run", "medicaid_claim_in_billing_manager_caseload")] },
+    { preHandler: [P("medicaid.validation.read_run"), ABAC_CLAIM("medicaid.validation.read_run", "medicaid_claim_in_billing_manager_caseload")], config: { auditRead: { resourceKind: "medicaid_validation_run", resourceIdParam: "id", list: true } } },
     async (request, reply) => reply.send(await readService.listValidationRuns(actorOf(request), pParam(request, "id"))),
   );
 
@@ -200,23 +200,23 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
   );
 
   // 17 — overrides audit
-  app.get("/api/v1/medicaid-validation-overrides", { preHandler: [P("medicaid.validation.read_override")] }, async (request, reply) =>
+  app.get("/api/v1/medicaid-validation-overrides", { preHandler: [P("medicaid.validation.read_override")], config: { auditRead: { none: "override AUDIT of rule suppressions — actor + rule key, no patient data" } } }, async (request, reply) =>
     reply.send(await readService.listOverrides(actorOf(request))),
   );
 
   // 35 — AR aging dashboard
-  app.get("/api/v1/medicaid-ar-dashboard", { preHandler: [P("medicaid.claim.read_ar_dashboard")] }, async (request, reply) =>
+  app.get("/api/v1/medicaid-ar-dashboard", { preHandler: [P("medicaid.claim.read_ar_dashboard")], config: { auditRead: { none: "Medicaid AR aging + open-claim counts — aggregate, no patient identity" } } }, async (request, reply) =>
     reply.send(await readService.arDashboard(actorOf(request), parseQuery(ProviderEntityQuery, request.query).providerEntityId)),
   );
 
   // 36 — AR metrics (M33-feeding)
-  app.get("/api/v1/medicaid-ar-dashboard/metrics", { preHandler: [P("medicaid.claim.read_metrics")] }, async (request, reply) =>
+  app.get("/api/v1/medicaid-ar-dashboard/metrics", { preHandler: [P("medicaid.claim.read_metrics")], config: { auditRead: { none: "Medicaid billing metrics — aggregate, no patient identity" } } }, async (request, reply) =>
     reply.send(await readService.arMetrics(actorOf(request), parseQuery(ProviderEntityQuery, request.query).providerEntityId)),
   );
 
   // 39 — org-wide validation worklist (§5.1 #5): blocked claims grouped by the rule holding them. One
   // server-side join replaces what the web surface used to approximate by fanning out per claim.
-  app.get("/api/v1/medicaid-validation-worklist", { preHandler: [P("medicaid.validation.read_run")] }, async (request, reply) => {
+  app.get("/api/v1/medicaid-validation-worklist", { preHandler: [P("medicaid.validation.read_run")], config: { auditRead: { resourceKind: "medicaid_claim", list: true } } }, async (request, reply) => {
     const q = parseQuery(ValidationWorklistQuery, request.query);
     return reply.send(await readService.validationWorklist(actorOf(request), q.limit ?? 500));
   });

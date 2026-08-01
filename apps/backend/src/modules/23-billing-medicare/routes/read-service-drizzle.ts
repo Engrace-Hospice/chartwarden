@@ -344,7 +344,12 @@ export function buildDrizzleM23ReadService(
       return read(actor, async (tx) => {
         const page = await new repositories.ClaimRepository(tx).listByOrgPage(
           actor.organizationId,
-          { providerEntityId: filter.providerEntityId, patientId: filter.patientId, state: filter.state },
+          {
+            providerEntityId: filter.providerEntityId,
+            patientId: filter.patientId,
+            state: filter.state,
+            providerEntityScope: filter.providerEntityScope,
+          },
           cursor,
           limit,
         );

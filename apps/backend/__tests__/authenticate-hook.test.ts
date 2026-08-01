@@ -41,7 +41,10 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
       userId: "u1",
       organizationId: "org1",
       roles: ["rn"],
-      attributes: { sessionId: "s1" },
+      // `membershipId` is the fact the §4.x ownership predicates in M15/M16/M20/M21/M30/M33/M34 read
+      // off `context.attributes`. The hook used to drop it even though the resolver returns it here,
+      // so every one of those predicates saw null and denied — this assertion pinned that bug in place.
+      attributes: { sessionId: "s1", actorKind: "user", membershipId: "m1" },
     });
   });
 
@@ -66,7 +69,9 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
       userId: "u1",
       organizationId: "",
       roles: [],
-      attributes: { sessionId: "s1" },
+      // `actorKind` is stamped as soon as the principal is known — BEFORE the org binding — because
+      // it describes WHO is calling, not what they are scoped to. A pre-org session is still a user.
+      attributes: { sessionId: "s1", actorKind: "user" },
     });
   });
 
@@ -81,7 +86,9 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
       userId: "u1",
       organizationId: "",
       roles: [],
-      attributes: { sessionId: "s1" },
+      // `actorKind` is stamped as soon as the principal is known — BEFORE the org binding — because
+      // it describes WHO is calling, not what they are scoped to. A pre-org session is still a user.
+      attributes: { sessionId: "s1", actorKind: "user" },
     });
   });
 });

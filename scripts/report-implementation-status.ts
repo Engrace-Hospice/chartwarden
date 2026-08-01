@@ -171,7 +171,15 @@ type Row = {
   screens: boolean;
   tests: boolean;
   adapter: boolean | null; // null = N/A (module owns no adapter package)
-  liveInfra: boolean;
+  /**
+   * Live-RLS proof coverage: owned tables NAMED in a `*.live.test.ts` / owned tables. null = the
+   * module owns no tables. This was a BOOLEAN `tables.some(...)`, which flipped ✅ on a single table
+   * name appearing anywhere in any live-suite body — so M35 (a ⚪ placeholder with zero migrations)
+   * read `Live ✅` because the words `plan`, `subscription` and `payment_method` occur in unrelated
+   * suites, and M5 read ✅ at 1-of-16 while M23's 16 PHI claim tables read ✅ at 0. Same shape as the
+   * `Enriched` boolean hole that preceded it: a ratio is the honest signal.
+   */
+  liveInfra: { tables: number; covered: number } | null;
 };
 
 const VENDOR_HINT = /-client$|-adapters$|-vendors$|dosespot|x12-|nppes|telehealth/;
@@ -238,7 +246,10 @@ const rows: Row[] = mods.map((m) => {
             existsSync(join(ROOT, `${p}/src/index.ts`)) && !isPlaceholderFile(`${p}/src/index.ts`),
         );
 
-  const liveInfra = tables.some((t) => new RegExp(`\\b${t}\\b`).test(liveTestBodies));
+  // Still a name match against the live-suite bodies — this report cannot execute Postgres — but now
+  // counted per table instead of collapsed with `.some()`, so partial coverage is visible as partial.
+  const liveCovered = tables.filter((t) => new RegExp(`\\b${t}\\b`).test(liveTestBodies)).length;
+  const liveInfra = tables.length === 0 ? null : { tables: tables.length, covered: liveCovered };
 
   // Headline status keys off the authoritative placeholder marker + the core backend artifacts
   // (schema + a built backend surface — feature `routes/`, or real platform code for a foundation
@@ -296,6 +307,9 @@ const yn = (b: boolean | null) => (b === null ? "—" : b ? "✅" : "❌");
  */
 const enr = (e: Row["enriched"]) =>
   e === null ? "—" : `${e.enriched}/${e.routes}${e.enriched < e.routes ? " ⚠️" : " ✅"}`;
+/** Live-RLS table coverage as a ratio — see `Row["liveInfra"]` for why this is not a tick. */
+const live = (l: Row["liveInfra"]) =>
+  l === null ? "—" : `${l.covered}/${l.tables}${l.covered < l.tables ? " ⚠️" : " ✅"}`;
 const badge = (s: Row["status"]) =>
   s === "Implemented" ? "🟢 Implemented" : s === "Partial" ? "🟡 Partial" : "⚪ Placeholder";
 
@@ -323,7 +337,10 @@ function renderMarkdown(): string {
       "a RATIO, not a tick; ⚠️ = some route publishes no request/response schema. `arch:openapi-coverage` ratchets it) · " +
       "Screens (registered web `screens.ts`) · " +
       "Tests (package `__tests__` or slug-matched backend test, *heuristic*) · Adapter (vendor/client package built; — = none owned, *heuristic*) · " +
-      "Live (owned table named in a `*.live.test.ts`, *heuristic*). Headline status keys off the placeholder marker + schema + routes only.",
+      "Live (owned tables NAMED in a `*.live.test.ts` / owned tables — a RATIO, and still a name match, "
+      + "not an executed proof; ⚠️ marks any module with an unproven table). This column was a boolean "
+      + "`some()` and read ✅ for M35, a placeholder with zero migrations. Headline status keys off the "
+      + "placeholder marker + schema + routes only.",
   );
   lines.push("");
   lines.push(
@@ -332,7 +349,7 @@ function renderMarkdown(): string {
   lines.push("|---|---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|");
   for (const r of rows)
     lines.push(
-      `| ${r.module} | ${badge(r.status)} | ${yn(r.spec)} | ${yn(r.schema)} | ${yn(r.migration)} | ${yn(r.routes)} | ${enr(r.enriched)} | ${yn(r.screens)} | ${yn(r.tests)} | ${yn(r.adapter)} | ${yn(r.liveInfra)} |`,
+      `| ${r.module} | ${badge(r.status)} | ${yn(r.spec)} | ${yn(r.schema)} | ${yn(r.migration)} | ${yn(r.routes)} | ${enr(r.enriched)} | ${yn(r.screens)} | ${yn(r.tests)} | ${yn(r.adapter)} | ${live(r.liveInfra)} |`,
     );
   lines.push("");
   if (warnings.length) {

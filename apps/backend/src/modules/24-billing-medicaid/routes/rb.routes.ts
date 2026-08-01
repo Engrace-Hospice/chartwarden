@@ -43,7 +43,7 @@ export function registerRbRoutes(app: FastifyInstance, deps: RbRouteDeps): void 
   );
 
   // 25 — list arrangements
-  app.get("/api/v1/rb-arrangements", { preHandler: [P("medicaid.rb_arrangement.read")] }, async (request, reply) => {
+  app.get("/api/v1/rb-arrangements", { preHandler: [P("medicaid.rb_arrangement.read")], config: { auditRead: { none: "room-and-board arrangements with facilities — contractual, no patient data" } } }, async (request, reply) => {
     const q = parseQuery(RbArrangementListQuery, request.query);
     return reply.send(await readService.listRbArrangements(actorOf(request), q));
   });
@@ -51,7 +51,7 @@ export function registerRbRoutes(app: FastifyInstance, deps: RbRouteDeps): void 
   // 26 — read one with day history
   app.get(
     "/api/v1/rb-arrangements/:id",
-    { preHandler: [P("medicaid.rb_arrangement.read"), ABAC_ARRANGEMENT("medicaid.rb_arrangement.read", "rb_arrangement_visible_in_scope")] },
+    { preHandler: [P("medicaid.rb_arrangement.read"), ABAC_ARRANGEMENT("medicaid.rb_arrangement.read", "rb_arrangement_visible_in_scope")], config: { auditRead: { none: "one room-and-board arrangement — contractual, no patient data" } } },
     async (request, reply) => {
       const arr = await readService.getRbArrangement(actorOf(request), pParam(request, "id"));
       if (!arr) throw new NotFoundError("R&B arrangement not found");
@@ -87,7 +87,7 @@ export function registerRbRoutes(app: FastifyInstance, deps: RbRouteDeps): void 
   );
 
   // 30 — list rb_days
-  app.get("/api/v1/rb-days", { preHandler: [P("medicaid.rb_arrangement.read")] }, async (request, reply) => {
+  app.get("/api/v1/rb-days", { preHandler: [P("medicaid.rb_arrangement.read")], config: { auditRead: { resourceKind: "rb_day", list: true } } }, async (request, reply) => {
     const q = parseQuery(RbDayListQuery, request.query);
     return reply.send(await readService.listRbDays(actorOf(request), q));
   });

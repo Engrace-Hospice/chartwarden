@@ -43,16 +43,32 @@ export function registerMeasuresRoutes(app: FastifyInstance, deps: MeasureRouteD
   const { readService, writeService } = deps;
 
   // R-01 — list the org's measures with their latest values (filter by domain; cursor-paginated). §4.1.
-  app.get("/api/v1/quality/measures", { preHandler: [MEASURE_READ] }, async (request) => {
-    const actor = actorOf(request);
-    const q = parse(MeasureListQuerySchema, request.query);
-    return readService.listMeasures(actor, { domain: q.domain }, q.cursor, q.limit);
-  });
+  app.get(
+    "/api/v1/quality/measures",
+    {
+      preHandler: [MEASURE_READ],
+      config: {
+        auditRead: {
+          none: "measure catalog + latest computed rate/denominator counts — no patient identity",
+        },
+      },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const q = parse(MeasureListQuerySchema, request.query);
+      return readService.listMeasures(actor, { domain: q.domain }, q.cursor, q.limit);
+    },
+  );
 
   // R-02 — the rolling-12mo value series + history for one measure (aggregate). §4.1.
   app.get(
     "/api/v1/quality/measures/:measureId/values",
-    { preHandler: [MEASURE_READ] },
+    {
+      preHandler: [MEASURE_READ],
+      config: {
+        auditRead: { none: "computed rate + population COUNT per period — no patient identity" },
+      },
+    },
     async (request) => {
       const actor = actorOf(request);
       const { measureId } = parse(MeasureIdParamsSchema, request.params);
@@ -67,7 +83,14 @@ export function registerMeasuresRoutes(app: FastifyInstance, deps: MeasureRouteD
   // R-03 — the reproducibility snapshot behind one emitted value (D1; `quality.measure.audit`). §4.1.
   app.get(
     "/api/v1/quality/measures/:measureId/values/:valueId/snapshot",
-    { preHandler: [MEASURE_AUDIT] },
+    {
+      preHandler: [MEASURE_AUDIT],
+      config: {
+        auditRead: {
+          none: "frozen numerator/denominator counts for one computed value — counts only, no member list",
+        },
+      },
+    },
     async (request) => {
       const actor = actorOf(request);
       const { measureId, valueId } = parse(MeasureValueParamsSchema, request.params);
@@ -90,7 +113,12 @@ export function registerMeasuresRoutes(app: FastifyInstance, deps: MeasureRouteD
   // R-05 — inspect the pending recompute queue (the jobs R-04 scheduled; not yet completed). §4.1.
   app.get(
     "/api/v1/quality/measures/recompute/queue",
-    { preHandler: [MEASURE_RECOMPUTE] },
+    {
+      preHandler: [MEASURE_RECOMPUTE],
+      config: {
+        auditRead: { none: "recompute job queue state — job ids and status, no clinical payload" },
+      },
+    },
     async (request) => {
       const actor = actorOf(request);
       return readService.listRecomputeQueue(actor);

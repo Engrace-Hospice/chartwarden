@@ -20,6 +20,7 @@ import {
 import type { SessionContextStore } from "@wardenx/auth";
 import { type DbClient, createDbClient } from "@wardenx/db";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
+import { DegradedError } from "@wardenx/types";
 import type { ConnectionOptions } from "bullmq";
 import {
   assertProductionEnv,
@@ -60,23 +61,70 @@ import {
   getPatientCoverageReader,
   registerPatientSeams,
 } from "./modules/05-patient/index";
-import { registerAdmissionErasers, registerAdmissionSeams } from "./modules/06-admission/index";
 import {
+  createInMemoryAdmissionBackend,
+  registerAdmissionAbacPredicates,
+  registerAdmissionErasers,
+  registerAdmissionRoutes,
+  registerAdmissionSeams,
+} from "./modules/06-admission/index";
+import {
+  createInMemoryCarePlanBackend,
   registerCarePlanAbacPredicates,
   registerCarePlanErasers,
+  registerCarePlanRoutes,
   registerCarePlanSeams,
 } from "./modules/07-care-plan/index";
 import {
   createDrizzleEncounterReaderStore,
+  createInMemoryEncounterBackend,
+  registerEncounterAbacPredicates,
   registerEncounterErasers,
+  registerEncounterRoutes,
   registerEncounterSeams,
 } from "./modules/08-encounters/index";
-import { registerAssessmentErasers, registerAssessmentSeams } from "./modules/09-assessments/index";
-import { registerHopeErasers, registerHopeSeams } from "./modules/10-hope/index";
-import { registerOrderErasers, registerOrderSeams } from "./modules/11-orders/index";
-import { registerDoseSpotErasers, registerDoseSpotSeams } from "./modules/12-dosespot/index";
-import { registerEmarErasers, registerEmarSeams } from "./modules/13-emar/index";
-import { registerIdgErasers, registerIdgSeams } from "./modules/14-idg/index";
+import {
+  createInMemoryAssessmentBackend,
+  registerAssessmentAbacPredicates,
+  registerAssessmentErasers,
+  registerAssessmentRoutes,
+  registerAssessmentSeams,
+} from "./modules/09-assessments/index";
+import {
+  createInMemoryHopeBackend,
+  registerHopeAbacPredicates,
+  registerHopeErasers,
+  registerHopeRoutes,
+  registerHopeSeams,
+} from "./modules/10-hope/index";
+import {
+  createInMemoryOrderBackend,
+  registerOrderAbacPredicates,
+  registerOrderErasers,
+  registerOrderRoutes,
+  registerOrderSeams,
+} from "./modules/11-orders/index";
+import {
+  createInMemoryDoseSpotBackend,
+  registerDoseSpotAbacPredicates,
+  registerDoseSpotErasers,
+  registerDoseSpotRoutes,
+  registerDoseSpotSeams,
+} from "./modules/12-dosespot/index";
+import {
+  createInMemoryEmarBackend,
+  registerEmarAbacPredicates,
+  registerEmarErasers,
+  registerEmarRoutes,
+  registerEmarSeams,
+} from "./modules/13-emar/index";
+import {
+  createInMemoryIdgBackend,
+  registerIdgAbacPredicates,
+  registerIdgErasers,
+  registerIdgRoutes,
+  registerIdgSeams,
+} from "./modules/14-idg/index";
 import {
   M15_OUTBOX_EVENTS,
   buildDrizzleDisciplinePlanAbacResolver,
@@ -101,8 +149,18 @@ import {
   registerBereavementErasers,
   registerBereavementSeams,
 } from "./modules/16-bereavement/index";
-import { registerSchedulingSeams } from "./modules/17-scheduling/index";
-import { registerEvvSeams } from "./modules/18-evv/index";
+import {
+  SchedulingRouteService,
+  registerSchedulingAbacPredicates,
+  registerSchedulingRoutes,
+  registerSchedulingSeams,
+} from "./modules/17-scheduling/index";
+import {
+  EvvRouteService,
+  registerEvvAbacPredicates,
+  registerEvvRoutes,
+  registerEvvSeams,
+} from "./modules/18-evv/index";
 import {
   buildDrizzleM19ReadService,
   buildDrizzleM19WriteService,
@@ -142,7 +200,14 @@ import {
   registerSuppliesSeams,
   registerSupplyEraser,
 } from "./modules/21-supplies/index";
-import { registerDocumentErasers, registerDocumentSeams } from "./modules/22-documents/index";
+import {
+  createInMemoryDocumentBackend,
+  createSignedUrlService,
+  registerDocumentAbacPredicates,
+  registerDocumentErasers,
+  registerDocumentRoutes,
+  registerDocumentSeams,
+} from "./modules/22-documents/index";
 import {
   buildDrizzleM33ExportDrilldownService,
   buildDrizzleM33ReadService,
@@ -352,6 +417,62 @@ import {
 
 export { buildServer };
 export * from "./bootstrap/index";
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════════
+// M6–M14 / M17 / M18 / M22 — THE CLINICAL-CORE ROUTE SCAFFOLD. READ THIS BEFORE YOU BELIEVE A SCREEN.
+//
+// These twelve modules ship route plugins and a §4.1 route inventory, but NOT ONE of them has a
+// Drizzle route service: every `routes/service.ts` exports exactly one backend factory and it is
+// `createInMemory*Backend` (M17/M18 hand-construct a class over a seed literal). The `seams/drizzle-
+// store.ts` files in M7/M8/M11/M13/M14 are narrow cross-module SEAM readers, not route services.
+//
+// Mounting them therefore turns ~336 endpoints from 404 into 200-with-an-empty-array over a
+// per-process `Map`. That is a UI-development scaffold, and it is NOT the database:
+//   • M4's WRITE-AUDIT TRIGGERS NEVER FIRE. They are Postgres triggers; an in-memory mutation touches
+//     no table. A signed encounter, an administered controlled substance and a discharge would all
+//     commit with NO audit row. (The PHI READ-audit hook still fires — it is a Fastify
+//     preSerialization hook — so you get read rows for data that was never written.)
+//   • RLS NEVER RUNS. Tenancy on these paths is a JS `organizationId` comparison inside each slice,
+//     not a policy. There is no second line of defence behind a missed check.
+//   • Every row is lost on restart and invisible to every other replica.
+//
+// So this is HARD-OFF IN PRODUCTION and cannot be re-enabled by an env var: a clinical record that
+// silently evaporates and audits nothing is worse than a 404, which at least tells the truth. Set
+// WARDENX_CLINICAL_CORE_SCAFFOLD=0 to opt out in dev too (restoring the 404s).
+//
+// The backends are constructed ONCE and shared: each module's ABAC resolver MUST be the same instance
+// its routes mutate, or the predicate reads a different dataset than the handler.
+// ════════════════════════════════════════════════════════════════════════════════════════════════════
+export const clinicalCoreScaffoldEnabled =
+  process.env.NODE_ENV !== "production" && process.env.WARDENX_CLINICAL_CORE_SCAFFOLD !== "0";
+
+let clinicalCoreBackends: ReturnType<typeof buildClinicalCoreBackends> | undefined;
+
+function buildClinicalCoreBackends() {
+  return {
+    m6: createInMemoryAdmissionBackend({}),
+    m7: createInMemoryCarePlanBackend({}),
+    m8: createInMemoryEncounterBackend({}),
+    m9: createInMemoryAssessmentBackend({}),
+    m10: createInMemoryHopeBackend({}),
+    m11: createInMemoryOrderBackend({}),
+    m12: createInMemoryDoseSpotBackend({}),
+    m13: createInMemoryEmarBackend({}),
+    m14: createInMemoryIdgBackend({}),
+    m17: new SchedulingRouteService({
+      now: () => new Date().toISOString(),
+      newId: () => randomUUID(),
+    }),
+    m18: new EvvRouteService({}),
+    m22: createInMemoryDocumentBackend({}),
+  };
+}
+
+/** Memoized so the ABAC resolvers registered at boot are the SAME instances the routes later mutate. */
+function getClinicalCoreBackends(): ReturnType<typeof buildClinicalCoreBackends> {
+  clinicalCoreBackends ??= buildClinicalCoreBackends();
+  return clinicalCoreBackends;
+}
 
 /**
  * Register every Phase-1 producer module's real seams into the M1 registry. Passed to
@@ -678,12 +799,21 @@ export function wireModuleSeams(
   // (its routes are unmounted, so no plan/problem/version row is reachable) — the deny-stub resolver keeps
   // the `planId`-keyed arms and the M7-owned predicates fail-closed, while the `patientId` and collection
   // arms resolve through the live caseload seam. Swap for a Drizzle resolver when M7's routes mount.
+  // M7's predicates MUST be registered here rather than beside its route mount: bootSeams() runs before
+  // registerModuleRoutes(), and every registrar skips a name the registry already holds, so a later
+  // re-registration is silently ignored. When the clinical-core scaffold is on, hand it the SAME backend
+  // instance the routes get, so the `planId`-keyed arms resolve against the store the handlers mutate
+  // instead of a permanent null. NOTE this registrar also owns `caseload_or_scope`, the shared predicate
+  // M9–M15/M19–M26/M34 bind BY NAME — its `patientId`/collection arms resolve through the live M5
+  // CaseloadProvider either way, so consumers keep the behaviour they had.
   registerCarePlanAbacPredicates({
-    resolver: {
-      loadPlan: async () => null,
-      loadProblem: async () => null,
-      loadVersion: async () => null,
-    },
+    resolver: clinicalCoreScaffoldEnabled
+      ? getClinicalCoreBackends().m7.resolver
+      : {
+          loadPlan: async () => null,
+          loadProblem: async () => null,
+          loadVersion: async () => null,
+        },
   });
   // M33 — the two §4.7 ABAC predicate resolvers (`reportable_scope` D8 cross-cutting read scope +
   // `dashboard_visibility` §4.7.2 saved-view ladder). Defaults to the deny-stub resolver until P2C binds
@@ -1516,6 +1646,112 @@ if ((import.meta as { main?: boolean }).main) {
             cipher: null,
             promptRegistry: m32PromptRegistry,
           });
+
+          // ══════════════════════════════════════════════════════════════════════════════════════════
+          // M6–M14 / M17 / M18 / M22 — the clinical-core route mount. See `clinicalCoreScaffoldEnabled`
+          // above for what this is and, more importantly, what it is NOT: these twelve modules serve an
+          // in-memory Map, with no write-audit trigger and no RLS behind them. Hard-off in production.
+          //
+          // The ABAC predicates register HERE, next to the routes, rather than in wireModuleSeams():
+          // abacRegistry.evaluate() resolves by NAME at request time, and the registry explicitly
+          // supports post-install registration. Registering beside the mount is what keeps each
+          // resolver and its route service the same instance. (M7 is the one exception — its registrar
+          // also owns the shared `caseload_or_scope` name and must run at boot; see wireModuleSeams.)
+          if (clinicalCoreScaffoldEnabled) {
+            const core = getClinicalCoreBackends();
+
+            // M6 Admission (46 routes). `isInCaseload` stays on its default → M5's LIVE CaseloadProvider
+            // seam, so the caseload arm is real even though the admission rows are not.
+            registerAdmissionAbacPredicates({ resolver: core.m6.resolver });
+            registerAdmissionRoutes(app, { service: core.m6.service });
+
+            // M7 Care Plan (19 routes). `dpoaConsentActive` / `sudDisclosureAllowed` stay on their
+            // fail-closed `async () => false` defaults, so §7.6 SUD-flagged problems remain omitted
+            // from every read — the correct direction to fail.
+            registerCarePlanRoutes(app, { service: core.m7.service });
+
+            // M8 Encounters (31 routes). MOUNTED BEFORE M9 AND M11 DELIBERATELY.
+            //
+            // ⚠ KNOWN DEFECT, not introduced here: M8, M9 and M11 each register the SAME predicate name
+            // `cosigner_role_match` with three INCOMPATIBLE target contracts — M8 reads `encounterId`
+            // and loads an encounter, M9 reads `id`/`assessmentId` and loads an assessment, M11 reads
+            // `id`/`orderId` and loads an order. Every registrar skips a name already taken, so this is
+            // silent FIRST-WINS, not a boot crash, and cross-lookup is worse than useless (M9-first
+            // would have M11's cosign call loadAssessment(orderId)). Exactly ONE of the three clinical
+            // cosignature surfaces can work at a time. M8's encounter cosignature is the highest-traffic
+            // surface, so it takes the name; M9's POST /assessments/:id/cosignatures and M11's
+            // POST /orders/:id/cosign are therefore 403 FOR EVERY CALLER. Ordering cannot fix this —
+            // the name must be split three ways (or keyed on which id the target carries).
+            registerEncounterAbacPredicates({ resolver: core.m8.resolver });
+            registerEncounterRoutes(app, { service: core.m8.service });
+
+            // M9 Assessments (18 routes). `discipline_can_record_scale` registers cleanly and works;
+            // the cosignature route is knowingly dead (see M8).
+            registerAssessmentAbacPredicates({ resolver: core.m9.resolver });
+            registerAssessmentRoutes(app, { service: core.m9.service });
+
+            // M10 HOPE (20 routes) — the backend IS its own HopeAbacResolver.
+            registerHopeAbacPredicates({ resolver: core.m10 });
+            registerHopeRoutes(app, { service: core.m10 });
+
+            // M11 Orders (28 routes). `discipline_can_order` + `signer_eligible` are M11's alone and
+            // work; the cosign route is dead (see M8).
+            registerOrderAbacPredicates({ resolver: core.m11 });
+            registerOrderRoutes(app, { service: core.m11 });
+
+            // M12 DoseSpot prescribing (31 routes). EPCS stays off; there is no webhook route mounted.
+            registerDoseSpotAbacPredicates({ resolver: core.m12 });
+            registerDoseSpotRoutes(app, { service: core.m12 });
+
+            // M13 eMAR (28 routes). NOTE the witness-token HMAC key falls back to the literal
+            // "test-witness-secret" when `witnessSecret` is unset — controlled-substance witness
+            // attestation is FORGEABLE in this slice. Another reason this never reaches production.
+            registerEmarAbacPredicates({ resolver: core.m13 });
+            registerEmarRoutes(app, { service: core.m13 });
+
+            // M14 IDG (26 routes).
+            registerIdgAbacPredicates({ resolver: core.m14 });
+            registerIdgRoutes(app, { service: core.m14 });
+
+            // M17 Scheduling (29 routes). Route optimization stays off — the OSRM adapter has no boot
+            // binding, and the §7.9 degraded path is the documented Phase-1 posture.
+            registerSchedulingAbacPredicates({ resolver: core.m17 });
+            registerSchedulingRoutes(app, { service: core.m17 });
+
+            // M18 EVV (25 routes). Its two capture predicates read the SAME empty visit map its routes
+            // read, so with a bare seed every check-in 403s on `assigned_clinician_for_visit`. That is
+            // the correct fail direction but it reads like an authz bug — and note M17's visits live in
+            // a DIFFERENT process-local Map that M18 cannot see, so a scheduling→EVV flow cannot be
+            // demonstrated end to end until both sit on the database.
+            registerEvvAbacPredicates({ resolver: core.m18 });
+            registerEvvRoutes(app, { service: core.m18 });
+
+            // M22 Documents (31 routes). The signed-URL STORAGE PORT HAS NO IMPLEMENTATION anywhere in
+            // src/ — only the interface and a test fake. Rather than fabricate a URL, it is bound to an
+            // explicit refusal: a presign resolving to a URL nothing can serve is a download failure a
+            // clinician reads as data loss, and one that WORKED would hand out PHI from a store with no
+            // BAA gate behind it. Swap in the real presigner when M22's storage adapter lands.
+            registerDocumentAbacPredicates({ resolver: core.m22.abacResolver });
+            registerDocumentRoutes(app, {
+              service: core.m22.service,
+              signedUrl: createSignedUrlService({
+                storage: {
+                  presignDownload: () => {
+                    throw new DegradedError(
+                      "document-storage",
+                      "no object-storage presigner is bound (M22 storage adapter not wired)",
+                    );
+                  },
+                },
+                resolver: core.m22.objectResolver,
+              }),
+            });
+
+            app.log.warn(
+              { modules: "M6-M14,M17,M18,M22", routes: 336 },
+              "clinical-core route scaffold MOUNTED over in-memory stores — no write-audit trigger, no RLS, data lost on restart. Never production.",
+            );
+          }
         }
       : undefined,
     registerModuleSeams: () =>

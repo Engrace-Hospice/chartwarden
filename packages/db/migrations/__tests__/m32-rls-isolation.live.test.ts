@@ -373,19 +373,27 @@ describe.skipIf(!DB_URL)("M32 AI Platform — cross-tenant isolation — LIVE Po
       }
     }
 
-    // AND NOW THE PART THAT IS EASY TO GET CATASTROPHICALLY WRONG. RLS on a partitioned table does NOT
-    // become RLS on its partitions: `relrowsecurity` is FALSE on every leaf, and the parent's policy is
-    // applied only to queries routed through the parent. What keeps a leaf unreadable is that the GRANT
-    // was never given to it either — grants do not cascade to partitions the way policies are assumed to
-    // (the M16-T07 finding, restated for M32's two partitioned tables).
+    // AND NOW THE PART THAT IS EASY TO GET CATASTROPHICALLY WRONG. RLS on a partitioned table does not
+    // become RLS on its partitions: the parent's policy is applied only to queries routed through the
+    // parent, and reading a leaf DIRECTLY applies that leaf's own policies.
     //
-    // The consequence, and the reason this case exists: a partition-manager script or a maintenance
-    // session running `GRANT SELECT ON ALL TABLES IN SCHEMA public TO wardenx_app` would make every
-    // partition of the §164.528 disclosure ledger readable BY EVERY TENANT, with no policy to stop it.
-    // That is a total cross-tenant leak that no other test in the repo would notice.
-    const leaves = await db.query<{ table_name: string; rls: boolean; sel: boolean }>(
+    // THIS CASE USED TO ASSERT `rls === false` ON EVERY LEAF, describing the absent GRANT as the thing
+    // keeping leaves unreadable — i.e. it pinned the hole in place as though it were the design. It is
+    // not a design: a partition-manager script or a maintenance session running
+    // `GRANT SELECT ON ALL TABLES IN SCHEMA public TO wardenx_app` would have made every partition of
+    // the §164.528 disclosure ledger readable BY EVERY TENANT, with no policy to stop it, and this
+    // suite would have stayed green throughout. Migration 0118 closes it: every leaf now has RLS
+    // ENABLED and FORCED, carries NO policies of its own, and therefore DEFAULT-DENIES direct access
+    // even if someone grants it. Parent-routed reads and writes are unaffected — the cases above prove
+    // that, and 0118's header records the live experiment behind the claim.
+    //
+    // Defence in depth is the point: the missing grant is still the first line, RLS is now the second,
+    // and a leaf minted in future is secured at CREATE by the `wardenx_secure_new_partition` event
+    // trigger rather than by each of the 43 `create_*_partition` helpers remembering to.
+    const leaves = await db.query<{ table_name: string; rls: boolean; forced: boolean; sel: boolean }>(
       `SELECT c.relname AS table_name,
               c.relrowsecurity AS rls,
+              c.relforcerowsecurity AS forced,
               has_table_privilege('wardenx_app', c.oid, 'SELECT') AS sel
          FROM pg_inherits i
          JOIN pg_class c ON c.oid = i.inhrelid
@@ -394,11 +402,26 @@ describe.skipIf(!DB_URL)("M32 AI Platform — cross-tenant isolation — LIVE Po
     );
     expect(leaves.rowCount).toBeGreaterThan(0);
     for (const leaf of leaves.rows) {
-      expect(leaf.rls, `${leaf.table_name} unexpectedly carries its own RLS`).toBe(false);
-      expect(leaf.sel, `${leaf.table_name} is directly readable by wardenx_app WITHOUT any RLS`).toBe(
-        false,
+      expect(leaf.rls, `${leaf.table_name} has NO row-level security of its own (0118 regression)`).toBe(
+        true,
       );
+      expect(
+        leaf.forced,
+        `${leaf.table_name} has RLS but not FORCE — the table owner still bypasses it`,
+      ).toBe(true);
+      expect(leaf.sel, `${leaf.table_name} is directly readable by wardenx_app`).toBe(false);
     }
+
+    // A leaf must carry NO policies: parent policies govern parent-routed access, and a leaf policy
+    // would be a second, drifting copy of the tenancy rule. No policies + RLS on = default-deny.
+    const leafPolicies = await db.query<{ count: string }>(
+      `SELECT count(*)::text AS count
+         FROM pg_policy pol
+         JOIN pg_inherits i ON i.inhrelid = pol.polrelid
+         JOIN pg_class p ON p.oid = i.inhparent
+        WHERE p.relname IN ('ai_invocation','ai_token_ledger')`,
+    );
+    expect(leafPolicies.rows[0]?.count, "a partition leaf grew its own policy").toBe("0");
   });
 
   it("refuses a write that carries another tenant's organization_id (the WITH CHECK half)", async () => {

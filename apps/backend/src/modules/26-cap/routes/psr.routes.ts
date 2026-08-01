@@ -5,6 +5,7 @@ import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
 import { P } from "./guards";
+import { LineIdParams, PeriodIdParams, PsrImportRequest, ResolveVarianceRequest, parse, validateParams } from "./m26-typebox";
 import type { M26ReadService } from "./read-service";
 import type { M26WriteService } from "./write-service";
 
@@ -25,9 +26,10 @@ export function registerPsrRoutes(app: FastifyInstance, deps: PsrRouteDeps): voi
 
   app.post(
     "/api/v1/cap/periods/:periodId/psr-imports",
-    { preHandler: [PSR_IMPORT, IDEMPOTENT] },
+    { preHandler: [validateParams(PeriodIdParams), PSR_IMPORT, IDEMPOTENT] },
     async (request, reply) => {
-      const body = request.body as { macRegion: string; psrPeriodFrom: string; psrPeriodTo: string; fileBase64: string };
+      const { periodId } = parse(PeriodIdParams, request.params);
+      const body = parse(PsrImportRequest, request.body);
       const res = await writeService.importPsr(writeActorOf(request), pParam(request, "periodId"), body);
       return reply.code(202).send({ ...res, status: "queued" });
     },
@@ -43,10 +45,11 @@ export function registerPsrRoutes(app: FastifyInstance, deps: PsrRouteDeps): voi
 
   app.patch(
     "/api/v1/cap/psr-imports/:importId/reconciliation/:lineId/resolve",
-    { preHandler: [PSR_RECONCILE, IDEMPOTENT] },
+    { preHandler: [validateParams(LineIdParams), PSR_RECONCILE, IDEMPOTENT] },
     async (request, reply) => {
-      const body = request.body as { varianceReason: string; resolutionNotes: string };
-      await writeService.resolveVariance(writeActorOf(request), pParam(request, "lineId"), body);
+      const { lineId } = parse(LineIdParams, request.params);
+      const body = parse(ResolveVarianceRequest, request.body);
+      await writeService.resolveVariance(writeActorOf(request), lineId, body);
       return reply.code(204).send();
     },
   );

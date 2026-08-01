@@ -34,7 +34,7 @@ import {
   ManualValidateRequest,
 } from "@wardenx/billing";
 import { WardenXError } from "@wardenx/types";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Type } from "@sinclair/typebox";
 import { actorOf, rejectAiActor, writeActorOf, type M23WriteActor } from "./actor";
 import {
@@ -51,8 +51,8 @@ import {
   STEP_UP,
   targetClaimId,
   targetProviderFromBody,
-  targetProviderFromQuery,
 } from "./guards";
+import { ORG_WIDE_BILLING_SCOPE_ROLES } from "../abac-predicates";
 import type { M23ReadRouteService } from "./read-service";
 import type { ClaimLineView } from "./read-service";
 import type { AssembledClaimLineInput, M23WriteRouteService } from "./write-service";
@@ -117,8 +117,48 @@ function toAssembledLine(view: ClaimLineView): AssembledClaimLineInput {
 
 // ── §4.7 / §4.6 guard instances (shared across the route registrations) ──────────────────────────────────
 const READ = P("billing.claim.read");
-const READ_PROVIDER = PROVIDER_SCOPE("billing.claim.read", targetProviderFromQuery);
 const READ_CLAIM = CLAIM_CASELOAD("billing.claim.read");
+
+/**
+ * The §4.7 provider scope for the claim LIST, resolved SERVER-side from the assembled request context.
+ *
+ * The list used to carry `PROVIDER_SCOPE("billing.claim.read", targetProviderFromQuery)`. That is a
+ * PER-ROW predicate: `provider_entity_billing_scope` resolves the ProviderEntity of ONE resource and
+ * asks whether the actor is scoped to it. On the unfiltered list there is no such resource —
+ * `targetProviderFromQuery` yielded `providerEntityId: ""`, `resolveBillingScopeFacts` returned null,
+ * and the predicate denied at its `if (!facts) return false` BEFORE `inProviderScope`'s org-wide-role
+ * bypass could run. With `notFoundOnDeny: true` that denial surfaced as a 404, so the Claim Workbench
+ * was dead for EVERY caller — including an org admin — and the screen blamed an unbound seam.
+ *
+ * A per-row predicate cannot gate a collection: collections FILTER, point-reads gate (the same rule the
+ * M30 `incidentVisibility` fix established). `GET /claims/:id` keeps its per-row `CLAIM_CASELOAD` gate;
+ * the list now narrows rows to what the actor may see.
+ *
+ * Returns `undefined` for an unrestricted actor and an ARRAY to narrow to exactly those providers. The
+ * role set is imported from the predicate module so this filter and the point-read gate cannot drift.
+ *
+ * ⚠ `context.providerEntityIds` IS NOT ASSEMBLED YET. `request-context.ts` initializes it to `[]` and
+ * nothing anywhere populates it — `ActorEnrichment` (the M3-owned port that fills `membershipId` +
+ * `roles`) has no provider-entity field, and no membership→ProviderEntity association exists to read.
+ * So an empty array today means "this fact was never assembled", NOT "the actor is scoped to zero
+ * providers", and those two must not be the same answer: treating the unassembled default as a
+ * restriction would silently empty the claim list for every non-org-admin, which is a quieter and
+ * worse failure than the 404 this replaces. Until the fact is real we therefore do not narrow — the
+ * list behaves exactly like its sibling `/noe-records` and `/notr-records` collections, which carry
+ * RBAC only and lean on `billing.claim.read` plus RLS org-scoping.
+ *
+ * WHEN `providerEntityIds` IS POPULATED: delete the `scope.length === 0` early return below. From that
+ * point an empty array correctly means "no provider scope ⇒ no claims" and the filter narrows for real.
+ */
+export function resolveClaimProviderScope(request: FastifyRequest): readonly string[] | undefined {
+  const ctx = request.context;
+  const roles = ctx?.roles ?? [];
+  if (ORG_WIDE_BILLING_SCOPE_ROLES.some((r) => roles.includes(r))) return undefined;
+  if (ctx?.attributes?.actorKind === "system") return undefined; // M25/M26 service-to-service
+  const scope = ctx?.providerEntityIds ?? [];
+  if (scope.length === 0) return undefined; // unassembled, not "scoped to nothing" — see above
+  return scope;
+}
 
 const ASSEMBLE = P("billing.claim.assemble");
 const ASSEMBLE_ABAC = PROVIDER_SCOPE("billing.claim.assemble", targetProviderFromBody);
@@ -173,19 +213,31 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
   );
 
   // #2 GET /claims — cursor-paginated list (filter by state / patient / PE). §4.1.
-  app.get("/api/v1/billing/claims", { preHandler: [READ, READ_PROVIDER] }, async (request) => {
-    const actor = actorOf(request);
-    const q = parse(ClaimListQuerySchema, request.query);
-    return readService.listClaims(
-      actor,
-      { providerEntityId: q.providerEntityId, patientId: q.patientId, state: q.state },
-      q.cursor,
-      q.limit,
-    );
-  });
+  app.get(
+    "/api/v1/billing/claims",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "claim", list: true } } },
+    async (request) => {
+      const actor = actorOf(request);
+      const q = parse(ClaimListQuerySchema, request.query);
+      // `providerEntityScope` is the AUTHORIZATION narrowing (server-derived); `providerEntityId` is the
+      // caller's optional display filter. Both are ANDed, so naming a provider outside your scope
+      // returns an empty page rather than someone else's claims.
+      return readService.listClaims(
+        actor,
+        {
+          providerEntityId: q.providerEntityId,
+          patientId: q.patientId,
+          state: q.state,
+          providerEntityScope: resolveClaimProviderScope(request),
+        },
+        q.cursor,
+        q.limit,
+      );
+    },
+  );
 
   // #3 GET /claims/:id — single-claim detail (lines + HIPPS + SIA + latest run + submissions + acks). §4.1.
-  app.get("/api/v1/billing/claims/:id", { preHandler: [READ, READ_CLAIM] }, async (request) => {
+  app.get("/api/v1/billing/claims/:id", { preHandler: [READ, READ_CLAIM], config: { auditRead: { resourceKind: "claim", resourceIdParam: "id" } } }, async (request) => {
     const actor = actorOf(request);
     const { id } = parse(ClaimIdParamsSchema, request.params);
     return readService.getClaim(actor, id);
@@ -287,7 +339,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
   );
 
   // #10 GET /claims/:id/lines — the claim_line projection. §4.1.
-  app.get("/api/v1/billing/claims/:id/lines", { preHandler: [READ, READ_CLAIM] }, async (request) => {
+  app.get("/api/v1/billing/claims/:id/lines", { preHandler: [READ, READ_CLAIM], config: { auditRead: { resourceKind: "claim_line", resourceIdParam: "id", list: true } } }, async (request) => {
     const actor = actorOf(request);
     const { id } = parse(ClaimIdParamsSchema, request.params);
     return readService.listClaimLines(actor, id);
@@ -296,7 +348,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
   // #11 GET /claims/:id/state-history — the per-claim transition timeline (cursor-paginated). §4.1.
   app.get(
     "/api/v1/billing/claims/:id/state-history",
-    { preHandler: [READ, READ_CLAIM] },
+    { preHandler: [READ, READ_CLAIM], config: { auditRead: { resourceKind: "claim", resourceIdParam: "id", list: true } } },
     async (request) => {
       const actor = actorOf(request);
       const { id } = parse(ClaimIdParamsSchema, request.params);
@@ -308,7 +360,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
   // #12 GET /claims/:id/submissions — all dispatch attempts. §4.1.
   app.get(
     "/api/v1/billing/claims/:id/submissions",
-    { preHandler: [READ, READ_CLAIM] },
+    { preHandler: [READ, READ_CLAIM], config: { auditRead: { resourceKind: "claim_submission", resourceIdParam: "id", list: true } } },
     async (request) => {
       const actor = actorOf(request);
       const { id } = parse(ClaimIdParamsSchema, request.params);
@@ -319,7 +371,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
   // #13 GET /claims/:id/acknowledgments — all 999 / 277CA / 835 acknowledgments. §4.1.
   app.get(
     "/api/v1/billing/claims/:id/acknowledgments",
-    { preHandler: [READ, READ_CLAIM] },
+    { preHandler: [READ, READ_CLAIM], config: { auditRead: { resourceKind: "claim_acknowledgment", resourceIdParam: "id", list: true } } },
     async (request) => {
       const actor = actorOf(request);
       const { id } = parse(ClaimIdParamsSchema, request.params);

@@ -61,10 +61,19 @@ export function registerCahpsRoutes(app: FastifyInstance, deps: CahpsRouteDeps):
   const { readService, writeService } = deps;
 
   // R-10 — the org's active vendor binding (immutable-history current row; null when none). §4.1.
-  app.get("/api/v1/quality/cahps/vendor", { preHandler: [CAHPS_READ] }, async (request) => {
-    const actor = actorOf(request);
-    return readService.getCahpsVendor(actor);
-  });
+  app.get(
+    "/api/v1/quality/cahps/vendor",
+    {
+      preHandler: [CAHPS_READ],
+      config: {
+        auditRead: { none: "CAHPS vendor assignment + BAA status — tenant configuration, no PHI" },
+      },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      return readService.getCahpsVendor(actor);
+    },
+  );
 
   // R-11 — bind / rotate the CAHPS vendor (appends a new immutable-history row). Idempotent. §4.1.
   app.post(
@@ -81,7 +90,10 @@ export function registerCahpsRoutes(app: FastifyInstance, deps: CahpsRouteDeps):
   // R-12 — list the decedents in the current sample window (PHI; cursor-paginated). §4.1.
   app.get(
     "/api/v1/quality/cahps/decedents",
-    { preHandler: [CAHPS_READ, PATIENT_SCOPE] },
+    {
+      preHandler: [CAHPS_READ, PATIENT_SCOPE],
+      config: { auditRead: { resourceKind: "cahps_decedent", list: true } },
+    },
     async (request) => {
       const actor = actorOf(request);
       const q = parse(CahpsDecedentListQuerySchema, request.query);
@@ -126,7 +138,10 @@ export function registerCahpsRoutes(app: FastifyInstance, deps: CahpsRouteDeps):
   // R-15 — read an export job's status + (once complete) its short-lived signed download URL. §4.1.
   app.get(
     "/api/v1/quality/cahps/export/:exportId",
-    { preHandler: [CAHPS_ADMIN] },
+    {
+      preHandler: [CAHPS_ADMIN],
+      config: { auditRead: { resourceKind: "cahps_export", resourceIdParam: "exportId" } },
+    },
     async (request) => {
       const actor = actorOf(request);
       const { exportId } = parse(ExportIdParamsSchema, request.params);
@@ -148,18 +163,29 @@ export function registerCahpsRoutes(app: FastifyInstance, deps: CahpsRouteDeps):
   );
 
   // R-17 — result summaries by reporting period (aggregate; cursor-paginated). §4.1.
-  app.get("/api/v1/quality/cahps/results", { preHandler: [CAHPS_READ] }, async (request) => {
-    const actor = actorOf(request);
-    const q = parse(CahpsResultListQuerySchema, request.query);
-    return readService.listCahpsResults(
-      actor,
-      {
-        reportingPeriodStart: q.reportingPeriodStart,
-        reportingPeriodEnd: q.reportingPeriodEnd,
-        measureId: q.measureId,
+  app.get(
+    "/api/v1/quality/cahps/results",
+    {
+      preHandler: [CAHPS_READ],
+      config: {
+        auditRead: {
+          none: "aggregate CAHPS top-box scores by period — no decedent or caregiver identity",
+        },
       },
-      q.cursor,
-      q.limit,
-    );
-  });
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const q = parse(CahpsResultListQuerySchema, request.query);
+      return readService.listCahpsResults(
+        actor,
+        {
+          reportingPeriodStart: q.reportingPeriodStart,
+          reportingPeriodEnd: q.reportingPeriodEnd,
+          measureId: q.measureId,
+        },
+        q.cursor,
+        q.limit,
+      );
+    },
+  );
 }

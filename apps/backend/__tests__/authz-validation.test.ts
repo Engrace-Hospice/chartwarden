@@ -201,7 +201,11 @@ describe("M3 route-boundary validation (§4.2)", () => {
       await app.close();
     });
 
-    it("POST /breakglass — an absent target is still scope-level glass (201, not a 422)", async () => {
+    it("POST /breakglass — an ABSENT target is now a 422, not scope-level glass", async () => {
+      // REGRESSION GUARD. This case used to assert 201: an absent target minted a grant whose null
+      // `target_patient_id` matched EVERY target, so one `breakglass.invoke` — a bedside-clinician
+      // permission — satisfied every `requireAbac` in the org for 4 hours, `part2Redisclosure`
+      // included. The caller no longer chooses the blast radius of its own bypass.
       const { app } = makeServer();
       const res = await app.inject({
         method: "POST",
@@ -209,7 +213,20 @@ describe("M3 route-boundary validation (§4.2)", () => {
         headers: CLINICIAN,
         payload: { reason: "unit-wide outage, covering the whole census" },
       });
-      expect(res.statusCode).toBe(201);
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.details[0].field).toBe("targetPatientId");
+      await app.close();
+    });
+
+    it("POST /breakglass — an explicit null target is a 422 too (the union no longer admits it)", async () => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/breakglass",
+        headers: CLINICIAN,
+        payload: { targetPatientId: null, reason: "unit-wide outage, covering the census" },
+      });
+      expect(res.statusCode).toBe(422);
       await app.close();
     });
 

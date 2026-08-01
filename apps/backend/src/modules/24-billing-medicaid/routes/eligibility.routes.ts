@@ -32,7 +32,7 @@ export function registerEligibilityRoutes(app: FastifyInstance, deps: Eligibilit
   );
 
   // 23 — per-patient eligibility history
-  app.get("/api/v1/medicaid-eligibility-checks", { preHandler: [P("medicaid.eligibility.read")] }, async (request, reply) =>
+  app.get("/api/v1/medicaid-eligibility-checks", { preHandler: [P("medicaid.eligibility.read")], config: { auditRead: { resourceKind: "medicaid_eligibility_check", list: true } } }, async (request, reply) =>
     reply.send(await readService.listEligibilityChecks(actorOf(request), parseQuery(EligibilityListQuery, request.query))),
   );
 }

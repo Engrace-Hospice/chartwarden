@@ -42,7 +42,14 @@ export function registerSequestrationPolicyRoutes(
   // GET /billing/sequestration-policies?providerEntityId= — the effective-dated timeline. §4.1 #32.
   app.get(
     "/api/v1/billing/sequestration-policies",
-    { preHandler: [READ, READ_ABAC] },
+    {
+      preHandler: [READ, READ_ABAC],
+      config: {
+        auditRead: {
+          none: "sequestration withhold policy by period — payment policy, no patient data",
+        },
+      },
+    },
     async (request) => {
       const actor = actorOf(request);
       const { providerEntityId } = parse(RequiredProviderEntityQuerySchema, request.query);
@@ -53,7 +60,12 @@ export function registerSequestrationPolicyRoutes(
   // GET /billing/sequestration-policies/active?providerEntityId= — the active-on-now policy (or null). §4.1.
   app.get(
     "/api/v1/billing/sequestration-policies/active",
-    { preHandler: [READ, READ_ABAC] },
+    {
+      preHandler: [READ, READ_ABAC],
+      config: {
+        auditRead: { none: "the active sequestration policy — payment policy, no patient data" },
+      },
+    },
     async (request) => {
       const actor = actorOf(request);
       const { providerEntityId } = parse(RequiredProviderEntityQuerySchema, request.query);

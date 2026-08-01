@@ -13,7 +13,7 @@
 //
 // No PHI / no MBI is ever read or written here (D13 / §3.6 / §8.7).
 import * as schema from "@wardenx/db/schema";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { ClaimState } from "../contracts";
 import {
   type BillingDb,
@@ -43,6 +43,14 @@ export interface ClaimListFilter {
   readonly providerEntityId?: string;
   readonly patientId?: string;
   readonly state?: ClaimState;
+  /**
+   * SERVER-DERIVED provider-entity restriction — the set of ProviderEntities the ACTOR may see. This is
+   * authorization, not a user filter: it is assembled from `context.providerEntityIds` at the route and
+   * must never be read off the query string. `undefined` = unrestricted (an org-wide billing role or a
+   * system principal); a present array restricts to exactly those ids, and an EMPTY array matches
+   * NOTHING (an actor with no provider scope sees no claims — fail-closed).
+   */
+  readonly providerEntityScope?: readonly string[];
 }
 
 /** The columns a lifecycle transition may set alongside `state` (assembly/ack/submission back-refs). */
@@ -112,8 +120,14 @@ export class ClaimRepository {
     limit: number | undefined,
   ): Promise<CursorPage<ClaimRecord>> {
     const size = pageSizeOf(limit);
+    // `inArray(col, [])` is not portable shorthand for "match nothing" — spell the refusal out, so an
+    // actor with an EMPTY provider scope gets an empty page rather than the whole org's claims.
+    const scope = filter.providerEntityScope;
+    const scopeClause =
+      scope === undefined ? undefined : scope.length === 0 ? sql`false` : inArray(C.providerEntityId, scope);
     const where = and(
       eq(C.organizationId, organizationId),
+      scopeClause,
       filter.providerEntityId ? eq(C.providerEntityId, filter.providerEntityId) : undefined,
       filter.patientId ? eq(C.patientId, filter.patientId) : undefined,
       filter.state ? eq(C.state, claimStateCodec.toDb(filter.state)) : undefined,

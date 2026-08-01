@@ -39,23 +39,41 @@ export function registerRuleConfigRoutes(app: FastifyInstance, deps: RuleConfigR
   const { readService, writeService } = deps;
 
   // GET /billing/rule-configs — list overlay rows (platform snapshot + tenant overlays). §4.1 #18.
-  app.get("/api/v1/billing/rule-configs", { preHandler: [READ] }, async (request) => {
-    const actor = actorOf(request);
-    const q = parse(RuleConfigListQuerySchema, request.query);
-    return readService.listRuleConfigs(
-      actor,
-      { enabled: q.enabled, isCustom: q.isCustom },
-      q.cursor,
-      q.limit,
-    );
-  });
+  app.get(
+    "/api/v1/billing/rule-configs",
+    {
+      preHandler: [READ],
+      config: {
+        auditRead: { none: "validation rule configuration — tenant policy, no patient data" },
+      },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const q = parse(RuleConfigListQuerySchema, request.query);
+      return readService.listRuleConfigs(
+        actor,
+        { enabled: q.enabled, isCustom: q.isCustom },
+        q.cursor,
+        q.limit,
+      );
+    },
+  );
 
   // GET /billing/rule-configs/:id — read a single overlay row. §4.1.
-  app.get("/api/v1/billing/rule-configs/:id", { preHandler: [READ] }, async (request) => {
-    const actor = actorOf(request);
-    const { id } = parse(RuleConfigIdParamsSchema, request.params);
-    return readService.getRuleConfig(actor, id);
-  });
+  app.get(
+    "/api/v1/billing/rule-configs/:id",
+    {
+      preHandler: [READ],
+      config: {
+        auditRead: { none: "one validation rule's configuration — tenant policy, no patient data" },
+      },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const { id } = parse(RuleConfigIdParamsSchema, request.params);
+      return readService.getRuleConfig(actor, id);
+    },
+  );
 
   // POST /billing/rule-configs/custom — create a tenant custom rule (regulatory-required forbidden). §4.1 #20.
   app.post(

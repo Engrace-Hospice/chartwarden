@@ -10544,7 +10544,8 @@
                 "additionalProperties": false,
                 "type": "object",
                 "required": [
-                  "reason"
+                  "reason",
+                  "targetPatientId"
                 ],
                 "properties": {
                   "reason": {
@@ -10553,15 +10554,8 @@
                     "type": "string"
                   },
                   "targetPatientId": {
-                    "anyOf": [
-                      {
-                        "format": "uuid",
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
+                    "format": "uuid",
+                    "type": "string"
                   }
                 }
               }
@@ -11015,6 +11009,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                   "capYear"
@@ -11330,6 +11325,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "type": "object",
                 "properties": {
                   "reason": {
@@ -11485,11 +11481,11 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                   "methodology",
-                  "reason",
-                  "stepUpAssertionId"
+                  "reason"
                 ],
                 "properties": {
                   "methodology": {
@@ -11507,10 +11503,6 @@
                   "reason": {
                     "minLength": 1,
                     "maxLength": 2000,
-                    "type": "string"
-                  },
-                  "stepUpAssertionId": {
-                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -11553,6 +11545,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                   "macRegion",
@@ -11754,6 +11747,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                   "reason",
@@ -12570,6 +12564,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                   "varianceReason",
@@ -12877,19 +12872,15 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
-                  "attestation",
-                  "stepUpAssertionId"
+                  "attestation"
                 ],
                 "properties": {
                   "attestation": {
                     "minLength": 20,
                     "maxLength": 2000,
-                    "type": "string"
-                  },
-                  "stepUpAssertionId": {
-                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -13081,6 +13072,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "type": "object",
                 "properties": {
                   "notes": {
@@ -41890,6 +41882,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                   "capYear",
@@ -41952,6 +41945,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                   "aggregateCapAmountCents"

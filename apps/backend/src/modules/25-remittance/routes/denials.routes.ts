@@ -47,7 +47,7 @@ const idOf = (request: { params?: unknown }): string => (request.params as { id:
 export function registerDenialRoutes(app: FastifyInstance, deps: DenialRouteDeps): void {
   const { readService, writeService } = deps;
 
-  app.get("/api/v1/denials", { preHandler: [WORKLIST] }, async (request, reply) => {
+  app.get("/api/v1/denials", { preHandler: [WORKLIST], config: { auditRead: { resourceKind: "denial", list: true } } }, async (request, reply) => {
     const actor = actorOf(request);
     const q = request.query;
     const minDollarRaw = qStr(q, "minDollar");
@@ -66,7 +66,7 @@ export function registerDenialRoutes(app: FastifyInstance, deps: DenialRouteDeps
     return reply.send(pageRes);
   });
 
-  app.get("/api/v1/denials/:id", { preHandler: [READ, READ_ABAC] }, async (request, reply) => {
+  app.get("/api/v1/denials/:id", { preHandler: [READ, READ_ABAC], config: { auditRead: { resourceKind: "denial", resourceIdParam: "id" } } }, async (request, reply) => {
     const actor = actorOf(request);
     const denial = await readService.getDenial(actor, idOf(request));
     if (!denial) throw new NotFoundError("denial case not found");

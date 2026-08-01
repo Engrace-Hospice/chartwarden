@@ -330,6 +330,12 @@ export interface ClaimListFilter {
   readonly providerEntityId?: string;
   readonly patientId?: string;
   readonly state?: ClaimState;
+  /**
+   * SERVER-DERIVED provider-entity restriction (authorization, never a query param). `undefined` =
+   * unrestricted (org-wide billing role / system principal); `[]` = the actor has no provider scope and
+   * therefore sees no claims. See {@link resolveClaimProviderScope} in claims.routes.ts.
+   */
+  readonly providerEntityScope?: readonly string[];
 }
 export interface NoeListFilter {
   readonly providerEntityId?: string;

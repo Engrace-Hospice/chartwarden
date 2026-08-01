@@ -73,11 +73,20 @@ export function registerSraRoutes(app: FastifyInstance, deps: SraRouteDeps): voi
   const { service } = deps;
 
   // R-40 — list SRA cycles (annual; cursor-paginated). §4.1.
-  app.get("/api/v1/quality/sra/cycles", { preHandler: [SRA_READ] }, async (request) => {
-    const actor = actorOf(request);
-    const q = parse(SraCycleListQuerySchema, request.query);
-    return service.listSraCycles(actor, q.cursor, q.limit);
-  });
+  app.get(
+    "/api/v1/quality/sra/cycles",
+    {
+      preHandler: [SRA_READ],
+      config: {
+        auditRead: { none: "HIPAA security-risk-assessment cycles — security posture, no PHI" },
+      },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const q = parse(SraCycleListQuerySchema, request.query);
+      return service.listSraCycles(actor, q.cursor, q.limit);
+    },
+  );
 
   // R-41 — open a new cycle (rolls scope from the template). §4.1/§4.2.
   app.post(
@@ -92,11 +101,18 @@ export function registerSraRoutes(app: FastifyInstance, deps: SraRouteDeps): voi
   );
 
   // R-42 — cycle detail (progress + findings + remediations). §4.1.
-  app.get("/api/v1/quality/sra/cycles/:cycleId", { preHandler: [SRA_READ] }, async (request) => {
-    const actor = actorOf(request);
-    const { cycleId } = parse(CycleIdParamsSchema, request.params);
-    return service.getSraCycle(actor, cycleId);
-  });
+  app.get(
+    "/api/v1/quality/sra/cycles/:cycleId",
+    {
+      preHandler: [SRA_READ],
+      config: { auditRead: { none: "one SRA cycle with its findings — security posture, no PHI" } },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const { cycleId } = parse(CycleIdParamsSchema, request.params);
+      return service.getSraCycle(actor, cycleId);
+    },
+  );
 
   // R-43 — add a finding (NIST control reference required; `ownsSraCycle` off `:cycleId`). §4.1/§4.2.
   app.post(

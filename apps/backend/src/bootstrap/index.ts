@@ -47,8 +47,7 @@ export interface ServerDeps {
   /**
    * PHI path prefixes under read-audit coverage (M4 §2.5). Every GET/HEAD registered under one of
    * these refuses to register unless it carries `config.auditRead` (audit finding #4 — fail-closed
-   * at boot). Defaults to the mounted PHI patient surface; the composition root widens it as more
-   * PHI read modules adopt the `config.auditRead` annotation.
+   * at boot). Defaults to {@link DEFAULT_READ_AUDIT_PREFIXES}; pass a list to narrow or widen it.
    */
   readAuditPrefixes?: readonly string[];
   /**
@@ -81,6 +80,65 @@ export interface ServerDeps {
 }
 
 const TEN_MB = 10 * 1024 * 1024;
+
+/**
+ * The PHI read surface under §2.5 read-audit coverage. Every GET/HEAD registered under one of these
+ * prefixes must declare `config.auditRead` — an emission config, or a justified `{ none: "…" }`
+ * waiver — or the route refuses to register and the host refuses to boot.
+ *
+ * This was `["/api/v1/patients"]`, and `readAuditPrefixes` was never passed by the composition root,
+ * so the gate governed ~9 of ~150 mounted PHI read routes. Everything else — M30's incident, abuse-
+ * allegation, mortality and infection queues (whose own source says "These are PHI routes"), and the
+ * M23/M24/M25 claim, denial and remittance surfaces, all of which carry `patient_id`, service dates
+ * and diagnosis codes — registered with no declaration required and emitted nothing. An OCR
+ * accounting-of-disclosures request under §164.528, or a snooping investigation, could not have
+ * reconstructed those reads.
+ *
+ * The list is deliberately explicit rather than "/api/v1": the M6–M14/M17/M18/M22 clinical-core
+ * prefixes are NOT here yet, because those routes carry no `config.auditRead` and adding their
+ * prefixes would only fail the boot. They are the remaining widening work, and they matter most —
+ * see `clinicalCoreScaffoldEnabled` in index.ts. Prefixes are matched with startsWith, so
+ * "/api/v1/claims" also governs "/api/v1/claims/:id/validation-runs".
+ */
+export const DEFAULT_READ_AUDIT_PREFIXES: readonly string[] = [
+  // M5 patient chart (the original covered surface) + the patient-scoped reads M7/M9/M10/M12/M39 hang off it.
+  "/api/v1/patients",
+  // M16 Bereavement · M15 Discipline plans · M20 Field safety · M19 On-call — already at full
+  // coverage; listing them locks that in so a new unannotated read route cannot regress them.
+  "/api/v1/bereavement",
+  "/api/v1/discipline-plans",
+  "/api/v1/safety",
+  "/api/v1/oncall",
+  "/api/v1/escalations",
+  // M30 HQRP & Quality — incidents (incl. abuse allegations), mortality reviews, infection
+  // surveillance, CAHPS decedents. The QAPI/SRA/risk-register/measure reads carry justified waivers.
+  "/api/v1/quality",
+  // M23 Billing (Medicare) — a claim carries patient_id, dates of service and diagnosis codes.
+  "/api/v1/billing",
+  "/api/v1/claims",
+  "/api/v1/noe-records",
+  "/api/v1/notr-records",
+  "/api/v1/internal/billing",
+  // M24 Billing (Medicaid) — same PHI shape.
+  "/api/v1/medicaid-claims",
+  "/api/v1/medicaid-eligibility-checks",
+  "/api/v1/medicaid-validation-runs",
+  "/api/v1/medicaid-validation-worklist",
+  "/api/v1/medicaid-validation-overrides",
+  "/api/v1/medicaid-rule-config",
+  "/api/v1/medicaid-ar-dashboard",
+  "/api/v1/rb-days",
+  "/api/v1/rb-arrangements",
+  "/api/v1/state-medicaid-trading-partner-credentials",
+  // M25 Remittance & Denials — an 835 line and a denial both resolve to a patient's claim.
+  "/api/v1/remittance",
+  "/api/v1/denials",
+  "/api/v1/appeals",
+  "/api/v1/taxonomy",
+  "/api/v1/internal/denials",
+  "/api/v1/internal/remittance",
+  "/api/v1/internal/patient-responsibility",
+];
 
 /**
  * Wire every module's seams + erasers, then validate. Call before server.listen().
@@ -131,7 +189,7 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
   // config.auditRead declaration; with a DB client it also EMITS the read event per successful response.
   // Added before any routes so the onRoute coverage hook sees them all.
   applyReadAuditCoverage(app, {
-    enforcedPrefixes: deps.readAuditPrefixes ?? ["/api/v1/patients"],
+    enforcedPrefixes: deps.readAuditPrefixes ?? DEFAULT_READ_AUDIT_PREFIXES,
     db: deps.db,
   });
 

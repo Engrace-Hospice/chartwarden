@@ -41,7 +41,7 @@ const idOf = (request: { params?: unknown }): string => (request.params as { id:
 export function registerAppealRoutes(app: FastifyInstance, deps: AppealRouteDeps): void {
   const { readService, writeService } = deps;
 
-  app.get("/api/v1/appeals", { preHandler: [READ] }, async (request, reply) => {
+  app.get("/api/v1/appeals", { preHandler: [READ], config: { auditRead: { resourceKind: "appeal", list: true } } }, async (request, reply) => {
     const actor = actorOf(request);
     const q = request.query;
     const pageRes = await readService.listAppeals(
@@ -53,7 +53,7 @@ export function registerAppealRoutes(app: FastifyInstance, deps: AppealRouteDeps
     return reply.send(pageRes);
   });
 
-  app.get("/api/v1/appeals/:id", { preHandler: [READ] }, async (request, reply) => {
+  app.get("/api/v1/appeals/:id", { preHandler: [READ], config: { auditRead: { resourceKind: "appeal", resourceIdParam: "id" } } }, async (request, reply) => {
     const actor = actorOf(request);
     const appeal = await readService.getAppeal(actor, idOf(request));
     if (!appeal) throw new NotFoundError("appeal case not found");

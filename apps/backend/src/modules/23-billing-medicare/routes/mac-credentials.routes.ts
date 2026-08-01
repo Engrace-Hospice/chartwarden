@@ -46,7 +46,7 @@ export function registerMacCredentialRoutes(app: FastifyInstance, deps: MacCrede
   const { readService, writeService } = deps;
 
   // GET /billing/mac-credentials — list per-PE credentials (secrets masked, cursor-paginated). §4.1 #34.
-  app.get("/api/v1/billing/mac-credentials", { preHandler: [READ] }, async (request) => {
+  app.get("/api/v1/billing/mac-credentials", { preHandler: [READ], config: { auditRead: { none: "MAC submitter credential metadata (never the secret) — no patient data" } } }, async (request) => {
     const actor = actorOf(request);
     const q = parse(MacCredentialListQuerySchema, request.query);
     return readService.listMacCredentials(actor, q.cursor, q.limit);
@@ -55,7 +55,7 @@ export function registerMacCredentialRoutes(app: FastifyInstance, deps: MacCrede
   // GET /billing/mac-credentials/:providerEntityId — the credential for one PE (or null). §4.1.
   app.get(
     "/api/v1/billing/mac-credentials/:providerEntityId",
-    { preHandler: [READ, READ_ABAC] },
+    { preHandler: [READ, READ_ABAC], config: { auditRead: { none: "one provider entity's MAC credential metadata — no patient data" } } },
     async (request) => {
       const actor = actorOf(request);
       const { providerEntityId } = parse(ProviderEntityParamsSchema, request.params);

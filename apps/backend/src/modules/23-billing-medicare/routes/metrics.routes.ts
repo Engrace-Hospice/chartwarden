@@ -24,16 +24,38 @@ export function registerMetricsRoutes(app: FastifyInstance, deps: MetricsRouteDe
   const { readService } = deps;
 
   // GET /billing/ar-dashboard?providerEntityId= — AR-aging buckets + rates (org-wide or per-PE). §4.1 #37.
-  app.get("/api/v1/billing/ar-dashboard", { preHandler: [READ_AR] }, async (request) => {
-    const actor = actorOf(request);
-    const { providerEntityId } = parse(MetricsQuerySchema, request.query);
-    return readService.getArAging(actor, { providerEntityId });
-  });
+  app.get(
+    "/api/v1/billing/ar-dashboard",
+    {
+      preHandler: [READ_AR],
+      config: {
+        auditRead: {
+          none: "AR aging buckets + open-claim counts in dollars — aggregate, no patient identity",
+        },
+      },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const { providerEntityId } = parse(MetricsQuerySchema, request.query);
+      return readService.getArAging(actor, { providerEntityId });
+    },
+  );
 
   // GET /billing/metrics?providerEntityId= — per-window claim metric buckets (M33 consumer). §4.1 #38.
-  app.get("/api/v1/billing/metrics", { preHandler: [READ_METRICS] }, async (request) => {
-    const actor = actorOf(request);
-    const { providerEntityId } = parse(MetricsQuerySchema, request.query);
-    return { buckets: await readService.getClaimMetrics(actor, { providerEntityId }) };
-  });
+  app.get(
+    "/api/v1/billing/metrics",
+    {
+      preHandler: [READ_METRICS],
+      config: {
+        auditRead: {
+          none: "billing throughput/denial-rate metrics — aggregate, no patient identity",
+        },
+      },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const { providerEntityId } = parse(MetricsQuerySchema, request.query);
+      return { buckets: await readService.getClaimMetrics(actor, { providerEntityId }) };
+    },
+  );
 }

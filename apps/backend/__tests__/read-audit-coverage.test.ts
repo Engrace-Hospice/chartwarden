@@ -8,7 +8,7 @@
  */
 import { resetReadAuditDeclarations } from "@wardenx/audit";
 import { beforeEach, describe, expect, it } from "vitest";
-import { buildServer } from "../src/bootstrap/index";
+import { DEFAULT_READ_AUDIT_PREFIXES, buildServer } from "../src/bootstrap/index";
 import {
   ReadAuditCoverageError,
   applyReadAuditCoverage,
@@ -88,5 +88,63 @@ describe("read-audit coverage gate (onRoute, via buildServer)", () => {
 
   it("applyReadAuditCoverage is the unit under test (exported for direct wiring)", () => {
     expect(typeof applyReadAuditCoverage).toBe("function");
+  });
+});
+
+describe("DEFAULT_READ_AUDIT_PREFIXES — the governed PHI surface", () => {
+  // The default was ["/api/v1/patients"] and `readAuditPrefixes` was never passed by the composition
+  // root, so the gate governed ~9 of ~150 mounted PHI read routes: M30's incident/abuse-allegation/
+  // mortality/infection queues and the M23/M24/M25 claim, denial and remittance surfaces all
+  // registered with nothing to declare and emitted nothing. These assertions exist so the list can
+  // never silently narrow again — a §164.528 accounting gap is invisible until someone asks for one.
+  it("governs the M30 quality PHI surface", () => {
+    expect(DEFAULT_READ_AUDIT_PREFIXES).toContain("/api/v1/quality");
+    expect(isGovernedReadRoute("GET", "/api/v1/quality/incidents", DEFAULT_READ_AUDIT_PREFIXES)).toBe(
+      true,
+    );
+    expect(
+      isGovernedReadRoute("GET", "/api/v1/quality/mortality/:reviewId", DEFAULT_READ_AUDIT_PREFIXES),
+    ).toBe(true);
+  });
+
+  it("governs the M23/M24/M25 claim + remittance surfaces (a claim carries patient_id + dx codes)", () => {
+    for (const url of [
+      "/api/v1/billing/claims",
+      "/api/v1/claims/:id/validation-runs",
+      "/api/v1/noe-records",
+      "/api/v1/medicaid-claims/:id/lines",
+      "/api/v1/rb-days",
+      "/api/v1/remittance/advices",
+      "/api/v1/denials/:id",
+      "/api/v1/appeals",
+    ]) {
+      expect(isGovernedReadRoute("GET", url, DEFAULT_READ_AUDIT_PREFIXES)).toBe(true);
+    }
+  });
+
+  it("keeps the modules already at full coverage governed, so they cannot regress", () => {
+    for (const p of [
+      "/api/v1/patients",
+      "/api/v1/bereavement",
+      "/api/v1/discipline-plans",
+      "/api/v1/safety",
+      "/api/v1/oncall",
+    ]) {
+      expect(DEFAULT_READ_AUDIT_PREFIXES).toContain(p);
+    }
+  });
+
+  it("does NOT yet govern the M6–M14/M17/M18/M22 clinical core — those routes carry no declaration", () => {
+    // Deliberate and temporary: adding these prefixes today would only fail the boot. This assertion
+    // is the reminder that the largest PHI read surface in the product is still unaudited — when
+    // those routes gain `config.auditRead`, add the prefixes and invert this test.
+    for (const url of [
+      "/api/v1/encounters",
+      "/api/v1/orders",
+      "/api/v1/administrations",
+      "/api/v1/documents",
+    ]) {
+      expect(isGovernedReadRoute("GET", url, DEFAULT_READ_AUDIT_PREFIXES)).toBe(false);
+    }
   });
 });

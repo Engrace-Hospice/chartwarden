@@ -197,6 +197,18 @@ describe.skipIf(!DB_URL)("M25 Remittance & Denials — RLS cross-tenant denial �
     if (db) await db.end();
   });
 
+  // GUARD FOR EVERY CASE BELOW. RLS is not enforced for a role holding BYPASSRLS, so if the runtime
+  // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
+  // scripts/db/migrate.ts grants exactly that behind WARDENX_DEV_BYPASSRLS=1, so this is reachable,
+  // not theoretical. Six of fifteen suites asserted this and NONE of the four suites CI runs did.
+  it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+    const { rows } = await db.query<{ rolbypassrls: boolean }>(
+      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].rolbypassrls).toBe(false);
+  });
+  
   it("every M25 RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
     const rls = readFileSync(join(MIGRATIONS_DIR, "0083_remittance_m25_rls.sql"), "utf8");
     const policyBlocks = rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? [];
