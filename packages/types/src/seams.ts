@@ -326,7 +326,32 @@ export type SeamName =
   | "SafetyMetricsProvider" // M20 — M30/M33 aggregates, every rate WITH its denominator
   | "SafetyCheckInProvider" // M20 — M17's per-visit pre/mid/post check-in badge trio
   | "SafetyPolicyProvider" // M20 — the ONLY read path to the effective policy (§2.2.4), incl. the replay arm
-  | "SafetySupervisorProvider"; // M20 — who gets paged + the §7.8 coverage gaps (M36's composed resolver)
+  | "SafetySupervisorProvider" // M20 — who gets paged + the §7.8 coverage gaps (M36's composed resolver)
+  // M32 (AI Platform) §4.2 PUBLISHED seams (M32-T06). OPAQUE rich-seams: every interface lives in
+  // @wardenx/ai-platform, which this leaf may not import (`leaves-stay-leaves`, ARCHITECTURE §25.15), so
+  // the registry holds each instance as `unknown` and consumers that list `32` in their manifest
+  // `dependsOn` import the real type and resolve through the typed accessor.
+  //
+  // ALL ELEVEN ANSWER `{ available: false, unavailable: … }` RATHER THAN THROWING, and that is the
+  // single decision that shapes the family. Every consumer of an M32 seam has a Layer-1 path it must
+  // fall back to — M8's unenhanced note, M22's manual intake review, M16's deterministic grief score —
+  // and a throwing deny-stub makes falling back conditional on somebody remembering a try/catch (the
+  // M20-T01 finding). §4.2.1 says it outright: "absence is a first-class result, not an error".
+  //
+  // `ProtocolSuggestionProvider` / `HospitalizationRiskProvider` are M32's too but are declared ABOVE,
+  // leaf-typed in ./oncall by M19-T01, which shipped first and locked their shapes. M32 registers over
+  // those names; it does not re-declare them.
+  | "NarrativeEnhancementProvider" // M32 — §4.2.1 HearthNote Layer 2 / IDG polish (M8 locked, M14/M16 optional)
+  | "DocLensClassifier" // M32 — §4.2.2 document-type classification (M22)
+  | "DocLensExtractor" // M32 — §4.2.2 structured field extraction (M22)
+  | "DocLensVisionVerifier" // M32 — §4.2.2 signature/redaction/page-integrity vision check (M22)
+  | "DocLensSudDetector" // M32 — §4.2.2 42 CFR Part 2 SUD indicator detection (M22)
+  | "BereavementRiskNarrativeProvider" // M32 — §4.2.4 complicated-grief risk narrative (M16, optional)
+  | "DenialOutcomePredictionProvider" // M32 — §4.2.5 denial/appeal probability (M25; advisory, never gates)
+  | "EmbeddingsProvider" // M32 — §4.2.6 tenant-scoped embedding vectors (contract locked, no Phase-1 consumer)
+  | "SemanticSearchProvider" // M32 — §4.2.6 chart-scoped semantic search (contract locked, no Phase-1 consumer)
+  | "CopilotProvider" // M32 — §4.2.6 chart copilot Q&A (contract locked, no Phase-1 consumer)
+  | "AIPromptRegistry"; // M32 — §4.5 the D18 prompt-registry query API M12/M13/M18/M21/M27/M28 boot on
 
 /**
  * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
@@ -729,6 +754,27 @@ export interface SeamContracts {
   SafetyCheckInProvider: SafetyCheckInProvider;
   SafetyPolicyProvider: SafetyPolicyProvider;
   SafetySupervisorProvider: SafetySupervisorProvider;
+  // M32's §4.2 published seams + the §4.5 prompt registry — OPAQUE rich-seam pattern (interfaces in
+  // @wardenx/ai-platform, which this leaf may not import). Consumers that list `32` in `dependsOn`
+  // import the real types and resolve via M32's typed accessors; the M1 registry only holds and
+  // fail-closed-validates the instance, which `unknown` is sufficient for.
+  //
+  // `AIPromptRegistry` is the one that is NOT an inference surface: it is the D18/§8.5 typed query
+  // M12, M13, M18, M21, M27 and M28 each run at their OWN boot to prove no active prompt template
+  // targets their AI-prohibited zone. It is a SAFETY seam whose deny-stub therefore behaves the
+  // opposite way to its ten siblings — it THROWS (see providers.ts), because an empty array from an
+  // unwired registry reads as "no contraband found", which is the one answer it must never invent.
+  NarrativeEnhancementProvider: unknown;
+  DocLensClassifier: unknown;
+  DocLensExtractor: unknown;
+  DocLensVisionVerifier: unknown;
+  DocLensSudDetector: unknown;
+  BereavementRiskNarrativeProvider: unknown;
+  DenialOutcomePredictionProvider: unknown;
+  EmbeddingsProvider: unknown;
+  SemanticSearchProvider: unknown;
+  CopilotProvider: unknown;
+  AIPromptRegistry: unknown;
 }
 
 /**
@@ -992,4 +1038,28 @@ export type DataClass =
   // rows, the supervisor subscriptions, the advisory polygons and the clinician's own emergency-contact
   // consent are NEVER touched: they are a different data subject's record, and a patient's right to erasure
   // does not reach the clinician's workers-comp evidence. `subjectId` is the patient being destroyed.
-  | "safety_record";
+  | "safety_record"
+  // M32 (AI Platform) per-patient AI PROVENANCE, in two halves (§3.7). Registered in M32-T02 (the schema
+  // task) so the contract exists from the moment the tables do; the REAL erasers bind through the
+  // composition-root hook over the Phase-0 deny-stubs. NEITHER DELETES A ROW. `ai_invocation` is the
+  // §164.528 disclosure ledger — its token counts, model version pin, ZDR flag and timestamps ARE the
+  // evidence that a disclosure to a model vendor happened, or (for a `capability_unavailable` row) that
+  // it did not — so destroying the rows would destroy the record THAT the disclosure occurred, which is
+  // the opposite of what a destruction certificate is for. The erase destroys the CIPHERTEXT on that
+  // patient's invocation rows instead: the NOT NULL `prompt_payload_cipher` is overwritten with the empty
+  // -bytea shred sentinel and the two optional ciphers are nulled, which is the OUTCOME §3.7 specifies
+  // ("the rows remain; the encrypted payloads become unreadable") by the only means a PER-PATIENT
+  // certificate has — shredding the per-tenant DEK would destroy every other patient's rows too, and that
+  // whole-org path is M34's tenant-offboarding operation, not this one. The 0116 immutability trigger
+  // permits exactly this edit and no other cipher write, so the destruction path needs no privileged
+  // bypass. TWO classes because M4's registry is single-keyed and §3.7 maps M32's provenance onto the
+  // distinct classes M22 (intake) and M8 (clinical record) already use; the split is by capability, and
+  // the halves are disjoint, so running both is not a double-shred. NEVER touched: `ai_token_ledger`
+  // (no PHI, append-only, and erasing it would corrupt the tenant's own billing history),
+  // `ai_hallucination_report` (deliberately carries no patient column — a per-patient certificate cannot
+  // identify the report, and joining through `invocation_id` would reach reports it never named) and the
+  // platform-shared governance surface. `subjectId` is the patient being destroyed.
+  /** `doclens_*` invocations — the patient's INTAKE documents (the M22 half). */
+  | "intake_ai_provenance"
+  /** Every other capability — the patient's CHART (the M8 half). */
+  | "clinical_record_ai_provenance";

@@ -653,3 +653,26 @@ export * from "./oncall/index";
 // migration 0110; RLS/grants + the thirteen M4 write-audit triggers + the §2.3 active-SOS guard on the
 // location stream in 0111.
 export * from "./safety/index";
+
+// M32 AI Platform: 13 owned tables (§3.2) in three tenancy layers. SIX are PLATFORM-SHARED with no
+// organization_id at all — ai_capability (the governance registry), ai_capability_lifecycle_event (the
+// append-only D2 approval ledger), ai_capability_calibration (per-(capability, backend) thresholds +
+// the drift baseline), ai_model_backend (the version-pinned model registry whose two CHECKs make "no
+// cloud route without a BAA and ZDR" and "no local route without a license and an artifact" DB facts),
+// ai_prompt_template (the D18 prohibited-zone key; the prompt TEXT stays in version control and the row
+// pins its SHA-256) and ai_evaluation_run — all listed in check-tenancy.ts's NON_ORG_SCOPED set, read-all
+// within any tenant, writes via wardenx_admin. SIX are tenant-scoped on canonical app.org_id RLS:
+// ai_tenant_opt_in_record (where the row's EXISTENCE is not consent — the STATUS is, defaulting to
+// opted_out), ai_clinician_opt_out (membership-keyed, one LIVE refusal per capability), ai_invocation,
+// ai_token_ledger, ai_hallucination_report and ai_routing_override. ONE is mixed —
+// ai_kill_switch_state, organization_id NULLABLE with NULL meaning a platform-wide kill, split by
+// COMMAND so a tenant reads the platform row and can never write one.
+//
+// ai_invocation and ai_token_ledger are PARTITIONED MONTHLY (invoked_at / accrued_at) with composite
+// PKs declared in SQL. ai_invocation is the §164.528 disclosure ledger — a refused call is a RECORDED
+// row, because only a written row proves that no PHI left the platform — and §3.7's eraser therefore
+// SHREDS THE DEK rather than deleting it. ai_invocation + ai_hallucination_report additionally carry
+// provider_entity_id NOT NULL + location_id (ARCH-011's three-column rule, which §3.2 omits). Enums land
+// in M32-T01; tables in migrations 0113–0115; RLS/grants + the thirteen M4 write-audit triggers + the
+// §3.5 immutability triggers in 0116.
+export * from "./ai-platform/index";

@@ -171,6 +171,33 @@ import {
   scheduleM30Jobs,
   wireM30Tenancy,
 } from "./modules/30-quality/index";
+// M32 (AI Platform) boot surface — M32-T02's §3.7 destruction contract, M32-T06's §4.4 seam registration
+// and M32-T07's HTTP surface: the §4.11 `m32.*` outbox catalog, the six §4.7 ABAC predicate resolvers and
+// the §4.1 route mount over the T03/T04/T05 command services + T07's read port. `ai.full` stays OFF.
+import {
+  M32_OUTBOX_EVENTS,
+  M32_PLATFORM_JOB_ID,
+  buildDrizzleAiPlatformAbacResolver,
+  buildDrizzleM32ReadService,
+  createAiPromptRegistry,
+  createDrizzleAiCapabilityRegistryStore,
+  createDrizzleAiEvaluationRunStore,
+  createDrizzleAiHallucinationReportStore,
+  createDrizzleAiKillSwitchStore,
+  createDrizzleAiProvenanceEraseStore,
+  createDrizzleAiPromptTemplateStore,
+  createDrizzleAiRoutingOverrideStore,
+  createDrizzleAiTenantConsentStore,
+  createUnconfiguredAiTokenBudgetResolver,
+  createUnresolvableAiPromptArtifactReader,
+  createDenyingAiOptInEvidenceResolver,
+  denyStubAiPlatformAbacResolver,
+  mountM32Routes,
+  registerAiPlatformAbacPredicates,
+  registerAiPlatformSeams,
+  registerAiProvenanceErasers,
+  wireM32Tenancy,
+} from "./modules/32-ai-platform/index";
 // M27 (Cost Report) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route mount
 // over the Drizzle read/write services, the §3.7 `cost_report_class` eraser, and the §4.8 BullMQ workers
 // (the M30 precedent). Worker infra/seam ports stay fail-closed-unbound at boot (RULE 4); the recompute
@@ -697,6 +724,64 @@ export function wireModuleSeams(
   // empty; without this the platform-ops seam reads + the platform-scoped workers are REFUSED entry to
   // withPlatformContext — fail-closed). Must run before any registerLiveM34Seams read or worker run.
   wireM34Tenancy();
+  // M32-T06 (§4.4 steps 4–5) — publish M32's seams over their boot deny-stubs.
+  //
+  // ONLY THE `AIPromptRegistry` BINDS LIVE HERE, and the asymmetry is deliberate. It is not an inference
+  // surface: it is the D18/§8.5 query M12, M13, M18, M21, M27 and M28 each run at their own boot to prove
+  // no active prompt template targets their AI-prohibited zone. Its deny-stub THROWS — an unwired registry
+  // answering `[]` would hand six boot validators a clean bill of health minted from nothing — so leaving
+  // it unregistered is not a neutral default. The artifact reader stays UNRESOLVABLE (there is no
+  // `/srv/prompts` mount and no authored template this wave), which is fail-closed in the right direction:
+  // the D18 prefix queries answer from the TABLE alone and need no reader, while any attempt to resolve a
+  // template BODY refuses rather than serving an unpinned prompt.
+  //
+  // The ten §4.2 INFERENCE seams stay on their refusing deny-stubs, which is the Wave-H posture ("M32 —
+  // capability shell only, `ai.full` OFF"). Standing them up needs an `AiInvocationPipeline`, and that
+  // needs a per-tenant DEK envelope cipher that no module on this platform has yet (M20's write path
+  // refuses for the same reason). A pipeline built without one could write plaintext PHI into a column
+  // named `prompt_payload_cipher`; a deny-stub that answers `{ available: false }` costs M8 nothing,
+  // because M8's Layer-1 path is what runs today either way.
+  wireM32Tenancy();
+  registerAiPlatformSeams(
+    deps.db
+      ? {
+          promptRegistry: createAiPromptRegistry({
+            store: createDrizzleAiPromptTemplateStore({
+              db: deps.db,
+              platformDb: deps.db,
+              auditBypass: m34PlatformBypassAuditor,
+              jobId: M32_PLATFORM_JOB_ID,
+            }),
+            artifacts: createUnresolvableAiPromptArtifactReader(),
+          }),
+        }
+      : {},
+  );
+  // M32-T07 (§4.7) — the six named ABAC predicate resolvers. Registered here, beside the seam wiring,
+  // because `ai_prohibited_zone_respected` resolves through the SAME `AIPromptRegistry` instance the
+  // seam publishes: two registries would be two answers to D18's contraband question.
+  //
+  // WITHOUT A DB CLIENT THE DENY-STUB RESOLVER BINDS, and that is the fail-closed direction rather than a
+  // convenience. M3's registry denies an UNREGISTERED name, so leaving the six unregistered would also
+  // refuse — but indistinguishably from a typo, which is exactly the confusion `arch:abac-predicates`
+  // exists to remove. A registered resolver that answers "no" to every question refuses for a stated
+  // reason a boot log can carry.
+  registerAiPlatformAbacPredicates({
+    resolver: deps.db
+      ? buildDrizzleAiPlatformAbacResolver({
+          db: deps.db,
+          promptRegistry: createAiPromptRegistry({
+            store: createDrizzleAiPromptTemplateStore({
+              db: deps.db,
+              platformDb: deps.db,
+              auditBypass: m34PlatformBypassAuditor,
+              jobId: M32_PLATFORM_JOB_ID,
+            }),
+            artifacts: createUnresolvableAiPromptArtifactReader(),
+          }),
+        })
+      : denyStubAiPlatformAbacResolver,
+  });
   // M34 — register the PACKAGE-OWNED seams (the D5 `TenantKeyProvider` + the lifecycle/onboarding/support/
   // export-shard publishes). These live in `@wardenx/saas-tenant-platform`'s own registry (M1 imports the
   // `TenantKeyProvider` interface, so the live-impl home is the package, not the M1 registry).
@@ -863,6 +948,18 @@ export function wireModuleErasers(deps: { db?: DbClient } = {}): void {
   // that is a different data subject's workers-comp evidence.) The Drizzle store binds when a DB client is
   // present; without one the slice's in-memory store stands.
   registerSafetyErasers(deps.db ? { store: createDrizzleSafetyEraseStore(deps.db) } : {});
+  // M32-T02 — `clinical_record_ai_provenance` + `intake_ai_provenance` (per-PATIENT destruction-cert
+  // callbacks that DELETE NOTHING: `ai_invocation` is the §164.528 disclosure ledger, so the rows survive
+  // with their token counts, model pin, ZDR flag and timestamps — the evidence that a disclosure to a
+  // model vendor happened, or that it did not — while the CIPHERTEXT on that patient's rows is destroyed
+  // in place. The per-tenant DEK shred §3.7 describes is the whole-org offboarding path and belongs to
+  // M34; a per-patient certificate cannot shred a key that protects every other patient. Split by
+  // capability: `doclens_*` = the patient's intake documents, everything else = the chart. The token
+  // ledger, the hallucination reports and the platform-shared governance surface are never touched.)
+  // The Drizzle store binds when a DB client is present; without one the slice's in-memory store stands.
+  registerAiProvenanceErasers(
+    deps.db ? { store: createDrizzleAiProvenanceEraseStore(deps.db) } : {},
+  );
   // Phase-1 data-class owners append here as they land.
 }
 
@@ -915,6 +1012,16 @@ if ((import.meta as { main?: boolean }).main) {
     // and the throw rolls back the caller's transaction. Without this entry every §4.1 mutation that
     // declares an outbox effect — which is nearly all of them — would fail at the moment of the write.
     M20_OUTBOX_EVENTS,
+    // M32-T07 — the §4.11 `m32.*` catalog (twenty-one events). Registered for the dispatcher's payload
+    // validation and for `outbox_event_catalog`; the per-mutation PUBLISHER is deliberately NOT bound
+    // (the M21/M34 posture, and for a sharper reason here): M32's §4.1 writes go through the M32-T03/T04/
+    // T05 command services, each of which owns its OWN transaction inside its store. A route-layer emit
+    // would fire AFTER that transaction committed, which is precisely the guarantee the transactional
+    // outbox exists to provide — an event that can outlive a rolled-back write. Binding it means
+    // threading a `WriteOutboxPort` through those stores' transaction boundaries, which is a change to
+    // T03-T05's shape rather than an addition to T07's. Catalogued now, bound when the emit can join the
+    // write's own tx.
+    M32_OUTBOX_EVENTS,
   ]);
   const txOutboxPublisher = buildTxOutboxPublisher(bootOutboxCatalog);
   // Per-module adapters that pin `callerModule` (the module-scoped `WriteOutboxPort` omits it; the
@@ -1292,6 +1399,82 @@ if ((import.meta as { main?: boolean }).main) {
             writeService: buildDrizzleM20WriteService(dbHandle.db, m20ReadService, {
               outbox: m20OutboxPublisher,
             }),
+          });
+          // M32 (AI Platform) — mount the thirty-two §4.1 routes over the T03/T04/T05 command services
+          // plus T07's read port. `ai.full` stays OFF: these routes GOVERN a platform that is not yet
+          // serving inference, which is the order §2.2 requires (a capability reaches APPROVED only
+          // after the governance surface that approved it exists).
+          //
+          // THREE PORTS ARE DELIBERATELY UNBOUND HERE, and each refusal is a different shape:
+          //   • `cipher` — no module on this platform binds a per-tenant DEK envelope yet, so R18's
+          //     hallucination report refuses with 503 `AI_REPORT_CIPHER_UNBOUND`. `reporter_narrative_
+          //     cipher` is NOT NULL and holds prose; writing it in the clear into a column named
+          //     `_cipher` would make the §3.7 erasure report a destruction that never happened. Every
+          //     OTHER hallucination route — the triage queue, the triage decision — works without one.
+          //   • `budgets` — M2 states no token budget (`createUnconfiguredAiTokenBudgetResolver`), so
+          //     R22's forecast reports `softCap`/`hardCap`/`projectedBreach` as `null` rather than as a
+          //     green "no breach projected" tile minted from a missing configuration.
+          //   • the prompt ARTIFACT reader stays unresolvable (there is no `/srv/prompts` mount this
+          //     wave), so R30's activation refuses: a template pinned to a file nothing can read is a
+          //     governance record of a prompt nobody can reproduce. R29 still answers from the TABLE.
+          //
+          // `capabilityShellMode: true` is what keeps R32's health endpoint GREEN while `ai.full` is
+          // OFF — "no healthy backend" is the expected Phase-1 state, and reporting `degraded` for the
+          // platform's intended posture is the fastest way to teach an operator to ignore the endpoint.
+          const m32SafetyStoreDeps = {
+            db: dbHandle.db,
+            platformDb: dbHandle.db,
+            auditBypass: m34PlatformBypassAuditor,
+            jobId: M32_PLATFORM_JOB_ID,
+            userId: "",
+          };
+          const m32PromptStore = createDrizzleAiPromptTemplateStore({
+            db: dbHandle.db,
+            platformDb: dbHandle.db,
+            auditBypass: m34PlatformBypassAuditor,
+            jobId: M32_PLATFORM_JOB_ID,
+          });
+          const m32PromptArtifacts = createUnresolvableAiPromptArtifactReader();
+          const m32PromptRegistry = createAiPromptRegistry({
+            store: m32PromptStore,
+            artifacts: m32PromptArtifacts,
+          });
+          const m32Registry = createDrizzleAiCapabilityRegistryStore({
+            db: dbHandle.db,
+            platformDb: dbHandle.db,
+            auditBypass: m34PlatformBypassAuditor,
+            jobId: M32_PLATFORM_JOB_ID,
+          });
+          mountM32Routes(app, {
+            governance: {
+              registry: m32Registry,
+              consent: createDrizzleAiTenantConsentStore({ db: dbHandle.db, userId: "" }),
+              // W4.1's evidence resolver stays DENYING: the BAA / ZDR / clinical-reviewer checks are
+              // three upstream seams nothing binds yet, and a default that answered "resolved" would
+              // make the wave's most consequential consent gate a no-op indistinguishable from a
+              // working one (governance/service.ts's header).
+              evidence: createDenyingAiOptInEvidenceResolver(),
+              evaluations: createDrizzleAiEvaluationRunStore(m32SafetyStoreDeps),
+            },
+            safety: {
+              killSwitches: createDrizzleAiKillSwitchStore(m32SafetyStoreDeps),
+              reports: createDrizzleAiHallucinationReportStore({ db: dbHandle.db, userId: "" }),
+              evaluations: createDrizzleAiEvaluationRunStore(m32SafetyStoreDeps),
+              registry: m32Registry,
+            },
+            prompts: {
+              store: m32PromptStore,
+              artifacts: m32PromptArtifacts,
+              registry: m32PromptRegistry,
+            },
+            read: buildDrizzleM32ReadService({
+              db: dbHandle.db,
+              budgets: createUnconfiguredAiTokenBudgetResolver(),
+              capabilityShellMode: true,
+            }),
+            routing: createDrizzleAiRoutingOverrideStore({ db: dbHandle.db, userId: "" }),
+            cipher: null,
+            promptRegistry: m32PromptRegistry,
           });
         }
       : undefined,

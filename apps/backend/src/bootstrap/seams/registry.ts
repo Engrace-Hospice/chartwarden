@@ -99,6 +99,17 @@ import {
   safetyMetricsProviderDenyStub,
   safetyPolicyProviderDenyStub,
   safetySupervisorProviderDenyStub,
+  aiPromptRegistryDenyStub,
+  bereavementRiskNarrativeProviderDenyStub,
+  copilotProviderDenyStub,
+  denialOutcomePredictionProviderDenyStub,
+  docLensClassifierDenyStub,
+  docLensExtractorDenyStub,
+  docLensSudDetectorDenyStub,
+  docLensVisionVerifierDenyStub,
+  embeddingsProviderDenyStub,
+  narrativeEnhancementProviderDenyStub,
+  semanticSearchProviderDenyStub,
   scaleSeriesProviderDenyStub,
   sessionContextResolverDenyStub,
   signedEncountersReaderDenyStub,
@@ -928,6 +939,63 @@ export const REQUIRED_SEAMS = [
     phi: false,
     denyStub: safetySupervisorProviderDenyStub,
   },
+  // M32 (AI Platform) §4.2 PUBLISHED seams (M32-T06). Owned by M32; the real implementations register
+  // over these when a DB client is present, and even then they refuse for the whole of Phase 1 because
+  // `ai.full` is off for every tenant. The deny-stubs are what a DB-less boot stands on.
+  //
+  // PHI SPLIT — per SEAM, decided by what crosses the boundary TO A MODEL VENDOR, which is the strictest
+  // reading available and the right one: §8.8 makes every cloud-routed invocation a §164.528 disclosure.
+  //
+  //   • The eight patient-scoped inference seams are phi: TRUE. A narrative draft IS the chart note; a
+  //     DocLens page IS the intake document; a copilot question names the patient it is asked about; an
+  //     embedding vector is a lossy but re-identifiable projection of the text it encodes (D20 gives
+  //     each tenant its own HNSW index for exactly that reason). `BereavementRiskNarrativeProvider`
+  //     carries a survivor's relationship and grief-risk factors — a decedent's family is still the
+  //     patient's PHI under §164.502(f).
+  //   • `DenialOutcomePredictionProvider` is phi: TRUE. §4.2.5's feature vector carries
+  //     `patientLengthOfStayDays` against a claim id: a length of stay for an identified hospice
+  //     admission is a health fact about a named individual, and "it is only billing" is the mistake
+  //     that reading would be.
+  //   • `AIPromptRegistry` is phi: FALSE, and this is the one place that is genuinely true rather than
+  //     conveniently so. §3.2.5 is platform-shared reference data with a platform-floor "no PHI in
+  //     template" invariant (D3); the registry answers with template metadata and a git-resolved prompt
+  //     body, never with a patient's anything.
+  {
+    key: "NarrativeEnhancementProvider",
+    ownerModule: 32,
+    phi: true,
+    denyStub: narrativeEnhancementProviderDenyStub,
+  },
+  { key: "DocLensClassifier", ownerModule: 32, phi: true, denyStub: docLensClassifierDenyStub },
+  { key: "DocLensExtractor", ownerModule: 32, phi: true, denyStub: docLensExtractorDenyStub },
+  {
+    key: "DocLensVisionVerifier",
+    ownerModule: 32,
+    phi: true,
+    denyStub: docLensVisionVerifierDenyStub,
+  },
+  { key: "DocLensSudDetector", ownerModule: 32, phi: true, denyStub: docLensSudDetectorDenyStub },
+  {
+    key: "BereavementRiskNarrativeProvider",
+    ownerModule: 32,
+    phi: true,
+    denyStub: bereavementRiskNarrativeProviderDenyStub,
+  },
+  {
+    key: "DenialOutcomePredictionProvider",
+    ownerModule: 32,
+    phi: true,
+    denyStub: denialOutcomePredictionProviderDenyStub,
+  },
+  { key: "EmbeddingsProvider", ownerModule: 32, phi: true, denyStub: embeddingsProviderDenyStub },
+  {
+    key: "SemanticSearchProvider",
+    ownerModule: 32,
+    phi: true,
+    denyStub: semanticSearchProviderDenyStub,
+  },
+  { key: "CopilotProvider", ownerModule: 32, phi: true, denyStub: copilotProviderDenyStub },
+  { key: "AIPromptRegistry", ownerModule: 32, phi: false, denyStub: aiPromptRegistryDenyStub },
 ] satisfies readonly RequiredSeam[];
 
 /** A producer module registers its implementation of a published seam. */

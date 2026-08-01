@@ -4443,6 +4443,186 @@ export function m20ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M20_CONTRIBUTED_PERMISSIONS);
 }
 
+/**
+ * Module 32 (AI Platform) — the twenty-two §4.6 permission keys registered into M3's catalog.
+ *
+ * FIVE DECISIONS THIS TABLE ENCODES, each of which reads wrong if you skim it:
+ *
+ *   1. `ai.invocation.read` IS `compliance`, NOT `ai_platform`. §3.2.8 makes `ai_invocation` the
+ *      §164.528 DISCLOSURE ledger — the row that says a named patient's chart context went to a model
+ *      vendor. Reading it is an accounting-of-disclosures act, and filing it under the module's own
+ *      category would sweep it into an AI-operations template rather than the Compliance Officer's.
+ *   2. `ai.clinician_opt_out` / `.read` ARE `self_service`. §5.4 makes the CLINICIAN the data subject of
+ *      her own opt-out row. A `compliance`-category grant would let one person set another's — which is
+ *      exactly the coercion the per-clinician opt-out exists to make impossible.
+ *   3. THE TWO KILL-SWITCH KEYS ARE ONE `activate` KEY AND ONE `read` KEY, not four. §4.1's R7/R8 are
+ *      activate and DEACTIVATE, and §4.6's table gives them a single key on purpose: a deactivation is
+ *      the same authority exercised in the other direction, and splitting it would let a tenant hold
+ *      "may un-pause" without "may pause".
+ *   4. `ai.tenant_opt_in` COVERS RECORD AND REVOKE (§4.1 R10/R11) — §10.6's withdrawal must never need a
+ *      grant the opt-in did not, or a tenant could be walked into consent it cannot walk back out of.
+ *   5. THE `abac` DEFAULT ON A ROW IS NOT THE ROUTE'S WHOLE GATE. §4.1 spells several cells as
+ *      disjunctions (`ai_safety_owner` OR `tenant_admin`); the catalog names ONE default and the route
+ *      composes the other arm (../../../apps/backend/src/modules/32-ai-platform/routes/guards.ts). The
+ *      `inOrg` rows are §4.1's "`wardenx.organization.member` unless explicitly noted" baseline — M32
+ *      registers no second name for M3's intrinsic org-scope rule (the M20 precedent).
+ */
+export const M32_CONTRIBUTED_PERMISSIONS = {
+  // ── capability registry + lifecycle (§4.1 R1-R6) ────────────────────────────────────────────────────
+  "ai.capability.create": {
+    resource: "ai_capability",
+    action: "create",
+    category: "ai_platform",
+    abac: "ai_safety_owner",
+  },
+  // §6's matrix grants this to every clinical role — a clinician may see WHAT the platform can do.
+  "ai.capability.read": {
+    resource: "ai_capability",
+    action: "read",
+    category: "ai_platform",
+    abac: "inOrg",
+  },
+  "ai.capability.transition": {
+    resource: "ai_capability",
+    action: "transition",
+    category: "ai_platform",
+    abac: "ai_safety_owner",
+  },
+  "ai.capability.calibrate": {
+    resource: "ai_capability",
+    action: "calibrate",
+    category: "ai_platform",
+    abac: "ai_safety_owner",
+  },
+  // ── kill switch (§4.1 R7-R9) — decision 3 ───────────────────────────────────────────────────────────
+  "ai.kill_switch.activate": {
+    resource: "ai_kill_switch_state",
+    action: "activate",
+    category: "ai_platform",
+    abac: "inOrg",
+  },
+  "ai.kill_switch.read": {
+    resource: "ai_kill_switch_state",
+    action: "read",
+    category: "ai_platform",
+    abac: "inOrg",
+  },
+  // ── tenant opt-in (§4.1 R10-R12, §5.3) — decision 4 ─────────────────────────────────────────────────
+  "ai.tenant_opt_in": {
+    resource: "ai_tenant_opt_in_record",
+    action: "manage",
+    category: "admin",
+    abac: "inOrg",
+  },
+  "ai.tenant_opt_in.read": {
+    resource: "ai_tenant_opt_in_record",
+    action: "read",
+    category: "admin",
+    abac: "inOrg",
+  },
+  // ── clinician opt-out (§4.1 R13-R15, §5.4) — decision 2 ─────────────────────────────────────────────
+  "ai.clinician_opt_out": {
+    resource: "ai_clinician_opt_out",
+    action: "manage",
+    category: "self_service",
+    abac: "inOrg",
+  },
+  "ai.clinician_opt_out.read": {
+    resource: "ai_clinician_opt_out",
+    action: "read",
+    category: "self_service",
+    abac: "inOrg",
+  },
+  // ── the disclosure ledger (§4.1 R16-R17) — decision 1 ───────────────────────────────────────────────
+  "ai.invocation.read": {
+    resource: "ai_invocation",
+    action: "read",
+    category: "compliance",
+    abac: "ai_invocation_same_org_or_safety_owner",
+  },
+  // ── hallucination report → triage (§4.1 R18-R20, D9/D16) ────────────────────────────────────────────
+  // §4.6: "all clinical roles". The report button is the clinician's only write surface in this module.
+  "ai.hallucination.report": {
+    resource: "ai_hallucination_report",
+    action: "report",
+    category: "clinical",
+    abac: "inOrg",
+  },
+  "ai.hallucination.triage": {
+    resource: "ai_hallucination_report",
+    action: "triage",
+    category: "ai_platform",
+    abac: "ai_safety_owner",
+  },
+  // ── token spend (§4.1 R21-R22, W2) ──────────────────────────────────────────────────────────────────
+  "ai.tokens.read": {
+    resource: "ai_token_ledger",
+    action: "read",
+    category: "ai_platform",
+    abac: "inOrg",
+  },
+  // ── routing sovereignty (§4.1 R23-R25, §5.3.2, W8) ──────────────────────────────────────────────────
+  "ai.routing.override": {
+    resource: "ai_routing_override",
+    action: "override",
+    category: "admin",
+    abac: "inOrg",
+  },
+  "ai.routing.read": {
+    resource: "ai_routing_override",
+    action: "read",
+    category: "admin",
+    abac: "inOrg",
+  },
+  // ── evaluation runs (§4.1 R26-R28, D10/W6) ──────────────────────────────────────────────────────────
+  "ai.evaluation.run": {
+    resource: "ai_evaluation_run",
+    action: "run",
+    category: "ai_platform",
+    abac: "ai_safety_owner",
+  },
+  "ai.evaluation.read": {
+    resource: "ai_evaluation_run",
+    action: "read",
+    category: "ai_platform",
+    abac: "ai_safety_owner",
+  },
+  // ── prompt registry (§4.1 R29-R30, §4.5/§8.5) ───────────────────────────────────────────────────────
+  "ai.prompt.read": {
+    resource: "ai_prompt_template",
+    action: "read",
+    category: "ai_platform",
+    abac: "ai_safety_owner",
+  },
+  "ai.prompt.activate": {
+    resource: "ai_prompt_template",
+    action: "activate",
+    category: "ai_platform",
+    abac: "ai_safety_owner",
+  },
+  // ── drift + health (§4.1 R31-R32, D11/§4.8) ─────────────────────────────────────────────────────────
+  "ai.drift.read": {
+    resource: "ai_evaluation_run",
+    action: "read_drift",
+    category: "ai_platform",
+    abac: "ai_safety_owner",
+  },
+  "ai.health.read": {
+    resource: "ai_model_backend",
+    action: "read_health",
+    category: "ai_platform",
+    abac: "ai_safety_owner",
+  },
+} satisfies Record<string, PermissionDef>;
+
+/** Union of the M32 contributed permission keys (twenty-two). */
+export type M32ContributedPermissionKey = keyof typeof M32_CONTRIBUTED_PERMISSIONS;
+
+/** Project the M32 contributed keys into `permission`-table mirror rows (M32 §4.6). */
+export function m32ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M32_CONTRIBUTED_PERMISSIONS);
+}
+
 export function allPermissionMirrorRows(): PermissionMirrorRow[] {
   return [
     ...permissionMirrorRows(),
@@ -4478,5 +4658,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m21ContributedPermissionMirrorRows(),
     ...m19ContributedPermissionMirrorRows(),
     ...m20ContributedPermissionMirrorRows(),
+    ...m32ContributedPermissionMirrorRows(),
   ];
 }

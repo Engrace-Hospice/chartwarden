@@ -95,6 +95,11 @@ import type {
   VolunteerComplianceProvider,
   VolunteerGateExpiryReader,
 } from "../interfaces";
+// M32-T06 — the §2.2/W9 refusal envelope M32's ten inference deny-stubs answer with. A LEAF type
+// (`@wardenx/types`), imported directly rather than through `../interfaces` because it is not a seam
+// contract: it is the value those seams return. M1 may not import `@wardenx/ai-platform`, which is
+// exactly why T01 put this shape in the leaf.
+import type { AiCapabilityUnavailable } from "@wardenx/types";
 
 export class NotImplementedError extends Error {
   constructor(seam: string) {
@@ -1268,6 +1273,105 @@ export const safetySupervisorProviderDenyStub: SafetySupervisorProvider = {
     throw new NotImplementedError("SafetySupervisorProvider");
   },
 };
+
+// ── M32 (AI Platform) §4.2 PUBLISHED seams (M32-T06) ──────────────────────────────────────────────
+//
+// TEN INFERENCE SEAMS THAT DO NOT THROW, AND ONE SAFETY SEAM THAT DOES. The split is the whole design.
+//
+// The ten inference seams (`NarrativeEnhancementProvider`, the four DocLens arms,
+// `BereavementRiskNarrativeProvider`, `DenialOutcomePredictionProvider`, `EmbeddingsProvider`,
+// `SemanticSearchProvider`, `CopilotProvider`) all guard an ENHANCEMENT over a path that already works
+// without it: M8 has an unenhanced note, M22 has manual intake review, M16 has the deterministic grief
+// score, M25 submits the claim either way. §4.2.1 states the posture for the family — "this seam never
+// throws to indicate AI absence — absence is a first-class result, not an error" — and the reason is the
+// M20-T01 finding: a throwing deny-stub makes falling back conditional on somebody remembering a
+// try/catch, and on the encounter-finalize path one of them will forget. So they answer a VALUE the
+// caller branches on. This is the same call M19-T01 already made for `ProtocolSuggestionProvider` /
+// `HospitalizationRiskProvider` above.
+//
+// `AIPromptRegistry` is the opposite and must be. It is not an inference surface: it is the D18/§8.5
+// query M12, M13, M18, M21, M27 and M28 each run at their own boot to prove no active prompt template
+// targets their AI-prohibited zone. Its empty answer MEANS "no contraband found". A non-throwing
+// deny-stub would hand six boot validators a clean bill of health minted by an unwired registry — the
+// one answer §4.5 says it must never invent. It throws, and those boots refuse to start.
+//
+// The refusal literal is built structurally from `@wardenx/types` values rather than imported from
+// `@wardenx/ai-platform`: M1 may not import a downstream module's package (ARCHITECTURE §25.15), and
+// `AiCapabilityUnavailable` is a leaf type precisely so this boundary can be spoken here.
+
+/**
+ * An opaque M32 inference seam that REFUSES rather than throws. Every method resolves to
+ * `{ available: false, unavailable: { reason: 'provider_unregistered' }, detail }`.
+ *
+ * `provider_unregistered`, NOT `phase_1_capability_shell`: in Phase 1 the two are behaviourally
+ * identical, but the registered seam answers the latter, so an operator can tell "the boot did not wire
+ * M32" from "M32 is wired and the `ai.full` flag is off" — a wiring fault from a policy decision.
+ */
+function refusingAiSeamProxy(seam: SeamName): unknown {
+  const unavailable: AiCapabilityUnavailable = {
+    status: "capability_unavailable",
+    reason: "provider_unregistered",
+  };
+  const refusal = {
+    available: false as const,
+    unavailable,
+    detail: `no M32 implementation is registered for '${seam}'; the fail-closed deny-stub answered`,
+  };
+  return new Proxy(
+    {},
+    {
+      get() {
+        return async () => refusal;
+      },
+    },
+  );
+}
+
+/** M32 — §4.2.1 HearthNote Layer 2 / IDG polish / bereavement narrative. Refuses; never throws. */
+export const narrativeEnhancementProviderDenyStub: unknown = refusingAiSeamProxy(
+  "NarrativeEnhancementProvider",
+);
+
+/** M32 — §4.2.2 DocLens document-type classification (M22). Refuses; never throws. */
+export const docLensClassifierDenyStub: unknown = refusingAiSeamProxy("DocLensClassifier");
+
+/** M32 — §4.2.2 DocLens structured field extraction (M22). Refuses; never throws. */
+export const docLensExtractorDenyStub: unknown = refusingAiSeamProxy("DocLensExtractor");
+
+/** M32 — §4.2.2 DocLens signature/redaction/page-integrity vision check (M22). Refuses; never throws. */
+export const docLensVisionVerifierDenyStub: unknown = refusingAiSeamProxy("DocLensVisionVerifier");
+
+/** M32 — §4.2.2 DocLens 42 CFR Part 2 SUD indicator detection (M22). Refuses; never throws. */
+export const docLensSudDetectorDenyStub: unknown = refusingAiSeamProxy("DocLensSudDetector");
+
+/** M32 — §4.2.4 complicated-grief risk narrative (M16, optional). Refuses; never throws. */
+export const bereavementRiskNarrativeProviderDenyStub: unknown = refusingAiSeamProxy(
+  "BereavementRiskNarrativeProvider",
+);
+
+/** M32 — §4.2.5 denial/appeal probability (M25). Advisory: it never gates submission, so it never throws. */
+export const denialOutcomePredictionProviderDenyStub: unknown = refusingAiSeamProxy(
+  "DenialOutcomePredictionProvider",
+);
+
+/** M32 — §4.2.6 tenant-scoped embedding vectors. Contract locked, no Phase-1 consumer. */
+export const embeddingsProviderDenyStub: unknown = refusingAiSeamProxy("EmbeddingsProvider");
+
+/** M32 — §4.2.6 chart-scoped semantic search. Contract locked, no Phase-1 consumer. */
+export const semanticSearchProviderDenyStub: unknown = refusingAiSeamProxy("SemanticSearchProvider");
+
+/** M32 — §4.2.6 chart copilot Q&A. Contract locked, no Phase-1 consumer. */
+export const copilotProviderDenyStub: unknown = refusingAiSeamProxy("CopilotProvider");
+
+/**
+ * M32 — §4.5 the D18 prompt-registry query API. THROWS, unlike its ten siblings above.
+ *
+ * `getActivePromptsTargeting('medication_') === []` is the answer M12's boot validator reads as "no
+ * contraband template exists, start the module". An unwired registry that returned `[]` would produce
+ * that clearance out of nothing, in all six protected modules at once, and §8.5's first enforcement leg
+ * would be a no-op nobody could see. Throwing makes those boots fail — loudly, and in the right place.
+ */
+export const aiPromptRegistryDenyStub: unknown = denyingSeamProxy("AIPromptRegistry");
 
 /**
  * Boot hook for Phase-1 seam registration. Each producer module registers its REAL seam

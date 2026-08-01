@@ -852,6 +852,438 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ai/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the platform-shared capability registry (R2). §6 grants the read to every clinical role — a clinician offered an AI-enhanced note may look up what the capability is and which lifecycle state it is in. `hotPhase1` is an INVENTORY fact, not a column, and the response reports the filter as unapplied rather than silently ignoring it */
+        get: operations["getApiV1AiCapabilities"];
+        put?: never;
+        /** Register a capability into PROPOSED (R1). The SIGNER role rides the body and is checked against §2.2's own registration edge; the ACTING MEMBERSHIP is stamped from the session, so a caller may say which role they sign as and may not say that somebody else signed */
+        post: operations["postApiV1AiCapabilities"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/capabilities/{capabilityId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Capability detail (R3): the row, the §2.2 posture it publishes to consumers, its lifecycle ledger, its calibration trail and the states it can reach next — one read, because four would show a capability mid-transition as four inconsistent panels */
+        get: operations["getApiV1AiCapabilitiesByCapabilityId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/capabilities/{capabilityId}/calibration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish a calibration (R5): supersede the incumbent and insert the new `is_current` row in ONE store call — `ai_cap_calib_current_per_backend_idx` makes any other ordering a constraint violation rather than a race */
+        post: operations["postApiV1AiCapabilitiesByCapabilityIdCalibration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/capabilities/{capabilityId}/calibration/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Calibration trail (R6). Behind `ai_safety_owner` rather than the open capability read: a calibration row states the decision boundary a model is held to, which is the one piece of the registry an adversary could use to shape an input that lands just inside it (§8.1 tampering) */
+        get: operations["getApiV1AiCapabilitiesByCapabilityIdCalibrationHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/capabilities/{capabilityId}/kill-switch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate the kill switch (R7). `scope: 'platform'` writes the `organization_id IS NULL` row that stops EVERY agency and requires the safety-owner arm specifically; `scope: 'tenant'` resolves to the SESSION's org and never to a supplied id. The four `automated_*` actor kinds are UNSPELLABLE here, so a human cannot file a stop as though a monitor had raised it */
+        post: operations["postApiV1AiCapabilitiesByCapabilityIdKillswitch"];
+        /** Lift the kill switch (R8). `resolutionNarrative` is REQUIRED (§3.2.12) and the activation half of the row is left ALONE — who stopped it and why is exactly what a post-mortem reads. Step-up is on this direction too: resuming a capability somebody paused during a SEV-1 is what a stolen session would want */
+        delete: operations["deleteApiV1AiCapabilitiesByCapabilityIdKillswitch"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/capabilities/{capabilityId}/transitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Walk a §2.2 lifecycle edge (R4). STEP-UP: the stage-4 → stage-5 edge is what makes a capability servable against real charts. The FSM, the signer-role check and D10's evaluation-evidence check all re-run inside the service — the guard is the cheap early refusal, not the authority */
+        post: operations["postApiV1AiCapabilitiesByCapabilityIdTransitions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/clinician-opt-out": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Her own opt-out history, reverted rows included — that IS the history (R15). Scoped to the SESSION's membership inside the service */
+        get: operations["getApiV1AiClinicianoptout"];
+        put?: never;
+        /** The clinician turns a capability off for herself (R13 / §5.4). Takes NO membership id — the acting membership is stamped from the session, so this cannot be pointed at a colleague. Idempotent by rule: a second tap returns the live row and writes nothing */
+        post: operations["postApiV1AiClinicianoptout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/clinician-opt-out/{capabilityId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** The clinician re-enables the capability for herself (R14). The ROW IS KEPT and stamped `reverted_at` — §5.4's history is the record that she once declined, which is what makes a later coercion question answerable. A delete would erase the only evidence of it */
+        delete: operations["deleteApiV1AiClinicianoptoutByCapabilityId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/drift/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Drift findings within the last N hours (R31). M32 owns NO drift table: §4.8's sweep publishes `m32.drift.detected` and writes a `drift_response` EVALUATION RUN, which is the durable record — so the response names its `source`, and an empty list cannot be mistaken for 'no drift' when it may mean 'no sweep has run' */
+        get: operations["getApiV1AiDriftRecent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/evaluations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recent evaluation runs, filterable by capability and status (R27) */
+        get: operations["getApiV1AiEvaluations"];
+        put?: never;
+        /** Queue an evaluation run (R26). `status` is NOT an input — §3.2.11 inserts every run `pending`; a body that could set `passed` would let an operator mint the D10 evidence a stage-3 transition then cites, which is the one thing the evidence check exists to prevent */
+        post: operations["postApiV1AiEvaluations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/evaluations/{runId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One evaluation run with its metric snapshot and MLflow handle (R28). MLflow stays the record of the run; `summary_metrics` is the headline §3.2.11 keeps so a governance review need not reach into a second system to see why an edge was approved */
+        get: operations["getApiV1AiEvaluationsByRunId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/hallucination-reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The triage queue (R19). Defaults to the two OPEN statuses §3.2.10's partial index covers — that IS the working set; a queue that opened on every closed report ever filed would need a filter before it was usable */
+        get: operations["getApiV1AiHallucinationreports"];
+        put?: never;
+        /** File a hallucination report (R18) — the only write a clinician makes in this module, and §5.5's widget's contract. The narrative is DEK-enveloped before it is stored; with no cipher bound the route refuses 503 rather than writing prose in the clear into a column named `_cipher`. A `critical` severity returns D16's SEV-1 follow-up PLAN attached, so the caller can see that filing this is about to stop a capability platform-wide */
+        post: operations["postApiV1AiHallucinationreports"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/hallucination-reports/{reportId}/triage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the triage decision (R20 / W5.5-5.6). The computed FOLLOW-UP rides the response for the §4.8 queue; `followUpAction: 'none'` is a RECORDED decision, so 'we decided nothing was needed' stays distinguishable from 'the worker never ran' */
+        post: operations["postApiV1AiHallucinationreportsByReportIdTriage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Liveness plus per-backend health (R32). Reports `ok` in capability-shell mode: with `ai.full` OFF, 'no healthy backend' is the EXPECTED state, and reporting `degraded` for the platform's intended posture is the fastest way to teach an operator to ignore the endpoint. `lastHealthStatus: 'unknown'` is a real state — a backend nobody has probed is not healthy */
+        get: operations["getApiV1AiHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/invocations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The compliance search over `ai_invocation` (R16) — the §164.528 disclosure ledger. PHI masking is STRUCTURAL: the projection has no field for the prompt, the response or the chart context at all, and `wardenx.phi.full_read` unlocks only the patient identity and the free-text error. Without it a row still reports `touchedPatientChart`, which is the fact the accounting turns on. Default window: 90 days (the table is RANGE-partitioned on `invoked_at`) */
+        get: operations["getApiV1AiInvocations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/invocations/{invocationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One invocation (R17). 404-on-deny, not 403: an invocation id is 1:1 with 'this named patient's chart went to a model vendor at this hour', which §8.2's isolation test asks to be unprobeable */
+        get: operations["getApiV1AiInvocationsByInvocationId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/kill-switches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The §5.1.3 dashboard (R9) — the DISJUNCTION of this org's rows and the platform rows, which is the same disjunction the gate applies. A view of only the tenant's own rows would tell an agency a capability was running while a platform switch had it stopped */
+        get: operations["getApiV1AiKillswitches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/prompts/{capabilityKey}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate a template version (R30). INSERT-AND-DEPRECATE, not a status flip: §3.5's immutability trigger rejects an UPDATE flipping an existing row to `active`. The ARTIFACT is read and hashed inside the service — the submitted `templateContentHash` is a claim to VERIFY, not a value to store. STEP-UP: the active template is what every consumer's D18 boot validator reads */
+        post: operations["postApiV1AiPromptsByCapabilityKeyActivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/prompts/{capabilityKey}/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The active template's METADATA (R29) — never its body. §8.5: the body is the platform's prompt-injection surface, PR-gated in `packages/prompts` with a clinical-reviewer attestation, and an HTTP route serving it would be a second distribution channel with none of that review attached. 404 when the capability genuinely has no active template */
+        get: operations["getApiV1AiPromptsByCapabilityKeyActive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/routing-overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List routing overrides including EXPIRED rows (R25) — the question a data-residency review asks is 'what was in force in March', not 'what is in force now' */
+        get: operations["getApiV1AiRoutingoverrides"];
+        put?: never;
+        /** Pin a capability's routing (R23 / W8 `local_only`). `effectiveAt` defaults to NOW and not to the start of the day: a sovereignty decision takes effect when the admin makes it, and back-dating one would claim a period during which calls had already gone to a cloud backend */
+        post: operations["postApiV1AiRoutingoverrides"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/routing-overrides/{capabilityId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove an override by CLOSING its §3.2.13 window (R24) — never by deleting the row. A delete would erase the record that the agency once required `local_only`, which is exactly the evidence a data-residency question asks for, and would free a window the EXCLUDE constraint had already reserved. 404 when no override is live, rather than a silent success that would read as 'removed' */
+        delete: operations["deleteApiV1AiRoutingoverridesByCapabilityId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/tenant-opt-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The org's opt-in records (R12). Granted to `tenant_admin` and `compliance_officer`: the frozen acknowledgment evidence is what a privacy review reads to answer who agreed to what, and when */
+        get: operations["getApiV1AiTenantoptin"];
+        put?: never;
+        /** Record the tenant opt-in (R10 / W4). The four §5.3.1 acknowledgments arrive as EVIDENCE — the reference strings and the attestation text AS SHOWN, not booleans — and W4.1's resolver decides whether they resolve. With the Phase-1 denying resolver every cloud-reachable opt-in is REFUSED, naming the specific gate */
+        post: operations["postApiV1AiTenantoptin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/tenant-opt-in/{capabilityId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke (default) or pause (`mode: 'pause'`) the tenant opt-in (R11 / §10.6). An unqualified DELETE WITHDRAWS: a route that silently paused would leave an agency believing it had stopped while the acknowledgment evidence — and M35's metering — said otherwise. A reason is ACCEPTED, never required */
+        delete: operations["deleteApiV1AiTenantoptinByCapabilityId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/tokens/forecast": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Spend vs. caps with a linear burn-rate projection (R22). Nothing here predicts. `softCap`, `hardCap` and `projectedBreach` are ALL `null` when M2 states no budget — an absent bound is not an unbounded one, and a green 'no breach projected' tile minted from a missing configuration is the failure this avoids */
+        get: operations["getApiV1AiTokensForecast"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/tokens/ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The token ledger plus the window total (R21). The window is the CALENDAR MONTH, because that is what §3.8 partitions `ai_token_ledger` by and what §1.1's budget is stated in — a rolling 30 days would straddle two partitions and answer a different question from the one the cap enforces */
+        get: operations["getApiV1AiTokensLedger"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/alert-rules": {
         parameters: {
             query?: never;
@@ -15501,6 +15933,872 @@ export interface operations {
             path: {
                 id: string;
             };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AiCapabilities: {
+        parameters: {
+            query?: {
+                lifecycleState?: "PROPOSED" | "DESIGN_REVIEW" | "EVALUATION" | "PILOT" | "APPROVED" | "MONITORING" | "DEPRECATED" | "RETIRED";
+                riskTier?: "high" | "medium" | "low";
+                hotPhase1?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AiCapabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    capabilityKey: string;
+                    displayName: string;
+                    description: string;
+                    riskTier: "high" | "medium" | "low";
+                    defaultBackendKey: string;
+                    allowedBackendKeys: string[];
+                    fallbackChainKeys: string[];
+                    tenantOverrideAllowed: boolean;
+                    tenantOptInRequired: boolean;
+                    clinicianOptOutSupported: boolean;
+                    clinicalReviewRequired: boolean;
+                    owningRole: "ai_safety_owner" | "clinical_reviewer" | "ai_engineer" | "privacy_officer";
+                    actorRole: "ai_safety_owner" | "clinical_reviewer" | "ai_engineer" | "privacy_officer";
+                    rationaleText: string;
+                    currentPromptTemplateKey: string | null;
+                    stageArtifacts?: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AiCapabilitiesByCapabilityId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                capabilityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AiCapabilitiesByCapabilityIdCalibration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                capabilityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    backendKey: string;
+                    thresholds: {
+                        [key: string]: unknown;
+                    };
+                    baselineMetrics: {
+                        [key: string]: unknown;
+                    };
+                    /** Format: date-time */
+                    baselineSetAt: string;
+                    baselineEvaluationRunId: string | null;
+                    supersededReason: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AiCapabilitiesByCapabilityIdCalibrationHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                capabilityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AiCapabilitiesByCapabilityIdKillswitch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                capabilityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    scope: "platform" | "tenant";
+                    reason: "sev1_hallucination" | "sev2_hallucination" | "cost_cap_reached" | "vendor_outage_exceeded_sla" | "prompt_injection_detected" | "manual_safety_pause" | "misuse_detected" | "bias_drift_severe" | "lifecycle_demotion";
+                    actorKind: "ai_safety_owner" | "incident_commander";
+                    activationMessage: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1AiCapabilitiesByCapabilityIdKillswitch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                capabilityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    scope: "platform" | "tenant";
+                    actorKind: "ai_safety_owner" | "incident_commander";
+                    resolutionNarrative: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AiCapabilitiesByCapabilityIdTransitions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                capabilityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    toState: "PROPOSED" | "DESIGN_REVIEW" | "EVALUATION" | "PILOT" | "APPROVED" | "MONITORING" | "DEPRECATED" | "RETIRED";
+                    approvalKind: "stage_1_proposal" | "stage_2_design_review" | "stage_3_evaluation" | "stage_4_pilot" | "stage_5_ga" | "reapproval" | "deprecation" | "retirement" | "incident_demotion";
+                    actorRole: "ai_safety_owner" | "clinical_reviewer" | "ai_engineer" | "privacy_officer";
+                    rationaleText: string;
+                    linkedEvaluationRunId: string | null;
+                    reason?: string;
+                    stageArtifacts?: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AiClinicianoptout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AiClinicianoptout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    capabilityId: string;
+                    reason?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1AiClinicianoptoutByCapabilityId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                capabilityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AiDriftRecent: {
+        parameters: {
+            query?: {
+                withinHours?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AiEvaluations: {
+        parameters: {
+            query?: {
+                capabilityId?: string;
+                status?: "pending" | "in_progress" | "passed" | "failed" | "aborted";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AiEvaluations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    capabilityId: string;
+                    /** Format: uuid */
+                    backendId: string;
+                    datasetVersionRef: string;
+                    mlflowRunId: string;
+                    stage: "stage_3_evaluation" | "stage_4_pilot" | "reapproval" | "drift_response" | "post_incident";
+                    summaryMetrics?: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AiEvaluationsByRunId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AiHallucinationreports: {
+        parameters: {
+            query?: {
+                capabilityId?: string;
+                status?: "open" | "investigating" | "root_cause_identified" | "mitigated" | "closed" | "escalated_to_clinical_safety";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AiHallucinationreports: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    capabilityId: string;
+                    invocationId: string | null;
+                    severity: "critical" | "high" | "medium" | "low";
+                    hallucinationKind: "fabricated_medication" | "misattributed_symptom" | "fake_diagnosis" | "fabricated_quote" | "misquoted_patient" | "wrong_dose" | "fake_clinical_recommendation" | "other";
+                    reporterNarrative: string;
+                    /** Format: uuid */
+                    providerEntityId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AiHallucinationreportsByReportIdTriage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reportId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    toStatus: "open" | "investigating" | "root_cause_identified" | "mitigated" | "closed" | "escalated_to_clinical_safety";
+                    disposition: ("prompt_iteration_required" | "model_rollback_required" | "edge_case_acknowledged" | "false_alarm") | null;
+                    mitigationActionRef: string | null;
+                    severity: "critical" | "high" | "medium" | "low";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AiHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AiInvocations: {
+        parameters: {
+            query?: {
+                capabilityId?: string;
+                capabilityKey?: string;
+                backendKey?: string;
+                status?: "completed" | "failed" | "timed_out" | "killed" | "capability_unavailable";
+                patientId?: string;
+                from?: string;
+                to?: string;
+                disclosuresOnly?: boolean;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AiInvocationsByInvocationId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invocationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AiKillswitches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AiPromptsByCapabilityKeyActivate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                capabilityKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    templateKey: string;
+                    version: number;
+                    templateFilesystemRef: string;
+                    templateContentHash: string;
+                    compatibleBackendKeys: string[];
+                    inputSchemaRef: string;
+                    outputSchemaRef: string;
+                    outputEntityTargetPrefix: string;
+                    outputTypePrefix: string;
+                    /** Format: uuid */
+                    approvedByMembershipId: string;
+                    clinicalReviewerAttestation: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AiPromptsByCapabilityKeyActive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                capabilityKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AiRoutingoverrides: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AiRoutingoverrides: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    capabilityId: string;
+                    backendKeyPreference: string;
+                    overrideReason: "tenant_sovereignty" | "tenant_cost" | "tenant_pilot" | "fallback_after_outage";
+                    /** Format: date-time */
+                    effectiveAt?: string;
+                    expiresAt?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1AiRoutingoverridesByCapabilityId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                capabilityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AiTenantoptin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AiTenantoptin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    capabilityId: string;
+                    routingMode: "default" | "prefer_local" | "local_only";
+                    pilotEnrollment: boolean;
+                    acknowledgments: {
+                        baaReference: string | null;
+                        zdrContractReference: string | null;
+                        clinicalReviewerMembershipId: string | null;
+                        clinicalReviewerAttestationText: string | null;
+                        disclosureAccountingAcknowledged: boolean;
+                        calibrationTradeOffAcknowledged: string | null;
+                    };
+                    orgRoutingPreference: "prefer_cloud" | "prefer_local" | "cloud_only" | "local_only";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1AiTenantoptinByCapabilityId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                capabilityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason?: string | null;
+                    mode?: "pause" | "withdraw";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AiTokensForecast: {
+        parameters: {
+            query?: {
+                capabilityId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AiTokensLedger: {
+        parameters: {
+            query?: {
+                capabilityId?: string;
+                from?: string;
+                to?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;

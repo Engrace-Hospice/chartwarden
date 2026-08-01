@@ -227,3 +227,10 @@ export {
   M20_CONTRIBUTED_PERMISSIONS,
   m20ContributedPermissionMirrorRows,
 } from "./contributed";
+
+// M32 — Module 32's twenty-two AI Platform permission keys (§4.6 handshake).
+export {
+  type M32ContributedPermissionKey,
+  M32_CONTRIBUTED_PERMISSIONS,
+  m32ContributedPermissionMirrorRows,
+} from "./contributed";

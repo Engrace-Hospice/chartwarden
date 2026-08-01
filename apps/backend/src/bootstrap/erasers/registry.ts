@@ -182,6 +182,21 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // lifecycle/key-ring destruction ledger + the §164.528 disclosure-accounting tables (dsar_export_job,
   // support_session_event) SURVIVE (§8.4). Unlike every class above, `subjectId` is the ORG being offboarded.
   "saas_tenant_platform_class",
+  // M32-T02 (the schema task) registers the two §3.7 AI-provenance data-class contracts the moment the
+  // tables exist; the Phase-0 deny-stub (wireErasers) stands until the composition root binds the REAL
+  // erasers with a DB client. NEITHER DELETES A ROW: `ai_invocation` is the §164.528 disclosure ledger,
+  // and its token counts, model version pin, ZDR flag and timestamps ARE the evidence that a disclosure
+  // to a model vendor happened — or, for a `capability_unavailable` row, that it did not. The erase
+  // destroys the CIPHERTEXT on the patient's invocation rows (empty-bytea sentinel on the NOT NULL prompt
+  // cipher, NULL on the two optional ones), which is the outcome §3.7 specifies by the only means a
+  // per-patient certificate has; the per-tenant DEK shred §3.7 describes is the whole-org offboarding
+  // path and belongs to M34. Split by capability — `doclens_*` invocations ran against the patient's
+  // INTAKE documents, every other capability against the CHART — because M4's registry is single-keyed
+  // and §3.7 maps M32's provenance onto the distinct classes M22 and M8 already use. `ai_token_ledger`,
+  // `ai_hallucination_report` (no patient column by design) and the platform-shared governance surface
+  // are never touched. The `subjectId` is the patient.
+  "intake_ai_provenance",
+  "clinical_record_ai_provenance",
 ];
 
 export function registerEraser(dataClass: DataClass, eraser: DataEraser): void {
