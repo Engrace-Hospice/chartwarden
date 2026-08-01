@@ -64,22 +64,26 @@ export interface SafetyCoverageSubjectFacts {
 }
 
 /**
- * Does one subscription row reach this clinician for `alertKind`?
+ * D8's SCOPE layering alone — does this row's scope selector reach this clinician, ignoring which alert
+ * kinds it pages on?
  *
- * The kind DEFAULTS to `sos` because that is the only channel this watchdog's guarantee is about — a row
- * that does not page on `sos` is not coverage for the purpose §7.8 exists to protect, however complete it
- * looks on the subscription matrix. It is a parameter rather than a constant because the §4.3
- * `SafetySupervisorProvider.supervisorsForClinician` resolves the SAME scope layering for `overdue`,
- * `incident` and `high_risk_area` (M20-T05), and duplicating the D8 scope switch there would let the two
- * copies drift — a paging rule that is subtly different depending on which caller asked is worse than
- * either version of it.
+ * Split out from {@link subscriptionCovers} for M20-T06's `supervises_clinician` ABAC predicate, and the
+ * split is a decision rather than a refactor: AUTHORIZATION and PAGING ask different questions of the same
+ * row. "May this supervisor read her safety record?" is answered by the SCOPE — a supervisor subscribed
+ * only to `overdue` still watches this clinician, and 403-ing her out of the SOS she is looking at because
+ * her row does not page on `sos` would be an authorization rule nobody wrote. "Whose phone rings tonight?"
+ * additionally requires the alert kind, which is what {@link subscriptionCovers} adds on top.
+ *
+ * One switch, two callers — duplicating it in `abac-predicates.ts` would let a paging rule and an access
+ * rule drift apart, which is worse than either version of it.
  */
-export function subscriptionCovers(
-  subscription: SafetySubscriptionFacts,
-  subject: SafetyCoverageSubjectFacts,
-  alertKind: SafetyAlertKind = "sos",
+export function subscriptionScopeCovers(
+  subscription: Pick<
+    SafetySubscriptionFacts,
+    "scopeKind" | "clinicianMembershipId" | "locationId" | "providerEntityId"
+  >,
+  subject: Pick<SafetyCoverageSubjectFacts, "membershipId" | "locationIds" | "providerEntityId">,
 ): boolean {
-  if (!subscription.alertKinds.includes(alertKind)) return false;
   switch (subscription.scopeKind) {
     case "explicit":
       return subscription.clinicianMembershipId === subject.membershipId;
@@ -96,6 +100,26 @@ export function subscriptionCovers(
       // Unreachable while `scopeKind` is the closed union; fails toward "not covered" if it ever is not.
       return false;
   }
+}
+
+/**
+ * Does one subscription row reach this clinician for `alertKind`?
+ *
+ * The kind DEFAULTS to `sos` because that is the only channel this watchdog's guarantee is about — a row
+ * that does not page on `sos` is not coverage for the purpose §7.8 exists to protect, however complete it
+ * looks on the subscription matrix. It is a parameter rather than a constant because the §4.3
+ * `SafetySupervisorProvider.supervisorsForClinician` resolves the SAME scope layering for `overdue`,
+ * `incident` and `high_risk_area` (M20-T05), and duplicating the D8 scope switch there would let the two
+ * copies drift — a paging rule that is subtly different depending on which caller asked is worse than
+ * either version of it.
+ */
+export function subscriptionCovers(
+  subscription: SafetySubscriptionFacts,
+  subject: SafetyCoverageSubjectFacts,
+  alertKind: SafetyAlertKind = "sos",
+): boolean {
+  if (!subscription.alertKinds.includes(alertKind)) return false;
+  return subscriptionScopeCovers(subscription, subject);
 }
 
 /** §7.8 — the gap verdict for ONE clinician, or `null` when she is covered. */

@@ -1,0 +1,405 @@
+// apps/backend/src/modules/20-field-safety/events-by-m20.ts — Module 20's outbox-event contributions
+// (§4.10). The `m20.safety.*` taxonomy under the `m20.` namespace (M01 D8 / M03 D9 / M04 D9).
+// check-fitness-gaps.ts scans this file for naming (`mN.<resource>.<verb>`), ownership
+// (`moduleOwner: 'm20'`) and valid declared consumers; the composition root merges it into the platform
+// catalog at boot (the M15/M23/M24/M25/M26/M27 events-by-mN precedent), and the dispatcher validates each
+// `m20.*` publish against the TypeBox payloadSchema inside the SAME transaction as the mutation.
+//
+// WHY THIS FILE IS PART OF THE ROUTE TASK. `publishOutboxEvent` throws `unknown_event` for any name the
+// boot catalog does not carry, and the throw rolls back the caller's transaction. So without this file
+// every §4.1 mutation that declares an `{kind:'outbox'}` effect — which is nearly all of them — would fail
+// at the moment of the write. The catalog is not documentation; it is the thing that makes the transition
+// commit.
+//
+// THE SHAPES MIRROR the §4.10 payload interfaces frozen in `@wardenx/types` (packages/types/src/safety.ts,
+// M20-T01), which are the contract M17/M22/M30/M33/M36 type-check against; this file is their runtime
+// validator. The envelope carries `organizationId`, and every payload repeats it as `orgId` because
+// `M20SafetyEventBase` does — a consumer holding the payload alone (M36's alert router) needs it.
+//
+// ── NO PAYLOAD CARRIES A COORDINATE, A NARRATIVE OR A PATIENT IDENTITY ─────────────────────────────
+//
+// §8.8.2's rule, expressed as schemas: ids, enum tokens, counts, booleans and instants only. The SOS raise
+// carries `coordinatesCaptured: boolean` and NOT the coordinate; the terminus carries
+// `psapJurisdictionId` and NOT the PSAP number; the incident events carry `category`/`severity` and NOT
+// the narrative. There is no field here a §3.6-denylisted column could be assigned to, which is the
+// compile-time half of the rule.
+//
+// ── THE TWO COMPOSITE IDEMPOTENCY KEYS ARE NOT REPEATED HERE ───────────────────────────────────────
+//
+// `M20_EVENT_IDEMPOTENCY_KEYS` (@wardenx/types) pins `check_in_escalated` to `[scheduleId, tier]` and
+// `sos_terminus_reached` to `[sosAlertId, loopIteration]`, because each fires REPEATEDLY by design (one
+// per D4 rung; one per terminus loop). The catalog's job is payload validity, so both discriminators —
+// `tier` and `loopIteration` — are REQUIRED fields below: a payload that omitted them would be
+// unkeyable, and a conforming consumer would collapse the very repetition the design requires.
+import { Type } from "@sinclair/typebox";
+import type { ModuleEventContribution } from "@wardenx/types";
+
+const Id = Type.String({ minLength: 1 });
+const IdOrNull = Type.Union([Type.String({ minLength: 1 }), Type.Null()]);
+const Iso = Type.String({ minLength: 1 });
+const Str = Type.String();
+const Bool = Type.Boolean();
+const Count = Type.Integer({ minimum: 0 });
+
+/** `M20SafetyEventBase` — every M20 payload carries these three (§4.10). */
+const base = {
+  orgId: Id,
+  providerEntityId: Id,
+  occurredAt: Iso,
+};
+
+export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
+  // ── check-ins (§2.2.1, D2/D4) ─────────────────────────────────────────────────────────────────────
+  {
+    eventName: "m20.safety.check_in_recorded",
+    moduleOwner: "m20",
+    description:
+      "A clinician posted a safety check-in (§2.2.1). Info severity, no fan-out: the supervisor board updates over M36's socket rooms rather than paging somebody every time a clinician says 'I'm OK'.",
+    payloadSchema: Type.Object({
+      ...base,
+      checkInId: Id,
+      scheduleId: IdOrNull,
+      visitId: IdOrNull,
+      clinicianMembershipId: Id,
+      kind: Str,
+      status: Str,
+      coordinatesIncluded: Bool,
+      isPartOfSosBracket: Bool,
+    }),
+    declaredConsumers: ["m17", "m33"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m20.safety.check_in_overdue",
+    moduleOwner: "m20",
+    description:
+      "A check-in obligation passed its fulfilment window (D4's gentle rung). Warn severity, to the subscribed supervisors.",
+    payloadSchema: Type.Object({
+      ...base,
+      scheduleId: Id,
+      clinicianMembershipId: Id,
+      visitId: IdOrNull,
+      kind: Str,
+      expectedAt: Iso,
+      minutesOverdue: Type.Number(),
+    }),
+    declaredConsumers: ["m36", "m33"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m20.safety.check_in_escalated",
+    moduleOwner: "m20",
+    description:
+      "A D4 escalation rung fired for an unanswered check-in (§7.3). One event PER RUNG — `tier` is the discriminator, and `sos_equivalent` is the top rung that routes like an SOS.",
+    payloadSchema: Type.Object({
+      ...base,
+      scheduleId: Id,
+      clinicianMembershipId: Id,
+      visitId: IdOrNull,
+      minutesOverdue: Type.Number(),
+      afterHours: Bool,
+      tier: Str,
+    }),
+    declaredConsumers: ["m36", "m19", "m33"],
+    isOutboxOnly: true,
+  },
+
+  // ── SOS (§2.2.2, D5/D6/D7) ────────────────────────────────────────────────────────────────────────
+  {
+    eventName: "m20.safety.sos_alert_raised",
+    moduleOwner: "m20",
+    description:
+      "A clinician pressed the SOS button (§2.2.2 / M20-F10). Critical, system-locked, NON-IDEMPOTENT by design: every press is its own call for help.",
+    payloadSchema: Type.Object({
+      ...base,
+      sosAlertId: Id,
+      postedByMembershipId: Id,
+      postedAt: Iso,
+      lastKnownVisitId: IdOrNull,
+      deviceAttested: Bool,
+      coordinatesCaptured: Bool,
+    }),
+    declaredConsumers: ["m36", "m19", "m33"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m20.safety.sos_alert_cancel_attempted_rejected",
+    moduleOwner: "m20",
+    description:
+      "A cancel was pressed inside the D5 window and the biometric did not pass (§7.4's hostile-actor path). The alert PROCEEDS; this is the forensic record.",
+    payloadSchema: Type.Object({
+      ...base,
+      sosAlertId: Id,
+      attemptedAt: Iso,
+      biometricResult: Str,
+    }),
+    declaredConsumers: ["m36", "m4"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m20.safety.sos_alert_acknowledged",
+    moduleOwner: "m20",
+    description:
+      "A responder answered an SOS — the only exit from the escalation ladder. Also carries the raiser's own in-window cancel, discriminated by the row's cancel_status (§7.4).",
+    payloadSchema: Type.Object({
+      ...base,
+      sosAlertId: Id,
+      acknowledgedByMembershipId: Id,
+      acknowledgedAt: Iso,
+      tierAtAcknowledgment: Str,
+      slaBreached: Bool,
+    }),
+    declaredConsumers: ["m36", "m33"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m20.safety.sos_alert_escalated",
+    moduleOwner: "m20",
+    description:
+      "The SLA watchdog (or a delivery failure, or a supervisor) advanced the alert one tier (§2.2.2 / D7).",
+    payloadSchema: Type.Object({
+      ...base,
+      sosAlertId: Id,
+      fromTier: Str,
+      toTier: Str,
+      escalatedAt: Iso,
+      reasonCode: Str,
+    }),
+    declaredConsumers: ["m36", "m33"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m20.safety.sos_terminus_reached",
+    moduleOwner: "m20",
+    description:
+      "The life-safety chain reached `emergency_terminus` (M20-F05 / S13 / INT-031). Emitted on EVERY loop iteration — `loopIteration` is what lets a consumer tell the tenth page from the first without suppressing either.",
+    payloadSchema: Type.Object({
+      ...base,
+      sosAlertId: Id,
+      terminusReachedAt: Iso,
+      loopIteration: Count,
+      emergencyContactCallInitiated: Bool,
+      psapJurisdictionId: IdOrNull,
+      wardenxOpsPaged: Bool,
+    }),
+    declaredConsumers: ["m36", "m34"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m20.safety.sos_alert_resolved",
+    moduleOwner: "m20",
+    description: "A responder closed the SOS with an outcome and a narrative (§2.2.2).",
+    payloadSchema: Type.Object({
+      ...base,
+      sosAlertId: Id,
+      resolvedByMembershipId: Id,
+      outcome: Str,
+      resolvedAt: Iso,
+    }),
+    declaredConsumers: ["m36", "m33"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m20.safety.sos_anomaly_volume",
+    moduleOwner: "m20",
+    description:
+      "More than SAFETY_SOS_ANOMALY_VOLUME_PER_HOUR presses from one clinician in an hour (§8.3). A FLAG to compliance, never a gate — the eleventh press escalates exactly like the first.",
+    payloadSchema: Type.Object({
+      ...base,
+      clinicianMembershipId: Id,
+      pressesInWindow: Count,
+      windowHours: Count,
+      detectedAt: Iso,
+    }),
+    declaredConsumers: ["m4", "m33"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m20.safety.device_attestation_anomaly",
+    moduleOwner: "m20",
+    description:
+      "A safety write arrived from an unattested device (§8.3). The alert still fanned out; this is the forensics trail behind it.",
+    payloadSchema: Type.Object({
+      ...base,
+      clinicianMembershipId: Id,
+      deviceId: IdOrNull,
+      sosAlertId: IdOrNull,
+      checkInId: IdOrNull,
+      detectedAt: Iso,
+    }),
+    declaredConsumers: ["m4", "m34"],
+    isOutboxOnly: true,
+  },
+
+  // ── incidents (§2.2.3, D9) ────────────────────────────────────────────────────────────────────────
+  {
+    eventName: "m20.safety.incident_reported",
+    moduleOwner: "m20",
+    description:
+      "An incident DRAFT was opened (§2.2.3). Distinct from `incident_submitted`, which is the immutability entry point — nothing is filed yet.",
+    payloadSchema: Type.Object({
+      ...base,
+      incidentId: Id,
+      affectedClinicianMembershipId: Id,
+      reportedByMembershipId: Id,
+      category: Str,
+      severity: Str,
+      occurredAt: Iso,
+      linkedSosAlertId: IdOrNull,
+    }),
+    declaredConsumers: ["m33"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m20.safety.incident_submitted",
+    moduleOwner: "m20",
+    description:
+      "An incident was submitted for supervisor review (§2.2.3). Warn severity, to the supervisors plus the compliance officer.",
+    payloadSchema: Type.Object({
+      ...base,
+      incidentId: Id,
+      affectedClinicianMembershipId: Id,
+      category: Str,
+      severity: Str,
+      occurredAt: Iso,
+      oshaReportable: Bool,
+      linkedSosAlertId: IdOrNull,
+    }),
+    declaredConsumers: ["m36", "m30", "m33"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m20.safety.incident_closed_with_action",
+    moduleOwner: "m20",
+    description: "An incident closed WITH an action plan (§2.2.3).",
+    payloadSchema: Type.Object({
+      ...base,
+      incidentId: Id,
+      closedByMembershipId: Id,
+      closedAt: Iso,
+    }),
+    declaredConsumers: ["m30", "m33"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m20.safety.incident_report_requested",
+    moduleOwner: "m20",
+    description:
+      "The incident's PDF render was requested. M22's renderer consumes it; M20 ships no PDF code (§4.10).",
+    payloadSchema: Type.Object({
+      ...base,
+      incidentId: Id,
+      renderTargetKind: Type.Literal("pdf"),
+    }),
+    declaredConsumers: ["m22"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m20.safety.osha_reportable_incident_filed",
+    moduleOwner: "m20",
+    description:
+      "A supervisor signed off an OSHA-equivalent classification (§7.6 / D9). `reportingWindowHours` is the state-specific clock the filing has to beat; the filing itself is manual or M29's.",
+    payloadSchema: Type.Object({
+      ...base,
+      incidentId: Id,
+      category: Str,
+      severity: Str,
+      signedOffByMembershipId: Id,
+      signedOffAt: Iso,
+      stateCode: Str,
+      reportingWindowHours: Count,
+    }),
+    declaredConsumers: ["m36", "m29", "m30", "m33"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m20.safety.workers_comp_claim_initiated",
+    moduleOwner: "m20",
+    description:
+      "The workers-comp flag was set on an incident (§7.6). A downstream WC integration picks it up.",
+    payloadSchema: Type.Object({
+      ...base,
+      incidentId: Id,
+      initiatedByMembershipId: Id,
+      initiatedAt: Iso,
+    }),
+    declaredConsumers: ["m29", "m33"],
+    isOutboxOnly: true,
+  },
+
+  // ── advisory geography + policy + coverage (§2.2.7, §2.2.4, §7.8) ─────────────────────────────────
+  {
+    eventName: "m20.safety.high_risk_area_entered",
+    moduleOwner: "m20",
+    description:
+      "A clinician's position was evaluated inside an advisory polygon (D12). Advisory only — M20 blocks no visit.",
+    payloadSchema: Type.Object({
+      ...base,
+      clinicianMembershipId: Id,
+      areaId: Id,
+      riskCategory: Str,
+      enteredAt: Iso,
+      visitId: IdOrNull,
+    }),
+    declaredConsumers: ["m36", "m17"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m20.safety.policy_changed",
+    moduleOwner: "m20",
+    description:
+      "A new `safety_policy_version` took effect (§2.2.4). `thresholdDiffs` says which knobs moved and in which direction — §8.8.2's compliance read is 'why did they loosen it'.",
+    payloadSchema: Type.Object({
+      ...base,
+      newVersionId: Id,
+      changedByMembershipId: Id,
+      changedAt: Iso,
+      thresholdDiffs: Type.Array(Type.Object({ field: Str, direction: Str })),
+    }),
+    declaredConsumers: ["m36", "m4"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m20.safety.policy_violation_recorded",
+    moduleOwner: "m20",
+    description:
+      "The policy said one thing and the system observed another (§8.2) — a suppression beyond D13, a cadence that never materialized, a coordinate read with no paired narrative.",
+    payloadSchema: Type.Object({
+      ...base,
+      violationKind: Str,
+      subjectMembershipId: IdOrNull,
+      detectedAt: Iso,
+      policyVersionId: Id,
+    }),
+    declaredConsumers: ["m4", "m33"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m20.safety.coverage_gap_detected",
+    moduleOwner: "m20",
+    description:
+      "A field-eligible clinician has nobody subscribed to page for her (§7.8). Critical, system-locked: this is not a condition a tenant may switch off.",
+    payloadSchema: Type.Object({
+      ...base,
+      clinicianMembershipId: Id,
+      reason: Str,
+      detectedAt: Iso,
+    }),
+    declaredConsumers: ["m36", "m34"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m20.safety.visit_cancellation_requested",
+    moduleOwner: "m20",
+    description:
+      "An SOS resolved with `outcome='visit_cancelled'` (§7.5). M20 never writes an M17 row — this event IS the request and M17's D3 handler decides.",
+    payloadSchema: Type.Object({
+      ...base,
+      sosAlertId: Id,
+      visitId: Id,
+      requestedAt: Iso,
+    }),
+    declaredConsumers: ["m17"],
+    isOutboxOnly: true,
+  },
+];

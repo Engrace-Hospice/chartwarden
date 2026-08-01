@@ -85,11 +85,79 @@
 //     denominator is the visits M20 OBSERVED (materialized a check-in obligation for) — which biases the
 //     rate upward when a consumer was down, and is why every rate method ships `visitCount` beside it.
 //
-// Still to land: the §4.1 routes + §4.6 keys + §4.7 ABAC (T06) and the §5 screens (T07).
+// M20-T06 lands the §4.1 route surface (`routes/`), the §4.6 permission keys (`permission-keys.ts`, whose
+// canonical map is `M20_CONTRIBUTED_PERMISSIONS` in @wardenx/auth), the six §4.7 ABAC predicates
+// (`abac-predicates.ts` + its Drizzle resolver), the §4.9 M36 alert rules and payload builders
+// (`alerts.ts`) and the §4.10 outbox catalog contribution (`events-by-m20.ts`).
+//
+// SEVEN THINGS T06 DECIDED THAT ARE NOT OBVIOUS FROM THE SPEC:
+//   • §4.7's `org_scope` IS M3's INTRINSIC `inOrg`, VERBATIM ("session.organization_id ===
+//     target.organization_id"), so M20 registers no second name for it. Two predicates that must never
+//     disagree would satisfy `arch:abac-predicates` either way; the two §4.1 `org_scope` cells bind
+//     `inOrg`. This is a deliberate NON-registration, and the gate cannot tell one from an omission.
+//   • A `∨` CELL IS ONE PREHANDLER. §4.1 spells six cells as disjunctions and two `requireAbac` layers
+//     would AND them (the M16-T06 finding) — which for `clinician_self ∨ supervises_clinician` denies
+//     EVERYONE, because `m20_sss_no_self_supervision` makes a supervisor who is also the subject
+//     unwritable. `ABAC_ANY` evaluates the names in order and passes on the first that allows.
+//   • THE SOS PRESS TAKES NO IDEMPOTENCY KEY AND THE CANCEL TAKES NO `If-Match`. The first is §4.1's own
+//     Idempotent column (`no`) and §2.6 / M20-F10: every press is a separate call for help. The second is
+//     D5's five-second window — a version round-trip does not fit inside it, and the guards the cancel
+//     needs (raiser, window, biometric) are stronger than a version compare anyway.
+//   • AN INCIDENT CANNOT BE CREATED WITHOUT A BOUND DEK, AND THAT IS THE FAIL-CLOSED ANSWER.
+//     `narrative_cipher` is NOT NULL and holds the substance of a workers-comp record; writing cleartext
+//     into a column named `_cipher` would make the §3.7 erasure a lie. The SOS PRESS is the deliberate
+//     asymmetry: it never refuses for a cipher, a consent or an attestation — the coordinate is replaced
+//     by a recognisable sentinel (`routes/coordinates.ts`) and a warning rides the response.
+//   • `acknowledgersDispatched` IS THREE-VALUED. `null` means the §4.5 composed resolver could not be
+//     consulted, which the mobile client renders as the D15 `tel:` fallback; `0` means nobody is
+//     subscribed, which is a real coverage gap. Collapsing them would hide M20-F01's degraded path.
+//   • THE OSHA SIGN-OFF REFUSES ON A CLOSED INCIDENT rather than re-classifying it. §6 says the sign-off
+//     "cannot be undone without a transition to `reopened` … and a second sign-off", so the refusal is
+//     what forces the documented path instead of letting a filing land on a concluded review.
+//   • DEACTIVATING A SUBSCRIPTION SUCCEEDS EVEN WHEN IT UNCOVERS SOMEBODY, and reports the gaps. Refusing
+//     would leave a departed supervisor's row in place — the `all_subscriptions_deactivated` failure one
+//     step earlier, a configuration that LOOKS complete and pages a membership that will not answer.
+//
+// Still to land: the §5 screens (T07).
 export * from "./alert-rules";
+export * from "./alerts";
 export * from "./consumers";
+export * from "./events-by-m20";
 export * from "./lifecycle";
+export * from "./permission-keys";
+export * from "./routes/index";
+export * from "./routes/mount";
 export * from "./seams";
+export {
+  type M20RegisteredAbacPredicate,
+  type SafetyAbacDeps,
+  type SafetyAbacPorts,
+  type SafetyAbacResolver,
+  type SafetyCheckInAbacFacts,
+  type SafetyClinicianScopeFacts,
+  type SafetyIncidentAbacFacts,
+  type SafetySosAbacFacts,
+  type SafetySubscriptionAbacFacts,
+  ACTIVE_SOS_RESPONDER_STATES,
+  FIELD_ELIGIBLE_ROLE_KEYS,
+  M20_ABAC_PREDICATES,
+  SAFETY_OVERSIGHT_ROLES,
+  buildFieldSafetyAbacPredicates,
+  decideActiveSosResponder,
+  decideFieldEligibleForSos,
+  decideSafetySupervisorOrAbove,
+  decideSupervisesClinician,
+  denyStubSafetyAbacResolver,
+  membershipIdOf,
+  registerFieldSafetyAbacPredicates,
+  seamSafetyAbacPorts,
+  subscriptionCoversClinician,
+} from "./abac-predicates";
+export {
+  type SafetyAbacResolverDeps,
+  type SafetyRoleGrantReader,
+  buildDrizzleSafetyAbacResolver,
+} from "./abac-resolver-drizzle";
 export {
   type InMemorySafetyEraseSeed,
   type SafetyEraseCounts,

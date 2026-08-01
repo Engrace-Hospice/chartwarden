@@ -220,3 +220,10 @@ export {
   M19_CONTRIBUTED_PERMISSIONS,
   m19ContributedPermissionMirrorRows,
 } from "./contributed";
+
+// M20 — Module 20's twenty-five Field Safety permission keys (§4.6 handshake).
+export {
+  type M20ContributedPermissionKey,
+  M20_CONTRIBUTED_PERMISSIONS,
+  m20ContributedPermissionMirrorRows,
+} from "./contributed";

@@ -52608,6 +52608,720 @@
         }
       }
     },
+    "/api/v1/safety/check-ins": {
+      "post": {
+        "operationId": "postApiV1SafetyCheckins",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/check-ins/{checkInId}": {
+      "get": {
+        "operationId": "getApiV1SafetyCheckinsByCheckInId",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [
+          {
+            "name": "checkInId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1SafetyCheckinsByCheckInId",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [
+          {
+            "name": "checkInId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/check-ins/me/today": {
+      "get": {
+        "operationId": "getApiV1SafetyCheckinsMeToday",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/consent": {
+      "get": {
+        "operationId": "getApiV1SafetyConsent",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/consent/grant": {
+      "post": {
+        "operationId": "postApiV1SafetyConsentGrant",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/consent/revoke": {
+      "post": {
+        "operationId": "postApiV1SafetyConsentRevoke",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/dashboard": {
+      "get": {
+        "operationId": "getApiV1SafetyDashboard",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/high-risk-areas": {
+      "get": {
+        "operationId": "getApiV1SafetyHighriskareas",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1SafetyHighriskareas",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/high-risk-areas/{areaId}": {
+      "patch": {
+        "operationId": "patchApiV1SafetyHighriskareasByAreaId",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [
+          {
+            "name": "areaId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/incidents": {
+      "get": {
+        "operationId": "getApiV1SafetyIncidents",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1SafetyIncidents",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/incidents/{incidentId}": {
+      "get": {
+        "operationId": "getApiV1SafetyIncidentsByIncidentId",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1SafetyIncidentsByIncidentId",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/incidents/{incidentId}/osha-signoff": {
+      "post": {
+        "operationId": "postApiV1SafetyIncidentsByIncidentIdOshasignoff",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/incidents/{incidentId}/state": {
+      "post": {
+        "operationId": "postApiV1SafetyIncidentsByIncidentIdState",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/incidents/{incidentId}/submit": {
+      "post": {
+        "operationId": "postApiV1SafetyIncidentsByIncidentIdSubmit",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/policy": {
+      "get": {
+        "operationId": "getApiV1SafetyPolicy",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1SafetyPolicy",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/sos": {
+      "post": {
+        "operationId": "postApiV1SafetySos",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/sos/{sosAlertId}": {
+      "get": {
+        "operationId": "getApiV1SafetySosBySosAlertId",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [
+          {
+            "name": "sosAlertId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/sos/{sosAlertId}/acknowledge": {
+      "post": {
+        "operationId": "postApiV1SafetySosBySosAlertIdAcknowledge",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [
+          {
+            "name": "sosAlertId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/sos/{sosAlertId}/cancel": {
+      "post": {
+        "operationId": "postApiV1SafetySosBySosAlertIdCancel",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [
+          {
+            "name": "sosAlertId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/sos/{sosAlertId}/location-stream": {
+      "get": {
+        "operationId": "getApiV1SafetySosBySosAlertIdLocationstream",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [
+          {
+            "name": "sosAlertId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/sos/{sosAlertId}/resolve": {
+      "post": {
+        "operationId": "postApiV1SafetySosBySosAlertIdResolve",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [
+          {
+            "name": "sosAlertId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/sos/active": {
+      "get": {
+        "operationId": "getApiV1SafetySosActive",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/supervisor-subscriptions": {
+      "get": {
+        "operationId": "getApiV1SafetySupervisorsubscriptions",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1SafetySupervisorsubscriptions",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/supervisor-subscriptions/{subscriptionId}": {
+      "delete": {
+        "operationId": "deleteApiV1SafetySupervisorsubscriptionsBySubscriptionId",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [
+          {
+            "name": "subscriptionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/scheduled-doses": {
       "get": {
         "operationId": "getApiV1Scheduleddoses",
