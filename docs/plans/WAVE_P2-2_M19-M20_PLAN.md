@@ -11,12 +11,13 @@ Specs: `docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md`,
 > consumes M19's `OnCallProvider` (seam, no edge) — build M19 first or deny-stub.
 >
 > **Seams that go LIVE this wave (closing Phase-1 deny-stubs):**
-> | Now real | Closes |
-> |---|---|
-> | M19 consumes `m17.visit.no_show_detected` + M11 verbal-order seam during call | M17 (Wave F) no-show consumer; M11 verbal-order during triage |
-> | M19 consumes `m18.evv.late_check_out_detected` | M18 (Wave F) late-checkout consumer |
-> | M19 `OnCallProvider` → M36 `on_call` channel + M20 after-hours SOS | M36 on-call membership; **replaces the Phase-1 SOS degraded fallback** |
-> | M20 consumes M18 `EvvLocationProvider` | M18 (Wave F) last-known-location consumer |
+>
+> | Now real                                                                       | Closes                                                                      |
+> | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+> | M19 consumes `m17.visit.no_show_detected` + M11 verbal-order seam during call | M17 (Wave F) no-show consumer; M11 verbal-order during triage                |
+> | M19 consumes `m18.evv.late_check_out_detected`                                | M18 (Wave F) late-checkout consumer                                         |
+> | M19 `OnCallProvider` → M36 `on_call` channel + M20 after-hours SOS            | M36 on-call membership; **replaces the Phase-1 SOS degraded fallback**      |
+> | M20 consumes M18 `EvvLocationProvider`                                        | M18 (Wave F) last-known-location consumer                                   |
 >
 > **ADR-0026 (M19 vendor-operator auth):** external triage-vendor operators authenticate via Better
 > Auth's `external_triage_vendor` session class (org + vendor + shift scoped, MFA) — **M19 mints no
@@ -31,6 +32,7 @@ Specs: `docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md`,
 > **Track B screens (ADR-0030) — built in-task, not deferred.** Each UI-owning module owns `apps/web/src/modules/NN-*`: its first task adds that web codePath to the manifest + runs `bun run scaffold` (`arch:parity` 1:1); its screen task builds the §5 screens against the generated client and registers them into the M1 shell, flipping the matching `docs/design/DEFERRED_SCREENS.md` row → `done`. Backend-first preserved. (Portal-variant screens stay M31's responsibility.)
 
 ## Module 19 — On-Call Triage (deps: 5,17,36 · apps/backend/src/modules/19-oncall, apps/web/src/modules/19-oncall) — 10 tables
+
 - **M19-T01** Enums + layout + domain (§2); `packages/triage-vendors` adapter scaffold (see manifest note); types in `packages/types`. → `tsc -b`. **Track B (ADR-0030):** add `apps/web/src/modules/19-oncall` to the manifest `codePaths` and run `bun run scaffold` so the empty web slice exists (→ `arch:parity`).
 - **M19-T02** Schema (10 tables, §3.3): triage_call(_answer/_state_history), triage_protocol(_question), triage_escalation, on_call_shift, tenant_oncall_policy, external_triage_vendor, triage_paper_reentry_worklist; RLS + M4 audit (caller-quote cipher denylisted) + eraser (§3.7) + migration. → `arch:tables/tenancy/ddl/gaps`.
 - **M19-T03** Triage-call lifecycle (§3) + protocol engine; **mandatory escalations** (§7.2 suicidal ideation → supervisor + medical-director); disposition + paper re-entry worklist.
@@ -41,6 +43,7 @@ Specs: `docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md`,
 - **M19-T08** Screens (§5; portal variants M31) — **Track B/ADR-0030**: build under `apps/web/src/modules/19-oncall` against the module's generated client (`packages/ui/src/api`), register into the M1 shell screen registry, flip the matching `docs/design/DEFERRED_SCREENS.md` row → `done` + tests (§9 incl. RLS) + §12 sign-off. → `bun run test` + full `arch:fitness`.
 
 ## Module 20 — Field Safety (deps: 17,36 · apps/backend/src/modules/20-field-safety, apps/web/src/modules/20-field-safety) — 13 tables  (build after M19)
+
 - **M20-T01** Enums + layout + domain (§2); types in `packages/types`. → `tsc -b`. **Track B (ADR-0030):** add `apps/web/src/modules/20-field-safety` to the manifest `codePaths` and run `bun run scaffold` so the empty web slice exists (→ `arch:parity`).
 - **M20-T02** Schema (13 tables, §3.3): safety_sos_alert(_state_history/_location_stream), safety_check_in(_schedule), safety_incident(_state_history), safety_policy(_version), safety_high_risk_area, safety_acknowledgment, safety_emergency_contact_consent, safety_supervisor_subscription; RLS + M4 audit (per-table retention split, dispatch-payload cipher denylisted) + eraser (§3.7) + migration. → `arch:tables/tenancy/ddl/gaps`.
 - **M20-T03** SOS lifecycle (§7.4 mid-visit cancel within window — biometric, D5); overdue-check-in escalation tiers (§7.3 D4); continuous-location stream during active SOS with consent (§7.9 D6); coverage-gap watchdog (§7.8).
@@ -52,6 +55,7 @@ Specs: `docs/modules/WARDENX_MODULE_19_ONCALL_TRIAGE_SPEC_v0_3.md`,
 ---
 
 ## Wave P2-2 acceptance
+
 1. M19(10)+M20(13) ownedTables exist with RLS + migrations; manifest changes limited to the
    triage-vendors codePath (ADR-0028) and the two Track B `apps/web/src/modules/{19-oncall,20-field-safety}`
    web codePaths (ADR-0030, `arch:parity` 1:1).
