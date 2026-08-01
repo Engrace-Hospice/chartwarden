@@ -8,18 +8,21 @@
 // THE VENDOR-ADAPTER MANDATE. `VENDOR_ADAPTERS['@anthropic-ai/sdk'] = 'packages/ai-platform'` in
 // `architecture/module-manifest.ts` means this package is the ONLY place that import may appear
 // (architecture §25.14; dependency-cruiser fails CI anywhere else). Same for the Ollama HTTP client and
-// the ml-worker client when M32-T13/T14/T15 land them under `./backends/`. Nothing in T01 imports a
-// vendor SDK — the shell is registry + governance, not inference.
+// the ml-worker client when M32-T13/T14/T15 land them under `./backends/`. M32-T04 gives the mandate its
+// address — `./backends/anthropic.ts`, the one file that will ever hold the import — but installs no
+// vendor SDK: `ai.full` is off for the whole wave, so nothing here dispatches to a model, and a
+// dependency added for code that cannot execute is supply-chain surface with no function.
 //
 // Layout (M32-T01 lays it out; later tasks fill it in):
 //   · ./lifecycle   §2.2 — D2's eight-state governance FSM and the consumer posture each state implies
 //   · ./inventory   §2.3/§2.4 — the backend and capability rows registered at lock time
 //   · ./governance  §2.2/§3.2.3/§5.3/§5.4 — the lifecycle gate, calibration publication, tenant opt-in
 //                   and clinician opt-out rules, plus the three of them composed (plan T03)
+//   · ./invocation  §6/§4.1 — the SDK gate order, W8 routing, the W2 token cap  (plan T04)
+//   · ./backends    §8.4 — the ModelBackend port + the Anthropic ZDR invariant  (plan T04)
 //   · ./schemas     §2.5 — per-capability TypeBox input/output schemas          (spec T07)
 //   · ./seams       §4.2 — the twelve published seam contracts                  (plan T06)
 //   · ./prompts     §4.5 — AIPromptRegistry (git resolution + content hash)     (plan T05)
-//   · ./backends    §8.4 — the ModelBackend implementations + ZDR enforcement   (spec T13–T16)
 //
 // The TYPE surface (enum mirrors, table descriptors, the `capability_unavailable` envelope, the
 // invocation context) lives in the leaf `@wardenx/types` `ai-platform.ts`, not here, so a consumer
@@ -27,3 +30,5 @@
 export * from "./lifecycle";
 export * from "./inventory";
 export * from "./governance";
+export * from "./invocation";
+export * from "./backends";

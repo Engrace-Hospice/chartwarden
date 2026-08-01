@@ -356,6 +356,12 @@ export type AiCapabilityUnavailableReason =
   | "clinician_opted_out"
   | "kill_switch_active"
   | "token_hard_cap_reached"
+  // §4.2's seam unions all list `phi_minimization_failure` and §8.3 makes it the SDK's verdict when the
+  // caller's `chartContext` fails the capability's strict-mode schema. T01 left it out of this union;
+  // the M32-T04 invocation pipeline needs it, because the alternative — reporting a smuggled-PHI
+  // rejection as the generic `backend_unhealthy` — tells the one caller who can fix it (the consumer
+  // module that supplied the disallowed field) to go look at a vendor outage instead.
+  | "phi_minimization_failure"
   | "backend_unhealthy"
   | "output_validation_failed_after_retry";
 

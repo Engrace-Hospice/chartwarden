@@ -30,11 +30,19 @@
 // accounting, an FDA inquiry or a deposition reads; `zdr_confirmed` in particular is the entire D19
 // claim, and a scrubbed marker would make the ledger useless for the purpose it exists to serve.
 //
-// COLUMN-RESTRICTED IMMUTABILITY (§3.5, trigger in 0116), not append-only: the row is INSERTed BEFORE
-// the backend answers, so the response side (`status`, `completed_at`, `duration_ms`, `error_*`,
-// `response_payload_cipher`, `output_token_count`) must stay writable exactly once, and `hitl_outcome` is
-// written later still by the consumer module recording the human's accept/edit/reject. The frozen set is
-// the request side plus the provenance. DELETE is refused outright.
+// COLUMN-RESTRICTED IMMUTABILITY (§3.5, trigger in 0116), not append-only. The frozen set is §3.5's
+// verbatim: the request side plus the provenance plus BOTH token counts and BOTH response ciphers. What
+// stays writable is `status`, `completed_at`, `duration_ms`, `error_*` and `hitl_outcome` — the last
+// being the one the consumer module writes later, recording the human's accept/edit/reject. DELETE is
+// refused outright.
+//
+// THAT FROZEN SET DECIDES THE PIPELINE'S SHAPE, so it is worth saying out loud: because
+// `input_token_count`, `output_token_count` and `response_payload_cipher` cannot be UPDATEd, the row
+// CANNOT be opened before dispatch and closed after it. M32-T04's pipeline therefore writes it ONCE,
+// when the outcome is known — completed, failed, timed out, or refused at a gate. The cost is that a
+// process killed between a vendor answering and the insert leaves a disclosure with no row; the pipeline
+// narrows that to a single `await` by funnelling every terminal outcome through one write, and cannot
+// close it without the two-phase row §3.5 forbids.
 //
 // FKs: organization / provider_entity / location (M1 spine), `ai_capability` and `ai_model_backend`
 // (platform-shared, unpartitioned) are REAL. `actor_membership_id` (M2), `patient_id` (M5),
