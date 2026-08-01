@@ -475,6 +475,33 @@ import {
   SubscriptionListQuery as M20SubscriptionListQuery,
   TransitionIncidentBody as M20TransitionIncidentBody,
 } from "../../apps/backend/src/modules/20-field-safety/routes/m20-typebox";
+// M32 AI Platform — the §4.1 request bodies + list queries the route handlers `parse(...)` /
+// `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator. Note the
+// CLOSED string-literal unions: every wire enum mirrors a `@wardenx/db` pgEnum, because a wire enum
+// published as `Type.String()` is a silent lie (the M30 lesson) — and note what has no schema at all,
+// which is every prompt / response / chart-context payload (§4.1 keeps `aiSdk.invoke` off REST).
+import {
+  ActivateKillSwitchBody as M32ActivateKillSwitchBody,
+  ActivatePromptTemplateBody as M32ActivatePromptTemplateBody,
+  CapabilityListQuery as M32CapabilityListQuery,
+  DeactivateKillSwitchBody as M32DeactivateKillSwitchBody,
+  DriftQuery as M32DriftQuery,
+  EvaluationRunQuery as M32EvaluationRunQuery,
+  FileHallucinationReportBody as M32FileHallucinationReportBody,
+  HallucinationQueueQuery as M32HallucinationQueueQuery,
+  InvocationSearchQuery as M32InvocationSearchQuery,
+  PublishCalibrationBody as M32PublishCalibrationBody,
+  QueueEvaluationRunBody as M32QueueEvaluationRunBody,
+  RecordClinicianOptOutBody as M32RecordClinicianOptOutBody,
+  RecordTenantOptInBody as M32RecordTenantOptInBody,
+  RegisterCapabilityBody as M32RegisterCapabilityBody,
+  RevokeTenantOptInBody as M32RevokeTenantOptInBody,
+  SetRoutingOverrideBody as M32SetRoutingOverrideBody,
+  TokenForecastQuery as M32TokenForecastQuery,
+  TokenLedgerQuery as M32TokenLedgerQuery,
+  TransitionCapabilityBody as M32TransitionCapabilityBody,
+  TriageHallucinationReportBody as M32TriageHallucinationReportBody,
+} from "../../apps/backend/src/modules/32-ai-platform/routes/m32-typebox";
 // M21 Supplies / DME / Comfort Kits — the §4.2 request bodies + list queries the §4.1 route handlers
 // `parse(...)` / `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator;
 // the M21-T06 web screens call the surface these type. Note the decimal-STRING quantities: §4.2.2's sketch
@@ -3567,5 +3594,173 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Revoke one purpose — writes `revoked`, never `expired`: the rotation sweep owns the second, and a coercion review reads exactly that difference (§2.2.8, §4.1 #29)",
     body: M20RevokeConsentBody,
+  },
+});
+
+// ---------------------------------------------------------------------------
+// M32 AI Platform — §4.1 request contracts for the thirty-two-route surface
+// (M32-T07). Every summary states what the boundary REFUSES, not just what it
+// accepts: the generated client is the only place a web caller sees why a shape
+// is illegal — and in this module the refusals ARE the governance model (the
+// four `automated_*` kill-switch actor kinds are unspellable; no body carries a
+// prompt, a response or a chart context; no body names an organization).
+// ---------------------------------------------------------------------------
+Object.assign(ROUTE_ENRICHMENTS, {
+  // --- §2.2 capability registry + lifecycle (R1-R6) ---
+  "POST /api/v1/ai/capabilities": {
+    summary:
+      "Register a capability into PROPOSED (R1). The SIGNER role rides the body and is checked against §2.2's own registration edge; the ACTING MEMBERSHIP is stamped from the session, so a caller may say which role they sign as and may not say that somebody else signed",
+    body: M32RegisterCapabilityBody,
+  },
+  "GET /api/v1/ai/capabilities": {
+    summary:
+      "List the platform-shared capability registry (R2). §6 grants the read to every clinical role — a clinician offered an AI-enhanced note may look up what the capability is and which lifecycle state it is in. `hotPhase1` is an INVENTORY fact, not a column, and the response reports the filter as unapplied rather than silently ignoring it",
+    query: M32CapabilityListQuery,
+  },
+  "GET /api/v1/ai/capabilities/:capabilityId": {
+    summary:
+      "Capability detail (R3): the row, the §2.2 posture it publishes to consumers, its lifecycle ledger, its calibration trail and the states it can reach next — one read, because four would show a capability mid-transition as four inconsistent panels",
+  },
+  "POST /api/v1/ai/capabilities/:capabilityId/transitions": {
+    summary:
+      "Walk a §2.2 lifecycle edge (R4). STEP-UP: the stage-4 → stage-5 edge is what makes a capability servable against real charts. The FSM, the signer-role check and D10's evaluation-evidence check all re-run inside the service — the guard is the cheap early refusal, not the authority",
+    body: M32TransitionCapabilityBody,
+  },
+  "POST /api/v1/ai/capabilities/:capabilityId/calibration": {
+    summary:
+      "Publish a calibration (R5): supersede the incumbent and insert the new `is_current` row in ONE store call — `ai_cap_calib_current_per_backend_idx` makes any other ordering a constraint violation rather than a race",
+    body: M32PublishCalibrationBody,
+  },
+  "GET /api/v1/ai/capabilities/:capabilityId/calibration/history": {
+    summary:
+      "Calibration trail (R6). Behind `ai_safety_owner` rather than the open capability read: a calibration row states the decision boundary a model is held to, which is the one piece of the registry an adversary could use to shape an input that lands just inside it (§8.1 tampering)",
+  },
+  // --- D8 kill switch (R7-R9) ---
+  "POST /api/v1/ai/capabilities/:capabilityId/kill-switch": {
+    summary:
+      "Activate the kill switch (R7). `scope: 'platform'` writes the `organization_id IS NULL` row that stops EVERY agency and requires the safety-owner arm specifically; `scope: 'tenant'` resolves to the SESSION's org and never to a supplied id. The four `automated_*` actor kinds are UNSPELLABLE here, so a human cannot file a stop as though a monitor had raised it",
+    body: M32ActivateKillSwitchBody,
+  },
+  "DELETE /api/v1/ai/capabilities/:capabilityId/kill-switch": {
+    summary:
+      "Lift the kill switch (R8). `resolutionNarrative` is REQUIRED (§3.2.12) and the activation half of the row is left ALONE — who stopped it and why is exactly what a post-mortem reads. Step-up is on this direction too: resuming a capability somebody paused during a SEV-1 is what a stolen session would want",
+    body: M32DeactivateKillSwitchBody,
+  },
+  "GET /api/v1/ai/kill-switches": {
+    summary:
+      "The §5.1.3 dashboard (R9) — the DISJUNCTION of this org's rows and the platform rows, which is the same disjunction the gate applies. A view of only the tenant's own rows would tell an agency a capability was running while a platform switch had it stopped",
+  },
+  // --- §5.3 tenant opt-in / §5.4 clinician opt-out (R10-R15) ---
+  "POST /api/v1/ai/tenant-opt-in": {
+    summary:
+      "Record the tenant opt-in (R10 / W4). The four §5.3.1 acknowledgments arrive as EVIDENCE — the reference strings and the attestation text AS SHOWN, not booleans — and W4.1's resolver decides whether they resolve. With the Phase-1 denying resolver every cloud-reachable opt-in is REFUSED, naming the specific gate",
+    body: M32RecordTenantOptInBody,
+  },
+  "DELETE /api/v1/ai/tenant-opt-in/:capabilityId": {
+    summary:
+      "Revoke (default) or pause (`mode: 'pause'`) the tenant opt-in (R11 / §10.6). An unqualified DELETE WITHDRAWS: a route that silently paused would leave an agency believing it had stopped while the acknowledgment evidence — and M35's metering — said otherwise. A reason is ACCEPTED, never required",
+    body: M32RevokeTenantOptInBody,
+  },
+  "GET /api/v1/ai/tenant-opt-in": {
+    summary:
+      "The org's opt-in records (R12). Granted to `tenant_admin` and `compliance_officer`: the frozen acknowledgment evidence is what a privacy review reads to answer who agreed to what, and when",
+  },
+  "POST /api/v1/ai/clinician-opt-out": {
+    summary:
+      "The clinician turns a capability off for herself (R13 / §5.4). Takes NO membership id — the acting membership is stamped from the session, so this cannot be pointed at a colleague. Idempotent by rule: a second tap returns the live row and writes nothing",
+    body: M32RecordClinicianOptOutBody,
+  },
+  "DELETE /api/v1/ai/clinician-opt-out/:capabilityId": {
+    summary:
+      "The clinician re-enables the capability for herself (R14). The ROW IS KEPT and stamped `reverted_at` — §5.4's history is the record that she once declined, which is what makes a later coercion question answerable. A delete would erase the only evidence of it",
+  },
+  "GET /api/v1/ai/clinician-opt-out": {
+    summary:
+      "Her own opt-out history, reverted rows included — that IS the history (R15). Scoped to the SESSION's membership inside the service",
+  },
+  // --- §164.528 disclosure ledger (R16-R17) ---
+  "GET /api/v1/ai/invocations": {
+    summary:
+      "The compliance search over `ai_invocation` (R16) — the §164.528 disclosure ledger. PHI masking is STRUCTURAL: the projection has no field for the prompt, the response or the chart context at all, and `wardenx.phi.full_read` unlocks only the patient identity and the free-text error. Without it a row still reports `touchedPatientChart`, which is the fact the accounting turns on. Default window: 90 days (the table is RANGE-partitioned on `invoked_at`)",
+    query: M32InvocationSearchQuery,
+  },
+  "GET /api/v1/ai/invocations/:invocationId": {
+    summary:
+      "One invocation (R17). 404-on-deny, not 403: an invocation id is 1:1 with 'this named patient's chart went to a model vendor at this hour', which §8.2's isolation test asks to be unprobeable",
+  },
+  // --- D9 hallucination report → triage (R18-R20) ---
+  "POST /api/v1/ai/hallucination-reports": {
+    summary:
+      "File a hallucination report (R18) — the only write a clinician makes in this module, and §5.5's widget's contract. The narrative is DEK-enveloped before it is stored; with no cipher bound the route refuses 503 rather than writing prose in the clear into a column named `_cipher`. A `critical` severity returns D16's SEV-1 follow-up PLAN attached, so the caller can see that filing this is about to stop a capability platform-wide",
+    body: M32FileHallucinationReportBody,
+  },
+  "GET /api/v1/ai/hallucination-reports": {
+    summary:
+      "The triage queue (R19). Defaults to the two OPEN statuses §3.2.10's partial index covers — that IS the working set; a queue that opened on every closed report ever filed would need a filter before it was usable",
+    query: M32HallucinationQueueQuery,
+  },
+  "POST /api/v1/ai/hallucination-reports/:reportId/triage": {
+    summary:
+      "Record the triage decision (R20 / W5.5-5.6). The computed FOLLOW-UP rides the response for the §4.8 queue; `followUpAction: 'none'` is a RECORDED decision, so 'we decided nothing was needed' stays distinguishable from 'the worker never ran'",
+    body: M32TriageHallucinationReportBody,
+  },
+  // --- W2 token spend (R21-R22) ---
+  "GET /api/v1/ai/tokens/ledger": {
+    summary:
+      "The token ledger plus the window total (R21). The window is the CALENDAR MONTH, because that is what §3.8 partitions `ai_token_ledger` by and what §1.1's budget is stated in — a rolling 30 days would straddle two partitions and answer a different question from the one the cap enforces",
+    query: M32TokenLedgerQuery,
+  },
+  "GET /api/v1/ai/tokens/forecast": {
+    summary:
+      "Spend vs. caps with a linear burn-rate projection (R22). Nothing here predicts. `softCap`, `hardCap` and `projectedBreach` are ALL `null` when M2 states no budget — an absent bound is not an unbounded one, and a green 'no breach projected' tile minted from a missing configuration is the failure this avoids",
+    query: M32TokenForecastQuery,
+  },
+  // --- W8 routing sovereignty (R23-R25) ---
+  "POST /api/v1/ai/routing-overrides": {
+    summary:
+      "Pin a capability's routing (R23 / W8 `local_only`). `effectiveAt` defaults to NOW and not to the start of the day: a sovereignty decision takes effect when the admin makes it, and back-dating one would claim a period during which calls had already gone to a cloud backend",
+    body: M32SetRoutingOverrideBody,
+  },
+  "DELETE /api/v1/ai/routing-overrides/:capabilityId": {
+    summary:
+      "Remove an override by CLOSING its §3.2.13 window (R24) — never by deleting the row. A delete would erase the record that the agency once required `local_only`, which is exactly the evidence a data-residency question asks for, and would free a window the EXCLUDE constraint had already reserved. 404 when no override is live, rather than a silent success that would read as 'removed'",
+  },
+  "GET /api/v1/ai/routing-overrides": {
+    summary:
+      "List routing overrides including EXPIRED rows (R25) — the question a data-residency review asks is 'what was in force in March', not 'what is in force now'",
+  },
+  // --- D10 evaluation runs (R26-R28) ---
+  "POST /api/v1/ai/evaluations": {
+    summary:
+      "Queue an evaluation run (R26). `status` is NOT an input — §3.2.11 inserts every run `pending`; a body that could set `passed` would let an operator mint the D10 evidence a stage-3 transition then cites, which is the one thing the evidence check exists to prevent",
+    body: M32QueueEvaluationRunBody,
+  },
+  "GET /api/v1/ai/evaluations": {
+    summary: "Recent evaluation runs, filterable by capability and status (R27)",
+    query: M32EvaluationRunQuery,
+  },
+  "GET /api/v1/ai/evaluations/:runId": {
+    summary:
+      "One evaluation run with its metric snapshot and MLflow handle (R28). MLflow stays the record of the run; `summary_metrics` is the headline §3.2.11 keeps so a governance review need not reach into a second system to see why an edge was approved",
+  },
+  // --- §4.5 / §8.5 prompt registry (R29-R30) ---
+  "GET /api/v1/ai/prompts/:capabilityKey/active": {
+    summary:
+      "The active template's METADATA (R29) — never its body. §8.5: the body is the platform's prompt-injection surface, PR-gated in `packages/prompts` with a clinical-reviewer attestation, and an HTTP route serving it would be a second distribution channel with none of that review attached. 404 when the capability genuinely has no active template",
+  },
+  "POST /api/v1/ai/prompts/:capabilityKey/activate": {
+    summary:
+      "Activate a template version (R30). INSERT-AND-DEPRECATE, not a status flip: §3.5's immutability trigger rejects an UPDATE flipping an existing row to `active`. The ARTIFACT is read and hashed inside the service — the submitted `templateContentHash` is a claim to VERIFY, not a value to store. STEP-UP: the active template is what every consumer's D18 boot validator reads",
+    body: M32ActivatePromptTemplateBody,
+  },
+  // --- D11 drift + backend health (R31-R32) ---
+  "GET /api/v1/ai/drift/recent": {
+    summary:
+      "Drift findings within the last N hours (R31). M32 owns NO drift table: §4.8's sweep publishes `m32.drift.detected` and writes a `drift_response` EVALUATION RUN, which is the durable record — so the response names its `source`, and an empty list cannot be mistaken for 'no drift' when it may mean 'no sweep has run'",
+    query: M32DriftQuery,
+  },
+  "GET /api/v1/ai/health": {
+    summary:
+      "Liveness plus per-backend health (R32). Reports `ok` in capability-shell mode: with `ai.full` OFF, 'no healthy backend' is the EXPECTED state, and reporting `degraded` for the platform's intended posture is the fastest way to teach an operator to ignore the endpoint. `lastHealthStatus: 'unknown'` is a real state — a backend nobody has probed is not healthy",
   },
 });

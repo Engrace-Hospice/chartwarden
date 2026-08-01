@@ -2554,6 +2554,2210 @@
         }
       }
     },
+    "/api/v1/ai/capabilities": {
+      "get": {
+        "operationId": "getApiV1AiCapabilities",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "List the platform-shared capability registry (R2). §6 grants the read to every clinical role — a clinician offered an AI-enhanced note may look up what the capability is and which lifecycle state it is in. `hotPhase1` is an INVENTORY fact, not a column, and the response reports the filter as unapplied rather than silently ignoring it",
+        "parameters": [
+          {
+            "name": "lifecycleState",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "PROPOSED",
+                  "type": "string"
+                },
+                {
+                  "const": "DESIGN_REVIEW",
+                  "type": "string"
+                },
+                {
+                  "const": "EVALUATION",
+                  "type": "string"
+                },
+                {
+                  "const": "PILOT",
+                  "type": "string"
+                },
+                {
+                  "const": "APPROVED",
+                  "type": "string"
+                },
+                {
+                  "const": "MONITORING",
+                  "type": "string"
+                },
+                {
+                  "const": "DEPRECATED",
+                  "type": "string"
+                },
+                {
+                  "const": "RETIRED",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "riskTier",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "high",
+                  "type": "string"
+                },
+                {
+                  "const": "medium",
+                  "type": "string"
+                },
+                {
+                  "const": "low",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "hotPhase1",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1AiCapabilities",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "Register a capability into PROPOSED (R1). The SIGNER role rides the body and is checked against §2.2's own registration edge; the ACTING MEMBERSHIP is stamped from the session, so a caller may say which role they sign as and may not say that somebody else signed",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "capabilityKey",
+                  "displayName",
+                  "description",
+                  "riskTier",
+                  "defaultBackendKey",
+                  "allowedBackendKeys",
+                  "fallbackChainKeys",
+                  "tenantOverrideAllowed",
+                  "tenantOptInRequired",
+                  "clinicianOptOutSupported",
+                  "clinicalReviewRequired",
+                  "owningRole",
+                  "actorRole",
+                  "rationaleText",
+                  "currentPromptTemplateKey"
+                ],
+                "properties": {
+                  "capabilityKey": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "description": {
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "riskTier": {
+                    "anyOf": [
+                      {
+                        "const": "high",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medium",
+                        "type": "string"
+                      },
+                      {
+                        "const": "low",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "defaultBackendKey": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "allowedBackendKeys": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "minLength": 1,
+                      "maxLength": 120,
+                      "type": "string"
+                    }
+                  },
+                  "fallbackChainKeys": {
+                    "type": "array",
+                    "items": {
+                      "minLength": 1,
+                      "maxLength": 120,
+                      "type": "string"
+                    }
+                  },
+                  "tenantOverrideAllowed": {
+                    "type": "boolean"
+                  },
+                  "tenantOptInRequired": {
+                    "type": "boolean"
+                  },
+                  "clinicianOptOutSupported": {
+                    "type": "boolean"
+                  },
+                  "clinicalReviewRequired": {
+                    "type": "boolean"
+                  },
+                  "owningRole": {
+                    "anyOf": [
+                      {
+                        "const": "ai_safety_owner",
+                        "type": "string"
+                      },
+                      {
+                        "const": "clinical_reviewer",
+                        "type": "string"
+                      },
+                      {
+                        "const": "ai_engineer",
+                        "type": "string"
+                      },
+                      {
+                        "const": "privacy_officer",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "actorRole": {
+                    "anyOf": [
+                      {
+                        "const": "ai_safety_owner",
+                        "type": "string"
+                      },
+                      {
+                        "const": "clinical_reviewer",
+                        "type": "string"
+                      },
+                      {
+                        "const": "ai_engineer",
+                        "type": "string"
+                      },
+                      {
+                        "const": "privacy_officer",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "rationaleText": {
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "currentPromptTemplateKey": {
+                    "anyOf": [
+                      {
+                        "maxLength": 120,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "stageArtifacts": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/capabilities/{capabilityId}": {
+      "get": {
+        "operationId": "getApiV1AiCapabilitiesByCapabilityId",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "Capability detail (R3): the row, the §2.2 posture it publishes to consumers, its lifecycle ledger, its calibration trail and the states it can reach next — one read, because four would show a capability mid-transition as four inconsistent panels",
+        "parameters": [
+          {
+            "name": "capabilityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/ai/capabilities/{capabilityId}/calibration": {
+      "post": {
+        "operationId": "postApiV1AiCapabilitiesByCapabilityIdCalibration",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "Publish a calibration (R5): supersede the incumbent and insert the new `is_current` row in ONE store call — `ai_cap_calib_current_per_backend_idx` makes any other ordering a constraint violation rather than a race",
+        "parameters": [
+          {
+            "name": "capabilityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "backendKey",
+                  "thresholds",
+                  "baselineMetrics",
+                  "baselineSetAt",
+                  "baselineEvaluationRunId",
+                  "supersededReason"
+                ],
+                "properties": {
+                  "backendKey": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "thresholds": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {}
+                    }
+                  },
+                  "baselineMetrics": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {}
+                    }
+                  },
+                  "baselineSetAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "baselineEvaluationRunId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "supersededReason": {
+                    "anyOf": [
+                      {
+                        "maxLength": 1000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/capabilities/{capabilityId}/calibration/history": {
+      "get": {
+        "operationId": "getApiV1AiCapabilitiesByCapabilityIdCalibrationHistory",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "Calibration trail (R6). Behind `ai_safety_owner` rather than the open capability read: a calibration row states the decision boundary a model is held to, which is the one piece of the registry an adversary could use to shape an input that lands just inside it (§8.1 tampering)",
+        "parameters": [
+          {
+            "name": "capabilityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/ai/capabilities/{capabilityId}/kill-switch": {
+      "delete": {
+        "operationId": "deleteApiV1AiCapabilitiesByCapabilityIdKillswitch",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "Lift the kill switch (R8). `resolutionNarrative` is REQUIRED (§3.2.12) and the activation half of the row is left ALONE — who stopped it and why is exactly what a post-mortem reads. Step-up is on this direction too: resuming a capability somebody paused during a SEV-1 is what a stolen session would want",
+        "parameters": [
+          {
+            "name": "capabilityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "scope",
+                  "actorKind",
+                  "resolutionNarrative"
+                ],
+                "properties": {
+                  "scope": {
+                    "anyOf": [
+                      {
+                        "const": "platform",
+                        "type": "string"
+                      },
+                      {
+                        "const": "tenant",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "actorKind": {
+                    "anyOf": [
+                      {
+                        "const": "ai_safety_owner",
+                        "type": "string"
+                      },
+                      {
+                        "const": "incident_commander",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "resolutionNarrative": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1AiCapabilitiesByCapabilityIdKillswitch",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "Activate the kill switch (R7). `scope: 'platform'` writes the `organization_id IS NULL` row that stops EVERY agency and requires the safety-owner arm specifically; `scope: 'tenant'` resolves to the SESSION's org and never to a supplied id. The four `automated_*` actor kinds are UNSPELLABLE here, so a human cannot file a stop as though a monitor had raised it",
+        "parameters": [
+          {
+            "name": "capabilityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "scope",
+                  "reason",
+                  "actorKind",
+                  "activationMessage"
+                ],
+                "properties": {
+                  "scope": {
+                    "anyOf": [
+                      {
+                        "const": "platform",
+                        "type": "string"
+                      },
+                      {
+                        "const": "tenant",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "const": "sev1_hallucination",
+                        "type": "string"
+                      },
+                      {
+                        "const": "sev2_hallucination",
+                        "type": "string"
+                      },
+                      {
+                        "const": "cost_cap_reached",
+                        "type": "string"
+                      },
+                      {
+                        "const": "vendor_outage_exceeded_sla",
+                        "type": "string"
+                      },
+                      {
+                        "const": "prompt_injection_detected",
+                        "type": "string"
+                      },
+                      {
+                        "const": "manual_safety_pause",
+                        "type": "string"
+                      },
+                      {
+                        "const": "misuse_detected",
+                        "type": "string"
+                      },
+                      {
+                        "const": "bias_drift_severe",
+                        "type": "string"
+                      },
+                      {
+                        "const": "lifecycle_demotion",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "actorKind": {
+                    "anyOf": [
+                      {
+                        "const": "ai_safety_owner",
+                        "type": "string"
+                      },
+                      {
+                        "const": "incident_commander",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "activationMessage": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/capabilities/{capabilityId}/transitions": {
+      "post": {
+        "operationId": "postApiV1AiCapabilitiesByCapabilityIdTransitions",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "Walk a §2.2 lifecycle edge (R4). STEP-UP: the stage-4 → stage-5 edge is what makes a capability servable against real charts. The FSM, the signer-role check and D10's evaluation-evidence check all re-run inside the service — the guard is the cheap early refusal, not the authority",
+        "parameters": [
+          {
+            "name": "capabilityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "toState",
+                  "approvalKind",
+                  "actorRole",
+                  "rationaleText",
+                  "linkedEvaluationRunId"
+                ],
+                "properties": {
+                  "toState": {
+                    "anyOf": [
+                      {
+                        "const": "PROPOSED",
+                        "type": "string"
+                      },
+                      {
+                        "const": "DESIGN_REVIEW",
+                        "type": "string"
+                      },
+                      {
+                        "const": "EVALUATION",
+                        "type": "string"
+                      },
+                      {
+                        "const": "PILOT",
+                        "type": "string"
+                      },
+                      {
+                        "const": "APPROVED",
+                        "type": "string"
+                      },
+                      {
+                        "const": "MONITORING",
+                        "type": "string"
+                      },
+                      {
+                        "const": "DEPRECATED",
+                        "type": "string"
+                      },
+                      {
+                        "const": "RETIRED",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "approvalKind": {
+                    "anyOf": [
+                      {
+                        "const": "stage_1_proposal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "stage_2_design_review",
+                        "type": "string"
+                      },
+                      {
+                        "const": "stage_3_evaluation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "stage_4_pilot",
+                        "type": "string"
+                      },
+                      {
+                        "const": "stage_5_ga",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reapproval",
+                        "type": "string"
+                      },
+                      {
+                        "const": "deprecation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "retirement",
+                        "type": "string"
+                      },
+                      {
+                        "const": "incident_demotion",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "actorRole": {
+                    "anyOf": [
+                      {
+                        "const": "ai_safety_owner",
+                        "type": "string"
+                      },
+                      {
+                        "const": "clinical_reviewer",
+                        "type": "string"
+                      },
+                      {
+                        "const": "ai_engineer",
+                        "type": "string"
+                      },
+                      {
+                        "const": "privacy_officer",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "rationaleText": {
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "linkedEvaluationRunId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "maxLength": 400,
+                    "type": "string"
+                  },
+                  "stageArtifacts": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/clinician-opt-out": {
+      "get": {
+        "operationId": "getApiV1AiClinicianoptout",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "Her own opt-out history, reverted rows included — that IS the history (R15). Scoped to the SESSION's membership inside the service",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1AiClinicianoptout",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "The clinician turns a capability off for herself (R13 / §5.4). Takes NO membership id — the acting membership is stamped from the session, so this cannot be pointed at a colleague. Idempotent by rule: a second tap returns the live row and writes nothing",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "capabilityId"
+                ],
+                "properties": {
+                  "capabilityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "maxLength": 1000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/clinician-opt-out/{capabilityId}": {
+      "delete": {
+        "operationId": "deleteApiV1AiClinicianoptoutByCapabilityId",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "The clinician re-enables the capability for herself (R14). The ROW IS KEPT and stamped `reverted_at` — §5.4's history is the record that she once declined, which is what makes a later coercion question answerable. A delete would erase the only evidence of it",
+        "parameters": [
+          {
+            "name": "capabilityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/ai/drift/recent": {
+      "get": {
+        "operationId": "getApiV1AiDriftRecent",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "Drift findings within the last N hours (R31). M32 owns NO drift table: §4.8's sweep publishes `m32.drift.detected` and writes a `drift_response` EVALUATION RUN, which is the durable record — so the response names its `source`, and an empty list cannot be mistaken for 'no drift' when it may mean 'no sweep has run'",
+        "parameters": [
+          {
+            "name": "withinHours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 720,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/ai/evaluations": {
+      "get": {
+        "operationId": "getApiV1AiEvaluations",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "Recent evaluation runs, filterable by capability and status (R27)",
+        "parameters": [
+          {
+            "name": "capabilityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "pending",
+                  "type": "string"
+                },
+                {
+                  "const": "in_progress",
+                  "type": "string"
+                },
+                {
+                  "const": "passed",
+                  "type": "string"
+                },
+                {
+                  "const": "failed",
+                  "type": "string"
+                },
+                {
+                  "const": "aborted",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1AiEvaluations",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "Queue an evaluation run (R26). `status` is NOT an input — §3.2.11 inserts every run `pending`; a body that could set `passed` would let an operator mint the D10 evidence a stage-3 transition then cites, which is the one thing the evidence check exists to prevent",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "capabilityId",
+                  "backendId",
+                  "datasetVersionRef",
+                  "mlflowRunId",
+                  "stage"
+                ],
+                "properties": {
+                  "capabilityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "backendId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "datasetVersionRef": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "mlflowRunId": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "stage": {
+                    "anyOf": [
+                      {
+                        "const": "stage_3_evaluation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "stage_4_pilot",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reapproval",
+                        "type": "string"
+                      },
+                      {
+                        "const": "drift_response",
+                        "type": "string"
+                      },
+                      {
+                        "const": "post_incident",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "summaryMetrics": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/evaluations/{runId}": {
+      "get": {
+        "operationId": "getApiV1AiEvaluationsByRunId",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "One evaluation run with its metric snapshot and MLflow handle (R28). MLflow stays the record of the run; `summary_metrics` is the headline §3.2.11 keeps so a governance review need not reach into a second system to see why an edge was approved",
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/ai/hallucination-reports": {
+      "get": {
+        "operationId": "getApiV1AiHallucinationreports",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "The triage queue (R19). Defaults to the two OPEN statuses §3.2.10's partial index covers — that IS the working set; a queue that opened on every closed report ever filed would need a filter before it was usable",
+        "parameters": [
+          {
+            "name": "capabilityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "open",
+                  "type": "string"
+                },
+                {
+                  "const": "investigating",
+                  "type": "string"
+                },
+                {
+                  "const": "root_cause_identified",
+                  "type": "string"
+                },
+                {
+                  "const": "mitigated",
+                  "type": "string"
+                },
+                {
+                  "const": "closed",
+                  "type": "string"
+                },
+                {
+                  "const": "escalated_to_clinical_safety",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1AiHallucinationreports",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "File a hallucination report (R18) — the only write a clinician makes in this module, and §5.5's widget's contract. The narrative is DEK-enveloped before it is stored; with no cipher bound the route refuses 503 rather than writing prose in the clear into a column named `_cipher`. A `critical` severity returns D16's SEV-1 follow-up PLAN attached, so the caller can see that filing this is about to stop a capability platform-wide",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "capabilityId",
+                  "invocationId",
+                  "severity",
+                  "hallucinationKind",
+                  "reporterNarrative"
+                ],
+                "properties": {
+                  "capabilityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "invocationId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "severity": {
+                    "anyOf": [
+                      {
+                        "const": "critical",
+                        "type": "string"
+                      },
+                      {
+                        "const": "high",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medium",
+                        "type": "string"
+                      },
+                      {
+                        "const": "low",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "hallucinationKind": {
+                    "anyOf": [
+                      {
+                        "const": "fabricated_medication",
+                        "type": "string"
+                      },
+                      {
+                        "const": "misattributed_symptom",
+                        "type": "string"
+                      },
+                      {
+                        "const": "fake_diagnosis",
+                        "type": "string"
+                      },
+                      {
+                        "const": "fabricated_quote",
+                        "type": "string"
+                      },
+                      {
+                        "const": "misquoted_patient",
+                        "type": "string"
+                      },
+                      {
+                        "const": "wrong_dose",
+                        "type": "string"
+                      },
+                      {
+                        "const": "fake_clinical_recommendation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reporterNarrative": {
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/hallucination-reports/{reportId}/triage": {
+      "post": {
+        "operationId": "postApiV1AiHallucinationreportsByReportIdTriage",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "Record the triage decision (R20 / W5.5-5.6). The computed FOLLOW-UP rides the response for the §4.8 queue; `followUpAction: 'none'` is a RECORDED decision, so 'we decided nothing was needed' stays distinguishable from 'the worker never ran'",
+        "parameters": [
+          {
+            "name": "reportId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "toStatus",
+                  "disposition",
+                  "mitigationActionRef",
+                  "severity"
+                ],
+                "properties": {
+                  "toStatus": {
+                    "anyOf": [
+                      {
+                        "const": "open",
+                        "type": "string"
+                      },
+                      {
+                        "const": "investigating",
+                        "type": "string"
+                      },
+                      {
+                        "const": "root_cause_identified",
+                        "type": "string"
+                      },
+                      {
+                        "const": "mitigated",
+                        "type": "string"
+                      },
+                      {
+                        "const": "closed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "escalated_to_clinical_safety",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "disposition": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "const": "prompt_iteration_required",
+                            "type": "string"
+                          },
+                          {
+                            "const": "model_rollback_required",
+                            "type": "string"
+                          },
+                          {
+                            "const": "edge_case_acknowledged",
+                            "type": "string"
+                          },
+                          {
+                            "const": "false_alarm",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "mitigationActionRef": {
+                    "anyOf": [
+                      {
+                        "maxLength": 400,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "severity": {
+                    "anyOf": [
+                      {
+                        "const": "critical",
+                        "type": "string"
+                      },
+                      {
+                        "const": "high",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medium",
+                        "type": "string"
+                      },
+                      {
+                        "const": "low",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/health": {
+      "get": {
+        "operationId": "getApiV1AiHealth",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "Liveness plus per-backend health (R32). Reports `ok` in capability-shell mode: with `ai.full` OFF, 'no healthy backend' is the EXPECTED state, and reporting `degraded` for the platform's intended posture is the fastest way to teach an operator to ignore the endpoint. `lastHealthStatus: 'unknown'` is a real state — a backend nobody has probed is not healthy",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/ai/invocations": {
+      "get": {
+        "operationId": "getApiV1AiInvocations",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "The compliance search over `ai_invocation` (R16) — the §164.528 disclosure ledger. PHI masking is STRUCTURAL: the projection has no field for the prompt, the response or the chart context at all, and `wardenx.phi.full_read` unlocks only the patient identity and the free-text error. Without it a row still reports `touchedPatientChart`, which is the fact the accounting turns on. Default window: 90 days (the table is RANGE-partitioned on `invoked_at`)",
+        "parameters": [
+          {
+            "name": "capabilityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "capabilityKey",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 120,
+              "type": "string"
+            }
+          },
+          {
+            "name": "backendKey",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 120,
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "completed",
+                  "type": "string"
+                },
+                {
+                  "const": "failed",
+                  "type": "string"
+                },
+                {
+                  "const": "timed_out",
+                  "type": "string"
+                },
+                {
+                  "const": "killed",
+                  "type": "string"
+                },
+                {
+                  "const": "capability_unavailable",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "disclosuresOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/ai/invocations/{invocationId}": {
+      "get": {
+        "operationId": "getApiV1AiInvocationsByInvocationId",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "One invocation (R17). 404-on-deny, not 403: an invocation id is 1:1 with 'this named patient's chart went to a model vendor at this hour', which §8.2's isolation test asks to be unprobeable",
+        "parameters": [
+          {
+            "name": "invocationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/ai/kill-switches": {
+      "get": {
+        "operationId": "getApiV1AiKillswitches",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "The §5.1.3 dashboard (R9) — the DISJUNCTION of this org's rows and the platform rows, which is the same disjunction the gate applies. A view of only the tenant's own rows would tell an agency a capability was running while a platform switch had it stopped",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/ai/prompts/{capabilityKey}/activate": {
+      "post": {
+        "operationId": "postApiV1AiPromptsByCapabilityKeyActivate",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "Activate a template version (R30). INSERT-AND-DEPRECATE, not a status flip: §3.5's immutability trigger rejects an UPDATE flipping an existing row to `active`. The ARTIFACT is read and hashed inside the service — the submitted `templateContentHash` is a claim to VERIFY, not a value to store. STEP-UP: the active template is what every consumer's D18 boot validator reads",
+        "parameters": [
+          {
+            "name": "capabilityKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "templateKey",
+                  "version",
+                  "templateFilesystemRef",
+                  "templateContentHash",
+                  "compatibleBackendKeys",
+                  "inputSchemaRef",
+                  "outputSchemaRef",
+                  "outputEntityTargetPrefix",
+                  "outputTypePrefix",
+                  "approvedByMembershipId",
+                  "clinicalReviewerAttestation"
+                ],
+                "properties": {
+                  "templateKey": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "version": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "templateFilesystemRef": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "templateContentHash": {
+                    "minLength": 16,
+                    "maxLength": 128,
+                    "type": "string"
+                  },
+                  "compatibleBackendKeys": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "minLength": 1,
+                      "maxLength": 120,
+                      "type": "string"
+                    }
+                  },
+                  "inputSchemaRef": {
+                    "minLength": 1,
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  "outputSchemaRef": {
+                    "minLength": 1,
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  "outputEntityTargetPrefix": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "outputTypePrefix": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "approvedByMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "clinicalReviewerAttestation": {
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/prompts/{capabilityKey}/active": {
+      "get": {
+        "operationId": "getApiV1AiPromptsByCapabilityKeyActive",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "The active template's METADATA (R29) — never its body. §8.5: the body is the platform's prompt-injection surface, PR-gated in `packages/prompts` with a clinical-reviewer attestation, and an HTTP route serving it would be a second distribution channel with none of that review attached. 404 when the capability genuinely has no active template",
+        "parameters": [
+          {
+            "name": "capabilityKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/ai/routing-overrides": {
+      "get": {
+        "operationId": "getApiV1AiRoutingoverrides",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "List routing overrides including EXPIRED rows (R25) — the question a data-residency review asks is 'what was in force in March', not 'what is in force now'",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1AiRoutingoverrides",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "Pin a capability's routing (R23 / W8 `local_only`). `effectiveAt` defaults to NOW and not to the start of the day: a sovereignty decision takes effect when the admin makes it, and back-dating one would claim a period during which calls had already gone to a cloud backend",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "capabilityId",
+                  "backendKeyPreference",
+                  "overrideReason"
+                ],
+                "properties": {
+                  "capabilityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "backendKeyPreference": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "overrideReason": {
+                    "anyOf": [
+                      {
+                        "const": "tenant_sovereignty",
+                        "type": "string"
+                      },
+                      {
+                        "const": "tenant_cost",
+                        "type": "string"
+                      },
+                      {
+                        "const": "tenant_pilot",
+                        "type": "string"
+                      },
+                      {
+                        "const": "fallback_after_outage",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "effectiveAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "expiresAt": {
+                    "anyOf": [
+                      {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/routing-overrides/{capabilityId}": {
+      "delete": {
+        "operationId": "deleteApiV1AiRoutingoverridesByCapabilityId",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "Remove an override by CLOSING its §3.2.13 window (R24) — never by deleting the row. A delete would erase the record that the agency once required `local_only`, which is exactly the evidence a data-residency question asks for, and would free a window the EXCLUDE constraint had already reserved. 404 when no override is live, rather than a silent success that would read as 'removed'",
+        "parameters": [
+          {
+            "name": "capabilityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/ai/tenant-opt-in": {
+      "get": {
+        "operationId": "getApiV1AiTenantoptin",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "The org's opt-in records (R12). Granted to `tenant_admin` and `compliance_officer`: the frozen acknowledgment evidence is what a privacy review reads to answer who agreed to what, and when",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1AiTenantoptin",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "Record the tenant opt-in (R10 / W4). The four §5.3.1 acknowledgments arrive as EVIDENCE — the reference strings and the attestation text AS SHOWN, not booleans — and W4.1's resolver decides whether they resolve. With the Phase-1 denying resolver every cloud-reachable opt-in is REFUSED, naming the specific gate",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "capabilityId",
+                  "routingMode",
+                  "pilotEnrollment",
+                  "acknowledgments",
+                  "orgRoutingPreference"
+                ],
+                "properties": {
+                  "capabilityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "routingMode": {
+                    "anyOf": [
+                      {
+                        "const": "default",
+                        "type": "string"
+                      },
+                      {
+                        "const": "prefer_local",
+                        "type": "string"
+                      },
+                      {
+                        "const": "local_only",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "pilotEnrollment": {
+                    "type": "boolean"
+                  },
+                  "acknowledgments": {
+                    "type": "object",
+                    "required": [
+                      "baaReference",
+                      "zdrContractReference",
+                      "clinicalReviewerMembershipId",
+                      "clinicalReviewerAttestationText",
+                      "disclosureAccountingAcknowledged",
+                      "calibrationTradeOffAcknowledged"
+                    ],
+                    "properties": {
+                      "baaReference": {
+                        "anyOf": [
+                          {
+                            "maxLength": 200,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "zdrContractReference": {
+                        "anyOf": [
+                          {
+                            "maxLength": 200,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "clinicalReviewerMembershipId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "clinicalReviewerAttestationText": {
+                        "anyOf": [
+                          {
+                            "maxLength": 4000,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "disclosureAccountingAcknowledged": {
+                        "type": "boolean"
+                      },
+                      "calibrationTradeOffAcknowledged": {
+                        "anyOf": [
+                          {
+                            "maxLength": 4000,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "orgRoutingPreference": {
+                    "anyOf": [
+                      {
+                        "const": "prefer_cloud",
+                        "type": "string"
+                      },
+                      {
+                        "const": "prefer_local",
+                        "type": "string"
+                      },
+                      {
+                        "const": "cloud_only",
+                        "type": "string"
+                      },
+                      {
+                        "const": "local_only",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/tenant-opt-in/{capabilityId}": {
+      "delete": {
+        "operationId": "deleteApiV1AiTenantoptinByCapabilityId",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "Revoke (default) or pause (`mode: 'pause'`) the tenant opt-in (R11 / §10.6). An unqualified DELETE WITHDRAWS: a route that silently paused would leave an agency believing it had stopped while the acknowledgment evidence — and M35's metering — said otherwise. A reason is ACCEPTED, never required",
+        "parameters": [
+          {
+            "name": "capabilityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "maxLength": 1000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "mode": {
+                    "anyOf": [
+                      {
+                        "const": "pause",
+                        "type": "string"
+                      },
+                      {
+                        "const": "withdraw",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/tokens/forecast": {
+      "get": {
+        "operationId": "getApiV1AiTokensForecast",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "Spend vs. caps with a linear burn-rate projection (R22). Nothing here predicts. `softCap`, `hardCap` and `projectedBreach` are ALL `null` when M2 states no budget — an absent bound is not an unbounded one, and a green 'no breach projected' tile minted from a missing configuration is the failure this avoids",
+        "parameters": [
+          {
+            "name": "capabilityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/ai/tokens/ledger": {
+      "get": {
+        "operationId": "getApiV1AiTokensLedger",
+        "tags": [
+          "32-ai-platform"
+        ],
+        "summary": "The token ledger plus the window total (R21). The window is the CALENDAR MONTH, because that is what §3.8 partitions `ai_token_ledger` by and what §1.1's budget is stated in — a rolling 30 days would straddle two partitions and answer a different question from the one the cap enforces",
+        "parameters": [
+          {
+            "name": "capabilityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/alert-rules": {
       "get": {
         "operationId": "getApiV1Alertrules",
