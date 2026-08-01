@@ -1,5 +1,23 @@
 // apps/backend/src/modules/14-idg — M14 (Interdisciplinary Group / IDG) backend module surface.
 //
+import type { DbClient } from "@wardenx/db";
+import type { FastifyInstance } from "fastify";
+import { registerIdgAbacPredicates as _registerM14Abac } from "./abac-predicates";
+import { createDbIdgBackend } from "./idg-route-service-db";
+import { registerIdgRoutes as _registerM14Routes } from "./routes/idg-routes";
+
+/**
+ * M14L — mount the M14 IDG routes over the PRODUCTION Drizzle route service + ABAC resolver (one object that
+ * is both, RLS-scoped under `withOrgContext`). Called from the composition root's db branch. Reads are live
+ * (schedule, meeting detail, packet digests, action-item worklist, minutes); writes fail-closed 501 until the
+ * M14L write-lifecycle follow-up. Replaces the in-memory clinical-core scaffold mount for M14.
+ */
+export function mountIdgRoutes(app: FastifyInstance, db: DbClient): void {
+  const backend = createDbIdgBackend(db);
+  _registerM14Abac({ resolver: backend });
+  _registerM14Routes(app, { service: backend });
+}
+
 // M14-T05 lands the three §4.8 owned seams (IdgPacketProvider — the packet-snapshot + M22 render handshake
 // M22/M33 consume — + IdgDecisionProvider — the decision read path M30/M33 consume — + IdgScheduleProvider —
 // the meeting-schedule + 15-day-cadence read path M28/M30/M33 consume) registered into the M1 registry via

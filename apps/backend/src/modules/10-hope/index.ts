@@ -5,6 +5,26 @@
 // composition root's wireModuleSeams()).
 // M10-T06 adds the §4.1 route inventory + §4.6 perms (in @wardenx/auth) + §4.7 ABAC predicates + the §2.4
 // outbox catalog + the §4.8 BullMQ job catalog & pure scans + the §4.9 M36 alert builders (in @wardenx/hope).
+import type { DbClient } from "@wardenx/db";
+import type { FastifyInstance } from "fastify";
+import { registerHopeAbacPredicates as _registerM10Abac } from "./abac-predicates";
+import { createDbHopeBackend } from "./hope-route-service-db";
+import { registerHopeRoutes as _registerM10Routes } from "./routes/hope-routes";
+
+/**
+ * M10L — mount the M10 HOPE routes over the PRODUCTION Drizzle backend (RLS-scoped under `withOrgContext`).
+ * One object satisfies BOTH the §4.1 HopeRouteService and the §4.7 HopeAbacResolver, so it registers as the
+ * route service AND the ABAC resolver. Reads are live (schedule/SFV worklists, assessment chart + detail,
+ * submissions, validation findings, compliance dashboard); writes fail-closed 501 until the M10L write
+ * lifecycle lands. Replaces the in-memory clinical-core scaffold mount for M10.
+ */
+export function mountHopeRoutes(app: FastifyInstance, db: DbClient): void {
+  const backend = createDbHopeBackend(db);
+  _registerM10Abac({ resolver: backend });
+  _registerM10Routes(app, { service: backend });
+}
+
+export { createDbHopeBackend } from "./hope-route-service-db";
 export {
   type HopeOrgRollupSeed,
   type HopeOrgRollupStore,

@@ -4,6 +4,27 @@
 // ABAC predicates M9 owns (`discipline_can_record_scale` / `cosigner_role_match`). The pure domain core
 // (lifecycle/scoring/cosign/eligibility) lives in @wardenx/assessments; the §4.6 permission keys M9
 // contributes to M3 live in @wardenx/auth (M9_CONTRIBUTED_PERMISSIONS).
+import type { DbClient } from "@wardenx/db";
+import type { FastifyInstance } from "fastify";
+import {
+  createDbAssessmentAbacResolver,
+  createDbAssessmentRouteService,
+} from "./assessments-route-service-db";
+import { registerAssessmentAbacPredicates as _registerM9Abac } from "./abac-predicates";
+import { registerAssessmentRoutes as _registerM9Routes } from "./routes/assessments-routes";
+
+/**
+ * M9L — mount the M9 assessment routes over the PRODUCTION Drizzle route service + ABAC resolver
+ * (RLS-scoped under `withOrgContext`). Called from the composition root's db branch. Reads are live
+ * (patient assessment list + detail, latest/summary/series/delta/batch trend, significant-change inbox,
+ * scale licenses + policies); writes fail-closed 501 until the M9L §10 Drizzle write pipeline lands.
+ * Replaces the in-memory clinical-core scaffold mount for M9.
+ */
+export function mountAssessmentRoutes(app: FastifyInstance, db: DbClient): void {
+  _registerM9Abac({ resolver: createDbAssessmentAbacResolver(db) });
+  _registerM9Routes(app, { service: createDbAssessmentRouteService(db) });
+}
+
 export {
   type AssessmentReaderSeed,
   type AssessmentReaderStore,

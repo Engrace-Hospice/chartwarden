@@ -1,5 +1,24 @@
 // apps/backend/src/modules/11-orders — M11 (Orders) backend module surface.
 //
+import type { DbClient } from "@wardenx/db";
+import type { FastifyInstance } from "fastify";
+import { createDbOrderBackend } from "./orders-route-service-db";
+import { registerOrderAbacPredicates as _registerM11Abac } from "./abac-predicates";
+import { registerOrderRoutes as _registerM11Routes } from "./routes/orders-routes";
+
+/**
+ * M11L — mount the M11 order routes over the PRODUCTION Drizzle backend (RLS-scoped under `withOrgContext`).
+ * Called from the composition root's db branch. The single backend object is BOTH the OrderRouteService the
+ * routes compose over AND the §4.7 OrderAbacResolver the predicates read through. Reads are live (order
+ * worklists + queues, standing orders, verbal policy); writes fail-closed 501 until the M11L write lifecycle
+ * lands. Replaces the in-memory clinical-core scaffold mount for M11.
+ */
+export function mountOrderRoutes(app: FastifyInstance, db: DbClient): void {
+  const backend = createDbOrderBackend(db);
+  _registerM11Abac({ resolver: backend });
+  _registerM11Routes(app, { service: backend });
+}
+
 // M11-T05 lands the two §2.8 D14 / §4.3 owned seams (OrderSignatureProvider — the polymorphic clinical-
 // signature WRITE primitive M12 routes medication-order signatures through — + OrderProvider — the read-side
 // counterpart M14/M23/M30/M7 consume) registered into the M1 registry via `registerOrderSeams` (driven from

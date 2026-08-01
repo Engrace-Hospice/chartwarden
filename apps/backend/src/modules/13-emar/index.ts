@@ -4,6 +4,26 @@
 // M14/M28/M30/M31/M33/M37 consume — + ReconciliationProvider — the reconciliation-worksheet read path M14/M30
 // consume) registered into the M1 registry via `registerEmarSeams` (driven from the composition root's
 // wireModuleSeams()).
+import type { DbClient } from "@wardenx/db";
+import type { FastifyInstance } from "fastify";
+import { registerEmarAbacPredicates as _registerM13Abac } from "./abac-predicates";
+import { createDbEmarBackend } from "./emar-route-service-db";
+import { registerEmarRoutes as _registerM13Routes } from "./routes/emar-routes";
+
+/**
+ * M13L-T01 — mount the M13 eMAR routes over the PRODUCTION Drizzle backend (route service + ABAC resolver in
+ * one object, RLS-scoped under `withOrgContext`; mirrors M6L-T01 / M12-T08). Called from the composition
+ * root's db branch. Reads are live (administration record + census, IV session, scheduled/missed doses,
+ * reconciliation worksheets, comfort-kit deployments, policy); writes fail-closed 501 until the M13L-T02+
+ * Drizzle write lifecycle lands. Replaces the in-memory clinical-core scaffold mount for M13.
+ */
+export function mountEmarRoutes(app: FastifyInstance, db: DbClient): void {
+  const backend = createDbEmarBackend(db);
+  _registerM13Abac({ resolver: backend });
+  _registerM13Routes(app, { service: backend });
+}
+
+export { createDbEmarBackend } from "./emar-route-service-db";
 export {
   type ComfortKitAdministrationTimeline,
   type DoseScheduleRow,

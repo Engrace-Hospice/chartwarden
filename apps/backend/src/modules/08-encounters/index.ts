@@ -3,6 +3,27 @@
 // catalog, the §2.8 in-transaction side-effect rules). Schema/RLS shipped in T02/T03 (types in
 // @wardenx/types from T01); HearthNote Layer 1 (T05), cosignature workflow (T06), late-entry tiers
 // (T07), seams (T08), routes (T09) all compose over this pure core.
+import type { DbClient } from "@wardenx/db";
+import type { FastifyInstance } from "fastify";
+import {
+  createDbEncounterAbacResolver,
+  createDbEncounterRouteService,
+} from "./encounters-route-service-db";
+import { registerEncounterAbacPredicates as _registerM8Abac } from "./abac-predicates";
+import { registerEncounterRoutes as _registerM8Routes } from "./routes/encounters-routes";
+
+/**
+ * M8L-T01 — mount the M8 encounter routes over the PRODUCTION Drizzle route service + ABAC resolver
+ * (RLS-scoped under `withOrgContext`). Called from the composition root's db branch. Reads are live
+ * (encounter detail + list, cosignature queue, my drafts, billability, signed-since, cosignature status);
+ * writes fail-closed 501 until the M8L-T02+ Drizzle write lifecycle lands. Replaces the in-memory
+ * clinical-core scaffold mount for M8.
+ */
+export function mountEncounterRoutes(app: FastifyInstance, db: DbClient): void {
+  _registerM8Abac({ resolver: createDbEncounterAbacResolver(db) });
+  _registerM8Routes(app, { service: createDbEncounterRouteService(db) });
+}
+
 export * from "./lifecycle/index";
 // M8-T06 — the §2.4 D3 cosignature-request state machine + 12h/24h/48h SLA clock.
 export * from "./cosignature/index";
@@ -19,6 +40,10 @@ export {
   type EncounterRouteDeps,
   registerEncounterRoutes,
 } from "./routes/encounters-routes";
+export {
+  createDbEncounterAbacResolver,
+  createDbEncounterRouteService,
+} from "./encounters-route-service-db";
 export {
   type CreateEncounterArgs,
   type CreatedEncounter,
