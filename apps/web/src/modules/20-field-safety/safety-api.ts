@@ -372,28 +372,48 @@ export function writeHeaders(version?: number | null): Record<string, string> {
 /**
  * Turn a failed response into the sentence a clinician at 2 a.m. can act on.
  *
- * The server's problem+json body is the source of truth; the status-derived fallbacks name the contracts a
- * screen can actually violate rather than a generic failure. A 404 is deliberately ambiguous — "absent OR
- * out of your reach" — and the copy says so instead of guessing.
+ * Reads the platform's `ErrorEnvelope` (packages/types/src/errors.ts): `{ error: { code, message } }`.
+ * An earlier version of this function read a problem+json `{ title, detail, status }` that the server has
+ * never emitted, so `title`/`detail`/`status` were all undefined, EVERY branch fell through, and all 14 M20
+ * screens showed their generic fallback for every failure — the 403 that says which predicate denied you
+ * read identically to a 500. The cast hid it from tsc and no test asserted a rendered message.
+ *
+ * `code` is the discriminator rather than an HTTP status, because the status never reaches this function:
+ * the read helpers return `{ data, error }` and drop `res.response`. The catalog in @wardenx/types maps
+ * code → status in one auditable place, so matching on code loses nothing.
+ *
+ * The server's own `message` wins for DOMAIN codes — M20 writes those for humans ("this route requires an
+ * If-Match header carrying the row version you read (§2.5)"). It is deliberately NOT surfaced for the
+ * authorization classes, whose messages name internals ("abac predicate 'clinician_self' denied for
+ * 'safety.consent.read_self'"): a clinician cannot act on a predicate name, and it should not be on screen.
+ * A 404 stays deliberately ambiguous — "absent OR out of your reach" — and the copy says so.
  */
+const AUTHZ_CODES = new Set(["FORBIDDEN", "UNAUTHORIZED"]);
+const CODE_COPY: Record<string, string> = {
+  FORBIDDEN: "You do not hold the authority this action requires for this record.",
+  UNAUTHORIZED: "This action needs a step-up re-authentication. Sign in again, then retry.",
+  CONFLICT:
+    "This record changed while you were working on it. Reload and re-apply your edit — do not retry blind.",
+  IDEMPOTENCY_CONFLICT:
+    "This record changed while you were working on it. Reload and re-apply your edit — do not retry blind.",
+  STALE_LIFECYCLE_STATE:
+    "This record changed while you were working on it. Reload and re-apply your edit — do not retry blind.",
+  IF_MATCH_REQUIRED: "This edit is missing its version stamp. Reload the record and try again.",
+  VALIDATION_FAILED:
+    "The server refused this request as invalid. If you were paging a list, start again from the first page.",
+  NOT_FOUND:
+    "Not found — either it does not exist, or it is outside your reach. The server does not distinguish the two.",
+  DEGRADED: "A dependency this write needs is not available right now. Nothing was recorded.",
+  RATE_LIMITED: "Too many requests in a short window. Wait a moment, then retry.",
+  INTERNAL_ERROR: "The server failed to answer. Nothing was recorded — retry, and report it if it repeats.",
+};
 export function errorMessage(error: unknown, fallback: string): string {
-  const body = error as { title?: string; detail?: string; code?: string; status?: number } | null;
-  if (body?.detail) return body.detail;
-  if (body?.title) return body.title;
-  if (body?.status === 409 || body?.status === 412)
-    return "This record changed while you were working on it. Reload and re-apply your edit — do not retry blind.";
-  if (body?.status === 428)
-    return "This edit is missing its version stamp. Reload the record and try again.";
-  if (body?.status === 422)
-    return "The server refused this request as invalid. If you were paging a list, start again from the first page.";
-  if (body?.status === 401)
-    return "This action needs a step-up re-authentication. Sign in again, then retry.";
-  if (body?.status === 403)
-    return "You do not hold the authority this action requires for this record.";
-  if (body?.status === 404)
-    return "Not found — either it does not exist, or it is outside your reach. The server does not distinguish the two.";
-  if (body?.status === 503)
-    return "A dependency this write needs is not available right now. Nothing was recorded.";
+  const envelope = (error as { error?: { code?: string; message?: string } } | null)?.error;
+  const code = envelope?.code;
+  if (code) {
+    if (!AUTHZ_CODES.has(code) && envelope?.message) return envelope.message;
+    if (CODE_COPY[code]) return CODE_COPY[code];
+  }
   return fallback;
 }
 
