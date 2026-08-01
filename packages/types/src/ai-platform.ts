@@ -231,6 +231,24 @@ export const AI_KILL_SWITCH_AUTOMATED_ACTOR_KINDS = [
   "automated_lifecycle_demotion",
 ] as const satisfies readonly AiKillSwitchActorKind[];
 
+/** Which population a kill-switch row stops. `ai_kill_switch_state.organization_id IS NULL` is
+ *  `platform`; a row carrying an org is `tenant` (§3.2.12, §4.9's alert discriminator). */
+export type AiKillSwitchScope = "platform" | "tenant";
+
+/** §4.9's `ai.kill_switch_activated` severity. `tenant` is not a lower SEV-1 — it is a DIFFERENT
+ *  incident class: one agency paused a capability for itself, which pages nobody outside it. */
+export type AiKillSwitchSeverity = "sev1" | "sev2" | "tenant";
+
+/** §4.8's `ai:hallucination-triage-followup` job kinds (§4.9's `followUpAction` union) plus the
+ *  `none` arm the union omits — a triage that closes a report as a false alarm has a follow-up
+ *  decision to record, and modelling "no action" as an ABSENT action would make "we decided nothing
+ *  was needed" indistinguishable from "the worker never ran". */
+export type AiHallucinationFollowUpAction =
+  | "deprecate_capability"
+  | "raise_sev1"
+  | "notify_clinical_lead"
+  | "none";
+
 /** `ai_lifecycle_approval_kind` — the gate a lifecycle event records. The kind names the STAGE, not the
  *  outcome: an EVALUATION→PROPOSED rejection and an EVALUATION→PILOT approval are both
  *  `stage_3_evaluation`, told apart by `from_state`/`to_state`. */

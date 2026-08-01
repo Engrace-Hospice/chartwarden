@@ -20,9 +20,11 @@
 //                   and clinician opt-out rules, plus the three of them composed (plan T03)
 //   · ./invocation  §6/§4.1 — the SDK gate order, W8 routing, the W2 token cap  (plan T04)
 //   · ./backends    §8.4 — the ModelBackend port + the Anthropic ZDR invariant  (plan T04)
+//   · ./safety      §3.2.10/§3.2.11/§3.2.12 — W3's kill switch, W5's hallucination triage,
+//                   §3.2.11's evaluation runs and D10's evidence check           (plan T05)
+//   · ./prompts     §4.5 — AIPromptRegistry (D18 prefix query + content hash)    (plan T05)
 //   · ./schemas     §2.5 — per-capability TypeBox input/output schemas          (spec T07)
 //   · ./seams       §4.2 — the twelve published seam contracts                  (plan T06)
-//   · ./prompts     §4.5 — AIPromptRegistry (git resolution + content hash)     (plan T05)
 //
 // The TYPE surface (enum mirrors, table descriptors, the `capability_unavailable` envelope, the
 // invocation context) lives in the leaf `@wardenx/types` `ai-platform.ts`, not here, so a consumer
@@ -32,3 +34,5 @@ export * from "./inventory";
 export * from "./governance";
 export * from "./invocation";
 export * from "./backends";
+export * from "./safety";
+export * from "./prompts";

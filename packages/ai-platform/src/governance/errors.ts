@@ -1,7 +1,10 @@
-// @wardenx/ai-platform — §2.2/§5.3/§5.4 governance failure catalog (M32-T03).
+// @wardenx/ai-platform — M32's governance failure catalog (M32-T03; extended by M32-T05).
 //
-// Every guard in the capability-lifecycle, calibration, tenant-opt-in and clinician-opt-out rules
-// refuses with a code from THIS table. The codes are bare SCREAMING_SNAKE (the M20/M19 dialect) and
+// Every guard in the capability-lifecycle, calibration, tenant-opt-in, clinician-opt-out, kill-switch,
+// hallucination-triage, evaluation-run and prompt-activation rules refuses with a code from THIS table —
+// ONE catalog for the module, not one per directory, because a route that had to know which of two
+// error envelopes a rule speaks is a route that will eventually render the wrong status.
+// The codes are bare SCREAMING_SNAKE (the M20/M19 dialect) and
 // carry their own HTTP status so M32-T07's routes render the refusal without re-deciding it — a route
 // that picks its own status is a route that can disagree with the rule that produced the refusal.
 //
@@ -12,10 +15,11 @@
 // one place the conversion happens, and it is opt-in.
 //
 // WHAT IS DELIBERATELY ABSENT: no code for "the kill switch is on", none for "the token cap is
-// reached", none for "`ai.full` is off". Those three refusals are M32-T04/T05's and the Phase-1 shell
-// flag's, they are NOT admin-write failures, and every one of them is already expressible as an
-// `AiCapabilityUnavailableReason` on the §2.2/W9 envelope. Duplicating them here would create two
-// vocabularies for one refusal and guarantee they drift.
+// reached", none for "`ai.full` is off". Those three are INVOCATION-GATE refusals, not admin-write
+// failures, and every one of them is already expressible as an `AiCapabilityUnavailableReason` on the
+// §2.2/W9 envelope. Duplicating them here would create two vocabularies for one refusal and guarantee
+// they drift. M32-T05's `AI_KILL_SWITCH_*` codes are the opposite direction and belong here: they
+// refuse an attempt to CHANGE a switch, which no consumer ever sees.
 import { WardenXError } from "@wardenx/types";
 
 /** The M32-T03 governance failure catalog → HTTP status. */
@@ -82,6 +86,80 @@ export const AI_GOVERNANCE_ERROR_STATUS = {
   AI_OPT_OUT_NOT_SUPPORTED: 409,
   /** Reverting when the clinician has no live opt-out for the capability. */
   AI_OPT_OUT_NOT_FOUND: 404,
+
+  // ── §3.2.12 / W3 kill switch (M32-T05) ─────────────────────────────────────────────────────────
+  /** Activating a switch that is already `active` at the same scope. 409, and it is NOT idempotent-OK:
+   *  a second activation would overwrite the FIRST one's attribution and timestamp, which is the
+   *  incident record the post-mortem reads. */
+  AI_KILL_SWITCH_ALREADY_ACTIVE: 409,
+  /** Deactivating a switch that is not active. The remedy differs from a missing row (there is nothing
+   *  to lift) and conflating them would let a lift that silently did nothing read as success. */
+  AI_KILL_SWITCH_NOT_ACTIVE: 409,
+  /** §3.2.12's `ai_kill_active_attributed` CHECK, refused at the app layer: a human actor kind with no
+   *  membership id, or an `automated_*` kind carrying one. An unattributed human activation must not be
+   *  storable as though a monitor had tripped it. */
+  AI_KILL_SWITCH_ACTOR_ATTRIBUTION_INVALID: 422,
+  /** A human-actor activation with no message. `reason` is an enum with nine values; `manual_safety_pause`
+   *  in particular carries NO content of its own, so without the operator's words the row says only
+   *  "a person stopped it". */
+  AI_KILL_SWITCH_ACTIVATION_MESSAGE_REQUIRED: 422,
+  /** R8 — "Deactivate kill switch (requires resolution narrative)". Turning a SEV-1 pause back on with
+   *  no statement of what was resolved is the one write in M32 that most needs its why. */
+  AI_KILL_SWITCH_RESOLUTION_REQUIRED: 422,
+
+  // ── §3.2.10 / W5 hallucination report + triage (M32-T05) ───────────────────────────────────────
+  /** `reporter_narrative_cipher` is NOT NULL and it is the report: an empty envelope is a row that
+   *  says a clinician saw SOMETHING wrong and records nothing about what. */
+  AI_HALLUCINATION_NARRATIVE_REQUIRED: 422,
+  /** No `ai_hallucination_report` row for the supplied id (within the caller's org). */
+  AI_HALLUCINATION_REPORT_NOT_FOUND: 404,
+  /** The (from, to) pair is not an edge of D9's triage machine — including every edge OUT of a
+   *  terminal status. Re-opening a closed report would let a mitigation be un-decided after the fact. */
+  AI_HALLUCINATION_TRIAGE_INVALID_TRANSITION: 409,
+  /** `triage_disposition` is NULL and the target status claims the report was understood. §3.2.10's
+   *  CHECK permits NULL for the UNTRIAGED row; reaching `root_cause_identified`/`mitigated`/`closed`
+   *  without one would leave the queue's outcome column empty for a report the queue calls resolved. */
+  AI_HALLUCINATION_DISPOSITION_REQUIRED: 422,
+  /** A triage decision with nobody named as its owner. */
+  AI_HALLUCINATION_TRIAGE_OWNER_REQUIRED: 422,
+
+  // ── §3.2.11 evaluation runs (M32-T05) ──────────────────────────────────────────────────────────
+  /** No `ai_evaluation_run` row for the supplied id. */
+  AI_EVALUATION_RUN_NOT_FOUND: 404,
+  /** The (from, to) pair is not an edge of the run's own lifecycle (pending → in_progress →
+   *  passed/failed/aborted). A completed run cannot re-enter `in_progress`: its MLflow artifact is
+   *  already the evidence some lifecycle transition may have cited. */
+  AI_EVALUATION_RUN_INVALID_TRANSITION: 409,
+  /** A `decision` other than `no_decision` on a run that has not finished. §3.2.11 defaults the column
+   *  to `no_decision` precisely so an unfinished run is visibly undecided. */
+  AI_EVALUATION_DECISION_REQUIRES_TERMINAL_STATUS: 422,
+  /** `approve_for_pilot` / `approve_for_ga` on a run whose status is not `passed`. An approval that
+   *  cites a failed evaluation is worse than no evidence — D10's gate would read as satisfied. */
+  AI_EVALUATION_DECISION_REQUIRES_PASS: 422,
+  /** D10 — the `linkedEvaluationRunId` on a lifecycle transition names a run that does not support the
+   *  edge: wrong capability, not `passed`, or a stage that is evidence for a different gate. */
+  AI_EVALUATION_RUN_EVIDENCE_INVALID: 422,
+
+  // ── §3.2.5 / §4.5 / R30 prompt templates (M32-T05) ─────────────────────────────────────────────
+  /** No `ai_prompt_template` row for the (capabilityKey, version) or template key requested. */
+  AI_PROMPT_TEMPLATE_NOT_FOUND: 404,
+  /** `ai_prompt_template_cap_version_idx` — that capability already has that version. */
+  AI_PROMPT_TEMPLATE_VERSION_TAKEN: 409,
+  /** The submitted `template_content_hash` is not a 64-character hex SHA-256, or does not match the
+   *  bytes at `template_filesystem_ref`. §4.10's boot validator makes this fatal; at activation time it
+   *  is a refusal, because a row whose hash does not pin its file pins nothing. */
+  AI_PROMPT_TEMPLATE_CONTENT_HASH_INVALID: 422,
+  /** §4.10 — the PR-gated `clinical_reviewer_attestation` block is empty, or the row has no approver.
+   *  An unattested prompt is exactly what the PR gate exists to keep out of the active set. */
+  AI_PROMPT_TEMPLATE_ATTESTATION_REQUIRED: 422,
+  /** D3's one-way walk (0116's `M32_PROMPT_TEMPLATE_STATUS_WALK`): a `deprecated` or `archived`
+   *  template cannot be returned to `active`. Refused here with a code rather than surfacing the
+   *  trigger's `restrict_violation` as a 500. */
+  AI_PROMPT_TEMPLATE_NOT_ACTIVATABLE: 409,
+  /** Activating a version that is ALREADY the active one. Not a no-op: the transaction would deprecate
+   *  the current active row and then set the same row active, which the D3 walk forbids — so the
+   *  capability would be left with NO active template. */
+  AI_PROMPT_TEMPLATE_ALREADY_ACTIVE: 409,
 
   // ── shared ─────────────────────────────────────────────────────────────────────────────────────
   /** No `ai_capability` row for the supplied id/key. */

@@ -39,6 +39,7 @@ import {
 } from "@wardenx/types";
 import {
   type AiCalibrationPublicationRequest,
+  type AiEvaluationRunSnapshot,
   type AiGovernanceGateDecision,
   type AiLifecycleTransitionRequest,
   type AiOptInAcknowledgmentSubmission,
@@ -47,6 +48,7 @@ import {
   AI_LIFECYCLE_INITIAL_STATE,
   AiGovernanceError,
   aiConsumerPostureFor,
+  aiEvaluationRunSupportsEdge,
   aiGovernanceGateFor,
   aiRequiredSignerRoles,
   aiLifecycleTransition,
@@ -108,8 +110,28 @@ export interface AiGovernanceServiceDeps {
   readonly registry: AiCapabilityRegistryStore;
   readonly consent: AiTenantConsentStore;
   readonly evidence: AiOptInEvidenceResolver;
+  /**
+   * D10's OTHER half (M32-T05).
+   *
+   * The pure lifecycle gate refuses an edge that requires evaluation evidence and supplies NO
+   * `linkedEvaluationRunId`. That is a presence check and it is all a pure rule can do — it cannot tell
+   * whether the id names a run for a different capability, a run that FAILED, or a `post_incident` run
+   * being passed off as Stage-3 evidence. Binding this resolver turns the presence check into an
+   * evidence check (`aiEvaluationRunSupportsEdge`).
+   *
+   * OPTIONAL, and the direction of the default is stated rather than assumed: unbound, `transitionAiCapability`
+   * behaves exactly as it did at M32-T03 — presence-only. That is weaker, not fail-closed, so M32's
+   * composition root binds it and the boot wiring is where the omission would be visible. It is optional
+   * only because `ai_evaluation_run` did not exist when the lifecycle gate shipped.
+   */
+  readonly evaluations?: AiEvaluationEvidenceResolver;
   /** Clock injection (tests pin it); defaults to the system clock. */
   readonly now?: () => string;
+}
+
+/** Resolves a cited `ai_evaluation_run` for the D10 evidence check. */
+export interface AiEvaluationEvidenceResolver {
+  findRun(runId: string): Promise<AiEvaluationRunSnapshot | null>;
 }
 
 function clock(deps: AiGovernanceServiceDeps): string {
@@ -221,6 +243,24 @@ export async function transitionAiCapability(
       at,
     ),
   );
+
+  // D10's evidence check, when the resolver is bound (see `AiGovernanceServiceDeps.evaluations`). It
+  // runs AFTER the pure gate so a signer-role failure still reports as a signer-role failure — the
+  // evidence question only arises for an edge the FSM already accepts.
+  if (deps.evaluations !== undefined && command.linkedEvaluationRunId !== null) {
+    const run = await deps.evaluations.findRun(command.linkedEvaluationRunId);
+    if (run === null) {
+      throw new AiGovernanceError(
+        "AI_EVALUATION_RUN_NOT_FOUND",
+        `evaluation run ${command.linkedEvaluationRunId} cited by this transition does not exist`,
+      );
+    }
+    requireAiGovernance(
+      // The predicate returns `{ ok: true }` or a refusal, so it narrows the same way every other rule
+      // in this file does.
+      aiEvaluationRunSupportsEdge(run, capability.id, command.approvalKind),
+    );
+  }
 
   return deps.registry.applyTransition(capability.id, decision.patch, {
     capabilityId: capability.id,
