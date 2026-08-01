@@ -306,7 +306,10 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
       // §7.4 D1 — the ≥10-char reason floor is the schema's `minLength` (422 on a keystroke).
       const body = parse(InvokeBreakGlassBody, request.body);
       const reason = body.reason;
-      const targetPatientId = body.targetPatientId ?? null;
+      // Non-null by schema now: an absent target used to mint scope-level glass that covered every
+      // ABAC target in the org. See InvokeBreakGlassBody for why that was the same defect class as
+      // the caller-supplied `cosignRequired` the audit C2 fix removed.
+      const targetPatientId = body.targetPatientId;
       // audit C2 — TENANT POLICY decides whether this grant opens `cosign_pending`, never the
       // caller. Reading it from the body let one permission (`breakglass.invoke`) self-issue an
       // un-cosigned, scope-level grant that satisfies every ABAC predicate AND every step-up

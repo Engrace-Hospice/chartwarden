@@ -178,8 +178,20 @@ export const InvokeBreakGlassBody = Type.Object(
   {
     /** §7.4 D1 — a substantive reason, not a keystroke. */
     reason: Type.String({ minLength: 10, maxLength: 2000 }),
-    /** `break_glass_event.target_patient_id` is uuid; null/absent = scope-level glass. */
-    targetPatientId: Type.Optional(Type.Union([uuid(), Type.Null()])),
+    /**
+     * REQUIRED, and non-null. Break-glass is emergency access to ONE patient's chart.
+     *
+     * This used to be `Optional(Union([uuid(), Null()]))`, and an absent target minted a
+     * "scope-level" grant that `findActiveGrant` treated as a wildcard over EVERY target. One
+     * permission — `breakglass.invoke`, by design a bedside-clinician permission — could therefore
+     * self-issue a 4-hour grant that satisfied every `requireAbac` in the platform, including
+     * `part2Redisclosure` (42 CFR Part 2 has no break-glass exception), `capVerifyAuthority`
+     * (collapsing ADR-0022 two-person control), `abuseAllegationAccess`, and M34's platform-ops
+     * predicates. The audit C2 fix took `cosignRequired` out of the body but left the scope here,
+     * which is the same class of defect: the CALLER choosing the blast radius of its own bypass.
+     * The scope is now server-derived from a target the caller must name.
+     */
+    targetPatientId: uuid(),
     // audit C2 — `cosignRequired` REMOVED. Whether a grant needs a co-signer is tenant policy
     // (`breakglass_cosign_required`), resolved server-side; a caller that supplies it now gets a
     // 422 from `additionalProperties: false` rather than silently choosing its own oversight.

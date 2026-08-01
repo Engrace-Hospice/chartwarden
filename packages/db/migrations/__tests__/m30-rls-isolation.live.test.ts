@@ -395,6 +395,18 @@ describe.skipIf(!DB_URL)(
     // the same rule check-tenancy.ts enforces. A policy that joined on a parent table, used
     // pg_has_role(...), or keyed on patient_id would be the silent-cross-tenant-read (or a bogus
     // patient-scope) regression this test guards.
+    // GUARD FOR EVERY CASE BELOW. RLS is not enforced for a role holding BYPASSRLS, so if the runtime
+    // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
+    // scripts/db/migrate.ts grants exactly that behind WARDENX_DEV_BYPASSRLS=1, so this is reachable,
+    // not theoretical. Six of fifteen suites asserted this and NONE of the four suites CI runs did.
+    it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+      const { rows } = await db.query<{ rolbypassrls: boolean }>(
+        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].rolbypassrls).toBe(false);
+    });
+    
     it("§3.5 every org-scoped policy keys ONLY on the canonical app.org_id variable", () => {
       const rls = readFileSync(join(MIGRATIONS_DIR, "0067_quality_m30_rls.sql"), "utf8");
       for (const { table } of COVERED) {

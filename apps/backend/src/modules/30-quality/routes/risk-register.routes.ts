@@ -32,7 +32,7 @@ export function registerRiskRegisterRoutes(app: FastifyInstance, deps: RiskRegis
   const { readService, writeService } = deps;
 
   // R-95 — the unified risk view (filter by source/severity; cursor-paginated). §4.1.
-  app.get("/api/v1/quality/risk-register", { preHandler: [RISK_READ] }, async (request) => {
+  app.get("/api/v1/quality/risk-register", { preHandler: [RISK_READ], config: { auditRead: { none: "org risk register entries — operational risk, no patient data" } } }, async (request) => {
     const actor = actorOf(request);
     const q = parse(RiskRegisterListQuerySchema, request.query);
     return readService.listRiskRegister(actor, { source: q.source, severity: q.severity }, q.cursor, q.limit);

@@ -22,11 +22,20 @@ const IDEMPOTENT = requireIdempotencyKey();
 export function registerTaxonomyRoutes(app: FastifyInstance, deps: TaxonomyRouteDeps): void {
   const { readService, writeService } = deps;
 
-  app.get("/api/v1/taxonomy/carc/:code", { preHandler: [READ] }, async (request, reply) => {
-    const actor = actorOf(request);
-    const code = (request.params as { code: string }).code;
-    return reply.send(await readService.taxonomyView(actor, code));
-  });
+  app.get(
+    "/api/v1/taxonomy/carc/:code",
+    {
+      preHandler: [READ],
+      config: {
+        auditRead: { none: "static CARC/RARC code taxonomy — reference data, no patient data" },
+      },
+    },
+    async (request, reply) => {
+      const actor = actorOf(request);
+      const code = (request.params as { code: string }).code;
+      return reply.send(await readService.taxonomyView(actor, code));
+    },
+  );
 
   app.patch(
     "/api/v1/taxonomy/overlays/:carc",

@@ -62,7 +62,7 @@ export function registerInfectionRoutes(app: FastifyInstance, deps: InfectionRou
   // R-90 — list surveillance events (cursor-paginated; PHI). §4.1/§4.1.2.
   app.get(
     "/api/v1/quality/infection/events",
-    { preHandler: [INF_READ, READ_INORG] },
+    { preHandler: [INF_READ, READ_INORG], config: { auditRead: { resourceKind: "infection_event", list: true } } },
     async (request) => {
       const actor = actorOf(request);
       const q = parse(InfectionEventListQuerySchema, request.query);
@@ -97,7 +97,7 @@ export function registerInfectionRoutes(app: FastifyInstance, deps: InfectionRou
   // R-92 — list outbreak cases (aggregate-only; org-scoped). §4.1.
   app.get(
     "/api/v1/quality/infection/outbreaks",
-    { preHandler: [INF_READ, READ_INORG] },
+    { preHandler: [INF_READ, READ_INORG], config: { auditRead: { resourceKind: "infection_outbreak", list: true } } },
     async (request) => {
       const actor = actorOf(request);
       const q = parse(InfectionOutbreakListQuerySchema, request.query);

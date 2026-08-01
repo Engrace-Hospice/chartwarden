@@ -6,6 +6,7 @@ import type { FastifyInstance } from "fastify";
 import { writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
 import { ABAC_NO_TARGET, P } from "./guards";
+import { AmendConstantRequest, CapYearParams, PublishConstantRequest, parse, validateParams } from "./m26-typebox";
 import type { M26ReadService } from "./read-service";
 import type { M26WriteService } from "./write-service";
 
@@ -33,7 +34,7 @@ export function registerPlatformRoutes(app: FastifyInstance, deps: PlatformRoute
     "/api/v1/platform/cap/constants",
     { preHandler: [CONST_MANAGE, PLATFORM_ADMIN_MANAGE, IDEMPOTENT] },
     async (request, reply) => {
-      const body = request.body as { capYear: string; aggregateCapAmountCents: number; inpatientCapPct?: number; sourceUrl?: string };
+      const body = parse(PublishConstantRequest, request.body);
       await writeService.publishConstant(writeActorOf(request), body);
       return reply.code(201).send({ capYear: body.capYear });
     },
@@ -41,10 +42,11 @@ export function registerPlatformRoutes(app: FastifyInstance, deps: PlatformRoute
 
   app.patch(
     "/api/v1/platform/cap/constants/:capYear",
-    { preHandler: [CONST_MANAGE, PLATFORM_ADMIN_MANAGE, IDEMPOTENT] },
+    { preHandler: [validateParams(CapYearParams), CONST_MANAGE, PLATFORM_ADMIN_MANAGE, IDEMPOTENT] },
     async (request, reply) => {
-      const body = request.body as { aggregateCapAmountCents: number; sourceUrl?: string };
-      await writeService.amendConstant(writeActorOf(request), pParam(request, "capYear"), body);
+      const body = parse(AmendConstantRequest, request.body);
+      const { capYear } = parse(CapYearParams, request.params);
+      await writeService.amendConstant(writeActorOf(request), capYear, body);
       return reply.code(204).send();
     },
   );

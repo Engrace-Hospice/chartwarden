@@ -35,7 +35,7 @@ export function registerNotrRoutes(app: FastifyInstance, deps: NotrRouteDeps): v
   const { readService, writeService } = deps;
 
   // GET /notr-records — list NOTR records (cursor-paginated). §4.1 #28.
-  app.get("/api/v1/notr-records", { preHandler: [READ] }, async (request) => {
+  app.get("/api/v1/notr-records", { preHandler: [READ], config: { auditRead: { resourceKind: "notr_record", list: true } } }, async (request) => {
     const actor = actorOf(request);
     const q = parse(NotrListQuerySchema, request.query);
     return readService.listNotrs(
@@ -53,7 +53,7 @@ export function registerNotrRoutes(app: FastifyInstance, deps: NotrRouteDeps): v
   });
 
   // GET /notr-records/:id — NOTR detail. §4.1 #29.
-  app.get("/api/v1/notr-records/:id", { preHandler: [READ, READ_ABAC] }, async (request) => {
+  app.get("/api/v1/notr-records/:id", { preHandler: [READ, READ_ABAC], config: { auditRead: { resourceKind: "notr_record", resourceIdParam: "id" } } }, async (request) => {
     const actor = actorOf(request);
     const { id } = parse(NotrIdParamsSchema, request.params);
     return readService.getNotr(actor, id);

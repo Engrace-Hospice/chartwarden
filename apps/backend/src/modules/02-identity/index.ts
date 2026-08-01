@@ -97,21 +97,38 @@ import {
   type IdentityRouteDeps,
   createInMemoryCollaboratorLinkStore as _collabStore,
   createContextActorResolver as _ctxActor,
-  createInMemoryInvitationStore as _inviteStore,
-  createInMemoryUserDirectory as _userDir,
 } from "./identity-ports";
+import {
+  createDbInvitationStore as _dbInvitations,
+  createDbUserDirectory as _dbUserDirectory,
+} from "./identity-stores-db";
 import { createDbMembershipRepository as _dbMemberships } from "./membership-repository";
 import { registerIdentityRoutes as _registerIdentityRoutes } from "./routes/identity-routes";
 import { createDbSessionWriter as _dbSessionWriter } from "./session-writer-db";
-import { createInMemoryAuditExecutor as _inMemAudit } from "./step-up-ports";
 
 /**
  * Mount the M2 identity REST routes on a server (composition root, via buildServer's
- * registerModuleRoutes hook, when a DB client is present). The member roster + lifecycle run on the
- * REAL Drizzle MembershipRepository (isAdmin via the injected M3 admin reader); the actor resolves from
- * the authenticated request.context. The remaining deps (sessions / invitations / collaborators / user
- * directory / audit sink) are still in-memory and are replaced by Drizzle stores in follow-ups —
- * progressive wiring of the backend surface.
+ * registerModuleRoutes hook, when a DB client is present).
+ *
+ * Everything here is now DB-backed except the external-collaborator link store — see below. Four of
+ * these deps used to be process-local `Map`s ON THE PRODUCTION MOUNT, which meant an invitation minted
+ * on one replica did not exist on another, a §7.5 offboard "disabled" credentials in a Map, and every
+ * identity/step-up AUDIT EVENT — the trail an intrusion investigation starts from — was written to
+ * memory and died with the process.
+ *
+ * `audit: db` is correct rather than a shortcut: `AuditExecutor` is structurally just
+ * `insert(table).values(row)` (packages/audit/src/audit.ts), which the Drizzle client satisfies, and
+ * `audit()` is documented as "the only sanctioned path to audit_event". Migration 0119 is what makes
+ * it actually work — `wardenx_app` held the INSERT grant but no INSERT POLICY, so under production RLS
+ * every application-level audit write was refused with "new row violates row-level security policy".
+ *
+ * ⚠ STILL IN MEMORY: `collaborators`. The external-collaborator magic-link store mints a one-time,
+ * 30-minute token per patient — and there is NO TABLE for it. M2 owns exactly four tables (two_factor,
+ * passkey, organization_invitation, tenant_step_up_policy_override); the `session` row for an
+ * `external_collaborator` is what the token eventually PRODUCES, not where the pending token lives.
+ * Making this durable needs a new M2-owned table (token hash, patient scope, inviter, TTL, consumed-at)
+ * plus its RLS + audit trigger, which is a schema change, not a wiring change. Left explicit rather
+ * than bound to something that would look durable and not be.
  */
 export function mountIdentityRoutes(
   app: FastifyInstance,
@@ -122,10 +139,10 @@ export function mountIdentityRoutes(
     actors: _ctxActor(),
     memberships: _dbMemberships(db, admin),
     sessions: _dbSessionWriter(db),
-    invitations: _inviteStore().store,
-    collaborators: _collabStore().store,
-    users: _userDir().directory,
-    audit: _inMemAudit().executor,
+    invitations: _dbInvitations(db),
+    collaborators: _collabStore().store, // no table exists — see the header
+    users: _dbUserDirectory(db),
+    audit: db,
   };
   _registerIdentityRoutes(app, deps);
 }

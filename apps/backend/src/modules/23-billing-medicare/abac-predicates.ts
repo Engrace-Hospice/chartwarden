@@ -88,7 +88,10 @@ export type M23RegisteredAbacPredicate = (typeof M23_REGISTERED_ABAC_PREDICATES)
  * org-administration + compliance oversight only; the per-provider `billing_manager` is NOT here (it is
  * scoped through `context.providerEntityIds`).
  */
-const ORG_WIDE_BILLING_SCOPE_ROLES: readonly string[] = ["org_admin", "compliance_officer"] as const;
+export const ORG_WIDE_BILLING_SCOPE_ROLES: readonly string[] = [
+  "org_admin",
+  "compliance_officer",
+] as const;
 
 /**
  * The code-side rule registry the override-role + regulatory-protection predicates read (D5). Built ONCE

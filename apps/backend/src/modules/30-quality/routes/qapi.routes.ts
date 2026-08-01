@@ -67,11 +67,18 @@ export function registerQapiRoutes(app: FastifyInstance, deps: QapiRouteDeps): v
   const { service } = deps;
 
   // R-20 — list QAPI programs (current + history; cursor-paginated). §4.1.
-  app.get("/api/v1/quality/qapi/programs", { preHandler: [QAPI_READ] }, async (request) => {
-    const actor = actorOf(request);
-    const q = parse(QapiProgramListQuerySchema, request.query);
-    return service.listQapiPrograms(actor, q.cursor, q.limit);
-  });
+  app.get(
+    "/api/v1/quality/qapi/programs",
+    {
+      preHandler: [QAPI_READ],
+      config: { auditRead: { none: "QAPI program records — no patient data" } },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const q = parse(QapiProgramListQuerySchema, request.query);
+      return service.listQapiPrograms(actor, q.cursor, q.limit);
+    },
+  );
 
   // R-21 — adopt a new annual QAPI program (governance composition required). §4.1/§4.2.
   app.post(
@@ -104,11 +111,18 @@ export function registerQapiRoutes(app: FastifyInstance, deps: QapiRouteDeps): v
   );
 
   // R-23 — list indicators with thresholds + current band (aggregate; cursor-paginated). §4.1.
-  app.get("/api/v1/quality/qapi/indicators", { preHandler: [QAPI_READ] }, async (request) => {
-    const actor = actorOf(request);
-    const q = parse(QapiIndicatorListQuerySchema, request.query);
-    return service.listQapiIndicators(actor, q.cursor, q.limit);
-  });
+  app.get(
+    "/api/v1/quality/qapi/indicators",
+    {
+      preHandler: [QAPI_READ],
+      config: { auditRead: { none: "QAPI indicator definitions + thresholds — no patient data" } },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const q = parse(QapiIndicatorListQuerySchema, request.query);
+      return service.listQapiIndicators(actor, q.cursor, q.limit);
+    },
+  );
 
   // R-24 — create an indicator (binds to a measure_id + threshold). §4.1/§4.2.
   app.post(
@@ -147,16 +161,23 @@ export function registerQapiRoutes(app: FastifyInstance, deps: QapiRouteDeps): v
   );
 
   // R-26 — list PI projects (filter by phase / program; cursor-paginated). §4.1.
-  app.get("/api/v1/quality/qapi/projects", { preHandler: [QAPI_READ] }, async (request) => {
-    const actor = actorOf(request);
-    const q = parse(QapiProjectListQuerySchema, request.query);
-    return service.listQapiProjects(
-      actor,
-      { phases: q.phase, programId: q.programId },
-      q.cursor,
-      q.limit,
-    );
-  });
+  app.get(
+    "/api/v1/quality/qapi/projects",
+    {
+      preHandler: [QAPI_READ],
+      config: { auditRead: { none: "QAPI performance-improvement projects — no patient data" } },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const q = parse(QapiProjectListQuerySchema, request.query);
+      return service.listQapiProjects(
+        actor,
+        { phases: q.phase, programId: q.programId },
+        q.cursor,
+        q.limit,
+      );
+    },
+  );
 
   // R-27 — charter a PI project (from a triggered indicator). §4.1/§4.2.
   app.post(
@@ -195,7 +216,10 @@ export function registerQapiRoutes(app: FastifyInstance, deps: QapiRouteDeps): v
   // R-29 — list the PIP cycles under a project (cursor-paginated). §4.1.
   app.get(
     "/api/v1/quality/qapi/projects/:projectId/pips",
-    { preHandler: [QAPI_READ] },
+    {
+      preHandler: [QAPI_READ],
+      config: { auditRead: { none: "PIP cycles under a QAPI project — no patient data" } },
+    },
     async (request) => {
       const actor = actorOf(request);
       const { projectId } = parse(ProjectIdParamsSchema, request.params);
@@ -258,9 +282,20 @@ export function registerQapiRoutes(app: FastifyInstance, deps: QapiRouteDeps): v
   );
 
   // R-33 — list governance minutes (org chronological; cursor-paginated). §4.1.
-  app.get("/api/v1/quality/qapi/governance", { preHandler: [QAPI_READ] }, async (request) => {
-    const actor = actorOf(request);
-    const q = parse(QapiGovernanceListQuerySchema, request.query);
-    return service.listQapiGovernance(actor, q.cursor, q.limit);
-  });
+  app.get(
+    "/api/v1/quality/qapi/governance",
+    {
+      preHandler: [QAPI_READ],
+      config: {
+        auditRead: {
+          none: "QAPI governance structure (committee, charter, cadence) — no patient data",
+        },
+      },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const q = parse(QapiGovernanceListQuerySchema, request.query);
+      return service.listQapiGovernance(actor, q.cursor, q.limit);
+    },
+  );
 }

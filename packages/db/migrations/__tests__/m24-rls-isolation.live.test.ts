@@ -106,8 +106,8 @@ describe.skipIf(!DB_URL)("M24 Billing — Medicaid — RLS cross-tenant denial �
     const m = "00000000-0000-0000-0000-000000000000"; // membership sentinel
     const pe = (
       await db.query(
-        `INSERT INTO provider_entities (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
-         VALUES ($1,'00000${n}','PE','1234567893','enc','0930') RETURNING id`,
+        `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+         VALUES ($1,'00000${n}','PE','123456789${n}','enc','0930') RETURNING id`,
         [org],
       )
     ).rows[0].id as string;
@@ -259,6 +259,18 @@ describe.skipIf(!DB_URL)("M24 Billing — Medicaid — RLS cross-tenant denial �
     if (db) await db.end();
   });
 
+  // GUARD FOR EVERY CASE BELOW. RLS is not enforced for a role holding BYPASSRLS, so if the runtime
+  // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
+  // scripts/db/migrate.ts grants exactly that behind WARDENX_DEV_BYPASSRLS=1, so this is reachable,
+  // not theoretical. Six of fifteen suites asserted this and NONE of the four suites CI runs did.
+  it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+    const { rows } = await db.query<{ rolbypassrls: boolean }>(
+      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].rolbypassrls).toBe(false);
+  });
+  
   it("every M24 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
     const rls = readFileSync(join(MIGRATIONS_DIR, "0096_billing_medicaid_m24_rls.sql"), "utf8");
     const policyBlocks = rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? [];

@@ -6,6 +6,7 @@ import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
 import { ABAC, P, STEP_UP } from "./guards";
+import { FinalizeSettlementRequest, PeriodIdParams, parse, validateParams } from "./m26-typebox";
 import type { M26ReadService } from "./read-service";
 import type { M26WriteService } from "./write-service";
 
@@ -30,17 +31,18 @@ export function registerSettlementRoutes(app: FastifyInstance, deps: SettlementR
 
   app.post(
     "/api/v1/cap/settlements/:periodId/propose",
-    { preHandler: [SETTLEMENT_MANAGE, IN_SETTLEMENT, IDEMPOTENT] },
+    { preHandler: [validateParams(PeriodIdParams), SETTLEMENT_MANAGE, IN_SETTLEMENT, IDEMPOTENT] },
     async (request, reply) =>
       reply.code(201).send(await writeService.proposeSettlement(writeActorOf(request), pParam(request, "periodId"))),
   );
 
   app.patch(
     "/api/v1/cap/settlements/:periodId/finalize",
-    { preHandler: [SETTLEMENT_MANAGE, IN_SETTLEMENT, STEP_UP("cap.settlement.manage"), IDEMPOTENT] },
+    { preHandler: [validateParams(PeriodIdParams), SETTLEMENT_MANAGE, IN_SETTLEMENT, STEP_UP("cap.settlement.manage"), IDEMPOTENT] },
     async (request, reply) => {
-      const body = request.body as { attestation: string };
-      return reply.send(await writeService.finalizeSettlement(writeActorOf(request), pParam(request, "periodId"), body));
+      const { periodId } = parse(PeriodIdParams, request.params);
+      const body = parse(FinalizeSettlementRequest, request.body);
+      return reply.send(await writeService.finalizeSettlement(writeActorOf(request), periodId, body));
     },
   );
 }

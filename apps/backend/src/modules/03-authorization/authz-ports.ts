@@ -164,6 +164,10 @@ export interface BreakGlassStore {
    * break-glass branch makes on every ABAC denial. Returns null when no glass is open. May be
    * async: the Drizzle store queries `break_glass_event`; the in-memory store stays synchronous.
    * The break-glass checker (contract.ts) awaits whichever it gets.
+   *
+   * A match REQUIRES a real patient id on both sides. `targetPatientId: null` — which contract.ts
+   * passes whenever the denied predicate's target is not patient-keyed — never matches, and a
+   * stored grant with a null target never acts as a wildcard. Break-glass opens ONE chart.
    */
   findActiveGrant(
     organizationId: string,
@@ -471,8 +475,14 @@ export function createInMemoryBreakGlassStore(): {
         if (e.actorUserId !== actorUserId) continue;
         if (e.status !== "active") continue; // cosign_pending / revoked / expired do not grant
         if (Date.parse(e.expiresAt) <= nowMs) continue; // time-box elapsed
-        // null target = scope-level glass (covers any target); else must match.
-        if (e.targetPatientId !== null && e.targetPatientId !== targetPatientId) continue;
+        // Both sides must be a real patient id AND equal. A null on EITHER side grants nothing:
+        //  • null GRANT target was the scope-level wildcard (see InvokeBreakGlassBody) — no route
+        //    can mint one now, and a pre-existing row must not act as one either.
+        //  • null REQUEST target means the predicate is not patient-keyed at all (contract.ts
+        //    passes null for e.g. feature-flag or platform-ops targets), and emergency CHART access
+        //    is not a warrant for those.
+        if (e.targetPatientId === null || targetPatientId === null) continue;
+        if (e.targetPatientId !== targetPatientId) continue;
         return { eventId: e.eventId };
       }
       return null;

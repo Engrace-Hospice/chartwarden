@@ -33,7 +33,7 @@ function qStr(q: unknown, key: string): string | undefined {
 export function registerRemittanceRoutes(app: FastifyInstance, deps: RemittanceRouteDeps): void {
   const { readService, writeService } = deps;
 
-  app.get("/api/v1/remittance/advices", { preHandler: [READ] }, async (request, reply) => {
+  app.get("/api/v1/remittance/advices", { preHandler: [READ], config: { auditRead: { resourceKind: "remittance_advice", list: true } } }, async (request, reply) => {
     const actor = actorOf(request);
     const q = request.query;
     const pageRes = await readService.listAdvices(
@@ -45,7 +45,7 @@ export function registerRemittanceRoutes(app: FastifyInstance, deps: RemittanceR
     return reply.send(pageRes);
   });
 
-  app.get("/api/v1/remittance/advices/:id", { preHandler: [READ] }, async (request, reply) => {
+  app.get("/api/v1/remittance/advices/:id", { preHandler: [READ], config: { auditRead: { resourceKind: "remittance_advice", resourceIdParam: "id" } } }, async (request, reply) => {
     const actor = actorOf(request);
     const id = (request.params as { id: string }).id;
     const advice = await readService.getAdvice(actor, id);
@@ -60,7 +60,7 @@ export function registerRemittanceRoutes(app: FastifyInstance, deps: RemittanceR
     return reply.code(202).send({ id, status: "queued" });
   });
 
-  app.get("/api/v1/remittance/lines", { preHandler: [READ] }, async (request, reply) => {
+  app.get("/api/v1/remittance/lines", { preHandler: [READ], config: { auditRead: { resourceKind: "remittance_line", list: true } } }, async (request, reply) => {
     const actor = actorOf(request);
     const q = request.query;
     const pageRes = await readService.listLines(
@@ -72,7 +72,7 @@ export function registerRemittanceRoutes(app: FastifyInstance, deps: RemittanceR
     return reply.send(pageRes);
   });
 
-  app.get("/api/v1/remittance/lines/:id", { preHandler: [READ] }, async (request, reply) => {
+  app.get("/api/v1/remittance/lines/:id", { preHandler: [READ], config: { auditRead: { resourceKind: "remittance_line", resourceIdParam: "id" } } }, async (request, reply) => {
     const actor = actorOf(request);
     const id = (request.params as { id: string }).id;
     const line = await readService.getLine(actor, id);
@@ -80,7 +80,7 @@ export function registerRemittanceRoutes(app: FastifyInstance, deps: RemittanceR
     return reply.send(line);
   });
 
-  app.get("/api/v1/remittance/unmatched", { preHandler: [READ] }, async (request, reply) => {
+  app.get("/api/v1/remittance/unmatched", { preHandler: [READ], config: { auditRead: { resourceKind: "remittance_line", list: true } } }, async (request, reply) => {
     const actor = actorOf(request);
     const q = request.query;
     const pageRes = await readService.listUnmatched(

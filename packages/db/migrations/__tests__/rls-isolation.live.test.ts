@@ -127,6 +127,18 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
     await db?.end();
   });
 
+  // GUARD FOR EVERY CASE BELOW. RLS is not enforced for a role holding BYPASSRLS, so if the runtime
+  // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
+  // scripts/db/migrate.ts grants exactly that behind WARDENX_DEV_BYPASSRLS=1, so this is reachable,
+  // not theoretical. Six of fifteen suites asserted this and NONE of the four suites CI runs did.
+  it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+    const { rows } = await db.query<{ rolbypassrls: boolean }>(
+      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].rolbypassrls).toBe(false);
+  });
+  
   it("audited writes do NOT recurse through audit_event partitions (regression: 0004 guard)", async () => {
     expect(peA).toBeTruthy(); // the seed insert above succeeded → no stack-overflow
     // and the AFTER trigger actually wrote an audit row for it (read as superuser)
@@ -2239,6 +2251,73 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       expect(r.rows[0].after.retention_class).toBe("clinical_record"); // structural passes through
       expect(r.rows[0].after.status).toBe("active"); // structural passes through
       expect(r.rows[0].retention_class).toBe("compliance"); // §3.7 document audit-row retention class
+    });
+  });
+  // ── Migration 0118: the two STRUCTURAL RLS holes, asserted schema-wide ────────────────────────────
+  //
+  // These are not policy tests. Every case above proves a policy does what it says; these two prove
+  // there is no way to reach the rows WITHOUT going through a policy at all. Both were found by
+  // querying a live catalog rather than by reading migration text, and neither would fail any other
+  // test in this repo.
+  describe("§3.3 structural RLS coverage (migration 0118)", () => {
+    it("every RLS table is FORCEd — ownership is not a bypass", async () => {
+      // ENABLE does not apply to the table's OWNER. scripts/db/migrate.ts connects as
+      // `DATABASE_ADMIN_URL ?? DATABASE_URL`, so one run with only DATABASE_URL makes `wardenx_app`
+      // the owner of every table and silently exempts it from all 370 policies — and ownership is not
+      // BYPASSRLS, so the boot guard in apps/backend/src/index.ts would not catch it either.
+      const r = await db.query<{ relname: string }>(
+        `SELECT c.relname
+           FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public' AND c.relkind IN ('r','p')
+            AND c.relrowsecurity AND NOT c.relforcerowsecurity
+          ORDER BY c.relname`,
+      );
+      expect(r.rows.map((x) => x.relname), "RLS enabled but NOT forced").toEqual([]);
+    });
+
+    it("every partition LEAF has RLS enabled + forced, and no policies of its own", async () => {
+      // Policies live on the parent and govern parent-routed access only; a leaf is reached directly
+      // by naming it. Before 0118 all 429 leaves had `relrowsecurity = false`, so the ONLY thing
+      // preventing direct access was the absence of a GRANT — and one
+      // `GRANT SELECT ON ALL TABLES IN SCHEMA public TO wardenx_app` would have exposed every
+      // partition of audit_event, clinical_assessment, medication_order, administration_record,
+      // evv_event, visit and claim cross-tenant. Leaves carry NO policies on purpose: RLS on + zero
+      // policies = default-deny for direct access, while the parent keeps governing normal traffic.
+      const unprotected = await db.query<{ relname: string }>(
+        `SELECT c.relname
+           FROM pg_class c
+           JOIN pg_namespace n ON n.oid = c.relnamespace
+           JOIN pg_inherits i ON i.inhrelid = c.oid
+          WHERE n.nspname = 'public' AND c.relkind = 'r'
+            AND (NOT c.relrowsecurity OR NOT c.relforcerowsecurity)
+          ORDER BY c.relname`,
+      );
+      expect(unprotected.rows.map((x) => x.relname), "partition leaf without forced RLS").toEqual([]);
+
+      const withPolicies = await db.query<{ relname: string }>(
+        `SELECT DISTINCT c.relname
+           FROM pg_policy pol
+           JOIN pg_class c ON c.oid = pol.polrelid
+           JOIN pg_inherits i ON i.inhrelid = c.oid
+          ORDER BY c.relname`,
+      );
+      expect(withPolicies.rows.map((x) => x.relname), "leaf grew its own policy").toEqual([]);
+    });
+
+    it("a NEWLY created partition is born protected (the event trigger, not 43 helpers)", async () => {
+      // There are 43 `create_*_partition` helpers plus a rotation worker. Rather than trust each to
+      // remember, `wardenx_secure_new_partition` secures any leaf at ddl_command_end.
+      await db.query(
+        "SELECT create_audit_partition((date_trunc('month', NOW()) + INTERVAL '11 month')::date)",
+      );
+      const r = await db.query<{ rls: boolean; forced: boolean }>(
+        `SELECT relrowsecurity AS rls, relforcerowsecurity AS forced
+           FROM pg_class
+          WHERE relname = 'audit_event_' || to_char((date_trunc('month', NOW()) + INTERVAL '11 month')::date, 'YYYY_MM')`,
+      );
+      expect(r.rows).toHaveLength(1);
+      expect(r.rows[0].rls, "a new partition was created WITHOUT row-level security").toBe(true);
+      expect(r.rows[0].forced, "a new partition was created without FORCE").toBe(true);
     });
   });
 });

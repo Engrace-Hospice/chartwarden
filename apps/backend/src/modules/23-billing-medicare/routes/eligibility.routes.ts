@@ -49,16 +49,23 @@ export function registerEligibilityRoutes(app: FastifyInstance, deps: Eligibilit
   );
 
   // GET /billing/eligibility?patientId= — per-patient eligibility-check history. §4.1 #23.
-  app.get("/api/v1/billing/eligibility", { preHandler: [READ, READ_ABAC] }, async (request) => {
-    const actor = actorOf(request);
-    const { patientId } = parse(PatientQuerySchema, request.query);
-    return { items: await readService.listEligibilityChecks(actor, patientId) };
-  });
+  app.get(
+    "/api/v1/billing/eligibility",
+    {
+      preHandler: [READ, READ_ABAC],
+      config: { auditRead: { resourceKind: "eligibility_check", list: true } },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const { patientId } = parse(PatientQuerySchema, request.query);
+      return { items: await readService.listEligibilityChecks(actor, patientId) };
+    },
+  );
 
   // GET /billing/eligibility/latest?patientId= — the latest check (auto-refresh-on-stale read). §4.1.
   app.get(
     "/api/v1/billing/eligibility/latest",
-    { preHandler: [READ, READ_ABAC] },
+    { preHandler: [READ, READ_ABAC], config: { auditRead: { resourceKind: "eligibility_check" } } },
     async (request) => {
       const actor = actorOf(request);
       const { patientId } = parse(PatientQuerySchema, request.query);

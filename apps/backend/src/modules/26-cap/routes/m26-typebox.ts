@@ -1,22 +1,130 @@
-// apps/backend/src/modules/26-cap/routes/m26-typebox.ts — the M26 route request/response TypeBox schemas the
-// OpenAPI enrichment registry (scripts/openapi/enrichments.ts) layers onto the auto-discovered §4.1 routes.
-// The request bodies are the SAME §4.2 contract schemas defined in @wardenx/cap-management (re-exported here
-// so the enrichment import path matches `modules/26-cap/routes/*`, the M23 billing-typebox precedent); the
-// list/detail response schemas are assembled from the same DTOs so the contract cannot drift from the data.
-import { Type } from "@sinclair/typebox";
+// apps/backend/src/modules/26-cap/routes/m26-typebox.ts — the M26 route request/response TypeBox schemas.
+//
+// These serve TWO consumers, and until now only the first one used them:
+//   1. the OpenAPI enrichment registry (scripts/openapi/enrichments.ts), which publishes them as the
+//      §4.2 request contract;
+//   2. the route handlers, at RUNTIME, via `parse()`.
+//
+// (2) did not exist. Every M26 mutation did `const body = request.body as { … }` — a TypeScript cast,
+// erased at runtime — so the module PUBLISHED a contract it did not enforce. The spec promised
+// `graceWindowDays` was an integer 0–90, `resolutionNotes` at least 20 characters, `attestation` at
+// least 20, `aggregateCapAmountCents` a Cents integer, `macRegion` one of a closed set; the server
+// accepted `graceWindowDays: -99999` on a Medicare cap grace window, an `attestation` of `true` or
+// `null` recorded as a legal artifact, and an unbounded base64 blob up to the 10 MB body limit.
+//
+// Note the shape of the gap: `arch:openapi-coverage` counted these routes as ENRICHED throughout,
+// because it measures whether a contract is published, not whether one is applied. Nothing joined the
+// two — the same "two registries no gate joins" pattern as the AI capability catalog.
+//
+// Mass assignment was never reachable (write-service-drizzle.ts allowlists columns explicitly), so the
+// impact was business-logic corruption and unhandled `pg` errors rather than takeover.
+import { type Static, type TSchema, Type } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
+import { ValidationError } from "@wardenx/types";
 import { contracts } from "@wardenx/cap-management";
 
-// ── request bodies (§4.2) ──
-export const OpenCapPeriodRequest = contracts.OpenCapPeriodRequest;
-export const LockMethodologyRequest = contracts.LockMethodologyRequest;
-export const CloseCapPeriodRequest = contracts.CloseCapPeriodRequest;
-export const ReopenCapPeriodRequest = contracts.ReopenCapPeriodRequest;
-export const AcknowledgeEventRequest = contracts.AcknowledgeEventRequest;
-export const PsrImportRequest = contracts.PsrImportRequest;
-export const ResolveVarianceRequest = contracts.ResolveVarianceRequest;
-export const FinalizeSettlementRequest = contracts.FinalizeSettlementRequest;
-export const PublishConstantRequest = contracts.PublishConstantRequest;
-export const AmendConstantRequest = contracts.AmendConstantRequest;
+/**
+ * Validate `raw` against `schema` (Convert-then-Check), throwing M1's VALIDATION_FAILED envelope on
+ * the first error (the M23/M27/M30/M33 `parse(...)` precedent). Convert first so a query/param string
+ * coerces to its declared type; Check then refuses anything the schema does not admit.
+ */
+export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
+  const converted = Value.Convert(schema, raw ?? {});
+  if (!Value.Check(schema, converted)) {
+    const first = [...Value.Errors(schema, converted)][0];
+    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
+    throw new ValidationError("request validation failed", [
+      { field, code: "INVALID", message: first?.message ?? "invalid request" },
+    ]);
+  }
+  return converted as Static<T>;
+}
+
+/**
+ * Params validation as a PREHANDLER, placed FIRST in the chain.
+ *
+ * Every M26 mutation addresses a uuid (`:periodId`, `:eventId`, `:lineId`, `:importId`), read
+ * previously with an unchecked `pParam()`.
+ *
+ * Parsing params inside the handler is too late: the §4.7 ABAC guards resolve the addressed row to
+ * load their owner facts, so a malformed `:periodId` reached Drizzle ahead of any check and came back
+ * as Postgres `22P02 invalid input syntax for type uuid` — surfacing as a **500** for what is simply a
+ * malformed request. Running it first turns that into a 422 naming the param.
+ *
+ * This does not weaken the repo's 403/404-before-422 rule, which exists so validation detail is not
+ * leaked to a caller who is not entitled to know the resource exists. That rule is about the BODY: a
+ * syntactically invalid uuid is refused identically for every caller and discloses nothing about what
+ * does or does not exist.
+ */
+export const validateParams =
+  <T extends TSchema>(schema: T) =>
+  async (request: { params: unknown }): Promise<void> => {
+    parse(schema, request.params);
+  };
+
+/**
+ * A uuid by PATTERN, not by `format: "uuid"`.
+ *
+ * `format` in TypeBox resolves through a global `FormatRegistry`, and the only thing that populates
+ * `uuid` in this repo is `packages/supplies/src/kinds/formats.ts` — an M21 module. So every
+ * `Type.String({ format: "uuid" })` in the codebase (including `@wardenx/billing`'s shared `Uuid` and
+ * the M26 contracts) validates ONLY because M21 happens to have been imported first; TypeBox treats an
+ * unregistered format as a FAILURE ("Unknown format 'uuid'"), so in any context that does not load
+ * M21 these checks reject valid uuids. A params guard must not depend on which sibling module was
+ * imported, so it carries the pattern itself. (The wider `format`-registry coupling is a real platform
+ * hazard and is left flagged rather than silently changed across every module here.)
+ */
+const UuidString = Type.String({
+  pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+});
+
+export const UuidParam = Type.Object({ id: UuidString });
+export const PeriodIdParams = Type.Object({ periodId: UuidString });
+export const EventIdParams = Type.Object({ eventId: UuidString });
+export const LineIdParams = Type.Object({ importId: UuidString, lineId: UuidString });
+/** `^FY\d{4}$` — the same pattern `contracts.ts` applies to a cap-year body field (it keeps it private). */
+export const CapYearParams = Type.Object({ capYear: Type.String({ pattern: "^FY\\d{4}$" }) });
+
+// ── request bodies (§4.2) ────────────────────────────────────────────────────────────────────────
+/**
+ * CLOSED objects. The domain contracts do not set `additionalProperties`, so an unknown field was
+ * accepted and forwarded to the write service. Mass assignment was never reachable
+ * (write-service-drizzle.ts allowlists columns), but a silently-ignored field is how a caller comes to
+ * believe it set something it did not — and it is exactly how a caller would smuggle back the
+ * `stepUpAssertionId` this module deliberately drops. `InvokeBreakGlassBody` in M3 uses the same
+ * `{ additionalProperties: false }` for the same reason: it is what makes REMOVING a field effective
+ * rather than merely cosmetic.
+ */
+const strict = <T extends Parameters<typeof Type.Object>[0]>(props: T) =>
+  Type.Object(props, { additionalProperties: false });
+
+export const OpenCapPeriodRequest = strict(contracts.OpenCapPeriodRequest.properties);
+export const CloseCapPeriodRequest = strict(contracts.CloseCapPeriodRequest.properties);
+export const ReopenCapPeriodRequest = strict(contracts.ReopenCapPeriodRequest.properties);
+export const AcknowledgeEventRequest = strict(contracts.AcknowledgeEventRequest.properties);
+export const PsrImportRequest = strict(contracts.PsrImportRequest.properties);
+export const ResolveVarianceRequest = strict(contracts.ResolveVarianceRequest.properties);
+export const PublishConstantRequest = strict(contracts.PublishConstantRequest.properties);
+export const AmendConstantRequest = strict(contracts.AmendConstantRequest.properties);
+
+/**
+ * `stepUpAssertionId` is OMITTED from the two contracts that declare it.
+ *
+ * It is a step-up assertion supplied BY THE CALLER, and neither write-service input consumes it
+ * (`LockMethodologyInput` is `{ methodology, reason }`; `FinalizeInput` is `{ attestation }`). Step-up
+ * on these two routes is enforced server-side by the `STEP_UP(...)` preHandler over M3's
+ * `step_up_recent` predicate, which reads the session — the only place that fact can be trusted.
+ * Requiring it in the body would demand a field nothing reads AND invite the caller to assert its own
+ * re-authentication, which is the defect class the audit-C2 fix removed from break-glass
+ * (`cosignRequired` in the request body). Omitting it here keeps the PUBLISHED contract and the
+ * ENFORCED contract identical, which is the whole point of this file having one definition.
+ */
+export const LockMethodologyRequest = strict(
+  Type.Omit(contracts.LockMethodologyRequest, ["stepUpAssertionId"]).properties,
+);
+export const FinalizeSettlementRequest = strict(
+  Type.Omit(contracts.FinalizeSettlementRequest, ["stepUpAssertionId"]).properties,
+);
 
 // ── response shapes (assembled from the §4.2 DTOs) ──
 export const CapPeriodDto = contracts.CapPeriodDto;

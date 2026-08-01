@@ -44,7 +44,12 @@ export function registerValidationRoutes(app: FastifyInstance, deps: ValidationR
   // GET /claims/:id/validation-runs — list validation runs (most recent first). §4.1 #14.
   app.get(
     "/api/v1/claims/:id/validation-runs",
-    { preHandler: [READ_RUN, READ_RUN_ABAC] },
+    {
+      preHandler: [READ_RUN, READ_RUN_ABAC],
+      config: {
+        auditRead: { resourceKind: "claim_validation_run", resourceIdParam: "id", list: true },
+      },
+    },
     async (request) => {
       const actor = actorOf(request);
       const { id } = parse(ClaimIdParamsSchema, request.params);
@@ -55,7 +60,10 @@ export function registerValidationRoutes(app: FastifyInstance, deps: ValidationR
   // GET /claims/:id/validation-runs/:runId — single run with per-rule results + override status. §4.1 #15.
   app.get(
     "/api/v1/claims/:id/validation-runs/:runId",
-    { preHandler: [READ_RUN, READ_RUN_ABAC] },
+    {
+      preHandler: [READ_RUN, READ_RUN_ABAC],
+      config: { auditRead: { resourceKind: "claim_validation_run", resourceIdParam: "runId" } },
+    },
     async (request) => {
       const actor = actorOf(request);
       const { id, runId } = parse(ValidationRunParamsSchema, request.params);

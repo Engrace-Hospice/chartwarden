@@ -35,7 +35,7 @@ export function registerNoeRoutes(app: FastifyInstance, deps: NoeRouteDeps): voi
   const { readService, writeService } = deps;
 
   // GET /noe-records — list NOE records (cursor-paginated). §4.1 #24.
-  app.get("/api/v1/noe-records", { preHandler: [READ] }, async (request) => {
+  app.get("/api/v1/noe-records", { preHandler: [READ], config: { auditRead: { resourceKind: "noe_record", list: true } } }, async (request) => {
     const actor = actorOf(request);
     const q = parse(NoeListQuerySchema, request.query);
     return readService.listNoes(
@@ -52,7 +52,7 @@ export function registerNoeRoutes(app: FastifyInstance, deps: NoeRouteDeps): voi
   });
 
   // GET /noe-records/:id — NOE detail. §4.1 #25.
-  app.get("/api/v1/noe-records/:id", { preHandler: [READ, READ_ABAC] }, async (request) => {
+  app.get("/api/v1/noe-records/:id", { preHandler: [READ, READ_ABAC], config: { auditRead: { resourceKind: "noe_record", resourceIdParam: "id" } } }, async (request) => {
     const actor = actorOf(request);
     const { id } = parse(NoeIdParamsSchema, request.params);
     return readService.getNoe(actor, id);

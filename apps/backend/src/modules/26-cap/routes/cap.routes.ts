@@ -8,6 +8,16 @@ import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { clampLimit, requireIdempotencyKey } from "./concurrency";
 import { ABAC, P, STEP_UP } from "./guards";
+import {
+  AcknowledgeEventRequest,
+  EventIdParams,
+  LockMethodologyRequest,
+  OpenCapPeriodRequest,
+  PeriodIdParams,
+  ReopenCapPeriodRequest,
+  parse,
+  validateParams,
+} from "./m26-typebox";
 import type { M26ReadService } from "./read-service";
 import type { M26WriteService } from "./write-service";
 
@@ -44,7 +54,7 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
     "/api/v1/cap/periods",
     { preHandler: [PERIOD_MANAGE, IDEMPOTENT] },
     async (request, reply) => {
-      const body = request.body as { capYear: string; methodology?: "streamlined" | "proportional"; graceWindowDays?: number };
+      const body = parse(OpenCapPeriodRequest, request.body);
       const period = await writeService.openPeriod(writeActorOf(request), body);
       return reply.code(201).send(period);
     },
@@ -58,25 +68,30 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
 
   app.patch(
     "/api/v1/cap/periods/:periodId/close",
-    { preHandler: [PERIOD_MANAGE, ABAC("cap.period.manage", "cap_period_open"), IDEMPOTENT] },
-    async (request, reply) => reply.send(await writeService.closePeriod(writeActorOf(request), pParam(request, "periodId"))),
+    { preHandler: [validateParams(PeriodIdParams), PERIOD_MANAGE, ABAC("cap.period.manage", "cap_period_open"), IDEMPOTENT] },
+    async (request, reply) =>
+      reply.send(
+        await writeService.closePeriod(writeActorOf(request), parse(PeriodIdParams, request.params).periodId),
+      ),
   );
 
   app.patch(
     "/api/v1/cap/periods/:periodId/reopen",
-    { preHandler: [PERIOD_MANAGE, ABAC("cap.period.manage", "cap_period_settled"), STEP_UP("cap.period.manage"), IDEMPOTENT] },
+    { preHandler: [validateParams(PeriodIdParams), PERIOD_MANAGE, ABAC("cap.period.manage", "cap_period_settled"), STEP_UP("cap.period.manage"), IDEMPOTENT] },
     async (request, reply) => {
-      const body = (request.body ?? {}) as { reason: string };
-      return reply.send(await writeService.reopenPeriod(writeActorOf(request), pParam(request, "periodId"), body));
+      const { periodId } = parse(PeriodIdParams, request.params);
+      const body = parse(ReopenCapPeriodRequest, request.body);
+      return reply.send(await writeService.reopenPeriod(writeActorOf(request), periodId, body));
     },
   );
 
   app.post(
     "/api/v1/cap/periods/:periodId/methodology",
-    { preHandler: [PERIOD_MANAGE, ABAC("cap.period.manage", "cap_period_methodology_unlocked"), STEP_UP("cap.period.manage"), IDEMPOTENT] },
+    { preHandler: [validateParams(PeriodIdParams), PERIOD_MANAGE, ABAC("cap.period.manage", "cap_period_methodology_unlocked"), STEP_UP("cap.period.manage"), IDEMPOTENT] },
     async (request, reply) => {
-      const body = request.body as { methodology: "streamlined" | "proportional"; reason: string };
-      return reply.send(await writeService.lockMethodology(writeActorOf(request), pParam(request, "periodId"), body));
+      const { periodId } = parse(PeriodIdParams, request.params);
+      const body = parse(LockMethodologyRequest, request.body);
+      return reply.send(await writeService.lockMethodology(writeActorOf(request), periodId, body));
     },
   );
 
@@ -98,7 +113,10 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
   app.post(
     "/api/v1/cap/projections/:periodId/recompute",
     { preHandler: [PROJ_RECOMPUTE, ABAC("cap.projection.recompute", "cap_period_open"), IDEMPOTENT] },
-    async (request, reply) => reply.send(await writeService.recompute(writeActorOf(request), pParam(request, "periodId"))),
+    async (request, reply) =>
+      reply.send(
+        await writeService.recompute(writeActorOf(request), parse(PeriodIdParams, request.params).periodId),
+      ),
   );
 
   // ── accruals ──
@@ -136,10 +154,11 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
   });
   app.patch(
     "/api/v1/cap/threshold-events/:eventId/acknowledge",
-    { preHandler: [EVENT_ACK, IDEMPOTENT] },
+    { preHandler: [validateParams(EventIdParams), EVENT_ACK, IDEMPOTENT] },
     async (request, reply) => {
-      const body = (request.body ?? {}) as { notes?: string };
-      await writeService.acknowledgeEvent(writeActorOf(request), pParam(request, "eventId"), body);
+      const { eventId } = parse(EventIdParams, request.params);
+      const body = parse(AcknowledgeEventRequest, request.body);
+      await writeService.acknowledgeEvent(writeActorOf(request), eventId, body);
       return reply.code(204).send();
     },
   );

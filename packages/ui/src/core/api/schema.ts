@@ -19267,7 +19267,8 @@ export interface operations {
             content: {
                 "application/json": {
                     reason: string;
-                    targetPatientId?: string | null;
+                    /** Format: uuid */
+                    targetPatientId: string;
                 };
             };
         };
@@ -19604,8 +19605,6 @@ export interface operations {
                 "application/json": {
                     methodology: "streamlined" | "proportional";
                     reason: string;
-                    /** Format: uuid */
-                    stepUpAssertionId: string;
                 };
             };
         };
@@ -20050,8 +20049,6 @@ export interface operations {
             content: {
                 "application/json": {
                     attestation: string;
-                    /** Format: uuid */
-                    stepUpAssertionId: string;
                 };
             };
         };
