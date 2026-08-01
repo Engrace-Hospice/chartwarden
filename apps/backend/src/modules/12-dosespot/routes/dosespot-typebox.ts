@@ -8,6 +8,13 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
+import type {
+  ControlledSubstancePolicyView as ServiceControlledSubstancePolicyView,
+  MedicationOrderView as ServiceMedicationOrderView,
+  PrescriberRosterView as ServicePrescriberRosterView,
+  RefillInboxPolicyView as ServiceRefillInboxPolicyView,
+  RefillRequestView as ServiceRefillRequestView,
+} from "./service";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -186,6 +193,241 @@ export const MedicationOrderListQuerySchema = Type.Object({
   medClass: Type.Optional(MED_CLASS),
   status: Type.Optional(Type.String({ maxLength: 32 })),
 });
+
+// ── §4.2 RESPONSE DTOs (F0 enrichment) ─────────────────────────────────────────────────────────────
+// The read/mutation routes returned typed service view shapes (`MedicationOrderView`, `RefillRequestView`,
+// the policy/roster views, and the small result envelopes) but published NO response contract, so the
+// generated client typed every body as `never`. These DTOs mirror the service views 1:1 and are pinned to
+// them by the compile-time `Conforms` aliases below, so a view field added/renamed/retyped breaks
+// `bun run build` rather than silently drifting from the client (a wire enum published as `Type.String()`
+// is a silent lie: the enum-typed columns are published as their literal unions, never bare strings).
+const Nullable = <T extends TSchema>(s: T) => Type.Union([s, Type.Null()]);
+
+/** §2.2 — the medication-order lifecycle status (mirrors `MedicationOrderStatus`). */
+const MED_ORDER_STATUS = Type.Union([
+  Type.Literal("draft"),
+  Type.Literal("pending_signature"),
+  Type.Literal("verbal_pending"),
+  Type.Literal("epcs_identity_pending"),
+  Type.Literal("signed"),
+  Type.Literal("queued_for_transmission"),
+  Type.Literal("transmitted"),
+  Type.Literal("ack_received"),
+  Type.Literal("nack_received"),
+  Type.Literal("active"),
+  Type.Literal("completed"),
+  Type.Literal("discontinued"),
+  Type.Literal("transmission_failed"),
+  Type.Literal("expired_unsigned"),
+]);
+/** §2.2 / §2.12 — the discontinuation reasons (mirrors `MedicationOrderDiscontinuationReason`). */
+const DISCONTINUATION_REASON = Type.Union([
+  Type.Literal("clinical_judgement"),
+  Type.Literal("patient_request"),
+  Type.Literal("adverse_event"),
+  Type.Literal("replaced_by_corrected_order"),
+  Type.Literal("admission_discharged"),
+  Type.Literal("pharmacy_nack"),
+  Type.Literal("corrected_replacement"),
+  Type.Literal("expired_verbal"),
+  Type.Literal("transmission_failed"),
+  Type.Literal("no_refills_no_renewal"),
+]);
+/** §2.7 — the refill-inbox lifecycle status (mirrors `RefillRequestStatus`). */
+const REFILL_STATUS = Type.Union([
+  Type.Literal("pending"),
+  Type.Literal("approved"),
+  Type.Literal("denied"),
+  Type.Literal("expired"),
+]);
+
+/** The medication-order read projection (routes 2–14, 16 rows). */
+export const MedicationOrderResponseSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  medClass: MED_CLASS,
+  status: MED_ORDER_STATUS,
+  drugName: Type.String(),
+  strength: Type.String(),
+  doseForm: Type.String(),
+  route: Type.String(),
+  rxnormRxcui: Nullable(Type.String()),
+  ndc: Nullable(Type.String()),
+  version: Type.Integer(),
+  prescriberMembershipId: Type.String(),
+  prescriberDiscipline: Type.String(),
+  prescribingPhysicianMdmId: Type.String(),
+  dispensingPharmacyMdmId: Nullable(Type.String()),
+  isControlledSubstance: Type.Boolean(),
+  deaSchedule: Nullable(DEA_SCHEDULE),
+  cosignRequired: Type.Boolean(),
+  cosignStatus: Nullable(Type.Union([Type.Literal("pending"), Type.Literal("attached")])),
+  refillsRemaining: Type.Integer(),
+  derivedFromRefillId: Nullable(Type.String()),
+  replacesMedicationOrderId: Nullable(Type.String()),
+  signedAt: Nullable(Type.String()),
+  signedBy: Nullable(Type.String()),
+  transmittedAt: Nullable(Type.String()),
+  discontinuedAt: Nullable(Type.String()),
+  discontinuationReason: Nullable(DISCONTINUATION_REASON),
+  createdAt: Type.String(),
+});
+/** The `{ orders }` envelope the list + active-medications reads return. */
+export const MedicationOrderListResponseSchema = Type.Object({
+  orders: Type.Array(MedicationOrderResponseSchema),
+});
+
+/** The refill-request read projection (routes 20–21). */
+export const RefillRequestResponseSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  sourceMedicationOrderId: Type.String(),
+  status: REFILL_STATUS,
+  requestedAt: Type.String(),
+  prescriberMembershipId: Nullable(Type.String()),
+  resultingMedicationOrderId: Nullable(Type.String()),
+});
+/** The `{ refills }` envelope the refill-inbox list returns. */
+export const RefillListResponseSchema = Type.Object({
+  refills: Type.Array(RefillRequestResponseSchema),
+});
+
+/** The prescriber-roster read projection (routes 25–26). */
+export const PrescriberRosterResponseSchema = Type.Object({
+  membershipId: Type.String(),
+  enrolled: Type.Boolean(),
+  deaAuthorizedSchedules: Type.Array(DEA_SCHEDULE),
+  ial2Status: Type.String(),
+});
+/** The `{ prescribers }` envelope the roster list returns. */
+export const PrescriberRosterListResponseSchema = Type.Object({
+  prescribers: Type.Array(PrescriberRosterResponseSchema),
+});
+
+/** The refill-inbox SLA policy view (routes 28–29). */
+export const RefillInboxPolicyResponseSchema = Type.Object({
+  slaWarnHours: Type.Integer(),
+  slaCriticalHours: Type.Integer(),
+  platformFloorWarnHours: Type.Integer(),
+  platformFloorCriticalHours: Type.Integer(),
+});
+
+/** The controlled-substance refill policy view (routes 30–31). */
+export const ControlledSubstancePolicyResponseSchema = Type.Object({
+  scheduleIiMaxRefills: Type.Integer(),
+  scheduleIiiToVMaxRefills: Type.Integer(),
+  epcsCertificationStatus: Type.String(),
+});
+
+/** Route 7 — the EPCS 2FA challenge nonce the controlled-sign initiate mints. */
+export const SignControlledInitiateResponseSchema = Type.Object({
+  nonce: Type.String(),
+  expiresAt: Type.String(),
+  requiredFactor: SECOND_FACTOR,
+});
+
+/** Routes 13/14 — the minted corrected/retransmitted order id. */
+export const NewOrderIdResponseSchema = Type.Object({ newOrderId: Type.String() });
+
+/** Route 15 — the DoseSpot transmission status + retry history. */
+export const TransmissionResponseSchema = Type.Object({
+  orderId: Type.String(),
+  status: Type.String(),
+  retryHistory: Type.Array(
+    Type.Object({
+      attempt: Type.Integer(),
+      at: Type.String(),
+      errorClass: Nullable(Type.String()),
+    }),
+  ),
+});
+
+/** Route 17 — the reconciled medication-history list. */
+export const MedicationHistoryResponseSchema = Type.Object({
+  records: Type.Array(
+    Type.Object({ id: Type.String(), drugName: Type.String(), source: Type.String() }),
+  ),
+});
+
+/** Route 18 — the enqueued MedHx-refresh job handle. */
+export const HistoryRefreshResponseSchema = Type.Object({ jobId: Type.String() });
+
+/** Route 19 — the (optional) order minted by a carry-forward reconciliation. */
+export const ReconcileResponseSchema = Type.Object({ resultingOrderId: Nullable(Type.String()) });
+
+/** Route 22 — the medication order minted by an approved refill. */
+export const ResultingOrderIdResponseSchema = Type.Object({ resultingOrderId: Type.String() });
+
+/** Route 23 — the refill-deny acknowledgment. */
+export const DenyRefillResponseSchema = Type.Object({ status: Type.Literal("denied") });
+
+/** Route 24 — the cached RxBenefit coverage lookup. */
+export const RxBenefitResponseSchema = Type.Object({
+  covered: Type.Boolean(),
+  copayCents: Nullable(Type.Integer()),
+});
+
+/** Route 27 — the prescriber-revoke acknowledgment. */
+export const RevokePrescriberResponseSchema = Type.Object({ status: Type.Literal("revoked") });
+
+// Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
+type Conforms<T extends V, V> = T;
+type _MedOrder = Conforms<Static<typeof MedicationOrderResponseSchema>, ServiceMedicationOrderView>;
+type _MedOrderList = Conforms<
+  Static<typeof MedicationOrderListResponseSchema>,
+  { readonly orders: readonly ServiceMedicationOrderView[] }
+>;
+type _Refill = Conforms<Static<typeof RefillRequestResponseSchema>, ServiceRefillRequestView>;
+type _RefillList = Conforms<
+  Static<typeof RefillListResponseSchema>,
+  { readonly refills: readonly ServiceRefillRequestView[] }
+>;
+type _Roster = Conforms<Static<typeof PrescriberRosterResponseSchema>, ServicePrescriberRosterView>;
+type _RosterList = Conforms<
+  Static<typeof PrescriberRosterListResponseSchema>,
+  { readonly prescribers: readonly ServicePrescriberRosterView[] }
+>;
+type _RefillPolicy = Conforms<
+  Static<typeof RefillInboxPolicyResponseSchema>,
+  ServiceRefillInboxPolicyView
+>;
+type _CsPolicy = Conforms<
+  Static<typeof ControlledSubstancePolicyResponseSchema>,
+  ServiceControlledSubstancePolicyView
+>;
+type _Initiate = Conforms<
+  Static<typeof SignControlledInitiateResponseSchema>,
+  { nonce: string; expiresAt: string; requiredFactor: "totp" | "passkey" | "push_confirm" }
+>;
+type _NewOrder = Conforms<Static<typeof NewOrderIdResponseSchema>, { newOrderId: string }>;
+type _Transmission = Conforms<
+  Static<typeof TransmissionResponseSchema>,
+  {
+    orderId: string;
+    status: string;
+    retryHistory: ReadonlyArray<{ attempt: number; at: string; errorClass: string | null }>;
+  }
+>;
+type _MedHistory = Conforms<
+  Static<typeof MedicationHistoryResponseSchema>,
+  { records: ReadonlyArray<{ id: string; drugName: string; source: string }> }
+>;
+type _Refresh = Conforms<Static<typeof HistoryRefreshResponseSchema>, { jobId: string }>;
+type _Reconcile = Conforms<
+  Static<typeof ReconcileResponseSchema>,
+  { resultingOrderId: string | null }
+>;
+type _Resulting = Conforms<
+  Static<typeof ResultingOrderIdResponseSchema>,
+  { resultingOrderId: string }
+>;
+type _DenyRefill = Conforms<Static<typeof DenyRefillResponseSchema>, { status: "denied" }>;
+type _RxBenefit = Conforms<
+  Static<typeof RxBenefitResponseSchema>,
+  { covered: boolean; copayCents: number | null }
+>;
+type _Revoke = Conforms<Static<typeof RevokePrescriberResponseSchema>, { status: "revoked" }>;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

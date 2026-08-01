@@ -7,6 +7,11 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
+import type {
+  AdmissionDetail as ServiceAdmissionDetail,
+  Page as ServicePage,
+  SummaryRow as ServiceSummaryRow,
+} from "./service";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 if (!FormatRegistry.Has("date")) {
@@ -277,6 +282,56 @@ export const ComplianceOverrideSchema = Type.Object({
   reason: Reason(20, 1000),
   ifVersion: Version(),
 });
+
+// ── §4.2 RESPONSE DTOs (F0 enrichment) ─────────────────────────────────────────────────────────────
+// The read routes returned typed view shapes (`SummaryRow` / `AdmissionDetail` / `Page<SummaryRow>`) but
+// published NO response contract, so the generated client typed every GET body as `never`. These DTOs
+// mirror the service's read views 1:1 and are pinned to them by the compile-time `Conforms` aliases below,
+// so a view field added or renamed breaks `bun run build` rather than silently drifting from the client.
+export const SummaryRowResponseSchema = Type.Object({
+  id: Type.String(),
+  state: Type.String(),
+  version: Type.Integer(),
+});
+
+const ActivationGapSchema = Type.Union([
+  Type.Literal("election_signed"),
+  Type.Literal("nor_acknowledged"),
+  Type.Literal("cti_signed"),
+  Type.Literal("attending_signed"),
+]);
+
+/** Route 10 — the admission aggregate: summary + the R-AC-01 activation gate (§7.2 / §5.2.5). */
+export const AdmissionDetailResponseSchema = Type.Object({
+  id: Type.String(),
+  state: Type.String(),
+  version: Type.Integer(),
+  activationGate: Type.Object({
+    ready: Type.Boolean(),
+    missing: Type.Array(ActivationGapSchema),
+  }),
+});
+
+/** The cursor-paginated page the list routes return (`{ items, nextCursor }`). */
+export const SummaryPageResponseSchema = Type.Object({
+  items: Type.Array(SummaryRowResponseSchema),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+});
+
+/** The bounded `{ items }` envelope the per-admission sub-list reads return (no cursor). */
+export const SummaryItemsResponseSchema = Type.Object({
+  items: Type.Array(SummaryRowResponseSchema),
+});
+
+// Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
+type Conforms<T extends V, V> = T;
+type _SummaryRow = Conforms<Static<typeof SummaryRowResponseSchema>, ServiceSummaryRow>;
+type _AdmissionDetail = Conforms<Static<typeof AdmissionDetailResponseSchema>, ServiceAdmissionDetail>;
+type _SummaryPage = Conforms<Static<typeof SummaryPageResponseSchema>, ServicePage<ServiceSummaryRow>>;
+type _SummaryItems = Conforms<
+  Static<typeof SummaryItemsResponseSchema>,
+  { readonly items: readonly ServiceSummaryRow[] }
+>;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

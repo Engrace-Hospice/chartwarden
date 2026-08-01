@@ -11,8 +11,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Tenant administration policy — grace window, PRN reassessment defaults (§4.1 / §6.1 #12) */
+        /** Read tenant administration policy */
         get: operations["getApiV1AdminAdministrationpolicy"];
+        /** Update tenant administration policy */
         put: operations["putApiV1AdminAdministrationpolicy"];
         post?: never;
         delete?: never;
@@ -28,13 +29,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Controlled-substance policy — refill caps + EPCS certification status (§4.1 / 21 CFR 1306.22 / D18) */
+        /** Controlled-substance refill policy */
         get: operations["getApiV1AdminControlledsubstancepolicy"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
+        /** Update the controlled-substance refill policy (tighten-only, 21 CFR 1306.22) */
         patch: operations["patchApiV1AdminControlledsubstancepolicy"];
         trace?: never;
     };
@@ -45,7 +47,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Per-tenant DoseSpot prescriber roster — DEA schedules, IAL2 status, enrollment (§4.1 / §6.1) */
+        /** Per-tenant DoseSpot prescriber roster */
         get: operations["getApiV1AdminDosespotprescribers"];
         put?: never;
         post?: never;
@@ -64,6 +66,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Enroll a prescriber into DoseSpot */
         post: operations["postApiV1AdminDosespotprescribersByMembershipIdEnroll"];
         delete?: never;
         options?: never;
@@ -80,6 +83,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Revoke a prescriber */
         post: operations["postApiV1AdminDosespotprescribersByMembershipIdRevoke"];
         delete?: never;
         options?: never;
@@ -94,6 +98,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Inspect a form-fill render record (platform-only debug) */
         get: operations["getApiV1AdminFormfillsById"];
         put?: never;
         post?: never;
@@ -112,6 +117,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Manually retry a failed render (platform-only, step-up) */
         post: operations["postApiV1AdminFormfillsByIdRetry"];
         delete?: never;
         options?: never;
@@ -128,6 +134,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Publish a new template version (platform-only, §4.7 ABAC) */
         post: operations["postApiV1AdminFormtemplatesByKeyVersions"];
         delete?: never;
         options?: never;
@@ -240,6 +247,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Platform-ops verbal-timer regeneration (audited) */
         post: operations["postApiV1AdminOrdersRegenerateverbaltimerById"];
         delete?: never;
         options?: never;
@@ -254,8 +262,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Org verbal-order policy — window hours, cosign kinds, platform floor (§4.1 / §2.3 D3) */
+        /** Org verbal-order policy (window, cosign kinds, floor) */
         get: operations["getApiV1AdminOrdersVerbalpolicy"];
+        /** Update org verbal-order policy (tighten-only, <=48h) */
         put: operations["putApiV1AdminOrdersVerbalpolicy"];
         post?: never;
         delete?: never;
@@ -288,13 +297,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Refill-inbox SLA policy — warn/critical hours + platform floors (§4.1 / §2.7 D9) */
+        /** Refill-inbox SLA policy */
         get: operations["getApiV1AdminRefillinboxpolicy"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
+        /** Update the refill-inbox SLA policy (tighten-only) */
         patch: operations["patchApiV1AdminRefillinboxpolicy"];
         trace?: never;
     };
@@ -305,9 +315,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Scale-license registry — one row per (org × scale) with status/expiry (§5.2) */
+        /** Admin: scale-license registry */
         get: operations["getApiV1AdminScalesLicenses"];
         put?: never;
+        /** Admin: register a scale license */
         post: operations["postApiV1AdminScalesLicenses"];
         delete?: never;
         options?: never;
@@ -328,6 +339,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Admin: update a scale license (partial) */
         patch: operations["patchApiV1AdminScalesLicensesById"];
         trace?: never;
     };
@@ -338,7 +350,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Scale-policy editor — enable/disable state per scale (§5.2) */
+        /** Admin: scale-policy registry */
         get: operations["getApiV1AdminScalesPolicies"];
         put?: never;
         post?: never;
@@ -361,6 +373,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Admin: enable/disable a scale */
         patch: operations["patchApiV1AdminScalesPoliciesByScaleType"];
         trace?: never;
     };
@@ -404,9 +417,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List a patient's administrations — eMAR projection + caregiver-attested cosign rows (§4.1 / §6.1) */
+        /** List a patient's administrations (administered-at window) */
         get: operations["getApiV1Administrations"];
         put?: never;
+        /** Record a clinician administration (five-rights; administering_clinician_eligible ABAC) */
         post: operations["postApiV1Administrations"];
         delete?: never;
         options?: never;
@@ -421,7 +435,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Administration detail — lifecycle, late-entry tier, witness pair, BCMA match (§4.1 / §6.1 #11) */
+        /** Read one administration */
         get: operations["getApiV1AdministrationsById"];
         put?: never;
         post?: never;
@@ -440,6 +454,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** RN acknowledges a caregiver-attested row (caregiver_attested_review_required ABAC) */
         post: operations["postApiV1AdministrationsByIdAcknowledgecaregiver"];
         delete?: never;
         options?: never;
@@ -456,6 +471,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Correct a committed administration (supersede) */
         post: operations["postApiV1AdministrationsByIdCorrect"];
         delete?: never;
         options?: never;
@@ -472,6 +488,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** RN disputes a caregiver-attested row */
         post: operations["postApiV1AdministrationsByIdDisputecaregiver"];
         delete?: never;
         options?: never;
@@ -488,6 +505,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Administrative hard-void (recorded in error) */
         post: operations["postApiV1AdministrationsByIdVoid"];
         delete?: never;
         options?: never;
@@ -504,6 +522,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record a caregiver-attested administration via the M31 portal (D10) */
         post: operations["postApiV1AdministrationsCaregiverattested"];
         delete?: never;
         options?: never;
@@ -518,7 +537,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** IV continuous session — the ordered start→rate_change→stop segment sequence (§4.1 / §6.1 #5) */
+        /** Read an IV-continuous session's segment sequence */
         get: operations["getApiV1AdministrationsIvsessionsBySessionId"];
         put?: never;
         post?: never;
@@ -537,6 +556,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Bulk offline-queue sync from device (D18) */
         post: operations["postApiV1AdministrationsOfflinesync"];
         delete?: never;
         options?: never;
@@ -553,6 +573,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record a refusal (administering_clinician_eligible ABAC) */
         post: operations["postApiV1AdministrationsRefuse"];
         delete?: never;
         options?: never;
@@ -569,6 +590,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Mint a single-use controlled-substance witness-attestation token (D7) */
         post: operations["postApiV1AdministrationsWitnessattest"];
         delete?: never;
         options?: never;
@@ -583,9 +605,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Admission census (cursor-paginated; optional state filter, §4.1) */
+        /** Admission census (cursor-paginated, filterable by state) */
         get: operations["getApiV1Admissions"];
         put?: never;
+        /** Create an admission (§5.2) */
         post: operations["postApiV1Admissions"];
         delete?: never;
         options?: never;
@@ -602,6 +625,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record an SFV completion (RFA-04; RN/NP author) */
         post: operations["postApiV1AdmissionsByAdmissionIdHopeSfv"];
         delete?: never;
         options?: never;
@@ -618,6 +642,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record a new HOPE timepoint (draft; RN/NP/MD author) */
         post: operations["postApiV1AdmissionsByAdmissionIdHopeTimepoints"];
         delete?: never;
         options?: never;
@@ -632,13 +657,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Admission aggregate + the R-AC-01 activation gate (route 10, §5.2.4/§5.2.5) */
+        /** The admission aggregate + R-AC-01 activation gate (§5.2.5) */
         get: operations["getApiV1AdmissionsById"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
+        /** Update an admission */
         patch: operations["patchApiV1AdmissionsById"];
         trace?: never;
     };
@@ -651,6 +677,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Activate the admission (only when the R-AC-01 gate is satisfied) */
         post: operations["postApiV1AdmissionsByIdActivate"];
         delete?: never;
         options?: never;
@@ -665,7 +692,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** An admission's compliance windows (§5.2.4 Compliance tab) */
+        /** Open compliance windows for the admission */
         get: operations["getApiV1AdmissionsByIdCompliancewindows"];
         put?: never;
         post?: never;
@@ -684,6 +711,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Discharge the admission (§6.3: permission key derived from reason) */
         post: operations["postApiV1AdmissionsByIdDischarge"];
         delete?: never;
         options?: never;
@@ -698,9 +726,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** An admission's election periods (§5.2.4 Elections tab) */
+        /** The admission's benefit-period ladder */
         get: operations["getApiV1AdmissionsByIdElectionperiods"];
         put?: never;
+        /** Open the next benefit period */
         post: operations["postApiV1AdmissionsByIdElectionperiods"];
         delete?: never;
         options?: never;
@@ -717,6 +746,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Draft the beneficiary's election statement */
         post: operations["postApiV1AdmissionsByIdElectionstatements"];
         delete?: never;
         options?: never;
@@ -733,6 +763,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Schedule the face-to-face recertification encounter */
         post: operations["postApiV1AdmissionsByIdFacetoface"];
         delete?: never;
         options?: never;
@@ -749,6 +780,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Place the admission on hold */
         post: operations["postApiV1AdmissionsByIdHold"];
         delete?: never;
         options?: never;
@@ -763,8 +795,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The admission's level-of-care history */
         get: operations["getApiV1AdmissionsByIdLevelofcare"];
         put?: never;
+        /** Record a level-of-care change (§5.6) */
         post: operations["postApiV1AdmissionsByIdLevelofcare"];
         delete?: never;
         options?: never;
@@ -779,8 +813,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The admission's notice-of-rights acknowledgment */
         get: operations["getApiV1AdmissionsByIdNor"];
         put?: never;
+        /** Acknowledge the notice of rights */
         post: operations["postApiV1AdmissionsByIdNor"];
         delete?: never;
         options?: never;
@@ -797,6 +833,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Resume a held admission */
         post: operations["postApiV1AdmissionsByIdResume"];
         delete?: never;
         options?: never;
@@ -813,6 +850,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record a benefit revocation */
         post: operations["postApiV1AdmissionsByIdRevocation"];
         delete?: never;
         options?: never;
@@ -829,6 +867,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Transfer a beneficiary in (inherits the prior benefit period) */
         post: operations["postApiV1AdmissionsByIdTransferin"];
         delete?: never;
         options?: never;
@@ -845,6 +884,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Transfer the beneficiary out to another hospice */
         post: operations["postApiV1AdmissionsByIdTransferout"];
         delete?: never;
         options?: never;
@@ -1508,6 +1548,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** LPN cosignature (cosigner_role_match ABAC) */
         post: operations["postApiV1AssessmentsByIdCosignatures"];
         delete?: never;
         options?: never;
@@ -1638,7 +1679,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** A membership's weekly availability pattern (§5.1 availability editor) */
+        /** A membership's weekly availability pattern */
         get: operations["getApiV1Availability"];
         put?: never;
         post?: never;
@@ -1656,6 +1697,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        /** Upsert a membership's weekly availability */
         put: operations["putApiV1AvailabilityByMembershipId"];
         post?: never;
         delete?: never;
@@ -3063,6 +3105,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Add a goal (agent-stated requires active DPOA consent) */
         post: operations["postApiV1CareplansByPlanIdGoals"];
         delete?: never;
         options?: never;
@@ -3083,6 +3126,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Patch a goal (verbatim original_text immutable, D6) */
         patch: operations["patchApiV1CareplansByPlanIdGoalsByElementId"];
         trace?: never;
     };
@@ -3095,6 +3139,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Add an intervention (§7.4 discipline_scope enforced) */
         post: operations["postApiV1CareplansByPlanIdInterventions"];
         delete?: never;
         options?: never;
@@ -3115,6 +3160,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Patch an intervention (optimistic If-Match) */
         patch: operations["patchApiV1CareplansByPlanIdInterventionsByElementId"];
         trace?: never;
     };
@@ -3127,6 +3173,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Discontinue an intervention */
         post: operations["postApiV1CareplansByPlanIdInterventionsByElementIdDiscontinue"];
         delete?: never;
         options?: never;
@@ -3141,6 +3188,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The 5-/15-day CoP 418.56 review-gate status */
         get: operations["getApiV1CareplansByPlanIdOverduestatus"];
         put?: never;
         post?: never;
@@ -3159,6 +3207,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Add a problem to the plan */
         post: operations["postApiV1CareplansByPlanIdProblems"];
         delete?: never;
         options?: never;
@@ -3179,6 +3228,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Patch a problem (optimistic If-Match) */
         patch: operations["patchApiV1CareplansByPlanIdProblemsByElementId"];
         trace?: never;
     };
@@ -3191,6 +3241,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Resolve a problem with a resolution note */
         post: operations["postApiV1CareplansByPlanIdProblemsByElementIdResolve"];
         delete?: never;
         options?: never;
@@ -3205,7 +3256,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Patient/family-friendly care-plan summary; SUD content excluded unless consent matches (§5.2) */
+        /** The plan's lay-language active summary */
         get: operations["getApiV1CareplansByPlanIdSummary"];
         put?: never;
         post?: never;
@@ -3222,9 +3273,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Care-plan version history — every version with status, signers, and signed-at (§5.1) */
+        /** The plan's version ladder */
         get: operations["getApiV1CareplansByPlanIdVersions"];
         put?: never;
+        /** Open a new care-plan version */
         post: operations["postApiV1CareplansByPlanIdVersions"];
         delete?: never;
         options?: never;
@@ -3239,6 +3291,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** One care-plan version's detail + signature state */
         get: operations["getApiV1CareplansByPlanIdVersionsByVersionId"];
         put?: never;
         post?: never;
@@ -3257,6 +3310,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Finalize a version to in-review (locks the Required Signer Set) */
         post: operations["postApiV1CareplansByPlanIdVersionsByVersionIdFinalize"];
         delete?: never;
         options?: never;
@@ -3273,6 +3327,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Return an in-review version to draft (clears signatures, D8) */
         post: operations["postApiV1CareplansByPlanIdVersionsByVersionIdReturntodraft"];
         delete?: never;
         options?: never;
@@ -3289,6 +3344,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record a signature toward the version's §11 D5 quorum */
         post: operations["postApiV1CareplansByPlanIdVersionsByVersionIdSignatures"];
         delete?: never;
         options?: never;
@@ -3403,7 +3459,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Comfort-kit deployments for a patient (drawdown + disposal status; §4.1 / §6.1 #7) */
+        /** List comfort-kit deployments for a patient */
         get: operations["getApiV1ComfortkitsDeployments"];
         put?: never;
         post?: never;
@@ -3420,7 +3476,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Comfort-kit deployment detail — remaining quantity + replenishment + disposal (§4.1 / §6.1 #7) */
+        /** Read one deployment with its drawdowns */
         get: operations["getApiV1ComfortkitsDeploymentsById"];
         put?: never;
         post?: never;
@@ -3439,6 +3495,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Manual return acknowledgment (Phase-1 fallback) */
         post: operations["postApiV1ComfortkitsDeploymentsByIdAcknowledgereturn"];
         delete?: never;
         options?: never;
@@ -3453,7 +3510,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Org-wide compliance window dashboard (cursor-paginated; optional state filter, §5.2.11) */
+        /** Org-wide compliance-window worklist (cursor-paginated) */
         get: operations["getApiV1Compliancewindows"];
         put?: never;
         post?: never;
@@ -3472,6 +3529,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Close a compliance window */
         post: operations["postApiV1CompliancewindowsByIdClose"];
         delete?: never;
         options?: never;
@@ -3488,6 +3546,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Override a compliance window (privileged, §6.4 ABAC) */
         post: operations["postApiV1CompliancewindowsByIdOverride"];
         delete?: never;
         options?: never;
@@ -4423,6 +4482,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** One CTI's summary + state */
         get: operations["getApiV1CtiById"];
         put?: never;
         post?: never;
@@ -4441,6 +4501,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Mark a CTI signed late (written-cert deadline) */
         post: operations["postApiV1CtiByIdMarklate"];
         delete?: never;
         options?: never;
@@ -4457,6 +4518,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Attending physician signs the CTI (period 1) */
         post: operations["postApiV1CtiByIdSignattending"];
         delete?: never;
         options?: never;
@@ -4473,6 +4535,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Hospice medical director signs the CTI */
         post: operations["postApiV1CtiByIdSignhospicemd"];
         delete?: never;
         options?: never;
@@ -4489,6 +4552,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Void a CTI */
         post: operations["postApiV1CtiByIdVoid"];
         delete?: never;
         options?: never;
@@ -4503,7 +4567,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Day-view grid — a clinician's visits for one service date (§5.1 day) */
+        /** Day-view grid (a clinician's visits for one date) */
         get: operations["getApiV1Dayview"];
         put?: never;
         post?: never;
@@ -4689,6 +4753,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Medical-director cosign for a for-cause discharge (§6.3 ABAC) */
         post: operations["postApiV1DischargesByIdCosignforcause"];
         delete?: never;
         options?: never;
@@ -5004,9 +5069,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List documents — filtered by patient / aggregate / retention class, cursor-paginated (§4.1 / §5.1 DOC.Explorer) */
+        /** List documents (filtered, cursor-paginated) */
         get: operations["getApiV1Documents"];
         put?: never;
+        /** Upload a new document (creates version v1) */
         post: operations["postApiV1Documents"];
         delete?: never;
         options?: never;
@@ -5021,13 +5087,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Document metadata + current version metadata (§4.1 / §5.1 DOC.SignedUrlPreview header) */
+        /** Read document metadata + current version */
         get: operations["getApiV1DocumentsById"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
+        /** Edit document metadata (legal-hold aware) */
         patch: operations["patchApiV1DocumentsById"];
         trace?: never;
     };
@@ -5040,6 +5107,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** §164.524 right-of-access bulk PHI export (step-up) */
         post: operations["postApiV1DocumentsByIdExportphibundle"];
         delete?: never;
         options?: never;
@@ -5056,6 +5124,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Add a tag to a document */
         post: operations["postApiV1DocumentsByIdTags"];
         delete?: never;
         options?: never;
@@ -5073,6 +5142,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
+        /** Remove a tag from a document */
         delete: operations["deleteApiV1DocumentsByIdTagsByTagId"];
         options?: never;
         head?: never;
@@ -5086,9 +5156,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Version history — author/version chain for the side-by-side diff (§4.1 / §5.1 DOC.VersionHistory) */
+        /** Version history (cursor-paginated) */
         get: operations["getApiV1DocumentsByIdVersions"];
         put?: never;
+        /** Upload a new version of an existing document */
         post: operations["postApiV1DocumentsByIdVersions"];
         delete?: never;
         options?: never;
@@ -5103,6 +5174,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read version metadata */
         get: operations["getApiV1DocumentsByIdVersionsByVersionId"];
         put?: never;
         post?: never;
@@ -5119,6 +5191,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Mint a short-lived signed URL for the version content (BAA gate) */
         get: operations["getApiV1DocumentsByIdVersionsByVersionIdContent"];
         put?: never;
         post?: never;
@@ -5141,6 +5214,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Patch a pending election period */
         patch: operations["patchApiV1ElectionperiodsById"];
         trace?: never;
     };
@@ -5153,6 +5227,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Draft the certification of terminal illness for the period */
         post: operations["postApiV1ElectionperiodsByIdCti"];
         delete?: never;
         options?: never;
@@ -5167,6 +5242,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** One election statement's summary + state */
         get: operations["getApiV1ElectionstatementsById"];
         put?: never;
         post?: never;
@@ -5185,6 +5261,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Sign the election statement */
         post: operations["postApiV1ElectionstatementsByIdSign"];
         delete?: never;
         options?: never;
@@ -5201,6 +5278,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Void an election statement */
         post: operations["postApiV1ElectionstatementsByIdVoid"];
         delete?: never;
         options?: never;
@@ -5215,8 +5293,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List encounters for the org (filterable) */
         get: operations["getApiV1Encounters"];
         put?: never;
+        /** Create a draft encounter */
         post: operations["postApiV1Encounters"];
         delete?: never;
         options?: never;
@@ -5231,7 +5311,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read one encounter (selections + signatures + addenda; §7.6 SUD-redacted per caller, §5.2) */
+        /** Read one encounter */
         get: operations["getApiV1EncountersByEncounterId"];
         put?: never;
         post?: never;
@@ -5250,6 +5330,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Create an addendum draft on a signed encounter */
         post: operations["postApiV1EncountersByEncounterIdAddenda"];
         delete?: never;
         options?: never;
@@ -5266,6 +5347,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Finalize an addendum */
         post: operations["postApiV1EncountersByEncounterIdAddendaByAddendumIdFinalize"];
         delete?: never;
         options?: never;
@@ -5286,6 +5368,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Update addendum selections (§7.7 If-Match) */
         patch: operations["patchApiV1EncountersByEncounterIdAddendaByAddendumIdSelections"];
         trace?: never;
     };
@@ -5298,6 +5381,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Sign an addendum (D13 step-up) */
         post: operations["postApiV1EncountersByEncounterIdAddendaByAddendumIdSign"];
         delete?: never;
         options?: never;
@@ -5314,6 +5398,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Administrative >14-day override (director) */
         post: operations["postApiV1EncountersByEncounterIdAdministrativeoverride"];
         delete?: never;
         options?: never;
@@ -5330,6 +5415,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Link the encounter to care-plan elements */
         post: operations["postApiV1EncountersByEncounterIdCareplanlinks"];
         delete?: never;
         options?: never;
@@ -5347,6 +5433,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
+        /** Remove a care-plan link while draft */
         delete: operations["deleteApiV1EncountersByEncounterIdCareplanlinksByLinkId"];
         options?: never;
         head?: never;
@@ -5360,7 +5447,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read an encounter's cosignature-request state (§5.5) */
+        /** Read cosignature-request state */
         get: operations["getApiV1EncountersByEncounterIdCosignature"];
         put?: never;
         post?: never;
@@ -5379,6 +5466,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Cosigner acknowledges (§4.6 cosigner_role_match) */
         post: operations["postApiV1EncountersByEncounterIdCosignatureAcknowledge"];
         delete?: never;
         options?: never;
@@ -5395,6 +5483,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Cosigner signs (§4.6 cosigner_role_match; D13 step-up) */
         post: operations["postApiV1EncountersByEncounterIdCosignatureSign"];
         delete?: never;
         options?: never;
@@ -5411,6 +5500,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Supervisor releases past the 48h hard cap */
         post: operations["postApiV1EncountersByEncounterIdCosignatureSupervisorrelease"];
         delete?: never;
         options?: never;
@@ -5427,6 +5517,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Document an EVV-missing reason (D9 fallback) */
         post: operations["postApiV1EncountersByEncounterIdEvvreconcile"];
         delete?: never;
         options?: never;
@@ -5443,6 +5534,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Finalize the encounter (Layer-3 gate preview) */
         post: operations["postApiV1EncountersByEncounterIdFinalize"];
         delete?: never;
         options?: never;
@@ -5459,6 +5551,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Invoke HearthNote Layer-2 enhancement */
         post: operations["postApiV1EncountersByEncounterIdHearthnoteEnhance"];
         delete?: never;
         options?: never;
@@ -5479,6 +5572,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Record a per-passage accept/edit/reject decision */
         patch: operations["patchApiV1EncountersByEncounterIdHearthnoteModificationsByModIdDecisions"];
         trace?: never;
     };
@@ -5491,6 +5585,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Significant late-entry tier override (supervisor) */
         post: operations["postApiV1EncountersByEncounterIdLateentryoverride"];
         delete?: never;
         options?: never;
@@ -5507,10 +5602,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Capture per-encounter mileage (D10) */
         post: operations["postApiV1EncountersByEncounterIdMileage"];
         delete?: never;
         options?: never;
         head?: never;
+        /** Edit per-encounter mileage (§7.7 If-Match) */
         patch: operations["patchApiV1EncountersByEncounterIdMileage"];
         trace?: never;
     };
@@ -5527,6 +5624,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Update draft selections (§7.7 If-Match) */
         patch: operations["patchApiV1EncountersByEncounterIdSelections"];
         trace?: never;
     };
@@ -5539,6 +5637,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Sign the encounter (Layer-3 gate; D13 step-up) */
         post: operations["postApiV1EncountersByEncounterIdSign"];
         delete?: never;
         options?: never;
@@ -5555,6 +5654,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Capture a vitals set */
         post: operations["postApiV1EncountersByEncounterIdVitals"];
         delete?: never;
         options?: never;
@@ -5575,6 +5675,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Edit a vitals set (§7.7 If-Match) */
         patch: operations["patchApiV1EncountersByEncounterIdVitalsByVitalId"];
         trace?: never;
     };
@@ -5587,6 +5688,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Void a draft (admin-only; reason >= 40 chars) */
         post: operations["postApiV1EncountersByEncounterIdVoid"];
         delete?: never;
         options?: never;
@@ -5601,7 +5703,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** RN/Supervisor cosignature work queue with SLA chips (§5.5) */
+        /** RN cosignature work queue */
         get: operations["getApiV1EncountersCosignaturequeue"];
         put?: never;
         post?: never;
@@ -5618,7 +5720,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The author's open encounter drafts (§5.1 My Drafts) */
+        /** The caller's open draft encounters */
         get: operations["getApiV1EncountersMydrafts"];
         put?: never;
         post?: never;
@@ -5753,7 +5855,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** EVV aggregator submission queue — per-state submission status + rejection detail (§5.1 aggregator-submissions) */
+        /** Per-state aggregator submission queue + status */
         get: operations["getApiV1EvvAggregatorsubmissions"];
         put?: never;
         post?: never;
@@ -5772,6 +5874,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Operator-initiated cancel (from a non-terminal status) */
         post: operations["postApiV1EvvAggregatorsubmissionsByIdCancel"];
         delete?: never;
         options?: never;
@@ -5788,6 +5891,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Operator-initiated resubmit (from rejected/timeout) */
         post: operations["postApiV1EvvAggregatorsubmissionsByIdResubmit"];
         delete?: never;
         options?: never;
@@ -5804,6 +5908,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record a check-in (§4.7 capture predicates gate) */
         post: operations["postApiV1EvvCheckin"];
         delete?: never;
         options?: never;
@@ -5820,6 +5925,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record a check-out */
         post: operations["postApiV1EvvCheckout"];
         delete?: never;
         options?: never;
@@ -5834,6 +5940,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Clinician last-known location (M20 live-awareness; D10) */
         get: operations["getApiV1EvvCliniciancurrentlocation"];
         put?: never;
         post?: never;
@@ -5850,7 +5957,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** EVV devices — self or team list with approval/integrity status (§5.1 devices/pending, me/evv/devices) */
+        /** List registered devices (self or supervisor) */
         get: operations["getApiV1EvvDevices"];
         put?: never;
         post?: never;
@@ -5869,6 +5976,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Approve a pending device */
         post: operations["postApiV1EvvDevicesByIdApprove"];
         delete?: never;
         options?: never;
@@ -5885,6 +5993,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Reject a pending device */
         post: operations["postApiV1EvvDevicesByIdReject"];
         delete?: never;
         options?: never;
@@ -5901,6 +6010,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Retire a device */
         post: operations["postApiV1EvvDevicesByIdRetire"];
         delete?: never;
         options?: never;
@@ -5917,6 +6027,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Suspend a device */
         post: operations["postApiV1EvvDevicesByIdSuspend"];
         delete?: never;
         options?: never;
@@ -5933,6 +6044,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Clinician self-registers a device (-> pending_approval) */
         post: operations["postApiV1EvvDevicesSelfregister"];
         delete?: never;
         options?: never;
@@ -5947,7 +6059,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** EVV event ledger — coordinate-free capture events, filterable (§5.1 events) */
+        /** List EVV events by filters */
         get: operations["getApiV1EvvEvents"];
         put?: never;
         post?: never;
@@ -5964,7 +6076,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** EVV single-event detail — raw + computed fields, coordinates redacted unless evv.read_coords (§5.1 event) */
+        /** One EVV event (coordinate-free projection) */
         get: operations["getApiV1EvvEventsByEventId"];
         put?: never;
         post?: never;
@@ -5983,6 +6095,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Correction-of-record (Clinical Supervisor+, fresh step-up) */
         post: operations["postApiV1EvvEventsByEventIdCorrect"];
         delete?: never;
         options?: never;
@@ -5997,7 +6110,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** EVV geofence policy — tenant tighten-only default + per-address overrides (§5.1 geofence-policy) */
+        /** Read geofence policy (tenant + per-address overrides) */
         get: operations["getApiV1EvvGeofencepolicy"];
         put?: never;
         post?: never;
@@ -6016,6 +6129,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Create/replace a per-address override (reason >=30 chars) */
         post: operations["postApiV1EvvGeofencepolicyPeraddress"];
         delete?: never;
         options?: never;
@@ -6036,6 +6150,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Edit tenant tighten-only policy */
         patch: operations["patchApiV1EvvGeofencepolicyTenant"];
         trace?: never;
     };
@@ -6046,7 +6161,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** EVV metrics — compliance / late-checkout / geofence-deviation / GPS-spoof / aggregator-acceptance rates (§5.1 dashboard, metrics) */
+        /** EVV metrics (M30/M33 dashboard source) */
         get: operations["getApiV1EvvMetrics"];
         put?: never;
         post?: never;
@@ -6063,7 +6178,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** EVV missing-resolution queue — open + recently-closed late-checkout resolutions (§5.1 missing-resolutions) */
+        /** Open + recently-closed resolution queue */
         get: operations["getApiV1EvvMissingresolutions"];
         put?: never;
         post?: never;
@@ -6082,6 +6197,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Assigned clinician self-attests (reason >=40; D6 <=24h) */
         post: operations["postApiV1EvvMissingresolutionsByIdClinicianattest"];
         delete?: never;
         options?: never;
@@ -6098,6 +6214,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Supervisor override (step-up; reason >=60; D6 <=7d) */
         post: operations["postApiV1EvvMissingresolutionsByIdSupervisoroverride"];
         delete?: never;
         options?: never;
@@ -6114,6 +6231,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Batch offline-sync of capture events (idempotent on device+localId) */
         post: operations["postApiV1EvvOfflinesync"];
         delete?: never;
         options?: never;
@@ -6128,6 +6246,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The EVV bracket for a visit (M8 EvvBracketResolver source) */
         get: operations["getApiV1EvvVisitsByVisitIdBracket"];
         put?: never;
         post?: never;
@@ -6144,6 +6263,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** One F2F encounter's summary + state */
         get: operations["getApiV1FacetofaceById"];
         put?: never;
         post?: never;
@@ -6162,6 +6282,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Physician attests the F2F encounter (§6.2 ABAC) */
         post: operations["postApiV1FacetofaceByIdAttest"];
         delete?: never;
         options?: never;
@@ -6178,6 +6299,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Mark the F2F encounter completed */
         post: operations["postApiV1FacetofaceByIdComplete"];
         delete?: never;
         options?: never;
@@ -6194,6 +6316,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Override the F2F timing window (privileged) */
         post: operations["postApiV1FacetofaceByIdOverridewindow"];
         delete?: never;
         options?: never;
@@ -6208,7 +6331,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Browse the platform-floor form templates with version metadata (§4.1 / §5.1 FORM.TemplateLibrary) */
+        /** List form templates (cursor-paginated) */
         get: operations["getApiV1Formtemplates"];
         put?: never;
         post?: never;
@@ -6225,6 +6348,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read a template + its active version */
         get: operations["getApiV1FormtemplatesByKey"];
         put?: never;
         post?: never;
@@ -6241,6 +6365,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read a specific template version */
         get: operations["getApiV1FormtemplatesByKeyVersionsByVersionId"];
         put?: never;
         post?: never;
@@ -6259,6 +6384,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Admin: recompute schedules for an admission */
         post: operations["postApiV1HopeAdminRegenerateschedules"];
         delete?: never;
         options?: never;
@@ -6273,8 +6399,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** HOPE assessment detail — snapshot, J2051 trigger outcome, submission status (§5.2) */
+        /** One assessment (sections, snapshot, validation findings) */
         get: operations["getApiV1HopeAssessmentsById"];
+        /** Update a draft assessment */
         put: operations["putApiV1HopeAssessmentsById"];
         post?: never;
         delete?: never;
@@ -6292,6 +6419,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Insert a correction RFA (supersedes the original) */
         post: operations["postApiV1HopeAssessmentsByIdCorrect"];
         delete?: never;
         options?: never;
@@ -6308,6 +6436,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Sign a draft (runs the D4 J2051 trigger; snapshots PPS/ESAS-r) */
         post: operations["postApiV1HopeAssessmentsByIdSign"];
         delete?: never;
         options?: never;
@@ -6324,6 +6453,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Request the printable HOPE summary (emits summary_requested) */
         post: operations["postApiV1HopeAssessmentsByIdSummarypdf"];
         delete?: never;
         options?: never;
@@ -6338,7 +6468,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** On-demand pre-submission validation findings for one HOPE assessment (§5.2) */
+        /** On-demand pre-submission validation findings for one row */
         get: operations["getApiV1HopeAssessmentsByIdValidation"];
         put?: never;
         post?: never;
@@ -6355,7 +6485,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** HQRP compliance dashboard — on-time / SFV on-time / submission acceptance rates (§5.2) */
+        /** Org-level HQRP compliance posture */
         get: operations["getApiV1HopeDashboardCompliance"];
         put?: never;
         post?: never;
@@ -6372,7 +6502,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** HOPE timepoint dashboard — open/closing/late/expired schedules (§5.1/§5.2) */
+        /** List HOPE timepoint schedules (filter by patient / status / RFA) */
         get: operations["getApiV1HopeSchedules"];
         put?: never;
         post?: never;
@@ -6389,7 +6519,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** HOPE schedule detail with derived window state (§5.2) */
+        /** One schedule with derived window state */
         get: operations["getApiV1HopeSchedulesById"];
         put?: never;
         post?: never;
@@ -6408,6 +6538,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Skip a schedule (requires reason code) */
         post: operations["postApiV1HopeSchedulesByIdSkip"];
         delete?: never;
         options?: never;
@@ -6422,7 +6553,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** SFV worklist — open/overdue/missed symptom-follow-up visits across the org (§5.1/§5.2) */
+        /** Open / overdue / missed SFV worklist */
         get: operations["getApiV1HopeSfv"];
         put?: never;
         post?: never;
@@ -6439,7 +6570,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** SFV detail — triggering symptoms + 2-calendar-day countdown (§5.2) */
+        /** SFV detail */
         get: operations["getApiV1HopeSfvById"];
         put?: never;
         post?: never;
@@ -6456,7 +6587,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** HOPE submission worklist — batches per ProviderEntity, per-period (§5.1/§5.2) */
+        /** Submission batches per ProviderEntity */
         get: operations["getApiV1HopeSubmissions"];
         put?: never;
         post?: never;
@@ -6473,7 +6604,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** HOPE submission detail — per-item outcomes, rejection findings, retry control (§5.2) */
+        /** Submission detail with per-item outcomes */
         get: operations["getApiV1HopeSubmissionsById"];
         put?: never;
         post?: never;
@@ -6492,6 +6623,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Retry a rejected submission (re-validates, re-assembles) */
         post: operations["postApiV1HopeSubmissionsByIdRetry"];
         delete?: never;
         options?: never;
@@ -6508,6 +6640,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Force-assemble a submission outside the cron cadence */
         post: operations["postApiV1HopeSubmissionsAssemble"];
         delete?: never;
         options?: never;
@@ -6522,7 +6655,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The caller's action items — open / in-progress queue (§4.1 / §5 'My Action Items') */
+        /** List action items (assignee self-scoped) */
         get: operations["getApiV1IdgActionitems"];
         put?: never;
         post?: never;
@@ -6542,9 +6675,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
+        /** Remove an action item (pre-adjourn only) */
         delete: operations["deleteApiV1IdgActionitemsById"];
         options?: never;
         head?: never;
+        /** Update an action item (assignee self-service or coordinator) */
         patch: operations["patchApiV1IdgActionitemsById"];
         trace?: never;
     };
@@ -6558,9 +6693,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
+        /** Remove an agenda item */
         delete: operations["deleteApiV1IdgAgendaById"];
         options?: never;
         head?: never;
+        /** Update an agenda item */
         patch: operations["patchApiV1IdgAgendaById"];
         trace?: never;
     };
@@ -6574,9 +6711,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
+        /** Remove an erroneous attendance row (pre-start only) */
         delete: operations["deleteApiV1IdgAttendanceById"];
         options?: never;
         head?: never;
+        /** Coordinator amends an attendance row */
         patch: operations["patchApiV1IdgAttendanceById"];
         trace?: never;
     };
@@ -6593,6 +6732,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Update an open decision (open status only) */
         patch: operations["patchApiV1IdgDecisionsById"];
         trace?: never;
     };
@@ -6605,6 +6745,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Supersede a prior decision (§2.8) */
         post: operations["postApiV1IdgDecisionsByIdSupersede"];
         delete?: never;
         options?: never;
@@ -6619,7 +6760,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** One meeting's lifecycle view — status + scheduled window + adjournment (§4.1 / §5) */
+        /** Read one IDG meeting's lifecycle view */
         get: operations["getApiV1IdgMeetingsById"];
         put?: never;
         post?: never;
@@ -6638,6 +6779,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Create an action item */
         post: operations["postApiV1IdgMeetingsByIdActionitems"];
         delete?: never;
         options?: never;
@@ -6654,6 +6796,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Adjourn the meeting (commit point; fresh step-up, D13) */
         post: operations["postApiV1IdgMeetingsByIdAdjourn"];
         delete?: never;
         options?: never;
@@ -6670,6 +6813,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Add an agenda item to a meeting */
         post: operations["postApiV1IdgMeetingsByIdAgenda"];
         delete?: never;
         options?: never;
@@ -6686,6 +6830,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Self check-in attendance for a meeting */
         post: operations["postApiV1IdgMeetingsByIdAttendance"];
         delete?: never;
         options?: never;
@@ -6702,6 +6847,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Cancel a meeting (per-patient review-floor ABAC) */
         post: operations["postApiV1IdgMeetingsByIdCancel"];
         delete?: never;
         options?: never;
@@ -6718,6 +6864,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record a decision (quorate_decision ABAC) */
         post: operations["postApiV1IdgMeetingsByIdDecisions"];
         delete?: never;
         options?: never;
@@ -6732,7 +6879,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** A meeting's minutes — in-progress or finalized (§4.1 / §5) */
+        /** Read a meeting's minutes */
         get: operations["getApiV1IdgMeetingsByIdMinutes"];
         put?: never;
         post?: never;
@@ -6749,7 +6896,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Per-patient packet digests for a meeting — readiness + freeze state (§4.1 / §5) */
+        /** List a meeting's per-patient packets */
         get: operations["getApiV1IdgMeetingsByIdPackets"];
         put?: never;
         post?: never;
@@ -6768,6 +6915,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Trigger the per-patient packet build */
         post: operations["postApiV1IdgMeetingsByIdPacketsBuild"];
         delete?: never;
         options?: never;
@@ -6784,6 +6932,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Reschedule a meeting (per-patient review-floor ABAC) */
         post: operations["postApiV1IdgMeetingsByIdReschedule"];
         delete?: never;
         options?: never;
@@ -6800,6 +6949,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Start the meeting (open decision/action-item writes) */
         post: operations["postApiV1IdgMeetingsByIdStart"];
         delete?: never;
         options?: never;
@@ -6814,7 +6964,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** One patient's packet digest in a meeting — chart-embed read (§4.1 / §5; SUD-redacted server-side) */
+        /** Read one patient's packet (SUD redaction applied) */
         get: operations["getApiV1IdgMeetingsByMeetingIdPacketsByPatientId"];
         put?: never;
         post?: never;
@@ -6833,6 +6983,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Submit a minutes amendment (final minutes only) */
         post: operations["postApiV1IdgMinutesByIdAmendments"];
         delete?: never;
         options?: never;
@@ -6849,6 +7000,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Create a recurring IDG meeting policy */
         post: operations["postApiV1IdgRecurringpolicies"];
         delete?: never;
         options?: never;
@@ -6869,6 +7021,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Update a recurring IDG meeting policy */
         patch: operations["patchApiV1IdgRecurringpoliciesById"];
         trace?: never;
     };
@@ -6879,7 +7032,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Meeting schedule for a location/range — next-weeks meetings, location-scoped (§4.1 / §5) */
+        /** List the IDG meeting schedule for a location/range */
         get: operations["getApiV1IdgSchedule"];
         put?: never;
         post?: never;
@@ -6896,6 +7049,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read a job + its extraction candidates (cursor-paginated) */
         get: operations["getApiV1IntakeJobsById"];
         put?: never;
         post?: never;
@@ -6914,6 +7068,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** DocLens: commit a reviewed extraction job's field decisions (flag-gated) */
         post: operations["postApiV1IntakeJobsByIdExtractionCommit"];
         delete?: never;
         options?: never;
@@ -6928,6 +7083,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read review state (candidates + decisions, cursor-paginated) */
         get: operations["getApiV1IntakeReviewsById"];
         put?: never;
         post?: never;
@@ -6946,6 +7102,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Release the review lock (decisions preserved) */
         post: operations["postApiV1IntakeReviewsByIdAbandon"];
         delete?: never;
         options?: never;
@@ -6962,6 +7119,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Attest + trigger the writeback dispatcher */
         post: operations["postApiV1IntakeReviewsByIdComplete"];
         delete?: never;
         options?: never;
@@ -6978,6 +7136,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record a per-candidate decision (§4.7 ABAC) */
         post: operations["postApiV1IntakeReviewsByIdDecisions"];
         delete?: never;
         options?: never;
@@ -6994,6 +7153,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Bulk-approve low-risk candidates (high-risk -> 422) */
         post: operations["postApiV1IntakeReviewsByIdDecisionsbulkapprove"];
         delete?: never;
         options?: never;
@@ -7010,6 +7170,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Resolve a discrepancy */
         post: operations["postApiV1IntakeReviewsByIdDiscrepanciesByDiscrepancyIdResolve"];
         delete?: never;
         options?: never;
@@ -7026,6 +7187,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Upload a new intake batch */
         post: operations["postApiV1IntakeUploads"];
         delete?: never;
         options?: never;
@@ -7040,7 +7202,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Intake batch — pipeline status + page count for the DocLens review queue (§4.1 / §5.1 INTAKE.BatchDetail) */
+        /** Read batch metadata + pipeline status */
         get: operations["getApiV1IntakeUploadsById"];
         put?: never;
         post?: never;
@@ -7057,6 +7219,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Classifier output (cursor-paginated) */
         get: operations["getApiV1IntakeUploadsByIdClassification"];
         put?: never;
         post?: never;
@@ -7075,6 +7238,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Human-confirm classifier results */
         post: operations["postApiV1IntakeUploadsByIdClassificationConfirm"];
         delete?: never;
         options?: never;
@@ -7091,6 +7255,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Mark a batch non-actionable */
         post: operations["postApiV1IntakeUploadsByIdDiscard"];
         delete?: never;
         options?: never;
@@ -7107,6 +7272,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** DocLens: run the extraction pipeline over a batch (flag-gated, 503 when OFF) */
         post: operations["postApiV1IntakeUploadsByIdExtractionRun"];
         delete?: never;
         options?: never;
@@ -7121,7 +7287,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Extraction jobs for a batch — per-job pipeline status, cursor-paginated (§4.1 / §5.1 INTAKE.BatchDetail) */
+        /** Extraction jobs for the batch (cursor-paginated) */
         get: operations["getApiV1IntakeUploadsByIdJobs"];
         put?: never;
         post?: never;
@@ -7140,6 +7306,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Open an extraction-review session (acquires lock) */
         post: operations["postApiV1IntakeUploadsByIdReview"];
         delete?: never;
         options?: never;
@@ -7154,6 +7321,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Internal: LatestAssessmentProvider batch */
         get: operations["getApiV1InternalAssessmentsLatestbatch"];
         put?: never;
         post?: never;
@@ -7170,6 +7338,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Internal: ScaleSeriesProvider batch */
         get: operations["getApiV1InternalAssessmentsSeriesbatch"];
         put?: never;
         post?: never;
@@ -7220,6 +7389,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Encounter element picker (active problems/goals/interventions by discipline) */
         get: operations["getApiV1InternalCareplanRelevantelements"];
         put?: never;
         post?: never;
@@ -7252,6 +7422,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Internal: M22 PDF-render payload */
         get: operations["getApiV1InternalEncountersByEncounterIdRenderpayload"];
         put?: never;
         post?: never;
@@ -7268,6 +7439,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Internal: BillableEncounterReader seam (M23/M24) */
         get: operations["getApiV1InternalEncountersBillable"];
         put?: never;
         post?: never;
@@ -7284,6 +7456,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Internal: signed-since seam (M14 IDG aggregator) */
         get: operations["getApiV1InternalEncountersSignedsince"];
         put?: never;
         post?: never;
@@ -7355,6 +7528,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Correct a level-of-care period */
         patch: operations["patchApiV1LevelofcareById"];
         trace?: never;
     };
@@ -7365,7 +7539,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Map-view ordered stops for a clinician day (coords-only polylines, D9; §5.1 map) */
+        /** Map-view ordered stops (coords-only polylines, D9) */
         get: operations["getApiV1Mapview"];
         put?: never;
         post?: never;
@@ -7875,6 +8049,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Reconcile a medication-history record */
         post: operations["postApiV1MedicationhistoryrecordsByIdReconcile"];
         delete?: never;
         options?: never;
@@ -7889,9 +8064,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List medication orders by patient / prescriber / med-class / status (§4.1; ABAC caseload_or_scope) */
+        /** List medication orders (filterable) */
         get: operations["getApiV1Medicationorders"];
         put?: never;
+        /** Create a medication-order draft (prescriber_eligible ABAC) */
         post: operations["postApiV1Medicationorders"];
         delete?: never;
         options?: never;
@@ -7906,13 +8082,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Medication-order detail — lifecycle status, signatures, controlled/EPCS posture, refills (§4.1) */
+        /** One medication order's detail */
         get: operations["getApiV1MedicationordersById"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
+        /** Edit a medication-order draft */
         patch: operations["patchApiV1MedicationordersById"];
         trace?: never;
     };
@@ -7925,6 +8102,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Complete a medication order (no-refills-no-renewal) */
         post: operations["postApiV1MedicationordersByIdComplete"];
         delete?: never;
         options?: never;
@@ -7941,6 +8119,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Issue a corrected replacement order (prescriber_eligible ABAC) */
         post: operations["postApiV1MedicationordersByIdCorrect"];
         delete?: never;
         options?: never;
@@ -7957,6 +8136,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Attach a cosignature (no self-cosign) */
         post: operations["postApiV1MedicationordersByIdCosign"];
         delete?: never;
         options?: never;
@@ -7973,6 +8153,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Discontinue a medication order */
         post: operations["postApiV1MedicationordersByIdDiscontinue"];
         delete?: never;
         options?: never;
@@ -7989,6 +8170,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Move a draft to pending_signature */
         post: operations["postApiV1MedicationordersByIdRequestsignature"];
         delete?: never;
         options?: never;
@@ -8005,6 +8187,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Retransmit a transmission_failed order (mints a corrected order) */
         post: operations["postApiV1MedicationordersByIdRetransmit"];
         delete?: never;
         options?: never;
@@ -8021,6 +8204,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Standard sign a medication order */
         post: operations["postApiV1MedicationordersByIdSign"];
         delete?: never;
         options?: never;
@@ -8037,6 +8221,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Complete an EPCS controlled-substance sign (second factor) */
         post: operations["postApiV1MedicationordersByIdSigncontrolledComplete"];
         delete?: never;
         options?: never;
@@ -8053,6 +8238,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Initiate an EPCS controlled-substance sign (2FA nonce; dea_schedule_authorized ABAC) */
         post: operations["postApiV1MedicationordersByIdSigncontrolledInitiate"];
         delete?: never;
         options?: never;
@@ -8067,7 +8253,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** DoseSpot transmission status incl. retry history (§4.1 / §2.6) */
+        /** DoseSpot transmission status + retry history */
         get: operations["getApiV1MedicationordersByIdTransmission"];
         put?: never;
         post?: never;
@@ -8086,6 +8272,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record a medication order as verbal */
         post: operations["postApiV1MedicationordersByIdVerbal"];
         delete?: never;
         options?: never;
@@ -8280,7 +8467,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Per-clinician route-efficiency metrics — proposed miles + override rate (§5.1) */
+        /** Per-clinician route-efficiency metrics */
         get: operations["getApiV1MetricsRouteefficiency"];
         put?: never;
         post?: never;
@@ -8297,7 +8484,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Org-wide visit metrics — on-time / no-show / reschedule rates (§5.1 scheduling-metrics) */
+        /** Org-wide visit metrics (on-time / no-show / reschedule) */
         get: operations["getApiV1MetricsVisits"];
         put?: never;
         post?: never;
@@ -8314,7 +8501,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Missed-dose inbox — unacknowledged misses for a patient (§4.1 / §6.1 #8) */
+        /** List missed doses for a patient */
         get: operations["getApiV1Misseddoses"];
         put?: never;
         post?: never;
@@ -8333,6 +8520,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Case manager acknowledges a missed dose */
         post: operations["postApiV1MisseddosesByIdAcknowledge"];
         delete?: never;
         options?: never;
@@ -8687,6 +8875,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** On-demand route optimisation (degraded when flag OFF) */
         post: operations["postApiV1Optimizeday"];
         delete?: never;
         options?: never;
@@ -8701,9 +8890,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List orders by patient / admission / kind / status (§4.1; ABAC caseload_or_scope) */
+        /** List orders by patient / admission / kind / status (ABAC caseload_or_scope) */
         get: operations["getApiV1Orders"];
         put?: never;
+        /** Create a draft order (discipline_can_order ABAC) */
         post: operations["postApiV1Orders"];
         delete?: never;
         options?: never;
@@ -8718,13 +8908,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Order detail — lifecycle status, signatures, verbal deadline, transmission/results state (§4.1) */
+        /** Order detail (lifecycle, signatures, verbal deadline, results state) */
         get: operations["getApiV1OrdersById"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
+        /** Edit a draft order (draft only) */
         patch: operations["patchApiV1OrdersById"];
         trace?: never;
     };
@@ -8737,6 +8928,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Manual completion (incl. lab Mark-reviewed) */
         post: operations["postApiV1OrdersByIdComplete"];
         delete?: never;
         options?: never;
@@ -8753,6 +8945,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Issue a corrected order (discipline_can_order ABAC) */
         post: operations["postApiV1OrdersByIdCorrect"];
         delete?: never;
         options?: never;
@@ -8769,6 +8962,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Attach a cosignature (cosigner_role_match ABAC) */
         post: operations["postApiV1OrdersByIdCosign"];
         delete?: never;
         options?: never;
@@ -8785,6 +8979,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Discontinue an active/pending/verbal order */
         post: operations["postApiV1OrdersByIdDiscontinue"];
         delete?: never;
         options?: never;
@@ -8801,6 +8996,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Draft -> pending_signature (resolves cosign requirement) */
         post: operations["postApiV1OrdersByIdRequestsignature"];
         delete?: never;
         options?: never;
@@ -8817,6 +9013,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Sign an order -> active (signer_eligible ABAC) */
         post: operations["postApiV1OrdersByIdSign"];
         delete?: never;
         options?: never;
@@ -8833,6 +9030,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Sign on behalf (medical_director only) */
         post: operations["postApiV1OrdersByIdSignonbehalf"];
         delete?: never;
         options?: never;
@@ -8849,6 +9047,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record as verbal -> verbal_pending (starts 48h timer) */
         post: operations["postApiV1OrdersByIdVerbal"];
         delete?: never;
         options?: never;
@@ -8863,7 +9062,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** RN cosign-pending queue — orders awaiting an RN/supervisor cosignature (§4.1 / §5.2 §2.5) */
+        /** RN cosign-pending queue */
         get: operations["getApiV1OrdersCosignpending"];
         put?: never;
         post?: never;
@@ -8880,7 +9079,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Physician pending-signature inbox — orders in pending_signature (§4.1 / §5.2) */
+        /** Physician pending-signature inbox */
         get: operations["getApiV1OrdersPendingsignature"];
         put?: never;
         post?: never;
@@ -8897,7 +9096,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Lab orders with results received awaiting clinician Mark-reviewed (§4.1 / §5.2 D17) */
+        /** Lab orders with results awaiting Mark-reviewed (D17) */
         get: operations["getApiV1OrdersResultspendingreview"];
         put?: never;
         post?: never;
@@ -8914,6 +9113,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Derived order-suggestion banner for a patient (D7) */
         get: operations["getApiV1OrdersSuggestionsByPatientId"];
         put?: never;
         post?: never;
@@ -8930,7 +9130,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** RN verbal-expiring queue — verbal_pending orders with a live 48h countdown (§4.1 / §5.2 D3) */
+        /** RN verbal-expiring queue (live 48h countdown) */
         get: operations["getApiV1OrdersVerbalexpiring"];
         put?: never;
         post?: never;
@@ -9170,9 +9370,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Patient assessment timeline — every captured scale, newest first; §7.6 SUD-redacted per caller (§5.2) */
+        /** Patient assessment timeline */
         get: operations["getApiV1PatientsByPatientIdAssessments"];
         put?: never;
+        /** Record a scale capture (server-scored; discipline-matrix ABAC) */
         post: operations["postApiV1PatientsByPatientIdAssessments"];
         delete?: never;
         options?: never;
@@ -9187,6 +9388,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read one assessment row */
         get: operations["getApiV1PatientsByPatientIdAssessmentsById"];
         put?: never;
         post?: never;
@@ -9205,6 +9407,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Correction-of-record (append-only supersede; If-Match) */
         post: operations["postApiV1PatientsByPatientIdAssessmentsByIdCorrections"];
         delete?: never;
         options?: never;
@@ -9219,7 +9422,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Assessment summary — latest value per scale family across all scales; SUD-redacted per caller (§5.2) */
+        /** Per-scale latest-capture summary surface */
         get: operations["getApiV1PatientsByPatientIdAssessmentsSummary"];
         put?: never;
         post?: never;
@@ -9236,9 +9439,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** A patient's care plan — problems/goals/interventions + versions; §7.6 SUD-redacted per caller (§5.2) */
+        /** The patient's care plan aggregate (SUD-filtered per §7.6) */
         get: operations["getApiV1PatientsByPatientIdCareplan"];
         put?: never;
+        /** Bootstrap the care plan + its initial draft version */
         post: operations["postApiV1PatientsByPatientIdCareplan"];
         delete?: never;
         options?: never;
@@ -9320,7 +9524,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Patient HOPE timeline — Admission → HUV1 → HUV2 → SFV(s) → Discharge (§5.1/§5.2) */
+        /** Patient HOPE timeline */
         get: operations["getApiV1PatientsByPatientIdHopeAssessments"];
         put?: never;
         post?: never;
@@ -9337,7 +9541,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Active medications for a patient (chart medication list; §4.1 / §6.1) */
+        /** Active medications for a patient */
         get: operations["getApiV1PatientsByPatientIdMedicationsActive"];
         put?: never;
         post?: never;
@@ -9354,7 +9558,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Medication-history records for a patient (DoseSpot MedHx; §4.1 / §6.1 reconciliation) */
+        /** Medication-history list for a patient */
         get: operations["getApiV1PatientsByPatientIdMedicationsHistory"];
         put?: never;
         post?: never;
@@ -9373,6 +9577,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Enqueue a DoseSpot MedHx refresh */
         post: operations["postApiV1PatientsByPatientIdMedicationsHistoryRefresh"];
         delete?: never;
         options?: never;
@@ -9387,6 +9592,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Latest-vs-window delta for one scale */
         get: operations["getApiV1PatientsByPatientIdScalesByScaleTypeDelta"];
         put?: never;
         post?: never;
@@ -9403,6 +9609,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Latest capture of one scale */
         get: operations["getApiV1PatientsByPatientIdScalesByScaleTypeLatest"];
         put?: never;
         post?: never;
@@ -9419,7 +9626,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Per-scale scored series over a [from,to] window with significant-change markers (§5.2) */
+        /** Scored series over a [from, to] window */
         get: operations["getApiV1PatientsByPatientIdScalesByScaleTypeSeries"];
         put?: never;
         post?: never;
@@ -9436,7 +9643,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Per-patient significant-change worklist — open/escalated changes with ack state (§5.2) */
+        /** Significant-change worklist for a patient */
         get: operations["getApiV1PatientsByPatientIdSignificantchanges"];
         put?: never;
         post?: never;
@@ -9880,6 +10087,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Portal upcoming visits (lay-language, scrubbed) */
         get: operations["getApiV1PortalUpcoming"];
         put?: never;
         post?: never;
@@ -9896,6 +10104,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Portal arrival surface (timestamps only, no coordinates) */
         get: operations["getApiV1PortalVisitsByVisitIdArrival"];
         put?: never;
         post?: never;
@@ -10905,7 +11114,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Reconciliation worksheets for a patient (admission/transfer/discharge/recert; §4.1 / §6.1 #6) */
+        /** List reconciliation worksheets for a patient */
         get: operations["getApiV1ReconciliationWorksheets"];
         put?: never;
         post?: never;
@@ -10922,7 +11131,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Reconciliation worksheet — per-line sources + decisions + finalize readiness (§4.1 / §6.1 #6) */
+        /** Read one worksheet with its lines + decisions */
         get: operations["getApiV1ReconciliationWorksheetsById"];
         put?: never;
         post?: never;
@@ -10941,6 +11150,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Add a caregiver-reported home-med line */
         post: operations["postApiV1ReconciliationWorksheetsByIdAddcaregiverreportedline"];
         delete?: never;
         options?: never;
@@ -10957,6 +11167,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record a per-line reconciliation decision (reconciliation_authoring_eligible ABAC) */
         post: operations["postApiV1ReconciliationWorksheetsByIdDecisions"];
         delete?: never;
         options?: never;
@@ -10977,6 +11188,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Update a per-line decision before finalization */
         patch: operations["patchApiV1ReconciliationWorksheetsByIdDecisionsByLineId"];
         trace?: never;
     };
@@ -10989,6 +11201,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Finalize the worksheet (emits m13.reconciliation.completed) */
         post: operations["postApiV1ReconciliationWorksheetsByIdFinalize"];
         delete?: never;
         options?: never;
@@ -11005,6 +11218,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Void a reconciliation worksheet */
         post: operations["postApiV1ReconciliationWorksheetsByIdVoid"];
         delete?: never;
         options?: never;
@@ -11019,9 +11233,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** A patient's recurring-visit policies — active/discontinued (§5.1 recurring) */
+        /** A patient's recurring-visit policies */
         get: operations["getApiV1Recurringvisits"];
         put?: never;
+        /** Create a recurring policy (validates RRULE subset; 201) */
         post: operations["postApiV1Recurringvisits"];
         delete?: never;
         options?: never;
@@ -11038,6 +11253,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Discontinue a recurring policy (cascade-cancels future) */
         post: operations["postApiV1RecurringvisitsByIdDiscontinue"];
         delete?: never;
         options?: never;
@@ -11052,9 +11268,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Referral inbox queue (cursor-paginated, §4.1) */
+        /** Referral worklist (cursor-paginated) */
         get: operations["getApiV1Referrals"];
         put?: never;
+        /** Receive a referral (§5.1) */
         post: operations["postApiV1Referrals"];
         delete?: never;
         options?: never;
@@ -11069,12 +11286,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** One referral's summary + state */
         get: operations["getApiV1ReferralsById"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
+        /** Update a referral */
         patch: operations["patchApiV1ReferralsById"];
         trace?: never;
     };
@@ -11087,6 +11306,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Accept a referral → seed the admission */
         post: operations["postApiV1ReferralsByIdAccept"];
         delete?: never;
         options?: never;
@@ -11103,6 +11323,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Decline a referral */
         post: operations["postApiV1ReferralsByIdDecline"];
         delete?: never;
         options?: never;
@@ -11119,6 +11340,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record a triage outcome (eligible/ineligible) */
         post: operations["postApiV1ReferralsByIdTriage"];
         delete?: never;
         options?: never;
@@ -11133,7 +11355,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Refill inbox — pending refills the caller may decide (§4.1; ABAC refill_inbox_scope) */
+        /** Refill inbox (refill_inbox_scope ABAC) */
         get: operations["getApiV1Refills"];
         put?: never;
         post?: never;
@@ -11150,7 +11372,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Refill detail — source order + request fields for approve/deny (§4.1; ABAC refill_inbox_scope) */
+        /** One refill request's detail */
         get: operations["getApiV1RefillsById"];
         put?: never;
         post?: never;
@@ -11169,6 +11391,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Approve a refill (mints a new medication order) */
         post: operations["postApiV1RefillsByIdApprove"];
         delete?: never;
         options?: never;
@@ -11185,6 +11408,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Deny a refill request */
         post: operations["postApiV1RefillsByIdDeny"];
         delete?: never;
         options?: never;
@@ -11949,6 +12173,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Cached RxBenefit coverage lookup */
         post: operations["postApiV1RxbenefitLookup"];
         delete?: never;
         options?: never;
@@ -12372,7 +12597,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Scheduled-dose timeline for a patient (the eMAR next-24h projection; §4.1 / §6.1 #1) */
+        /** Read the scheduled-dose timeline for a patient */
         get: operations["getApiV1Scheduleddoses"];
         put?: never;
         post?: never;
@@ -12391,6 +12616,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record an intentional hold before the grace window expires */
         post: operations["postApiV1ScheduleddosesByIdIntentionalhold"];
         delete?: never;
         options?: never;
@@ -12441,6 +12667,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Acknowledge a significant-change event */
         post: operations["postApiV1SignificantchangesByEventIdAcknowledge"];
         delete?: never;
         options?: never;
@@ -12455,9 +12682,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Standing-order templates — cadence, next-spawn, spawn count (§4.1 / §5.2 D5) */
+        /** Standing-order templates (cadence, next-spawn, count) */
         get: operations["getApiV1Standingorders"];
         put?: never;
+        /** Create a standing-order template (D5 eligibility) */
         post: operations["postApiV1Standingorders"];
         delete?: never;
         options?: never;
@@ -12472,13 +12700,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Standing-order template detail + spawn history (§4.1 / §5.2 D5) */
+        /** Standing-order template detail + spawn history */
         get: operations["getApiV1StandingordersById"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
+        /** Edit a standing-order template */
         patch: operations["patchApiV1StandingordersById"];
         trace?: never;
     };
@@ -12491,6 +12720,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Discontinue a standing-order template */
         post: operations["postApiV1StandingordersByIdDiscontinue"];
         delete?: never;
         options?: never;
@@ -12507,6 +12737,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Pause a standing-order template */
         post: operations["postApiV1StandingordersByIdPause"];
         delete?: never;
         options?: never;
@@ -12523,6 +12754,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Resume a paused standing-order template */
         post: operations["postApiV1StandingordersByIdResume"];
         delete?: never;
         options?: never;
@@ -12539,6 +12771,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** PRN manual spawn from a standing-order template */
         post: operations["postApiV1StandingordersByIdSpawn"];
         delete?: never;
         options?: never;
@@ -13164,6 +13397,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the org's published overlays */
         get: operations["getApiV1Tenantoverlays"];
         put?: never;
         post?: never;
@@ -13181,6 +13415,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        /** Publish a tenant overlay (step-up + If-Match, §4.7 ABAC) */
         put: operations["putApiV1TenantoverlaysByTemplateKey"];
         post?: never;
         delete?: never;
@@ -13568,9 +13803,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Time-off requests — approval queue / my-PTO, membership/state/date filtered (§5.1) */
+        /** Time-off requests (approval queue / my-PTO) */
         get: operations["getApiV1Timeoff"];
         put?: never;
+        /** Request PTO (201) */
         post: operations["postApiV1Timeoff"];
         delete?: never;
         options?: never;
@@ -13587,6 +13823,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Approve PTO (triggers reassignment scan) */
         post: operations["postApiV1TimeoffByIdApprove"];
         delete?: never;
         options?: never;
@@ -13603,6 +13840,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Cancel own pre-start PTO */
         post: operations["postApiV1TimeoffByIdCancel"];
         delete?: never;
         options?: never;
@@ -13619,6 +13857,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Deny PTO (reason) */
         post: operations["postApiV1TimeoffByIdDeny"];
         delete?: never;
         options?: never;
@@ -13986,7 +14225,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The scheduler proposal inbox — pending frequency/order/IDG/supervisory proposals (§5.1) */
+        /** The scheduler proposal inbox */
         get: operations["getApiV1Visitproposals"];
         put?: never;
         post?: never;
@@ -14005,6 +14244,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Dismiss a scheduler proposal */
         post: operations["postApiV1VisitproposalsByProposalIdDismiss"];
         delete?: never;
         options?: never;
@@ -14021,6 +14261,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Publish a proposal as a real visit (201) */
         post: operations["postApiV1VisitproposalsByProposalIdPublish"];
         delete?: never;
         options?: never;
@@ -14035,9 +14276,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Visits in caseload/scope — clinician/patient/status/date-window filtered (§4.1 / §5.1) */
+        /** Visits in caseload/scope (clinician/patient/status/date filtered) */
         get: operations["getApiV1Visits"];
         put?: never;
+        /** Manual visit create (runs the D8 pre-schedule gate) */
         post: operations["postApiV1Visits"];
         delete?: never;
         options?: never;
@@ -14052,13 +14294,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** One visit's detail — status + scheduled window + assignment (§4.1 / §5.1 visit detail) */
+        /** One visit's detail (status + scheduled window + assignment) */
         get: operations["getApiV1VisitsByVisitId"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
+        /** Edit times / discipline / assignment (reruns D8 gate) */
         patch: operations["patchApiV1VisitsByVisitId"];
         trace?: never;
     };
@@ -14071,6 +14314,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Cancel a visit (reason + reason code) */
         post: operations["postApiV1VisitsByVisitIdCancel"];
         delete?: never;
         options?: never;
@@ -14087,6 +14331,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Mark no-show (triggers reassign-or-followup) */
         post: operations["postApiV1VisitsByVisitIdNoshow"];
         delete?: never;
         options?: never;
@@ -14103,6 +14348,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Reassign-only (reruns the D8 gate) */
         post: operations["postApiV1VisitsByVisitIdReassign"];
         delete?: never;
         options?: never;
@@ -14119,6 +14365,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Reschedule (returns the newly-created visit, 201) */
         post: operations["postApiV1VisitsByVisitIdReschedule"];
         delete?: never;
         options?: never;
@@ -14135,6 +14382,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Self-attest start (EVV-missing path; step-up-fresh) */
         post: operations["postApiV1VisitsByVisitIdStart"];
         delete?: never;
         options?: never;
@@ -14235,7 +14483,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Week-view grid — a clinician's visits across a week (§5.1 week) */
+        /** Week-view grid (a clinician's visits across a week) */
         get: operations["getApiV1Weekview"];
         put?: never;
         post?: never;
@@ -14471,7 +14719,15 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    graceWindowMinutes?: number;
+                    prnMinimumIntervalMinutes?: number;
+                    emarPdfOnCommit?: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -14517,7 +14773,13 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    scheduleIiiToVMaxRefills?: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -14549,7 +14811,7 @@ export interface operations {
                         prescribers: {
                             membershipId: string;
                             enrolled: boolean;
-                            deaAuthorizedSchedules: string[];
+                            deaAuthorizedSchedules: ("II" | "III" | "IV" | "V")[];
                             ial2Status: string;
                         }[];
                     };
@@ -14568,7 +14830,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    deaAuthorizedSchedules?: ("II" | "III" | "IV" | "V")[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -14590,7 +14858,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -14619,7 +14893,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        status: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -14634,7 +14913,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -14656,7 +14939,16 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    versionLabel: string;
+                    payloadSchema?: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -14804,14 +15096,46 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                        status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                        priority: "routine" | "stat" | "asap";
+                        version: number;
+                        drafterMembershipId: string;
+                        drafterDiscipline: string;
+                        orderingPhysicianMdmId: string;
+                        cosignRequired: boolean;
+                        cosignStatus: "pending" | "attached" | null;
+                        transmissionStatus: string;
+                        resultsStatus: string;
+                        verbalDeadlineAt: string | null;
+                        discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
+                        replacesOrderId: string | null;
+                        triggeringAssessmentId: string | null;
+                        triggeringHopeAssessmentId: string | null;
+                        signedAt: string | null;
+                        signedBy: string | null;
+                        completedAt: string | null;
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -14835,8 +15159,8 @@ export interface operations {
                     "application/json": {
                         windowHours: number;
                         businessHoursOnly: boolean;
-                        lpnCosignRequiredKinds: string[];
-                        npCosignRequiredKinds: string[];
+                        lpnCosignRequiredKinds: ("lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested")[];
+                        npCosignRequiredKinds: ("lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested")[];
                         platformFloorWindowHours: number;
                         policyVersion: string;
                     };
@@ -14853,14 +15177,32 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    windowHours: number;
+                    businessHoursOnly?: boolean;
+                    lpnCosignRequiredKinds?: ("lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested")[];
+                    npCosignRequiredKinds?: ("lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested")[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        windowHours: number;
+                        businessHoursOnly: boolean;
+                        lpnCosignRequiredKinds: ("lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested")[];
+                        npCosignRequiredKinds: ("lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested")[];
+                        platformFloorWindowHours: number;
+                        policyVersion: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -14929,7 +15271,14 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    slaWarnHours?: number;
+                    slaCriticalHours?: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -14960,12 +15309,12 @@ export interface operations {
                     "application/json": {
                         licenses: {
                             id: string;
-                            scaleType: string;
+                            scaleType: "pps" | "kps" | "fast" | "painad" | "flacc" | "esas_r" | "nyha" | "meld" | "bode" | "flacker" | "gds" | "braden" | "morse" | "aims";
                             vendor: string;
                             effectiveDate: string;
                             expiresAt: string;
                             seats: number | null;
-                            status: string;
+                            status: "active" | "pending_renewal" | "expired";
                         }[];
                     };
                 };
@@ -14981,7 +15330,19 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    scaleType: "pps" | "kps" | "fast" | "painad" | "flacc" | "esas_r" | "nyha" | "meld" | "bode" | "flacker" | "gds" | "braden" | "morse" | "aims";
+                    vendor: string;
+                    /** Format: date */
+                    effectiveDate: string;
+                    /** Format: date */
+                    expiresAt: string;
+                    seats?: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15003,7 +15364,18 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    vendor?: string;
+                    /** Format: date */
+                    effectiveDate?: string;
+                    /** Format: date */
+                    expiresAt?: string;
+                    seats?: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15033,7 +15405,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         policies: {
-                            scaleType: string;
+                            scaleType: "pps" | "kps" | "fast" | "painad" | "flacc" | "esas_r" | "nyha" | "meld" | "bode" | "flacker" | "gds" | "braden" | "morse" | "aims";
                             enabled: boolean;
                         }[];
                     };
@@ -15052,7 +15424,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15141,11 +15519,11 @@ export interface operations {
                         admissionId: string;
                         medicationOrderId: string;
                         mode: "single_dose" | "iv_continuous_start" | "iv_continuous_rate_change" | "iv_continuous_pause" | "iv_continuous_resume" | "iv_continuous_stop";
-                        status: string;
-                        actorKind: string;
+                        status: "committed" | "pending_caregiver_review" | "superseded" | "voided";
+                        actorKind: "clinician" | "caregiver_attested" | "system_iv_session_event";
                         administeredAt: string;
                         recordedAt: string;
-                        lateEntryTier: string;
+                        lateEntryTier: "normal" | "late" | "significant_late" | "administrative_override";
                         administeringClinicianMembershipId: string | null;
                         witnessMembershipId: string | null;
                         encounterId: string | null;
@@ -15156,7 +15534,7 @@ export interface operations {
                         isComfortKitDrawdown: boolean;
                         requiresRnReview: boolean;
                         supersededById: string | null;
-                        barcodeMatchResult: string | null;
+                        barcodeMatchResult: ("match" | "wrong_drug" | "wrong_patient" | "expired" | "no_order_active") | null;
                     }[];
                 };
             };
@@ -15171,7 +15549,51 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    medicationOrderId: string;
+                    medClass: "standard" | "controlled_substance" | "compounded";
+                    mode: "single_dose" | "iv_continuous_start" | "iv_continuous_rate_change" | "iv_continuous_pause" | "iv_continuous_resume" | "iv_continuous_stop";
+                    /** Format: date-time */
+                    administeredAt: string;
+                    /** Format: uuid */
+                    scheduledDoseId?: string;
+                    /** Format: uuid */
+                    comfortKitDeploymentId?: string;
+                    /** Format: uuid */
+                    encounterId?: string;
+                    data: unknown;
+                    prn?: {
+                        triggeringPrnReason: string;
+                        requestedByKind: "clinician_observed" | "patient_request" | "caregiver_request" | "scheduled_reassessment_protocol";
+                        /** Format: uuid */
+                        triggeringAssessmentId?: string;
+                        intervalOverride?: {
+                            reason: string;
+                        };
+                    };
+                    lateEntryReason?: string;
+                    offlineCapture?: {
+                        /** Format: uuid */
+                        deviceId: string;
+                        /** Format: uuid */
+                        localId: string;
+                        /** Format: date-time */
+                        capturedAt: string;
+                    };
+                    barcodeScan?: {
+                        scannedNdc?: string;
+                        scannedRxnormRxcui?: string;
+                        scannedLotNumber?: string;
+                        scannedExpirationDate?: string;
+                        patientWristbandPayloadDigest?: string;
+                    };
+                    notes?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15207,11 +15629,11 @@ export interface operations {
                         admissionId: string;
                         medicationOrderId: string;
                         mode: "single_dose" | "iv_continuous_start" | "iv_continuous_rate_change" | "iv_continuous_pause" | "iv_continuous_resume" | "iv_continuous_stop";
-                        status: string;
-                        actorKind: string;
+                        status: "committed" | "pending_caregiver_review" | "superseded" | "voided";
+                        actorKind: "clinician" | "caregiver_attested" | "system_iv_session_event";
                         administeredAt: string;
                         recordedAt: string;
-                        lateEntryTier: string;
+                        lateEntryTier: "normal" | "late" | "significant_late" | "administrative_override";
                         administeringClinicianMembershipId: string | null;
                         witnessMembershipId: string | null;
                         encounterId: string | null;
@@ -15222,7 +15644,7 @@ export interface operations {
                         isComfortKitDrawdown: boolean;
                         requiresRnReview: boolean;
                         supersededById: string | null;
-                        barcodeMatchResult: string | null;
+                        barcodeMatchResult: ("match" | "wrong_drug" | "wrong_patient" | "expired" | "no_order_active") | null;
                     };
                 };
             };
@@ -15239,7 +15661,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    note?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15261,7 +15689,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    /** Format: date-time */
+                    administeredAt?: string;
+                    data?: unknown;
+                    notes?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15283,7 +15721,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    disputeReason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15305,7 +15749,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    voidReason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15325,7 +15775,30 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    medicationOrderId: string;
+                    /** Format: date-time */
+                    administeredAt: string;
+                    administeredAmount: number;
+                    administeredUnit: string;
+                    route: string;
+                    caregiverAttestationText: string;
+                    barcodeScan?: {
+                        scannedNdc?: string;
+                        scannedRxnormRxcui?: string;
+                        scannedLotNumber?: string;
+                        scannedExpirationDate?: string;
+                        patientWristbandPayloadDigest?: string;
+                    };
+                    notes?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15376,7 +15849,53 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    rows: {
+                        /** Format: uuid */
+                        medicationOrderId: string;
+                        medClass: "standard" | "controlled_substance" | "compounded";
+                        mode: "single_dose" | "iv_continuous_start" | "iv_continuous_rate_change" | "iv_continuous_pause" | "iv_continuous_resume" | "iv_continuous_stop";
+                        /** Format: date-time */
+                        administeredAt: string;
+                        /** Format: uuid */
+                        scheduledDoseId?: string;
+                        /** Format: uuid */
+                        comfortKitDeploymentId?: string;
+                        /** Format: uuid */
+                        encounterId?: string;
+                        data: unknown;
+                        prn?: {
+                            triggeringPrnReason: string;
+                            requestedByKind: "clinician_observed" | "patient_request" | "caregiver_request" | "scheduled_reassessment_protocol";
+                            /** Format: uuid */
+                            triggeringAssessmentId?: string;
+                            intervalOverride?: {
+                                reason: string;
+                            };
+                        };
+                        lateEntryReason?: string;
+                        offlineCapture?: {
+                            /** Format: uuid */
+                            deviceId: string;
+                            /** Format: uuid */
+                            localId: string;
+                            /** Format: date-time */
+                            capturedAt: string;
+                        };
+                        barcodeScan?: {
+                            scannedNdc?: string;
+                            scannedRxnormRxcui?: string;
+                            scannedLotNumber?: string;
+                            scannedExpirationDate?: string;
+                            patientWristbandPayloadDigest?: string;
+                        };
+                        notes?: string;
+                    }[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15396,7 +15915,22 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    medicationOrderId: string;
+                    medClass: "standard" | "controlled_substance" | "compounded";
+                    /** Format: uuid */
+                    scheduledDoseId?: string;
+                    /** Format: date-time */
+                    refusedAt: string;
+                    refusalReason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15416,7 +15950,19 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    medicationOrderId: string;
+                    /** Format: uuid */
+                    administeringClinicianMembershipId: string;
+                    attestationText: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15469,7 +16015,21 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    referralId?: string;
+                    intakeMethod: "in_person" | "phone" | "referral_auto" | "transfer_in";
+                    /** Format: uuid */
+                    attendingPhysicianId?: string;
+                    /** Format: uuid */
+                    hospiceMedicalDirectorId: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15491,14 +16051,60 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    triggeringAssessmentId: string;
+                    /** Format: date-time */
+                    targetDate: string;
+                    authorDiscipline: "RN" | "NP" | "MD";
+                    adminOverride?: boolean;
+                    data: {
+                        J?: {
+                            J2051?: {
+                                entries: {
+                                    symptomCode: string;
+                                    severity: "none" | "mild" | "moderate" | "severe";
+                                    otherSymptomLabel?: string;
+                                }[];
+                            };
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        rfaKind: "01_admission" | "02_huv1" | "03_huv2" | "04_sfv" | "05_discharge";
+                        status: "draft" | "signed" | "superseded";
+                        targetDate: string;
+                        authorDiscipline: string;
+                        j2051MaxSeverity: ("none" | "mild" | "moderate" | "severe") | null;
+                        j2051TriggerFired: boolean;
+                        wasLate: boolean;
+                        signedAt: string | null;
+                        signedBy: string | null;
+                        correctsAssessmentId: string | null;
+                        supersededByAssessmentId: string | null;
+                        snapshot: {
+                            [key: string]: number | null;
+                        } | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -15513,14 +16119,62 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    rfaKind: "01_admission" | "02_huv1" | "03_huv2" | "04_sfv" | "05_discharge";
+                    /** Format: date-time */
+                    targetDate: string;
+                    authorDiscipline: "RN" | "NP" | "MD";
+                    /** Format: uuid */
+                    sourceEncounterId?: string;
+                    dischargeReason?: "death" | "revocation" | "transfer_to_hospice" | "live_discharge";
+                    data: {
+                        J?: {
+                            J2051?: {
+                                entries: {
+                                    symptomCode: string;
+                                    severity: "none" | "mild" | "moderate" | "severe";
+                                    otherSymptomLabel?: string;
+                                }[];
+                            };
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        rfaKind: "01_admission" | "02_huv1" | "03_huv2" | "04_sfv" | "05_discharge";
+                        status: "draft" | "signed" | "superseded";
+                        targetDate: string;
+                        authorDiscipline: string;
+                        j2051MaxSeverity: ("none" | "mild" | "moderate" | "severe") | null;
+                        j2051TriggerFired: boolean;
+                        wasLate: boolean;
+                        signedAt: string | null;
+                        signedBy: string | null;
+                        correctsAssessmentId: string | null;
+                        supersededByAssessmentId: string | null;
+                        snapshot: {
+                            [key: string]: number | null;
+                        } | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -15567,7 +16221,16 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    intakeMethod?: "in_person" | "phone" | "referral_auto" | "transfer_in";
+                    /** Format: uuid */
+                    attendingPhysicianId?: string;
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15589,7 +16252,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15641,7 +16310,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: "death" | "moved_out_of_service_area" | "no_longer_terminal" | "for_cause" | "other";
+                    /** Format: date */
+                    dischargeDate: string;
+                    narrative: string;
+                    forCauseReason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15693,7 +16372,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date */
+                    effectiveStart: string;
+                    kind: "ninety_day" | "sixty_day";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15715,7 +16402,23 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    electionPeriodId: string;
+                    /** Format: date */
+                    effectiveDate: string;
+                    primaryDiagnosisIcd10: string;
+                    /** Format: uuid */
+                    electedProviderEntityId: string;
+                    /** Format: uuid */
+                    electedAttendingPhysicianId?: string;
+                    waiverAcknowledged: boolean;
+                    stateAddendum?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15737,7 +16440,23 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    electionPeriodId: string;
+                    /** Format: date */
+                    scheduledDate: string;
+                    /** Format: date */
+                    windowStart: string;
+                    /** Format: date */
+                    windowEnd: string;
+                    clinicianRole: "hospice_np" | "hospice_md";
+                    /** Format: uuid */
+                    scheduledClinicianId: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15759,7 +16478,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15788,7 +16514,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            state: string;
+                            version: number;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -15803,7 +16537,16 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    newLevel: "rhc" | "crc" | "gip" | "iri";
+                    /** Format: date */
+                    effectiveStart: string;
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15832,7 +16575,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        state: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -15847,7 +16596,19 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    formVersionId: string;
+                    deliveryMethod: "wet_ink_scanned" | "electronic_witnessed" | "verbal_with_witness";
+                    /** Format: date-time */
+                    acknowledgedAt: string;
+                    acknowledgedByName: string;
+                    acknowledgedByRole: "patient" | "legal_representative";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15869,7 +16630,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15891,7 +16658,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date */
+                    revocationDate: string;
+                    narrative: string;
+                    signingPatientName: string;
+                    signingRole: "patient" | "legal_representative";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15913,7 +16690,22 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @constant */
+                    direction: "in";
+                    /** Format: date */
+                    effectiveDate: string;
+                    otherHospiceName: string;
+                    otherHospiceCcn?: string;
+                    priorBenefitPeriodSequence: number;
+                    /** Format: date */
+                    priorElectionStartDate: string;
+                    narrative: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15935,7 +16727,19 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @constant */
+                    direction: "out";
+                    /** Format: date */
+                    effectiveDate: string;
+                    otherHospiceName: string;
+                    otherHospiceCcn?: string;
+                    narrative: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -17174,7 +17978,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @constant */
+                    attestationConfirmed: true;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -17448,14 +18259,36 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    timeZone: string;
+                    slots: {
+                        weekday: number;
+                        startTime: string;
+                        endTime: string;
+                    }[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        membershipId: string;
+                        timeZone: string;
+                        slots: {
+                            weekday: number;
+                            startTime: string;
+                            endTime: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -20181,7 +21014,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    problemId: string;
+                    originalText: string;
+                    source: "clinical" | "patient_stated" | "family_stated" | "agent_stated";
+                    /** Format: uuid */
+                    actingConsentId?: string;
+                    measurableOutcome?: string;
+                    /** Format: date-time */
+                    targetAt?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -20204,7 +21050,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    revisedText?: string;
+                    measurableOutcome?: string;
+                    status?: "not_started" | "in_progress" | "met" | "not_met" | "revised" | "discontinued";
+                    /** Format: date-time */
+                    targetAt?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -20226,7 +21082,19 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    problemId: string;
+                    goalRefs?: string[];
+                    scopeText: string;
+                    frequencyText: string;
+                    frequencyValue: string;
+                    discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "md_np" | "pt" | "ot" | "st" | "volunteer" | "music_therapy" | "dietitian" | "bereavement";
+                    responsibleRole?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -20249,7 +21117,16 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    scopeText?: string;
+                    frequencyText?: string;
+                    frequencyValue?: string;
+                    responsibleRole?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -20272,7 +21149,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -20287,7 +21171,11 @@ export interface operations {
     };
     getApiV1CareplansByPlanIdOverduestatus: {
         parameters: {
-            query?: never;
+            query: {
+                patientId: string;
+                encounterType?: string;
+                discipline?: string;
+            };
             header?: never;
             path: {
                 planId: string;
@@ -20301,7 +21189,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        planId: string;
+                        patientId: string;
+                        overdue: boolean;
+                        initialOverdue: boolean;
+                        reviewOverdue: boolean;
+                        initialDueAt: string;
+                        nextReviewDueAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -20316,7 +21214,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    icd10Code?: string;
+                    snomedCode?: string;
+                    description: string;
+                    kind: "terminal" | "related" | "unrelated";
+                    source: "clinical" | "patient_reported" | "family_reported" | "history" | "intake_extraction";
+                    sudRelated?: boolean;
+                    /** Format: date-time */
+                    onsetAt?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -20339,7 +21250,16 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    description?: string;
+                    kind?: "terminal" | "related" | "unrelated";
+                    icd10Code?: string;
+                    snomedCode?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -20362,7 +21282,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    resolutionNote: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -20397,7 +21324,7 @@ export interface operations {
                         versionId: string | null;
                         activeProblems: {
                             description: string;
-                            kind: string;
+                            kind: "terminal" | "related" | "unrelated";
                         }[];
                         patientStatedGoals: {
                             text: string;
@@ -20405,7 +21332,7 @@ export interface operations {
                         }[];
                         activeInterventions: {
                             layText: string;
-                            discipline: string;
+                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "md_np" | "pt" | "ot" | "st" | "volunteer" | "music_therapy" | "dietitian" | "bereavement";
                             frequencyText: string;
                         }[];
                         redacted: boolean;
@@ -20438,12 +21365,15 @@ export interface operations {
                             id: string;
                             planId: string;
                             sequence: number;
-                            kind: string;
-                            status: string;
+                            kind: "initial" | "idg_review" | "interim_revision" | "discharge";
+                            status: "draft" | "in_review" | "signed" | "superseded";
                             idgMeetingId: string | null;
-                            requiredSignerSet: string[];
+                            requiredSignerSet: {
+                                role: string;
+                                count: number;
+                            }[];
                             signatures: {
-                                signerRole: string;
+                                signerRole: "rn_case_manager" | "hospice_physician" | "nurse_practitioner" | "msw" | "chaplain" | "medical_director";
                                 signedAt: string;
                             }[];
                             signedAt: string | null;
@@ -20466,7 +21396,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    kind: "initial" | "idg_review" | "interim_revision" | "discharge";
+                    /** Format: uuid */
+                    idgMeetingId?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -20496,7 +21434,26 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        planId: string;
+                        sequence: number;
+                        kind: "initial" | "idg_review" | "interim_revision" | "discharge";
+                        status: "draft" | "in_review" | "signed" | "superseded";
+                        idgMeetingId: string | null;
+                        requiredSignerSet: {
+                            role: string;
+                            count: number;
+                        }[];
+                        signatures: {
+                            signerRole: "rn_case_manager" | "hospice_physician" | "nurse_practitioner" | "msw" | "chaplain" | "medical_director";
+                            signedAt: string;
+                        }[];
+                        signedAt: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -20512,7 +21469,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    requiredSignerSet?: {
+                        role: "rn_case_manager" | "hospice_physician" | "nurse_practitioner" | "msw" | "chaplain" | "medical_director";
+                        count: number;
+                    }[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -20535,7 +21502,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -20558,7 +21531,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    signerRole: "rn_case_manager" | "hospice_physician" | "nurse_practitioner" | "msw" | "chaplain" | "medical_director";
+                    patientUnderstandingText?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -20777,7 +21758,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    note?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -20832,7 +21819,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -20854,7 +21847,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -22592,7 +23592,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        state: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22607,7 +23613,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date-time */
+                    oralCertVerbalAt: string;
+                    oralCertVerbalBy: string;
+                    reason: string;
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -22629,7 +23645,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    signingPhysicianName: string;
+                    signingPhysicianNpi: string;
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -22651,7 +23675,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    signingPhysicianName: string;
+                    signingPhysicianNpi: string;
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -22673,7 +23705,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -22727,7 +23766,7 @@ export interface operations {
                             scheduledEndedAt: string;
                             /** Format: date */
                             serviceDate: string;
-                            status: string;
+                            status: "proposed" | "published" | "en_route" | "in_visit" | "completed" | "no_show" | "cancelled" | "rescheduled";
                             patientAddressId: string | null;
                             externalFacilityId: string | null;
                             rescheduledIntoVisitId: string | null;
@@ -23031,7 +24070,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    cosignerName: string;
+                    cosignerNpi: string;
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -23627,7 +24674,7 @@ export interface operations {
                             title: string;
                             patientFacing: boolean;
                             attachToDisclosures: boolean;
-                            status: string;
+                            status: "active" | "superseded" | "legal_hold" | "destroyed_tombstone";
                             version: number;
                             versionsCount: number;
                             /** Format: date-time */
@@ -23651,7 +24698,27 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId?: string;
+                    /** Format: uuid */
+                    admissionId?: string;
+                    retentionClass: "compliance" | "clinical_record" | "bereavement" | "operational" | "intake_artifact" | "compliance_42cfr_part2";
+                    aggregateType: string;
+                    /** Format: uuid */
+                    aggregateId?: string;
+                    title: string;
+                    tags?: {
+                        tagKind: "free" | "structured";
+                        tagKey: string;
+                        tagValue?: string;
+                    }[];
+                    patientFacing?: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -23691,7 +24758,7 @@ export interface operations {
                         title: string;
                         patientFacing: boolean;
                         attachToDisclosures: boolean;
-                        status: string;
+                        status: "active" | "superseded" | "legal_hold" | "destroyed_tombstone";
                         version: number;
                         versionsCount: number;
                         /** Format: date-time */
@@ -23714,7 +24781,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    title?: string;
+                    patientFacing?: boolean;
+                    attachToDisclosures?: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -23736,7 +24811,16 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    purpose: "treatment" | "payment" | "operations" | "disclosure" | "patient_access" | "amendment_review" | "survey_export";
+                    recipientClass?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -23758,7 +24842,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    tagKind: "free" | "structured";
+                    tagKey: string;
+                    tagValue?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -23844,7 +24936,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    title?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -23874,7 +24972,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        documentId: string;
+                        versionNumber: number;
+                        mimeType: string;
+                        byteSize: number;
+                        /** Format: date-time */
+                        uploadedAt: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23882,7 +24992,12 @@ export interface operations {
     };
     getApiV1DocumentsByIdVersionsByVersionIdContent: {
         parameters: {
-            query?: never;
+            query: {
+                purpose: "treatment" | "payment" | "operations" | "disclosure" | "patient_access" | "amendment_review" | "survey_export";
+                recipientMembershipId?: string;
+                recipientClass?: string;
+                ttlSeconds?: number;
+            };
             header?: never;
             path: {
                 id: string;
@@ -23897,7 +25012,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        url: string;
+                        /** Format: date-time */
+                        expiresAt: string;
+                        documentVersionId: string;
+                        accessKind: "metadata_read" | "content_download" | "signed_url_issued" | "signed_url_consumed" | "portal_view" | "disclosure_export";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23912,7 +25035,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date */
+                    effectiveStart?: string;
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -23934,7 +25065,22 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    hospiceMedicalDirectorId: string;
+                    /** Format: uuid */
+                    attendingPhysicianId?: string;
+                    prognosisStatement: string;
+                    narrative: string;
+                    clinicalFindings: {
+                        [key: string]: unknown;
+                    };
+                    isRecert: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -23963,7 +25109,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        state: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23978,7 +25130,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    signingPatientName: string;
+                    signingRole: "patient" | "legal_representative";
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -24000,7 +25160,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -24015,7 +25182,16 @@ export interface operations {
     };
     getApiV1Encounters: {
         parameters: {
-            query?: never;
+            query?: {
+                patientId?: string;
+                authorId?: string;
+                status?: string;
+                lateEntryTier?: string;
+                from?: string;
+                to?: string;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -24027,7 +25203,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        encounters: {
+                            id: string;
+                            organizationId: string;
+                            patientId: string;
+                            admissionId: string;
+                            visitId: string | null;
+                            encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup";
+                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                            serviceDate: string;
+                            status: "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
+                            lateEntryTier: string;
+                            version: number;
+                            authoredByUserId: string;
+                            isF2f: boolean;
+                            signedAt: string | null;
+                            cosignedAt: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24040,14 +25236,42 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    admissionId: string;
+                    /** Format: uuid */
+                    visitId?: string;
+                    encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup";
+                    discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                    /** Format: date */
+                    serviceDate: string;
+                    /** Format: uuid */
+                    faceToFaceEncounterId?: string;
+                    /** Format: uuid */
+                    bereavementPlanId?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        status: "draft";
+                        templateKey: string;
+                        templateVersion: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24076,10 +25300,10 @@ export interface operations {
                         patientId: string;
                         admissionId: string;
                         visitId: string | null;
-                        encounterType: string;
-                        discipline: string;
+                        encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup";
+                        discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
                         serviceDate: string;
-                        status: string;
+                        status: "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
                         lateEntryTier: string;
                         version: number;
                         authoredByUserId: string;
@@ -24102,14 +25326,26 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        status: "draft";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24125,14 +25361,23 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "finalized";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24148,14 +25393,29 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    selections: {
+                        [key: string]: unknown;
+                    };
+                    freeText?: {
+                        [key: string]: string;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24171,14 +25431,29 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date-time */
+                    stepUpAuthAt: string;
+                    /** @constant */
+                    attestationConfirmed: true;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "signed";
+                        signedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24193,14 +25468,26 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    /** Format: date-time */
+                    stepUpAuthAt: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        status: "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24215,14 +25502,29 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    problemId?: string;
+                    /** Format: uuid */
+                    goalId?: string;
+                    /** Format: uuid */
+                    interventionId?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        linkId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24269,7 +25571,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        status: string | null;
+                        status: ("pending" | "routed" | "acknowledged" | "escalated" | "hard_cap_reached" | "supervisor_released" | "signed") | null;
                     };
                 };
             };
@@ -24293,7 +25595,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        status: "pending" | "routed" | "acknowledged" | "escalated" | "hard_cap_reached" | "supervisor_released" | "signed";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24308,14 +25614,28 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date-time */
+                    stepUpAuthAt: string;
+                    /** @constant */
+                    attestationConfirmed: true;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        status: "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
+                        cosignedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24330,14 +25650,26 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    /** Format: date-time */
+                    stepUpAuthAt: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        status: "pending" | "routed" | "acknowledged" | "escalated" | "hard_cap_reached" | "supervisor_released" | "signed";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24352,14 +25684,24 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    evvMissingReason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        evvBracketState: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24374,14 +25716,24 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "finalized";
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24396,14 +25748,27 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    style: {
+                        tone: "formal" | "conversational";
+                        brevity: "concise" | "detailed";
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        modificationId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24419,14 +25784,25 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    decision: "accept" | "edit" | "reject";
+                    editedText?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        modificationId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24441,14 +25817,26 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    /** Format: date-time */
+                    stepUpAuthAt: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        status: "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24463,14 +25851,31 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    odometerStart?: number;
+                    odometerEnd?: number;
+                    milesDriven?: string;
+                    source: "odometer" | "route_calc" | "manual_override";
+                    manualOverrideReason?: string;
+                    routeProposedMiles?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        mileageId: string;
+                        milesDriven: string;
+                        source: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24485,14 +25890,31 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    odometerStart?: number;
+                    odometerEnd?: number;
+                    milesDriven?: string;
+                    source: "odometer" | "route_calc" | "manual_override";
+                    manualOverrideReason?: string;
+                    routeProposedMiles?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        mileageId: string;
+                        milesDriven: string;
+                        source: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24507,14 +25929,30 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    selections: {
+                        [key: string]: unknown;
+                    };
+                    freeText?: {
+                        [key: string]: string;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        version: number;
+                        layer1Preview: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24529,14 +25967,29 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date-time */
+                    stepUpAuthAt: string;
+                    /** @constant */
+                    attestationConfirmed: true;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        status: "signed" | "cosign_pending";
+                        signedAt: string;
+                        cosignatureRequestId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24551,14 +26004,43 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    bpSystolic?: number;
+                    bpDiastolic?: number;
+                    heartRate?: number;
+                    respiratoryRate?: number;
+                    temperature?: string;
+                    temperatureUnit?: "mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l";
+                    spo2?: number;
+                    painScore?: number;
+                    painScale?: "nrs_0_10" | "flacc" | "painad" | "verbal_descriptor";
+                    weight?: string;
+                    weightUnit?: "mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l";
+                    height?: string;
+                    heightUnit?: "mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l";
+                    bloodGlucose?: number;
+                    bloodGlucoseUnit?: "mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l";
+                    clinicallyNotIndicatedFields?: string[];
+                    clinicallyNotIndicatedReason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        vitalsId: string;
+                        fieldsCaptured: string[];
+                        abnormalFlags: string[];
+                        bmi: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24574,14 +26056,43 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    bpSystolic?: number;
+                    bpDiastolic?: number;
+                    heartRate?: number;
+                    respiratoryRate?: number;
+                    temperature?: string;
+                    temperatureUnit?: "mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l";
+                    spo2?: number;
+                    painScore?: number;
+                    painScale?: "nrs_0_10" | "flacc" | "painad" | "verbal_descriptor";
+                    weight?: string;
+                    weightUnit?: "mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l";
+                    height?: string;
+                    heightUnit?: "mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l";
+                    bloodGlucose?: number;
+                    bloodGlucoseUnit?: "mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l";
+                    clinicallyNotIndicatedFields?: string[];
+                    clinicallyNotIndicatedReason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        vitalsId: string;
+                        fieldsCaptured: string[];
+                        abnormalFlags: string[];
+                        bmi: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24596,14 +26107,25 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "voided";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24631,10 +26153,10 @@ export interface operations {
                             patientId: string;
                             admissionId: string;
                             visitId: string | null;
-                            encounterType: string;
-                            discipline: string;
+                            encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup";
+                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
                             serviceDate: string;
-                            status: string;
+                            status: "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
                             lateEntryTier: string;
                             version: number;
                             authoredByUserId: string;
@@ -24671,10 +26193,10 @@ export interface operations {
                             patientId: string;
                             admissionId: string;
                             visitId: string | null;
-                            encounterType: string;
-                            discipline: string;
+                            encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup";
+                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
                             serviceDate: string;
-                            status: string;
+                            status: "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
                             lateEntryTier: string;
                             version: number;
                             authoredByUserId: string;
@@ -24908,7 +26430,7 @@ export interface operations {
                         visitId: string;
                         stateCode: string;
                         aggregatorVendor: string;
-                        status: string;
+                        status: "pending" | "queued" | "submitting" | "submitted" | "accepted" | "rejected" | "timeout" | "cancelled";
                         aggregatorTransactionId: string | null;
                         attemptCount: number;
                     }[];
@@ -24927,14 +26449,30 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        visitId: string;
+                        stateCode: string;
+                        aggregatorVendor: string;
+                        status: "pending" | "queued" | "submitting" | "submitted" | "accepted" | "rejected" | "timeout" | "cancelled";
+                        aggregatorTransactionId: string | null;
+                        attemptCount: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24949,14 +26487,30 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        visitId: string;
+                        stateCode: string;
+                        aggregatorVendor: string;
+                        status: "pending" | "queued" | "submitting" | "submitted" | "accepted" | "rejected" | "timeout" | "cancelled";
+                        aggregatorTransactionId: string | null;
+                        attemptCount: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24969,14 +26523,46 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    visitId: string;
+                    serviceTypeCode: string;
+                    /** Format: date-time */
+                    capturedAt: string;
+                    coords: {
+                        lat: number;
+                        lng: number;
+                    };
+                    accuracyM: number;
+                    /** Format: uuid */
+                    evvDeviceId: string;
+                    offlineCapture?: boolean;
+                    /** Format: uuid */
+                    localId?: string;
+                    /** Format: uuid */
+                    expectedAttestationId: string;
+                    /** @constant */
+                    gpsQualityAttested?: "degraded_attested";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        eventId: string;
+                        kind: "check_in" | "check_out";
+                        gpsQuality: "high" | "acceptable" | "degraded_attested" | "outside_geofence" | "no_geofence_baseline" | "suspected_spoof";
+                        geofenceDecision: "pass" | "fail_distance" | "fail_accuracy" | "fail_no_baseline";
+                        visitStateAfterEvent: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24989,14 +26575,45 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    visitId: string;
+                    /** Format: date-time */
+                    capturedAt: string;
+                    coords: {
+                        lat: number;
+                        lng: number;
+                    };
+                    accuracyM: number;
+                    /** Format: uuid */
+                    evvDeviceId: string;
+                    offlineCapture?: boolean;
+                    /** Format: uuid */
+                    localId?: string;
+                    /** Format: uuid */
+                    expectedAttestationId: string;
+                    /** @constant */
+                    gpsQualityAttested?: "degraded_attested";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        eventId: string;
+                        kind: "check_in" | "check_out";
+                        gpsQuality: "high" | "acceptable" | "degraded_attested" | "outside_geofence" | "no_geofence_baseline" | "suspected_spoof";
+                        geofenceDecision: "pass" | "fail_distance" | "fail_accuracy" | "fail_no_baseline";
+                        visitStateAfterEvent: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25004,7 +26621,9 @@ export interface operations {
     };
     getApiV1EvvCliniciancurrentlocation: {
         parameters: {
-            query?: never;
+            query?: {
+                membership?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -25016,7 +26635,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        membershipId: string;
+                        eventId: string;
+                        visitId: string;
+                        lat: number;
+                        lng: number;
+                        accuracyM: number;
+                        capturedAt: string;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25044,7 +26673,7 @@ export interface operations {
                         membershipId: string;
                         platform: "ios" | "android";
                         modelDescription: string;
-                        status: string;
+                        status: "pending_approval" | "approved" | "suspended" | "rejected" | "retired";
                     }[];
                 };
             };
@@ -25068,7 +26697,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        membershipId: string;
+                        platform: "ios" | "android";
+                        modelDescription: string;
+                        status: "pending_approval" | "approved" | "suspended" | "rejected" | "retired";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25083,14 +26720,28 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        membershipId: string;
+                        platform: "ios" | "android";
+                        modelDescription: string;
+                        status: "pending_approval" | "approved" | "suspended" | "rejected" | "retired";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25105,14 +26756,28 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        membershipId: string;
+                        platform: "ios" | "android";
+                        modelDescription: string;
+                        status: "pending_approval" | "approved" | "suspended" | "rejected" | "retired";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25127,14 +26792,28 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        membershipId: string;
+                        platform: "ios" | "android";
+                        modelDescription: string;
+                        status: "pending_approval" | "approved" | "suspended" | "rejected" | "retired";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25147,14 +26826,31 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    platform: "ios" | "android";
+                    modelDescription: string;
+                    /** Format: uuid */
+                    attestationId: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        membershipId: string;
+                        platform: "ios" | "android";
+                        modelDescription: string;
+                        status: "pending_approval" | "approved" | "suspended" | "rejected" | "retired";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25196,7 +26892,7 @@ export interface operations {
                         evvDeviceId: string;
                         capturedAt: string;
                         recordedAt: string;
-                        gpsQuality: string;
+                        gpsQuality: "high" | "acceptable" | "degraded_attested" | "outside_geofence" | "no_geofence_baseline" | "suspected_spoof";
                         offlineCapture: boolean;
                         replacesEventId: string | null;
                         supersededByEventId: string | null;
@@ -25238,7 +26934,7 @@ export interface operations {
                         evvDeviceId: string;
                         capturedAt: string;
                         recordedAt: string;
-                        gpsQuality: string;
+                        gpsQuality: "high" | "acceptable" | "degraded_attested" | "outside_geofence" | "no_geofence_baseline" | "suspected_spoof";
                         offlineCapture: boolean;
                         replacesEventId: string | null;
                         supersededByEventId: string | null;
@@ -25258,14 +26954,68 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    newEvent: {
+                        /** Format: uuid */
+                        visitId: string;
+                        serviceTypeCode: string;
+                        /** Format: date-time */
+                        capturedAt: string;
+                        coords: {
+                            lat: number;
+                            lng: number;
+                        };
+                        accuracyM: number;
+                        /** Format: uuid */
+                        evvDeviceId: string;
+                        offlineCapture?: boolean;
+                        /** Format: uuid */
+                        localId?: string;
+                        /** Format: uuid */
+                        expectedAttestationId: string;
+                        /** @constant */
+                        gpsQualityAttested?: "degraded_attested";
+                    } | {
+                        /** Format: uuid */
+                        visitId: string;
+                        /** Format: date-time */
+                        capturedAt: string;
+                        coords: {
+                            lat: number;
+                            lng: number;
+                        };
+                        accuracyM: number;
+                        /** Format: uuid */
+                        evvDeviceId: string;
+                        offlineCapture?: boolean;
+                        /** Format: uuid */
+                        localId?: string;
+                        /** Format: uuid */
+                        expectedAttestationId: string;
+                        /** @constant */
+                        gpsQualityAttested?: "degraded_attested";
+                    };
+                    correctionReason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        eventId: string;
+                        kind: "check_in" | "check_out";
+                        gpsQuality: "high" | "acceptable" | "degraded_attested" | "outside_geofence" | "no_geofence_baseline" | "suspected_spoof";
+                        geofenceDecision: "pass" | "fail_distance" | "fail_accuracy" | "fail_no_baseline";
+                        visitStateAfterEvent: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25310,14 +27060,36 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientAddressId: string;
+                    radiusM: number;
+                    maxAccuracyM: number;
+                    overrideReason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        tenant: {
+                            radiusM: number;
+                            maxAccuracyM: number;
+                        };
+                        perAddress: {
+                            patientAddressId: string;
+                            radiusM: number;
+                            maxAccuracyM: number;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25330,14 +27102,33 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    radiusM: number;
+                    maxAccuracyM: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        tenant: {
+                            radiusM: number;
+                            maxAccuracyM: number;
+                        };
+                        perAddress: {
+                            patientAddressId: string;
+                            radiusM: number;
+                            maxAccuracyM: number;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25396,8 +27187,8 @@ export interface operations {
                     "application/json": {
                         id: string;
                         visitId: string;
-                        kind: string;
-                        status: string;
+                        kind: "missing_checkin" | "missing_checkout" | "outside_geofence_at_checkin" | "outside_geofence_at_checkout" | "device_integrity_failed_at_attempt";
+                        status: "open" | "closed_clinician_attested" | "closed_supervisor_override" | "closed_visit_voided" | "closed_documented_at_encounter" | "closed_system_checkout_received";
                         resolvedByMembershipId: string | null;
                     }[];
                 };
@@ -25415,14 +27206,28 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        visitId: string;
+                        kind: "missing_checkin" | "missing_checkout" | "outside_geofence_at_checkin" | "outside_geofence_at_checkout" | "device_integrity_failed_at_attempt";
+                        status: "open" | "closed_clinician_attested" | "closed_supervisor_override" | "closed_visit_voided" | "closed_documented_at_encounter" | "closed_system_checkout_received";
+                        resolvedByMembershipId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25437,14 +27242,30 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    /** Format: uuid */
+                    stepUpAuthRefId: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        visitId: string;
+                        kind: "missing_checkin" | "missing_checkout" | "outside_geofence_at_checkin" | "outside_geofence_at_checkout" | "device_integrity_failed_at_attempt";
+                        status: "open" | "closed_clinician_attested" | "closed_supervisor_override" | "closed_visit_voided" | "closed_documented_at_encounter" | "closed_system_checkout_received";
+                        resolvedByMembershipId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25457,14 +27278,75 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    evvDeviceId: string;
+                    events: (({
+                        /** @constant */
+                        kind: "check_in";
+                    } & {
+                        /** Format: uuid */
+                        visitId: string;
+                        serviceTypeCode: string;
+                        /** Format: date-time */
+                        capturedAt: string;
+                        coords: {
+                            lat: number;
+                            lng: number;
+                        };
+                        accuracyM: number;
+                        /** Format: uuid */
+                        evvDeviceId: string;
+                        offlineCapture?: boolean;
+                        /** Format: uuid */
+                        localId?: string;
+                        /** Format: uuid */
+                        expectedAttestationId: string;
+                        /** @constant */
+                        gpsQualityAttested?: "degraded_attested";
+                    }) | ({
+                        /** @constant */
+                        kind: "check_out";
+                    } & {
+                        /** Format: uuid */
+                        visitId: string;
+                        /** Format: date-time */
+                        capturedAt: string;
+                        coords: {
+                            lat: number;
+                            lng: number;
+                        };
+                        accuracyM: number;
+                        /** Format: uuid */
+                        evvDeviceId: string;
+                        offlineCapture?: boolean;
+                        /** Format: uuid */
+                        localId?: string;
+                        /** Format: uuid */
+                        expectedAttestationId: string;
+                        /** @constant */
+                        gpsQualityAttested?: "degraded_attested";
+                    }))[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        eventId: string;
+                        kind: "check_in" | "check_out";
+                        gpsQuality: "high" | "acceptable" | "degraded_attested" | "outside_geofence" | "no_geofence_baseline" | "suspected_spoof";
+                        geofenceDecision: "pass" | "fail_distance" | "fail_accuracy" | "fail_no_baseline";
+                        visitStateAfterEvent: string | null;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25486,7 +27368,54 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        visitId: string;
+                        checkInEvent: {
+                            id: string;
+                            organizationId: string;
+                            visitId: string;
+                            patientId: string;
+                            kind: "check_in" | "check_out";
+                            serviceTypeCode: string;
+                            postingMembershipId: string;
+                            postingDisciplineAtRecording: string;
+                            evvDeviceId: string;
+                            capturedAt: string;
+                            recordedAt: string;
+                            gpsQuality: "high" | "acceptable" | "degraded_attested" | "outside_geofence" | "no_geofence_baseline" | "suspected_spoof";
+                            offlineCapture: boolean;
+                            replacesEventId: string | null;
+                            supersededByEventId: string | null;
+                        } | null;
+                        checkOutEvent: {
+                            id: string;
+                            organizationId: string;
+                            visitId: string;
+                            patientId: string;
+                            kind: "check_in" | "check_out";
+                            serviceTypeCode: string;
+                            postingMembershipId: string;
+                            postingDisciplineAtRecording: string;
+                            evvDeviceId: string;
+                            capturedAt: string;
+                            recordedAt: string;
+                            gpsQuality: "high" | "acceptable" | "degraded_attested" | "outside_geofence" | "no_geofence_baseline" | "suspected_spoof";
+                            offlineCapture: boolean;
+                            replacesEventId: string | null;
+                            supersededByEventId: string | null;
+                        } | null;
+                        bracketState: "present" | "missing_documented" | "missing_open" | "no_evv_path";
+                        missingResolution: {
+                            id: string;
+                            visitId: string;
+                            kind: "missing_checkin" | "missing_checkout" | "outside_geofence_at_checkin" | "outside_geofence_at_checkout" | "device_integrity_failed_at_attempt";
+                            status: "open" | "closed_clinician_attested" | "closed_supervisor_override" | "closed_visit_voided" | "closed_documented_at_encounter" | "closed_system_checkout_received";
+                            resolvedByMembershipId: string | null;
+                            resolvedAt: string | null;
+                        } | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25508,7 +27437,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        state: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25523,7 +27458,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    attestationNarrative: string;
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -25545,7 +27487,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date */
+                    encounterDate: string;
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -25567,7 +27517,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -25630,7 +27587,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        key: string;
+                        activeVersionId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25653,7 +27615,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        key: string;
+                        versionId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25666,14 +27633,25 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    admissionId: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        admissionId: string;
+                        scheduleCount: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25700,11 +27678,11 @@ export interface operations {
                         id: string;
                         patientId: string;
                         admissionId: string;
-                        rfaKind: string;
-                        status: string;
+                        rfaKind: "01_admission" | "02_huv1" | "03_huv2" | "04_sfv" | "05_discharge";
+                        status: "draft" | "signed" | "superseded";
                         targetDate: string;
                         authorDiscipline: string;
-                        j2051MaxSeverity: string | null;
+                        j2051MaxSeverity: ("none" | "mild" | "moderate" | "severe") | null;
                         j2051TriggerFired: boolean;
                         wasLate: boolean;
                         signedAt: string | null;
@@ -25731,14 +27709,55 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    data: {
+                        J?: {
+                            J2051?: {
+                                entries: {
+                                    symptomCode: string;
+                                    severity: "none" | "mild" | "moderate" | "severe";
+                                    otherSymptomLabel?: string;
+                                }[];
+                            };
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        rfaKind: "01_admission" | "02_huv1" | "03_huv2" | "04_sfv" | "05_discharge";
+                        status: "draft" | "signed" | "superseded";
+                        targetDate: string;
+                        authorDiscipline: string;
+                        j2051MaxSeverity: ("none" | "mild" | "moderate" | "severe") | null;
+                        j2051TriggerFired: boolean;
+                        wasLate: boolean;
+                        signedAt: string | null;
+                        signedBy: string | null;
+                        correctsAssessmentId: string | null;
+                        supersededByAssessmentId: string | null;
+                        snapshot: {
+                            [key: string]: number | null;
+                        } | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25753,14 +27772,59 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    correctionReason: string;
+                    /** Format: date-time */
+                    targetDate: string;
+                    authorDiscipline: "RN" | "NP" | "MD";
+                    data: {
+                        J?: {
+                            J2051?: {
+                                entries: {
+                                    symptomCode: string;
+                                    severity: "none" | "mild" | "moderate" | "severe";
+                                    otherSymptomLabel?: string;
+                                }[];
+                            };
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        rfaKind: "01_admission" | "02_huv1" | "03_huv2" | "04_sfv" | "05_discharge";
+                        status: "draft" | "signed" | "superseded";
+                        targetDate: string;
+                        authorDiscipline: string;
+                        j2051MaxSeverity: ("none" | "mild" | "moderate" | "severe") | null;
+                        j2051TriggerFired: boolean;
+                        wasLate: boolean;
+                        signedAt: string | null;
+                        signedBy: string | null;
+                        correctsAssessmentId: string | null;
+                        supersededByAssessmentId: string | null;
+                        snapshot: {
+                            [key: string]: number | null;
+                        } | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25775,14 +27839,42 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @constant */
+                    attestationConfirmed: true;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        rfaKind: "01_admission" | "02_huv1" | "03_huv2" | "04_sfv" | "05_discharge";
+                        status: "draft" | "signed" | "superseded";
+                        targetDate: string;
+                        authorDiscipline: string;
+                        j2051MaxSeverity: ("none" | "mild" | "moderate" | "severe") | null;
+                        j2051TriggerFired: boolean;
+                        wasLate: boolean;
+                        signedAt: string | null;
+                        signedBy: string | null;
+                        correctsAssessmentId: string | null;
+                        supersededByAssessmentId: string | null;
+                        snapshot: {
+                            [key: string]: number | null;
+                        } | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25797,14 +27889,24 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        assessmentId: string;
+                        /** @constant */
+                        requested: true;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25894,12 +27996,12 @@ export interface operations {
                             id: string;
                             patientId: string;
                             admissionId: string;
-                            rfaKind: string;
-                            status: string;
+                            rfaKind: "01_admission" | "02_huv1" | "03_huv2" | "04_sfv" | "05_discharge";
+                            status: "open" | "completed" | "expired" | "skipped";
                             windowOpensAt: string;
                             windowClosesAt: string;
                             lateDeadlineAt: string;
-                            generatedBy: string;
+                            generatedBy: "auto_admission" | "auto_discharge" | "sfv_trigger" | "manual_admin";
                             completedByAssessmentId: string | null;
                         }[];
                     };
@@ -25930,12 +28032,12 @@ export interface operations {
                         id: string;
                         patientId: string;
                         admissionId: string;
-                        rfaKind: string;
-                        status: string;
+                        rfaKind: "01_admission" | "02_huv1" | "03_huv2" | "04_sfv" | "05_discharge";
+                        status: "open" | "completed" | "expired" | "skipped";
                         windowOpensAt: string;
                         windowClosesAt: string;
                         lateDeadlineAt: string;
-                        generatedBy: string;
+                        generatedBy: "auto_admission" | "auto_discharge" | "sfv_trigger" | "manual_admin";
                         completedByAssessmentId: string | null;
                     };
                 };
@@ -25953,14 +28055,34 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reasonCode: string;
+                    note?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        rfaKind: "01_admission" | "02_huv1" | "03_huv2" | "04_sfv" | "05_discharge";
+                        status: "open" | "completed" | "expired" | "skipped";
+                        windowOpensAt: string;
+                        windowClosesAt: string;
+                        lateDeadlineAt: string;
+                        generatedBy: "auto_admission" | "auto_discharge" | "sfv_trigger" | "manual_admin";
+                        completedByAssessmentId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -25988,7 +28110,7 @@ export interface operations {
                             id: string;
                             patientId: string;
                             triggeringAssessmentId: string;
-                            status: string;
+                            status: "open" | "completed" | "overdue" | "missed";
                             triggeredAt: string;
                             dueAt: string;
                             completingAssessmentId: string | null;
@@ -26021,7 +28143,7 @@ export interface operations {
                         id: string;
                         patientId: string;
                         triggeringAssessmentId: string;
-                        status: string;
+                        status: "open" | "completed" | "overdue" | "missed";
                         triggeredAt: string;
                         dueAt: string;
                         completingAssessmentId: string | null;
@@ -26054,7 +28176,7 @@ export interface operations {
                             id: string;
                             providerEntityId: string;
                             submissionPeriod: string;
-                            status: string;
+                            status: "queued" | "in_flight" | "accepted" | "rejected" | "partially_accepted";
                             itemCount: number;
                             acceptedCount: number;
                             rejectedCount: number;
@@ -26089,7 +28211,7 @@ export interface operations {
                         id: string;
                         providerEntityId: string;
                         submissionPeriod: string;
-                        status: string;
+                        status: "queued" | "in_flight" | "accepted" | "rejected" | "partially_accepted";
                         itemCount: number;
                         acceptedCount: number;
                         rejectedCount: number;
@@ -26111,14 +28233,30 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        submissionPeriod: string;
+                        status: "queued" | "in_flight" | "accepted" | "rejected" | "partially_accepted";
+                        itemCount: number;
+                        acceptedCount: number;
+                        rejectedCount: number;
+                        transmittedAt: string | null;
+                        acceptedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26131,14 +28269,32 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    providerEntityId: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        submissionPeriod: string;
+                        status: "queued" | "in_flight" | "accepted" | "rejected" | "partially_accepted";
+                        itemCount: number;
+                        acceptedCount: number;
+                        rejectedCount: number;
+                        transmittedAt: string | null;
+                        acceptedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26198,7 +28354,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** @constant */
+                        removed: true;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26213,14 +28376,35 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    status: "in_progress" | "completed" | "cancelled";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        decisionId: string | null;
+                        patientId: string | null;
+                        /** Format: uuid */
+                        assignedToMembershipId: string;
+                        status: "open" | "in_progress" | "completed" | "cancelled" | "auto_closed";
+                        /** Format: date-time */
+                        dueDate: string;
+                        linkedArtifactKind: ("care_plan_version" | "order" | "encounter" | "medication_order") | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26242,7 +28426,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** @constant */
+                        removed: true;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26257,14 +28448,29 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    noteText?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        kind: "patient_review" | "carry_forward" | "administrative_note" | "family_meeting_setup" | "other";
+                        patientId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26286,7 +28492,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** @constant */
+                        removed: true;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26301,14 +28514,33 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    status: "present" | "tardy" | "partial" | "absent" | "excused";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        /** Format: uuid */
+                        membershipId: string;
+                        discipline: string;
+                        status: "present" | "tardy" | "partial" | "absent" | "excused";
+                        /** Format: date-time */
+                        checkedInAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26323,14 +28555,34 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    payload: {
+                        kind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        patientId: string | null;
+                        decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
+                        status: "open" | "emitted" | "superseded";
+                        wasQuorate: boolean;
+                        supersededByDecisionId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26345,14 +28597,32 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        patientId: string | null;
+                        decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
+                        status: "open" | "emitted" | "superseded";
+                        wasQuorate: boolean;
+                        supersededByDecisionId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26404,14 +28674,43 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    decisionId?: string;
+                    patientId: string | null;
+                    /** Format: uuid */
+                    assignedToMembershipId: string;
+                    /** Format: date-time */
+                    dueDate: string;
+                    linkedArtifactKind?: "care_plan_version" | "order" | "encounter" | "medication_order";
+                    bodyText?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        decisionId: string | null;
+                        patientId: string | null;
+                        /** Format: uuid */
+                        assignedToMembershipId: string;
+                        status: "open" | "in_progress" | "completed" | "cancelled" | "auto_closed";
+                        /** Format: date-time */
+                        dueDate: string;
+                        linkedArtifactKind: ("care_plan_version" | "order" | "encounter" | "medication_order") | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26426,7 +28725,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -26448,14 +28751,32 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    kind: "patient_review" | "carry_forward" | "administrative_note" | "family_meeting_setup" | "other";
+                    /** Format: uuid */
+                    patientId?: string;
+                    noteText?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        kind: "patient_review" | "carry_forward" | "administrative_note" | "family_meeting_setup" | "other";
+                        patientId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26470,14 +28791,38 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    membershipId: string;
+                    discipline: string;
+                    status?: "present" | "tardy" | "partial" | "absent" | "excused";
+                    /** Format: date-time */
+                    checkedInAt?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        /** Format: uuid */
+                        membershipId: string;
+                        discipline: string;
+                        status: "present" | "tardy" | "partial" | "absent" | "excused";
+                        /** Format: date-time */
+                        checkedInAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26492,7 +28837,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @constant */
+                    proposedTransition: "cancel";
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -26514,14 +28867,37 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    patientId: string | null;
+                    /** Format: uuid */
+                    agendaItemId?: string;
+                    payload: {
+                        kind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        patientId: string | null;
+                        decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
+                        status: "open" | "emitted" | "superseded";
+                        wasQuorate: boolean;
+                        supersededByDecisionId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26605,7 +28981,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        locationId: string;
+                        status: "scheduled" | "packets_building" | "packets_ready" | "live" | "adjourned" | "cancelled" | "rescheduled";
+                        /** Format: date-time */
+                        scheduledStart: string;
+                        /** Format: date-time */
+                        scheduledEnd: string;
+                        adjournedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26620,7 +29011,19 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @constant */
+                    proposedTransition: "reschedule";
+                    reason: string;
+                    /** Format: date-time */
+                    newScheduledStart: string;
+                    /** Format: date-time */
+                    newScheduledEnd: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -26649,7 +29052,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        locationId: string;
+                        status: "scheduled" | "packets_building" | "packets_ready" | "live" | "adjourned" | "cancelled" | "rescheduled";
+                        /** Format: date-time */
+                        scheduledStart: string;
+                        /** Format: date-time */
+                        scheduledEnd: string;
+                        adjournedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26697,14 +29115,27 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    amendmentReason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        amendmentId: string;
+                        /** Format: uuid */
+                        minutesId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26717,14 +29148,32 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    locationId: string;
+                    cadenceDays: number;
+                    active?: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        locationId: string;
+                        cadenceDays: number;
+                        active: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26739,14 +29188,32 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    locationId: string;
+                    cadenceDays: number;
+                    active?: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        locationId: string;
+                        cadenceDays: number;
+                        active: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26790,7 +29257,10 @@ export interface operations {
     };
     getApiV1IntakeJobsById: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 id: string;
@@ -26804,7 +29274,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        candidates: {
+                            items: {
+                                id: string;
+                                /** Format: date-time */
+                                createdAt: string;
+                                riskLevel: string;
+                            }[];
+                            nextCursor: string | null;
+                            hasMore: boolean;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26819,7 +29303,19 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    sourceDocumentId: string;
+                    decisions: {
+                        fieldPath: string;
+                        decision: "approve" | "approve_with_edit" | "reject";
+                        editedValue?: string;
+                    }[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -26834,7 +29330,10 @@ export interface operations {
     };
     getApiV1IntakeReviewsById: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 id: string;
@@ -26848,7 +29347,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        status: "in_progress" | "complete" | "abandoned";
+                        decisions: {
+                            items: {
+                                id: string;
+                                /** Format: date-time */
+                                createdAt: string;
+                            }[];
+                            nextCursor: string | null;
+                            hasMore: boolean;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26863,7 +29376,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -26885,7 +29402,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @constant */
+                    attestationConfirmed: true;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -26907,7 +29431,21 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    candidateId: string;
+                    decision: "approve" | "approve_with_edit" | "reject";
+                    editedValue?: string;
+                    editedCode?: string;
+                    /** @constant */
+                    sourceViewConfirmed: true;
+                    chartOverwriteConfirmed?: boolean;
+                    reason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -26930,7 +29468,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    candidateIds: string[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -26953,7 +29497,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    resolutionValue?: string;
+                    reason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -26973,7 +29524,16 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId?: string;
+                    sourceChannel: "fax" | "email_ingest" | "portal_upload" | "admin_upload" | "api";
+                    sourceMetadata?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27007,7 +29567,7 @@ export interface operations {
                         id: string;
                         organizationId: string;
                         patientId: string | null;
-                        status: string;
+                        status: "uploaded" | "docling_complete" | "classifier_complete" | "extraction_complete" | "in_review" | "writeback_complete" | "discarded" | "split_into_children" | "split_resolved_no_split" | "parse_failed";
                         /** Format: date-time */
                         uploadedAt: string;
                         pages: number;
@@ -27022,7 +29582,10 @@ export interface operations {
     };
     getApiV1IntakeUploadsByIdClassification: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 id: string;
@@ -27036,7 +29599,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                            docType: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27051,7 +29625,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    pageRanges?: {
+                        fromPage: number;
+                        toPage: number;
+                        docType: string;
+                    }[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27073,7 +29657,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27095,7 +29685,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    jobId: string;
+                    pageCount: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27110,7 +29708,10 @@ export interface operations {
     };
     getApiV1IntakeUploadsByIdJobs: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 id: string;
@@ -27150,7 +29751,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27165,7 +29770,10 @@ export interface operations {
     };
     getApiV1InternalAssessmentsLatestbatch: {
         parameters: {
-            query?: never;
+            query: {
+                patientId: string;
+                scaleTypes: ("pps" | "kps" | "fast" | "painad" | "flacc" | "esas_r" | "nyha" | "meld" | "bode" | "flacker" | "gds" | "braden" | "morse" | "aims")[];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -27177,7 +29785,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        latest: {
+                            id: string;
+                            patientId: string;
+                            admissionId: string;
+                            scaleType: "pps" | "kps" | "fast" | "painad" | "flacc" | "esas_r" | "nyha" | "meld" | "bode" | "flacker" | "gds" | "braden" | "morse" | "aims";
+                            scaleVersion: string;
+                            data: {
+                                [key: string]: unknown;
+                            };
+                            score: number | null;
+                            scoreInterpretation: string | null;
+                            capturedAt: string;
+                            capturedByDiscipline: string;
+                            recordedByUserId: string;
+                            sourceEncounterId: string | null;
+                            cosignRequired: boolean;
+                            cosignedAt: string | null;
+                            sudContext: boolean;
+                            actingAs: "self" | "patient_representative";
+                            actingConsentId: string | null;
+                            status: "active" | "superseded";
+                            correctsAssessmentId: string | null;
+                            correctionReason: string | null;
+                            redacted: boolean;
+                            version: number;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27185,7 +29822,12 @@ export interface operations {
     };
     getApiV1InternalAssessmentsSeriesbatch: {
         parameters: {
-            query?: never;
+            query: {
+                patientId: string;
+                scaleType: "pps" | "kps" | "fast" | "painad" | "flacc" | "esas_r" | "nyha" | "meld" | "bode" | "flacker" | "gds" | "braden" | "morse" | "aims";
+                from: string;
+                to: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -27197,7 +29839,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        scaleType: "pps" | "kps" | "fast" | "painad" | "flacc" | "esas_r" | "nyha" | "meld" | "bode" | "flacker" | "gds" | "braden" | "morse" | "aims";
+                        patientId: string;
+                        from: string;
+                        to: string;
+                        points: {
+                            assessmentId: string;
+                            capturedAt: string;
+                            score: number | null;
+                            scoreInterpretation: string | null;
+                            significantChange: boolean;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27291,7 +29947,11 @@ export interface operations {
     };
     getApiV1InternalCareplanRelevantelements: {
         parameters: {
-            query?: never;
+            query: {
+                patientId: string;
+                encounterType?: string;
+                discipline?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -27303,7 +29963,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        planId: string;
+                        patientId: string;
+                        problems: {
+                            problemId: string;
+                            icd10Code: string | null;
+                            snomedCode: string | null;
+                            description: string;
+                            kind: "terminal" | "related" | "unrelated";
+                            status: "active" | "resolved" | "inactive";
+                        }[];
+                        goals: {
+                            goalId: string;
+                            problemId: string;
+                            text: string;
+                            source: "clinical" | "patient_stated" | "family_stated" | "agent_stated";
+                            status: "not_started" | "in_progress" | "met" | "not_met" | "revised" | "discontinued";
+                        }[];
+                        interventions: {
+                            interventionId: string;
+                            problemId: string;
+                            scopeText: string;
+                            frequencyText: string;
+                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "md_np" | "pt" | "ot" | "st" | "volunteer" | "music_therapy" | "dietitian" | "bereavement";
+                            status: "active" | "discontinued" | "completed";
+                        }[];
+                        redacted: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27345,7 +30034,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        encounterId: string;
+                        final: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27353,7 +30047,9 @@ export interface operations {
     };
     getApiV1InternalEncountersBillable: {
         parameters: {
-            query?: never;
+            query: {
+                encounterIds: string[];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -27365,7 +30061,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        billability: {
+                            encounterId: string;
+                            billable: boolean;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27373,7 +30076,10 @@ export interface operations {
     };
     getApiV1InternalEncountersSignedsince: {
         parameters: {
-            query?: never;
+            query: {
+                since: string;
+                patientId?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -27385,7 +30091,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        encounters: {
+                            id: string;
+                            organizationId: string;
+                            patientId: string;
+                            admissionId: string;
+                            visitId: string | null;
+                            encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup";
+                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                            serviceDate: string;
+                            status: "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
+                            lateEntryTier: string;
+                            version: number;
+                            authoredByUserId: string;
+                            isF2f: boolean;
+                            signedAt: string | null;
+                            cosignedAt: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27466,7 +30192,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -27521,7 +30254,7 @@ export interface operations {
                             scheduledEndedAt: string;
                             /** Format: date */
                             serviceDate: string;
-                            status: string;
+                            status: "proposed" | "published" | "en_route" | "in_visit" | "completed" | "no_show" | "cancelled" | "rescheduled";
                             patientAddressId: string | null;
                             externalFacilityId: string | null;
                             rescheduledIntoVisitId: string | null;
@@ -28887,7 +31620,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    decision: "carry_forward" | "discontinue" | "document_only";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -28905,7 +31644,7 @@ export interface operations {
             query?: {
                 patientId?: string;
                 prescriberId?: string;
-                medClass?: string;
+                medClass?: "standard" | "controlled_substance" | "compounded";
                 status?: string;
             };
             header?: never;
@@ -28925,8 +31664,8 @@ export interface operations {
                             id: string;
                             patientId: string;
                             admissionId: string;
-                            medClass: string;
-                            status: string;
+                            medClass: "standard" | "controlled_substance" | "compounded";
+                            status: "draft" | "pending_signature" | "verbal_pending" | "epcs_identity_pending" | "signed" | "queued_for_transmission" | "transmitted" | "ack_received" | "nack_received" | "active" | "completed" | "discontinued" | "transmission_failed" | "expired_unsigned";
                             drugName: string;
                             strength: string;
                             doseForm: string;
@@ -28939,9 +31678,9 @@ export interface operations {
                             prescribingPhysicianMdmId: string;
                             dispensingPharmacyMdmId: string | null;
                             isControlledSubstance: boolean;
-                            deaSchedule: string | null;
+                            deaSchedule: ("II" | "III" | "IV" | "V") | null;
                             cosignRequired: boolean;
-                            cosignStatus: "pending" | "attached" | null;
+                            cosignStatus: ("pending" | "attached") | null;
                             refillsRemaining: number;
                             derivedFromRefillId: string | null;
                             replacesMedicationOrderId: string | null;
@@ -28949,7 +31688,7 @@ export interface operations {
                             signedBy: string | null;
                             transmittedAt: string | null;
                             discontinuedAt: string | null;
-                            discontinuationReason: string | null;
+                            discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "pharmacy_nack" | "corrected_replacement" | "expired_verbal" | "transmission_failed" | "no_refills_no_renewal") | null;
                             createdAt: string;
                         }[];
                     };
@@ -28966,7 +31705,32 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    admissionId: string;
+                    medClass: "standard" | "controlled_substance" | "compounded";
+                    rxnormRxcui: string | null;
+                    ndc: string | null;
+                    drugName: string;
+                    strength: string;
+                    doseForm: string;
+                    route: string;
+                    data: unknown;
+                    prescriberDiscipline: string;
+                    /** Format: uuid */
+                    prescribingPhysicianMdmId: string;
+                    /** Format: uuid */
+                    dispensingPharmacyMdmId?: string;
+                    deaSchedule?: "II" | "III" | "IV" | "V";
+                    containsControlled?: boolean;
+                    refillsAuthorized: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -29000,8 +31764,8 @@ export interface operations {
                         id: string;
                         patientId: string;
                         admissionId: string;
-                        medClass: string;
-                        status: string;
+                        medClass: "standard" | "controlled_substance" | "compounded";
+                        status: "draft" | "pending_signature" | "verbal_pending" | "epcs_identity_pending" | "signed" | "queued_for_transmission" | "transmitted" | "ack_received" | "nack_received" | "active" | "completed" | "discontinued" | "transmission_failed" | "expired_unsigned";
                         drugName: string;
                         strength: string;
                         doseForm: string;
@@ -29014,9 +31778,9 @@ export interface operations {
                         prescribingPhysicianMdmId: string;
                         dispensingPharmacyMdmId: string | null;
                         isControlledSubstance: boolean;
-                        deaSchedule: string | null;
+                        deaSchedule: ("II" | "III" | "IV" | "V") | null;
                         cosignRequired: boolean;
-                        cosignStatus: "pending" | "attached" | null;
+                        cosignStatus: ("pending" | "attached") | null;
                         refillsRemaining: number;
                         derivedFromRefillId: string | null;
                         replacesMedicationOrderId: string | null;
@@ -29024,7 +31788,7 @@ export interface operations {
                         signedBy: string | null;
                         transmittedAt: string | null;
                         discontinuedAt: string | null;
-                        discontinuationReason: string | null;
+                        discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "pharmacy_nack" | "corrected_replacement" | "expired_verbal" | "transmission_failed" | "no_refills_no_renewal") | null;
                         createdAt: string;
                     };
                 };
@@ -29042,7 +31806,16 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    data: unknown;
+                    drugName?: string;
+                    strength?: string;
+                    refillsAuthorized?: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -29064,7 +31837,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -29086,7 +31865,32 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    admissionId: string;
+                    medClass: "standard" | "controlled_substance" | "compounded";
+                    rxnormRxcui: string | null;
+                    ndc: string | null;
+                    drugName: string;
+                    strength: string;
+                    doseForm: string;
+                    route: string;
+                    data: unknown;
+                    prescriberDiscipline: string;
+                    /** Format: uuid */
+                    prescribingPhysicianMdmId: string;
+                    /** Format: uuid */
+                    dispensingPharmacyMdmId?: string;
+                    deaSchedule?: "II" | "III" | "IV" | "V";
+                    containsControlled?: boolean;
+                    refillsAuthorized: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -29108,7 +31912,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    cosignerRole: "rn_case_manager" | "clinical_supervisor" | "medical_director";
+                    attestationText: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -29130,7 +31941,16 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: "clinical_judgement" | "patient_request" | "adverse_event";
+                    /** Format: date-time */
+                    effectiveAt: string;
+                    notes?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -29152,7 +31972,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    signerDiscipline: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -29181,7 +32007,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        newOrderId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -29196,7 +32026,16 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    signerDiscipline: string;
+                    /** Format: date-time */
+                    signedAtClient: string;
+                    signerIsOrderingPhysician?: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -29218,7 +32057,19 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    nonce: string;
+                    proof: {
+                        factorType: "totp" | "passkey" | "push_confirm";
+                        totpCode?: string;
+                        passkeyAssertion?: unknown;
+                        pushConfirmReceipt?: string;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -29240,7 +32091,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    signerDiscipline: string;
+                    schedule: "II" | "III" | "IV" | "V";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -29294,7 +32152,18 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    recorderDiscipline: string;
+                    verbalAttestation: string;
+                    /** Format: date-time */
+                    receivedAt: string;
+                    /** Format: uuid */
+                    namedPrescriberMdmId: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -30407,14 +33276,34 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    membershipId: string;
+                    /** Format: date */
+                    serviceDate: string;
+                    debounceKey?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        membershipId: string;
+                        /** Format: date */
+                        serviceDate: string;
+                        degraded: boolean;
+                        reason?: string;
+                        segmentCount: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30445,9 +33334,9 @@ export interface operations {
                             id: string;
                             patientId: string;
                             admissionId: string;
-                            kind: string;
-                            status: string;
-                            priority: string;
+                            kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                            status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                            priority: "routine" | "stat" | "asap";
                             version: number;
                             drafterMembershipId: string;
                             drafterDiscipline: string;
@@ -30457,7 +33346,7 @@ export interface operations {
                             transmissionStatus: string;
                             resultsStatus: string;
                             verbalDeadlineAt: string | null;
-                            discontinuationReason: string | null;
+                            discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
                             replacesOrderId: string | null;
                             triggeringAssessmentId: string | null;
                             triggeringHopeAssessmentId: string | null;
@@ -30480,14 +33369,64 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    admissionId: string;
+                    kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                    drafterDiscipline: string;
+                    data: unknown;
+                    priority?: "routine" | "stat" | "asap";
+                    indicationText?: string;
+                    /** Format: uuid */
+                    orderingPhysicianMdmId: string;
+                    /** Format: uuid */
+                    sourceEncounterId?: string;
+                    /** Format: uuid */
+                    triggeringAssessmentId?: string;
+                    /** Format: uuid */
+                    triggeringHopeAssessmentId?: string;
+                    /** Format: uuid */
+                    replacesOrderId?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                        status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                        priority: "routine" | "stat" | "asap";
+                        version: number;
+                        drafterMembershipId: string;
+                        drafterDiscipline: string;
+                        orderingPhysicianMdmId: string;
+                        cosignRequired: boolean;
+                        cosignStatus: "pending" | "attached" | null;
+                        transmissionStatus: string;
+                        resultsStatus: string;
+                        verbalDeadlineAt: string | null;
+                        discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
+                        replacesOrderId: string | null;
+                        triggeringAssessmentId: string | null;
+                        triggeringHopeAssessmentId: string | null;
+                        signedAt: string | null;
+                        signedBy: string | null;
+                        completedAt: string | null;
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30514,9 +33453,9 @@ export interface operations {
                         id: string;
                         patientId: string;
                         admissionId: string;
-                        kind: string;
-                        status: string;
-                        priority: string;
+                        kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                        status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                        priority: "routine" | "stat" | "asap";
                         version: number;
                         drafterMembershipId: string;
                         drafterDiscipline: string;
@@ -30526,7 +33465,7 @@ export interface operations {
                         transmissionStatus: string;
                         resultsStatus: string;
                         verbalDeadlineAt: string | null;
-                        discontinuationReason: string | null;
+                        discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
                         replacesOrderId: string | null;
                         triggeringAssessmentId: string | null;
                         triggeringHopeAssessmentId: string | null;
@@ -30550,14 +33489,48 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    data: unknown;
+                    priority?: "routine" | "stat" | "asap";
+                    indicationText?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                        status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                        priority: "routine" | "stat" | "asap";
+                        version: number;
+                        drafterMembershipId: string;
+                        drafterDiscipline: string;
+                        orderingPhysicianMdmId: string;
+                        cosignRequired: boolean;
+                        cosignStatus: "pending" | "attached" | null;
+                        transmissionStatus: string;
+                        resultsStatus: string;
+                        verbalDeadlineAt: string | null;
+                        discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
+                        replacesOrderId: string | null;
+                        triggeringAssessmentId: string | null;
+                        triggeringHopeAssessmentId: string | null;
+                        signedAt: string | null;
+                        signedBy: string | null;
+                        completedAt: string | null;
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30572,14 +33545,46 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                        status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                        priority: "routine" | "stat" | "asap";
+                        version: number;
+                        drafterMembershipId: string;
+                        drafterDiscipline: string;
+                        orderingPhysicianMdmId: string;
+                        cosignRequired: boolean;
+                        cosignStatus: "pending" | "attached" | null;
+                        transmissionStatus: string;
+                        resultsStatus: string;
+                        verbalDeadlineAt: string | null;
+                        discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
+                        replacesOrderId: string | null;
+                        triggeringAssessmentId: string | null;
+                        triggeringHopeAssessmentId: string | null;
+                        signedAt: string | null;
+                        signedBy: string | null;
+                        completedAt: string | null;
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30594,14 +33599,64 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    admissionId: string;
+                    kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                    drafterDiscipline: string;
+                    data: unknown;
+                    priority?: "routine" | "stat" | "asap";
+                    indicationText?: string;
+                    /** Format: uuid */
+                    orderingPhysicianMdmId: string;
+                    /** Format: uuid */
+                    sourceEncounterId?: string;
+                    /** Format: uuid */
+                    triggeringAssessmentId?: string;
+                    /** Format: uuid */
+                    triggeringHopeAssessmentId?: string;
+                    /** Format: uuid */
+                    replacesOrderId?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                        status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                        priority: "routine" | "stat" | "asap";
+                        version: number;
+                        drafterMembershipId: string;
+                        drafterDiscipline: string;
+                        orderingPhysicianMdmId: string;
+                        cosignRequired: boolean;
+                        cosignStatus: "pending" | "attached" | null;
+                        transmissionStatus: string;
+                        resultsStatus: string;
+                        verbalDeadlineAt: string | null;
+                        discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
+                        replacesOrderId: string | null;
+                        triggeringAssessmentId: string | null;
+                        triggeringHopeAssessmentId: string | null;
+                        signedAt: string | null;
+                        signedBy: string | null;
+                        completedAt: string | null;
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30616,14 +33671,47 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    cosignerRole: "rn_case_manager" | "clinical_supervisor" | "medical_director";
+                    attestationText: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                        status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                        priority: "routine" | "stat" | "asap";
+                        version: number;
+                        drafterMembershipId: string;
+                        drafterDiscipline: string;
+                        orderingPhysicianMdmId: string;
+                        cosignRequired: boolean;
+                        cosignStatus: "pending" | "attached" | null;
+                        transmissionStatus: string;
+                        resultsStatus: string;
+                        verbalDeadlineAt: string | null;
+                        discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
+                        replacesOrderId: string | null;
+                        triggeringAssessmentId: string | null;
+                        triggeringHopeAssessmentId: string | null;
+                        signedAt: string | null;
+                        signedBy: string | null;
+                        completedAt: string | null;
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30638,14 +33726,49 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: "clinical_judgement" | "patient_request" | "adverse_event" | "level_of_care_change";
+                    /** Format: date-time */
+                    effectiveAt: string;
+                    notes?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                        status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                        priority: "routine" | "stat" | "asap";
+                        version: number;
+                        drafterMembershipId: string;
+                        drafterDiscipline: string;
+                        orderingPhysicianMdmId: string;
+                        cosignRequired: boolean;
+                        cosignStatus: "pending" | "attached" | null;
+                        transmissionStatus: string;
+                        resultsStatus: string;
+                        verbalDeadlineAt: string | null;
+                        discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
+                        replacesOrderId: string | null;
+                        triggeringAssessmentId: string | null;
+                        triggeringHopeAssessmentId: string | null;
+                        signedAt: string | null;
+                        signedBy: string | null;
+                        completedAt: string | null;
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30660,14 +33783,50 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    signerDiscipline: string;
+                    levelChange?: {
+                        fromLevel: "rhc" | "irc" | "chc" | "gip";
+                        toLevel: "rhc" | "irc" | "chc" | "gip";
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                        status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                        priority: "routine" | "stat" | "asap";
+                        version: number;
+                        drafterMembershipId: string;
+                        drafterDiscipline: string;
+                        orderingPhysicianMdmId: string;
+                        cosignRequired: boolean;
+                        cosignStatus: "pending" | "attached" | null;
+                        transmissionStatus: string;
+                        resultsStatus: string;
+                        verbalDeadlineAt: string | null;
+                        discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
+                        replacesOrderId: string | null;
+                        triggeringAssessmentId: string | null;
+                        triggeringHopeAssessmentId: string | null;
+                        signedAt: string | null;
+                        signedBy: string | null;
+                        completedAt: string | null;
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30682,14 +33841,51 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    signerDiscipline: string;
+                    /** Format: date-time */
+                    signedAtClient: string;
+                    signatureContext?: {
+                        reason?: string;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                        status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                        priority: "routine" | "stat" | "asap";
+                        version: number;
+                        drafterMembershipId: string;
+                        drafterDiscipline: string;
+                        orderingPhysicianMdmId: string;
+                        cosignRequired: boolean;
+                        cosignStatus: "pending" | "attached" | null;
+                        transmissionStatus: string;
+                        resultsStatus: string;
+                        verbalDeadlineAt: string | null;
+                        discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
+                        replacesOrderId: string | null;
+                        triggeringAssessmentId: string | null;
+                        triggeringHopeAssessmentId: string | null;
+                        signedAt: string | null;
+                        signedBy: string | null;
+                        completedAt: string | null;
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30704,14 +33900,51 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    signerDiscipline: string;
+                    /** Format: uuid */
+                    onBehalfOf: string;
+                    reason: string;
+                    /** Format: date-time */
+                    signedAtClient: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                        status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                        priority: "routine" | "stat" | "asap";
+                        version: number;
+                        drafterMembershipId: string;
+                        drafterDiscipline: string;
+                        orderingPhysicianMdmId: string;
+                        cosignRequired: boolean;
+                        cosignStatus: "pending" | "attached" | null;
+                        transmissionStatus: string;
+                        resultsStatus: string;
+                        verbalDeadlineAt: string | null;
+                        discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
+                        replacesOrderId: string | null;
+                        triggeringAssessmentId: string | null;
+                        triggeringHopeAssessmentId: string | null;
+                        signedAt: string | null;
+                        signedBy: string | null;
+                        completedAt: string | null;
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30726,14 +33959,51 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    recorderDiscipline: string;
+                    verbalAttestation: string;
+                    /** Format: date-time */
+                    receivedAt: string;
+                    /** Format: uuid */
+                    orderingPhysicianMdmId: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                        status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                        priority: "routine" | "stat" | "asap";
+                        version: number;
+                        drafterMembershipId: string;
+                        drafterDiscipline: string;
+                        orderingPhysicianMdmId: string;
+                        cosignRequired: boolean;
+                        cosignStatus: "pending" | "attached" | null;
+                        transmissionStatus: string;
+                        resultsStatus: string;
+                        verbalDeadlineAt: string | null;
+                        discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
+                        replacesOrderId: string | null;
+                        triggeringAssessmentId: string | null;
+                        triggeringHopeAssessmentId: string | null;
+                        signedAt: string | null;
+                        signedBy: string | null;
+                        completedAt: string | null;
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30759,9 +34029,9 @@ export interface operations {
                             id: string;
                             patientId: string;
                             admissionId: string;
-                            kind: string;
-                            status: string;
-                            priority: string;
+                            kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                            status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                            priority: "routine" | "stat" | "asap";
                             version: number;
                             drafterMembershipId: string;
                             drafterDiscipline: string;
@@ -30771,7 +34041,7 @@ export interface operations {
                             transmissionStatus: string;
                             resultsStatus: string;
                             verbalDeadlineAt: string | null;
-                            discontinuationReason: string | null;
+                            discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
                             replacesOrderId: string | null;
                             triggeringAssessmentId: string | null;
                             triggeringHopeAssessmentId: string | null;
@@ -30807,9 +34077,9 @@ export interface operations {
                             id: string;
                             patientId: string;
                             admissionId: string;
-                            kind: string;
-                            status: string;
-                            priority: string;
+                            kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                            status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                            priority: "routine" | "stat" | "asap";
                             version: number;
                             drafterMembershipId: string;
                             drafterDiscipline: string;
@@ -30819,7 +34089,7 @@ export interface operations {
                             transmissionStatus: string;
                             resultsStatus: string;
                             verbalDeadlineAt: string | null;
-                            discontinuationReason: string | null;
+                            discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
                             replacesOrderId: string | null;
                             triggeringAssessmentId: string | null;
                             triggeringHopeAssessmentId: string | null;
@@ -30855,9 +34125,9 @@ export interface operations {
                             id: string;
                             patientId: string;
                             admissionId: string;
-                            kind: string;
-                            status: string;
-                            priority: string;
+                            kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                            status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                            priority: "routine" | "stat" | "asap";
                             version: number;
                             drafterMembershipId: string;
                             drafterDiscipline: string;
@@ -30867,7 +34137,7 @@ export interface operations {
                             transmissionStatus: string;
                             resultsStatus: string;
                             verbalDeadlineAt: string | null;
-                            discontinuationReason: string | null;
+                            discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
                             replacesOrderId: string | null;
                             triggeringAssessmentId: string | null;
                             triggeringHopeAssessmentId: string | null;
@@ -30899,7 +34169,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        patientId: string;
+                        suggestions: {
+                            kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                            reason: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30925,9 +34203,9 @@ export interface operations {
                             id: string;
                             patientId: string;
                             admissionId: string;
-                            kind: string;
-                            status: string;
-                            priority: string;
+                            kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                            status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                            priority: "routine" | "stat" | "asap";
                             version: number;
                             drafterMembershipId: string;
                             drafterDiscipline: string;
@@ -30937,7 +34215,7 @@ export interface operations {
                             transmissionStatus: string;
                             resultsStatus: string;
                             verbalDeadlineAt: string | null;
-                            discontinuationReason: string | null;
+                            discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
                             replacesOrderId: string | null;
                             triggeringAssessmentId: string | null;
                             triggeringHopeAssessmentId: string | null;
@@ -31539,7 +34817,13 @@ export interface operations {
     };
     getApiV1PatientsByPatientIdAssessments: {
         parameters: {
-            query?: never;
+            query?: {
+                scaleType?: string;
+                from?: string;
+                to?: string;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 patientId: string;
@@ -31559,15 +34843,25 @@ export interface operations {
                             id: string;
                             patientId: string;
                             admissionId: string;
-                            scaleType: string;
+                            scaleType: "pps" | "kps" | "fast" | "painad" | "flacc" | "esas_r" | "nyha" | "meld" | "bode" | "flacker" | "gds" | "braden" | "morse" | "aims";
+                            scaleVersion: string;
+                            data: {
+                                [key: string]: unknown;
+                            };
                             score: number | null;
                             scoreInterpretation: string | null;
                             capturedAt: string;
                             capturedByDiscipline: string;
+                            recordedByUserId: string;
+                            sourceEncounterId: string | null;
                             cosignRequired: boolean;
                             cosignedAt: string | null;
                             sudContext: boolean;
-                            status: string;
+                            actingAs: "self" | "patient_representative";
+                            actingConsentId: string | null;
+                            status: "active" | "superseded";
+                            correctsAssessmentId: string | null;
+                            correctionReason: string | null;
                             redacted: boolean;
                             version: number;
                         }[];
@@ -31587,7 +34881,26 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    admissionId: string;
+                    scaleType: "pps" | "kps" | "fast" | "painad" | "flacc" | "esas_r" | "nyha" | "meld" | "bode" | "flacker" | "gds" | "braden" | "morse" | "aims";
+                    /** Format: date-time */
+                    capturedAt: string;
+                    /** Format: uuid */
+                    sourceEncounterId?: string;
+                    actingAs?: "self" | "patient_representative";
+                    /** Format: uuid */
+                    actingConsentId?: string;
+                    sudContext?: boolean;
+                    data: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -31617,7 +34930,34 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        scaleType: "pps" | "kps" | "fast" | "painad" | "flacc" | "esas_r" | "nyha" | "meld" | "bode" | "flacker" | "gds" | "braden" | "morse" | "aims";
+                        scaleVersion: string;
+                        data: {
+                            [key: string]: unknown;
+                        };
+                        score: number | null;
+                        scoreInterpretation: string | null;
+                        capturedAt: string;
+                        capturedByDiscipline: string;
+                        recordedByUserId: string;
+                        sourceEncounterId: string | null;
+                        cosignRequired: boolean;
+                        cosignedAt: string | null;
+                        sudContext: boolean;
+                        actingAs: "self" | "patient_representative";
+                        actingConsentId: string | null;
+                        status: "active" | "superseded";
+                        correctsAssessmentId: string | null;
+                        correctionReason: string | null;
+                        redacted: boolean;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -31633,7 +34973,27 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    admissionId: string;
+                    correctionReason: string;
+                    scaleType: "pps" | "kps" | "fast" | "painad" | "flacc" | "esas_r" | "nyha" | "meld" | "bode" | "flacker" | "gds" | "braden" | "morse" | "aims";
+                    /** Format: date-time */
+                    capturedAt: string;
+                    /** Format: uuid */
+                    sourceEncounterId?: string;
+                    actingAs?: "self" | "patient_representative";
+                    /** Format: uuid */
+                    actingConsentId?: string;
+                    sudContext?: boolean;
+                    data: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -31669,15 +35029,25 @@ export interface operations {
                             id: string;
                             patientId: string;
                             admissionId: string;
-                            scaleType: string;
+                            scaleType: "pps" | "kps" | "fast" | "painad" | "flacc" | "esas_r" | "nyha" | "meld" | "bode" | "flacker" | "gds" | "braden" | "morse" | "aims";
+                            scaleVersion: string;
+                            data: {
+                                [key: string]: unknown;
+                            };
                             score: number | null;
                             scoreInterpretation: string | null;
                             capturedAt: string;
                             capturedByDiscipline: string;
+                            recordedByUserId: string;
+                            sourceEncounterId: string | null;
                             cosignRequired: boolean;
                             cosignedAt: string | null;
                             sudContext: boolean;
-                            status: string;
+                            actingAs: "self" | "patient_representative";
+                            actingConsentId: string | null;
+                            status: "active" | "superseded";
+                            correctsAssessmentId: string | null;
+                            correctionReason: string | null;
                             redacted: boolean;
                             version: number;
                         }[];
@@ -31706,63 +35076,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        id?: string;
-                        patientId?: string;
-                        status?: string;
-                        activeVersionId?: string | null;
-                        version?: number;
-                        versions?: {
+                        id: string;
+                        patientId: string;
+                        status: "draft" | "active" | "discharged";
+                        activeVersionId: string | null;
+                        version: number;
+                        versions: {
                             id: string;
                             planId: string;
                             sequence: number;
-                            kind: string;
-                            status: string;
+                            kind: "initial" | "idg_review" | "interim_revision" | "discharge";
+                            status: "draft" | "in_review" | "signed" | "superseded";
                             idgMeetingId: string | null;
-                            requiredSignerSet: string[];
+                            requiredSignerSet: {
+                                role: string;
+                                count: number;
+                            }[];
                             signatures: {
-                                signerRole: string;
+                                signerRole: "rn_case_manager" | "hospice_physician" | "nurse_practitioner" | "msw" | "chaplain" | "medical_director";
                                 signedAt: string;
                             }[];
                             signedAt: string | null;
                             version: number;
                         }[];
-                        problems?: {
+                        problems: {
                             id: string;
-                            description: string;
-                            kind: string;
-                            source: string;
-                            sudRelated: boolean;
-                            status: string;
+                            organizationId: string;
+                            planId: string;
                             icd10Code: string | null;
                             snomedCode: string | null;
+                            description: string;
+                            kind: "terminal" | "related" | "unrelated";
+                            source: "clinical" | "patient_reported" | "family_reported" | "history" | "intake_extraction";
+                            sudRelated: boolean;
+                            status: "active" | "resolved" | "inactive";
                             resolutionNote: string | null;
                             version: number;
                         }[];
-                        goals?: {
+                        goals: {
                             id: string;
+                            organizationId: string;
+                            planId: string;
                             problemId: string;
                             originalText: string;
                             revisedText: string | null;
-                            source: string;
+                            source: "clinical" | "patient_stated" | "family_stated" | "agent_stated";
                             actingConsentId: string | null;
                             measurableOutcome: string | null;
-                            status: string;
+                            status: "not_started" | "in_progress" | "met" | "not_met" | "revised" | "discontinued";
                             version: number;
                         }[];
-                        interventions?: {
+                        interventions: {
                             id: string;
+                            organizationId: string;
+                            planId: string;
                             problemId: string;
                             goalRefs: string[];
                             scopeText: string;
                             frequencyText: string;
                             frequencyValue: string;
-                            discipline: string;
+                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "md_np" | "pt" | "ot" | "st" | "volunteer" | "music_therapy" | "dietitian" | "bereavement";
                             responsibleRole: string | null;
-                            status: string;
+                            status: "active" | "discontinued" | "completed";
                             version: number;
                         }[];
-                        redacted?: boolean;
-                        carePlan?: null;
+                        redacted: boolean;
+                    } | {
+                        carePlan: null;
                     };
                 };
             };
@@ -31779,7 +35159,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    admissionId: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -31982,11 +35369,11 @@ export interface operations {
                             id: string;
                             patientId: string;
                             admissionId: string;
-                            rfaKind: string;
-                            status: string;
+                            rfaKind: "01_admission" | "02_huv1" | "03_huv2" | "04_sfv" | "05_discharge";
+                            status: "draft" | "signed" | "superseded";
                             targetDate: string;
                             authorDiscipline: string;
-                            j2051MaxSeverity: string | null;
+                            j2051MaxSeverity: ("none" | "mild" | "moderate" | "severe") | null;
                             j2051TriggerFired: boolean;
                             wasLate: boolean;
                             signedAt: string | null;
@@ -32027,8 +35414,8 @@ export interface operations {
                             id: string;
                             patientId: string;
                             admissionId: string;
-                            medClass: string;
-                            status: string;
+                            medClass: "standard" | "controlled_substance" | "compounded";
+                            status: "draft" | "pending_signature" | "verbal_pending" | "epcs_identity_pending" | "signed" | "queued_for_transmission" | "transmitted" | "ack_received" | "nack_received" | "active" | "completed" | "discontinued" | "transmission_failed" | "expired_unsigned";
                             drugName: string;
                             strength: string;
                             doseForm: string;
@@ -32041,9 +35428,9 @@ export interface operations {
                             prescribingPhysicianMdmId: string;
                             dispensingPharmacyMdmId: string | null;
                             isControlledSubstance: boolean;
-                            deaSchedule: string | null;
+                            deaSchedule: ("II" | "III" | "IV" | "V") | null;
                             cosignRequired: boolean;
-                            cosignStatus: "pending" | "attached" | null;
+                            cosignStatus: ("pending" | "attached") | null;
                             refillsRemaining: number;
                             derivedFromRefillId: string | null;
                             replacesMedicationOrderId: string | null;
@@ -32051,7 +35438,7 @@ export interface operations {
                             signedBy: string | null;
                             transmittedAt: string | null;
                             discontinuedAt: string | null;
-                            discontinuationReason: string | null;
+                            discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "pharmacy_nack" | "corrected_replacement" | "expired_verbal" | "transmission_failed" | "no_refills_no_renewal") | null;
                             createdAt: string;
                         }[];
                     };
@@ -32107,7 +35494,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        jobId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -32115,7 +35506,10 @@ export interface operations {
     };
     getApiV1PatientsByPatientIdScalesByScaleTypeDelta: {
         parameters: {
-            query?: never;
+            query: {
+                from: string;
+                to: string;
+            };
             header?: never;
             path: {
                 patientId: string;
@@ -32130,7 +35524,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        scaleType: "pps" | "kps" | "fast" | "painad" | "flacc" | "esas_r" | "nyha" | "meld" | "bode" | "flacker" | "gds" | "braden" | "morse" | "aims";
+                        patientId: string;
+                        window: {
+                            from: string;
+                            to: string;
+                        };
+                        latestScore: number | null;
+                        priorScore: number | null;
+                        delta: number | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -32153,7 +35559,34 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        scaleType: "pps" | "kps" | "fast" | "painad" | "flacc" | "esas_r" | "nyha" | "meld" | "bode" | "flacker" | "gds" | "braden" | "morse" | "aims";
+                        scaleVersion: string;
+                        data: {
+                            [key: string]: unknown;
+                        };
+                        score: number | null;
+                        scoreInterpretation: string | null;
+                        capturedAt: string;
+                        capturedByDiscipline: string;
+                        recordedByUserId: string;
+                        sourceEncounterId: string | null;
+                        cosignRequired: boolean;
+                        cosignedAt: string | null;
+                        sudContext: boolean;
+                        actingAs: "self" | "patient_representative";
+                        actingConsentId: string | null;
+                        status: "active" | "superseded";
+                        correctsAssessmentId: string | null;
+                        correctionReason: string | null;
+                        redacted: boolean;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -32181,7 +35614,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        scaleType: string;
+                        scaleType: "pps" | "kps" | "fast" | "painad" | "flacc" | "esas_r" | "nyha" | "meld" | "bode" | "flacker" | "gds" | "braden" | "morse" | "aims";
                         patientId: string;
                         from: string;
                         to: string;
@@ -32221,9 +35654,9 @@ export interface operations {
                             id: string;
                             assessmentId: string;
                             priorAssessmentId: string | null;
-                            ruleId: string;
-                            status: string;
-                            severity: string;
+                            ruleId: "pps_drop_20_in_14d" | "kps_drop_20_in_14d" | "esas_total_increase_20_in_7d" | "esas_symptom_ge_7" | "painad_ge_4" | "nyha_class_iv" | "braden_le_12" | "morse_ge_51" | "meld_ge_30" | "fast_progression_30d" | "gds_progression_30d" | "flacker_increase" | "aims_emergent_dyskinesia";
+                            status: "open" | "acknowledged" | "escalated";
+                            severity: "medium" | "high";
                         }[];
                     };
                 };
@@ -32999,7 +36432,10 @@ export interface operations {
     };
     getApiV1PortalUpcoming: {
         parameters: {
-            query?: never;
+            query: {
+                patient: string;
+                withinHours?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -33011,7 +36447,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        visitId: string;
+                        /** Format: date-time */
+                        scheduledStartedAt: string;
+                        /** Format: date-time */
+                        scheduledEndedAt: string;
+                        visitPurposeLabel: string;
+                        visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -33033,7 +36480,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        visitId: string;
+                        arrivedAt: string | null;
+                        departedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -35787,14 +39240,14 @@ export interface operations {
                         id: string;
                         patientId: string;
                         admissionId: string;
-                        triggerKind: string;
-                        status: string;
+                        triggerKind: "admission" | "transfer_in" | "discharge" | "recertification";
+                        status: "pending" | "in_progress" | "finalized" | "voided";
                         lineCount: number;
                         decisions: {
                             lineId: string;
                             lineKind: string;
                             sourceId: string;
-                            decision: string;
+                            decision: "carry_forward" | "discontinue" | "hold" | "new_order" | "document_only";
                         }[];
                     }[];
                 };
@@ -35824,14 +39277,14 @@ export interface operations {
                         id: string;
                         patientId: string;
                         admissionId: string;
-                        triggerKind: string;
-                        status: string;
+                        triggerKind: "admission" | "transfer_in" | "discharge" | "recertification";
+                        status: "pending" | "in_progress" | "finalized" | "voided";
                         lineCount: number;
                         decisions: {
                             lineId: string;
                             lineKind: string;
                             sourceId: string;
-                            decision: string;
+                            decision: "carry_forward" | "discontinue" | "hold" | "new_order" | "document_only";
                         }[];
                     };
                 };
@@ -35849,7 +39302,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    drugName: string;
+                    reportedDose?: string;
+                    reportedRoute?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -35871,7 +39332,16 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    lineKind: string;
+                    sourceId: string;
+                    decision: "carry_forward" | "discontinue" | "hold" | "new_order" | "document_only";
+                    decisionNotes?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -35894,7 +39364,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    decision: "carry_forward" | "discontinue" | "hold" | "new_order" | "document_only";
+                    decisionNotes?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -35916,7 +39393,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    attestation: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -35938,7 +39421,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    voidReason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -35992,14 +39481,51 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    admissionId: string;
+                    /** Format: uuid */
+                    assignedMembershipId: string;
+                    visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                    visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                    /** Format: uuid */
+                    patientAddressId?: string;
+                    rrule: string;
+                    byday?: ("MO" | "TU" | "WE" | "TH" | "FR" | "SA" | "SU")[];
+                    timeOfDayStart: string;
+                    timeOfDayEnd: string;
+                    timeZone: string;
+                    /** Format: date */
+                    startDate: string;
+                    /** Format: date */
+                    endDate?: string;
+                    count?: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        assignedMembershipId: string;
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        rrule: string;
+                        status: "active" | "discontinued";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36014,14 +39540,32 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        assignedMembershipId: string;
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        rrule: string;
+                        status: "active" | "discontinued";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36066,7 +39610,25 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    source: "phone" | "fax" | "portal" | "walk_in" | "self_referral" | "physician_office" | "hospital_discharge_planner";
+                    /** Format: date-time */
+                    receivedAt: string;
+                    /** Format: uuid */
+                    receivingUserId: string;
+                    patientNameAtReceipt: string;
+                    /** Format: date */
+                    patientDobAtReceipt?: string;
+                    referringDxText?: string;
+                    referrerName?: string;
+                    referrerOrganization?: string;
+                    referrerPhone?: string;
+                    externalReferralId?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36095,7 +39657,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        state: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36110,7 +39678,17 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    referringDxText?: string;
+                    referrerName?: string;
+                    referrerOrganization?: string;
+                    referrerPhone?: string;
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36132,7 +39710,18 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId?: string;
+                    primaryDiagnosisIcd10: string;
+                    /** Format: uuid */
+                    attendingPhysicianId?: string;
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36154,7 +39743,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36176,7 +39772,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    outcome: "eligible" | "ineligible";
+                    notes?: string;
+                    ifVersion: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36209,7 +39813,7 @@ export interface operations {
                             id: string;
                             patientId: string;
                             sourceMedicationOrderId: string;
-                            status: string;
+                            status: "pending" | "approved" | "denied" | "expired";
                             requestedAt: string;
                             prescriberMembershipId: string | null;
                             resultingMedicationOrderId: string | null;
@@ -36242,7 +39846,7 @@ export interface operations {
                         id: string;
                         patientId: string;
                         sourceMedicationOrderId: string;
-                        status: string;
+                        status: "pending" | "approved" | "denied" | "expired";
                         requestedAt: string;
                         prescriberMembershipId: string | null;
                         resultingMedicationOrderId: string | null;
@@ -36262,7 +39866,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    refillsAuthorized: number;
+                    responseChannel?: "electronic_via_dosespot" | "phone" | "fax" | "in_person";
+                    notes?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36284,7 +39896,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    denialReason: string;
+                    responseChannel?: "electronic_via_dosespot" | "phone" | "fax" | "in_person";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -37602,7 +41221,15 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    rxnormRxcui: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -38521,7 +42148,7 @@ export interface operations {
                         patientId: string;
                         medicationOrderId: string;
                         dueAt: string;
-                        status: string;
+                        status: "pending" | "administered" | "missed" | "cancelled" | "intentionally_held";
                     }[];
                 };
             };
@@ -38538,7 +42165,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -38629,7 +42262,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    note?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -38662,9 +42301,9 @@ export interface operations {
                             id: string;
                             patientId: string;
                             admissionId: string;
-                            kind: string;
-                            cadence: string;
-                            status: string;
+                            kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                            cadence: "daily" | "weekly" | "biweekly" | "monthly" | "prn";
+                            status: "active" | "paused" | "expired" | "discontinued";
                             nextSpawnAt: string | null;
                             spawnCount: number;
                             maxSpawns: number | null;
@@ -38683,14 +42322,44 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    admissionId: string;
+                    kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                    signerDiscipline: string;
+                    cadence: "daily" | "weekly" | "biweekly" | "monthly" | "prn";
+                    data: unknown;
+                    /** Format: date-time */
+                    effectiveFrom?: string;
+                    /** Format: date-time */
+                    effectiveUntil?: string;
+                    maxSpawns?: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                        cadence: "daily" | "weekly" | "biweekly" | "monthly" | "prn";
+                        status: "active" | "paused" | "expired" | "discontinued";
+                        nextSpawnAt: string | null;
+                        spawnCount: number;
+                        maxSpawns: number | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -38717,9 +42386,9 @@ export interface operations {
                         id: string;
                         patientId: string;
                         admissionId: string;
-                        kind: string;
-                        cadence: string;
-                        status: string;
+                        kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                        cadence: "daily" | "weekly" | "biweekly" | "monthly" | "prn";
+                        status: "active" | "paused" | "expired" | "discontinued";
                         nextSpawnAt: string | null;
                         spawnCount: number;
                         maxSpawns: number | null;
@@ -38739,14 +42408,35 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    data?: unknown;
+                    /** Format: date-time */
+                    effectiveUntil?: string;
+                    maxSpawns?: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                        cadence: "daily" | "weekly" | "biweekly" | "monthly" | "prn";
+                        status: "active" | "paused" | "expired" | "discontinued";
+                        nextSpawnAt: string | null;
+                        spawnCount: number;
+                        maxSpawns: number | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -38761,14 +42451,33 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    alsoDiscontinueInstances?: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                        cadence: "daily" | "weekly" | "biweekly" | "monthly" | "prn";
+                        status: "active" | "paused" | "expired" | "discontinued";
+                        nextSpawnAt: string | null;
+                        spawnCount: number;
+                        maxSpawns: number | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -38790,7 +42499,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                        cadence: "daily" | "weekly" | "biweekly" | "monthly" | "prn";
+                        status: "active" | "paused" | "expired" | "discontinued";
+                        nextSpawnAt: string | null;
+                        spawnCount: number;
+                        maxSpawns: number | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -38812,7 +42533,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                        cadence: "daily" | "weekly" | "biweekly" | "monthly" | "prn";
+                        status: "active" | "paused" | "expired" | "discontinued";
+                        nextSpawnAt: string | null;
+                        spawnCount: number;
+                        maxSpawns: number | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -38827,14 +42560,24 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    contextNote?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        orderId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40199,7 +43942,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        overlays: {
+                            templateKey: string;
+                            overlayId: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40214,7 +43964,28 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    branding: {
+                        letterhead?: {
+                            /** Format: uri */
+                            logoUrl?: string;
+                            orgName: string;
+                            addressLines: string[];
+                            phone?: string;
+                            fax?: string;
+                        };
+                        footerText?: string;
+                        signatureBlockStyle?: "typed" | "cursive";
+                    };
+                    stateAddendum?: {
+                        stateCode: string;
+                        addendumText: string;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -40854,7 +44625,7 @@ export interface operations {
                         startsAt: string;
                         /** Format: date-time */
                         endsAt: string;
-                        state: string;
+                        state: "requested" | "approved" | "denied" | "cancelled" | "consumed";
                     }[];
                 };
             };
@@ -40869,14 +44640,40 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    membershipId: string;
+                    kind: "pto" | "sick" | "bereavement" | "training" | "other";
+                    /** Format: date-time */
+                    startsAt: string;
+                    /** Format: date-time */
+                    endsAt: string;
+                    reason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        membershipId: string;
+                        kind: "pto" | "sick" | "bereavement" | "training" | "other";
+                        /** Format: date-time */
+                        startsAt: string;
+                        /** Format: date-time */
+                        endsAt: string;
+                        state: "requested" | "approved" | "denied" | "cancelled" | "consumed";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40891,14 +44688,31 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        membershipId: string;
+                        kind: "pto" | "sick" | "bereavement" | "training" | "other";
+                        /** Format: date-time */
+                        startsAt: string;
+                        /** Format: date-time */
+                        endsAt: string;
+                        state: "requested" | "approved" | "denied" | "cancelled" | "consumed";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40913,14 +44727,31 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        membershipId: string;
+                        kind: "pto" | "sick" | "bereavement" | "training" | "other";
+                        /** Format: date-time */
+                        startsAt: string;
+                        /** Format: date-time */
+                        endsAt: string;
+                        state: "requested" | "approved" | "denied" | "cancelled" | "consumed";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40935,14 +44766,33 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        membershipId: string;
+                        kind: "pto" | "sick" | "bereavement" | "training" | "other";
+                        /** Format: date-time */
+                        startsAt: string;
+                        /** Format: date-time */
+                        endsAt: string;
+                        state: "requested" | "approved" | "denied" | "cancelled" | "consumed";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41832,14 +45682,33 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        proposedVisitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        /** Format: date */
+                        proposedForDate: string;
+                        status: "pending" | "published" | "dismissed" | "stale";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41861,7 +45730,32 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        assignedMembershipId: string;
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                        /** Format: date-time */
+                        scheduledStartedAt: string;
+                        /** Format: date-time */
+                        scheduledEndedAt: string;
+                        /** Format: date */
+                        serviceDate: string;
+                        status: "proposed" | "published" | "en_route" | "in_visit" | "completed" | "no_show" | "cancelled" | "rescheduled";
+                        patientAddressId: string | null;
+                        externalFacilityId: string | null;
+                        rescheduledIntoVisitId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41907,7 +45801,7 @@ export interface operations {
                         scheduledEndedAt: string;
                         /** Format: date */
                         serviceDate: string;
-                        status: string;
+                        status: "proposed" | "published" | "en_route" | "in_visit" | "completed" | "no_show" | "cancelled" | "rescheduled";
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
@@ -41925,14 +45819,62 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    admissionId: string;
+                    patientAddressId: string | null;
+                    externalFacilityId: string | null;
+                    /** Format: uuid */
+                    assignedMembershipId: string;
+                    visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                    visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                    /** Format: date-time */
+                    scheduledStartedAt: string;
+                    /** Format: date-time */
+                    scheduledEndedAt: string;
+                    schedulerInternalNotes?: string;
+                    caregiverReminderOptIn?: boolean;
+                    /** Format: uuid */
+                    parentRecurringVisitId?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        assignedMembershipId: string;
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                        /** Format: date-time */
+                        scheduledStartedAt: string;
+                        /** Format: date-time */
+                        scheduledEndedAt: string;
+                        /** Format: date */
+                        serviceDate: string;
+                        status: "proposed" | "published" | "en_route" | "in_visit" | "completed" | "no_show" | "cancelled" | "rescheduled";
+                        patientAddressId: string | null;
+                        externalFacilityId: string | null;
+                        rescheduledIntoVisitId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41974,7 +45916,7 @@ export interface operations {
                         scheduledEndedAt: string;
                         /** Format: date */
                         serviceDate: string;
-                        status: string;
+                        status: "proposed" | "published" | "en_route" | "in_visit" | "completed" | "no_show" | "cancelled" | "rescheduled";
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
@@ -41994,14 +45936,53 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date-time */
+                    scheduledStartedAt?: string;
+                    /** Format: date-time */
+                    scheduledEndedAt?: string;
+                    /** Format: uuid */
+                    assignedMembershipId?: string;
+                    visitPurpose?: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                    visitSetting?: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                    schedulerInternalNotes?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        assignedMembershipId: string;
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                        /** Format: date-time */
+                        scheduledStartedAt: string;
+                        /** Format: date-time */
+                        scheduledEndedAt: string;
+                        /** Format: date */
+                        serviceDate: string;
+                        status: "proposed" | "published" | "en_route" | "in_visit" | "completed" | "no_show" | "cancelled" | "rescheduled";
+                        patientAddressId: string | null;
+                        externalFacilityId: string | null;
+                        rescheduledIntoVisitId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42016,14 +45997,46 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    reasonCode: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        assignedMembershipId: string;
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                        /** Format: date-time */
+                        scheduledStartedAt: string;
+                        /** Format: date-time */
+                        scheduledEndedAt: string;
+                        /** Format: date */
+                        serviceDate: string;
+                        status: "proposed" | "published" | "en_route" | "in_visit" | "completed" | "no_show" | "cancelled" | "rescheduled";
+                        patientAddressId: string | null;
+                        externalFacilityId: string | null;
+                        rescheduledIntoVisitId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42038,14 +46051,45 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        assignedMembershipId: string;
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                        /** Format: date-time */
+                        scheduledStartedAt: string;
+                        /** Format: date-time */
+                        scheduledEndedAt: string;
+                        /** Format: date */
+                        serviceDate: string;
+                        status: "proposed" | "published" | "en_route" | "in_visit" | "completed" | "no_show" | "cancelled" | "rescheduled";
+                        patientAddressId: string | null;
+                        externalFacilityId: string | null;
+                        rescheduledIntoVisitId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42060,14 +46104,47 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    newAssignedMembershipId: string;
+                    reason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        assignedMembershipId: string;
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                        /** Format: date-time */
+                        scheduledStartedAt: string;
+                        /** Format: date-time */
+                        scheduledEndedAt: string;
+                        /** Format: date */
+                        serviceDate: string;
+                        status: "proposed" | "published" | "en_route" | "in_visit" | "completed" | "no_show" | "cancelled" | "rescheduled";
+                        patientAddressId: string | null;
+                        externalFacilityId: string | null;
+                        rescheduledIntoVisitId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42082,14 +46159,77 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date-time */
+                    newScheduledStartedAt: string;
+                    /** Format: date-time */
+                    newScheduledEndedAt: string;
+                    /** Format: uuid */
+                    newAssignedMembershipId?: string;
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        original: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            /** Format: uuid */
+                            admissionId: string;
+                            /** Format: uuid */
+                            assignedMembershipId: string;
+                            visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                            visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                            /** Format: date-time */
+                            scheduledStartedAt: string;
+                            /** Format: date-time */
+                            scheduledEndedAt: string;
+                            /** Format: date */
+                            serviceDate: string;
+                            status: "proposed" | "published" | "en_route" | "in_visit" | "completed" | "no_show" | "cancelled" | "rescheduled";
+                            patientAddressId: string | null;
+                            externalFacilityId: string | null;
+                            rescheduledIntoVisitId: string | null;
+                        };
+                        created: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            /** Format: uuid */
+                            admissionId: string;
+                            /** Format: uuid */
+                            assignedMembershipId: string;
+                            visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                            visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                            /** Format: date-time */
+                            scheduledStartedAt: string;
+                            /** Format: date-time */
+                            scheduledEndedAt: string;
+                            /** Format: date */
+                            serviceDate: string;
+                            status: "proposed" | "published" | "en_route" | "in_visit" | "completed" | "no_show" | "cancelled" | "rescheduled";
+                            patientAddressId: string | null;
+                            externalFacilityId: string | null;
+                            rescheduledIntoVisitId: string | null;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42104,14 +46244,45 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    evvMissingReason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        assignedMembershipId: string;
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                        /** Format: date-time */
+                        scheduledStartedAt: string;
+                        /** Format: date-time */
+                        scheduledEndedAt: string;
+                        /** Format: date */
+                        serviceDate: string;
+                        status: "proposed" | "published" | "en_route" | "in_visit" | "completed" | "no_show" | "cancelled" | "rescheduled";
+                        patientAddressId: string | null;
+                        externalFacilityId: string | null;
+                        rescheduledIntoVisitId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42332,7 +46503,7 @@ export interface operations {
                             scheduledEndedAt: string;
                             /** Format: date */
                             serviceDate: string;
-                            status: string;
+                            status: "proposed" | "published" | "en_route" | "in_visit" | "completed" | "no_show" | "cancelled" | "rescheduled";
                             patientAddressId: string | null;
                             externalFacilityId: string | null;
                             rescheduledIntoVisitId: string | null;

@@ -12,6 +12,13 @@ import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { HOPE_RFA_KINDS } from "@wardenx/types";
 import { ValidationError } from "@wardenx/types";
+import type {
+  HopeAssessmentView as ServiceAssessmentView,
+  HopeComplianceView as ServiceComplianceView,
+  HopeScheduleView as ServiceScheduleView,
+  HopeSfvView as ServiceSfvView,
+  HopeSubmissionView as ServiceSubmissionView,
+} from "./service";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -121,6 +128,170 @@ export const SubmissionListQuerySchema = Type.Object({
 export const DashboardQuerySchema = Type.Object({
   providerEntityId: Type.Optional(Type.String({ maxLength: 64 })),
 });
+
+// ── §4.2 RESPONSE DTOs (F0 enrichment) ─────────────────────────────────────────────────────────────
+// The read + write routes returned typed service view shapes (`HopeAssessmentView` / `HopeScheduleView` /
+// `HopeSfvView` / `HopeSubmissionView` / `HopeComplianceView` and their `{ items }` envelopes) but published
+// NO response contract, so the generated client typed every body as `never`. These DTOs mirror the service's
+// read views 1:1 and are pinned to them by the compile-time `Conforms` aliases below, so a view field added
+// or renamed breaks `bun run build` rather than silently drifting from the client.
+const ASSESSMENT_STATUS = lit(["draft", "signed", "superseded"] as const);
+const SCHEDULE_STATUS = lit(["open", "completed", "expired", "skipped"] as const);
+const SFV_STATUS = lit(["open", "completed", "overdue", "missed"] as const);
+const SUBMISSION_STATUS = lit([
+  "queued",
+  "in_flight",
+  "accepted",
+  "rejected",
+  "partially_accepted",
+] as const);
+const SCHEDULE_GENERATED_BY = lit([
+  "auto_admission",
+  "auto_discharge",
+  "sfv_trigger",
+  "manual_admin",
+] as const);
+const NullableString = () => Type.Union([Type.String(), Type.Null()]);
+
+/** One HOPE assessment view (sections snapshot + J2051 trigger verdict + correction chain). */
+export const HopeAssessmentResponseSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  rfaKind: RFA_KIND,
+  status: ASSESSMENT_STATUS,
+  targetDate: Type.String(),
+  authorDiscipline: Type.String(),
+  j2051MaxSeverity: Type.Union([J2051_SEVERITY, Type.Null()]),
+  j2051TriggerFired: Type.Boolean(),
+  wasLate: Type.Boolean(),
+  signedAt: NullableString(),
+  signedBy: NullableString(),
+  correctsAssessmentId: NullableString(),
+  supersededByAssessmentId: NullableString(),
+  snapshot: Type.Union([
+    Type.Record(Type.String(), Type.Union([Type.Number(), Type.Null()])),
+    Type.Null(),
+  ]),
+  version: Type.Integer(),
+});
+/** One HOPE timepoint-schedule view (window + late-deadline + provenance). */
+export const HopeScheduleResponseSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  rfaKind: RFA_KIND,
+  status: SCHEDULE_STATUS,
+  windowOpensAt: Type.String(),
+  windowClosesAt: Type.String(),
+  lateDeadlineAt: Type.String(),
+  generatedBy: SCHEDULE_GENERATED_BY,
+  completedByAssessmentId: NullableString(),
+});
+/** One Symptom-Follow-Up-Visit obligation view. */
+export const HopeSfvResponseSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  triggeringAssessmentId: Type.String(),
+  status: SFV_STATUS,
+  triggeredAt: Type.String(),
+  dueAt: Type.String(),
+  completingAssessmentId: NullableString(),
+});
+/** One iQIES submission-batch view (per-provider-entity, with item outcome counts). */
+export const HopeSubmissionResponseSchema = Type.Object({
+  id: Type.String(),
+  providerEntityId: Type.String(),
+  submissionPeriod: Type.String(),
+  status: SUBMISSION_STATUS,
+  itemCount: Type.Integer(),
+  acceptedCount: Type.Integer(),
+  rejectedCount: Type.Integer(),
+  transmittedAt: NullableString(),
+  acceptedAt: NullableString(),
+});
+/** Org-level HQRP compliance posture (on-time + acceptance rates). */
+export const HopeComplianceResponseSchema = Type.Object({
+  providerEntityId: NullableString(),
+  hopeOnTimeRate: Type.Number(),
+  sfvOnTimeRate: Type.Number(),
+  submissionAcceptanceRate: Type.Number(),
+});
+
+// List / envelope responses (the service returns keyed wrappers, never bare arrays).
+export const HopeScheduleListResponseSchema = Type.Object({
+  schedules: Type.Array(HopeScheduleResponseSchema),
+});
+export const HopeAssessmentListResponseSchema = Type.Object({
+  assessments: Type.Array(HopeAssessmentResponseSchema),
+});
+export const HopeSfvListResponseSchema = Type.Object({
+  sfvs: Type.Array(HopeSfvResponseSchema),
+});
+export const HopeSubmissionListResponseSchema = Type.Object({
+  submissions: Type.Array(HopeSubmissionResponseSchema),
+});
+
+/** Route 11 — the async summary-PDF request acknowledgement (202). */
+export const HopeSummaryRequestedResponseSchema = Type.Object({
+  assessmentId: Type.String(),
+  requested: Type.Literal(true),
+});
+/** Route 14 — on-demand pre-submission validation findings for one row. */
+export const HopeValidationResponseSchema = Type.Object({
+  assessmentId: Type.String(),
+  findings: Type.Array(
+    Type.Object({
+      ruleId: Type.String(),
+      severity: Type.String(),
+      message: Type.String(),
+    }),
+  ),
+});
+/** Route 20 — the admin schedule-recompute result (rows touched). */
+export const HopeRegenerateResponseSchema = Type.Object({
+  admissionId: Type.String(),
+  scheduleCount: Type.Integer(),
+});
+
+// Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
+type Conforms<T extends V, V> = T;
+type _Assessment = Conforms<Static<typeof HopeAssessmentResponseSchema>, ServiceAssessmentView>;
+type _Schedule = Conforms<Static<typeof HopeScheduleResponseSchema>, ServiceScheduleView>;
+type _Sfv = Conforms<Static<typeof HopeSfvResponseSchema>, ServiceSfvView>;
+type _Submission = Conforms<Static<typeof HopeSubmissionResponseSchema>, ServiceSubmissionView>;
+type _Compliance = Conforms<Static<typeof HopeComplianceResponseSchema>, ServiceComplianceView>;
+type _ScheduleList = Conforms<
+  Static<typeof HopeScheduleListResponseSchema>,
+  { readonly schedules: readonly ServiceScheduleView[] }
+>;
+type _AssessmentList = Conforms<
+  Static<typeof HopeAssessmentListResponseSchema>,
+  { readonly assessments: readonly ServiceAssessmentView[] }
+>;
+type _SfvList = Conforms<
+  Static<typeof HopeSfvListResponseSchema>,
+  { readonly sfvs: readonly ServiceSfvView[] }
+>;
+type _SubmissionList = Conforms<
+  Static<typeof HopeSubmissionListResponseSchema>,
+  { readonly submissions: readonly ServiceSubmissionView[] }
+>;
+type _SummaryRequested = Conforms<
+  Static<typeof HopeSummaryRequestedResponseSchema>,
+  { assessmentId: string; requested: true }
+>;
+type _Validation = Conforms<
+  Static<typeof HopeValidationResponseSchema>,
+  {
+    assessmentId: string;
+    findings: ReadonlyArray<{ ruleId: string; severity: string; message: string }>;
+  }
+>;
+type _Regenerate = Conforms<
+  Static<typeof HopeRegenerateResponseSchema>,
+  { admissionId: string; scheduleCount: number }
+>;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

@@ -1,13 +1,19 @@
 # WardenX — Repository Guide
 
 Multi-tenant hospice EHR SaaS. This repo is the **specification corpus + architecture-fitness
-kit + staged implementation monorepo**: Phase 0 gates/scaffold are in place, and **27 of 40 modules
-now have real implementation on `main`** — the clinical core (M2–M14, M17, M18, M22), the **full revenue
-cycle (M23 Billing-Medicare · M25 Remittance & Denials · M26 Cap Management · M27 Cost Report; merged PRs
-#120/#121/#124–#126)**, **M30 HQRP & Quality**, M33 Reporting & M34 SaaS Platform, plus the platform services
-M36/M38/M39/M40 (M01 Foundation is the partitioned schema/gate layer with no feature routes → 🟡). The
-generated **implementation-status matrix** (`bun run status:matrix` → `audit/implementation-status/IMPLEMENTATION_STATUS.md`)
-is the per-module truth — currently **🟢 27 · 🟡 1 · ⚪ 12**. **M30 is merged (PR #106)**: 18 frozen
+
+**
+
+**kit + staged implementation monorepo**: Phase 0 gates/scaffold are in place, and **35 of 40 modules
+now have real implementation on `main`** — the clinical core (M1–M14, M17, M18, M22), the field/ops
+tier (M15 Discipline Plans · M16 Bereavement · M19 On-Call Triage · M20 Field Safety · M21 Supplies/DME),
+the **complete revenue cycle (M23 Billing-Medicare · M24 Billing-Medicaid · M25 Remittance & Denials ·
+M26 Cap Management · M27 Cost Report)**, **M30 HQRP & Quality**, **M32 AI Platform**, M33 Reporting &
+M34 SaaS Platform, plus the platform services M36/M38/M39/M40. The generated **implementation-status
+matrix** (`bun run status:matrix` → `audit/implementation-status/IMPLEMENTATION_STATUS.md`)
+is the per-module truth — currently **🟢 35 · 🟡 0 · ⚪ 5**. The **5 remaining placeholders (⚪)** are
+M28 FHIR Gateway, M29 External Interfaces, M31 Patient/Family Portal & Telehealth, M35 Subscription
+Billing, and M37 Inpatient Unit (IPU) Management. **M30 is merged (PR #106)**: 18 frozen
 `quality/` tables + migrations 0062–0068; the `@wardenx/quality` domain core + `@wardenx/cahps-vendors`;
 47 routes in `apps/backend/src/modules/30-quality`; the `MEASURE_CATALOG`/measure registry (HCI 10
 indicators + composite, HVLDL, HOPE-derived TFP, operational); and CAHPS/QAPI/SRA/incident/mortality/
@@ -90,8 +96,7 @@ the prose docs in `docs/architecture/`.
   RLS/audit-trigger presence — armed-inert until app source lands), `check-ui-screens.ts` —
   enforced via `package.json` scripts (`bun run arch:fitness`; UI-corpus check also standalone
   as `bun run docs:ui`).
-- `scripts/check-abac-predicates.ts` — **ABAC named-predicate resolution** (`bun run
-  arch:abac-predicates`). Every `requireAbac(_, "<name>")` — including through each module's
+- `scripts/check-abac-predicates.ts` — **ABAC named-predicate resolution** (`bun run arch:abac-predicates`). Every `requireAbac(_, "<name>")` — including through each module's
   local `guards.ts` factory — must name a predicate some module declares. M3's registry fails
   closed on an unknown name, so a typo'd or never-registered name is a permanently dead endpoint
   (403 for every caller) with the whole build green; that is exactly how M30's 15 `inOrg` guards

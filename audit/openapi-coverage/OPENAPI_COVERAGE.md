@@ -5,7 +5,7 @@
 
 `openapi:check` proves openapi.json was regenerated and that no enrichment targets a dead route. It does NOT prove a route carries a request contract — an unenriched route is still emitted, with no `requestBody` and a bare `200: OK`, and the generated client then types its body as `never`. This report is the coverage half.
 
-**Totals:** 517/995 routes enriched (52%) · **330/574 mutating routes carry no request-body schema** · 228/395 GETs carry no response schema
+**Totals:** 765/995 routes enriched (77%) · **129/574 mutating routes carry no request-body schema** · 196/395 GETs carry no response schema
 
 `Deficit` = routes with no enrichment entry; it is the ratcheted number (see `baseline.json`). `Mut. no body` is the sharpest signal — a POST that validates a TypeBox body in its handler but publishes none is a contract that lies by omission.
 
@@ -15,23 +15,23 @@
 | 03-authorization | 17 | 9 (53%) | 8 | 9 | 2 | 6 | 4 |
 | 04-audit | 4 | 1 (25%) | 3 | 0 | 0 | 4 | 3 |
 | 05-patient | 14 | 13 (93%) | 1 | 5 | 1 | 9 | 0 |
-| 06-admission | 46 | 6 (13%) | 40 | 34 | 34 | 12 | 6 |
-| 07-care-plan | 19 | 3 (16%) | 16 | 13 | 13 | 6 | 3 |
-| 08-encounters | 31 | 4 (13%) | 27 | 22 | 22 | 8 | 4 |
-| 09-assessments | 18 | 6 (33%) | 12 | 7 | 7 | 11 | 5 |
-| 10-hope | 20 | 10 (50%) | 10 | 10 | 10 | 10 | 0 |
-| 11-orders | 28 | 9 (32%) | 19 | 18 | 18 | 10 | 1 |
-| 12-dosespot | 31 | 10 (32%) | 21 | 21 | 21 | 10 | 0 |
-| 13-emar | 28 | 10 (36%) | 18 | 18 | 18 | 10 | 0 |
-| 14-idg | 26 | 6 (23%) | 20 | 17 | 17 | 6 | 0 |
+| 06-admission | 46 | 46 (100%) | 0 | 34 | 0 | 12 | 0 |
+| 07-care-plan | 19 | 19 (100%) | 0 | 13 | 0 | 6 | 0 |
+| 08-encounters | 31 | 31 (100%) | 0 | 22 | 1 | 8 | 0 |
+| 09-assessments | 18 | 18 (100%) | 0 | 7 | 0 | 11 | 0 |
+| 10-hope | 20 | 20 (100%) | 0 | 10 | 0 | 10 | 0 |
+| 11-orders | 28 | 28 (100%) | 0 | 18 | 2 | 10 | 0 |
+| 12-dosespot | 31 | 31 (100%) | 0 | 21 | 2 | 10 | 0 |
+| 13-emar | 28 | 28 (100%) | 0 | 18 | 1 | 10 | 0 |
+| 14-idg | 26 | 26 (100%) | 0 | 17 | 2 | 6 | 0 |
 | 15-discipline-care-plans | 28 | 23 (82%) | 5 | 17 | 2 | 11 | 11 |
 | 16-bereavement | 33 | 31 (94%) | 2 | 26 | 0 | 7 | 7 |
-| 17-scheduling | 29 | 11 (38%) | 18 | 17 | 17 | 12 | 1 |
-| 18-evv | 25 | 7 (28%) | 18 | 15 | 15 | 10 | 3 |
+| 17-scheduling | 29 | 29 (100%) | 0 | 17 | 1 | 12 | 0 |
+| 18-evv | 25 | 25 (100%) | 0 | 15 | 1 | 10 | 0 |
 | 19-oncall | 38 | 31 (82%) | 7 | 26 | 2 | 12 | 12 |
 | 20-field-safety | 30 | 25 (83%) | 5 | 17 | 0 | 12 | 12 |
 | 21-supplies | 37 | 31 (84%) | 6 | 24 | 0 | 12 | 12 |
-| 22-documents | 35 | 6 (17%) | 29 | 19 | 19 | 15 | 9 |
+| 22-documents | 35 | 35 (100%) | 0 | 19 | 0 | 15 | 0 |
 | 23-billing-medicare | 43 | 43 (100%) | 0 | 17 | 4 | 24 | 22 |
 | 24-billing-medicaid | 39 | 39 (100%) | 0 | 20 | 4 | 17 | 0 |
 | 25-remittance | 31 | 18 (58%) | 13 | 18 | 5 | 13 | 8 |

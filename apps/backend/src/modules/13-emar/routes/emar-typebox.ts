@@ -10,6 +10,20 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
+import type {
+  AdministrationPolicyView as ServiceAdministrationPolicyView,
+  AdministrationView as ServiceAdministrationView,
+  DeploymentView as ServiceDeploymentView,
+  IvSessionView as ServiceIvSessionView,
+  MissedDoseView as ServiceMissedDoseView,
+  ReconciliationDecisionView as ServiceReconciliationDecisionView,
+  ScheduledDoseView as ServiceScheduledDoseView,
+  WorksheetView as ServiceWorksheetView,
+} from "./service";
+
+/** Literal-union helper — a response enum field mirrors the §3.2 pgEnum union (not a bare `Type.String()`,
+ * which the M30 read-DTO lesson flagged as a "silent lie" that lets the wire vocab drift from the view). */
+const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -201,12 +215,24 @@ export const DeploymentQuerySchema = Type.Object({
 });
 
 // ── read responses (§4.1 / §6.1; M13-T10 Track-B screens) ───────────────────────────────────────────────
-// The GET handlers return the service view DTOs (apps/backend/.../routes/service.ts), not route-level TypeBox.
-// These schemas mirror those views so the generated client (`packages/ui/src/core/api`) types the read
-// surfaces; enum-bearing fields stay `Type.String()` (display-only on the client) to avoid mirror drift with
-// the §3.2 pgEnums. The server is authoritative for the §2.2 lifecycle, the §2.5 late-entry tier, and the
-// §2.9 BCMA match result. `null`-able row fields use the explicit string|null union.
-const Nullable = (s: TSchema): TSchema => Type.Union([s, Type.Null()]);
+// The GET/mutation handlers return the service view DTOs (apps/backend/.../routes/service.ts), not route-level
+// TypeBox. These schemas mirror those views 1:1 so the generated client (`packages/ui/src/core/api`) types the
+// read surfaces, and each is pinned to its service view by a compile-time `Conforms` alias below — a view field
+// added, renamed, or retyped breaks `bun run build` rather than silently drifting from the client. Enum-bearing
+// fields publish the §3.2 pgEnum literal union (via `lit`), not a bare `Type.String()`. `null`-able row fields
+// use the explicit `<T>|null` union. The server stays authoritative for the §2.2 lifecycle, the §2.5 late-entry
+// tier, and the §2.9 BCMA match result.
+const Nullable = <T extends TSchema>(s: T) => Type.Union([s, Type.Null()]);
+
+// §3.2 pgEnum value mirrors (kept in lock-step with `@wardenx/types` / `@wardenx/emar`).
+const ADMINISTRATION_STATUS = lit(["committed", "pending_caregiver_review", "superseded", "voided"] as const);
+const ADMINISTRATION_ACTOR_KIND = lit(["clinician", "caregiver_attested", "system_iv_session_event"] as const);
+const ADMINISTRATION_LATE_ENTRY_TIER = lit(["normal", "late", "significant_late", "administrative_override"] as const);
+const BARCODE_MATCH_RESULT = lit(["match", "wrong_drug", "wrong_patient", "expired", "no_order_active"] as const);
+const SCHEDULED_DOSE_STATUS = lit(["pending", "administered", "missed", "cancelled", "intentionally_held"] as const);
+const RECONCILIATION_DECISION_KIND = lit(["carry_forward", "discontinue", "hold", "new_order", "document_only"] as const);
+const RECONCILIATION_TRIGGER_KIND = lit(["admission", "transfer_in", "discharge", "recertification"] as const);
+const RECONCILIATION_WORKSHEET_STATUS = lit(["pending", "in_progress", "finalized", "voided"] as const);
 
 export const AdministrationViewSchema = Type.Object({
   id: Type.String(),
@@ -214,11 +240,11 @@ export const AdministrationViewSchema = Type.Object({
   admissionId: Type.String(),
   medicationOrderId: Type.String(),
   mode: ADMINISTRATION_MODE,
-  status: Type.String(),
-  actorKind: Type.String(),
+  status: ADMINISTRATION_STATUS,
+  actorKind: ADMINISTRATION_ACTOR_KIND,
   administeredAt: Type.String(),
   recordedAt: Type.String(),
-  lateEntryTier: Type.String(),
+  lateEntryTier: ADMINISTRATION_LATE_ENTRY_TIER,
   administeringClinicianMembershipId: Nullable(Type.String()),
   witnessMembershipId: Nullable(Type.String()),
   encounterId: Nullable(Type.String()),
@@ -229,7 +255,7 @@ export const AdministrationViewSchema = Type.Object({
   isComfortKitDrawdown: Type.Boolean(),
   requiresRnReview: Type.Boolean(),
   supersededById: Nullable(Type.String()),
-  barcodeMatchResult: Nullable(Type.String()),
+  barcodeMatchResult: Nullable(BARCODE_MATCH_RESULT),
 });
 export const AdministrationListResponseSchema = Type.Array(AdministrationViewSchema);
 
@@ -238,7 +264,7 @@ export const ScheduledDoseViewSchema = Type.Object({
   patientId: Type.String(),
   medicationOrderId: Type.String(),
   dueAt: Type.String(),
-  status: Type.String(),
+  status: SCHEDULED_DOSE_STATUS,
 });
 export const ScheduledDoseListResponseSchema = Type.Array(ScheduledDoseViewSchema);
 
@@ -256,14 +282,14 @@ const ReconciliationDecisionViewSchema = Type.Object({
   lineId: Type.String(),
   lineKind: Type.String(),
   sourceId: Type.String(),
-  decision: Type.String(),
+  decision: RECONCILIATION_DECISION_KIND,
 });
 export const WorksheetViewSchema = Type.Object({
   id: Type.String(),
   patientId: Type.String(),
   admissionId: Type.String(),
-  triggerKind: Type.String(),
-  status: Type.String(),
+  triggerKind: RECONCILIATION_TRIGGER_KIND,
+  status: RECONCILIATION_WORKSHEET_STATUS,
   lineCount: Type.Integer(),
   decisions: Type.Array(ReconciliationDecisionViewSchema),
 });
@@ -288,6 +314,24 @@ export const AdministrationPolicyViewSchema = Type.Object({
   prnMinimumIntervalMinutes: Type.Integer(),
   emarPdfOnCommit: Type.Boolean(),
 });
+
+// ── compile-time pins: what each schema PUBLISHES (`T`) must be assignable to what the service RETURNS (`V`),
+// so a view field added/renamed/retyped fails the build instead of drifting from the generated client. ────────
+type Conforms<T extends V, V> = T;
+type _AdministrationView = Conforms<Static<typeof AdministrationViewSchema>, ServiceAdministrationView>;
+type _ScheduledDoseView = Conforms<Static<typeof ScheduledDoseViewSchema>, ServiceScheduledDoseView>;
+type _MissedDoseView = Conforms<Static<typeof MissedDoseViewSchema>, ServiceMissedDoseView>;
+type _ReconciliationDecisionView = Conforms<
+  Static<typeof ReconciliationDecisionViewSchema>,
+  ServiceReconciliationDecisionView
+>;
+type _WorksheetView = Conforms<Static<typeof WorksheetViewSchema>, ServiceWorksheetView>;
+type _DeploymentView = Conforms<Static<typeof DeploymentViewSchema>, ServiceDeploymentView>;
+type _IvSessionView = Conforms<Static<typeof IvSessionViewSchema>, ServiceIvSessionView>;
+type _AdministrationPolicyView = Conforms<
+  Static<typeof AdministrationPolicyViewSchema>,
+  ServiceAdministrationPolicyView
+>;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

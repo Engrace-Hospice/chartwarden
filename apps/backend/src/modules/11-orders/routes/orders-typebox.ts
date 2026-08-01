@@ -11,7 +11,13 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ORDER_KINDS } from "@wardenx/types";
+import type { OrderKind } from "@wardenx/types";
 import { ValidationError } from "@wardenx/types";
+import type {
+  OrderView as ServiceOrderView,
+  StandingOrderView as ServiceStandingOrderView,
+  VerbalPolicyView as ServiceVerbalPolicyView,
+} from "./service";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -170,6 +176,120 @@ export const OrderListQuerySchema = Type.Object({
   kind: Type.Optional(ORDER_KIND),
   status: Type.Optional(Type.String({ maxLength: 32 })),
 });
+
+// ── §4.2 RESPONSE DTOs (F0 enrichment) ─────────────────────────────────────────────────────────────
+// The read routes return the service's view projections (OrderView / StandingOrderView / VerbalPolicyView
+// + the `{ orders }` / `{ standingOrders }` / suggestions / spawn envelopes) but published NO response
+// contract, so the generated client typed every GET/mutation body as `never`. These DTOs mirror the
+// service views 1:1 and are pinned to them by the compile-time `Conforms` aliases below, so a view field
+// added, renamed, or re-typed breaks `bun run build` rather than silently drifting from the client. The
+// lifecycle enums are published as their canonical literal unions (never a lax `Type.String()`), so the
+// wire vocabulary is honest; `transmissionStatus` / `resultsStatus` are `string` in the view itself.
+const ORDER_STATUS = lit([
+  "draft",
+  "pending_signature",
+  "verbal_pending",
+  "active",
+  "completed",
+  "discontinued",
+  "expired_unsigned",
+] as const);
+const ORDER_DISCONTINUATION_REASON = lit([
+  "clinical_judgement",
+  "patient_request",
+  "adverse_event",
+  "replaced_by_corrected_order",
+  "admission_discharged",
+  "level_of_care_change",
+  "standing_order_discontinued",
+  "corrected_replacement",
+  "expired_verbal",
+] as const);
+const STANDING_ORDER_STATUS = lit(["active", "paused", "expired", "discontinued"] as const);
+const nullableString = () => Type.Union([Type.String(), Type.Null()]);
+
+/** Route 2 / mutation responses — the §2.2 D2 order view projection (never the raw Drizzle row). */
+export const OrderViewResponseSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  kind: ORDER_KIND,
+  status: ORDER_STATUS,
+  priority: PRIORITY,
+  version: Type.Integer(),
+  drafterMembershipId: Type.String(),
+  drafterDiscipline: Type.String(),
+  orderingPhysicianMdmId: Type.String(),
+  cosignRequired: Type.Boolean(),
+  cosignStatus: Type.Union([Type.Literal("pending"), Type.Literal("attached"), Type.Null()]),
+  transmissionStatus: Type.String(),
+  resultsStatus: Type.String(),
+  verbalDeadlineAt: nullableString(),
+  discontinuationReason: Type.Union([ORDER_DISCONTINUATION_REASON, Type.Null()]),
+  replacesOrderId: nullableString(),
+  triggeringAssessmentId: nullableString(),
+  triggeringHopeAssessmentId: nullableString(),
+  signedAt: nullableString(),
+  signedBy: nullableString(),
+  completedAt: nullableString(),
+  createdAt: Type.String(),
+});
+
+/** Route 19 / standing-order mutation responses — the §2.4 D5 standing-order view projection. */
+export const StandingOrderViewResponseSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  kind: ORDER_KIND,
+  cadence: CADENCE,
+  status: STANDING_ORDER_STATUS,
+  nextSpawnAt: nullableString(),
+  spawnCount: Type.Integer(),
+  maxSpawns: Type.Union([Type.Integer(), Type.Null()]),
+});
+
+/** Routes 26 / 27 — the §2.3 D3 org verbal-order policy view. */
+export const VerbalPolicyViewResponseSchema = Type.Object({
+  windowHours: Type.Integer(),
+  businessHoursOnly: Type.Boolean(),
+  lpnCosignRequiredKinds: Type.Array(ORDER_KIND),
+  npCosignRequiredKinds: Type.Array(ORDER_KIND),
+  platformFloorWindowHours: Type.Integer(),
+  policyVersion: Type.String(),
+});
+
+/** The `{ orders }` envelope the list / worklist reads return. */
+export const OrderListResponseSchema = Type.Object({ orders: Type.Array(OrderViewResponseSchema) });
+/** The `{ standingOrders }` envelope the standing-order list read returns. */
+export const StandingOrderListResponseSchema = Type.Object({
+  standingOrders: Type.Array(StandingOrderViewResponseSchema),
+});
+/** Route 17 — the derived §D7 suggestion banner. */
+export const SuggestionsResponseSchema = Type.Object({
+  patientId: Type.String(),
+  suggestions: Type.Array(Type.Object({ kind: ORDER_KIND, reason: Type.String() })),
+});
+/** Route 25 — the PRN manual-spawn result (the newly-minted order id). */
+export const SpawnResponseSchema = Type.Object({ orderId: Type.String() });
+
+// Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
+type Conforms<T extends V, V> = T;
+type _OrderView = Conforms<Static<typeof OrderViewResponseSchema>, ServiceOrderView>;
+type _StandingOrderView = Conforms<Static<typeof StandingOrderViewResponseSchema>, ServiceStandingOrderView>;
+type _VerbalPolicyView = Conforms<Static<typeof VerbalPolicyViewResponseSchema>, ServiceVerbalPolicyView>;
+type _OrderList = Conforms<
+  Static<typeof OrderListResponseSchema>,
+  { readonly orders: readonly ServiceOrderView[] }
+>;
+type _StandingOrderList = Conforms<
+  Static<typeof StandingOrderListResponseSchema>,
+  { readonly standingOrders: readonly ServiceStandingOrderView[] }
+>;
+type _Suggestions = Conforms<
+  Static<typeof SuggestionsResponseSchema>,
+  { readonly patientId: string; readonly suggestions: ReadonlyArray<{ kind: OrderKind; reason: string }> }
+>;
+type _Spawn = Conforms<Static<typeof SpawnResponseSchema>, { readonly orderId: string }>;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

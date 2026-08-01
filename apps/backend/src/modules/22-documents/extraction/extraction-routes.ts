@@ -41,11 +41,11 @@ function actorOf(request: FastifyRequest): { organizationId: string; userId: str
   return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
-const RunBatchRequest = Type.Object({
+export const RunBatchRequest = Type.Object({
   jobId: Type.String({ format: "uuid" }),
   pageCount: Type.Integer({ minimum: 1 }),
 });
-const CommitReviewRequest = Type.Object({
+export const CommitReviewRequest = Type.Object({
   sourceDocumentId: Type.String({ format: "uuid" }),
   decisions: Type.Array(
     Type.Object({

@@ -8,7 +8,21 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import type {
+  EvvAggregatorSubmissionDto,
+  EvvBracketDto,
+  EvvEventDto,
+} from "@wardenx/types";
 import { ValidationError } from "@wardenx/types";
+import type {
+  ArrivalView as ServiceArrivalView,
+  CheckResultView as ServiceCheckResultView,
+  DeviceView as ServiceDeviceView,
+  GeofencePolicyView as ServiceGeofencePolicyView,
+  LocationView as ServiceLocationView,
+  MetricsView as ServiceMetricsView,
+  MissingResolutionView as ServiceMissingResolutionView,
+} from "./service";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -134,20 +148,78 @@ export const MetricsQuery = Type.Object({
 
 // ── §4.1 read-response views (the coordinate-free projections the §5.1 read screens render via the typed
 // client; M18-T07). Named `*View` and exported so scripts/openapi/enrichments.ts can type the GET responses
-// from the SAME schemas without the OpenAPI scanner mistaking this for a route file. ──────────────────────────
+// from the SAME schemas without the OpenAPI scanner mistaking this for a route file. Every view is pinned to
+// the shape the service actually returns by the compile-time `Conforms` aliases below, so a field added or
+// renamed (or a wire enum widened to a bare `string`) breaks `bun run build` rather than drifting from the
+// generated client. Wire enums are the narrow literal unions the service returns — a `Type.String()` here
+// would be a silent lie (it types the client as `string` and hides a vocabulary that must stay pinned). ──────
+const KindEnum = Type.Union([Type.Literal("check_in"), Type.Literal("check_out")]);
+const GpsQualityEnum = Type.Union([
+  Type.Literal("high"),
+  Type.Literal("acceptable"),
+  Type.Literal("degraded_attested"),
+  Type.Literal("outside_geofence"),
+  Type.Literal("no_geofence_baseline"),
+  Type.Literal("suspected_spoof"),
+]);
+const DeviceStatusEnum = Type.Union([
+  Type.Literal("pending_approval"),
+  Type.Literal("approved"),
+  Type.Literal("suspended"),
+  Type.Literal("rejected"),
+  Type.Literal("retired"),
+]);
+const MissingResolutionKindEnum = Type.Union([
+  Type.Literal("missing_checkin"),
+  Type.Literal("missing_checkout"),
+  Type.Literal("outside_geofence_at_checkin"),
+  Type.Literal("outside_geofence_at_checkout"),
+  Type.Literal("device_integrity_failed_at_attempt"),
+]);
+const MissingResolutionStatusEnum = Type.Union([
+  Type.Literal("open"),
+  Type.Literal("closed_clinician_attested"),
+  Type.Literal("closed_supervisor_override"),
+  Type.Literal("closed_visit_voided"),
+  Type.Literal("closed_documented_at_encounter"),
+  Type.Literal("closed_system_checkout_received"),
+]);
+const AggregatorStatusEnum = Type.Union([
+  Type.Literal("pending"),
+  Type.Literal("queued"),
+  Type.Literal("submitting"),
+  Type.Literal("submitted"),
+  Type.Literal("accepted"),
+  Type.Literal("rejected"),
+  Type.Literal("timeout"),
+  Type.Literal("cancelled"),
+]);
+const BracketStateEnum = Type.Union([
+  Type.Literal("present"),
+  Type.Literal("missing_documented"),
+  Type.Literal("missing_open"),
+  Type.Literal("no_evv_path"),
+]);
+const GeofenceDecisionEnum = Type.Union([
+  Type.Literal("pass"),
+  Type.Literal("fail_distance"),
+  Type.Literal("fail_accuracy"),
+  Type.Literal("fail_no_baseline"),
+]);
+
 export const EvvEventView = Type.Object({
   id: Type.String(),
   organizationId: Type.String(),
   visitId: Type.String(),
   patientId: Type.String(),
-  kind: Type.Union([Type.Literal("check_in"), Type.Literal("check_out")]),
+  kind: KindEnum,
   serviceTypeCode: Type.String(),
   postingMembershipId: Type.String(),
   postingDisciplineAtRecording: Type.String(),
   evvDeviceId: Type.String(),
   capturedAt: Type.String(),
   recordedAt: Type.String(),
-  gpsQuality: Type.String(),
+  gpsQuality: GpsQualityEnum,
   offlineCapture: Type.Boolean(),
   replacesEventId: Type.Union([Type.String(), Type.Null()]),
   supersededByEventId: Type.Union([Type.String(), Type.Null()]),
@@ -159,7 +231,7 @@ export const EvvDeviceView = Type.Object({
   membershipId: Type.String(),
   platform: Type.Union([Type.Literal("ios"), Type.Literal("android")]),
   modelDescription: Type.String(),
-  status: Type.String(),
+  status: DeviceStatusEnum,
 });
 export const EvvDeviceListResponse = Type.Array(EvvDeviceView);
 
@@ -177,8 +249,8 @@ export const EvvGeofencePolicyView = Type.Object({
 export const EvvMissingResolutionView = Type.Object({
   id: Type.String(),
   visitId: Type.String(),
-  kind: Type.String(),
-  status: Type.String(),
+  kind: MissingResolutionKindEnum,
+  status: MissingResolutionStatusEnum,
   resolvedByMembershipId: Type.Union([Type.String(), Type.Null()]),
 });
 export const EvvMissingResolutionListResponse = Type.Array(EvvMissingResolutionView);
@@ -188,7 +260,7 @@ export const EvvAggregatorSubmissionView = Type.Object({
   visitId: Type.String(),
   stateCode: Type.String(),
   aggregatorVendor: Type.String(),
-  status: Type.String(),
+  status: AggregatorStatusEnum,
   aggregatorTransactionId: Type.Union([Type.String(), Type.Null()]),
   attemptCount: Type.Integer(),
 });
@@ -201,6 +273,76 @@ export const EvvMetricsView = Type.Object({
   gpsSpoofingDetectedRate: Type.Number(),
   aggregatorSubmissionSuccessRate: Type.Number(),
 });
+
+// The capture verdict returned by check-in / check-out / correct (§4.7). The offline-sync batch returns one
+// per event.
+export const EvvCheckResultView = Type.Object({
+  eventId: Type.String(),
+  kind: KindEnum,
+  gpsQuality: GpsQualityEnum,
+  geofenceDecision: GeofenceDecisionEnum,
+  visitStateAfterEvent: Type.Union([Type.String(), Type.Null()]),
+});
+export const EvvCheckResultListResponse = Type.Array(EvvCheckResultView);
+
+// The bracket M8's EvvBracketResolver reads (mirrors the @wardenx/types EvvBracketDto: nullable check-in /
+// check-out events + the nested §4.3 EvvMissingResolutionDto, which carries `resolvedAt` the flat route view
+// omits).
+export const EvvBracketMissingResolutionView = Type.Object({
+  id: Type.String(),
+  visitId: Type.String(),
+  kind: MissingResolutionKindEnum,
+  status: MissingResolutionStatusEnum,
+  resolvedByMembershipId: Type.Union([Type.String(), Type.Null()]),
+  resolvedAt: Type.Union([Type.String(), Type.Null()]),
+});
+export const EvvBracketView = Type.Object({
+  visitId: Type.String(),
+  checkInEvent: Type.Union([EvvEventView, Type.Null()]),
+  checkOutEvent: Type.Union([EvvEventView, Type.Null()]),
+  bracketState: BracketStateEnum,
+  missingResolution: Type.Union([EvvBracketMissingResolutionView, Type.Null()]),
+});
+
+// The coordinate-bearing last-known-location read (M20 field-safety live-awareness; D10, gated by
+// `evv.location.read_team`).
+export const EvvLocationView = Type.Object({
+  membershipId: Type.String(),
+  eventId: Type.String(),
+  visitId: Type.String(),
+  lat: Type.Number(),
+  lng: Type.Number(),
+  accuracyM: Type.Number(),
+  capturedAt: Type.String(),
+});
+export const EvvLocationListResponse = Type.Array(EvvLocationView);
+
+// The portal arrival surface (timestamps only, no coordinates; portal session class).
+export const EvvArrivalView = Type.Object({
+  visitId: Type.String(),
+  arrivedAt: Type.Union([Type.String(), Type.Null()]),
+  departedAt: Type.Union([Type.String(), Type.Null()]),
+});
+
+// Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns), so a
+// view drift breaks the build rather than silently mistyping the generated client.
+type Conforms<T extends V, V> = T;
+type _EvvEvent = Conforms<Static<typeof EvvEventView>, EvvEventDto>;
+type _EvvDevice = Conforms<Static<typeof EvvDeviceView>, ServiceDeviceView>;
+type _EvvGeofencePolicy = Conforms<Static<typeof EvvGeofencePolicyView>, ServiceGeofencePolicyView>;
+type _EvvMissingResolution = Conforms<
+  Static<typeof EvvMissingResolutionView>,
+  ServiceMissingResolutionView
+>;
+type _EvvAggregatorSubmission = Conforms<
+  Static<typeof EvvAggregatorSubmissionView>,
+  EvvAggregatorSubmissionDto
+>;
+type _EvvMetrics = Conforms<Static<typeof EvvMetricsView>, ServiceMetricsView>;
+type _EvvCheckResult = Conforms<Static<typeof EvvCheckResultView>, ServiceCheckResultView>;
+type _EvvBracket = Conforms<Static<typeof EvvBracketView>, EvvBracketDto>;
+type _EvvLocation = Conforms<Static<typeof EvvLocationView>, ServiceLocationView>;
+type _EvvArrival = Conforms<Static<typeof EvvArrivalView>, ServiceArrivalView>;
 
 export type CheckInBody = Static<typeof CheckInRequest>;
 export type CheckOutBody = Static<typeof CheckOutRequest>;
