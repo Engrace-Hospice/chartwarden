@@ -61,12 +61,14 @@ jobs:
         suite:
           - { name: "baseline M1-M14", script: "test:rls:live" }
           - { name: "M4 Audit", script: "test:rls:live:m4" }
+          - { name: "M5 Patient", script: "test:rls:live:m5" }
           - { name: "M7 Care Plan", script: "test:rls:live:m7" }
           - { name: "M15 Discipline Plans", script: "test:rls:live:m15" }
           - { name: "M16 Bereavement", script: "test:rls:live:m16" }
           - { name: "M19 On-Call Triage", script: "test:rls:live:m19" }
           - { name: "M20 Field Safety", script: "test:rls:live:m20" }
           - { name: "M21 Supplies/DME", script: "test:rls:live:m21" }
+          - { name: "M23 Billing-Medicare", script: "test:rls:live:m23" }
           - { name: "M24 Billing-Medicaid", script: "test:rls:live:m24" }
           - { name: "M25 Remittance", script: "test:rls:live:m25" }
           - { name: "M26 Cap Management", script: "test:rls:live:m26" }
