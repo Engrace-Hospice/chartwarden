@@ -60,7 +60,11 @@ import {
   registerPatientSeams,
 } from "./modules/05-patient/index";
 import { registerAdmissionErasers, registerAdmissionSeams } from "./modules/06-admission/index";
-import { registerCarePlanErasers, registerCarePlanSeams } from "./modules/07-care-plan/index";
+import {
+  registerCarePlanAbacPredicates,
+  registerCarePlanErasers,
+  registerCarePlanSeams,
+} from "./modules/07-care-plan/index";
 import {
   createDrizzleEncounterReaderStore,
   registerEncounterErasers,
@@ -665,6 +669,21 @@ export function wireModuleSeams(
   // store over the real M39 consent tables (FB-T03); slice/tests keep the in-memory default.
   registerConsentSeams(deps.db ? { store: createDbConsentStore(deps.db) } : {});
   registerConsentAbacPredicates(); // M39 — the 11 §4.8 ABAC predicate resolvers (resolve via the seam)
+  // M7 — the five §6 predicate resolvers. `caseload_or_scope` is the SHARED patient-scope predicate that
+  // M9-M15/M19-M26/M34 bind BY NAME, so it must be registered even while M7's own routes are unmounted:
+  // M3's registry denies on an unregistered name, which made every consumer's guard a permanent 403
+  // (GET /api/v1/triage-calls being the visible one). Registered after the M5 `CaseloadProvider` / M39
+  // `ConsentEvaluator` seams above, as the registrar's contract requires. M7 has no Drizzle resolver yet
+  // (its routes are unmounted, so no plan/problem/version row is reachable) — the deny-stub resolver keeps
+  // the `planId`-keyed arms and the M7-owned predicates fail-closed, while the `patientId` and collection
+  // arms resolve through the live caseload seam. Swap for a Drizzle resolver when M7's routes mount.
+  registerCarePlanAbacPredicates({
+    resolver: {
+      loadPlan: async () => null,
+      loadProblem: async () => null,
+      loadVersion: async () => null,
+    },
+  });
   // M33 — the two §4.7 ABAC predicate resolvers (`reportable_scope` D8 cross-cutting read scope +
   // `dashboard_visibility` §4.7.2 saved-view ladder). Defaults to the deny-stub resolver until P2C binds
   // the real M2 `SupervisorReader` / M5 `CaseloadProvider` reach + the Drizzle `report_view` facts — with

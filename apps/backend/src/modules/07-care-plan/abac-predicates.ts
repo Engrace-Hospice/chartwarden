@@ -151,12 +151,27 @@ export function buildCarePlanAbacPredicates(
   };
 
   return {
+    // SHARED predicate: nine modules (M9-M15, M19-M26, M34) bind this name, and `caseload_or_scope`
+    // is a PATIENT-scope concept, not an M7-row concept. Keying it solely on M7's `planId` made it
+    // deny for every consumer that names a patient or a collection — the M15-T06 dead-gate class.
+    // Three target shapes, in the order a consumer can supply them:
+    //   1. `patientId`   — the caseload subject itself (M19/M20/M23 and the other by-name binders).
+    //   2. `planId`      — M7's own row, resolved to its patient (fail-closed if absent/cross-tenant).
+    //   3. `{}`          — a COLLECTION route: no row named yet. Per M3's `inOrg` doc-comment this is
+    //                      the precondition case — the predicate asserts an org-scoped actor and RLS
+    //                      plus the read service's own narrowing are the row control.
     caseload_or_scope: async (context, target) => {
-      const id = targetId(target, "planId");
-      if (!id) return false;
-      const facts = await resolver.loadPlan(context.organizationId, id);
-      if (!facts) return false; // fail-closed (absent / cross-tenant)
-      return caseloadOrScopeFor(context, facts.patientId);
+      const patientId = targetId(target, "patientId");
+      if (patientId) return caseloadOrScopeFor(context, patientId);
+
+      const planId = targetId(target, "planId");
+      if (planId) {
+        const facts = await resolver.loadPlan(context.organizationId, planId);
+        if (!facts) return false; // fail-closed (absent / cross-tenant)
+        return caseloadOrScopeFor(context, facts.patientId);
+      }
+
+      return Boolean(context.organizationId) && Boolean(context.userId);
     },
     dpoa_active: async (context, target) => {
       const id = targetId(target, "planId");
