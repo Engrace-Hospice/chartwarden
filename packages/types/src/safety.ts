@@ -268,15 +268,42 @@ export const SAFETY_INCIDENT_CLOSED_STATES = [
   "closed_no_action",
 ] as const satisfies readonly SafetyIncidentState[];
 
-/** §2.2.1 — the schedule states the overdue detector acts on. */
+/**
+ * §2.2.1 — the schedule states the overdue detector acts on.
+ *
+ * `escalated` IS IN THE SET (M20-T03, corrected from the two-member version M20-T01 shipped). D4's ladder
+ * has FOUR rungs and the row reaches `escalated` at the SECOND of them (§7.3: +15 min), so a detector that
+ * stopped scanning there would never fire the 30-minute escalation rung nor the 60-minute SOS-equivalent
+ * one — the two rungs that exist precisely because nobody has reached the clinician yet. The row stops being
+ * actionable when a human resolves it: `recorded`, `superseded` or `incident_opened`. Migration 0112 widens
+ * `scis_overdue_scan_idx` to match; a narrower index would leave the cron's own query unindexed.
+ */
 export const SAFETY_SCHEDULE_ACTIONABLE_STATES = [
   "proposed",
   "overdue",
+  "escalated",
 ] as const satisfies readonly SafetyCheckInState[];
 
 /** §4.2 — the dashboard's per-clinician overdue badge, derived from the D4 tier the schedule has
  *  crossed. Not a stored column: it is computed from `expectedAt` against the effective policy. */
 export type SafetyOverdueBadge = "on_time" | "reminder" | "overdue" | "escalated";
+
+/**
+ * D4 / §7.3 — the overdue-escalation RUNG a silence has reached (M20-T03).
+ *
+ * Also not a stored column, and it cannot be one: §7.3's prose names schedule states (`escalation_tier_1`,
+ * `sos_equivalent`) that the §3.2 `safety_check_in_state` enum does not have. The STORED ladder is
+ * `proposed → overdue → escalated`; the rung is computed from `expectedAt` against the four policy
+ * thresholds, and it is named for those knobs rather than for §7.3's prose because the knob is what a
+ * tenant tightens. It rides the `m20.safety.check_in_escalated` payload so a consumer can tell the
+ * supervisor-alert page from the SOS-equivalent one.
+ */
+export type SafetyOverdueTier =
+  | "none"
+  | "gentle_reminder"
+  | "supervisor_alert"
+  | "escalation"
+  | "sos_equivalent";
 
 /** §4.3 `SafetyCheckInProvider` — the per-kind badge M17 renders on the visit-day grid. */
 export type SafetyCheckInBadge = "not_required" | "pending" | "recorded" | "overdue";
@@ -516,19 +543,28 @@ export type M20EventName = (typeof M20_EVENT_NAMES)[number];
 
 /**
  * §2.6 — the per-event key a DOWNSTREAM consumer collapses retries against, beyond the M1 envelope's
- * `event_id`.
+ * `event_id`. A tuple means the COMPOSITE is the key.
  *
  * `m20.safety.sos_alert_raised` is deliberately ABSENT. §2.6 / M20-F10 make the SOS press the one
  * non-idempotent write on the platform: every press records and every press fans out, so collapsing two
  * presses onto one `sosAlertId` key is exactly the suppression S13 forbids. The alert's DELIVERY is
  * de-duplicated by M36 on the outbox `event_id`, which is per-emit, not per-alert.
+ *
+ * TWO KEYS ARE COMPOSITE AND BOTH WERE SINGLE-FIELD UNTIL M20-T03 BUILT THE THING THEY KEY (the same class
+ * of finding as `sos_alert_raised`, one layer down — a key that collapses a repetition the design REQUIRES):
+ *   • `check_in_escalated` fires once per D4 rung crossed (§7.3: +15 min supervisor page, +30 escalation,
+ *     +60 SOS-equivalent). Keyed on `scheduleId` alone, a conforming consumer drops rungs two and three —
+ *     including the one §7.3 routes to Tier-1 voice.
+ *   • `sos_terminus_reached` is emitted on EVERY loop iteration by construction (M20-F05: the terminus
+ *     "keeps re-escalating … until a responder or WardenX ops acknowledges"). Keyed on `sosAlertId` alone,
+ *     every page after the first is suppressed and the terminus becomes the silent wait it exists to end.
  */
 export const M20_EVENT_IDEMPOTENCY_KEYS = {
   "m20.safety.check_in_recorded": "checkInId",
   "m20.safety.check_in_overdue": "scheduleId",
-  "m20.safety.check_in_escalated": "scheduleId",
+  "m20.safety.check_in_escalated": ["scheduleId", "tier"],
   "m20.safety.sos_alert_acknowledged": "sosAlertId",
-  "m20.safety.sos_terminus_reached": "sosAlertId",
+  "m20.safety.sos_terminus_reached": ["sosAlertId", "loopIteration"],
   "m20.safety.sos_alert_resolved": "sosAlertId",
   "m20.safety.incident_reported": "incidentId",
   "m20.safety.incident_submitted": "incidentId",
@@ -537,7 +573,7 @@ export const M20_EVENT_IDEMPOTENCY_KEYS = {
   "m20.safety.osha_reportable_incident_filed": "incidentId",
   "m20.safety.workers_comp_claim_initiated": "incidentId",
   "m20.safety.visit_cancellation_requested": "sosAlertId",
-} as const satisfies Partial<Record<M20EventName, string>>;
+} as const satisfies Partial<Record<M20EventName, string | readonly string[]>>;
 
 /**
  * The events M20 SUBSCRIBES to (§3.1 `consumers/`, §4.8 queue catalog). Listed here — not only in the
@@ -611,6 +647,11 @@ export interface M20CheckInEscalatedPayload extends M20SafetyEventBase {
   readonly visitId: VisitId | null;
   readonly minutesOverdue: number;
   readonly afterHours: boolean;
+  /** D4 — WHICH rung this emit is. One event per rung crossed (M20-T03), so a consumer that only knows
+   *  `scheduleId` cannot tell the 15-minute supervisor page from the 60-minute SOS-equivalent one — and
+   *  §7.3 routes them differently. `sos_equivalent` takes the Tier-1 voice channel and the
+   *  `field_safety_composed` recipient set. */
+  readonly tier: SafetyOverdueTier;
 }
 
 /** `m20.safety.sos_alert_raised` — critical, system-locked, non-idempotent by design (M20-F10). */

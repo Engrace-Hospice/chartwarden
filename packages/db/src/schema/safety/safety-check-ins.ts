@@ -96,10 +96,13 @@ export const safetyCheckInSchedule = pgTable(
       t.clinicianMembershipId,
       t.expectedAt,
     ),
-    // §3.4 — the overdue detector's hot path (every 30 seconds, per tenant).
+    // §3.4 — the overdue detector's hot path (every 30 seconds, per tenant). `escalated` is IN the
+    // predicate (migration 0112): D4's ladder has four rungs and the row reaches `escalated` at the
+    // second of them, so an index that stopped at `overdue` would leave the 30- and 60-minute rungs
+    // unscanned — the two that exist because nobody has reached the clinician yet.
     overdueScanIdx: index("scis_overdue_scan_idx")
       .on(t.organizationId, t.state, t.expectedAt)
-      .where(sql`state IN ('proposed','overdue')`),
+      .where(sql`state IN ('proposed','overdue','escalated')`),
 
     windowPositive: check("m20_scis_window_positive", sql`"window_minutes" > 0`),
     // §2.2.1 — the three visit-bracketing kinds cannot exist without the visit they bracket.

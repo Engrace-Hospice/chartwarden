@@ -36,6 +36,7 @@ import {
   M20_TABLE_NAMES,
   SAFETY_POLICY_BOUNDS,
   SAFETY_POLICY_FLOOR,
+  SAFETY_SCHEDULE_ACTIONABLE_STATES,
   SAFETY_SOS_ESCALATION_TIERS,
   SAFETY_SOS_OPEN_STATES,
   SAFETY_SOS_TERMINAL_STATES,
@@ -349,6 +350,30 @@ describe("§4.10 outbox catalog", () => {
     // the suppression S13 forbids; delivery de-dup happens on the per-emit outbox event_id.
     expect(M20_EVENT_IDEMPOTENCY_KEYS).not.toHaveProperty("m20.safety.sos_alert_raised");
     expect(M20_EVENT_IDEMPOTENCY_KEYS["m20.safety.sos_alert_acknowledged"]).toBe("sosAlertId");
+  });
+
+  it("keys the two REPEATING events on a composite (M20-T03)", () => {
+    // Same class of finding as the SOS raise, one layer down: a key that collapses a repetition the design
+    // REQUIRES. `check_in_escalated` fires once per D4 rung (§7.3 — +15/+30/+60), and the 60-minute rung is
+    // the one routed to Tier-1 voice; `sos_terminus_reached` fires on every loop iteration by construction
+    // (M20-F05). Keyed on the aggregate id alone, a conforming consumer drops everything after the first.
+    expect(M20_EVENT_IDEMPOTENCY_KEYS["m20.safety.check_in_escalated"]).toEqual([
+      "scheduleId",
+      "tier",
+    ]);
+    expect(M20_EVENT_IDEMPOTENCY_KEYS["m20.safety.sos_terminus_reached"]).toEqual([
+      "sosAlertId",
+      "loopIteration",
+    ]);
+  });
+
+  it("keeps `escalated` in the detector's actionable set — D4 has two rungs above it (M20-T03)", () => {
+    const actionable = SAFETY_SCHEDULE_ACTIONABLE_STATES as readonly string[];
+    expect(actionable).toContain("escalated");
+    // The row leaves the set only when a human resolves it.
+    for (const closed of ["recorded", "superseded", "incident_opened"]) {
+      expect(actionable).not.toContain(closed);
+    }
   });
 
   it("subscribes to the inbound triggers under their producers' REAL names", () => {
