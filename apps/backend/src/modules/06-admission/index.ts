@@ -4,7 +4,28 @@
 // this. T07 (§7.1/§7.2): referral idempotency + triage/accept state guards, the
 // `admission.draft_from_referral` bundle, and the R-AC-01 activation gate (intake/). T08 (§7.3–7.5):
 // recert CTI sign + F2F window math + window override — the pure org-TZ window math (certification/).
+import type { DbClient } from "@wardenx/db";
+import type { FastifyInstance } from "fastify";
+import {
+  createDbAdmissionAbacResolver,
+  createDbAdmissionRouteService,
+} from "./admission-route-service-db";
+import { registerAdmissionAbacPredicates as _registerM6Abac } from "./abac-predicates";
+import { registerAdmissionRoutes as _registerM6Routes } from "./routes/admission-routes";
+
 export * from "./state-machines";
+
+/**
+ * M6L-T01 — mount the M6 admission routes over the PRODUCTION Drizzle route service + ABAC resolver
+ * (RLS-scoped under `withOrgContext`). Called from the composition root's db branch. Reads are live
+ * (referral inbox, admission census + detail, election periods, compliance windows); writes fail-closed
+ * 501 until the M6L-T02+ Drizzle write lifecycle lands. Replaces the in-memory clinical-core scaffold
+ * mount for M6.
+ */
+export function mountAdmissionRoutes(app: FastifyInstance, db: DbClient): void {
+  _registerM6Abac({ resolver: createDbAdmissionAbacResolver(db) });
+  _registerM6Routes(app, { service: createDbAdmissionRouteService(db) });
+}
 
 // M6-T05 — the six §4.7 reader seams (ElectionPeriod/Certification/FaceToFace/LevelOfCare/
 // AdmissionStatus/AdmissionCensus), registered over their boot deny-stubs by registerAdmissionSeams.
