@@ -19268,7 +19268,6 @@ export interface operations {
                 "application/json": {
                     reason: string;
                     targetPatientId?: string | null;
-                    cosignRequired?: boolean;
                 };
             };
         };

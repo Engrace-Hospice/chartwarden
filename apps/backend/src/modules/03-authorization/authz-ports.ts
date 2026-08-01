@@ -264,6 +264,14 @@ export interface AuthzRouteDeps {
   audit: AuditExecutor;
   /** Break-glass time-box in seconds (spec §3.5 default +4h, D1). */
   breakGlassTtlSec?: number;
+  /**
+   * audit C2 — resolves TENANT POLICY for whether a break-glass grant opens `cosign_pending`
+   * (`breakglass_cosign_required`, M3's organization-settings key). Required, not optional: an
+   * optional port would default to "no co-sign" on every wiring that forgot it, which is the
+   * permissive direction and the exact bug this replaces. The composition root binds the settings
+   * reader; the slice/tests bind a constant.
+   */
+  cosignPolicy: (organizationId: string) => Promise<boolean>;
 }
 
 // --- Slice in-memory adapters ------------------------------------------------------------
