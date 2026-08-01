@@ -107,6 +107,25 @@ the prose docs in `docs/architecture/`.
   progress. Regenerate with `bun run status:matrix`; `arch:fitness` runs it in `--check` mode
   (`arch:status-matrix`) to keep `audit/implementation-status/` fresh and to hard-fail on orphan
   (unowned) schema/migration tables. Writes `audit/implementation-status/IMPLEMENTATION_STATUS.md` (+ `.json`).
+  The **`Enriched` column is a ratio** (`6/46 ⚠️`), joined route-by-route against the enrichment
+  registry. It used to be a per-module boolean that flipped ✅ on a single entry anywhere in the
+  module, so it read ❌ only at *exactly zero* — M06 sat at 6-of-46 showing ✅. It is still
+  advisory; `arch:openapi-coverage` is what fails the build.
+- `scripts/report-openapi-coverage.ts` — **OpenAPI enrichment-coverage report + ratchet**
+  (`bun run openapi:coverage`; `arch:openapi-coverage` runs `--check`). `openapi:check` proves
+  openapi.json was *regenerated* and that no enrichment targets a dead route — it says nothing
+  about the reverse, so an **unenriched route is legal** and a routes task can ship 30+ routes
+  carrying zero request contracts with every gate green (this is what M20-T06 did). The emitted
+  contract does not look absent, it looks *satisfied*: `emit.ts` still writes those routes with
+  `parameters: []`, no `requestBody`, and a bare `200: OK`, and `client:gen` types their bodies
+  as `never`. This gate ratchets, per module, the count of routes with **no** enrichment entry
+  against `audit/openapi-coverage/baseline.json`: the deficit may never **rise** (new routes must
+  ship their contracts), and when it **falls** the baseline must be re-tightened
+  (`bun run openapi:coverage --update`) so progress is locked in. A module absent from the
+  baseline has an implied floor of **0** — a brand-new module's first unenriched route fails.
+  Retro-enriching the 478 already-unenriched routes (330 of them mutating) is deliberately *not*
+  required by this gate. Writes `audit/openapi-coverage/OPENAPI_COVERAGE.md` (+ `.json`).
+  `client:check` (generated typed client ↔ openapi.json) is now in `arch:fitness` too.
 - `scripts/report-ui-parity.ts` — **UI implementation-parity report**: bridges the documented
   screen-spec corpus (`docs/design`) and the implemented web surface (registered `screens.ts`), so a
   green `docs:ui` is not mistaken for "the UI is built". Regenerate with `bun run ui:parity`;
