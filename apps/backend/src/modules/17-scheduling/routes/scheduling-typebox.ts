@@ -9,6 +9,14 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
+import type {
+  AvailabilityView as ServiceAvailabilityView,
+  ProposalView as ServiceProposalView,
+  RecurringView as ServiceRecurringView,
+  SchedulingRouteService as ServiceType,
+  TimeOffView as ServiceTimeOffView,
+  VisitView as ServiceVisitView,
+} from "./service";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -65,6 +73,27 @@ const RRULE_BYDAY = Type.Union([
   Type.Literal("FR"),
   Type.Literal("SA"),
   Type.Literal("SU"),
+]);
+
+/** §2.2.1 visit lifecycle status (mirrors `VisitStatus`). Pinned literals so the response DTO conforms. */
+const VISIT_STATUS = Type.Union([
+  Type.Literal("proposed"),
+  Type.Literal("published"),
+  Type.Literal("en_route"),
+  Type.Literal("in_visit"),
+  Type.Literal("completed"),
+  Type.Literal("no_show"),
+  Type.Literal("cancelled"),
+  Type.Literal("rescheduled"),
+]);
+
+/** §1.1 time-off lifecycle state (mirrors `TimeOffState`). */
+const TIME_OFF_STATE = Type.Union([
+  Type.Literal("requested"),
+  Type.Literal("approved"),
+  Type.Literal("denied"),
+  Type.Literal("cancelled"),
+  Type.Literal("consumed"),
 ]);
 
 // ── params + query ──────────────────────────────────────────────────────────────────────────────────────
@@ -240,7 +269,7 @@ export const VisitViewSchema = Type.Object({
   scheduledStartedAt: Type.String({ format: "date-time" }),
   scheduledEndedAt: Type.String({ format: "date-time" }),
   serviceDate: Type.String({ format: "date" }),
-  status: Type.String(),
+  status: VISIT_STATUS,
   patientAddressId: Nullable(Type.String({ format: "uuid" })),
   externalFacilityId: Nullable(Type.String({ format: "uuid" })),
   rescheduledIntoVisitId: Nullable(Type.String({ format: "uuid" })),
@@ -294,7 +323,7 @@ export const TimeOffViewSchema = Type.Object({
   kind: TIME_OFF_KIND,
   startsAt: Type.String({ format: "date-time" }),
   endsAt: Type.String({ format: "date-time" }),
-  state: Type.String(),
+  state: TIME_OFF_STATE,
 });
 export const TimeOffListResponseSchema = Type.Array(TimeOffViewSchema);
 
@@ -332,6 +361,60 @@ export const RouteEfficiencyResponseSchema = Type.Object({
   totalProposedMiles: Type.Number(),
   overrideRate: Type.Number(),
 });
+
+/** Route 7 — reschedule returns the original (→ rescheduled) visit + the newly-created visit. */
+export const RescheduleResponseSchema = Type.Object({
+  original: VisitViewSchema,
+  created: VisitViewSchema,
+});
+
+/** Route 26 — §7.9 on-demand optimisation result (degraded when the flag is OFF / OSRM unhealthy). */
+export const OptimizeDayResponseSchema = Type.Object({
+  membershipId: Type.String({ format: "uuid" }),
+  serviceDate: Type.String({ format: "date" }),
+  degraded: Type.Boolean(),
+  reason: Type.Optional(Type.String()),
+  segmentCount: Type.Integer(),
+});
+
+/** Route 27 — §4.3 portal upcoming visits (lay-language label; scrubbed; no raw enum/PHI notes). */
+export const PortalUpcomingResponseSchema = Type.Array(
+  Type.Object({
+    visitId: Type.String({ format: "uuid" }),
+    scheduledStartedAt: Type.String({ format: "date-time" }),
+    scheduledEndedAt: Type.String({ format: "date-time" }),
+    visitPurposeLabel: Type.String(),
+    visitSetting: VISIT_SETTING,
+  }),
+);
+
+// ── §4.2 compile-time response pins ────────────────────────────────────────────────────────────────────────
+// `T` (what a schema publishes) must be assignable to `V` (what the service returns), so a service-view field
+// added or renamed breaks `bun run build` rather than silently drifting from the generated client.
+type Conforms<T extends V, V> = T;
+type _Visit = Conforms<Static<typeof VisitViewSchema>, ServiceVisitView>;
+type _VisitList = Conforms<Static<typeof VisitListResponseSchema>, readonly ServiceVisitView[]>;
+type _Proposal = Conforms<Static<typeof ProposalViewSchema>, ServiceProposalView>;
+type _ProposalList = Conforms<Static<typeof ProposalListResponseSchema>, readonly ServiceProposalView[]>;
+type _Recurring = Conforms<Static<typeof RecurringViewSchema>, ServiceRecurringView>;
+type _RecurringList = Conforms<Static<typeof RecurringListResponseSchema>, readonly ServiceRecurringView[]>;
+type _Availability = Conforms<Static<typeof AvailabilityViewSchema>, ServiceAvailabilityView>;
+type _TimeOff = Conforms<Static<typeof TimeOffViewSchema>, ServiceTimeOffView>;
+type _TimeOffList = Conforms<Static<typeof TimeOffListResponseSchema>, readonly ServiceTimeOffView[]>;
+type _DayView = Conforms<Static<typeof DayViewResponseSchema>, ReturnType<ServiceType["dayView"]>>;
+type _WeekView = Conforms<Static<typeof WeekViewResponseSchema>, ReturnType<ServiceType["weekView"]>>;
+type _MapView = Conforms<Static<typeof MapViewResponseSchema>, ReturnType<ServiceType["mapView"]>>;
+type _VisitMetrics = Conforms<Static<typeof VisitMetricsResponseSchema>, ReturnType<ServiceType["visitMetrics"]>>;
+type _RouteEff = Conforms<
+  Static<typeof RouteEfficiencyResponseSchema>,
+  ReturnType<ServiceType["routeEfficiencyMetrics"]>
+>;
+type _Reschedule = Conforms<Static<typeof RescheduleResponseSchema>, ReturnType<ServiceType["rescheduleVisit"]>>;
+type _Optimize = Conforms<
+  Static<typeof OptimizeDayResponseSchema>,
+  Awaited<ReturnType<ServiceType["optimizeDay"]>>
+>;
+type _Portal = Conforms<Static<typeof PortalUpcomingResponseSchema>, ReturnType<ServiceType["portalUpcoming"]>>;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

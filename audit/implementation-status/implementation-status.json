@@ -19,7 +19,7 @@
       "adapter": null,
       "liveInfra": {
         "tables": 16,
-        "covered": 11
+        "covered": 12
       }
     },
     {
@@ -39,7 +39,7 @@
       "adapter": null,
       "liveInfra": {
         "tables": 4,
-        "covered": 1
+        "covered": 2
       }
     },
     {
@@ -112,14 +112,14 @@
       "routes": true,
       "enriched": {
         "routes": 46,
-        "enriched": 6
+        "enriched": 46
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
         "tables": 12,
-        "covered": 2
+        "covered": 12
       }
     },
     {
@@ -132,7 +132,7 @@
       "routes": true,
       "enriched": {
         "routes": 19,
-        "enriched": 3
+        "enriched": 19
       },
       "screens": true,
       "tests": true,
@@ -152,14 +152,14 @@
       "routes": true,
       "enriched": {
         "routes": 31,
-        "enriched": 4
+        "enriched": 31
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
         "tables": 10,
-        "covered": 1
+        "covered": 10
       }
     },
     {
@@ -172,14 +172,14 @@
       "routes": true,
       "enriched": {
         "routes": 18,
-        "enriched": 6
+        "enriched": 18
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
         "tables": 5,
-        "covered": 2
+        "covered": 5
       }
     },
     {
@@ -192,14 +192,14 @@
       "routes": true,
       "enriched": {
         "routes": 20,
-        "enriched": 10
+        "enriched": 20
       },
       "screens": true,
       "tests": true,
       "adapter": true,
       "liveInfra": {
         "tables": 6,
-        "covered": 2
+        "covered": 6
       }
     },
     {
@@ -212,14 +212,14 @@
       "routes": true,
       "enriched": {
         "routes": 28,
-        "enriched": 9
+        "enriched": 28
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
         "tables": 7,
-        "covered": 2
+        "covered": 7
       }
     },
     {
@@ -232,14 +232,14 @@
       "routes": true,
       "enriched": {
         "routes": 31,
-        "enriched": 10
+        "enriched": 31
       },
       "screens": true,
       "tests": true,
       "adapter": true,
       "liveInfra": {
         "tables": 6,
-        "covered": 2
+        "covered": 6
       }
     },
     {
@@ -252,14 +252,14 @@
       "routes": true,
       "enriched": {
         "routes": 28,
-        "enriched": 10
+        "enriched": 28
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
         "tables": 12,
-        "covered": 2
+        "covered": 12
       }
     },
     {
@@ -272,14 +272,14 @@
       "routes": true,
       "enriched": {
         "routes": 26,
-        "enriched": 6
+        "enriched": 26
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
         "tables": 9,
-        "covered": 3
+        "covered": 9
       }
     },
     {
@@ -332,14 +332,14 @@
       "routes": true,
       "enriched": {
         "routes": 29,
-        "enriched": 11
+        "enriched": 29
       },
       "screens": true,
       "tests": true,
       "adapter": true,
       "liveInfra": {
         "tables": 7,
-        "covered": 2
+        "covered": 7
       }
     },
     {
@@ -352,7 +352,7 @@
       "routes": true,
       "enriched": {
         "routes": 25,
-        "enriched": 7
+        "enriched": 25
       },
       "screens": true,
       "tests": true,
@@ -432,14 +432,14 @@
       "routes": true,
       "enriched": {
         "routes": 35,
-        "enriched": 6
+        "enriched": 35
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
         "tables": 17,
-        "covered": 2
+        "covered": 17
       }
     },
     {

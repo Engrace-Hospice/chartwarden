@@ -9,6 +9,17 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
+import type {
+  ActionItemView as ServiceActionItemView,
+  AgendaItemView as ServiceAgendaItemView,
+  AttendanceView as ServiceAttendanceView,
+  DecisionView as ServiceDecisionView,
+  MeetingScheduleView as ServiceMeetingScheduleView,
+  MeetingView as ServiceMeetingView,
+  MinutesView as ServiceMinutesView,
+  PacketDigestView as ServicePacketDigestView,
+  RecurringPolicyView as ServiceRecurringPolicyView,
+} from "./service";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -228,6 +239,80 @@ export const MinutesViewSchema = Type.Object({
   meetingId: Type.String({ format: "uuid" }),
   status: Type.Union([Type.Literal("in_progress"), Type.Literal("final")]),
 });
+
+/** A recurring-policy view (POST/PATCH /idg/recurring-policies). */
+export const RecurringPolicyViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  locationId: Type.String({ format: "uuid" }),
+  cadenceDays: Type.Integer(),
+  active: Type.Boolean(),
+});
+
+/** A single attendance row view (POST /idg/meetings/:id/attendance, PATCH /idg/attendance/:id). */
+export const AttendanceViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  meetingId: Type.String({ format: "uuid" }),
+  membershipId: Type.String({ format: "uuid" }),
+  discipline: Type.String(),
+  status: ATTENDANCE_STATUS,
+  checkedInAt: Type.String({ format: "date-time" }),
+});
+
+/** An agenda-item view (POST /idg/meetings/:id/agenda, PATCH /idg/agenda/:id). */
+export const AgendaItemViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  meetingId: Type.String({ format: "uuid" }),
+  kind: AGENDA_KIND,
+  patientId: Nullable(Type.String({ format: "uuid" })),
+});
+
+const DECISION_STATUS = Type.Union([
+  Type.Literal("open"),
+  Type.Literal("emitted"),
+  Type.Literal("superseded"),
+]);
+
+/** A decision view (POST /idg/meetings/:id/decisions, PATCH /idg/decisions/:id, .../supersede). */
+export const DecisionViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  meetingId: Type.String({ format: "uuid" }),
+  patientId: Nullable(Type.String({ format: "uuid" })),
+  decisionKind: DECISION_KIND,
+  status: DECISION_STATUS,
+  wasQuorate: Type.Boolean(),
+  supersededByDecisionId: Nullable(Type.String({ format: "uuid" })),
+});
+
+/** The `{ id, removed: true }` envelope the DELETE routes return (attendance/agenda/action-items). */
+export const RemovedResponseSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  removed: Type.Literal(true),
+});
+
+/** The amendment receipt (POST /idg/minutes/:id/amendments). */
+export const AmendmentResponseSchema = Type.Object({
+  amendmentId: Type.String({ format: "uuid" }),
+  minutesId: Type.String({ format: "uuid" }),
+});
+
+// ── Compile-time pins (§4.2 F0 enrichment): `T` (what the schema publishes) must be assignable to `V`
+//    (what the route service returns) — a view field added/renamed/retyped breaks `bun run build` rather
+//    than silently drifting from the generated client. ──────────────────────────────────────────────────
+type Conforms<T extends V, V> = T;
+type _MeetingSchedule = Conforms<Static<typeof MeetingScheduleViewSchema>, ServiceMeetingScheduleView>;
+type _Meeting = Conforms<Static<typeof MeetingViewSchema>, ServiceMeetingView>;
+type _Packet = Conforms<Static<typeof PacketDigestViewSchema>, ServicePacketDigestView>;
+type _ActionItem = Conforms<Static<typeof ActionItemViewSchema>, ServiceActionItemView>;
+type _Minutes = Conforms<Static<typeof MinutesViewSchema>, ServiceMinutesView>;
+type _RecurringPolicy = Conforms<Static<typeof RecurringPolicyViewSchema>, ServiceRecurringPolicyView>;
+type _Attendance = Conforms<Static<typeof AttendanceViewSchema>, ServiceAttendanceView>;
+type _AgendaItem = Conforms<Static<typeof AgendaItemViewSchema>, ServiceAgendaItemView>;
+type _Decision = Conforms<Static<typeof DecisionViewSchema>, ServiceDecisionView>;
+type _Removed = Conforms<Static<typeof RemovedResponseSchema>, { readonly id: string; readonly removed: true }>;
+type _Amendment = Conforms<
+  Static<typeof AmendmentResponseSchema>,
+  { readonly amendmentId: string; readonly minutesId: string }
+>;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

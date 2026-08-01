@@ -50,7 +50,7 @@ export function CarePlanVersionHistory(): JSX.Element {
         setLoading(false);
         return;
       }
-      setItems((data?.items ?? []) as Version[]);
+      setItems((data?.items ?? []) as unknown as Version[]);
       setLoading(false);
     })();
     return () => {

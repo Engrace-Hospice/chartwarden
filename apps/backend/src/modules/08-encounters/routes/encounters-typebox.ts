@@ -8,6 +8,13 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
+import type {
+  CreatedEncounter as ServiceCreatedEncounter,
+  EncounterRouteService as ServiceRouteApi,
+  EncounterView as ServiceEncounterView,
+  MileageResult as ServiceMileageResult,
+  VitalsResult as ServiceVitalsResult,
+} from "./service";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -211,6 +218,204 @@ export const SignedSinceQuerySchema = Type.Object({
   since: Type.String({ format: "date-time" }),
   patientId: Type.Optional(Type.String({ maxLength: 64 })),
 });
+
+// ── §4.2 RESPONSE DTOs (F0 enrichment) ─────────────────────────────────────────────────────────────
+// The read routes returned typed view shapes (EncounterView, VitalsResult, the cosignature/lifecycle
+// result envelopes) but published NO response contract, so the generated client typed every GET/mutation
+// body as `never`. These DTOs mirror the service's read views 1:1 and are pinned to them by the
+// compile-time `Conforms` aliases below (via `Awaited<ReturnType<…>>` off the real service surface), so a
+// view field added or renamed breaks `bun run build` rather than silently drifting from the client.
+const ENCOUNTER_STATUS = [
+  "draft",
+  "finalized",
+  "signed",
+  "cosign_pending",
+  "cosigned",
+  "voided",
+] as const;
+const COSIGNATURE_STATUS = [
+  "pending",
+  "routed",
+  "acknowledged",
+  "escalated",
+  "hard_cap_reached",
+  "supervisor_released",
+  "signed",
+] as const;
+
+/** Route 1 — the created draft summary (`{ id, status, templateKey, templateVersion, version }`). */
+export const CreatedEncounterResponseSchema = Type.Object({
+  id: Type.String(),
+  status: Type.Literal("draft"),
+  templateKey: Type.String(),
+  templateVersion: Type.String(),
+  version: Type.Integer(),
+});
+
+/** Route 2 — the encounter aggregate view (`getEncounter` / the list-row shape). */
+export const EncounterViewResponseSchema = Type.Object({
+  id: Type.String(),
+  organizationId: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  visitId: Type.Union([Type.String(), Type.Null()]),
+  encounterType: lit(ENCOUNTER_TYPE),
+  discipline: lit(ENCOUNTER_DISCIPLINE),
+  serviceDate: Type.String(),
+  status: lit(ENCOUNTER_STATUS),
+  lateEntryTier: Type.String(),
+  version: Type.Integer(),
+  authoredByUserId: Type.String(),
+  isF2f: Type.Boolean(),
+  signedAt: Type.Union([Type.String(), Type.Null()]),
+  cosignedAt: Type.Union([Type.String(), Type.Null()]),
+});
+
+/** The `{ encounters }` envelope the list / queue / my-drafts / signed-since reads return. */
+export const EncounterListResponseSchema = Type.Object({
+  encounters: Type.Array(EncounterViewResponseSchema),
+});
+
+/** Routes 4/5 — a vitals capture/edit result (§4.4 decorators). */
+export const VitalsResultResponseSchema = Type.Object({
+  vitalsId: Type.String(),
+  fieldsCaptured: Type.Array(Type.String()),
+  abnormalFlags: Type.Array(Type.String()),
+  bmi: Type.Union([Type.String(), Type.Null()]),
+});
+
+/** Routes 6/7 — the authoritative mileage figure (D10). */
+export const MileageResultResponseSchema = Type.Object({
+  mileageId: Type.String(),
+  milesDriven: Type.String(),
+  source: Type.String(),
+});
+
+/** Route 3 — selections update (version bump + Layer-1 preview). */
+export const SelectionsUpdateResponseSchema = Type.Object({
+  version: Type.Integer(),
+  layer1Preview: Type.String(),
+});
+
+/** Route 8 — care-plan link created. */
+export const CarePlanLinkResponseSchema = Type.Object({ linkId: Type.String() });
+
+/** Route 10 — EVV-missing documented (D9 bracket state). */
+export const EvvReconcileResponseSchema = Type.Object({ evvBracketState: Type.String() });
+
+/** Route 11 — finalize (Layer-3 gate preview passed). */
+export const FinalizeResponseSchema = Type.Object({
+  status: Type.Literal("finalized"),
+  version: Type.Integer(),
+});
+
+/** Routes 12/13 — HearthNote enhancement / per-passage modification decision. */
+export const ModificationResponseSchema = Type.Object({ modificationId: Type.String() });
+
+/** Route 14 — sign result (signed or routed to cosignature). */
+export const SignResponseSchema = Type.Object({
+  status: Type.Union([Type.Literal("signed"), Type.Literal("cosign_pending")]),
+  signedAt: Type.String(),
+  cosignatureRequestId: Type.Union([Type.String(), Type.Null()]),
+});
+
+/** Routes 15/16 — late-entry / administrative override (returns the current encounter status). */
+export const EncounterStatusResponseSchema = Type.Object({ status: lit(ENCOUNTER_STATUS) });
+
+/** Route 17 — void a draft. */
+export const VoidResponseSchema = Type.Object({ status: Type.Literal("voided") });
+
+/** Route 18 — read cosignature-request state (null before any routing). */
+export const CosignatureReadResponseSchema = Type.Object({
+  status: Type.Union([lit(COSIGNATURE_STATUS), Type.Null()]),
+});
+
+/** Routes 19/21 — cosignature acknowledge / supervisor-release (returns the cosignature state). */
+export const CosignatureStatusResponseSchema = Type.Object({ status: lit(COSIGNATURE_STATUS) });
+
+/** Route 20 — cosigner signs (encounter transitions to cosigned). */
+export const CosignSignResponseSchema = Type.Object({
+  status: lit(ENCOUNTER_STATUS),
+  cosignedAt: Type.String(),
+});
+
+/** Route 22 — addendum draft created. */
+export const CreateAddendumResponseSchema = Type.Object({
+  id: Type.String(),
+  status: Type.Literal("draft"),
+});
+
+/** Route 23 — addendum selections update (version bump). */
+export const AddendumSelectionsResponseSchema = Type.Object({ version: Type.Integer() });
+
+/** Route 24 — addendum finalize. */
+export const AddendumFinalizeResponseSchema = Type.Object({ status: Type.Literal("finalized") });
+
+/** Route 25 — addendum sign. */
+export const AddendumSignResponseSchema = Type.Object({
+  status: Type.Literal("signed"),
+  signedAt: Type.String(),
+});
+
+/** Route 29 — BillableEncounterReader seam projection (M23/M24). */
+export const BillableResponseSchema = Type.Object({
+  billability: Type.Array(
+    Type.Object({ encounterId: Type.String(), billable: Type.Boolean() }),
+  ),
+});
+
+/** Route 31 — M22 PDF-render payload. */
+export const RenderPayloadResponseSchema = Type.Object({
+  encounterId: Type.String(),
+  final: Type.String(),
+});
+
+// Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
+type Ret<K extends keyof ServiceRouteApi> = Awaited<ReturnType<ServiceRouteApi[K]>>;
+type Conforms<T extends V, V> = T;
+type _Created = Conforms<Static<typeof CreatedEncounterResponseSchema>, ServiceCreatedEncounter>;
+type _View = Conforms<Static<typeof EncounterViewResponseSchema>, ServiceEncounterView>;
+type _List = Conforms<Static<typeof EncounterListResponseSchema>, Ret<"listEncounters">>;
+type _Vitals = Conforms<Static<typeof VitalsResultResponseSchema>, ServiceVitalsResult>;
+type _Mileage = Conforms<Static<typeof MileageResultResponseSchema>, ServiceMileageResult>;
+type _Selections = Conforms<Static<typeof SelectionsUpdateResponseSchema>, Ret<"updateSelections">>;
+type _CarePlanLink = Conforms<Static<typeof CarePlanLinkResponseSchema>, Ret<"addCarePlanLink">>;
+type _Evv = Conforms<Static<typeof EvvReconcileResponseSchema>, Ret<"documentEvvMissing">>;
+type _Finalize = Conforms<Static<typeof FinalizeResponseSchema>, Ret<"finalize">>;
+type _Enhance = Conforms<Static<typeof ModificationResponseSchema>, Ret<"enhanceHearthnote">>;
+type _ModDecision = Conforms<
+  Static<typeof ModificationResponseSchema>,
+  Ret<"recordModificationDecision">
+>;
+type _Sign = Conforms<Static<typeof SignResponseSchema>, Ret<"sign">>;
+type _LateEntry = Conforms<Static<typeof EncounterStatusResponseSchema>, Ret<"lateEntryOverride">>;
+type _AdminOverride = Conforms<
+  Static<typeof EncounterStatusResponseSchema>,
+  Ret<"administrativeOverride">
+>;
+type _Void = Conforms<Static<typeof VoidResponseSchema>, Ret<"voidEncounter">>;
+type _CosignRead = Conforms<Static<typeof CosignatureReadResponseSchema>, Ret<"getCosignature">>;
+type _CosignAck = Conforms<
+  Static<typeof CosignatureStatusResponseSchema>,
+  Ret<"cosignAcknowledge">
+>;
+type _SupervisorRelease = Conforms<
+  Static<typeof CosignatureStatusResponseSchema>,
+  Ret<"supervisorRelease">
+>;
+type _CosignSign = Conforms<Static<typeof CosignSignResponseSchema>, Ret<"cosignSign">>;
+type _CreateAddendum = Conforms<Static<typeof CreateAddendumResponseSchema>, Ret<"createAddendum">>;
+type _AddendumSelections = Conforms<
+  Static<typeof AddendumSelectionsResponseSchema>,
+  Ret<"updateAddendumSelections">
+>;
+type _AddendumFinalize = Conforms<
+  Static<typeof AddendumFinalizeResponseSchema>,
+  Ret<"finalizeAddendum">
+>;
+type _AddendumSign = Conforms<Static<typeof AddendumSignResponseSchema>, Ret<"signAddendum">>;
+type _Billable = Conforms<Static<typeof BillableResponseSchema>, Ret<"billable">>;
+type _RenderPayload = Conforms<Static<typeof RenderPayloadResponseSchema>, Ret<"renderPayload">>;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

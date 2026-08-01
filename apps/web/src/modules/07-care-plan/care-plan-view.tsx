@@ -108,8 +108,9 @@ export function CarePlanView(): JSX.Element {
         return;
       }
       const data = planRes.data;
-      // The no-plan response is `{ carePlan: null }` (no `id`); a real plan carries the assembled fields.
-      if (!data?.id) {
+      // The read response is now a typed union: the no-plan branch is `{ carePlan: null }` (no `id`), a
+      // real plan carries the assembled fields. Narrow on `"id" in data` so the assembled branch is typed.
+      if (!data || !("id" in data) || !data.id) {
         setEmpty(true);
         setLoading(false);
         return;
@@ -118,10 +119,10 @@ export function CarePlanView(): JSX.Element {
         id: data.id,
         status: data.status ?? "draft",
         activeVersionId: data.activeVersionId ?? null,
-        versions: (data.versions ?? []) as Version[],
-        problems: (data.problems ?? []) as Problem[],
-        goals: (data.goals ?? []) as Goal[],
-        interventions: (data.interventions ?? []) as Intervention[],
+        versions: (data.versions ?? []) as unknown as Version[],
+        problems: (data.problems ?? []) as unknown as Problem[],
+        goals: (data.goals ?? []) as unknown as Goal[],
+        interventions: (data.interventions ?? []) as unknown as Intervention[],
         redacted: data.redacted ?? false,
       });
       setLoading(false);

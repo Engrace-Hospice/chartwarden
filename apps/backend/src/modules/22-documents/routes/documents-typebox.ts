@@ -8,6 +8,14 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
+import type { ExtractionReviewStatus } from "@wardenx/types";
+import type { CursorPage as ServiceCursorPage } from "./concurrency";
+import type {
+  DocumentView as ServiceDocumentView,
+  IntakeBatchView as ServiceIntakeBatchView,
+  VersionView as ServiceVersionView,
+} from "./service";
+import type { MintedSignedUrl as ServiceMintedSignedUrl } from "./signed-url-service";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -243,11 +251,37 @@ export const JobQuerySchema = Type.Object(PageQuery);
 export const ReviewQuerySchema = Type.Object(PageQuery);
 export const TemplateListQuerySchema = Type.Object(PageQuery);
 
-// ── Response views (read surfaces — Track B / M22-T10 typed-client enrichment) ─────────────────────
-// These mirror the `service.ts` DTOs (DocumentView / VersionView / IntakeBatchView / CursorPage) so the
-// generated client types the M22 read screens (DOC.Explorer / DOC.VersionHistory / INTAKE.BatchDetail /
-// FORM.TemplateLibrary). The handlers already return these shapes; enriching only the READ responses keeps
-// the contract from drifting from the validators (the same pattern M5/M6/M13 use for their read screens).
+// ── §4.2 RESPONSE DTOs (F0 enrichment) ─────────────────────────────────────────────────────────────
+// These mirror the `service.ts` / `signed-url-service.ts` read views (DocumentView / VersionView /
+// IntakeBatchView / MintedSignedUrl / CursorPage) so the generated client types the M22 read screens
+// (DOC.Explorer / DOC.VersionHistory / INTAKE.BatchDetail / FORM.TemplateLibrary) instead of `never`. Each
+// DTO is pinned to the real view by a compile-time `Conforms` alias below, so a view field added/renamed
+// (or a wire-enum widened to a bare `string`) breaks `bun run build` rather than silently drifting from the
+// client. Wire enums are published as literal unions (never `Type.String()`), matching the service unions.
+
+/** §3.2 wire-enum mirrors used by the read DTOs (canonical unions live in @wardenx/types). */
+const DOCUMENT_STATUS = ["active", "superseded", "legal_hold", "destroyed_tombstone"] as const;
+const INTAKE_BATCH_STATUS = [
+  "uploaded",
+  "docling_complete",
+  "classifier_complete",
+  "extraction_complete",
+  "in_review",
+  "writeback_complete",
+  "discarded",
+  "split_into_children",
+  "split_resolved_no_split",
+  "parse_failed",
+] as const;
+const EXTRACTION_REVIEW_STATUS = ["in_progress", "complete", "abandoned"] as const;
+const DOCUMENT_ACCESS_KIND = [
+  "metadata_read",
+  "content_download",
+  "signed_url_issued",
+  "signed_url_consumed",
+  "portal_view",
+  "disclosure_export",
+] as const;
 
 /** One PHI list page: `items` + the opaque `nextCursor`/`hasMore` envelope every list route returns. */
 const CursorPageOf = <T extends TSchema>(item: T) =>
@@ -267,7 +301,7 @@ export const DocumentViewSchema = Type.Object({
   title: Type.String(),
   patientFacing: Type.Boolean(),
   attachToDisclosures: Type.Boolean(),
-  status: Type.String(),
+  status: lit(DOCUMENT_STATUS),
   version: Type.Integer(),
   versionsCount: Type.Integer(),
   createdAt: Type.String({ format: "date-time" }),
@@ -290,11 +324,20 @@ export const IntakeBatchViewSchema = Type.Object({
   id: Type.String(),
   organizationId: Type.String(),
   patientId: Type.Union([Type.String(), Type.Null()]),
-  status: Type.String(),
+  status: lit(INTAKE_BATCH_STATUS),
   uploadedAt: Type.String({ format: "date-time" }),
   pages: Type.Integer(),
   createdAt: Type.String({ format: "date-time" }),
 });
+
+/** Route 14 — classifier output page (`docType` is a free string on the read row). */
+export const ClassificationListResponseSchema = CursorPageOf(
+  Type.Object({
+    id: Type.String(),
+    createdAt: Type.String({ format: "date-time" }),
+    docType: Type.String(),
+  }),
+);
 
 export const IntakeJobListResponseSchema = CursorPageOf(
   Type.Object({
@@ -304,6 +347,27 @@ export const IntakeJobListResponseSchema = CursorPageOf(
   }),
 );
 
+/** Route 17 — one job + its cursor-paginated extraction candidates (each with a risk tier). */
+export const JobDetailResponseSchema = Type.Object({
+  id: Type.String(),
+  candidates: CursorPageOf(
+    Type.Object({
+      id: Type.String(),
+      createdAt: Type.String({ format: "date-time" }),
+      riskLevel: Type.String(),
+    }),
+  ),
+});
+
+/** Route 19 — review state: status + the cursor-paginated per-candidate decisions. */
+export const ReviewDetailResponseSchema = Type.Object({
+  id: Type.String(),
+  status: lit(EXTRACTION_REVIEW_STATUS),
+  decisions: CursorPageOf(
+    Type.Object({ id: Type.String(), createdAt: Type.String({ format: "date-time" }) }),
+  ),
+});
+
 export const FormTemplateListResponseSchema = CursorPageOf(
   Type.Object({
     id: Type.String(),
@@ -311,6 +375,91 @@ export const FormTemplateListResponseSchema = CursorPageOf(
     createdAt: Type.String({ format: "date-time" }),
   }),
 );
+
+/** Route 27 — a template + its active version id. */
+export const FormTemplateResponseSchema = Type.Object({
+  key: Type.String(),
+  activeVersionId: Type.String(),
+});
+
+/** Route 28 — a specific template version. */
+export const FormTemplateVersionResponseSchema = Type.Object({
+  key: Type.String(),
+  versionId: Type.String(),
+});
+
+/** Route 30 — the org's published tenant overlays. */
+export const TenantOverlayListResponseSchema = Type.Object({
+  overlays: Type.Array(
+    Type.Object({ templateKey: Type.String(), overlayId: Type.String() }),
+  ),
+});
+
+/** Route 32 — a form-fill render record (platform-only debug). */
+export const FormFillResponseSchema = Type.Object({
+  id: Type.String(),
+  status: Type.String(),
+});
+
+/** Route 5 — the minted short-lived signed URL (§4.12). */
+export const SignedUrlResponseSchema = Type.Object({
+  url: Type.String(),
+  expiresAt: Type.String({ format: "date-time" }),
+  documentVersionId: Type.String(),
+  accessKind: lit(DOCUMENT_ACCESS_KIND),
+});
+
+// Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
+type Conforms<T extends V, V> = T;
+type _DocumentView = Conforms<Static<typeof DocumentViewSchema>, ServiceDocumentView>;
+type _DocumentList = Conforms<Static<typeof DocumentListResponseSchema>, ServiceCursorPage<ServiceDocumentView>>;
+type _VersionView = Conforms<Static<typeof VersionViewSchema>, ServiceVersionView>;
+type _VersionList = Conforms<Static<typeof VersionListResponseSchema>, ServiceCursorPage<ServiceVersionView>>;
+type _IntakeBatchView = Conforms<Static<typeof IntakeBatchViewSchema>, ServiceIntakeBatchView>;
+type _ClassificationList = Conforms<
+  Static<typeof ClassificationListResponseSchema>,
+  ServiceCursorPage<{ readonly id: string; readonly createdAt: string; readonly docType: string }>
+>;
+type _JobList = Conforms<
+  Static<typeof IntakeJobListResponseSchema>,
+  ServiceCursorPage<{ readonly id: string; readonly createdAt: string; readonly status: string }>
+>;
+type _JobDetail = Conforms<
+  Static<typeof JobDetailResponseSchema>,
+  {
+    readonly id: string;
+    readonly candidates: ServiceCursorPage<{ readonly id: string; readonly createdAt: string; readonly riskLevel: string }>;
+  }
+>;
+type _ReviewDetail = Conforms<
+  Static<typeof ReviewDetailResponseSchema>,
+  {
+    readonly id: string;
+    readonly status: ExtractionReviewStatus;
+    readonly decisions: ServiceCursorPage<{ readonly id: string; readonly createdAt: string }>;
+  }
+>;
+type _TemplateList = Conforms<
+  Static<typeof FormTemplateListResponseSchema>,
+  ServiceCursorPage<{ readonly id: string; readonly key: string; readonly createdAt: string }>
+>;
+type _Template = Conforms<
+  Static<typeof FormTemplateResponseSchema>,
+  { readonly key: string; readonly activeVersionId: string }
+>;
+type _TemplateVersion = Conforms<
+  Static<typeof FormTemplateVersionResponseSchema>,
+  { readonly key: string; readonly versionId: string }
+>;
+type _TenantOverlayList = Conforms<
+  Static<typeof TenantOverlayListResponseSchema>,
+  { readonly overlays: { readonly templateKey: string; readonly overlayId: string }[] }
+>;
+type _FormFill = Conforms<
+  Static<typeof FormFillResponseSchema>,
+  { readonly id: string; readonly status: string }
+>;
+type _SignedUrl = Conforms<Static<typeof SignedUrlResponseSchema>, ServiceMintedSignedUrl>;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

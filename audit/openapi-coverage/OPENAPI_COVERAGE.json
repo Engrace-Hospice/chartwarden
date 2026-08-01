@@ -1,12 +1,12 @@
 {
   "totals": {
     "routes": 995,
-    "enriched": 517,
-    "deficit": 478,
+    "enriched": 765,
+    "deficit": 230,
     "mutating": 574,
-    "mutatingNoBody": 330,
+    "mutatingNoBody": 129,
     "gets": 395,
-    "getsNoResponse": 228
+    "getsNoResponse": 196
   },
   "modules": [
     {
@@ -52,90 +52,90 @@
     {
       "module": "06-admission",
       "routes": 46,
-      "enriched": 6,
-      "deficit": 40,
+      "enriched": 46,
+      "deficit": 0,
       "mutating": 34,
-      "mutatingNoBody": 34,
+      "mutatingNoBody": 0,
       "gets": 12,
-      "getsNoResponse": 6
+      "getsNoResponse": 0
     },
     {
       "module": "07-care-plan",
       "routes": 19,
-      "enriched": 3,
-      "deficit": 16,
+      "enriched": 19,
+      "deficit": 0,
       "mutating": 13,
-      "mutatingNoBody": 13,
+      "mutatingNoBody": 0,
       "gets": 6,
-      "getsNoResponse": 3
+      "getsNoResponse": 0
     },
     {
       "module": "08-encounters",
       "routes": 31,
-      "enriched": 4,
-      "deficit": 27,
+      "enriched": 31,
+      "deficit": 0,
       "mutating": 22,
-      "mutatingNoBody": 22,
+      "mutatingNoBody": 1,
       "gets": 8,
-      "getsNoResponse": 4
+      "getsNoResponse": 0
     },
     {
       "module": "09-assessments",
       "routes": 18,
-      "enriched": 6,
-      "deficit": 12,
+      "enriched": 18,
+      "deficit": 0,
       "mutating": 7,
-      "mutatingNoBody": 7,
+      "mutatingNoBody": 0,
       "gets": 11,
-      "getsNoResponse": 5
+      "getsNoResponse": 0
     },
     {
       "module": "10-hope",
       "routes": 20,
-      "enriched": 10,
-      "deficit": 10,
+      "enriched": 20,
+      "deficit": 0,
       "mutating": 10,
-      "mutatingNoBody": 10,
+      "mutatingNoBody": 0,
       "gets": 10,
       "getsNoResponse": 0
     },
     {
       "module": "11-orders",
       "routes": 28,
-      "enriched": 9,
-      "deficit": 19,
+      "enriched": 28,
+      "deficit": 0,
       "mutating": 18,
-      "mutatingNoBody": 18,
+      "mutatingNoBody": 2,
       "gets": 10,
-      "getsNoResponse": 1
+      "getsNoResponse": 0
     },
     {
       "module": "12-dosespot",
       "routes": 31,
-      "enriched": 10,
-      "deficit": 21,
+      "enriched": 31,
+      "deficit": 0,
       "mutating": 21,
-      "mutatingNoBody": 21,
+      "mutatingNoBody": 2,
       "gets": 10,
       "getsNoResponse": 0
     },
     {
       "module": "13-emar",
       "routes": 28,
-      "enriched": 10,
-      "deficit": 18,
+      "enriched": 28,
+      "deficit": 0,
       "mutating": 18,
-      "mutatingNoBody": 18,
+      "mutatingNoBody": 1,
       "gets": 10,
       "getsNoResponse": 0
     },
     {
       "module": "14-idg",
       "routes": 26,
-      "enriched": 6,
-      "deficit": 20,
+      "enriched": 26,
+      "deficit": 0,
       "mutating": 17,
-      "mutatingNoBody": 17,
+      "mutatingNoBody": 2,
       "gets": 6,
       "getsNoResponse": 0
     },
@@ -162,22 +162,22 @@
     {
       "module": "17-scheduling",
       "routes": 29,
-      "enriched": 11,
-      "deficit": 18,
+      "enriched": 29,
+      "deficit": 0,
       "mutating": 17,
-      "mutatingNoBody": 17,
+      "mutatingNoBody": 1,
       "gets": 12,
-      "getsNoResponse": 1
+      "getsNoResponse": 0
     },
     {
       "module": "18-evv",
       "routes": 25,
-      "enriched": 7,
-      "deficit": 18,
+      "enriched": 25,
+      "deficit": 0,
       "mutating": 15,
-      "mutatingNoBody": 15,
+      "mutatingNoBody": 1,
       "gets": 10,
-      "getsNoResponse": 3
+      "getsNoResponse": 0
     },
     {
       "module": "19-oncall",
@@ -212,12 +212,12 @@
     {
       "module": "22-documents",
       "routes": 35,
-      "enriched": 6,
-      "deficit": 29,
+      "enriched": 35,
+      "deficit": 0,
       "mutating": 19,
-      "mutatingNoBody": 19,
+      "mutatingNoBody": 0,
       "gets": 15,
-      "getsNoResponse": 9
+      "getsNoResponse": 0
     },
     {
       "module": "23-billing-medicare",
