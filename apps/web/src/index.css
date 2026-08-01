@@ -318,6 +318,18 @@
     padding: var(--space-4) var(--space-5) var(--space-4) 0;
   }
 
+  /* WorkQueueLayout's `kpis` / `filters` slots. The usual occupants pad themselves — `KpiStrip`
+     (.wx-kpi-strip, 30 screens) and `FilterBar` (.wx-filter-bar, 23) — so padding the slot outright
+     would double-inset them. But 8 slots across 7 screens (most of M24's queues, M02
+     staff-management) pass a bare <div>/<label>/<form>, which then runs flush to the viewport.
+     So: pad every direct child EXCEPT the regions that already handle it, and except the split row,
+     whose table and context rail own their own insets. Same shape as the context-rail rule above. */
+  .wx-work-queue
+    > :not(.wx-page-header):not(.wx-kpi-strip):not(.wx-filter-bar):not(.wx-work-split) {
+    padding-left: var(--space-5);
+    padding-right: var(--space-5);
+  }
+
   /* ---- Light polish on regions/patterns (these already have inline structure) ---- */
   .wx-auth-brand {
     font-family: var(--font-display);

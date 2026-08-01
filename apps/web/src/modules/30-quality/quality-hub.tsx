@@ -118,7 +118,7 @@ export function QualityHub(): JSX.Element {
         <KpiCard label="CoP at risk / deficient" value={loading ? "—" : String(deficient)} />
       </KpiStrip>
 
-      <section style={cardSurface}>
+      <section style={{ ...cardSurface, marginInline: t.space5 }}>
         <h2 style={{ margin: 0, fontSize: "1.05rem" }}>Measures</h2>
         <p style={{ margin: "0.25rem 0 1rem", color: t.onSurfaceVariant, fontSize: "0.85rem" }}>
           Latest computed value per measure. The population is shown beside every rate — a rate without its
@@ -180,7 +180,7 @@ export function QualityHub(): JSX.Element {
         )}
       </section>
 
-      <section style={{ ...cardSurface, marginTop: "1rem" }}>
+      <section style={{ ...cardSurface, marginTop: "1rem", marginInline: t.space5 }}>
         <h2 style={{ margin: 0, fontSize: "1.05rem" }}>Conditions of Participation</h2>
         <p style={{ margin: "0.25rem 0 1rem", color: t.onSurfaceVariant, fontSize: "0.85rem" }}>
           Survey citation posture. A deficiency is grounds for termination under 418.310, so it reads as an
