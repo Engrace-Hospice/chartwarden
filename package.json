@@ -41,6 +41,7 @@
     "test:rls:live:m5": "vitest run packages/db/migrations/__tests__/m5-rls-isolation.live.test.ts",
     "test:rls:live:m6": "vitest run packages/db/migrations/__tests__/m6-rls-isolation.live.test.ts",
     "test:m6:read:live": "vitest run apps/backend/__tests__/m6-admission-read-service.live.test.ts",
+    "test:m6:write:live": "vitest run apps/backend/__tests__/m6-admission-write-lifecycle.live.test.ts",
     "test:m7:read:live": "vitest run apps/backend/__tests__/m7-care-plan-read-service.live.test.ts",
     "test:m9:read:live": "vitest run apps/backend/__tests__/m9-assessments-read-service.live.test.ts",
     "test:m10:read:live": "vitest run apps/backend/__tests__/m10-hope-read-service.live.test.ts",
