@@ -4,7 +4,7 @@
 > architecture is coherent, NOT that a module is built. This matrix shows per-module build progress.
 > Do not hand-edit — the `status:matrix --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Totals:** 🟢 34 Implemented · 🟡 0 Partial · ⚪ 6 Placeholder (of 40 modules)
+**Totals:** 🟢 34 Implemented · 🟡 1 Partial · ⚪ 5 Placeholder (of 40 modules)
 
 Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned tables in a `CREATE TABLE`) · Routes (non-placeholder backend `routes/`) · Enriched (OpenAPI bodies, *heuristic*) · Screens (registered web `screens.ts`) · Tests (package `__tests__` or slug-matched backend test, *heuristic*) · Adapter (vendor/client package built; — = none owned, *heuristic*) · Live (owned table named in a `*.live.test.ts`, *heuristic*). Headline status keys off the placeholder marker + schema + routes only.
 
@@ -41,7 +41,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M29 External Interfaces | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — | ❌ |
 | M30 HQRP & Quality | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | M31 Patient/Family Portal & Telehealth | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| M32 AI Platform | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — | ❌ |
+| M32 AI Platform | 🟡 Partial | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | — | ❌ |
 | M33 Reporting & Dashboards | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 | M34 SaaS Tenant Platform | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 | M35 Subscription Billing | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — | ✅ |

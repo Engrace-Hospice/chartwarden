@@ -1,8 +1,8 @@
 {
   "totals": {
     "Implemented": 34,
-    "Partial": 0,
-    "Placeholder": 6
+    "Partial": 1,
+    "Placeholder": 5
   },
   "rows": [
     {
@@ -442,14 +442,14 @@
     {
       "id": 32,
       "module": "M32 AI Platform",
-      "status": "Placeholder",
+      "status": "Partial",
       "spec": true,
       "schema": false,
       "migration": false,
       "routes": false,
       "enriched": false,
       "screens": false,
-      "tests": false,
+      "tests": true,
       "adapter": null,
       "liveInfra": false
     },

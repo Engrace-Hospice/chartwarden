@@ -2865,3 +2865,213 @@ export const safetyEmergencyContactConsentStatus = pgEnum("safety_emergency_cont
   "revoked",
   "expired",
 ]);
+
+// ── Module 32 (AI Platform) — §3.1 enums (M32-T01) ────────────────────────────────────────────────
+//
+// The spec puts these in `packages/db/src/schema/ai-platform/enums.ts`; the repo defines every pgEnum
+// exactly once HERE (the file header's ADR-0022 D1.3 rule that `check-ddl-legality.ts` enforces), so
+// they resolve on the path the gates actually govern. M32-T02 binds the columns to the types below and
+// emits the `CREATE TYPE` statements; the value mirrors a consumer reads live in `@wardenx/types`'
+// `ai-platform.ts`, kept in lock-step with these tuples by an M32-T01 test.
+//
+// §3.1 declares TWENTY-ONE enums; the vocabularies §3.2 spells inline on `text` columns
+// (`ai_model_backend.zdr_status`, `ai_routing_override.override_reason`,
+// `ai_hallucination_report.triage_disposition`, `ai_tenant_opt_in_record.routing_preference_snapshot`,
+// `ai_prompt_template.output_entity_target_prefix` / `output_type_prefix`, the `actor_role` /
+// `reporter_role` free-text columns) stay text + CHECK and live as leaf unions in `@wardenx/types` —
+// adding pg types §3.1 never declared would be this module inventing DDL.
+
+/** `ai_capability_lifecycle_state` — D2's eight-state governance FSM. The ORDER is the promotion
+ *  ladder; `packages/ai-platform`'s state machine is the authority on which edges are legal. */
+export const aiCapabilityLifecycleState = pgEnum("ai_capability_lifecycle_state", [
+  "PROPOSED",
+  "DESIGN_REVIEW",
+  "EVALUATION",
+  "PILOT",
+  "APPROVED",
+  "MONITORING",
+  "DEPRECATED",
+  "RETIRED",
+]);
+
+/** `ai_capability_risk_tier` — AI Governance §4.2. `high` forces tenant opt-in + clinical review. */
+export const aiCapabilityRiskTier = pgEnum("ai_capability_risk_tier", ["high", "medium", "low"]);
+
+/** `ai_capability_owning_role` — who signs a lifecycle transition. Doubles as
+ *  `ai_capability_lifecycle_event.actor_role`, so the ledger cannot record a transition signed by a
+ *  role that is not one of the four accountable governance roles. */
+export const aiCapabilityOwningRole = pgEnum("ai_capability_owning_role", [
+  "ai_safety_owner",
+  "clinical_reviewer",
+  "ai_engineer",
+  "privacy_officer",
+]);
+
+/** `ai_fda_samd_classification` — Software-as-a-Medical-Device posture. `not_samd` is the Phase-1
+ *  value for every registered capability; the column exists so a future clinical-decision capability
+ *  cannot be registered without stating its classification. */
+export const aiFdaSamdClassification = pgEnum("ai_fda_samd_classification", [
+  "class_i",
+  "class_ii",
+  "class_iii",
+  "class_iv",
+  "not_samd",
+]);
+
+/** `ai_model_backend_kind` — the D19/D17 fork. `cloud` requires a BAA + ZDR (the §3.2.4
+ *  `cloudBaaCheck`); `local` requires license terms + an artifact reference (`localLicenseCheck`). */
+export const aiModelBackendKind = pgEnum("ai_model_backend_kind", ["cloud", "local"]);
+
+/** `ai_backend_health_status` — `unknown` is the registered-but-never-probed state and is DISTINCT
+ *  from `unhealthy`: a backend nobody has reached yet must not read as one that answered badly. */
+export const aiBackendHealthStatus = pgEnum("ai_backend_health_status", [
+  "healthy",
+  "degraded",
+  "unhealthy",
+  "unknown",
+]);
+
+/** `ai_prompt_template_status` — D3. Only `active` is resolvable by `AIPromptRegistry`; `deprecated`
+ *  and `archived` stay readable so a 2031 audit can reconstruct the template a 2026 invocation used. */
+export const aiPromptTemplateStatus = pgEnum("ai_prompt_template_status", [
+  "active",
+  "deprecated",
+  "archived",
+]);
+
+/** `ai_tenant_opt_in_status` — §3.2.6 defaults to `opted_out`: the row's EXISTENCE is not consent. */
+export const aiTenantOptInStatus = pgEnum("ai_tenant_opt_in_status", ["active", "paused", "opted_out"]);
+
+/** `ai_invocation_status` — `capability_unavailable` is a RECORDED outcome, not an absent row: a gate
+ *  refusal is itself the §164.528 evidence that no PHI left the platform. */
+export const aiInvocationStatus = pgEnum("ai_invocation_status", [
+  "completed",
+  "failed",
+  "timed_out",
+  "killed",
+  "capability_unavailable",
+]);
+
+/** `ai_invocation_hitl_outcome` — the human-in-the-loop decision. `pending` is the insert default and
+ *  the ONLY column §3.5's immutability trigger lets a consumer module update after the fact. */
+export const aiInvocationHitlOutcome = pgEnum("ai_invocation_hitl_outcome", [
+  "accepted",
+  "edited",
+  "rejected",
+  "pending",
+  "not_applicable",
+]);
+
+/** `ai_routing_decision` — WHICH link of the capability's chain served the call. */
+export const aiRoutingDecision = pgEnum("ai_routing_decision", ["primary", "fallback_1", "fallback_2"]);
+
+/** `ai_routing_reason` — WHY that link served it. §3.1 adds `cost_cap_fallback` beyond the four the
+ *  §2.1 ERD lists, so D7's hard-cap fallback is distinguishable from a vendor outage in the ledger. */
+export const aiRoutingReason = pgEnum("ai_routing_reason", [
+  "default",
+  "tenant_override",
+  "kill_switch_fallback",
+  "vendor_outage_fallback",
+  "cost_cap_fallback",
+]);
+
+/** `ai_hallucination_severity` — `critical` is the D16 SEV-1 trigger: platform-wide kill + automatic
+ *  demotion to DEPRECATED within 60 seconds. */
+export const aiHallucinationSeverity = pgEnum("ai_hallucination_severity", [
+  "critical",
+  "high",
+  "medium",
+  "low",
+]);
+
+/** `ai_hallucination_kind` — §3.1 adds `fake_clinical_recommendation` beyond the §2.1 ERD list. */
+export const aiHallucinationKind = pgEnum("ai_hallucination_kind", [
+  "fabricated_medication",
+  "misattributed_symptom",
+  "fake_diagnosis",
+  "fabricated_quote",
+  "misquoted_patient",
+  "wrong_dose",
+  "fake_clinical_recommendation",
+  "other",
+]);
+
+/** `ai_hallucination_triage_status` — D9's queue. `escalated_to_clinical_safety` is a TERMINAL status
+ *  for M32 and an OPEN one for the clinical-safety committee; it is not `closed`. */
+export const aiHallucinationTriageStatus = pgEnum("ai_hallucination_triage_status", [
+  "open",
+  "investigating",
+  "root_cause_identified",
+  "mitigated",
+  "closed",
+  "escalated_to_clinical_safety",
+]);
+
+/** `ai_evaluation_run_stage` — which governance gate the run is evidence for (D10). */
+export const aiEvaluationRunStage = pgEnum("ai_evaluation_run_stage", [
+  "stage_3_evaluation",
+  "stage_4_pilot",
+  "reapproval",
+  "drift_response",
+  "post_incident",
+]);
+
+/** `ai_evaluation_run_status` — the run's own lifecycle, distinct from its `decision`. */
+export const aiEvaluationRunStatus = pgEnum("ai_evaluation_run_status", [
+  "pending",
+  "in_progress",
+  "passed",
+  "failed",
+  "aborted",
+]);
+
+/** `ai_evaluation_run_decision` — §3.1 adds `no_decision` (the §3.2.11 insert default) so a `pending`
+ *  run is not forced to claim an outcome it has not reached. */
+export const aiEvaluationRunDecision = pgEnum("ai_evaluation_run_decision", [
+  "approve_for_pilot",
+  "approve_for_ga",
+  "reject",
+  "recalibrate_thresholds",
+  "no_decision",
+]);
+
+/** `ai_kill_switch_reason` — D8. §3.1 adds `lifecycle_demotion` beyond the §2.1 ERD list: the switch
+ *  D16 trips automatically when a capability is demoted needs a reason distinct from the human ones. */
+export const aiKillSwitchReason = pgEnum("ai_kill_switch_reason", [
+  "sev1_hallucination",
+  "sev2_hallucination",
+  "cost_cap_reached",
+  "vendor_outage_exceeded_sla",
+  "prompt_injection_detected",
+  "manual_safety_pause",
+  "misuse_detected",
+  "bias_drift_severe",
+  "lifecycle_demotion",
+]);
+
+/** `ai_kill_switch_activation_actor_kind` — WHO tripped it; §3.1 adds the two automated monitors the
+ *  §2.1 ERD omits. Reused for `deactivation_actor_kind`, which is why an automated kind must stay
+ *  expressible on the way OUT as well as the way in. */
+export const aiKillSwitchActivationActorKind = pgEnum("ai_kill_switch_activation_actor_kind", [
+  "ai_safety_owner",
+  "incident_commander",
+  "automated_cost_watch",
+  "automated_drift_monitor",
+  "automated_vendor_health_monitor",
+  "automated_lifecycle_demotion",
+]);
+
+/** `ai_lifecycle_approval_kind` — the governance gate a lifecycle event is the record of. The kind
+ *  names the STAGE, not the outcome: an EVALUATION→PROPOSED rejection and an EVALUATION→PILOT
+ *  approval are both `stage_3_evaluation`, distinguished by `from_state`/`to_state`. */
+export const aiLifecycleApprovalKind = pgEnum("ai_lifecycle_approval_kind", [
+  "stage_1_proposal",
+  "stage_2_design_review",
+  "stage_3_evaluation",
+  "stage_4_pilot",
+  "stage_5_ga",
+  "reapproval",
+  "deprecation",
+  "retirement",
+  "incident_demotion",
+]);

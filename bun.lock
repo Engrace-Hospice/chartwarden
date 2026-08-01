@@ -78,6 +78,9 @@
     "packages/ai-platform": {
       "name": "@wardenx/ai-platform",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
     },
     "packages/assessments": {
       "name": "@wardenx/assessments",
