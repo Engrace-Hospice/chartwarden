@@ -82,6 +82,19 @@ export interface ServerDeps {
 const TEN_MB = 10 * 1024 * 1024;
 
 /**
+ * Parse `TRUSTED_PROXY_CIDRS` into Fastify's `trustProxy` value. Returns `false` when unset or empty,
+ * so the default posture is "trust nothing" rather than "trust everything" — an unset env var must not
+ * silently let a caller choose its own `X-Forwarded-For`, and therefore its own rate-limit bucket.
+ */
+export function parseTrustedProxies(raw: string | undefined): string[] | false {
+  const entries = (raw ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  return entries.length > 0 ? entries : false;
+}
+
+/**
  * The PHI read surface under §2.5 read-audit coverage. Every GET/HEAD registered under one of these
  * prefixes must declare `config.auditRead` — an emission config, or a justified `{ none: "…" }`
  * waiver — or the route refuses to register and the host refuses to boot.
@@ -172,6 +185,17 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
   const app = Fastify({
     logger: buildLoggerOptions(), // PHI-safe: path-only URLs + redacted auth headers/cookies
     bodyLimit: deps.bodyLimit ?? TEN_MB,
+    // `request.ip` is the SOCKET peer unless Fastify is told to trust the forwarding hop. Behind a
+    // load balancer that makes every unauthenticated request share one `ip:<LB address>` rate-limit
+    // bucket (plugins/security.ts keys on request.ip) — i.e. the 30/min unauthenticated tier becomes
+    // 30/min for the ENTIRE deployment, and one client trivially locks everyone out of /login and the
+    // public signup + collaborator-consume routes.
+    //
+    // Deliberately NOT `true`: trusting every hop lets any caller forge X-Forwarded-For and pick its
+    // own bucket — or someone else's. `TRUSTED_PROXY_CIDRS` is an explicit allow-list (comma-separated
+    // IPs/CIDRs, e.g. the LB subnet); absent, this stays false and the socket peer is used, which is
+    // correct for local/dev and for a direct-exposure deployment.
+    trustProxy: parseTrustedProxies(process.env.TRUSTED_PROXY_CIDRS),
   });
 
   // --- cross-cutting middleware ---

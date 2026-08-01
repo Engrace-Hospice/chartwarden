@@ -22,6 +22,7 @@ import { type DbClient, createDbClient } from "@wardenx/db";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
 import { DegradedError } from "@wardenx/types";
 import type { ConnectionOptions } from "bullmq";
+import { createDbIdempotencyStore } from "./bootstrap/plugins/idempotency-store-db";
 import {
   assertProductionEnv,
   buildServer,
@@ -1259,6 +1260,12 @@ if ((import.meta as { main?: boolean }).main) {
   const app = buildServer({
     db: dbHandle?.db,
     authenticate,
+    // Postgres-backed idempotency. The bootstrap default is an in-memory Map, and nothing ever
+    // replaced it — so on the production mount an Idempotency-Key was process-local: a retry landing
+    // on another replica re-ran the mutation, which for the M23/M26/M30 write surfaces that REQUIRE
+    // the header means a duplicated claim submission or settlement. Absent a DB the in-memory default
+    // still applies (slice/tests), which is correct: there is nowhere durable to put it.
+    ...(dbHandle ? { idempotencyStore: createDbIdempotencyStore(dbHandle.db) } : {}),
     // Mount module REST routes when a DB client is present (progressive backend wiring). M3 first:
     // the role catalog runs on the real Drizzle RoleStore; other module routes append here as their
     // stores land. The slice/tests boot without this (foundation routes only).

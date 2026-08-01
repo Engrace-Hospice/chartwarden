@@ -4,6 +4,7 @@
 // insert/select from a feature module (HELPER_ONLY_TABLES, manifest). org-scoped:
 // carries organization_id (no PHI columns → three-column PE/location not required).
 import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { idempotencyState } from "../enums";
 import { organizations } from "./organizations";
 
 export const idempotencyKeys = pgTable(
@@ -15,8 +16,11 @@ export const idempotencyKeys = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     key: text("key").notNull(),
     requestHash: text("request_hash").notNull(),
-    responseStatus: text("response_status").notNull(),
-    responseBody: jsonb("response_body").notNull(),
+    // `pending` = a first request claimed this (org, key) and is still running; the response columns
+    // are null until it finishes. A CHECK in migration 0121 keeps the two states from drifting apart.
+    state: idempotencyState("state").notNull().default("complete"),
+    responseStatus: text("response_status"),
+    responseBody: jsonb("response_body"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   },
